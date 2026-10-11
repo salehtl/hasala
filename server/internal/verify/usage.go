@@ -35,7 +35,7 @@ package verify
 //
 // # Report, repair, and the deploy window
 //
-// [UsageLedger] REPORTS. It never writes. `ledgerd verify` is an audit of stored
+// [UsageLedger] REPORTS. It never writes. `hasalad verify` is an audit of stored
 // data — it deliberately does not even apply migrations, because a tool that
 // changes the database it is measuring has changed the measurement — and a check
 // that silently rewrote the ledger every night would erase the evidence of the
@@ -43,7 +43,7 @@ package verify
 // correct one.
 //
 // [RepairUsageLedger] is the operator's separate, deliberate lever
-// (`ledgerd verify --repair-usage`), and §7 of the design is why it has to
+// (`hasalad verify usage --repair`), and §7 of the design is why it has to
 // exist: migrations are applied out of band BEFORE the new binary starts, so the
 // OLD binary — which does not maintain the ledger — keeps writing between
 // 00031's backfill sums and the restart. Every one of those writes is drift the
@@ -86,8 +86,7 @@ const usageScope = `(coalesce(cardinality($1::uuid[]), 0) = 0 OR user_id = ANY($
 // row (a write path that never charged them) are both drift, and either
 // one-sided join drops one of them.
 //
-// The resource names are built the way 00031's backfill builds them, from the
-// stream itself. TestTheReconciledResourceNamesAreTheLedgersOwn pins the
+// The resource name is built from the stream itself ('oplog_hot_bytes'). TestTheReconciledResourceNamesAreTheLedgersOwn pins the
 // spelling against internal/budget's constants, because a typo here would
 // report every account's whole log as drift and repair it into a duplicate row.
 const usageDriftSQL = `
@@ -96,14 +95,6 @@ WITH truth AS (
                sum(octet_length(blob))::bigint AS amount
           FROM op_log WHERE ` + usageScope + `
          GROUP BY user_id, stream
-   UNION ALL
-        SELECT user_id, 'quarantine_bytes', sum(octet_length(blob))::bigint
-          FROM quarantine WHERE ` + usageScope + `
-         GROUP BY user_id
-   UNION ALL
-        SELECT user_id, 'quarantine_count', count(*)::bigint
-          FROM quarantine WHERE ` + usageScope + `
-         GROUP BY user_id
 ),
 ledger AS (
    SELECT user_id, resource, amount FROM account_usage WHERE ` + usageScope + `
@@ -202,25 +193,19 @@ func (d drift) detail() string {
 		return fmt.Sprintf(
 			"%s: the ledger says %d %s and the stored rows total %d, so it is %d too HIGH — "+
 				"this account is charged for space it does not hold and will be refused writes early. "+
-				"Recompute it with `ledgerd verify --repair-usage`.",
+				"Recompute it with `hasalad verify usage --repair`.",
 			d.Resource, d.Ledger, unit, d.Actual, d.Ledger-d.Actual)
 	}
 	return fmt.Sprintf(
 		"%s: the ledger says %d %s and the stored rows total %d, so it is %d too LOW — "+
 			"this account holds space nobody is charged for, which is budget the ceiling "+
-			"cannot see. Recompute it with `ledgerd verify --repair-usage`.",
+			"cannot see. Recompute it with `hasalad verify usage --repair`.",
 		d.Resource, d.Ledger, unit, d.Actual, d.Actual-d.Ledger)
 }
 
-// usageUnit is what a resource's amount counts. Three of the four are bytes and
-// the fourth is messages, and printing "500 bytes" for a hold count would be a
-// number an operator acts on wrongly.
-func usageUnit(resource string) string {
-	if resource == budget.ResourceQuarantineCount {
-		return "held message(s)"
-	}
-	return "bytes"
-}
+// usageUnit is what a resource's amount counts: bytes, for the one ledger
+// resource there is.
+func usageUnit(string) string { return "bytes" }
 
 // repairable is the closed set of resources [RepairUsageLedger] will write.
 //
@@ -228,17 +213,14 @@ func usageUnit(resource string) string {
 // so an INSERT of anything else aborts the repair transaction. A resource
 // outside this set can only come from a stream the op log's own constraint does
 // not permit, which is a finding to READ and not a row to rewrite.
-var repairable = []string{
-	budget.ResourceOplogHotBytes, budget.ResourceOplogColdBytes,
-	budget.ResourceQuarantineBytes, budget.ResourceQuarantineCount,
-}
+var repairable = []string{budget.ResourceOplogHotBytes}
 
 // RepairUsageLedger rewrites every drifting row to its recomputed total and
 // returns what it changed.
 //
 // This is the deploy-window lever of §7 and the design's "expected to find
 // drift, and expected to repair it". It is never called by a report; the caller
-// is `ledgerd verify --repair-usage`, typed by an operator.
+// is `hasalad verify usage --repair`, typed by an operator.
 //
 // # One transaction per row, and the lock is taken FIRST
 //
@@ -349,14 +331,10 @@ func usageTruth(ctx context.Context, tx pgx.Tx, userID uuid.UUID, resource strin
 		amount int64
 	)
 	switch resource {
-	case budget.ResourceOplogHotBytes, budget.ResourceOplogColdBytes:
+	case budget.ResourceOplogHotBytes:
 		sql = `SELECT coalesce(sum(octet_length(blob)), 0)::bigint FROM op_log
 		        WHERE user_id = $1 AND stream = $2`
 		args = append(args, streamForResource(resource))
-	case budget.ResourceQuarantineBytes:
-		sql = `SELECT coalesce(sum(octet_length(blob)), 0)::bigint FROM quarantine WHERE user_id = $1`
-	case budget.ResourceQuarantineCount:
-		sql = `SELECT count(*)::bigint FROM quarantine WHERE user_id = $1`
 	default:
 		return 0, fmt.Errorf("verify: repair usage ledger: %q is not a ledger resource", resource)
 	}
@@ -367,11 +345,5 @@ func usageTruth(ctx context.Context, tx pgx.Tx, userID uuid.UUID, resource strin
 	return amount, nil
 }
 
-// streamForResource is the inverse of oplog's resourceForStream. The two are
-// pinned together by TestTheReconciledResourceNamesAreTheLedgersOwn.
-func streamForResource(resource string) string {
-	if resource == budget.ResourceOplogColdBytes {
-		return "cold"
-	}
-	return "hot"
-}
+// streamForResource names the stream a ledger resource counts. There is one.
+func streamForResource(string) string { return "hot" }

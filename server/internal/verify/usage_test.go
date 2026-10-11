@@ -3,7 +3,6 @@ package verify
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -82,10 +81,9 @@ func findingFor(t *testing.T, f []Finding, u uuid.UUID, resource string) Finding
 // A log written by the REAL appender reconciles clean, and the number it wrote
 // is the padded stored size rather than the plaintext.
 //
-// That second half is the point of the test. The design says outright that the
-// charged bytes are the padded stored bytes, matching 00031's backfill;
-// reconciling against a plaintext length would report drift on every account of
-// a perfectly healthy box, and the gap would widen once Phase 3 seals the blob.
+// That second half is the point of the test: the charged bytes are the padded
+// stored bytes; reconciling against a plaintext length would report drift on
+// every account of a perfectly healthy box.
 func TestTheLedgerReconcilesAgainstARealAppend(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -102,14 +100,10 @@ func TestTheLedgerReconcilesAgainstARealAppend(t *testing.T) {
 	if want := storedBytes(t, pool, u, blob.StreamHot); hot != want {
 		t.Fatalf("ledger holds %d hot bytes, stored rows total %d", hot, want)
 	}
-	// Three ops of eight bytes of plaintext each. Anything near 24 means the
-	// ledger — or this check — is counting the payload and not the column.
-	if hot <= 24 {
-		t.Fatalf("hot usage is %d bytes: that is the plaintext, not the padded stored blob", hot)
-	}
-	cold, _ := ledgerAmount(t, pool, u, budget.ResourceOplogColdBytes)
-	if want := storedBytes(t, pool, u, blob.StreamCold); cold != want {
-		t.Fatalf("ledger holds %d cold bytes, stored rows total %d", cold, want)
+	// Six frames of one 1 KiB bucket each: the padded stored size, never the
+	// few dozen bytes of plaintext inside.
+	if hot != 6*1024 {
+		t.Fatalf("hot usage is %d bytes, want the six padded frames' 6144", hot)
 	}
 }
 
@@ -160,8 +154,8 @@ func TestStoredBytesWithNoLedgerRowAreDrift(t *testing.T) {
 	exec(t, pool, `DELETE FROM account_usage WHERE user_id = $1`, u)
 
 	f := usageFindings(t, pool, u)
-	if len(f) != 2 {
-		t.Fatalf("want a finding for each stream with a deleted ledger, got %d: %+v", len(f), f)
+	if len(f) != 1 {
+		t.Fatalf("want one finding for the deleted ledger row, got %d: %+v", len(f), f)
 	}
 	hot := findingFor(t, f, u, budget.ResourceOplogHotBytes)
 	if !strings.Contains(hot.Detail, "the ledger says 0 bytes") {
@@ -180,44 +174,11 @@ func TestAnAccountWithNothingStoredIsSilent(t *testing.T) {
 	if f := usageFindings(t, pool, u); len(f) != 0 {
 		t.Fatalf("an empty account produced findings: %+v", f)
 	}
-	// And a zero row means the same thing as an absent one (00031's own words).
+	// And a zero row means the same thing as an absent one.
 	exec(t, pool, `INSERT INTO account_usage (user_id, resource, amount)
-	  VALUES ($1, 'oplog_hot_bytes', 0), ($1, 'quarantine_count', 0)`, u)
+	  VALUES ($1, 'oplog_hot_bytes', 0)`, u)
 	if f := usageFindings(t, pool, u); len(f) != 0 {
 		t.Fatalf("a zero ledger row on an empty account produced findings: %+v", f)
-	}
-}
-
-// Held mail is reconciled too, in both of its resources.
-//
-// This test seeds quarantine rows with raw SQL, deliberately bypassing
-// quarantine.Hold, so it measures the RECONCILIATION rather than the charging.
-// That is why it still expects drift.
-//
-// It carried a ⚠ noting that Hold did not yet maintain the ledger and that every
-// held message was therefore standing drift. That seam landed in 92cf546: Hold is
-// transactional and charges both quarantine resources, and removeLocked releases
-// them on the expiry sweep and on confirm-and-reingest alike. A box whose held
-// mail arrived through Hold now reconciles to zero.
-func TestHeldMailIsReconciledByBytesAndByCount(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	now := time.Now().UTC()
-	for i := 0; i < 3; i++ {
-		hold(t, pool, u, randBytes(t, 32), now)
-	}
-
-	f := usageFindings(t, pool, u)
-	bytesF := findingFor(t, f, u, budget.ResourceQuarantineBytes)
-	if !strings.Contains(bytesF.Detail, "3072") {
-		t.Fatalf("three 1024-byte holds do not total 3072 in %q", bytesF.Detail)
-	}
-	countF := findingFor(t, f, u, budget.ResourceQuarantineCount)
-	if !strings.Contains(countF.Detail, "held message(s)") {
-		t.Fatalf("the hold COUNT is reported in bytes: %q", countF.Detail)
-	}
-	if !strings.Contains(countF.Detail, "total 3") {
-		t.Fatalf("three holds do not total 3 in %q", countF.Detail)
 	}
 }
 
@@ -246,37 +207,30 @@ func TestUsageReconciliationCanBeScopedToOneAccount(t *testing.T) {
 // The repair writes the recomputed total, in both directions and for a row that
 // was missing entirely — and the reconciliation is clean afterwards.
 //
-// This is §7's deploy window: migrations run out of band before the new binary
-// starts, so the old binary keeps writing between 00031's backfill and the
-// restart. The first run after a deploy is expected to find that drift and to
-// repair it.
+// This is the deploy window: migrations run out of band before the new binary
+// starts, so an old binary can keep writing in between. The first run after a
+// deploy is expected to find that drift and to repair it.
 func TestRepairSetsEachDriftingRowToItsRecomputedTotal(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	appendPairs(t, pool, u, 2)
 	hot := storedBytes(t, pool, u, blob.StreamHot)
-	cold := storedBytes(t, pool, u, blob.StreamCold)
 
 	exec(t, pool, `UPDATE account_usage SET amount = amount + 4096
 	                WHERE user_id = $1 AND resource = 'oplog_hot_bytes'`, u)
-	exec(t, pool, `DELETE FROM account_usage WHERE user_id = $1 AND resource = 'oplog_cold_bytes'`, u)
 
 	corrections, err := RepairUsageLedger(bg, pool, []uuid.UUID{u})
 	if err != nil {
 		t.Fatalf("RepairUsageLedger: %v", err)
 	}
-	if len(corrections) != 2 {
-		t.Fatalf("want a correction per drifting row, got %d: %+v", len(corrections), corrections)
+	if len(corrections) != 1 {
+		t.Fatalf("want a correction for the drifting row, got %d: %+v", len(corrections), corrections)
 	}
 	for _, c := range corrections {
 		switch c.Resource {
 		case budget.ResourceOplogHotBytes:
 			if c.From != hot+4096 || c.To != hot {
 				t.Fatalf("hot correction %+v, want from %d to %d", c, hot+4096, hot)
-			}
-		case budget.ResourceOplogColdBytes:
-			if c.From != 0 || c.To != cold {
-				t.Fatalf("cold correction %+v, want from 0 to %d", c, cold)
 			}
 		default:
 			t.Fatalf("unexpected correction %+v", c)
@@ -285,8 +239,13 @@ func TestRepairSetsEachDriftingRowToItsRecomputedTotal(t *testing.T) {
 	if f := usageFindings(t, pool, u); len(f) != 0 {
 		t.Fatalf("the ledger still drifts after a repair: %+v", f)
 	}
-	if got, _ := ledgerAmount(t, pool, u, budget.ResourceOplogColdBytes); got != cold {
-		t.Fatalf("cold row holds %d after the repair, want %d", got, cold)
+	// And a MISSING row is recreated at the truth.
+	exec(t, pool, `DELETE FROM account_usage WHERE user_id = $1`, u)
+	if _, err := RepairUsageLedger(bg, pool, []uuid.UUID{u}); err != nil {
+		t.Fatalf("RepairUsageLedger: %v", err)
+	}
+	if got, _ := ledgerAmount(t, pool, u, budget.ResourceOplogHotBytes); got != hot {
+		t.Fatalf("the recreated row holds %d after the repair, want %d", got, hot)
 	}
 }
 
@@ -390,32 +349,17 @@ func TestTheReconciliationReportsAndDoesNotRepair(t *testing.T) {
 	}
 }
 
-// The resource names this file builds in SQL are the ledger's own.
-//
-// They are assembled from the stream ('oplog_' || stream || '_bytes'), exactly
-// as 00031's backfill assembles them, so nothing in Go spells them for that
-// path. A typo would compare every account's hot bytes against a resource
-// nothing writes: the whole log would read as drift, and the repair would write
-// a row the CHECK constraint refuses.
+// The resource name this file builds in SQL is the ledger's own: it is
+// assembled from the stream ('oplog_' || stream || '_bytes'), so a typo would
+// compare every account's bytes against a resource nothing writes.
 func TestTheReconciledResourceNamesAreTheLedgersOwn(t *testing.T) {
 	if got := "oplog_" + blob.StreamHot + "_bytes"; got != budget.ResourceOplogHotBytes {
 		t.Errorf("the hot stream builds %q, the ledger holds %q", got, budget.ResourceOplogHotBytes)
 	}
-	if got := "oplog_" + blob.StreamCold + "_bytes"; got != budget.ResourceOplogColdBytes {
-		t.Errorf("the cold stream builds %q, the ledger holds %q", got, budget.ResourceOplogColdBytes)
-	}
-	if got := streamForResource(budget.ResourceOplogColdBytes); got != blob.StreamCold {
-		t.Errorf("streamForResource(cold bytes) = %q, want %q", got, blob.StreamCold)
-	}
 	if got := streamForResource(budget.ResourceOplogHotBytes); got != blob.StreamHot {
 		t.Errorf("streamForResource(hot bytes) = %q, want %q", got, blob.StreamHot)
 	}
-	for _, r := range repairable {
-		if usageUnit(r) == "" {
-			t.Errorf("resource %q has no unit", r)
-		}
-	}
-	if len(repairable) != 4 {
-		t.Errorf("repairable names %d resources, the ledger has 4", len(repairable))
+	if len(repairable) != 1 || repairable[0] != budget.ResourceOplogHotBytes || usageUnit(repairable[0]) != "bytes" {
+		t.Errorf("repairable = %v, want exactly the one ledger resource, in bytes", repairable)
 	}
 }

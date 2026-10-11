@@ -1,4 +1,13 @@
-// Package oplog defines the operation wire model: what a single mutation of a
+// Package opref is ledgerd's operation wire model (op schema 3), moved out of
+// internal/oplog by the hasalad surgery (spec 02 §2.3): REFERENCE AND FIXTURE
+// CODE ONLY. It reads and writes the v1 conformance fixtures (conformance/op,
+// conformance/blob, conformance/ts) that the TypeScript reference and the
+// Swift port are held to. The server never encodes, decodes or looks inside an
+// op: the blob is ciphertext. cmd/hasalad's build graph must never reach this
+// package (spec 02 §4.4 fence 1). Hasala's op schema 4 is specified by
+// 03a–03c and implemented in Swift.
+//
+// What follows is ledgerd's description of the model: what a single mutation of a
 // user's ledger looks like once it is encoded, and what the two blob kinds
 // carry.
 //
@@ -137,7 +146,7 @@
 // mutates state. That is what makes a hot-only sync a COMPLETE materialization,
 // and it is asserted as invariant I16 rather than trusted as a convention:
 // [DecodeBlob] refuses a raw-body blob and [DecodeRawBody] refuses an op blob.
-package oplog
+package opref
 
 import (
 	"encoding/base64"

@@ -1,4 +1,4 @@
-package oplog
+package opref
 
 import (
 	"encoding/json"

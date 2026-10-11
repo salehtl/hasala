@@ -1,4 +1,4 @@
-package oplog
+package opref
 
 // conformance_test.go is the shared-bytes half of the dual-executor contract.
 //
@@ -83,13 +83,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/blob"
+	"github.com/salehtl/hasala/server/internal/blob/blobtest"
 )
 
 // writeFixturesEnv gates the writer. A test that rewrites its own reference on
 // every run pins nothing — it would silently re-bless whatever the code now
 // produces, which is the one thing a golden file exists to prevent — so writing
 // is opt-in and the fixtures are committed.
-const writeFixturesEnv = "LEDGER_WRITE_CONFORMANCE"
+const writeFixturesEnv = "HASALA_WRITE_CONFORMANCE"
 
 // conformanceUser is the user id every fixture is sealed for. It is the same
 // value package blob's own tests use, so a fixture's AAD is readable at a glance.
@@ -305,7 +306,7 @@ var timeRejectCases = []string{
 // The fixtures themselves
 // ---------------------------------------------------------------------------
 
-func conformanceDir() string { return filepath.Join("..", "..", "..", "conformance") }
+func conformanceDir() string { return filepath.Join("..", "..", "..", "..", "conformance") }
 
 // goldenOps is the op set both TestGoldenOpBytes and the fixtures encode. One
 // literal, two consumers: a change to it fails the golden byte comparison
@@ -424,7 +425,7 @@ func incompressibleBytes(n int) []byte {
 // restate offsets.
 func prePadLength(t *testing.T, b []byte) int {
 	t.Helper()
-	start, end, err := blob.SealedRegion(b)
+	start, end, err := blobtest.SealedRegion(b)
 	if err != nil {
 		t.Fatalf("sealed region: %v", err)
 	}
@@ -449,7 +450,7 @@ func bucketEdgePlaintext(t *testing.T, e blob.Envelope, bucketIdx int) []byte {
 	t.Helper()
 	bucket := blob.Buckets[bucketIdx]
 	target := bucket - 1
-	var sealer blob.PlaintextSealer
+	var sealer blobtest.PlaintextSealer
 	for n := bucket - 200; n < bucket; n++ {
 		if n < 1 {
 			continue
@@ -497,7 +498,7 @@ func escapeTrapOps() []Op {
 // (see writeFixturesEnv) because a golden file the test suite rewrites on every
 // run is not a golden file.
 //
-//	LEDGER_WRITE_CONFORMANCE=1 go test ./internal/oplog/ -run TestWriteConformanceFixtures -v
+//	HASALA_WRITE_CONFORMANCE=1 go test ./internal/oplog/ -run TestWriteConformanceFixtures -v
 func TestWriteConformanceFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) != "1" {
 		t.Skipf("set %s=1 to regenerate conformance/blob and conformance/op", writeFixturesEnv)
@@ -545,7 +546,7 @@ func TestWriteConformanceFixtures(t *testing.T) {
 			file:      "cold-ingest-3.bin",
 			note:      "a cold raw-body blob: invariant I16 says this stream never carries ops",
 			kind:      KindRawBody,
-			env:       blob.Envelope{UserID: conformanceUser, Stream: blob.StreamCold, WriterID: IngestWriterID, WriterCounter: 3},
+			env:       blob.Envelope{UserID: conformanceUser, Stream: blobtest.StreamCold, WriterID: "ingest", WriterCounter: 3},
 			plaintext: raw,
 		},
 		{
@@ -576,11 +577,12 @@ func TestWriteConformanceFixtures(t *testing.T) {
 	specs[2].kind = ""
 	specs[4].plaintext = bucketEdgePlaintext(t, bigEdgeEnv, 1)
 
-	var sealer blob.PlaintextSealer
+	var sealer blobtest.PlaintextSealer
 	man := blobManifest{
-		Note: "Sealed by internal/oplog TestWriteConformanceFixtures. " +
-			"Regenerate with LEDGER_WRITE_CONFORMANCE=1; do not hand-edit. " +
-			"Both executors open these bytes; the framing is frozen (see internal/blob).",
+		Note: "Sealed by internal/oplog/opref TestWriteConformanceFixtures. " +
+			"Regenerate with HASALA_WRITE_CONFORMANCE=1; do not hand-edit. " +
+			"Both executors open these bytes. This is ledgerd's v1 plaintext frame " +
+			"(internal/blob/blobtest); hasalad refuses it and stores only sealed frame v3.",
 		Buckets:     blob.Buckets,
 		NonceSize:   blob.NonceSize,
 		TagSize:     blob.TagSize,
@@ -773,7 +775,7 @@ func readBlobManifest(t *testing.T, dir string) blobManifest {
 func checkFixtures(t *testing.T, dir string) {
 	t.Helper()
 	man := readBlobManifest(t, dir)
-	var sealer blob.PlaintextSealer
+	var sealer blobtest.PlaintextSealer
 	for _, f := range man.Fixtures {
 		t.Run(f.File, func(t *testing.T) {
 			raw, err := os.ReadFile(filepath.Join(dir, f.File))
@@ -787,7 +789,7 @@ func checkFixtures(t *testing.T, dir string) {
 			if got := string(env.AAD()); got != f.ExpectAAD {
 				t.Fatalf("AAD is %q, manifest says %q", got, f.ExpectAAD)
 			}
-			if embedded, err := blob.EmbeddedAAD(raw); err != nil {
+			if embedded, err := blobtest.EmbeddedAAD(raw); err != nil {
 				t.Fatalf("embedded AAD: %v", err)
 			} else if string(embedded) != f.ExpectAAD {
 				t.Fatalf("embedded AAD is %q, manifest says %q", embedded, f.ExpectAAD)
@@ -915,7 +917,7 @@ func TestConformanceFixturesAreWhatThisBuildProduces(t *testing.T) {
 //
 // # Why re-sealing is a real oracle here
 //
-// [blob.PlaintextSealer.Seal] is deterministic — the nonce slot is written as
+// [blobtest.PlaintextSealer.Seal] is deterministic — the nonce slot is written as
 // zeroes, the padding is a zero fill to the bucket, and `compress` builds its
 // gzip writer without setting a ModTime. Identical plaintext and envelope
 // therefore give identical bytes on every machine and every run, so an exact
@@ -932,7 +934,7 @@ func TestConformanceFixturesReSealToTheCommittedBytes(t *testing.T) {
 	if len(man.Fixtures) == 0 {
 		t.Fatal("the blob manifest carries no fixtures; this gate would pass by vacancy")
 	}
-	var sealer blob.PlaintextSealer
+	var sealer blobtest.PlaintextSealer
 	for _, f := range man.Fixtures {
 		t.Run(f.File, func(t *testing.T) {
 			committed, err := os.ReadFile(filepath.Join(dir, f.File))
@@ -1376,7 +1378,7 @@ func TestTypeScriptSealedBlobsOpenInGo(t *testing.T) {
 	// and friends where JSON.stringify does not, so the two encoders produce
 	// different bytes for the same op — which is exactly why the ampersand
 	// fixture is in the set.
-	var sealer blob.PlaintextSealer
+	var sealer blobtest.PlaintextSealer
 	man := readBlobManifest(t, dir)
 	found := 0
 	for _, f := range man.Fixtures {

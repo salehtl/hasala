@@ -138,30 +138,6 @@ func TestAdmitDeniesAtTheCeilingAndAbove(t *testing.T) {
 	}
 }
 
-// TestOneCeilingBoundsHotAndColdTogether pins the reading of the design's
-// ceiling table that 00031 wrote down: "op log: 256 MB per account" is ONE
-// number over the whole log. A per-stream ceiling would admit the second call
-// here, letting an account store twice its stated budget.
-func TestOneCeilingBoundsHotAndColdTogether(t *testing.T) {
-	pool := pgtest.New(t)
-	g := New(pool)
-	setDefaultLimit(t, pool, 1000)
-	u := newUser(t, pool)
-
-	if err := admit(t, g, u, ResourceOplogHotBytes, 600); err != nil {
-		t.Fatal(err)
-	}
-	if err := admit(t, g, u, ResourceOplogColdBytes, 500); !errors.Is(err, ErrRefused) {
-		t.Fatalf("cold 500 on top of hot 600 under a 1000 ceiling = %v, want ErrRefused", err)
-	}
-	if err := admit(t, g, u, ResourceOplogColdBytes, 400); err != nil {
-		t.Fatalf("cold 400 on top of hot 600 under a 1000 ceiling: %v", err)
-	}
-	if got := usage(t, g, u, ResourceOplogColdBytes); got != 400 {
-		t.Fatalf("cold usage = %d, want 400", got)
-	}
-}
-
 // TestAnAccountOverrideBeatsTheDefaultRow covers the OR user_id IS NULL lookup
 // in both directions: the override applies to its own account and to nobody
 // else.
@@ -172,8 +148,7 @@ func TestAnAccountOverrideBeatsTheDefaultRow(t *testing.T) {
 	rich := newUser(t, pool)
 	poor := newUser(t, pool)
 	if _, err := pool.Exec(bg,
-		`INSERT INTO account_limits (user_id, oplog_bytes, quarantine_bytes, quarantine_count)
-		 VALUES ($1, 5000, 100, 10)`, rich); err != nil {
+		`INSERT INTO account_limits (user_id, oplog_bytes) VALUES ($1, 5000)`, rich); err != nil {
 		t.Fatal(err)
 	}
 	if err := admit(t, g, rich, ResourceOplogHotBytes, 4000); err != nil {
@@ -207,12 +182,12 @@ func TestARefusalIsCountedOnceAndThenIncrements(t *testing.T) {
 		t.Fatalf("after two refusals, account_refusals = %v, want exactly {%s: 2}", got, ResourceOplogHotBytes)
 	}
 	// A different resource is a different row, not the same counter.
-	if err := admit(t, g, u, ResourceOplogColdBytes, 11); !errors.Is(err, ErrRefused) {
-		t.Fatalf("got %v, want ErrRefused", err)
+	if err := CountRefusals(bg, pool, u, ResourceUploadBytes, 1); err != nil {
+		t.Fatal(err)
 	}
 	got := refusals(t, pool, u)
-	if len(got) != 2 || got[ResourceOplogHotBytes] != 2 || got[ResourceOplogColdBytes] != 1 {
-		t.Fatalf("account_refusals = %v, want {hot: 2, cold: 1}", got)
+	if len(got) != 2 || got[ResourceOplogHotBytes] != 2 || got[ResourceUploadBytes] != 1 {
+		t.Fatalf("account_refusals = %v, want {hot: 2, upload: 1}", got)
 	}
 }
 
@@ -240,39 +215,38 @@ func TestTheRefusalDayIsUTC(t *testing.T) {
 	}
 }
 
-// TestAReleaseDecrementsAndCannotGoBelowZero covers the decrement paths — the
-// expiry sweep, confirm-and-reingest, any future compaction — and the ledger
-// bug an over-release represents.
+// TestAReleaseDecrementsAndCannotGoBelowZero covers the decrement path — any
+// future compaction — and the ledger bug an over-release represents.
 func TestAReleaseDecrementsAndCannotGoBelowZero(t *testing.T) {
 	pool := pgtest.New(t)
 	g := New(pool)
 	u := newUser(t, pool)
 
-	if err := admit(t, g, u, ResourceQuarantineBytes, 900); err != nil {
+	if err := admit(t, g, u, ResourceOplogHotBytes, 900); err != nil {
 		t.Fatal(err)
 	}
-	if err := admit(t, g, u, ResourceQuarantineBytes, -400); err != nil {
+	if err := admit(t, g, u, ResourceOplogHotBytes, -400); err != nil {
 		t.Fatalf("a release must be admitted: %v", err)
 	}
-	if got := usage(t, g, u, ResourceQuarantineBytes); got != 500 {
+	if got := usage(t, g, u, ResourceOplogHotBytes); got != 500 {
 		t.Fatalf("usage after 900 - 400 = %d, want 500", got)
 	}
 	// Exactly to zero is legal.
-	if err := admit(t, g, u, ResourceQuarantineBytes, -500); err != nil {
+	if err := admit(t, g, u, ResourceOplogHotBytes, -500); err != nil {
 		t.Fatalf("a release to exactly zero must be admitted: %v", err)
 	}
-	if got := usage(t, g, u, ResourceQuarantineBytes); got != 0 {
+	if got := usage(t, g, u, ResourceOplogHotBytes); got != 0 {
 		t.Fatalf("usage = %d, want 0", got)
 	}
 	// One below zero is not, and it changes nothing.
-	err := admit(t, g, u, ResourceQuarantineBytes, -1)
+	err := admit(t, g, u, ResourceOplogHotBytes, -1)
 	if !errors.Is(err, ErrLedgerUnderflow) {
 		t.Fatalf("releasing below zero = %v, want ErrLedgerUnderflow", err)
 	}
 	if errors.Is(err, ErrRefused) {
 		t.Fatal("an underflow is a server bug, not a user-facing refusal")
 	}
-	if got := usage(t, g, u, ResourceQuarantineBytes); got != 0 {
+	if got := usage(t, g, u, ResourceOplogHotBytes); got != 0 {
 		t.Fatalf("usage after a refused release = %d, want 0", got)
 	}
 	if got := refusals(t, pool, u); len(got) != 0 {
