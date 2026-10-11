@@ -34,6 +34,8 @@ struct AccountRootView<Main: View>: View {
 
   @Environment(\.scenePhase) private var scenePhase
   @State private var passcodeChecked = 0
+  @State private var pendingReset: PendingReset?
+  @State private var lockingDown = false
 
   @ViewBuilder private var content: some View {
     let _ = passcodeChecked
@@ -76,6 +78,20 @@ struct AccountRootView<Main: View>: View {
             FrozenBanner { session.froze(FreezeInfo(by: .holder, when: nil)) }
           }
         }
+        // A password reset another iPhone asked this one to approve (spec 04 §6.12):
+        // checked on every foreground.
+        .task(id: scenePhase) {
+          guard scenePhase == .active, pendingReset == nil else { return }
+          pendingReset = await session.account.pendingResetRequest()
+        }
+        .sheet(item: $pendingReset) { request in
+          ResetApprovalSheet(model: ResetApprovalModel(account: session.account, request: request)) {
+            lockingDown = true
+          }
+        }
+        .sheet(isPresented: $lockingDown) {
+          NavigationStack { LockdownSheetContent(session: session) }
+        }
     }
   }
 }
@@ -95,5 +111,27 @@ struct PasscodeWall: View {
       }
     }
     .accessibilityIdentifier("passcode.wall")
+  }
+}
+
+/// "Let's lock it down" as a sheet, after "No, that's not me".
+private struct LockdownSheetContent: View {
+  @State private var model: SecurityModel
+  @Environment(\.dismiss) private var dismiss
+
+  init(session: AccountSession) {
+    _model = State(initialValue: SecurityModel(session: session))
+  }
+
+  var body: some View {
+    LockdownView(model: model)
+      .task { await model.load() }
+      .sheet(isPresented: $model.editingPassword) { PasswordEditSheet(model: model) }
+      .confirmSheet(model)
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button(role: .close) { dismiss() }.accessibilityIdentifier("lockdown.close")
+        }
+      }
   }
 }

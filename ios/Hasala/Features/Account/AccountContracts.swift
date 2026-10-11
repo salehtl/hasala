@@ -77,6 +77,15 @@ struct RecoveryTicket: Equatable, Sendable {
   var emailHint: String
 }
 
+/// A password reset waiting for this iPhone's approval (C9 side A, spec 04 §6.12). No
+/// device model or place: the server knows neither.
+struct PendingReset: Identifiable, Equatable, Sendable {
+  var id: String
+  /// "2 minutes ago"
+  var askedAgo: String
+  var email: String
+}
+
 /// Who froze the account and when (spec 04 §6.11).
 struct FreezeInfo: Equatable, Sendable {
   enum By: Equatable, Sendable { case holder, `operator` }
@@ -220,4 +229,13 @@ protocol AccountService: AnyObject {
   func viewRecoveryPhrase() async throws(AuthFailure) -> [String]
   /// Sign out of this iPhone; local data stays (S-26).
   func signOut() async
+
+  // MARK: The approving iPhone (C9 side A)
+
+  /// `GET password/reset/pending`: a request waiting for this iPhone, if any.
+  func pendingResetRequest() async -> PendingReset?
+  /// Compares the typed or scanned code with the request's `ek_pub` in constant time and
+  /// throws `.codeMismatch` before any Face ID prompt; then the approval key signs and
+  /// `password/reset/approve` is sent.
+  func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure)
 }

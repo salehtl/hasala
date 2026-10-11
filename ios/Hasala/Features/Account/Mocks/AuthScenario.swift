@@ -28,6 +28,8 @@
     case reviewAccount
     /// Signed out on an iPhone without a passcode (S-24).
     case noPasscode
+    /// Signed in; another iPhone asks this one to approve a password reset.
+    case resetApproval
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -45,6 +47,10 @@
       switch scenario {
       case nil, .passkeyUser:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
+      case .resetApproval:
+        let account = MockAccountService(existing: .passkey, signedIn: true)
+        account.pendingReset = PendingReset(id: "reset-1", askedAgo: "1 minute ago", email: MockAccountService.existingEmail)
+        return AccountSession(services: services(account), phase: .ready)
       case .passwordOnly:
         return AccountSession(services: services(MockAccountService(existing: .passwordOnly, signedIn: true)),
                               phase: .ready)

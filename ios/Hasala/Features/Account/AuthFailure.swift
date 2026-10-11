@@ -37,6 +37,8 @@ enum AuthFailure: Error, Equatable, Sendable {
   case approvalExpired
   /// The device can't run Hasala: no passcode (S-24).
   case noPasscode
+  /// The reset code doesn't match the pending request: nothing was approved.
+  case codeMismatch
 
   /// The copy shown for this failure; nil when nothing is shown.
   var message: String? {
@@ -68,6 +70,7 @@ enum AuthFailure: Error, Equatable, Sendable {
     case .badPhrase(let text): text
     case .signupExpired: "That took a while, so we started again. Your invite still works."
     case .approvalExpired: "No answer from your other iPhone. Try again, or use your 12 words."
+    case .codeMismatch: "That code doesn't match a request. Nothing was approved."
     case .noPasscode:
       "Set a passcode on your iPhone to use Hasala. It protects your data and lets this iPhone confirm it's you."
     }

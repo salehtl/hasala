@@ -65,11 +65,7 @@ struct SecurityView: View {
     .navigationBarTitleDisplayMode(.inline)
     .overlay { if model.busy { ProgressView().controlSize(.large) } }
     .task { await model.load() }
-    .sheet(item: Binding(get: { model.confirming.map(ConfirmBox.init) }, set: { if $0 == nil { model.confirming = nil } })) { box in
-      ConfirmSheet(action: box.action, password: $model.confirmPassword, onConfirm: { Task { await model.confirm() } },
-                   onCancel: { model.confirming = nil })
-        .presentationDetents([.medium])
-    }
+    .confirmSheet(model)
     .sheet(isPresented: $model.editingPassword) {
       PasswordEditSheet(model: model)
     }
@@ -89,10 +85,6 @@ struct SecurityView: View {
     .alert(item: $alert) { a in alertFor(a) }
   }
 
-  private struct ConfirmBox: Identifiable {
-    let action: SecurityAction
-    var id: String { action.explainer }
-  }
 
   // MARK: Sections
 
@@ -290,6 +282,15 @@ struct SecurityView: View {
       } else {
         LinkButton(title: "Freeze my account", identifier: "security.freeze") { alert = .freeze }
       }
+      NavigationLink {
+        LockdownView(model: model)
+      } label: {
+        Text("Something not right? Lock it down")
+          .hType(.button)
+          .foregroundStyle(HColor.textLink)
+          .frame(maxWidth: .infinity, minHeight: 44)
+      }
+      .accessibilityIdentifier("security.lockdown")
       LinkButton(title: "Delete your account", identifier: "security.delete", role: .destructive) { deleting = true }
       Text(s.hasPasskey ? "Changes here ask for Face ID first." : "Changes here ask for your password, and this iPhone signs them too.")
         .hType(.footnote)
@@ -444,6 +445,25 @@ struct DeleteAccountView: View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: symbol).foregroundStyle(HColor.actionDestructive).frame(width: 22).accessibilityHidden(true)
       Text(text).hType(.callout).foregroundStyle(HColor.textPrimary).fixedSize(horizontal: false, vertical: true)
+    }
+  }
+}
+
+private struct ConfirmBox: Identifiable {
+  let action: SecurityAction
+  var id: String { action.explainer }
+}
+
+extension View {
+  /// The "Confirm it's you" password sheet for a password-only account's pending change.
+  func confirmSheet(_ model: SecurityModel) -> some View {
+    sheet(item: Binding(get: { model.confirming.map(ConfirmBox.init) }, set: { if $0 == nil { model.confirming = nil } })) {
+      box in
+      ConfirmSheet(action: box.action,
+                   password: Binding(get: { model.confirmPassword }, set: { model.confirmPassword = $0 }),
+                   onConfirm: { Task { await model.confirm() } },
+                   onCancel: { model.confirming = nil })
+        .presentationDetents([.medium])
     }
   }
 }

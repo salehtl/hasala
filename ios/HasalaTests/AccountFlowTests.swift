@@ -287,6 +287,24 @@ struct AccountFlowTests {
     #expect(m.viewedPhrase == nil)
   }
 
+  @Test func approvingAResetChecksTheCodeFirst() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.pendingReset = PendingReset(id: "reset-1", askedAgo: "now", email: MockAccountService.existingEmail)
+    let request = try #require(await account.pendingResetRequest())
+    let m = ResetApprovalModel(account: account, request: request)
+    m.code = "ABCD EFGH IJKL MNOP"
+    #expect(m.codeReady)
+    await m.approve()
+    #expect(m.failure == .codeMismatch)
+    #expect(account.approvedResets.isEmpty)
+    #expect(MockAccountService.resetCode == "WMO6C7ID7TYM2M5S")
+    m.code = "wmo6-c7id-7tym-2m5s"
+    await m.approve()
+    #expect(m.approved)
+    #expect(account.approvedResets == ["reset-1"])
+  }
+
   // MARK: Session
 
   @Test func inviteLinksOnlyActSignedOut() {

@@ -283,6 +283,24 @@ final class AccountFlowUITests: XCTestCase {
   }
 
   @MainActor
+  func testApprovingAPasswordReset() throws {
+    let app = launch("resetApproval")
+    XCTAssertTrue(app.staticTexts["Is this you on a new iPhone?"].waitForExistence(timeout: 15))
+    attach(app, "Approve a password reset")
+    try audit(app)
+    type(app, "approval.code", "ABCD EFGH IJKL MNOP")
+    tap(app, "approval.approve")
+    XCTAssertTrue(app.staticTexts["That code doesn't match a request. Nothing was approved."].waitForExistence(timeout: 10))
+    let field = el(app, "approval.code")
+    field.tap()
+    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 19) + "WMO6 C7ID 7TYM 2M5S")
+    tap(app, "approval.approve")
+    XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 10))
+    tap(app, "approval.done")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
+  }
+
+  @MainActor
   func testNoPasscodeStopsOnboarding() throws {
     let app = launch("noPasscode")
     XCTAssertTrue(app.staticTexts["Set a passcode first"].waitForExistence(timeout: 15))

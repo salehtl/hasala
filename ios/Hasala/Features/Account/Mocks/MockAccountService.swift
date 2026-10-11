@@ -183,7 +183,7 @@
       await pause()
       var t = ticket
       // A synthetic ephemeral key: the code shown is the real 80-bit form of it.
-      t.resetCode = (try? ResetCode.text(ephemeralPublicKey: Data(repeating: 7, count: 32))) ?? "ABCDEFGHIJKLMNOP"
+      t.resetCode = Self.resetCode
       password = newPassword
       return t
     }
@@ -282,6 +282,27 @@
     func signOut() async {
       await pause()
       profile = nil
+    }
+
+    /// A reset request waiting for approval (the `resetApproval` scenario).
+    var pendingReset: PendingReset?
+    private(set) var approvedResets: [String] = []
+    /// The synthetic ephemeral key behind every mock reset code.
+    static let resetKey = Data(repeating: 7, count: 32)
+    static var resetCode: String { (try? ResetCode.text(ephemeralPublicKey: resetKey)) ?? "" }
+
+    func pendingResetRequest() async -> PendingReset? {
+      await pause()
+      return pendingReset
+    }
+
+    func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure) {
+      await pause()
+      guard pendingReset?.id == request.id, ResetCode.matches(code, ephemeralPublicKey: Self.resetKey) else {
+        throw .codeMismatch
+      }
+      approvedResets.append(request.id)
+      pendingReset = nil
     }
 
     /// Scenario hook: start frozen.
