@@ -4,9 +4,9 @@
 // spending category on a credit is only a suggestion and files nothing. The
 // model tier (Foundation Models) is a later sweep, never at ingest.
 //
-// The prepared categorizer is cached and rebuilt when the projection changes
-// (its `projected_at` or cursor), so a rule made in Review applies to the very
-// next message.
+// The prepared categorizer is cached and rebuilt after every projection (the
+// projection's `generation`), so a rule made in Review applies to the very next
+// message.
 import CoreCategorize
 import CoreDomain
 import CoreProjection
@@ -14,12 +14,12 @@ import Foundation
 import Synchronization
 
 public final class PipelineCategorizer: IngestCategorizer {
-  let reader: LedgerReader
+  let projection: ProjectionStore
   let dictionary: MerchantDictionary
-  private let cache = Mutex<(key: [Int64], categorizer: Categorizer)?>(nil)
+  private let cache = Mutex<(key: UInt64, categorizer: Categorizer)?>(nil)
 
-  public init(reader: LedgerReader, dictionary: MerchantDictionary) {
-    self.reader = reader
+  public init(projection: ProjectionStore, dictionary: MerchantDictionary) {
+    self.projection = projection
     self.dictionary = dictionary
   }
 
@@ -34,9 +34,9 @@ public final class PipelineCategorizer: IngestCategorizer {
   public func invalidate() { cache.withLock { $0 = nil } }
 
   func current() -> Categorizer? {
-    let meta = try? reader.meta()
-    let key = [meta?.projectedAtMs ?? -1, meta?.cursorHot ?? -1]
+    let key = projection.generation
     if let hit = cache.withLock({ $0 }), hit.key == key { return hit.categorizer }
+    let reader = projection.reader
     guard let rules = try? reader.rules(), let taxonomy = try? reader.taxonomy() else { return nil }
     let inputs = rules.map {
       RuleInput(

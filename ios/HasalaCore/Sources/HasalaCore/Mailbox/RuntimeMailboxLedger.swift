@@ -70,6 +70,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     guard !decisions.isEmpty else { return }
     let accounts = Set(((try? reader.accounts()) ?? []).map(\.id))
     let current = await knownCards()
+    let cardTemplates = stagedCardTemplates()
     try await author { a throws(AuthorError) in
       var created: Set<String> = []
       for d in decisions {
@@ -80,7 +81,8 @@ public actor RuntimeMailboxLedger: MailboxLedger {
           if current[d.card] == .mine, d.accountID == nil { continue }  // 03b `.cardAlreadyMine`
           if !accounts.contains(account), !created.contains(account) {
             let name = "\(bank.map { Self.bankNames[$0] ?? $0.uppercased() } ?? "Card") ···\(d.card.last4)"
-            try a.setAccount(id: account, OpAuthor.AccountDraft(name: name, institution: bank, kind: .current))
+            let kind: OpAuthor.AccountKind = cardTemplates.contains(d.card) ? .creditCard : .current
+            try a.setAccount(id: account, OpAuthor.AccountDraft(name: name, institution: bank, kind: kind))
             created.insert(account)
           }
           a.linkCard(bank: bank, last4: d.card.last4, .mine(account: account))
@@ -105,6 +107,20 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     if case .latched(.accountFull, _)? = out.stop { return .accountFull }
     guard out.stop == nil else { return .failed }
     return (try? observer.context.store.pendingCount()) == 0 ? .flushed : .failed
+  }
+
+  /// The cards whose staged alerts a card template read (`<bank>.card.*`): their
+  /// new account is a credit card, the others current accounts (03b §4.2).
+  func stagedCardTemplates() -> Set<CardKey> {
+    let rows = (try? MailboxTableStore(writer: observer.context.store.db).staged(limit: 10_000)) ?? []
+    var out: Set<CardKey> = []
+    for r in rows {
+      guard let g = try? JSONDecoder().decode(MailGates.self, from: r.gatesJSON), let t = g.template,
+        t.hasPrefix("\(r.bank).card.")
+      else { continue }
+      out.insert(CardKey(bank: r.bank, last4: r.last4))
+    }
+    return out
   }
 
   /// Builds one blob with `body`, enqueues it and re-projects.

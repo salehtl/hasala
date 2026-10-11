@@ -6,6 +6,7 @@ import CoreReplay
 import CoreWire
 import Foundation
 import GRDB
+import Synchronization
 
 public final class ProjectionStore: Sendable {
   let queue: DatabaseQueue
@@ -13,6 +14,11 @@ public final class ProjectionStore: Sendable {
   public let reader: LedgerReader
   /// The file, or nil for an in-memory projection.
   public let url: URL?
+  private let projections = Atomic<UInt64>(0)
+
+  /// How many projections this value has written (a cache key for readers
+  /// that prepare something from the projection, e.g. the categorizer).
+  public var generation: UInt64 { projections.load(ordering: .acquiring) }
 
   init(queue: DatabaseQueue, url: URL?) {
     self.queue = queue
@@ -40,5 +46,6 @@ public final class ProjectionStore: Sendable {
   ) throws {
     try Projector.project(
       state, pending: pending, writerID: writerID, dictionary: dictionary, projectedAtMs: projectedAtMs, into: queue)
+    projections.add(1, ordering: .releasing)
   }
 }

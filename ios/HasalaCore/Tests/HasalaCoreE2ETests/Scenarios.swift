@@ -102,7 +102,7 @@ enum Scenarios {
     let engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: a.context.userID.string), oauth: oauth, tokens: tokens, gmailHTTP: gmail,
       store: persistence, ledger: ledger, server: LinkServer(), stepUp: ApprovedStepUp(),
-      categorizer: PipelineCategorizer(reader: a.reader, dictionary: bundledDictionary),
+      categorizer: PipelineCategorizer(projection: a.projection, dictionary: bundledDictionary),
       templates: BundledTemplates.load().templates, clock: clock, random: a.context.random, sleep: { _ in })
     return (engine, ledger)
   }
@@ -153,7 +153,7 @@ enum Scenarios {
     #expect(starbucks.amountMinor == 6_450 && starbucks.category == "dining" && starbucks.categorySource == "dictionary")
     #expect(starbucks.effectiveAccountID == OpAuthor.cardAccountID(bank: "dib", last4: "1234"))
     #expect(try b.reader.review(lanes: ReviewLane.allCases).contains { $0.mailboxMessageID == "n1" && $0.unparsed })
-    #expect(try b.reader.accounts().map(\.name).sorted() == ["DIB ···1234", "Emirates NBD ···8642"])
+    #expect(try b.reader.accounts().map { "\($0.name) \($0.kind)" }.sorted() == ["DIB ···1234 credit_card", "Emirates NBD ···8642 current"])
     #expect(try b.reader.cards().allSatisfy { $0.state == "mine" })
     #expect(try await a.state().serialized() == b.state().serialized())
     // Running the lane again lists nothing new and authors nothing twice.

@@ -201,7 +201,7 @@ struct RuntimeGlueTests {
   func categorizer() throws {
     let dictionary = try MerchantDictionary.bundled().get()
     let p = try Self.projection(rules: [OpAuthor.RuleDraft(patterns: ["carrefour"], match: .contains, category: "shopping")])
-    let c = PipelineCategorizer(reader: p.reader, dictionary: dictionary)
+    let c = PipelineCategorizer(projection: p, dictionary: dictionary)
     let rule = c.decide(merchantRaw: "CARREFOUR MOE", direction: "debit")
     #expect(rule.category == "shopping" && rule.source["kind"]?.stringValue == "rule")
     #expect(rule.source["rule_id"]?.stringValue == (try p.reader.rules().first?.id))
@@ -218,7 +218,8 @@ struct RuntimeGlueTests {
     a.setHomeCurrency("AED")
     try a.rule(OpAuthor.RuleDraft(patterns: ["starbucks"], match: .contains, category: "groceries"))
     try Replay.foldOps(try a.build().ops, seq: 1, writerID: Self.writer.string, into: &s)
-    try p.project(s, pending: [], writerID: Self.writer.string, dictionary: dictionary, projectedAtMs: Self.now + 1)
+    // Projected at the same millisecond: the projection's generation, not its clock, invalidates.
+    try p.project(s, pending: [], writerID: Self.writer.string, dictionary: dictionary, projectedAtMs: Self.now)
     #expect(c.decide(merchantRaw: "STARBUCKS DIFC", direction: "debit").category == "groceries")
     #expect(c.decide(merchantRaw: "CARREFOUR MOE", direction: "debit").category != "shopping")
   }
