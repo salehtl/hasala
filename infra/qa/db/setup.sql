@@ -21,9 +21,15 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'hasala_backup') THEN
     CREATE ROLE hasala_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
-      CONNECTION LIMIT 2;
+      CONNECTION LIMIT 4;
   END IF;
 END $$;
+
+-- 4, not spec 05 §5.3.5's 2: `hasalad migrate --pending` (the pre-migration
+-- dump's check, as hasala_backup) opens a pgx pool that starts two idle
+-- connections and dials a third for its first query, and a daily pg_dump may
+-- overlap it. Set on every run, so an existing cluster follows.
+ALTER ROLE hasala_backup CONNECTION LIMIT 4;
 
 GRANT pg_read_all_data TO hasala_backup;
 ALTER ROLE hasala_backup  SET default_transaction_read_only = on;
