@@ -93,6 +93,21 @@ func MigrateDown(ctx context.Context, pool *pgxpool.Pool) error {
 	return goose.DownToContext(ctx, db, "migrations", 0)
 }
 
+// MigrateDownTo reverses every migration after version. Used only by tests,
+// which compare what a Down leaves with what the migrations up to version
+// build.
+func MigrateDownTo(ctx context.Context, pool *pgxpool.Pool, version int64) error {
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
+	goose.SetBaseFS(migrations)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+	return goose.DownToContext(ctx, db, "migrations", version)
+}
+
 // EmbeddedVersions returns the version of every embedded migration, ascending.
 func EmbeddedVersions() ([]int64, error) {
 	gooseMu.Lock()

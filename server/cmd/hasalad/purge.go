@@ -67,10 +67,14 @@ func runPurgeUser(env *runEnv, args []string) error {
 			}
 			total += n
 		}
-		fmt.Fprintf(env.stdout, "dry run: %d row(s) of account %s would be deleted. Nothing was deleted.\n", total, target)
+		fmt.Fprintf(env.stdout, "dry run: %d row(s) of account %s would be deleted, and the goodbye email queued "+
+			"to its address. Nothing was deleted.\n", total, target)
 		return nil
 	}
-	rep, err := purge.Purge(ctx, pool, target)
+	// The CLI holds no auth key, so the tag-keyed steps are skipped; the
+	// goodbye email is queued like the API's, and serve's worker sends it
+	// (spec 02 §15.4).
+	rep, err := purge.PurgeWith(ctx, pool, target, purge.Options{Goodbye: true})
 	printPurgeReport(env, rep)
 	if err != nil {
 		return fmt.Errorf("purge-user: %w", err)
@@ -98,6 +102,9 @@ func printPurgeReport(env *runEnv, rep purge.Report) {
 	if len(rep.SweptWithoutCascade) > 0 {
 		fmt.Fprintf(env.stdout, "WARNING: these tables needed an explicit sweep because their user_id "+
 			"foreign key is missing ON DELETE CASCADE: %v\n", rep.SweptWithoutCascade)
+	}
+	if rep.Goodbyes > 0 {
+		fmt.Fprintln(env.stdout, "queued the goodbye email to the account's address (sent by serve's email worker)")
 	}
 	if len(rep.RefreshedViews) > 0 {
 		fmt.Fprintf(env.stdout, "WARNING: these MATERIALIZED VIEWS held rows for the purged account and had "+

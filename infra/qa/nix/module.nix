@@ -186,6 +186,9 @@ let
   // optionalAttrs (cfg.authKeyFile != null) {
     HASALA_AUTH_KEY_FILE = "%d/auth-key";
   }
+  // optionalAttrs (cfg.saltKeyFile != null) {
+    HASALA_SALT_KEY_FILE = "%d/salt-key";
+  }
   // optionalAttrs emailOn {
     HASALA_EMAIL_CF_ACCOUNT_ID = cfg.email.cloudflareAccountId;
     HASALA_EMAIL_API_TOKEN_FILE = "%d/email-api-token";
@@ -202,6 +205,7 @@ let
     optional apnsOn "apns-key.p8:${cfg.apns.keyFile}"
     ++ optional (cfg.mailboxRouteKeyFile != null) "mailbox-route-key:${cfg.mailboxRouteKeyFile}"
     ++ optional (cfg.authKeyFile != null) "auth-key:${cfg.authKeyFile}"
+    ++ optional (cfg.saltKeyFile != null) "salt-key:${cfg.saltKeyFile}"
     ++ optional emailOn "email-api-token:${cfg.email.apiTokenFile}"
     ++ optional turnstileOn "turnstile-secret:${cfg.web.turnstile.secretFile}";
 
@@ -321,6 +325,8 @@ let
   # modes this hasalad has; 02 §18.3's later modes join as they are built.
   adminModes = {
     invite = "hasala";
+    account = "hasala";
+    email = "hasala";
     purge-user = "hasala";
     verify = "hasala";
     version = "hasala";
@@ -615,7 +621,7 @@ let
 
   secretFiles = {
     "apns.keyFile" = cfg.apns.keyFile;
-    inherit (cfg) mailboxRouteKeyFile authKeyFile;
+    inherit (cfg) mailboxRouteKeyFile authKeyFile saltKeyFile;
     "email.apiTokenFile" = cfg.email.apiTokenFile;
     "web.turnstile.secretFile" = cfg.web.turnstile.secretFile;
     "asc.keyFile" = cfg.asc.keyFile;
@@ -700,6 +706,7 @@ in
     };
     mailboxRouteKeyFile = secretPath "The mailbox route key (64 lowercase hex).";
     authKeyFile = secretPath "auth_key (spec 01 §4.11, 64 lowercase hex). Required with the tunnel (M12).";
+    saltKeyFile = secretPath "salt_key (spec 01 §4.11, 64 lowercase hex): keys only the public password salt, generated once and never rotated; a different key from auth_key. Required with the tunnel (M12): without both key files serve mounts no signup, password, recovery, reset, email-change or freeze route.";
 
     email = {
       cloudflareAccountId = nullStr "The Cloudflare account that sends mail (32 lowercase hex; not secret).";
@@ -997,13 +1004,17 @@ in
             )
             "email.cloudflareAccountId (32 hex) and email.apiTokenFile are both set or both null, required with the tunnel; email.from must be at rpId."
           )
-          (a "M12" (
-            (!cfg.tunnel.enable || cfg.authKeyFile != null)
-            && lib.elem cfg.passwordHashConcurrency [
-              1
-              2
-            ]
-          ) "the tunnel needs authKeyFile; passwordHashConcurrency is 1 or 2.")
+          (a "M12"
+            (
+              (!cfg.tunnel.enable || (cfg.authKeyFile != null && cfg.saltKeyFile != null))
+              && (cfg.authKeyFile == null || cfg.saltKeyFile == null || cfg.authKeyFile != cfg.saltKeyFile)
+              && lib.elem cfg.passwordHashConcurrency [
+                1
+                2
+              ]
+            )
+            "the tunnel needs authKeyFile and saltKeyFile, two different files; passwordHashConcurrency is 1 or 2."
+          )
           (a "M13" (
             cfg.backup.retentionDays <= 29
           ) "backup.retentionDays is at most 29 (the 30-day disclosure is a hard bound).")

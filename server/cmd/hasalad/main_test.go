@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"regexp"
@@ -9,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/config"
+	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -83,6 +86,13 @@ func TestArgumentMistakesAreRefusedBeforeTheDatabase(t *testing.T) {
 		{"invite"},
 		{"invite", "revoke"},
 		{"invite", "list", "--note", "x"},
+		{"account"},
+		{"account", "review", id},
+		{"account", "review", id, "on"},
+		{"account", "review", id, "on", "--confirm", uuid.NewString()},
+		{"account", "review", id, "maybe", "--confirm", id},
+		{"account", "review", strings.ToUpper(id), "on", "--confirm", strings.ToUpper(id)},
+		{"account", "freeze", id, "on", "--confirm", id},
 		{"migrate", "--status", "--pending"},
 		{"migrate", "--to", "-1"},
 		{"migrate", "extra"},
@@ -184,11 +194,36 @@ func TestMigrateThenOperateAsTheRuntimeRole(t *testing.T) {
 	if code != 0 || !regexp.MustCompile(`^[A-Z2-7]{24}\n$`).MatchString(out) {
 		t.Fatalf("invite mint exited %d with %q (%s), want the bare 24-character code", code, out, msg)
 	}
-	if code, out, msg := hasalad(t, asRuntime, "invite", "list"); code != 0 || !strings.Contains(out, "1 still outstanding") {
+	if code, out, msg := hasalad(t, asRuntime, "invite", "list"); code != 0 || !strings.Contains(out, "1 invite(s), 1 still outstanding") {
 		t.Fatalf("invite list exited %d with %q (%s)", code, out, msg)
 	}
 	if code, _, msg := hasalad(t, asRuntime, "verify", "structural"); code != 0 {
 		t.Fatalf("verify structural on a clean database exited %d: %s", code, msg)
+	}
+	// account review: an unknown account is refused; a real one is switched
+	// on and off, each with an audit row.
+	unknown := uuid.NewString()
+	if code, _, msg := hasalad(t, asRuntime, "account", "review", unknown, "on", "--confirm", unknown); code != 2 ||
+		!strings.Contains(msg, "no account") {
+		t.Fatalf("account review of an unknown account exited %d (%s)", code, msg)
+	}
+	pool, err := pgxpool.New(context.Background(), runtimeDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	user := oplogtest.NewUser(t, pool).String()
+	for _, c := range []struct{ to, want string }{{"on", "review on (was off)"}, {"off", "review off (was on)"}} {
+		if code, out, msg := hasalad(t, asRuntime, "account", "review", user, c.to, "--confirm", user); code != 0 ||
+			!strings.Contains(out, c.want) {
+			t.Fatalf("account review %s exited %d with %q (%s)", c.to, code, out, msg)
+		}
+	}
+	var audits int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM admin_audit WHERE action = 'cli.account_review' AND target_id = $1`, user).Scan(&audits); err != nil ||
+		audits != 2 {
+		t.Fatalf("%d audit rows (%v), want 2", audits, err)
 	}
 	if code, _, msg := hasalad(t, asRuntime, "verify", "usage"); code != 0 {
 		t.Fatalf("verify usage on a clean database exited %d: %s", code, msg)

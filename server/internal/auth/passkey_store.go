@@ -42,7 +42,7 @@ type ceremony struct {
 	UserID     *uuid.UUID
 	UserHandle []byte
 	Session    webauthn.SessionData
-	InviteHash []byte
+	SignupID   string
 	// AuthorityPubkey and RegisterNonce bind a registration ceremony to the
 	// account's authority key: its challenge is C_reg = SHA256(
 	// "hasala/v1/register" ‖ 00 ‖ register_nonce ‖ authority_pubkey) (spec 01
@@ -71,12 +71,12 @@ func (p *Passkeys) putCeremonyOn(ctx context.Context, q execer, c ceremony) erro
 		return fmt.Errorf("auth: passkey: marshal session data: %w", err)
 	}
 	now := p.now()
-	var handle, invite, authority, regNonce, addNonce any
+	var handle, signup, authority, regNonce, addNonce any
 	if len(c.UserHandle) > 0 {
 		handle = c.UserHandle
 	}
-	if len(c.InviteHash) > 0 {
-		invite = c.InviteHash
+	if c.SignupID != "" {
+		signup = c.SignupID
 	}
 	if len(c.AuthorityPubkey) > 0 {
 		authority, regNonce = c.AuthorityPubkey, c.RegisterNonce
@@ -85,10 +85,10 @@ func (p *Passkeys) putCeremonyOn(ctx context.Context, q execer, c ceremony) erro
 		addNonce = c.AddNonce
 	}
 	if _, err := q.Exec(ctx,
-		`INSERT INTO webauthn_ceremonies (id, kind, user_id, user_handle, session_data, invite_code_hash,
+		`INSERT INTO webauthn_ceremonies (id, kind, user_id, user_handle, session_data, signup_id,
 		   authority_pubkey, register_nonce, add_nonce, created_at, expires_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		c.ID, string(c.Kind), c.UserID, handle, raw, invite, authority, regNonce, addNonce, now, now.Add(CeremonyTTL)); err != nil {
+		c.ID, string(c.Kind), c.UserID, handle, raw, signup, authority, regNonce, addNonce, now, now.Add(CeremonyTTL)); err != nil {
 		return fmt.Errorf("auth: passkey: record ceremony: %w", err)
 	}
 	return nil
@@ -110,12 +110,15 @@ func (p *Passkeys) claimCeremony(ctx context.Context, id string, kind ceremonyKi
 	if id == "" {
 		return ceremony{}, ErrCeremonyUnknown
 	}
-	var c ceremony
+	var (
+		c        ceremony
+		signupID *string
+	)
 	err := p.Pool.QueryRow(ctx,
 		`DELETE FROM webauthn_ceremonies WHERE id = $1 AND kind = $2
-		 RETURNING id, kind, user_id, user_handle, session_data, invite_code_hash, authority_pubkey, register_nonce,
+		 RETURNING id, kind, user_id, user_handle, session_data, signup_id, authority_pubkey, register_nonce,
 		           add_nonce, expires_at`,
-		id, string(kind)).Scan(&c.ID, &c.Kind, &c.UserID, &c.UserHandle, &c.sessionJSON, &c.InviteHash,
+		id, string(kind)).Scan(&c.ID, &c.Kind, &c.UserID, &c.UserHandle, &c.sessionJSON, &signupID,
 		&c.AuthorityPubkey, &c.RegisterNonce, &c.AddNonce, &c.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Unknown, already spent, or begun as a different kind. All one answer:
@@ -131,6 +134,9 @@ func (p *Passkeys) claimCeremony(ctx context.Context, id string, kind ceremonyKi
 	}
 	if err := json.Unmarshal(c.sessionJSON, &c.Session); err != nil {
 		return ceremony{}, fmt.Errorf("auth: passkey: decode session data: %w", err)
+	}
+	if signupID != nil {
+		c.SignupID = *signupID
 	}
 	return c, nil
 }
@@ -169,7 +175,7 @@ type storedCredential struct {
 // credentialByID looks a credential up by the rawId an assertion carried. It is
 // the login path's entire "who is this": everything else — the handle, the
 // account — hangs off this row.
-func (p *Passkeys) credentialByID(ctx context.Context, credentialID []byte) (storedCredential, error) {
+func (p *Passkeys) credentialByID(ctx context.Context, q querier, credentialID []byte) (storedCredential, error) {
 	var (
 		sc         storedCredential
 		signCount  int64
@@ -177,7 +183,7 @@ func (p *Passkeys) credentialByID(ctx context.Context, credentialID []byte) (sto
 		transports *string
 		be, bs     bool
 	)
-	err := p.Pool.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`SELECT user_id, user_handle, public_key, sign_count, aaguid, transports, backup_eligible, backup_state
 		   FROM webauthn_credentials WHERE credential_id = $1`, credentialID).
 		Scan(&sc.UserID, &sc.UserHandle, &sc.Credential.PublicKey, &signCount, &aaguid, &transports, &be, &bs)
@@ -207,35 +213,44 @@ func (p *Passkeys) credentialByID(ctx context.Context, credentialID []byte) (sto
 
 // credentialsForUser is what the add ceremony excludes, so an authenticator that
 // is already enrolled says so in the browser rather than minting a duplicate.
-func (p *Passkeys) credentialsForUser(ctx context.Context, userID uuid.UUID) ([]webauthn.Credential, []byte, error) {
-	rows, err := p.Pool.Query(ctx,
-		`SELECT credential_id, user_handle FROM webauthn_credentials WHERE user_id = $1 ORDER BY created_at, credential_id`,
-		userID)
+func (p *Passkeys) credentialsForUser(ctx context.Context, q dbtx, userID uuid.UUID) ([]webauthn.Credential, []byte, error) {
+	var handle []byte
+	if err := q.QueryRow(ctx, `SELECT user_handle FROM users WHERE id = $1`, userID).Scan(&handle); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("auth: passkey: read user handle: %w", err)
+	}
+	rows, err := q.Query(ctx,
+		`SELECT credential_id FROM webauthn_credentials WHERE user_id = $1 ORDER BY created_at, credential_id`, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("auth: passkey: list credentials: %w", err)
 	}
 	defer rows.Close()
-	var (
-		creds  []webauthn.Credential
-		handle []byte
-	)
+	var creds []webauthn.Credential
 	for rows.Next() {
-		var (
-			id []byte
-			h  []byte
-		)
-		if err := rows.Scan(&id, &h); err != nil {
+		var id []byte
+		if err := rows.Scan(&id); err != nil {
 			return nil, nil, fmt.Errorf("auth: passkey: list credentials: %w", err)
 		}
 		creds = append(creds, webauthn.Credential{ID: id})
-		if handle == nil {
-			handle = h
-		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("auth: passkey: list credentials: %w", err)
 	}
 	return creds, handle, nil
+}
+
+// dbtx is what both *pgxpool.Pool and pgx.Tx offer. A helper that reads or
+// writes on behalf of a caller holding a transaction takes one, so the caller
+// passes its transaction: a helper that went to the pool instead would hold a
+// second connection while the first waits on it, and enough concurrent
+// requests exhaust the pool (each holds one connection and waits for a
+// second).
+type dbtx interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // execer is satisfied by both *pgxpool.Pool and pgx.Tx, which is what lets the
@@ -248,7 +263,7 @@ type execer interface {
 // insertCredential stores a freshly created credential.
 //
 // On the registration path the execer is the pgx.Tx that also creates the
-// account and spends the invite (upsertUser's inTx hook), so an account is never
+// account and spends the invite, so an account is never
 // committed without the credential that is the only way to sign into it — and,
 // just as importantly, a failure here rolls the invite redemption back rather
 // than burning the code. On the add path it is the pool, because there is
@@ -303,8 +318,8 @@ func transportsString(ts []protocol.AuthenticatorTransport) string {
 // last_used_at stayed NULL for ever. Splitting the two facts is the fix: the
 // counter must never go backwards, and "this credential was used just now" is
 // true regardless of what the counter says.
-func (p *Passkeys) touchCredential(ctx context.Context, credentialID []byte, signCount uint32, now time.Time) error {
-	if _, err := p.Pool.Exec(ctx,
+func (p *Passkeys) touchCredential(ctx context.Context, q execer, credentialID []byte, signCount uint32, now time.Time) error {
+	if _, err := q.Exec(ctx,
 		`UPDATE webauthn_credentials
 		    SET sign_count = GREATEST(sign_count, $2), last_used_at = $3
 		  WHERE credential_id = $1`,
@@ -317,15 +332,11 @@ func (p *Passkeys) touchCredential(ctx context.Context, credentialID []byte, sig
 // userIDForHandle resolves a user handle to the account it names, WITHOUT
 // creating anything.
 //
-// It goes through SubjectHash rather than through a column of its own, which is
-// the property that makes the two representations impossible to disagree: the
-// account IS the subject hash of the handle, so a handle that resolves to a row
-// resolves to the row that handle created.
-func (p *Passkeys) userIDForHandle(ctx context.Context, handle []byte) (uuid.UUID, error) {
+// users.user_handle is UNIQUE, so a handle names at most one account.
+func (p *Passkeys) userIDForHandle(ctx context.Context, q querier, handle []byte) (uuid.UUID, error) {
 	var id uuid.UUID
-	err := p.Pool.QueryRow(ctx,
-		`SELECT id FROM users WHERE idp = $1 AND idp_sub_hash = $2`,
-		IdPPasskey, SubjectHash(IdPPasskey, handleSubject(handle))).Scan(&id)
+	err := q.QueryRow(ctx,
+		`SELECT id FROM users WHERE user_handle = $1`, handle).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, ErrCredentialUnknown
 	}

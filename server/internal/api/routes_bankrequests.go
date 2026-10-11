@@ -15,11 +15,36 @@ import (
 	"github.com/salehtl/hasala/server/internal/banks"
 )
 
+// mountBankRequests mounts #74 always: the app's signed-in request (source
+// app) needs no website group, so a server without [email] or the auth key
+// still records it. The anonymous website request (source web), its CORS
+// and its preflight exist only with the website routes (s.Web); without
+// them an unauthenticated request is the API's 404.
 func (s *Server) mountBankRequests(mux *http.ServeMux) {
-	if s.Web == nil {
-		return
+	if s.BankUser == nil {
+		if s.Web != nil && s.Web.BankUser != nil {
+			s.BankUser = s.Web.BankUser
+		} else {
+			s.BankUser = NewLimiter(bankUserRate, bankUserBurst, publicMaxKeys, s.now)
+		}
 	}
-	mux.HandleFunc("/api/v1/bank-requests", s.publicRoute(s.handleBankRequest))
+	web := s.publicRoute(s.handleBankRequest)
+	mux.HandleFunc("/api/v1/bank-requests", func(w http.ResponseWriter, r *http.Request) {
+		if s.Web != nil {
+			web(w, r)
+			return
+		}
+		if _, signedIn := bearerToken(r); !signedIn {
+			writeErr(w, http.StatusNotFound, "not_found", "no such endpoint")
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
+			return
+		}
+		s.requireSession(s.handleBankRequestSignedIn)(w, r)
+	})
 }
 
 type bankRequestJSON struct {
@@ -67,7 +92,7 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBankRequestSignedIn(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	if !s.Web.BankUser.Allow(userID.String()) {
+	if !s.BankUser.Allow(userID.String()) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
 		return
 	}

@@ -239,7 +239,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 	err = s.StepUp.Run(r.Context(), auth.Guarded{
 		UserID: userID, SessionHash: info.Hash, BoundWriter: info.WriterID,
 		Action: keyproto.ActionMailboxLink, ParamsHash: ph, StepUp: su,
-	}, func(ctx context.Context, tx pgx.Tx, _ auth.Proven) error {
+	}, func(ctx context.Context, tx pgx.Tx, p auth.Proven) error {
 		tag, err := tx.Exec(ctx,
 			`UPDATE mailbox_link_challenges SET used_at = $4
 			  WHERE nonce_hash = $1 AND user_id = $2 AND session_hash = $3 AND used_at IS NULL AND expires_at > $4`,
@@ -258,6 +258,10 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		}
 		if prev != nil {
 			oldHolder = *prev
+		}
+		if err := auth.RecordQuietEventTx(ctx, tx, userID, auth.AuthEvent{Kind: auth.EventMailboxLinked,
+			WriterID: info.WriterID, CredentialID: p.CredentialID}, now); err != nil {
+			return err
 		}
 		return tx.QueryRow(ctx,
 			`INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id, created_at, updated_at)
@@ -281,8 +285,6 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 	// included, so it stops fetching (spec 02 §12.5, AT-GM-9).
 	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	_ = oldHolder
-	// TODO(full parity): record mailbox_linked in auth_events (spec 02 §10.16)
-	// once that table exists.
 	writeJSON(w, http.StatusOK, LinkResponse{Provider: "gmail",
 		Holder: LinkHolder{WriterID: info.WriterID, IsThisDevice: true}, CreatedAt: created})
 }
@@ -380,14 +382,18 @@ func (s *Server) handleUnlink(w http.ResponseWriter, r *http.Request, userID uui
 	err = s.StepUp.Run(r.Context(), auth.Guarded{
 		UserID: userID, SessionHash: info.Hash, BoundWriter: info.WriterID,
 		Action: keyproto.ActionMailboxUnlink, ParamsHash: ph, StepUp: su,
-	}, func(ctx context.Context, tx pgx.Tx, _ auth.Proven) error {
+	}, func(ctx context.Context, tx pgx.Tx, p auth.Proven) error {
 		err := tx.QueryRow(ctx,
 			`DELETE FROM mailbox_links WHERE user_id = $1 AND provider = 'gmail' RETURNING holder_writer_id`,
 			userID).Scan(&holder)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errNoLink
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return auth.RecordQuietEventTx(ctx, tx, userID, auth.AuthEvent{Kind: auth.EventMailboxUnlinked,
+			WriterID: info.WriterID, CredentialID: p.CredentialID}, s.now())
 	})
 	if errors.Is(err, errNoLink) {
 		writeErr(w, http.StatusNotFound, "no_link", "")

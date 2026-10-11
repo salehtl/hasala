@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -79,6 +80,19 @@ func (s *Server) tokensOrLog(userID uuid.UUID, read func(pushv2.Querier) ([]push
 // wakeTokens wakes tokens collected before their rows went away.
 func (s *Server) wakeTokens(ctx context.Context, t []pushv2.Target, r pushv2.Reason) {
 	s.waker().WakeTokens(context.WithoutCancel(ctx), t, r)
+}
+
+// securityWake sends a committed security action's wake (spec 02 §12.5): the
+// account's other devices, then the tokens of the sessions it signed out,
+// which nothing else can find any more. A zero Wake sends nothing.
+func (s *Server) securityWake(ctx context.Context, w auth.Wake) {
+	if w.UserID == uuid.Nil {
+		return
+	}
+	s.wakeOthers(ctx, w.UserID, w.Except, pushv2.ReasonSecurity)
+	if len(w.Revoked) > 0 {
+		s.wakeTokens(ctx, w.Revoked, pushv2.ReasonSecurity)
+	}
 }
 
 func (s *Server) mountPush(mux *http.ServeMux) {

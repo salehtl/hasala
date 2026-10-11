@@ -61,7 +61,7 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 	}
 	u := oplogtest.NewUser(t, pool)
 	err = pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
-		got, err := RedeemTx(bg, tx, CodeHash(code), u, time.Now())
+		got, err := RedeemTx(bg, tx, CodeHash(code), nil, u, time.Now())
 		if err == nil && !got.Review {
 			t.Error("the review flag did not come back from redemption")
 		}
@@ -71,7 +71,7 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
-		_, err := RedeemTx(bg, tx, CodeHash(code), u, time.Now())
+		_, err := RedeemTx(bg, tx, CodeHash(code), nil, u, time.Now())
 		return err
 	})
 	if !errors.Is(err, ErrNotInvited) {
@@ -118,42 +118,46 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 	}
 }
 
-// Spec 02 §14.1's binding without an address (the passkey ceremony): an
-// unaddressed invite opens with its code; an addressed one only with its link
-// key.
-func TestRedeemableWithoutAddress(t *testing.T) {
+// Spec 02 §14.1's binding at redemption: an unaddressed invite redeems for
+// any account; an addressed one only for the account whose address has its
+// tag, and never without a tag.
+func TestRedeemTxBindsAnAddressedInvite(t *testing.T) {
 	pool := pgtest.New(t)
 	now := time.Now()
 	_, printed, err := MintPrinted(bg, pool, "", DefaultTTL, false, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _, lkh, _ := NewLinkKey()
-	other, _, _, _ := NewLinkKey()
+	_, _, lkh, _ := NewLinkKey()
+	mine, theirs := bytes.Repeat([]byte{4}, 32), bytes.Repeat([]byte{5}, 32)
 	const addressed = "ADDRESSEDCODEADDRESSEDCO"
 	if _, err := pool.Exec(bg, `INSERT INTO invite_codes (code_hash, email_tag, link_key_hash, origin, state, created_at,
 		minted_at, expires_at, mint_count) VALUES ($1, $2, $3, 'admin', 'active', now(), now(), now() + interval '1 day', 1)`,
-		CodeHash(addressed), bytes.Repeat([]byte{4}, 32), lkh); err != nil {
+		CodeHash(addressed), mine, lkh); err != nil {
 		t.Fatal(err)
+	}
+	redeem := func(code string, tag []byte) error {
+		u := oplogtest.NewUser(t, pool)
+		return pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
+			_, err := RedeemTx(bg, tx, CodeHash(code), tag, u, now)
+			return err
+		})
 	}
 	for _, c := range []struct {
 		name string
 		code string
-		key  []byte
-		want bool
+		tag  []byte
+		ok   bool
 	}{
-		{"unaddressed, code alone", printed, nil, true},
-		{"unaddressed, any key", printed, other, true},
-		{"addressed, code alone", addressed, nil, false},
-		{"addressed, another key", addressed, other, false},
-		{"addressed, short key", addressed, raw[:31], false},
-		{"addressed, its key", addressed, raw, true},
-		{"unknown code", "UNKNOWNCODEUNKNOWNCODEUN", raw, false},
-		{"no code", "", nil, false},
+		{"addressed, no tag", addressed, nil, false},
+		{"addressed, another tag", addressed, theirs, false},
+		{"unknown code", "UNKNOWNCODEUNKNOWNCODEUN", mine, false},
+		{"no code", "", mine, false},
+		{"addressed, its tag", addressed, mine, true},
+		{"unaddressed, any tag", printed, theirs, true},
 	} {
-		got, err := RedeemableWithoutAddress(bg, pool, CodeHash(c.code), c.key, now)
-		if err != nil || got != c.want {
-			t.Errorf("%s: %v %v, want %v", c.name, got, err, c.want)
+		if err := redeem(c.code, c.tag); (err == nil) != c.ok || (err != nil && !errors.Is(err, ErrNotInvited)) {
+			t.Errorf("%s: %v", c.name, err)
 		}
 	}
 }

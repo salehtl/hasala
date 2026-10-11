@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 )
 
@@ -80,8 +81,9 @@ func TestLogoutWithoutAValidSessionIsTheOne401(t *testing.T) {
 }
 
 func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) {
-	h := newHarness(t)
-	u, other := h.user("u"), h.user("other")
+	h := newHarness(t).passkeys()
+	k := h.onboard(true)
+	u, other := k.user, h.user("other")
 	a, b, c := h.session(u), h.session(u), h.session(u)
 	otherTok := h.session(other)
 	h.writer(u, "ios-00000000-0000-4000-8000-000000000301")
@@ -91,7 +93,15 @@ func TestLogoutAllRevokesEverySessionAndEveryPushTokenButNoWriter(t *testing.T) 
 	h.apnsToken(u, "ios-00000000-0000-4000-8000-000000000302", b)
 	h.apnsToken(other, "ios-00000000-0000-4000-8000-000000000303", otherTok)
 
-	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", c, nil), http.StatusNoContent)
+	// Spec 02 #16: a step-up, session.logout_all; without one nothing happens.
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", c, StepUpOnlyRequest{}), http.StatusForbidden)
+	wantStatus(t, h.req("GET", "/api/v1/writers", a, nil), http.StatusOK)
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", c,
+		StepUpOnlyRequest{StepUp: k.stepUp(c, keyproto.ActionSessionLogoutAll)}), http.StatusNoContent)
+	var revoked int
+	if err := h.pool.QueryRow(bg, `SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'sessions_revoked'`, u).Scan(&revoked); err != nil || revoked != 1 {
+		t.Fatalf("sessions_revoked events: %d %v", revoked, err)
+	}
 
 	for i, tok := range []string{a, b, c} {
 		if w := h.req("GET", "/api/v1/writers", tok, nil); w.Code != http.StatusUnauthorized {

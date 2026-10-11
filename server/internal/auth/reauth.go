@@ -9,37 +9,31 @@ package auth
 // register, login, add — and every one of them is two round trips with a
 // webauthn_ceremonies row in the middle. This is not a ceremony in that sense
 // and must not become one: the challenge already exists before anything here is
-// called, it was minted by the endpoint that is about to consume it
-// (purge.Challenges.Issue), and it is single-use in a table of its own. A
-// second ceremony row would be a second piece of state with its own expiry,
-// its own sweep and its own chance of disagreeing with the first about whether
-// this attempt is still live.
+// called (a step-up's C, spec 02 §8, minted by step-up/begin into
+// step_up_challenges), and it is single-use in that table. A second ceremony
+// row would be a second piece of state with its own expiry, its own sweep and
+// its own chance of disagreeing with the first about whether this attempt is
+// still live.
 //
 // So: no row, no ceremony id, no begin step. The caller hands over the raw
-// challenge it is holding and the assertion the browser produced over it.
+// challenge it is holding and the assertion the authenticator produced over it.
 //
 // # What this proves, and what it does not
 //
 // It proves that an authenticator holding an enrolled credential of THIS
-// account signed the exact bytes this server minted for this action. That is
-// strictly stronger than the ID token it replaced: a token binds no nonce
-// unless the flow arranges one, so "fresh" there means "minted recently",
-// whereas an assertion is minted FOR this challenge and is worthless against
-// any other.
-//
-// It proves NOTHING about the account's writer keys. Spec §3.4 is unchanged —
-// deleting an account still needs an Ed25519 signature from an enrolled,
-// non-revoked device writer as well, and that is the factor a piece of malware
-// driving an unlocked authenticator does not have.
+// account signed the exact bytes this server minted for this action, with user
+// verification. It proves NOTHING about the account's writer keys: the
+// guarded actions that need a device (deletion's signature, a revocation) check
+// that factor themselves.
 //
 // # Freshness lives in the challenge, not here
 //
 // SessionData.Expires is deliberately left zero. The only thing that decides
-// whether this attempt is in time is purge.Challenges.consume, which spends the
-// nonce exactly once and refuses it past purge.ChallengeTTL against one clock.
-// A second expiry here — evaluated against a different clock, from a different
-// instant — would be a way for the two halves of one user gesture to disagree
-// about whether the gesture is still happening.
+// whether this attempt is in time is the step-up row, which StepUp spends
+// exactly once and refuses past its own expiry against one clock. A second
+// expiry here — evaluated against a different clock, from a different instant
+// — would be a way for the two halves of one user gesture to disagree about
+// whether the gesture is still happening.
 
 import (
 	"context"
@@ -88,7 +82,18 @@ func (p *Passkeys) VerifyAssertion(ctx context.Context, userID uuid.UUID, challe
 // account's credentials asserted (a keys.wrap.put step-up requires it to be the
 // wrap's own, spec 01 §10.7).
 func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UUID, challenge, response []byte) ([]byte, error) {
-	if p == nil || p.Pool == nil || p.WA == nil {
+	if p == nil || p.Pool == nil {
+		return nil, errors.New("auth: Passkeys is not configured")
+	}
+	return p.VerifyAssertionCredentialTx(ctx, p.Pool, userID, challenge, response)
+}
+
+// VerifyAssertionCredentialTx is VerifyAssertionCredential with every read
+// and the counter update made through q: a caller that holds a transaction
+// (StepUp.Run, which holds the nonce's row lock) passes it, so the check never
+// needs a second connection while the first waits.
+func (p *Passkeys) VerifyAssertionCredentialTx(ctx context.Context, q dbtx, userID uuid.UUID, challenge, response []byte) ([]byte, error) {
+	if p == nil || p.WA == nil || q == nil {
 		return nil, errors.New("auth: Passkeys is not configured")
 	}
 	if userID == uuid.Nil {
@@ -110,7 +115,7 @@ func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UU
 		return nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
 
-	stored, err := p.credentialByID(ctx, parsed.RawID)
+	stored, err := p.credentialByID(ctx, q, parsed.RawID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +125,7 @@ func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UU
 		// is.
 		return nil, fmt.Errorf("%w: credential belongs to a different account", ErrPasskeyRejected)
 	}
-	byHandle, err := p.userIDForHandle(ctx, stored.UserHandle)
+	byHandle, err := p.userIDForHandle(ctx, q, stored.UserHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +163,7 @@ func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UU
 	// Recorded on the same terms as a sign-in: the counter never goes backwards
 	// and last_used_at moves regardless, because a synced passkey reports a
 	// permanent zero and "it was used just now" is true anyway.
-	if err := p.touchCredential(ctx, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
+	if err := p.touchCredential(ctx, q, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
 		return nil, err
 	}
 	return cred.ID, nil

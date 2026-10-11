@@ -71,14 +71,91 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 		got = append(got, n)
 	}
 	want := []string{
-		"account_deletion_challenges", "account_key_wraps", "account_keys", "account_limits", "account_refusals",
-		"account_usage", "admin_audit", "apns_tokens", "bank_requests", "banks", "deleted_account_sessions",
-		"goose_db_version", "invite_codes", "key_history", "mail_log", "mailbox_link_challenges", "mailbox_links",
-		"op_log", "oplog_seq", "sessions", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
+		"account_key_wraps", "account_keys", "account_limits", "account_refusals",
+		"account_usage", "admin_audit", "apns_tokens", "auth_events", "bank_requests", "banks",
+		"deleted_account_sessions", "device_freeze_challenges", "email_change_ceremonies", "email_code_pauses",
+		"email_codes", "freeze_tokens", "goose_db_version", "invite_codes", "key_history", "mail_log",
+		"mailbox_link_challenges", "mailbox_links", "op_log", "oplog_seq", "password_login_ceremonies",
+		"password_reset_ceremonies", "rate_counters", "recovery_ceremonies", "server_meta", "sessions",
+		"signup_ceremonies", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("public tables are %v, want %v", got, want)
+	}
+}
+
+// schemaShape lists every column (type, nullability, default), constraint,
+// index, trigger and function of the public schema, sorted, so two databases
+// can be compared object by object.
+func schemaShape(t *testing.T, pool *pgxpool.Pool) []string {
+	t.Helper()
+	rows, err := pool.Query(bg, `
+		SELECT 'column ' || table_name || '.' || column_name || ' ' || data_type || ' null=' || is_nullable
+		       || ' default=' || coalesce(column_default, '')
+		  FROM information_schema.columns WHERE table_schema = 'public'
+		UNION ALL
+		SELECT 'constraint ' || conrelid::regclass::text || '.' || conname || ' ' || pg_get_constraintdef(oid)
+		  FROM pg_constraint WHERE connamespace = 'public'::regnamespace
+		UNION ALL
+		SELECT 'index ' || indexdef FROM pg_indexes WHERE schemaname = 'public'
+		UNION ALL
+		SELECT 'trigger ' || tgrelid::regclass::text || '.' || tgname FROM pg_trigger
+		 WHERE NOT tgisinternal AND tgrelid::regclass::text NOT LIKE 'pg_%'
+		UNION ALL
+		SELECT 'function ' || proname FROM pg_proc WHERE pronamespace = 'public'::regnamespace
+		ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// 00022's Down is pgtest-only, but it must give back exactly what 00021 left,
+// or a Down to 21 followed by work at 21 tests a schema no deploy ever had.
+func TestDownTo21IsWhat00021Left(t *testing.T) {
+	open := func() *pgxpool.Pool {
+		t.Helper()
+		dsn, _ := pgtest.NewEmpty(t)
+		p, err := pg.Open(bg, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(p.Close)
+		return p
+	}
+	up, down := open(), open()
+	if err := pg.MigrateTo(bg, up, 21); err != nil {
+		t.Fatalf("up to 21: %v", err)
+	}
+	if err := pg.Migrate(bg, down); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if err := pg.MigrateDownTo(bg, down, 21); err != nil {
+		t.Fatalf("down to 21: %v", err)
+	}
+	want, got := schemaShape(t, up), schemaShape(t, down)
+	for _, s := range want {
+		if !slices.Contains(got, s) {
+			t.Errorf("after the Down to 21, missing: %s", s)
+		}
+	}
+	for _, s := range got {
+		if !slices.Contains(want, s) {
+			t.Errorf("after the Down to 21, extra: %s", s)
+		}
 	}
 }
 
@@ -398,7 +475,8 @@ func TestAccountStatusIsActiveOrSuspended(t *testing.T) {
 	if status != "active" {
 		t.Fatalf("a new account is %q, want active", status)
 	}
-	mustExec(t, pool, `UPDATE users SET status = 'suspended' WHERE id = $1`, u)
+	mustExec(t, pool, `UPDATE users SET status = 'suspended', suspended_at = now() WHERE id = $1`, u)
+	wantsError(t, pool, "a suspension without its time", `UPDATE users SET status = 'active' WHERE id = $1`, u)
 	wantsError(t, pool, "a third status", `UPDATE users SET status = 'deleted' WHERE id = $1`, u)
 }
 
@@ -534,10 +612,10 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 		t.Fatalf("Pending = %d, %v; want 0", n, err)
 	}
 	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
-	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links
-	// and 00021_waitlist_invites_mail.
+	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links,
+	// 00021_waitlist_invites_mail and 00022_accounts.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 21 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 21", latest, err)
+	if err != nil || latest != 22 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 22", latest, err)
 	}
 }
