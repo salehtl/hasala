@@ -40,6 +40,30 @@ func readSecret(name, path string) (string, error) {
 	return string(b), nil
 }
 
+// newSender is the [email] group's sender: Cloudflare Email Service, at
+// HASALA_EMAIL_API_BASE_URL when set (config refuses a non-default base
+// behind Cloudflare: it is a local end-to-end run's capture server), or
+// mail.Unconfigured without the group.
+func newSender(cfg config.Config) (mail.Sender, error) {
+	if !cfg.Email.Enabled() {
+		slog.Warn("hasalad serve: the [email] group is not configured: every email fails and the waitlist routes are not mounted")
+		return mail.Unconfigured{}, nil
+	}
+	tok, err := readSecret("HASALA_EMAIL_API_TOKEN_FILE", cfg.Email.APITokenFile)
+	if err != nil {
+		return nil, err
+	}
+	cf, err := mail.NewCloudflare(cfg.Email.CloudflareAccountID, strings.TrimSpace(tok), cfg.Email.From)
+	if err != nil {
+		return nil, refusal{err}
+	}
+	if cfg.Email.APIBaseURL != "" && cfg.Email.APIBaseURL != mail.DefaultBaseURL {
+		cf.BaseURL = cfg.Email.APIBaseURL
+		slog.Warn("hasalad serve: email goes to a non-default API base (HASALA_EMAIL_API_BASE_URL); local runs only")
+	}
+	return cf, nil
+}
+
 // extras is what wireExtras started; stop waits for its goroutines.
 type extras struct {
 	done []<-chan struct{}
@@ -112,28 +136,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	// ends `failed` in the log rather than `sent`, and the website routes are
 	// not mounted: a sign-up whose confirmation can never arrive is worse than
 	// no form.
-	var sender mail.Sender
-	if cfg.Email.Enabled() {
-		tok, err := readSecret("HASALA_EMAIL_API_TOKEN_FILE", cfg.Email.APITokenFile)
-		if err != nil {
-			return nil, err
-		}
-		cf, err := mail.NewCloudflare(cfg.Email.CloudflareAccountID, strings.TrimSpace(tok), cfg.Email.From)
-		if err != nil {
-			return nil, refusal{err}
-		}
-		if cfg.Email.APIBaseURL != "" {
-			// Config refuses a non-default base behind Cloudflare: this is
-			// for a local end-to-end run's capture server only.
-			cf.BaseURL = cfg.Email.APIBaseURL
-			if cf.BaseURL != mail.DefaultBaseURL {
-				slog.Warn("hasalad serve: email goes to a non-default API base (HASALA_EMAIL_API_BASE_URL); local runs only")
-			}
-		}
-		sender = cf
-	} else {
-		sender = mail.Unconfigured{}
-		slog.Warn("hasalad serve: the [email] group is not configured: every email fails and the waitlist routes are not mounted")
+	sender, err := newSender(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	// The server keys (spec 01 §4.11). Both files mount the account
