@@ -65,6 +65,9 @@ sudo hasala-admin purge-user <OLD_ACCOUNT_ID> --confirm <OLD_ACCOUNT_ID> --dry-r
 sudo hasala-admin purge-user <OLD_ACCOUNT_ID> --confirm <OLD_ACCOUNT_ID>
 ```
 
+A purge also queues the "Your Hasala account was deleted" email to the
+account's address (here, the review address); the worker in `serve` sends it.
+
 ## 2. Mint the demo account's invite
 
 ```sh
@@ -126,13 +129,33 @@ sudo hasala-admin invite mint --review --note app-review --ttl 336h
   - "Use sample data" appears only for review accounts: it fills the app with
     a sample month so the screens have something to show. There is no email
     behind those transactions.
-  - To delete an account: Profile › Delete your account.
+  - To try account deletion, delete an account you created with Path B
+    (Profile › Delete your account). Please do not delete the demo account:
+    other reviewers sign in to it.
 
 ## 6. While the build is in review
 
 - Watch `<API>/api/v1/healthz` for the whole review.
 - No deploys, purges or key changes (step 0).
 - Watch the server log for `429` answers to reviewers' requests.
+
+### If the demo account is deleted during the review
+
+A reviewer may delete the demo account despite the notes. Its devices then
+get `410`, the review address receives the "account was deleted" email, and
+`invite list` no longer names an account (`by=`) on the demo invite.
+Re-create it at once, because the next reviewer signs in with the credentials
+in Test Information:
+
+1. Mint a new demo invite (step 2) and create the account again on the spare
+   iPhone (step 3), with the same address, a **new** generated password and
+   the **new** 12 words (the old ones belong to the deleted account).
+2. Check it (`invite list`, `account review … on`), as in step 3.
+3. Update Test Information in App Store Connect: the password and the 12 words
+   in the review notes. If App Store Connect does not let you edit them while
+   the build is in review, reply to the review in App Store Connect with the
+   new details.
+4. Rotate the password-manager entry: the old password and words are dead.
 
 ## 7. After the verdict
 
@@ -145,7 +168,8 @@ sudo hasala-admin invite mint --review --note app-review --ttl 336h
 
 2. Accounts reviewers created (Path B) are listed with `by=` on their
    redeemed invites. A reviewer may have deleted theirs already; purge any
-   that remain:
+   that remain (each purge emails "Your Hasala account was deleted" to the
+   address the reviewer signed up with):
 
    ```sh
    sudo hasala-admin purge-user <ACCOUNT_ID> --confirm <ACCOUNT_ID>

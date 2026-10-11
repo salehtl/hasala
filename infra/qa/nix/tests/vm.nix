@@ -249,6 +249,17 @@ in
           body = json.loads(machine.succeed(f"curl -sf {API}/api/v1/healthz"))
           assert body == {"status": "ok", "db": "ok"}, body
 
+      with subtest("AT-V2b: both key files reach serve, so the account ceremonies are mounted"):
+          # module -> credentials -> env -> config -> wireExtras: an unknown
+          # invite is 403 not_invited, never the 404 of an unmounted route.
+          probe = json.dumps({"invite_code": "ABCDEFGHIJKLMNOPQRSTUVWX", "email": "probe@example.com", "display_name": "Probe"})
+          machine.succeed(f"printf '%s' '{probe}' > /tmp/signup-probe.json")
+          signup = f"curl -X POST -H 'Content-Type: application/json' --data @/tmp/signup-probe.json {API}/api/v1/auth/signup/begin"
+          assert http_code(signup) == "403"
+          answer = json.loads(machine.succeed(signup + " -s"))
+          assert answer == {"error": "not_invited"}, answer
+          machine.fail("journalctl -u hasalad -o cat | grep 'NOT mounted' >/dev/null")
+
       with subtest("AT-V3: nothing listens on a non-loopback address"):
           for line in machine.succeed("ss -ltnH").splitlines():
               local = line.split()[3]

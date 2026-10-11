@@ -239,6 +239,57 @@ for u in hasalad cloudflared-hasala; do
 done
 ```
 
+## Bumping a running QA host to the accounts release
+
+The QA host already runs `services.hasala` at a release whose database has
+only `00001_baseline.sql`. The accounts release applies `00010`, `00020`,
+`00021` and `00022` on top of it, in one `hasala-migrate` run, and it needs one
+new secret, `salt_key` (above: `modules/sops.nix`, `secrets/hasala.yaml` and
+`saltKeyFile`), in the same host PR as the `flake.lock` bump.
+
+**Pre-flight, before the bump, on the running host.** `00010` adds NOT NULL
+columns with no default to `webauthn_credentials` and `writers` and refuses any
+`register` or `add` ceremony without its new columns; `00022` adds NOT NULL
+columns to `users` and `sessions`. Any such row makes `hasala-migrate` fail
+part-way and leaves `hasalad` down (the pre-migration dump is taken first, so
+nothing is lost). Check, as the schema owner, with the PostgreSQL 17 client
+(`psql`, for example from `nix shell nixpkgs#postgresql_17`):
+
+```sh
+sudo -u hasala-migrate psql --no-psqlrc -h /run/hasala-postgresql -d hasala -U hasala_migrate -Atc "
+  SELECT (SELECT count(*) FROM users)                                       AS users,
+         (SELECT count(*) FROM sessions)                                    AS sessions,
+         (SELECT count(*) FROM writers)                                     AS writers,
+         (SELECT count(*) FROM webauthn_credentials)                        AS credentials,
+         (SELECT count(*) FROM webauthn_ceremonies WHERE kind <> 'login')   AS ceremonies"
+# want: 0|0|0|0|0
+```
+
+If any count is not 0, clear it with the **old** binary, still deployed:
+
+```sh
+# every account (sessions, writers and credentials go with it)
+sudo -u hasala-migrate psql --no-psqlrc -h /run/hasala-postgresql -d hasala -U hasala_migrate -Atc "SELECT id FROM users"
+sudo hasala-admin purge-user <ACCOUNT_ID> --confirm <ACCOUNT_ID>    # once per id
+# ceremonies live 5 minutes and belong to no account yet
+sudo -u hasala-migrate psql --no-psqlrc -h /run/hasala-postgresql -d hasala -U hasala_migrate -Atc "DELETE FROM webauthn_ceremonies"
+```
+
+Then run the check again: all five must be 0 before the bump is merged. Do
+nothing on the host between the check and the activation that could create an
+account (the API is not open to testers before this release).
+
+**After the activation**, besides PR B's verification:
+
+```sh
+systemctl show -P Result hasala-migrate                      # success
+journalctl -u hasala-migrate -o cat | grep 00022             # OK 00022_accounts.sql
+journalctl -u hasalad -o cat | grep 'NOT mounted'            # nothing: both key files reached serve
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"invite_code":"ABCDEFGHIJKLMNOPQRSTUVWX","email":"probe@example.com","display_name":"Probe"}' \
+  http://127.0.0.1:8471/api/v1/auth/signup/begin             # {"error":"not_invited"}, not a 404
+```
+
 ## PR C: "hasala: operator console (tailnet only)"
 
 Open it only after PR B is merged and running **and** a hasala release has a
