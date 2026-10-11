@@ -259,7 +259,9 @@ func genChain(f Files, _ string) error {
 			return err
 		}
 		h := blob.Hash(prev, sealed)
-		rows = append(rows, chainRow{c, prev[:], sealed.Bytes, h[:]})
+		// A copy: prev is reassigned below, and prev[:] would alias it, so
+		// every row would list the last hash.
+		rows = append(rows, chainRow{c, bytes.Clone(prev[:]), sealed.Bytes, h[:]})
 		prev = h
 	}
 	var steps []v1Step
@@ -267,8 +269,27 @@ func genChain(f Files, _ string) error {
 	for _, fill := range []byte{0xab, 0xcd} {
 		b := bytes.Repeat([]byte{fill}, 1024)
 		h := sha256.Sum256(append(append([]byte(nil), p[:]...), b...))
-		steps = append(steps, v1Step{p[:], hex.EncodeToString([]byte{fill}), 1024, h[:]})
+		steps = append(steps, v1Step{bytes.Clone(p[:]), hex.EncodeToString([]byte{fill}), 1024, h[:]})
 		p = h
+	}
+	// Each listed prev_hash is its predecessor's blob_hash (0^32 first).
+	for i, r := range rows {
+		want := make([]byte, 32)
+		if i > 0 {
+			want = rows[i-1].BlobHash
+		}
+		if !bytes.Equal(r.PrevHash, want) {
+			return fmt.Errorf("chain.json: row %d's prev_hash is not its predecessor's blob_hash", i)
+		}
+	}
+	for i, st := range steps {
+		want := make([]byte, 32)
+		if i > 0 {
+			want = steps[i-1].BlobHash
+		}
+		if !bytes.Equal(st.Prev, want) {
+			return fmt.Errorf("chain.json: v1 step %d's prev_hash is not its predecessor's blob_hash", i)
+		}
 	}
 	if hex.EncodeToString(steps[0].BlobHash) != "b972e78fb27a0866f41fd72ab4687e18aed94a66c8e32314ac654e8247c3e3d3" ||
 		hex.EncodeToString(steps[1].BlobHash) != "1eb123521be8de11640db812996ae32d973f6ed53d3eff1f3e080fa377761eb4" {
