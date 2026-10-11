@@ -2,7 +2,8 @@ import Foundation
 
 /// What this build is, read once from Info.plist (spec 06 §2.3). Nothing else reads
 /// the `Hasala*` keys; every other module gets a `BuildInfo` value. Never touches the network.
-public struct BuildInfo: Sendable, Equatable {
+/// Not main-actor isolated (the app target's default), so background code can read `.current`.
+nonisolated public struct BuildInfo: Sendable, Equatable {
   /// `CFBundleShortVersionString`, e.g. `0.1.0`.
   public let marketingVersion: String
   /// `CFBundleVersion`, e.g. `261011.11530` (spec 06 §8); `1` in local builds.

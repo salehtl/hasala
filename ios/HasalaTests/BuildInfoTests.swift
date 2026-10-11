@@ -41,6 +41,12 @@ struct BuildInfoTests {
     #expect(throws: BuildInfo.Problem.malformed("HasalaAPIBaseURL")) { try BuildInfo(infoDictionary: d) }
   }
 
+  /// `BuildInfo` is not main-actor isolated: background work can read it.
+  @Test nonisolated func isReadableOffTheMainActor() async {
+    let footer = await Task.detached { BuildInfo.current.footer }.value
+    #expect(footer.hasPrefix("Hasala QA · 0.1.0 ("))
+  }
+
   /// The app's own Info.plist carries every key (spec 06 §4.2) and the export
   /// compliance answer (spec 06 §6.2).
   @Test func theBundleIsComplete() throws {

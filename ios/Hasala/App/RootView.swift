@@ -12,10 +12,17 @@ import SwiftUI
 /// the build footer (spec 06 §15.2). No Release code path reaches HasalaMocks
 /// (spec 04 §1.4, AT-REV-4).
 struct RootView: View {
+  #if HASALA_MOCKS
+    /// Made once for the window, not on every evaluation of `body`.
+    @State private var app: AppModel = {
+      let scenario = Scenario.fromLaunchArguments(ProcessInfo.processInfo.arguments)
+      return AppModel(snapshot: Maya.home, amountsHidden: scenario.startsWithAmountsHidden)
+    }()
+  #endif
+
   var body: some View {
     #if HASALA_MOCKS
-      let scenario = Scenario.fromLaunchArguments(ProcessInfo.processInfo.arguments)
-      MainView(app: AppModel(snapshot: Maya.home, amountsHidden: scenario.startsWithAmountsHidden))
+      MainView(app: app)
     #else
       ShellView(build: .current)
     #endif
