@@ -1,0 +1,343 @@
+{
+  "note": "spec 01 §5.5: K_pv = HKDF(AMK, uuid_raw, D35); box = 01 ‖ nonce12 ‖ AEAD(K_pv, nonce, E, AD) (45 bytes); AD = \"hasala/v1/phrase-box\" ‖ 00 ‖ uuid_raw ‖ recovery_pubkey ‖ box[0:1]. Open order: version, AEAD, then RK(E).pub = recovery_pubkey.",
+  "boxes": [
+    {
+      "name": "A19 phrase box",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafb",
+      "e": "9e885d952ad362caeb4efe34a8e91bd2",
+      "k_pv": "d02f4066e537419b47f48789776a2261caa5a071f12337819707f764b69a8447",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe"
+    },
+    {
+      "name": "A18 new phrase box (E' = 80×16)",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "21751a01ea5863cde7576580c8b3e685ad5d57b42856b882bcf7d59ec119f308",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafb",
+      "e": "80808080808080808080808080808080",
+      "k_pv": "d02f4066e537419b47f48789776a2261caa5a071f12337819707f764b69a8447",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbed85873e09a697b969fabdbd7aa0e523d1a4758be33f023d6ba5f9a86baaeb65"
+    }
+  ],
+  "cases": [
+    {
+      "id": "W11",
+      "name": "valid box opens",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "opens",
+      "e": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 0 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "00f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 1 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f1f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 2 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f0f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 3 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f3f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 4 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f2f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 5 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f5f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 6 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f4f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 7 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f7f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 8 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f6f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 9 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f9f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 10 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f8fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 11 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fbfbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "header byte 12 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafaf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 29 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71ea7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 30 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7b777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 31 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a767ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 32 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777aa708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 33 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba608e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 34 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba709e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 35 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e50165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 36 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40065b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 37 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40164b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 38 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b8f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 39 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f0408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 40 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1418ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 41 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408fcb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 42 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408eca37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 43 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb36fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "tag byte 44 XOR 01",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37ff",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "44 bytes",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W11",
+      "name": "46 bytes",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe00",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W12",
+      "name": "another user_id in the AD",
+      "user_id": "3b0e5c1a-7d2f-4e8a-9b6c-1f2e3d4c5b6a",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W12",
+      "name": "another recovery_pubkey in the AD",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "21751a01ea5863cde7576580c8b3e685ad5d57b42856b882bcf7d59ec119f308",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbf38d5a2ba3f575f30234c30952c97e71eb7a777ba708e40165b9f1408ecb37fe",
+      "outcome": "unwrapFailed"
+    },
+    {
+      "id": "W13",
+      "name": "opens, but RK of its E is not recovery_pubkey",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "recovery_pubkey": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "box": "01f0f1f2f3f4f5f6f7f8f9fafbed85873e09a697b969fabdbd7aa0e5235fa5e6865019d4f1f0cee0406393934c",
+      "outcome": "integrityAlarm(phraseBoxMismatch)"
+    }
+  ]
+}

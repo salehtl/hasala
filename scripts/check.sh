@@ -339,9 +339,6 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 #
 # Some sets have fewer than two executors here, on purpose and visibly:
 #   fx      TypeScript only. The FX fold exists only client-side; Go has no reader.
-#   crypto  No reader at all. Its consumer (ledgerd's retired app/ bench) was
-#           deleted (see the ledgerd repo-migration inventory, archived).
-#           Listed so the gap stays on screen.
 #   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests, CI's
 #           swift job, which also re-checks it); Go opens and verifies it once
 #           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
@@ -356,13 +353,22 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 #           byte-identical to what the generator writes now, computed in
 #           memory, no network) plus the oracle reading its own files back.
 #           Go has no reader: the server never reads mail or folds ops.
+#   crypto-v3, api-v1  Go only here. Go writes them (cmd/gen-crypto-vectors,
+#           spec 01 §15.1, spec 02 §22) and checks them: the committed files
+#           must regenerate byte for byte, the anchors A01–A26 reproduce, the
+#           predicate cases agree with Postgres, and every tamper upload gets
+#           its verdict from the real handler. Their other executor is Swift
+#           (HasalaCore's GoCryptoV3Tests, CI's swift job), which reads them
+#           and never writes them. ledgerd's encv2 set (conformance/crypto/,
+#           with a committed private key) is deleted (spec 01 §15.1).
 #
 # A Go package under ./oracle/ is run from the oracle module.
 CONFORMANCE=(
+	"api-v1|./cmd/gen-crypto-vectors ./internal/cryptoref|"
 	"authres||src/mail/authres-conformance.test.ts"
 	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
 	"categorize||src/categorize/oracle-conformance.test.ts"
-	"crypto||"
+	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api|"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"
 	"fx||src/replay/fx.test.ts"
