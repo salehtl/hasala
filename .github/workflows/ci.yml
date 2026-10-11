@@ -266,10 +266,17 @@ jobs:
 
       # gitleaks from the flake's pinned nixpkgs (flake.lock), so its version
       # moves only with the lock. --redact: this log is public.
+      # --log-opts=HEAD: every commit reachable from the checked-out commit (on
+      # a pull request, the merge of the branch into main; on a push, main),
+      # judged by that commit's .gitleaks.toml. Without it gitleaks runs
+      # `git log --all`, and fetch-depth 0 fetches every branch, so one open
+      # branch's allowlisted test vectors failed every other run against a
+      # .gitleaks.toml that had not seen them yet. Each branch is still scanned
+      # in full by its own pull request.
       - name: gitleaks
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
-          gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
+          gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
   # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
   # `swift test` passes (unit tests and the conformance suite, reading
