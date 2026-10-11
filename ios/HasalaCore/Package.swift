@@ -73,11 +73,12 @@ let package = Package(
     core("CoreJSON", "JSON", ["HasalaText"]),
     core("CoreTime", "Time"),
     core("CoreMoney", "Money", ["HasalaText"]),
-    // Resource-only. The two single-file resources are added by their owners,
-    // one line each, when the file lands (SwiftPM refuses a missing resource):
+    // Resource-only. The single-file resources are added by their owners when
+    // the file lands (SwiftPM refuses a missing resource):
     //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5)
-    //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2)
-    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample")]),
+    core(
+      "CoreResources", "Resources",
+      resources: [.copy("templates"), .copy("sample"), .copy("common-passwords-v1.txt")]),  // the last: WS-14 (04 §6.1.2)
 
     // L1
     core("CoreWire", "Wire", l0),
