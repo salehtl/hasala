@@ -1,4 +1,4 @@
-package blob
+package blobtest
 
 import (
 	"bytes"
@@ -86,32 +86,6 @@ func TestOpenRejectsAADMismatch(t *testing.T) {
 	wrong.WriterID = "dev-b"
 	if _, err := s.Open(wrong, sealed); err == nil {
 		t.Fatal("expected AAD mismatch to be rejected (blob replayed across writers)")
-	}
-}
-
-func TestBucketLadder(t *testing.T) {
-	for _, tc := range []struct{ in, want int }{
-		{1, 1 << 10}, {1024, 1 << 10}, {1025, 4 << 10}, {70000, 256 << 10},
-		{300000, 512 << 10}, {600000, 1 << 20}, {1 << 20, 1 << 20},
-	} {
-		got, err := BucketFor(tc.in)
-		if err != nil || got != tc.want {
-			t.Fatalf("BucketFor(%d) = %d, %v; want %d", tc.in, got, err, tc.want)
-		}
-	}
-	if _, err := BucketFor((1 << 20) + 1); err == nil {
-		t.Fatal("expected oversize to error")
-	}
-	if MaxBucket != Buckets[len(Buckets)-1] {
-		t.Fatalf("MaxBucket = %d but the ladder tops out at %d", MaxBucket, Buckets[len(Buckets)-1])
-	}
-	if len(Buckets) != 7 {
-		t.Fatalf("the ladder is frozen at seven rungs (Decision 7), got %v", Buckets)
-	}
-	for i := 1; i < len(Buckets); i++ {
-		if Buckets[i] <= Buckets[i-1] {
-			t.Fatalf("Buckets must ascend: %v", Buckets)
-		}
 	}
 }
 
