@@ -61,7 +61,7 @@ final class SmokeTests: XCTestCase {
     app.buttons["header.profile"].firstMatch.tap()
     let footer = app.staticTexts["profile.buildFooter"]
     XCTAssertTrue(footer.waitForExistence(timeout: 5))
-    XCTAssertTrue(footer.label.hasPrefix("Hasala QA · 0.1.0 ("), footer.label)
+    XCTAssertTrue(footer.label.hasPrefix("Hasala QA · 0.2.0 ("), footer.label)
     try audit(app)
     app.buttons["profile.close"].firstMatch.tap()
 

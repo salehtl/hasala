@@ -46,6 +46,9 @@ targets:
         product: HasalaModels
       - package: HasalaKit
         product: HasalaDesign
+      # Linked in Debug only: Config/Shared.xcconfig excludes it from every other
+      # configuration (EXCLUDED_SOURCE_FILE_NAMES), and the code that uses it is
+      # behind HASALA_MOCKS, which only Config/Debug.xcconfig sets.
       - package: HasalaKit
         product: HasalaMocks
   HasalaTests:

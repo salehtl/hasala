@@ -99,11 +99,18 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   and `.accessibility3` text sizes). Design tokens are generated from
   `design/tokens/paper-tokens.json` by `swift ios/tools/tokens/generate.swift`
   (`--check` in CI). Debug builds run the synthetic Maya scenario
-  (`-HasalaScenario maya|mayaHidden`); Release builds never reach the mocks.
+  (`-HasalaScenario maya|mayaHidden`); Release builds do not link HasalaMocks
+  (`ios/Config/Shared.xcconfig` excludes it from every configuration but Debug).
   `ios/scripts/archive.sh` archives and exports a signed .ipa on the owner's Mac
   and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
-  from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. CI job `ios` builds
-  and tests unsigned in the simulator; it is not a required check.
+  from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. archive.sh inspects
+  the export with `ios/scripts/inspect-ipa.sh`, whose `summary.txt` ends in
+  `PASS <n>/<n> sha256=<the .ipa's>` only when every check passed; upload.sh
+  uploads nothing else. `ios/scripts/tests/run.sh` runs the release-script tests
+  offline (stub xcodebuild and altool, fake keys, synthetic .ipa files), and
+  `ios/scripts/tests/devshell_test.sh` runs them again inside the devShell, where
+  GNU coreutils come first on PATH. CI job `ios` builds and tests unsigned in
+  the simulator; it is not a required check.
 - `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
   which is byte-frozen). The infra checks: `ingress-lint` (both systems; the
