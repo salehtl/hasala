@@ -150,6 +150,22 @@ struct EngineTests {
     #expect(try match("aed", "AED", ci: true) == "AED")
   }
 
+  /// Two places where the JavaScript twin's engine is the odd one out, pinned to Go's answer
+  /// (measured 2026-10-11 against Go's regexp and Bun): a capture inside a group repeated more
+  /// than once keeps its last participating value in Go and ICU, while JavaScript resets it on
+  /// every iteration; and `[a-z]` under `i` matches U+212A in Go, V8 and WebKit (and here), but
+  /// not in Bun's JavaScriptCore (tmpl/agreement.test.ts pins that as a Bun bug). The dialect
+  /// accepts the first shape; no shipping template uses it.
+  @Test("where JavaScript and Go disagree on an accepted pattern, ICU answers as Go does")
+  func goSemantics() throws {
+    let re = try ICUPattern.compile("(?:(?P<v>a)|b){2}", caseInsensitive: false)
+    #expect(Dialect.validatePattern("(?:(?P<v>a)|b){2}", flags: []) == [])
+    let u = Array("ab".utf16)
+    let m = try #require(try re.firstMatch(in: u))
+    #expect(m.groups[0] == 0..<1)  // Go: [0 2 0 1]; JavaScript: v undefined
+    #expect(try match("[a-z]", "\u{212A}", ci: true) == "\u{212A}")
+  }
+
   @Test("ICU set operators and nested sets have no meaning in a translated pattern")
   func setSyntax() throws {
     #expect(try match("[a&&b]", "&") == "&")
