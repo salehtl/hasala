@@ -271,8 +271,11 @@ jobs:
       # judged by that commit's .gitleaks.toml. Without it gitleaks runs
       # `git log --all`, and fetch-depth 0 fetches every branch, so one open
       # branch's allowlisted test vectors failed every other run against a
-      # .gitleaks.toml that had not seen them yet. Each branch is still scanned
-      # in full by its own pull request.
+      # .gitleaks.toml that had not seen them yet. Every branch with a pull
+      # request is still scanned in full by that pull request's run; a branch
+      # with none is not scanned here (GitHub secret scanning still covers
+      # provider patterns). Keep the revision one that cannot fail to resolve:
+      # gitleaks 8.30.1 exits 0 with "0 commits scanned" when git log fails.
       - name: gitleaks
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
