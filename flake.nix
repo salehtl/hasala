@@ -84,7 +84,7 @@
               includes = [ "*.go" ];
               # Byte-frozen v1 reference code (see its README): a formatter
               # must never be the thing that edits it.
-              excludes = [ "server/internal/v1ref/*" ];
+              excludes = [ "server/oracle/v1ref/*" ];
             };
           };
         };
@@ -100,9 +100,8 @@
             # after it, so a per-commit version would re-fetch every module.
             version = "0-unstable";
             src = ./server;
-            vendorHash = "sha256-l8kClhUcQBWnlZHiZAJptSjV1Iw9bSqEzykg+QwuZNw=";
-            # The binary keeps ledgerd's name until the rename workstream.
-            subPackages = [ "cmd/ledgerd" ];
+            vendorHash = "sha256-EJnxPJhAvGDTQuroF55AD0KG6RSEZ3oPxh3QOXnc2MA=";
+            subPackages = [ "cmd/hasalad" ];
             env.CGO_ENABLED = "0";
             # Not stripped (no `-s -w`), on purpose: `govulncheck -mode=binary`
             # needs the symbol table to tell which packages are linked in. On a
@@ -111,7 +110,7 @@
             # The test suite needs a Postgres cluster, bun and the conformance
             # fixtures outside server/; scripts/check.sh is the gate that runs it.
             doCheck = false;
-            meta.mainProgram = "ledgerd";
+            meta.mainProgram = "hasalad";
           };
           default = self.packages.${system}.server;
         }

@@ -322,14 +322,10 @@ bun run typecheck
 bun test                 # unit + wire + replay + invariants; no Postgres needed
 ```
 
-`test/e2e/roundtrip.test.ts` drives a real `ledgerd` against a real Postgres. It
-**skips** unless `LEDGER_TEST_POSTGRES_URL` is set, which `scripts/v2-check.sh`
-exports — so a bare `bun test` stays fast and standalone while the gate runs the
-round trip every time.
-
-```bash
-bash ../scripts/v2-check.sh     # go vet + go test + typecheck + bun test (incl. e2e)
-```
+The end-to-end harness (`test/e2e/`) drove a real `ledgerd` over SMTP, the
+admin console and `--dev-auth`. All three were retired when the server became
+`hasalad` (WS-1), so the harness was removed with them; ledgerd's own history
+keeps it. `scripts/check.sh` runs this package's typecheck and `bun test`.
 
 ## Reading order
 
