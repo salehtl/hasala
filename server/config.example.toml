@@ -1,0 +1,58 @@
+# hasalad configuration (spec 02 §18). Every key here is optional in the file:
+# each has an environment variable that overrides it (HASALA_<GROUP>_<KEY>; the
+# full table is spec 02 §18.2), and the QA host sets everything through the
+# environment. Secrets are NEVER in this file: the database DSNs, the auth key,
+# the APNs key, the mailbox route key and the email API token are
+# environment-only (`*_FILE` paths behind Cloudflare), and the loader refuses a
+# file that tries to set them.
+#
+# Values below are the defaults unless marked "example".
+
+[server]
+# Plain HTTP; there is no TLS code in hasalad. Must be loopback.
+http_listen = "127.0.0.1:8443"
+# Prometheus text endpoint on its own loopback listener; "" is off.
+metrics_listen = ""
+# "none" (local runs) or "cloudflare" (behind Cloudflare Tunnel, QA).
+trusted_proxy = "none"
+min_ios_build = 0
+log_level = "info"
+
+[auth]
+rp_id = "localhost"                    # example; required
+rp_display_name = "Hasala"
+rp_origins = ["http://localhost:8443"] # example; required
+session_idle = "720h"
+session_max = "2160h"
+invite_ttl = "336h"
+password_hash_concurrency = 1
+
+[headroom]
+path = "/var/lib/postgresql" # example; required by serve: the database's filesystem
+floor_bytes = 8000000000
+interval = "30s"
+
+# Optional groups. Each is validated when present and logged by name at
+# startup; this build does not yet serve them (WS-4 and WS-5 fill them in).
+
+[apns]
+enabled = false
+# team_id = "ABCDE12345"            # example; 10 characters, required when enabled
+# key_id = "FGHIJ67890"             # example; 10 characters, required when enabled
+topic = "app.hasala.ios"
+allowed_environments = ["production", "sandbox"]
+
+# [gmail] is all or nothing: all five values plus HASALA_MAILBOX_ROUTE_KEY_FILE.
+# [gmail]
+# ios_client_id = "000000000000-example.apps.googleusercontent.com"
+# pubsub_topic = "projects/example-project/topics/example-topic"
+# pubsub_subscription = "projects/example-project/subscriptions/example-sub"
+# pubsub_audience = "https://api.example.test/hooks/gmail/pubsub"
+# pubsub_service_account = "example@example-project.iam.gserviceaccount.com"
+
+# [email] is all or nothing with HASALA_EMAIL_API_TOKEN_FILE.
+# [email]
+# cloudflare_account_id = "00000000000000000000000000000000"
+# from_name = "Hasala"
+# from = "no-reply@hasala.app"
+# freeze_url = "https://hasala.app/freeze"

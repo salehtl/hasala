@@ -1,0 +1,467 @@
+---
+/**
+ * "Request an invite", in the states of the Paper board "Waitlist · States"
+ * (default, focus, error, success) plus "another bank". It is a real form:
+ * without JavaScript it posts to the API like any form (the browser checks
+ * the fields first; the server answers with a 303 to /joined). With it, the
+ * script validates, posts JSON and shows the success card in place.
+ *
+ * The waitlist is double opt-in, so success means "check your email", and
+ * every valid submission gets the same answer whether or not the address is
+ * already on the list (Hasala design archive, private).
+ */
+import Icon from './Icon.astro';
+import WaitlistCoin from './brand/WaitlistCoin.astro';
+import { BANKS } from '../data/site';
+import { API_BASE, TURNSTILE_SITEKEY } from '../lib/env';
+---
+
+<div class="waitlist" data-waitlist data-state="default" data-api={API_BASE}>
+  <WaitlistCoin id="wl-coin" />
+
+  <form class="wl-card wl-form" action={`${API_BASE}/v1/waitlist`} method="post" data-waitlist-form data-astro-reload>
+    <div class="wl-head">
+      <h3 class="wl-title">Request an invite</h3>
+      <p class="wl-sub">Two fields. About ten seconds.</p>
+    </div>
+
+    <div class="field" data-field="email">
+      <label for="wl-email">Email</label>
+      <input
+        id="wl-email"
+        name="email"
+        type="email"
+        inputmode="email"
+        autocomplete="email"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="you@example.com"
+        required
+        maxlength="254"
+        aria-describedby="wl-email-error"
+      />
+      <p class="field__error" id="wl-email-error" hidden><Icon name="alert" size={16} stroke={1.5} /><span></span></p>
+    </div>
+
+    <div class="field" data-field="bank">
+      <label for="wl-bank">Your bank</label>
+      <span class="field__select">
+        <select id="wl-bank" name="bank" required aria-describedby="wl-bank-error">
+          <option value="" selected disabled>Choose a bank</option>
+          {BANKS.map((b) => <option value={b.value}>{b.name}</option>)}
+          <option value="other">Another bank</option>
+        </select>
+        <Icon name="chevron" size={14} stroke={1.6} />
+      </span>
+      <p class="field__error" id="wl-bank-error" hidden><Icon name="alert" size={16} stroke={1.5} /><span></span></p>
+    </div>
+
+    <div class="field field--other" data-field="other" hidden>
+      <label for="wl-other">Which one? <span class="field__optional">Optional</span></label>
+      <input id="wl-other" name="otherBank" type="text" autocomplete="off" maxlength="64" placeholder="For example, ADCB" aria-describedby="wl-other-error" />
+      <p class="field__error" id="wl-other-error" hidden><Icon name="alert" size={16} stroke={1.5} /><span></span></p>
+    </div>
+
+    <div class="hp" aria-hidden="true">
+      <label for="wl-website">Leave this empty</label>
+      <input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+    </div>
+    <input type="hidden" name="source" value="web" />
+
+    {TURNSTILE_SITEKEY && <div class="cf-turnstile" data-sitekey={TURNSTILE_SITEKEY} />}
+
+    <button class="btn btn--primary wl-submit" type="submit">
+      <span class="spinner" aria-hidden="true" hidden></span>
+      <span class="wl-submit__label">Request an invite</span>
+    </button>
+    <p class="wl-status" role="status" aria-live="polite"></p>
+
+    <p class="wl-fine">We’ll only email you about the beta. <a class="link" href="/privacy">Privacy Policy</a>.</p>
+  </form>
+
+  <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
+    <div class="wl-head">
+      <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Check your email.</h3>
+      <p class="wl-done__text">
+        We’ve sent a link to <b data-done-email></b>. Tap <b class="wl-done__strong">Confirm my email</b> in it to put your address on the list. The link works for 7
+        days. Invites go out in small batches, usually within a few weeks.
+      </p>
+    </div>
+    <dl class="wl-summary">
+      <div><dt>Email</dt><dd data-done-email></dd></div>
+      <div><dt>Bank</dt><dd data-done-bank></dd></div>
+    </dl>
+    <p class="wl-from">
+      <Icon name="mail" size={16} stroke={1.6} />
+      <span>Our emails come from no‑reply@hasala.app. Nothing after a few minutes? Check your spam folder, and add the address to your contacts so the invite doesn’t land there.</span>
+    </p>
+    <button class="btn btn--subtle wl-copy" type="button" data-copy-link>
+      <Icon name="link" size={16} stroke={1.6} /><span>Copy link for a friend</span>
+    </button>
+    <p class="wl-fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
+  </section>
+</div>
+
+<script>
+  import { initWaitlist } from '../scripts/waitlist';
+  initWaitlist();
+</script>
+
+<style>
+  .waitlist {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  .waitlist :global(.wl-coin) {
+    width: 170px;
+    height: auto;
+    margin-bottom: -6px;
+    overflow: visible;
+  }
+  .wl-card {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+    padding: 24px 22px 22px;
+    border-radius: 28px;
+    background: var(--white);
+    color: var(--text-primary);
+    box-shadow: rgb(11 26 74 / 35%) 0 30px 60px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+  }
+  .wl-card[hidden] {
+    display: none;
+  }
+  .wl-head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .wl-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 28px;
+  }
+  .wl-sub {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .field[hidden] {
+    display: none;
+  }
+  .field label {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+    transition: color 120ms;
+  }
+  .field__optional {
+    margin-left: 4px;
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+  .field input,
+  .field select {
+    width: 100%;
+    height: 56px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--r-field);
+    background: var(--neutral-100);
+    box-shadow: rgb(0 0 0 / 4%) 0 0 0 1px inset;
+    color: var(--text-primary);
+    font-size: 17px;
+    line-height: 22px;
+    outline: none;
+    appearance: none;
+    transition:
+      background-color 120ms,
+      box-shadow 120ms;
+  }
+  .field input::placeholder {
+    color: var(--neutral-600);
+    opacity: 1;
+  }
+  .field select:invalid {
+    color: var(--neutral-600);
+  }
+  .field input:focus,
+  .field select:focus {
+    background: var(--white);
+    box-shadow: var(--blue-600) 0 0 0 2px inset, rgb(54 91 235 / 14%) 0 0 0 4px;
+  }
+  .field:focus-within label {
+    color: var(--accent);
+  }
+  .field__select {
+    position: relative;
+    display: block;
+  }
+  .field__select select {
+    padding-right: 40px;
+    cursor: pointer;
+  }
+  .field__select :global(.icon) {
+    position: absolute;
+    right: 18px;
+    top: 21px;
+    color: var(--neutral-700);
+    pointer-events: none;
+  }
+  .field[data-invalid] label {
+    color: var(--error);
+  }
+  .field[data-invalid] input,
+  .field[data-invalid] select {
+    background: var(--white);
+    box-shadow: var(--red-700) 0 0 0 2px inset;
+  }
+  .field__error {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--error);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .field__error[hidden] {
+    display: none;
+  }
+  .field__error :global(.icon) {
+    flex: none;
+    margin-top: 2px;
+  }
+  /* Errors, "Another bank" and the success card arrive instead of appearing
+     (with reduced motion: a fade only). */
+  .field__error:not([hidden]) {
+    transition:
+      opacity 160ms var(--ease-out-soft),
+      translate 160ms var(--ease-out-soft);
+  }
+  .field--other:not([hidden]) {
+    transition:
+      opacity 200ms var(--ease-out-soft),
+      translate 200ms var(--ease-out-soft);
+  }
+  .wl-done:not([hidden]) {
+    transition:
+      opacity 360ms var(--ease-out-soft) 120ms,
+      translate 360ms var(--ease-out-soft) 120ms,
+      filter 360ms var(--ease-out-soft) 120ms;
+  }
+  @starting-style {
+    .field__error:not([hidden]) {
+      opacity: 0;
+      translate: 0 -4px;
+    }
+    .field--other:not([hidden]) {
+      opacity: 0;
+      translate: 0 -6px;
+    }
+    .wl-done:not([hidden]) {
+      opacity: 0;
+      translate: 0 12px;
+      filter: blur(4px);
+    }
+  }
+  .hp {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .wl-submit {
+    width: 100%;
+    box-shadow: rgb(54 91 235 / 30%) 0 8px 20px;
+  }
+  .wl-submit .spinner[hidden] {
+    display: none;
+  }
+  .wl-status {
+    margin-top: -6px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+    text-align: center;
+  }
+  .wl-status:empty {
+    display: none;
+  }
+  .wl-status[data-tone='error'] {
+    color: var(--error);
+  }
+  .wl-status button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-link);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .wl-fine {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 19px;
+    text-align: center;
+  }
+  .wl-fine .link {
+    color: inherit;
+    font-weight: 400;
+    text-decoration-color: currentColor;
+  }
+  .wl-done__title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 34px;
+    outline: none;
+  }
+  .wl-done__text {
+    padding-top: 4px;
+    color: var(--text-body);
+    font-size: 16px;
+    line-height: 25px;
+  }
+  .wl-done__text b {
+    font-weight: 400;
+  }
+  .wl-done__text .wl-done__strong {
+    font-weight: 600;
+  }
+  .wl-summary {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 4px 16px;
+    border-radius: 18px;
+    background: var(--neutral-100);
+  }
+  .wl-summary div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .wl-summary div + div {
+    border-top: 1px solid var(--neutral-200);
+  }
+  .wl-summary dt {
+    color: var(--text-secondary);
+  }
+  .wl-summary dd {
+    margin: 0;
+    font-weight: 600;
+    text-align: right;
+  }
+  .wl-from {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--blue-50);
+    color: var(--blue-800);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .wl-from :global(.icon) {
+    flex: none;
+    margin-top: 2px;
+    color: var(--accent);
+  }
+  .wl-copy {
+    --btn-h: 52px;
+    width: 100%;
+    font-size: 16px;
+  }
+
+  @media (min-width: 768px) {
+    .waitlist :global(.wl-coin) {
+      width: 250px;
+      margin-bottom: -10px;
+    }
+    .wl-card {
+      gap: 20px;
+      padding: 32px;
+      border-radius: 32px;
+    }
+    .wl-title {
+      font-size: 24px;
+      line-height: 30px;
+    }
+    .wl-done__title {
+      font-size: 30px;
+      line-height: 36px;
+    }
+  }
+
+  /* The coin: waits, lifts on focus, bounces off the rim on an error, drops in on success. */
+  .waitlist :global(.wl-coin .wl-coin-body) {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    transition: transform 420ms var(--ease-spring);
+  }
+  .waitlist :global(.wl-coin .wl-shadow),
+  .waitlist :global(.wl-coin .wl-whoosh),
+  .waitlist :global(.wl-coin .wl-check),
+  .waitlist :global(.wl-coin .wl-lip) {
+    opacity: 0;
+    transition: opacity 200ms var(--ease-out-soft);
+  }
+  .waitlist :global(.wl-coin .wl-check) {
+    transform-box: fill-box;
+    transform-origin: 50% 60%;
+    transform: scale(0.6);
+    transition:
+      opacity 200ms var(--ease-out-soft),
+      transform 360ms var(--ease-spring);
+  }
+  .waitlist[data-state='focus'] :global(.wl-coin .wl-coin-body) {
+    transform: translate(0, -118px) scale(0.913);
+  }
+  .waitlist[data-state='focus'] :global(.wl-coin .wl-shadow) {
+    opacity: 0.25;
+  }
+  .waitlist[data-state='error'] :global(.wl-coin .wl-coin-body) {
+    transform: translate(128px, -111px) rotate(20deg) scale(0.815);
+    transition-timing-function: cubic-bezier(0.3, 1.8, 0.5, 1);
+  }
+  .waitlist[data-state='error'] :global(.wl-coin .wl-whoosh) {
+    opacity: 1;
+  }
+  .waitlist[data-state='success'] :global(.wl-coin .wl-coin-body) {
+    transform: translate(0, 420px);
+    transition: transform 420ms cubic-bezier(0.5, 0, 0.75, 0);
+  }
+  .waitlist[data-state='success'] :global(.wl-coin .wl-check) {
+    opacity: 1;
+    transform: none;
+    transition-delay: 360ms;
+  }
+  .waitlist[data-state='success'] :global(.wl-coin .wl-lip) {
+    opacity: 0.9;
+    transition-delay: 300ms;
+  }
+  .waitlist[data-state='success'] :global(.wl-coin .wl-plate) {
+    fill: #f9dc94;
+    fill-opacity: 0.3;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .waitlist :global(.wl-coin *) {
+      transition-duration: 200ms !important;
+    }
+  }
+</style>

@@ -3,6 +3,7 @@ package oplog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +16,22 @@ import (
 )
 
 // These tests cover the placement the design calls non-negotiable: the
-// cumulative ceiling lives INSIDE the append path, so it covers AppendClient
-// and AppendIngest alike. A check at POST /api/v1/sync would miss the ingest
-// writer entirely — the path that stores a whole raw email body.
+// cumulative ceiling lives INSIDE the append path (appendTx), so no append
+// path — today's AppendClient or any later one — can skip it.
+
+// appendOne appends one sealed row to writer's chain through AppendClient.
+func appendOne(ctx context.Context, t *testing.T, a *Appender, u uuid.UUID, writer string) error {
+	c, head, err := a.Head(ctx, u, writer, blob.StreamHot)
+	if err != nil {
+		return err
+	}
+	r, _, err := sealRow(u, writer, blob.StreamHot, c+1, head)
+	if err != nil {
+		return err
+	}
+	_, err = a.AppendClient(ctx, u, writer, blob.StreamHot, []Row{r})
+	return err
+}
 
 func ledger(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, resource string) int64 {
 	t.Helper()
@@ -29,7 +43,7 @@ func ledger(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, resource string) int6
 }
 
 // storedBytes is what the ledger is supposed to equal: exactly what
-// 00031's backfill and internal/verify's reconciliation compute.
+// internal/verify's reconciliation computes.
 func storedBytes(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, stream string) int64 {
 	t.Helper()
 	var n int64
@@ -80,75 +94,6 @@ func TestAppendClientChargesTheAccountForTheBytesItStored(t *testing.T) {
 	if got := ledger(t, pool, u, budget.ResourceOplogHotBytes); got != want {
 		t.Fatalf("hot ledger = %d, stored = %d", got, want)
 	}
-	if got := ledger(t, pool, u, budget.ResourceOplogColdBytes); got != 0 {
-		t.Fatalf("cold ledger = %d, want 0", got)
-	}
-}
-
-// TestAppendIngestIsBudgetedToo is the reason the gate is in appendTx. Ingest
-// never passes through handleUpload: a per-upload ceiling would leave this path
-// — one hot op plus a raw body up to a megabyte — entirely unaccounted.
-func TestAppendIngestIsBudgetedToo(t *testing.T) {
-	pool := pgtest.New(t)
-	a := &Appender{Pool: pool}
-	u := insertUser(t, pool)
-
-	if _, err := a.AppendIngest(bg, u, []IngestBlob{
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"t":"txn"}`)},
-		{Stream: blob.StreamCold, Plaintext: []byte("From: bank\r\n\r\nyou spent money")},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		stream   string
-		resource string
-	}{
-		{blob.StreamHot, budget.ResourceOplogHotBytes},
-		{blob.StreamCold, budget.ResourceOplogColdBytes},
-	} {
-		want := storedBytes(t, pool, u, c.stream)
-		if want == 0 {
-			t.Fatalf("no %s bytes were stored, so this test proves nothing", c.stream)
-		}
-		if got := ledger(t, pool, u, c.resource); got != want {
-			t.Fatalf("%s ledger = %d, stored = %d", c.resource, got, want)
-		}
-	}
-}
-
-// TestAppendIngestIsRefusedAtTheCeiling: the same path, over budget. Nothing is
-// stored, the seq counter is restored, and the refusal is counted.
-func TestAppendIngestIsRefusedAtTheCeiling(t *testing.T) {
-	pool := pgtest.New(t)
-	a := &Appender{Pool: pool}
-	u := insertUser(t, pool)
-	setOplogCeiling(t, pool, 1)
-
-	_, err := a.AppendIngest(bg, u, []IngestBlob{
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"t":"txn"}`)},
-		{Stream: blob.StreamCold, Plaintext: []byte("From: bank\r\n\r\nyou spent money")},
-	})
-	if !errors.Is(err, budget.ErrRefused) {
-		t.Fatalf("append ingest over the ceiling = %v, want budget.ErrRefused", err)
-	}
-	if got := storedBytes(t, pool, u, blob.StreamCold) + storedBytes(t, pool, u, blob.StreamHot); got != 0 {
-		t.Fatalf("a refused append stored %d bytes", got)
-	}
-	// The rollback restores the counter, so the refusal costs no seq.
-	var next int64
-	if err := pool.QueryRow(bg, `SELECT next_seq FROM oplog_seq WHERE user_id = $1`, u).Scan(&next); err != nil {
-		t.Fatal(err)
-	}
-	if next != 1 {
-		t.Fatalf("next_seq = %d after a refused append, want 1", next)
-	}
-	// Cold sorts before hot, so cold is charged first and is the one refused.
-	if got := refusalCount(t, pool, u, budget.ResourceOplogColdBytes); got != 1 {
-		t.Fatalf("cold refusals = %d, want 1", got)
-	}
-	if got := ledger(t, pool, u, budget.ResourceOplogHotBytes); got != 0 {
-		t.Fatalf("hot ledger = %d after a refused append, want 0", got)
-	}
 }
 
 func TestAppendClientIsRefusedAtTheCeiling(t *testing.T) {
@@ -169,6 +114,14 @@ func TestAppendClientIsRefusedAtTheCeiling(t *testing.T) {
 	}
 	if got := refusalCount(t, pool, u, budget.ResourceOplogHotBytes); got != 1 {
 		t.Fatalf("hot refusals = %d, want 1", got)
+	}
+	// The rollback restores the counter, so the refusal costs no seq.
+	var next int64
+	if err := pool.QueryRow(bg, `SELECT next_seq FROM oplog_seq WHERE user_id = $1`, u).Scan(&next); err != nil {
+		t.Fatal(err)
+	}
+	if next != 1 {
+		t.Fatalf("next_seq = %d after a refused append, want 1", next)
 	}
 }
 
@@ -220,17 +173,14 @@ func TestConcurrentAppendsFromOneAccountSerializeWithoutDeadlock(t *testing.T) {
 	a := &Appender{Pool: pool}
 	u := insertUser(t, pool)
 
-	const n = 16
+	const n = 10 // one writer each: dev-0 … dev-9
 	var wg sync.WaitGroup
 	errs := make([]error, n)
 	for i := range n {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, errs[i] = a.AppendIngest(bg, u, []IngestBlob{
-				{Stream: blob.StreamHot, Plaintext: []byte(`{"t":"txn"}`)},
-				{Stream: blob.StreamCold, Plaintext: []byte("From: bank\r\n\r\nspent")},
-			})
+			errs[i] = appendOne(bg, t, a, u, fmt.Sprintf("dev-%d", i))
 		}()
 	}
 	wg.Wait()
@@ -239,14 +189,9 @@ func TestConcurrentAppendsFromOneAccountSerializeWithoutDeadlock(t *testing.T) {
 			t.Fatalf("concurrent append %d: %v", i, err)
 		}
 	}
-	for _, c := range []struct{ stream, resource string }{
-		{blob.StreamHot, budget.ResourceOplogHotBytes},
-		{blob.StreamCold, budget.ResourceOplogColdBytes},
-	} {
-		want := storedBytes(t, pool, u, c.stream)
-		if got := ledger(t, pool, u, c.resource); got != want {
-			t.Fatalf("%s ledger = %d, stored = %d after %d concurrent appends", c.resource, got, want, n)
-		}
+	want := storedBytes(t, pool, u, blob.StreamHot)
+	if got := ledger(t, pool, u, budget.ResourceOplogHotBytes); got != want || want != n*1024 {
+		t.Fatalf("ledger = %d, stored = %d after %d concurrent appends, want %d", got, want, n, n*1024)
 	}
 }
 
@@ -274,18 +219,14 @@ func TestOneAccountsHeldUsageRowDoesNotBlockAnother(t *testing.T) {
 	// A different account is untouched by that lock.
 	freeCtx, cancel := context.WithTimeout(bg, 15*time.Second)
 	defer cancel()
-	if _, err := a.AppendIngest(freeCtx, other, []IngestBlob{
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"t":"txn"}`)},
-	}); err != nil {
+	if err := appendOne(freeCtx, t, a, other, "dev-a"); err != nil {
 		t.Fatalf("an append for a different account was blocked: %v", err)
 	}
 
 	// The same account waits, which is what proves the lock is real.
 	sameCtx, cancelSame := context.WithTimeout(bg, 2*time.Second)
 	defer cancelSame()
-	_, err = a.AppendIngest(sameCtx, busy, []IngestBlob{
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"t":"txn"}`)},
-	})
+	err = appendOne(sameCtx, t, a, busy, "dev-a")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("an append for the account whose usage row is held = %v, want it to block until the deadline", err)
 	}

@@ -77,7 +77,7 @@ import (
 const (
 	dictConformancePath = "../../../conformance/dict/matching.json"
 	// The same switch internal/tmpl's dialect fixture uses.
-	writeFixturesEnv = "LEDGER_WRITE_CONFORMANCE"
+	writeFixturesEnv = "HASALA_WRITE_CONFORMANCE"
 )
 
 type dictFixture struct {
@@ -332,8 +332,12 @@ func sqlMatches(t *testing.T, pool *pgxpool.Pool, match, pattern, subject string
 	return got
 }
 
+// TestMain shares one throwaway Postgres across the package: the SQL matcher
+// probe needs a database (internal/pgtest).
+func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
+
 // TestWriteDictConformanceFixtures regenerates the fixture under
-// LEDGER_WRITE_CONFORMANCE=1 and otherwise asserts the committed bytes still
+// HASALA_WRITE_CONFORMANCE=1 and otherwise asserts the committed bytes still
 // describe this build.
 func TestWriteDictConformanceFixtures(t *testing.T) {
 	pool := pgtest.New(t)

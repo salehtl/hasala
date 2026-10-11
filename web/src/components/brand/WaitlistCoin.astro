@@ -1,0 +1,39 @@
+---
+/**
+ * The waitlist state indicator from "Waitlist · States": the coin waits
+ * halfway in the slot, lifts on focus, bounces off the rim on an error and
+ * drops in on success (the check and the gold lip appear). The form sets
+ * data-state on .waitlist; the CSS moves the parts.
+ */
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<svg class="wl-coin" width="250" height="193" viewBox="204 220 616 476" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id={`${id}-g`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"></stop><stop offset="1" stop-color="#EBB04A"></stop></linearGradient>
+    <clipPath id={`${id}-c`}><rect x="0" y="0" width="1024" height="632"></rect></clipPath>
+  </defs>
+  <rect class="wl-plate" x="212" y="576" width="600" height="112" rx="56" fill="#FFFFFF" fill-opacity="0.16"></rect>
+  <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"></rect>
+  <rect class="wl-lip" x="300" y="606" width="424" height="12" rx="6" fill="#F9DC94"></rect>
+  <rect x="268" y="648" width="488" height="10" rx="5" fill="#FFFFFF" opacity="0.22"></rect>
+  <ellipse class="wl-shadow" cx="512" cy="598" rx="150" ry="14" fill="#0B1A4A"></ellipse>
+  <g clip-path={`url(#${id}-c)`}>
+    <g class="wl-coin-body">
+      <circle cx="512" cy="538.2" r="184" fill="#C98A1E"></circle>
+      <circle cx="512" cy="519.8" r="184" fill={`url(#${id}-g)`}></circle>
+      <circle cx="512" cy="519.8" r="139.8" fill="none" stroke="#C98A1E" stroke-opacity="0.5" stroke-width="10.1"></circle>
+      <line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"></line>
+      <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"></line>
+    </g>
+  </g>
+  <path class="wl-whoosh" d="M420 520c-6-40 4-80 30-112M370 540c-12-56 2-112 40-156" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="12" stroke-linecap="round"></path>
+  <g class="wl-check">
+    <circle cx="512" cy="430" r="96" fill="#FFFFFF"></circle>
+    <path d="M466 432l32 32 64-66" fill="none" stroke="#176442" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="M350 400l-30-24M674 400l30-24M512 300v-34" fill="none" stroke="#F9DC94" stroke-width="14" stroke-linecap="round"></path>
+  </g>
+</svg>

@@ -580,7 +580,7 @@ func buildSyntheticFixture(t *testing.T, g syntheticGroup) ([]byte, templateFixt
 	}
 	f := templateFixture{
 		Note: "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with " +
-			"LEDGER_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures " +
+			"HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures " +
 			"(no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE " +
 			"of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL " +
 			"Go executor output: if a case's name says one thing and Go does another, the fixture records what " +
@@ -622,7 +622,7 @@ func buildSyntheticFixture(t *testing.T, g syntheticGroup) ([]byte, templateFixt
 // TestWriteSyntheticTemplateFixtures regenerates the synthetic half. It needs
 // no corpus, so any checkout can reproduce it:
 //
-//	LEDGER_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures -v
+//	HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures -v
 func TestWriteSyntheticTemplateFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("%s is unset; fixtures are committed and regenerated deliberately", writeFixturesEnv)

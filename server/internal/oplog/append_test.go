@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/salehtl/hasala/server/internal/blob"
+	"github.com/salehtl/hasala/server/internal/blob/blobtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -26,16 +27,18 @@ var bg = context.Background()
 // appendRaw is appendRows with no chain check. The tests in THIS file are about
 // seq allocation — gap-freeness, the counter lock, rollback — and they build
 // their own chains by hand, so they drive the allocation path directly. Every
-// production append goes through AppendClient or AppendIngest (chain.go), which
-// is why there is no exported equivalent.
+// production append goes through AppendClient (chain.go), which is why there
+// is no exported equivalent.
 func (a *Appender) appendRaw(ctx context.Context, rows []Row) ([]int64, error) {
 	return a.appendRows(ctx, rows, nil)
 }
 
-// insertUser mirrors what auth.UpsertUser (Task 6) is required to do: the user
-// row and its oplog_seq row are created inside ONE transaction, so the seq row
-// always exists before the first append and appendTx's ON CONFLICT path is dead
-// code rather than a live concurrency hazard.
+// insertUser mirrors account creation: the user row and its oplog_seq row are
+// created inside ONE transaction, so the seq row always exists before the first
+// append and appendTx's ON CONFLICT path is dead code rather than a live
+// concurrency hazard. The account's device writers are enrolled with it
+// (testWriters), because op_log_writer_fk refuses a row for a writer the
+// roster does not hold.
 func insertUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	tx, err := pool.Begin(bg)
@@ -70,6 +73,10 @@ func insertUserWithoutSeqRow(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
+// testWriters is every writer id the tests in this package append under.
+var testWriters = []string{"dev-a", "dev-b", "dev-z", "dev-0", "dev-1", "dev-2", "dev-3", "dev-4",
+	"dev-5", "dev-6", "dev-7", "dev-8", "dev-9"}
+
 func insertUserRow(t *testing.T, tx pgx.Tx) uuid.UUID {
 	t.Helper()
 	sub := make([]byte, 32)
@@ -78,20 +85,30 @@ func insertUserRow(t *testing.T, tx pgx.Tx) uuid.UUID {
 	}
 	var id uuid.UUID
 	if err := tx.QueryRow(bg,
-		`INSERT INTO users (idp, idp_sub_hash) VALUES ('apple', $1) RETURNING id`,
+		`INSERT INTO users (idp, idp_sub_hash) VALUES ('passkey', $1) RETURNING id`,
 		sub).Scan(&id); err != nil {
 		t.Fatal(err)
+	}
+	for _, w := range testWriters {
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(bg, `INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
+			VALUES ($1, $2, 'device', $3, now())`, id, w, key); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return id
 }
 
-// sealRow builds one real, bucket-padded blob at the given position and the
-// op_log row that carries it. It returns the row's blob hash so a caller can
-// chain the next one.
+// sealRow builds one real sealed frame v3 at the given position (blobtest's
+// reference sealer) and the op_log row that carries it. It returns the row's
+// blob hash so a caller can chain the next one.
 func sealRow(u uuid.UUID, writerID, stream string, counter int64, prev [32]byte) (Row, [32]byte, error) {
 	env := blob.Envelope{UserID: u, Stream: stream, WriterID: writerID, WriterCounter: counter}
 	body := fmt.Sprintf(`{"writer":%q,"stream":%q,"counter":%d}`, writerID, stream, counter)
-	s, err := blob.PlaintextSealer{}.Seal(env, []byte(body))
+	s, err := blobtest.Seal3(env, 1, blobtest.TestEpochKey, prev, []byte(body))
 	if err != nil {
 		return Row{}, [32]byte{}, err
 	}
@@ -101,7 +118,7 @@ func sealRow(u uuid.UUID, writerID, stream string, counter int64, prev [32]byte)
 		Stream:        stream,
 		WriterID:      writerID,
 		WriterCounter: counter,
-		TypeFlag:      TypeFlagIngest,
+		TypeFlag:      TypeFlagEdit,
 		Blob:          s.Bytes,
 		SizeBucket:    s.SizeBucket,
 		BlobHash:      h[:],
@@ -250,9 +267,9 @@ func TestConcurrentAppendsAreGapFreeAndCommitOrderMatchesSeqOrder(t *testing.T) 
 
 func TestConcurrentMultiRowAppendsAllocateContiguousBlocks(t *testing.T) {
 	// A single append must get a CONTIGUOUS block even while other appends for
-	// the same user are in flight — otherwise one message's hot and cold rows
-	// could be split by another writer's rows, and the block-allocation return
-	// value would be a lie.
+	// the same user are in flight — otherwise one upload batch could be split
+	// by another writer's rows, and the block-allocation return value would be
+	// a lie (spec 01 §7.1: a batch occupies consecutive seqs).
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
@@ -467,39 +484,21 @@ func TestAFailedBatchAppendsNothingAndBurnsNoSeq(t *testing.T) {
 	}
 }
 
-func TestOneCallMaySpanStreamsAndCountersAreIndependent(t *testing.T) {
-	// The ingest writer appends one hot and one cold row per message. Each
-	// stream is its own chain (Decision 13), so both rows carry counter 1 and
-	// the unique index must tolerate that because it includes the stream.
+func TestOneCallMaySpanWritersAndCountersAreIndependent(t *testing.T) {
+	// Each writer is its own chain, so both rows carry counter 1 and the
+	// unique index must tolerate that because it includes the writer.
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	hot, _ := mustSeal(t, u, "ingest", blob.StreamHot, 1, blob.ZeroHash)
-	cold, _ := mustSeal(t, u, "ingest", blob.StreamCold, 1, blob.ZeroHash)
-	seqs, err := a.appendRaw(bg, []Row{hot, cold})
+	first, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
+	second, _ := mustSeal(t, u, "dev-b", blob.StreamHot, 1, blob.ZeroHash)
+	seqs, err := a.appendRaw(bg, []Row{first, second})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(seqs, []int64{1, 2}) {
 		t.Fatalf("got %v, want [1 2]", seqs)
-	}
-
-	var streams []string
-	rows, err := pool.Query(bg, `SELECT stream FROM op_log WHERE user_id=$1 ORDER BY seq`, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			t.Fatal(err)
-		}
-		streams = append(streams, s)
-	}
-	if !reflect.DeepEqual(streams, []string{blob.StreamHot, blob.StreamCold}) {
-		t.Fatalf("streams = %v", streams)
 	}
 }
 
@@ -680,7 +679,7 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 	before := time.Now().Add(-time.Second)
-	in, _ := mustSeal(t, u, "ingest", blob.StreamCold, 1, blob.ZeroHash)
+	in, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
 	if _, err := a.appendRaw(bg, []Row{in}); err != nil {
 		t.Fatal(err)
 	}
@@ -694,8 +693,8 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Seq != 1 || out.Stream != blob.StreamCold || out.WriterID != "ingest" ||
-		out.WriterCounter != 1 || out.TypeFlag != TypeFlagIngest || out.SizeBucket != in.SizeBucket {
+	if out.Seq != 1 || out.Stream != blob.StreamHot || out.WriterID != "dev-a" ||
+		out.WriterCounter != 1 || out.TypeFlag != TypeFlagEdit || out.SizeBucket != in.SizeBucket {
 		t.Fatalf("row round-tripped wrong: %+v", out)
 	}
 	if out.CreatedAt.Before(before) || out.CreatedAt.After(time.Now().Add(time.Minute)) {
@@ -703,13 +702,13 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	}
 	// The bytes must still open at the position the row records — that is what
 	// makes the AAD binding meaningful once the row has been through Postgres.
-	plain, err := blob.PlaintextSealer{}.Open(blob.Envelope{
+	plain, err := blobtest.Open3(blob.Envelope{
 		UserID: out.UserID, Stream: out.Stream, WriterID: out.WriterID, WriterCounter: out.WriterCounter,
-	}, blob.Sealed{Bytes: out.Blob, SizeBucket: out.SizeBucket})
+	}, blobtest.TestEpochKey, [32]byte(out.PrevHash), out.Blob)
 	if err != nil {
 		t.Fatalf("stored blob does not open: %v", err)
 	}
-	if string(plain) != `{"writer":"ingest","stream":"cold","counter":1}` {
+	if string(plain) != `{"writer":"dev-a","stream":"hot","counter":1}` {
 		t.Fatalf("plaintext = %s", plain)
 	}
 }
@@ -761,7 +760,7 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 		bucket               int
 	}
 	valid := func() row {
-		return row{seq: 2, stream: blob.StreamHot, writer: "dev-b", flag: TypeFlagIngest,
+		return row{seq: 2, stream: blob.StreamHot, writer: "dev-b", flag: TypeFlagEdit,
 			counter: 1, blb: base.Blob, bhash: base.BlobHash, phash: base.PrevHash, bucket: base.SizeBucket}
 	}
 	exec := func(r row) error {
@@ -776,10 +775,8 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 		constraint string
 	}{
 		{"duplicate seq", func(r *row) { r.seq = 1 }, "op_log_pkey"},
-		{"unknown stream", func(r *row) { r.stream = "warm" }, "op_log_stream_check"},
-		{"unknown type flag", func(r *row) { r.flag = "ingested" }, "op_log_type_flag_check"},
-		{"duplicate (writer, stream, counter)", func(r *row) { r.writer = "dev-a" },
-			"op_log_user_id_writer_id_stream_writer_counter_key"},
+		{"unknown stream", func(r *row) { r.stream = "warm" }, "op_log_aad_matches_position"},
+		{"unknown type flag", func(r *row) { r.flag = "ingest" }, "op_log_type_flag_is_edit"},
 		{"blob shorter than its bucket", func(r *row) { r.blb = r.blb[:len(r.blb)-1] },
 			"op_log_blob_fills_bucket"},
 		{"size_bucket disagrees with the blob", func(r *row) { r.bucket = 4 << 10 },
@@ -814,14 +811,29 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 	if err := exec(valid()); err != nil {
 		t.Fatalf("the baseline row must be accepted: %v", err)
 	}
-	// Same counter on the OTHER stream is legal: chains are per (writer, stream).
-	cold, _ := mustSeal(t, u, "dev-a", blob.StreamCold, 1, blob.ZeroHash)
+	// The same position again is refused by the position key.
 	r := valid()
-	r.seq, r.stream, r.writer = 3, blob.StreamCold, "dev-a"
-	r.blb, r.bhash, r.phash, r.bucket = cold.Blob, cold.BlobHash, cold.PrevHash, cold.SizeBucket
-	if err := exec(r); err != nil {
-		t.Fatalf("the cold chain must be able to reuse counter 1: %v", err)
+	r.seq = 3
+	if _, name := pgErrConstraint(exec(r)); name != "op_log_position_uniq" {
+		t.Fatalf("a second row at (dev-b, hot, 1) was not refused by op_log_position_uniq")
 	}
+	// A correctly sealed row for a writer the roster does not hold.
+	stray, _ := mustSeal(t, u, "dev-y", blob.StreamHot, 1, blob.ZeroHash)
+	r = valid()
+	r.seq, r.writer = 3, "dev-y"
+	r.blb, r.bhash, r.phash, r.bucket = stray.Blob, stray.BlobHash, stray.PrevHash, stray.SizeBucket
+	if _, name := pgErrConstraint(exec(r)); name != "op_log_writer_fk" {
+		t.Fatalf("a row for an unenrolled writer was not refused by op_log_writer_fk")
+	}
+
+}
+
+func pgErrConstraint(err error) (string, string) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code, pgErr.ConstraintName
+	}
+	return "", ""
 }
 
 func TestAnAbandonedTransactionReturnsItsSeqs(t *testing.T) {
@@ -888,7 +900,7 @@ func TestAppendPinsReadCommittedRegardlessOfTheDatabaseDefault(t *testing.T) {
 	// concurrent appends fail en masse — an availability failure that depends on
 	// configuration nothing in this repo controls. appendRows must pin its own
 	// isolation level rather than inherit one.
-	pool := pgtest.New(t)
+	pool, owner := pgtest.NewWithOwner(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
@@ -896,7 +908,8 @@ func TestAppendPinsReadCommittedRegardlessOfTheDatabaseDefault(t *testing.T) {
 	if err := pool.QueryRow(bg, `SELECT current_database()`).Scan(&dbName); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(bg,
+	// The database's owner sets its defaults; the runtime role cannot.
+	if _, err := owner.Exec(bg,
 		`ALTER DATABASE `+dbName+` SET default_transaction_isolation = 'repeatable read'`); err != nil {
 		t.Fatal(err)
 	}

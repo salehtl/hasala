@@ -1,0 +1,319 @@
+---
+/**
+ * hasala.app/freeze: "Freeze your account?" (Paper page 14, "Web ·
+ * hasala.app/freeze"; copy from the Hasala design archive, private). The new-sign-in and
+ * recovery-used alert emails link here as https://hasala.app/freeze#<token>:
+ * 43 base64url characters in the fragment, which no request carries, so the
+ * token never reaches a server log.
+ *
+ * The page asks for nothing. The button POSTs {token} as a CORS-free simple
+ * request (no-cors, text/plain, no referrer). The answer is
+ * opaque, and the server answers 204 whether or not the token was valid, so
+ * the page never claims more than "if this link was valid". Link scanners
+ * only GET the page and never press the button.
+ */
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import FreezeDone from '../components/FreezeDone.astro';
+import { API_BASE } from '../lib/env';
+---
+
+<Base
+  title="Freeze your account"
+  description="If a sign-in or recovery in our email wasn't you, freeze your Hasala account. Everyone is signed out until you confirm it's you."
+  path="/freeze"
+  noindex
+  nav="minimal"
+  footer={false}
+  referrer="no-referrer"
+  class="freeze-page"
+>
+  <section class="freeze" data-freeze data-api={API_BASE} aria-labelledby="freeze-title">
+    <div class="freeze__confirm" data-freeze-confirm>
+      <span class="lockdisc" aria-hidden="true"><Icon name="lock-big" size={52} stroke={1.7} /></span>
+      <div class="freeze__head">
+        <h1 id="freeze-title" class="freeze__title">Freeze your account?</h1>
+        <p class="freeze__lead">
+          Everyone will be signed out. No one can use your account with a password, reset the password or use the recovery phrase until you confirm it’s you with
+          a passkey, or with your password on one of your iPhones.
+        </p>
+      </div>
+
+      <div class="effects">
+        <div class="effects__cols">
+          <div class="effects__col">
+            <h2 class="effects__title effects__title--stops">Stops on every device</h2>
+            <ul role="list">
+              <li>Every signed-in session</li>
+              <li>Password sign-in, resets and recovery</li>
+              <li>Passkey, password, email and device changes</li>
+            </ul>
+          </div>
+          <div class="effects__col">
+            <h2 class="effects__title effects__title--keeps">Leaves alone</h2>
+            <ul role="list">
+              <li>Your budget, still sealed</li>
+              <li>Your data. Nothing is deleted</li>
+              <li>Your passkeys and your iPhones</li>
+            </ul>
+          </div>
+        </div>
+        <p class="effects__foot">To unfreeze, open Hasala and confirm it’s you with a passkey, or with your password on one of your iPhones.</p>
+      </div>
+
+      <div class="freeze__actions">
+        <button class="btn btn--danger" type="button" data-freeze-button hidden>
+          <span class="spinner" aria-hidden="true" hidden></span>
+          <span data-label>Freeze my account</span>
+        </button>
+        <a class="btn btn--glass" href="/">It was me, don’t freeze</a>
+      </div>
+      <p class="freeze__status" role="status" aria-live="polite"></p>
+      <noscript>
+        <p class="freeze__status freeze__status--error">
+          This page needs JavaScript to read the freeze link from our email. Turn it on and open the link again.
+        </p>
+      </noscript>
+
+      <p class="freeze__safety">
+        <Icon name="shield" size={18} stroke={1.8} />
+        This page never asks for a password, a code or your 12 words. If one does, close it.
+      </p>
+    </div>
+
+    <div class="freeze__done" data-freeze-done hidden>
+      <FreezeDone />
+    </div>
+  </section>
+</Base>
+
+<script>
+  // The freeze request (Hasala design archive, private), with this page's
+  // status line and done state.
+  // onPage: it runs again whenever the router brings this page back (Back).
+  import { onPage } from '../scripts/page';
+
+  onPage((signal) => {
+    const root = document.querySelector<HTMLElement>('[data-freeze]');
+    if (!root) return;
+    const button = root.querySelector<HTMLButtonElement>('[data-freeze-button]')!;
+    const status = root.querySelector<HTMLElement>('.freeze__status')!;
+    const label = button.querySelector<HTMLElement>('[data-label]')!;
+    const spinner = button.querySelector<HTMLElement>('.spinner')!;
+    const say = (text: string) => {
+      status.dataset.tone = 'error';
+      status.textContent = text;
+    };
+
+    const token = location.hash.slice(1);
+    // The token leaves the address bar and the history entry (the router's
+    // state stays, so Back and Forward still work).
+    history.replaceState(history.state, '', '/freeze');
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+      say('This link is missing its freeze code. Open the link from our email again, on any device.');
+      return;
+    }
+    button.hidden = false;
+    button.addEventListener(
+      'click',
+      async () => {
+        button.disabled = true;
+        button.style.width = `${button.offsetWidth}px`;
+        spinner.hidden = false;
+        label.textContent = 'Freezing…';
+        status.textContent = '';
+        try {
+          await fetch(`${root.dataset.api}/v1/account/freeze`, {
+            method: 'POST',
+            mode: 'no-cors',
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+            cache: 'no-store',
+            headers: { 'content-type': 'text/plain;charset=UTF-8' },
+            body: JSON.stringify({ token }),
+          });
+          // The same text whatever the server decided (it answers 204 either way).
+          root.querySelector<HTMLElement>('[data-freeze-confirm]')!.hidden = true;
+          const done = root.querySelector<HTMLElement>('[data-freeze-done]')!;
+          done.hidden = false;
+          done.querySelector<HTMLElement>('[data-frozen-title]')?.focus();
+        } catch {
+          button.disabled = false;
+          button.style.width = '';
+          spinner.hidden = true;
+          label.textContent = 'Freeze my account';
+          say('We couldn’t reach Hasala. Check your connection and try again.');
+        }
+      },
+      { signal },
+    );
+  });
+</script>
+
+<style>
+  :global(.freeze-page) {
+    background: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%);
+  }
+  .freeze {
+    padding: 104px var(--gutter) 64px;
+  }
+  .freeze__confirm {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 720px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .freeze__confirm[hidden] {
+    display: none;
+  }
+  .lockdisc {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: linear-gradient(in oklab 160deg, var(--hue-rose-start), var(--hue-rose-end));
+    box-shadow: #fff 0 0 0 8px, rgb(94 31 40 / 14%) 0 18px 40px;
+    color: var(--hue-rose-ink);
+  }
+  .freeze__head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 28px 0 32px;
+  }
+  .freeze__title {
+    font-size: clamp(38px, 28.71px + 2.381vw, 60px);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: calc(1em + 4px);
+  }
+  .freeze__lead {
+    max-width: 600px;
+    color: var(--neutral-700);
+    font-size: clamp(17px, 16.26px + 0.19vw, 19px);
+    line-height: 1.55;
+  }
+  .effects {
+    width: 100%;
+    border-radius: 24px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 10px 30px;
+    text-align: left;
+  }
+  .effects__cols {
+    display: flex;
+    flex-direction: column;
+  }
+  .effects__col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 22px 24px;
+  }
+  .effects__col + .effects__col {
+    border-top: 1px solid var(--border-subtle);
+  }
+  .effects__col ul {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .effects__title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 18px;
+    text-transform: uppercase;
+  }
+  .effects__title--stops {
+    color: var(--error);
+  }
+  .effects__title--keeps {
+    color: var(--success);
+  }
+  .effects__foot {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .freeze__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    padding-top: 32px;
+  }
+  .freeze__actions .btn {
+    width: 100%;
+  }
+  .freeze__actions .btn[hidden] {
+    display: none;
+  }
+  .freeze__status {
+    padding-top: 16px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .freeze__status:empty {
+    display: none;
+  }
+  .freeze__status[data-tone='error'],
+  .freeze__status--error {
+    color: var(--error);
+  }
+  .freeze__safety {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding-top: 28px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+    text-align: left;
+  }
+  .freeze__safety :global(.icon) {
+    flex: none;
+    color: var(--neutral-600);
+  }
+  @media (min-width: 768px) {
+    .freeze {
+      padding-top: 156px;
+    }
+    .effects__cols {
+      flex-direction: row;
+    }
+    .effects__col {
+      flex: 1;
+      padding: 24px 28px;
+    }
+    .effects__col + .effects__col {
+      border-top: 0;
+      border-left: 1px solid var(--border-subtle);
+    }
+    .effects__foot {
+      padding: 16px 28px;
+    }
+    .freeze__actions {
+      flex-direction: row;
+      justify-content: center;
+      width: auto;
+    }
+    .freeze__actions .btn {
+      width: auto;
+    }
+    .freeze__safety {
+      align-items: center;
+      font-size: 15px;
+    }
+  }
+</style>

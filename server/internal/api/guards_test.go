@@ -56,7 +56,7 @@ func TestASuspendedAccountIsRefusedOnEveryWriteMethod(t *testing.T) {
 		{http.MethodPost, "/api/v1/sync", UploadRequest{WriterID: "w1", Stream: "hot"}},
 		{http.MethodPost, "/api/v1/writers/challenge", nil},
 		{http.MethodPut, "/api/v1/keys", map[string]any{}},
-		{http.MethodDelete, "/api/v1/push/subscriptions", nil},
+		{http.MethodDelete, "/api/v1/keys/wraps", map[string]any{}},
 	} {
 		w := h.req(tc.method, tc.path, tok, tc.body)
 		if w.Code != http.StatusForbidden {
@@ -76,14 +76,13 @@ func TestASuspendedAccountCanStillRead(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("suspended-reads")
 	tok := h.session(u)
-	h.seedIngest(u, 2)
+	h.seed(u, 2)
 	h.suspend(u)
 
 	for _, p := range []string{
 		"/api/v1/sync?stream=hot",
 		"/api/v1/sync/hashes?stream=hot",
 		"/api/v1/writers",
-		"/api/v1/push/subscriptions",
 	} {
 		if w := h.req(http.MethodGet, p, tok, nil); w.Code != http.StatusOK {
 			t.Errorf("GET %s while suspended: %d, want 200 (body %s)", p, w.Code, w.Body)
@@ -97,28 +96,28 @@ func TestASuspendedAccountCanStillRead(t *testing.T) {
 	}
 }
 
-// Sign-in is the one write outside requireSession and it stays open: read-only
+// Sign-in is a write outside requireSession and it stays open: read-only
 // devices are the whole point of allowing pull, and a device needs a session to
 // do it.
 func TestASuspendedAccountCanStillSignIn(t *testing.T) {
-	h := newHarness(t)
-	// The fake verifier derives the subject from the token, so this is the same
-	// account signing in again rather than a new one (which would need an invite).
-	u := h.user("sub-suspended-signin")
+	h := newHarness(t).passkeys()
+	a, registered := h.register(h.invite(""))
+	u := uuid.MustParse(registered.UserID)
 	h.suspend(u)
 
-	w := h.req(http.MethodPost, "/api/v1/auth/exchange", "", ExchangeRequest{
-		IdP: "apple", IDToken: "suspended-signin",
+	id, opts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
+	w := h.req(http.MethodPost, "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
+		CeremonyID: id, Credential: a.Assert(t, opts, 5),
 	})
 	if w.Code != http.StatusOK {
-		t.Fatalf("exchange for a suspended account: %d %s", w.Code, w.Body)
+		t.Fatalf("passkey login for a suspended account: %d %s", w.Code, w.Body)
 	}
-	res := decodeJSON[ExchangeResponse](t, w)
+	res := decodeJSON[SessionResponse](t, w)
 	if res.SessionToken == "" {
-		t.Fatal("exchange returned no session token")
+		t.Fatal("login returned no session token")
 	}
 	if res.UserID != u.String() {
-		t.Fatalf("exchange resolved %s, want %s", res.UserID, u)
+		t.Fatalf("login resolved %s, want %s", res.UserID, u)
 	}
 	// The session it just issued reads, and does not write.
 	if w := h.req(http.MethodGet, "/api/v1/writers", res.SessionToken, nil); w.Code != http.StatusOK {
@@ -127,6 +126,17 @@ func TestASuspendedAccountCanStillSignIn(t *testing.T) {
 	if w := h.req(http.MethodPost, "/api/v1/writers/challenge", res.SessionToken, nil); w.Code != http.StatusForbidden {
 		t.Fatalf("the new session could write: %d %s", w.Code, w.Body)
 	}
+}
+
+// Signing out is allowed while suspended (spec 02 §9.3): an operator's pause
+// must never be what keeps a session alive on a lost phone.
+func TestASuspendedAccountCanStillSignOut(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("suspended-signout")
+	tok := h.session(u)
+	h.suspend(u)
+	wantStatus(t, h.req(http.MethodPost, "/api/v1/auth/logout", tok, nil), http.StatusNoContent)
+	wantStatus(t, h.req(http.MethodGet, "/api/v1/writers", tok, nil), http.StatusUnauthorized)
 }
 
 // Resuming restores write access. Without this the lever is a one-way door and
@@ -182,7 +192,7 @@ func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
 
 	u := h.user("headroom")
 	tok := h.session(u)
-	h.seedIngest(u, 1)
+	h.seed(u, 1)
 
 	// Above the floor: everything passes.
 	if w := h.req(http.MethodPost, "/api/v1/writers/challenge", tok, nil); w.Code != http.StatusOK {
@@ -198,12 +208,12 @@ func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/v1/sync", tok, UploadRequest{WriterID: "w1", Stream: "hot"}},
 		{http.MethodPost, "/api/v1/writers/challenge", tok, nil},
-		{http.MethodDelete, "/api/v1/push/subscriptions", tok, nil},
-		// UNAUTHENTICATED, and the case that matters most: signing in writes a
-		// session row, so it is a durable write and it stops with the others.
-		// headroom's package doc states this outright so it is never filed as a
-		// bug.
-		{http.MethodPost, "/api/v1/auth/exchange", "", ExchangeRequest{IdP: "apple", IDToken: "t"}},
+		// UNAUTHENTICATED, and the case that matters most: the gate wraps the
+		// whole mux, so a write is refused before a session is even looked
+		// at. (Signing in writes a session row and stops with the others;
+		// headroom's package doc states this outright so it is never filed as
+		// a bug.)
+		{http.MethodPost, "/api/v1/auth/logout", "", nil},
 	} {
 		w := h.req(tc.method, tc.path, tc.token, tc.body)
 		if w.Code != http.StatusServiceUnavailable {
@@ -305,7 +315,7 @@ func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
 	// blob of zeroes would be charged as the few dozen bytes it stores rather
 	// than the size it was written as — which is correct (the budget counts
 	// DURABLE bytes) and would make this test measure nothing.
-	big, _ := sealUpload(t, u2, "w-large", "hot", 1, [32]byte{}, string(randomBody(t, budget+1<<10)))
+	big, _ := sealUpload(t, u2, "w-large", 1, [32]byte{}, string(randomBody(t, budget+1<<10)))
 	w := h2.req(http.MethodPost, "/api/v1/sync", tok2, UploadRequest{
 		WriterID: "w-large", Stream: "hot", Blobs: []UploadBlob{big},
 	})
@@ -395,7 +405,7 @@ func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
 	}
 
 	// A real upload big enough to need most of the budget still lands.
-	big, _ := sealUpload(t, u, "w-garbage", "hot", 1, [32]byte{}, string(randomBody(t, 32<<10)))
+	big, _ := sealUpload(t, u, "w-garbage", 1, [32]byte{}, string(randomBody(t, 32<<10)))
 	if w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
 		WriterID: "w-garbage", Stream: "hot", Blobs: []UploadBlob{big},
 	}); w.Code != http.StatusOK {

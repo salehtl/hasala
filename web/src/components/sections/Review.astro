@@ -1,0 +1,829 @@
+---
+import Icon from '../Icon.astro';
+
+const CARDS = [
+  {
+    initial: 'L',
+    merchant: 'Lulu Hypermarket',
+    raw: 'LULU HYPERMARKET DXB MARINA',
+    amount: '214.30',
+    meta: 'Spent · Fri 9 Oct, 18:42 · DIB card ···8891',
+    guess: 'Groceries',
+    icon: 'basket24' as const,
+    to: 'need',
+    isNew: true,
+  },
+  {
+    initial: 'T',
+    merchant: 'Talabat',
+    raw: 'TALABAT DXB',
+    amount: '64.50',
+    meta: 'Spent · Fri 9 Oct, 21:05 · ENBD card ···4421',
+    guess: 'Dining',
+    icon: 'fork' as const,
+    to: 'want',
+    isNew: false,
+  },
+  {
+    initial: 'E',
+    merchant: 'Emirates NBD Savings',
+    raw: 'TRANSFER TO A/C ···2210',
+    amount: '1,500.00',
+    meta: 'Moved · Sat 10 Oct, 09:12 · ENBD ···2210',
+    guess: 'Emergency fund',
+    icon: 'home' as const,
+    to: 'save',
+    isNew: false,
+  },
+  {
+    initial: 'C',
+    merchant: 'Careem',
+    raw: 'CAREEM RIDE DUBAI',
+    amount: '38.00',
+    meta: 'Spent · Sat 10 Oct, 23:40 · DIB card ···8891',
+    guess: 'Transport',
+    icon: 'arrow-right' as const,
+    to: 'need',
+    isNew: true,
+  },
+];
+---
+
+<section class="review" aria-labelledby="review-title">
+  <div class="container review__inner">
+    <div class="review__stage" data-review data-reveal>
+      <div class="review__phone">
+        <div class="review__screen">
+          <div class="review__status" aria-hidden="true">
+            <span class="review__time">9:41</span>
+            <span class="review__island"></span>
+            <svg width="78" height="13" viewBox="0 0 78 13" class="review__sysicons"
+              ><path
+                fill="currentColor"
+                d="M2 8h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Zm5-2h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm5-3h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm5-2h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1Z"
+              ></path><path
+                fill="currentColor"
+                d="M33 3.3c2.4 0 4.6.9 6.3 2.4l1.3-1.3a10.7 10.7 0 0 0-15.2 0l1.3 1.3A9 9 0 0 1 33 3.3Zm0 3.8c1.3 0 2.5.5 3.4 1.3l1.3-1.3a6.7 6.7 0 0 0-9.4 0l1.3 1.3c.9-.8 2.1-1.3 3.4-1.3Zm0 3.7 2-2a2.9 2.9 0 0 0-4 0l2 2Z"
+              ></path><rect x="49.5" y="1.5" width="24" height="11" rx="3.5" fill="none" stroke="currentColor" opacity="0.35"></rect><rect
+                x="51.5"
+                y="3.5"
+                width="20"
+                height="7"
+                rx="2"
+                fill="currentColor"></rect><path d="M75.5 5.5v3.5a1.9 1.9 0 0 0 0-3.5Z" fill="currentColor" opacity="0.4"></path></svg
+            >
+          </div>
+          <div class="review__bar" aria-hidden="true">
+            <span class="glass-btn"><Icon name="close" size={22} stroke={2.3} /></span>
+            <span class="review__heading"><b>Review</b><span><span data-review-count>2</span> of 6</span></span>
+            <span class="glass-btn"
+              ><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.9" fill="currentColor"></circle><circle
+                  cx="12"
+                  cy="12"
+                  r="1.9"
+                  fill="currentColor"></circle><circle cx="18.5" cy="12" r="1.9" fill="currentColor"></circle></svg
+              ></span
+            >
+          </div>
+          <div class="review__progress" aria-hidden="true"><span data-review-progress></span></div>
+
+          <div class="deck" role="group" aria-roledescription="demo" aria-label="Example: sorting new transactions by swiping">
+            <span class="deck__ghost" aria-hidden="true"></span>
+            {
+              CARDS.map((c, i) => (
+                <article class="rcard" data-card={i} data-to={c.to} aria-hidden={i === 0 ? undefined : 'true'}>
+                  <span class="rcard__tint rcard__tint--need" />
+                  <span class="rcard__tint rcard__tint--want" />
+                  <span class="rcard__tint rcard__tint--save" />
+                  <span class="rcard__tint rcard__tint--transfer" />
+                  <div class="rcard__body">
+                    <div class="rcard__top">
+                      <span class="rcard__avatar">{c.initial}</span>
+                      {c.isNew && (
+                        <span class="rcard__new">
+                          <span class="dot" />
+                          New merchant
+                        </span>
+                      )}
+                    </div>
+                    <h3 class="rcard__merchant">{c.merchant}</h3>
+                    <span class="rcard__raw">{c.raw}</span>
+                    <p class="rcard__amount">
+                      <span class="rcard__unit">AED</span>
+                      <span class="figure">{c.amount}</span>
+                    </p>
+                    <p class="rcard__meta">{c.meta}</p>
+                  </div>
+                  <div class="rcard__guess">
+                    <span class="disc disc--sand disc--32">
+                      <Icon name={c.icon} size={16} stroke={2} />
+                    </span>
+                    <span class="rcard__guess-text">Looks like {c.guess}</span>
+                    <span class="rcard__use">Use</span>
+                  </div>
+                </article>
+              ))
+            }
+          </div>
+
+          <button class="rpill rpill--want" type="button" data-sort="want" aria-label="Sort as Want">
+            <Icon name="arrow-left" size={18} stroke={2.2} /><span class="rpill__swatch"></span>Want
+          </button>
+          <button class="rpill rpill--need" type="button" data-sort="need" aria-label="Sort as Need">
+            <span class="rpill__swatch"></span>Need<Icon name="arrow-right" size={18} stroke={2.4} />
+          </button>
+          <button class="rpill rpill--transfer" type="button" data-sort="transfer" aria-label="Sort as Transfer">
+            <Icon name="arrow-up" size={18} stroke={2.2} /><span class="rpill__swatch"></span>Transfer
+          </button>
+          <button class="rpill rpill--save" type="button" data-sort="save" aria-label="Sort as Save">
+            <Icon name="arrow-down" size={18} stroke={2.2} /><span class="rpill__swatch"></span>Save
+          </button>
+
+          <p class="toast">
+            <span class="toast__dot"></span><span data-toast-text>Sorted as Need</span>
+            <button type="button" class="toast__undo" data-undo>Undo</button>
+          </p>
+          <p class="sr-only" role="status" data-review-live></p>
+
+          <div class="review__links" aria-hidden="true">
+            <span>Skip for now</span>
+            <i></i>
+            <span><Icon name="mail" size={18} />View bank email</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="review__copy" data-reveal>
+      <div class="review__head">
+        <span class="overline review__overline">Swipe to review</span>
+        <h2 id="review-title" class="display-panel">Sort a week in a minute.</h2>
+        <p class="body-l">
+          New transactions wait in a small deck. Swipe each one where it belongs, and Hasala remembers the merchant so it won’t ask twice.
+        </p>
+      </div>
+      <ul class="dirs" role="list">
+        <li class="dir dir--want">
+          <span class="dir__icon"><Icon name="arrow-left" size={16} stroke={1.9} /></span><span><b>Want</b><small>Swipe left</small></span>
+        </li>
+        <li class="dir dir--need">
+          <span class="dir__icon"><Icon name="arrow-right" size={16} stroke={1.9} /></span><span><b>Need</b><small>Swipe right</small></span>
+        </li>
+        <li class="dir dir--save">
+          <span class="dir__icon"><Icon name="arrow-down" size={16} stroke={1.9} /></span><span><b>Save</b><small>Swipe down</small></span>
+        </li>
+        <li class="dir dir--transfer">
+          <span class="dir__icon"><Icon name="arrow-up" size={16} stroke={1.9} /></span><span><b>Transfer</b><small>Swipe up</small></span>
+        </li>
+      </ul>
+      <p class="review__undo"><Icon name="undo" size={16} stroke={1.6} />Changed your mind? Undo is one tap away.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { initReview } from '../../scripts/review';
+  initReview();
+</script>
+
+<style>
+  .review {
+    padding: 0 0 88px;
+    background: var(--white);
+  }
+  .review__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  /* Small screens: heading, then the stage, then the direction chips. */
+  .review__copy {
+    display: contents;
+  }
+  .review__head {
+    order: -1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .dirs {
+    order: 1;
+    margin-top: -8px;
+  }
+  .review__overline {
+    color: var(--hue-peach-ink);
+  }
+  .dirs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .dir {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 6px;
+    border-radius: var(--r-pill);
+    font-size: 16px;
+    line-height: 22px;
+    transition: transform 160ms var(--ease-out-soft);
+  }
+  /* The legend answers the swipe: the chosen direction swells and rings. */
+  .dir::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: currentColor 0 0 0 1.5px inset;
+    opacity: 0;
+    transition: opacity 200ms var(--ease-out-soft);
+    pointer-events: none;
+  }
+  .dir[data-active] {
+    transform: scale(1.04);
+  }
+  .dir[data-active]::after {
+    opacity: 1;
+  }
+  .dir small {
+    display: none;
+  }
+  .dir b {
+    font-weight: 600;
+  }
+  .dir__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 70%);
+  }
+  .dir--want {
+    background: linear-gradient(in oklab 180deg, var(--hue-lilac-start), var(--hue-lilac-end));
+    color: var(--hue-lilac-ink);
+  }
+  .dir--need {
+    background: linear-gradient(in oklab 180deg, var(--hue-sand-start), var(--hue-sand-end));
+    color: var(--hue-sand-ink);
+  }
+  .dir--save {
+    background: linear-gradient(in oklab 180deg, var(--hue-mint-start), var(--hue-mint-end));
+    color: var(--hue-mint-ink);
+  }
+  .dir--transfer {
+    background: linear-gradient(in oklab 180deg, var(--other-start), var(--other-end));
+    color: var(--other-ink);
+  }
+  .review__undo {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding-top: 10px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  /* Stage */
+  .review__stage {
+    position: relative;
+    height: 560px;
+    border-radius: 36px;
+    background: var(--wash-peach);
+    overflow: clip;
+    touch-action: pan-y;
+  }
+  .review__phone,
+  .review__screen {
+    position: absolute;
+    inset: 0;
+  }
+  .review__status,
+  .review__bar,
+  .review__progress,
+  .review__links,
+  .review__stage .rpill--transfer,
+  .review__stage .rpill--save {
+    display: none;
+  }
+
+  /* Deck */
+  .deck {
+    position: absolute;
+    left: 50%;
+    top: 60px;
+    width: min(340px, 100% - 40px);
+    height: 430px;
+    translate: -50% 0;
+  }
+  .deck__ghost {
+    position: absolute;
+    inset: 20px 16px -20px;
+    border-radius: 28px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 1%) 0 1px 2px, rgb(0 0 0 / 4%) 0 6px 16px;
+  }
+  .rcard {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 28px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 4%) 0 2px 4px, rgb(0 0 0 / 11%) 0 18px 44px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    transform-origin: 50% 80%;
+    visibility: hidden;
+  }
+  .rcard[data-pos='0'] {
+    visibility: visible;
+    z-index: 3;
+    cursor: grab;
+  }
+  .rcard[data-pos='1'] {
+    visibility: visible;
+    z-index: 2;
+    transform: translateY(10px) scale(0.96);
+    box-shadow: rgb(0 0 0 / 3%) 0 1px 2px, rgb(0 0 0 / 5%) 0 8px 20px;
+  }
+  .rcard:not([data-pos]):first-of-type {
+    visibility: visible;
+    z-index: 3;
+  }
+  .rcard__tint {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .rcard__tint--need {
+    background: linear-gradient(in oklab 270deg, color-mix(in oklab, var(--hue-sand-end) 58%, transparent) 0%, color-mix(in oklab, var(--hue-sand-start) 26%, transparent) 50%, transparent 100%);
+  }
+  .rcard__tint--want {
+    background: linear-gradient(in oklab 90deg, color-mix(in oklab, var(--hue-lilac-end) 70%, transparent) 0%, color-mix(in oklab, var(--hue-lilac-start) 30%, transparent) 50%, transparent 100%);
+  }
+  .rcard__tint--save {
+    background: linear-gradient(in oklab 0deg, color-mix(in oklab, var(--hue-mint-end) 70%, transparent) 0%, transparent 60%);
+  }
+  .rcard__tint--transfer {
+    background: linear-gradient(in oklab 180deg, color-mix(in oklab, var(--other-end) 80%, transparent) 0%, transparent 60%);
+  }
+  .rcard__body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    padding: 24px 24px 22px;
+  }
+  .rcard__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .rcard__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--neutral-100);
+    box-shadow: var(--border-subtle) 0 0 0 1px inset;
+    font-size: 24px;
+    font-weight: 600;
+  }
+  .rcard__new {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 12px 0 10px;
+    border-radius: 14px;
+    background: var(--blue-50);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .rcard__new .dot {
+    width: 7px;
+    height: 7px;
+  }
+  .rcard__merchant {
+    padding-top: 16px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.35px;
+    line-height: 28px;
+  }
+  .rcard__raw {
+    align-self: flex-start;
+    margin-top: 8px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: var(--neutral-100);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    line-height: 18px;
+  }
+  .rcard__amount {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: auto;
+  }
+  .rcard__unit {
+    font-family: var(--font-figure);
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .rcard__amount .figure {
+    font-size: 44px;
+    letter-spacing: -0.8px;
+    line-height: 46px;
+  }
+  .rcard__meta {
+    padding-top: 4px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .rcard__guess {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px 14px 24px;
+    background: rgb(247 247 248 / 72%);
+    box-shadow: var(--border-subtle) 0 1px 0 inset;
+  }
+  .rcard__guess-text {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .rcard__use {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 18px;
+    border-radius: 18px;
+    background: var(--accent);
+    color: var(--white);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* Glass pills on the card edges */
+  .rpill {
+    position: absolute;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 16px 0 12px;
+    border: 0;
+    border-radius: 22px;
+    background: rgb(255 255 255 / 78%);
+    -webkit-backdrop-filter: blur(6px) saturate(180%) brightness(104%);
+    backdrop-filter: blur(6px) saturate(180%) brightness(104%);
+    box-shadow:
+      var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
+      var(--glass-rim-shade) -1.5px -1.5px 1px -0.5px inset,
+      var(--glass-shadow-far) 0 6px 16px,
+      var(--glass-shadow-near) 0 1px 2px,
+      var(--glass-outline) 0 0 0 0.5px;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    transition:
+      transform 160ms var(--ease-out-soft),
+      background-color var(--t-hover-out);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .rpill:hover {
+      background: var(--white);
+    }
+  }
+  .rpill:active {
+    transform: scale(0.96);
+  }
+  .rpill__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+  }
+  .rpill--want {
+    left: 4px;
+    top: 255px;
+  }
+  .rpill--want .rpill__swatch {
+    background: linear-gradient(in oklab 160deg, var(--hue-lilac-end), oklab(76.6% 0.045 -0.081));
+  }
+  .rpill--need {
+    right: 10px;
+    top: 253px;
+    height: 48px;
+    padding: 0 14px 0 18px;
+    border-radius: 24px;
+    background: color-mix(in oklab, var(--hue-sand-start) 90%, transparent);
+    box-shadow:
+      var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
+      rgb(123 81 0 / 16%) 0 8px 22px,
+      rgb(0 0 0 / 6%) 0 1px 2px,
+      var(--hue-sand-end) 0 0 0 1px;
+    color: var(--hue-sand-ink);
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .rpill--need .rpill__swatch {
+    background: linear-gradient(in oklab 160deg, var(--hue-sand-end), oklab(81.3% 0.028 0.096));
+    box-shadow: rgb(90 58 18 / 12%) 0 0 0 1px inset;
+  }
+  .rpill--transfer .rpill__swatch {
+    background: linear-gradient(in oklab 160deg, var(--other-end), oklab(72% 0.002 -0.008));
+  }
+  .rpill--save .rpill__swatch {
+    background: linear-gradient(in oklab 160deg, var(--hue-mint-end), oklab(81.5% -0.075 0.022));
+  }
+  .rpill[data-active] {
+    transform: scale(1.06);
+  }
+
+  .toast {
+    position: absolute;
+    z-index: 6;
+    left: 50%;
+    bottom: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 8px 0 14px;
+    border-radius: var(--r-pill);
+    background: var(--ink-900);
+    color: var(--white);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    translate: -50% 12px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 200ms var(--ease-out-soft),
+      translate 200ms var(--ease-out-soft),
+      visibility 0s linear 200ms;
+  }
+  .toast[data-show] {
+    translate: -50% 0;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+  .toast__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gold-300);
+  }
+  .toast__undo {
+    padding: 6px 10px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--blue-300);
+    font-weight: 600;
+  }
+
+  @media (min-width: 1024px) {
+    .review {
+      padding-bottom: 160px;
+    }
+    .review__inner {
+      flex-direction: row;
+      align-items: center;
+      gap: clamp(48px, 7vw, 96px);
+    }
+    .review__copy {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .review__head {
+      gap: 20px;
+    }
+    .dirs {
+      order: 0;
+      margin-top: 0;
+    }
+    .dirs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding-top: 16px;
+    }
+    .dir {
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 20px;
+    }
+    .dir > span:last-child {
+      display: flex;
+      flex-direction: column;
+    }
+    .dir b {
+      font-weight: 700;
+    }
+    .dir small {
+      display: block;
+      font-size: 13px;
+      line-height: 18px;
+    }
+    .dir__icon {
+      width: 32px;
+      height: 32px;
+    }
+    .review__undo {
+      display: flex;
+    }
+    .review__stage {
+      flex: 0 0 auto;
+      width: min(580px, 48vw);
+      height: 720px;
+      border-radius: var(--r-panel);
+    }
+    .review__phone {
+      inset: 56px auto auto 50%;
+      width: 418px;
+      height: 900px;
+      padding: 8px;
+      translate: -50% 0;
+      border-radius: 62px;
+      background: #0d0d10;
+      box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
+    }
+    .review__screen {
+      position: relative;
+      inset: auto;
+      width: 402px;
+      height: 884px;
+      border-radius: 54px;
+      background: var(--neutral-100);
+      overflow: clip;
+    }
+    .review__screen::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto;
+      height: 420px;
+      background: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.1% -0.003 -0.021) 38%, oklab(95.3% 0.0007 -0.003 / 0%) 100%);
+    }
+    .review__status {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 62px;
+      padding: 0 30px 0 52px;
+      color: #000;
+    }
+    .review__time {
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .review__island {
+      position: absolute;
+      left: 138px;
+      top: 11px;
+      width: 126px;
+      height: 37px;
+      border-radius: var(--r-pill);
+      background: #000;
+    }
+    .review__bar {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 20px 0;
+    }
+    .glass-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgb(255 255 255 / 58%);
+      box-shadow:
+        var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
+        var(--glass-shadow-far) 0 6px 16px,
+        var(--glass-outline) 0 0 0 0.5px;
+      color: #1a1a1a;
+    }
+    .review__heading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 17px;
+      line-height: 22px;
+    }
+    .review__heading b {
+      font-weight: 600;
+      letter-spacing: -0.15px;
+    }
+    .review__heading > span {
+      color: var(--text-secondary);
+      font-family: var(--font-figure);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 18px;
+    }
+    .review__progress {
+      position: relative;
+      display: block;
+      height: 6px;
+      margin: 16px 20px 0;
+      border-radius: 3px;
+      background: var(--pace-track);
+      overflow: hidden;
+    }
+    .review__progress span {
+      position: absolute;
+      inset: 0;
+      border-radius: 3px;
+      background: var(--accent);
+      /* Clipped, not scaled, so the leading end keeps its round cap. */
+      clip-path: inset(0 calc(100% * 4 / 6) 0 0 round 3px);
+      transition: clip-path 240ms var(--ease-out-soft);
+    }
+    .deck {
+      top: 222px;
+      width: 324px;
+    }
+    .rpill--want {
+      left: 10px;
+      top: 415px;
+    }
+    .rpill--need {
+      right: 10px;
+      top: 413px;
+    }
+    .review__stage .rpill--transfer,
+    .review__stage .rpill--save {
+      display: inline-flex;
+      left: 50%;
+      translate: -50% 0;
+    }
+    .rpill--transfer {
+      top: 158px;
+    }
+    .rpill--save {
+      top: 694px;
+    }
+    .toast {
+      bottom: auto;
+      top: 160px;
+    }
+    .review__screen:has(.toast[data-show]) .rpill--transfer {
+      opacity: 0;
+    }
+    .review__links {
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      bottom: 36px;
+      display: flex;
+      align-items: center;
+      height: 44px;
+      color: var(--text-link);
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .review__links span {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .review__links i {
+      width: 1px;
+      height: 20px;
+      background: var(--border-subtle);
+    }
+  }
+</style>

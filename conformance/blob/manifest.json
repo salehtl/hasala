@@ -1,5 +1,5 @@
 {
-  "note": "Sealed by internal/oplog TestWriteConformanceFixtures. Regenerate with LEDGER_WRITE_CONFORMANCE=1; do not hand-edit. Both executors open these bytes; the framing is frozen (see internal/blob).",
+  "note": "Sealed by internal/oplog/opref TestWriteConformanceFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1; do not hand-edit. Both executors open these bytes. This is ledgerd's v1 plaintext frame (internal/blob/blobtest); hasalad refuses it and stores only sealed frame v3.",
   "buckets": [
     1024,
     4096,

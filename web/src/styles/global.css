@@ -1,0 +1,742 @@
+/*
+ * Hasala web: tokens and shared pieces.
+ * Colours, radii and figures are the app's v0.5 design tokens from the Paper
+ * design file; the web adds a display type scale, section spacing, containers
+ * and breakpoints ("13 · Web tokens"). Light only: the privacy section already
+ * runs on navy, and a dark site is not drawn yet.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Palette */
+  --white: #ffffff;
+  --ink-950: #111113;
+  --ink-900: #202023;
+  --neutral-50: #f7f7f8;
+  --neutral-100: #efeff1;
+  --neutral-200: #e4e4e7;
+  --neutral-300: #bdbdc2;
+  --neutral-400: #94949b;
+  --neutral-500: #73737a;
+  --neutral-600: #626267;
+  --neutral-700: #47474d;
+  --blue-50: #eef1ff;
+  --blue-100: #e1e8ff;
+  --blue-300: #acbeff;
+  --blue-600: #365beb;
+  --blue-700: #294acd;
+  --blue-800: #213d9e;
+  --blue-950: #142659;
+  --green-50: #eaf7f0;
+  --green-700: #176442;
+  --amber-50: #fff4dd;
+  --amber-300: #f1ca78;
+  --amber-800: #7b5100;
+  --red-50: #fff0ef;
+  --red-700: #ad3029;
+  --red-800: #8d241f;
+  --gold-100: #f9dc94;
+  --gold-300: #ebb04a;
+  --gold-edge: #c98a1e;
+  --gold-rule: #8a5a05;
+  --gold-ink: #6e4703;
+
+  --hue-sky-start: #e4eeff;
+  --hue-sky-end: #cfddfb;
+  --hue-sky-ink: #1e2a5e;
+  --hue-sand-start: #fff0dc;
+  --hue-sand-end: #fbddb8;
+  --hue-sand-ink: #5a3a12;
+  --hue-rose-start: #fbe6e4;
+  --hue-rose-end: #f4cbc6;
+  --hue-rose-ink: #5e1f28;
+  --hue-lilac-start: #efe7fa;
+  --hue-lilac-end: #dccff3;
+  --hue-lilac-ink: #3c2a66;
+  --hue-mint-start: #e1f5ea;
+  --hue-mint-end: #c2e7d6;
+  --hue-mint-ink: #164a35;
+  --hue-peach-start: #ffe9d9;
+  --hue-peach-end: #ffceb5;
+  --hue-peach-ink: #6a2e0e;
+  --other-start: #f1f1f3;
+  --other-end: #e2e2e6;
+  --other-ink: #3a3a40;
+
+  /* Roles */
+  --text-primary: var(--ink-900);
+  --text-secondary: var(--neutral-600);
+  --text-body: var(--neutral-700);
+  --text-link: var(--blue-600);
+  --accent: var(--blue-600);
+  --accent-pressed: var(--blue-700);
+  --accent-subtle: var(--blue-50);
+  --accent-subtle-pressed: var(--blue-100);
+  --border-subtle: var(--neutral-200);
+  --success: var(--green-700);
+  --success-surface: var(--green-50);
+  --error: var(--red-700);
+  --error-surface: var(--red-50);
+  --pace-track: rgb(118 118 128 / 12%);
+  --pace-over: #c77700;
+  --money-in: var(--green-700);
+
+  /* Liquid Glass, navigation only */
+  --glass-frost: rgb(255 255 255 / 58%);
+  --glass-frost-strong: rgb(255 255 255 / 78%);
+  --glass-sheen: rgb(255 255 255 / 24%);
+  --glass-sheen-end: rgb(255 255 255 / 8%);
+  --glass-rim-light: rgb(255 255 255 / 90%);
+  --glass-rim-shade: rgb(255 255 255 / 55%);
+  --glass-rim-hairline: rgb(255 255 255 / 45%);
+  --glass-rim-glow: rgb(255 255 255 / 12%);
+  --glass-shadow-far: rgb(0 0 0 / 10%);
+  --glass-shadow-near: rgb(0 0 0 / 7%);
+  --glass-outline: rgb(0 0 0 / 8%);
+  --glass-selected: rgb(120 120 128 / 16%);
+
+  /* Gradients drawn in oklab, as in Paper */
+  --wash-hero: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 38%, oklab(97.3% 0.0002 -0.008) 72%, oklab(100% 0 0) 100%);
+  --wash-sky: linear-gradient(in oklab 160deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.7% -0.004 -0.025) 48%, oklab(96% 0.002 -0.019) 100%);
+  --wash-peach: linear-gradient(in oklab 170deg, oklab(96.2% 0.008 0.03) 0%, oklab(94.7% 0.017 0.027) 55%, oklab(91.3% 0.017 0.056) 100%);
+  --wash-navy: linear-gradient(in oklab 180deg, oklab(28.7% -0.007 -0.095) 0%, oklab(25.1% -0.005 -0.081) 60%, oklab(23% -0.004 -0.069) 100%);
+  --wash-pace: linear-gradient(in oklab 160deg, oklab(62.2% -0.006 -0.203) 0%, oklab(55.6% -0.01 -0.217) 45%, oklab(48% -0.01 -0.211) 100%);
+  --coin: linear-gradient(in oklab 180deg, oklab(90.3% 0.003 0.096) 0%, oklab(79.4% 0.028 0.132) 100%);
+  --glow-dirham: oklab(90.3% 0.003 0.096);
+
+  /* Type */
+  --font-sans: var(--font-inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* SF Pro Rounded figures on Apple devices, Inter tabular figures elsewhere */
+  --font-figure: ui-rounded, 'SF Pro Rounded', var(--font-sans);
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* Display sizes interpolate between 390 and 1440 with clamp() */
+  --t-display-xl: clamp(46px, 33.37px + 3.238vw, 80px);
+  --t-display-l: clamp(34px, 25.83px + 2.095vw, 56px);
+  --t-display-panel: clamp(34px, 27.31px + 1.714vw, 52px);
+  --t-card-title: clamp(21px, 19.89px + 0.286vw, 24px);
+  --t-lead: clamp(17px, 15.89px + 0.286vw, 20px);
+  --t-body: clamp(16px, 15.63px + 0.095vw, 17px);
+
+  /* Space and shape */
+  --gutter: 20px;
+  --container: 1200px;
+  --container-wide: 1296px;
+  --section-y: 88px;
+  --r-field: 14px;
+  --r-card: 20px;
+  --r-tile: 28px;
+  --r-panel: 48px;
+  --r-pill: 999px;
+
+  /* Motion ("13 · Dynamic layer") */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-hover-in: 120ms;
+  --t-hover-out: 200ms;
+
+  --nav-h: 68px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 40px;
+  }
+}
+@media (min-width: 1024px) {
+  :root {
+    --section-y: 140px;
+    --r-panel: 48px;
+  }
+}
+
+/* Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 112px;
+  overflow-x: clip;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--white);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: anywhere;
+}
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+img {
+  height: auto;
+}
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+dl,
+dd,
+figure,
+blockquote {
+  margin: 0;
+}
+ul[role='list'],
+ol[role='list'] {
+  list-style: none;
+  padding: 0;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
+table {
+  border-collapse: collapse;
+}
+:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 3px;
+}
+::selection {
+  background: var(--blue-100);
+}
+
+.container {
+  width: min(var(--container), 100% - 2 * var(--gutter));
+  margin-inline: auto;
+}
+.container-wide {
+  width: min(var(--container-wide), 100% - 24px);
+  margin-inline: auto;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -100px;
+  z-index: 100;
+  padding: 12px 18px;
+  border-radius: var(--r-pill);
+  background: var(--ink-900);
+  color: var(--white);
+  font-weight: 600;
+}
+.skip-link:focus {
+  top: 16px;
+}
+
+/* Type */
+.overline {
+  display: block;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+.display-xl {
+  font-size: var(--t-display-xl);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.045;
+}
+.display-l {
+  font-size: var(--t-display-l);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: calc(1em + 4px);
+}
+.display-panel {
+  font-size: var(--t-display-panel);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: calc(1em + 4px);
+}
+.lead {
+  color: var(--text-body);
+  font-size: var(--t-lead);
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+}
+.body-l {
+  color: var(--text-body);
+  font-size: clamp(17px, 16.63px + 0.095vw, 18px);
+  line-height: 1.56;
+}
+.intro {
+  color: var(--text-secondary);
+  font-size: var(--t-body);
+  line-height: 1.53;
+}
+.figure {
+  font-family: var(--font-figure);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.link {
+  color: var(--text-link);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: color var(--t-hover-out), text-decoration-color var(--t-hover-out);
+}
+.link:hover {
+  color: var(--blue-700);
+  text-decoration-color: currentColor;
+  transition-duration: var(--t-hover-in);
+}
+
+/* Section heads: heading left, short intro bottom-right */
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px 48px;
+}
+.section-head__title {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+}
+.section-head__intro {
+  max-width: 380px;
+  padding-bottom: 6px;
+}
+@media (min-width: 1024px) {
+  .section-head__title {
+    gap: 16px;
+  }
+}
+
+/* The gold coin disc: step numbers, "In plain words" */
+.coin-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--coin);
+  box-shadow: rgb(201 138 30 / 50%) 0 0 0 1px inset, var(--gold-edge) 0 2px 0;
+  color: var(--gold-ink);
+  font-family: var(--font-figure);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+/* Buttons. Hover 120 ms in, 200 ms out, only where a pointer can hover (a
+   tap on a phone leaves no lifted or gold button behind); press 100 ms. */
+.btn {
+  --btn-h: 56px;
+  --btn-px: 24px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--btn-h);
+  padding: 0 var(--btn-px);
+  border: 0;
+  border-radius: var(--r-pill);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 22px;
+  white-space: nowrap;
+  transition:
+    background-color var(--t-hover-out) var(--ease-out-soft),
+    box-shadow var(--t-hover-out) var(--ease-out-soft),
+    transform var(--t-hover-out) var(--ease-out-soft),
+    color var(--t-hover-out) var(--ease-out-soft);
+}
+.btn--lg {
+  --btn-h: 60px;
+  font-size: 18px;
+  letter-spacing: -0.015em;
+  line-height: 24px;
+}
+.btn--nav {
+  --btn-h: 48px;
+  --btn-px: 22px;
+  font-size: 15px;
+  line-height: 20px;
+}
+.btn--sm {
+  --btn-h: 44px;
+  --btn-px: 18px;
+  font-size: 15px;
+  line-height: 20px;
+}
+.btn--primary {
+  background: var(--accent);
+  color: var(--white);
+  box-shadow: rgb(255 255 255 / 25%) 0 1px 0 inset, rgb(54 91 235 / 32%) 0 10px 24px, rgb(54 91 235 / 20%) 0 1px 2px;
+}
+.btn--glass {
+  background: rgb(255 255 255 / 78%);
+  color: var(--text-primary);
+  box-shadow: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(0 0 0 / 8%) 0 0 0 0.5px, rgb(20 38 89 / 8%) 0 6px 16px;
+}
+.btn--subtle {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+.btn--danger {
+  background: var(--red-700);
+  color: var(--white);
+  box-shadow: rgb(173 48 41 / 28%) 0 8px 20px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    transition-duration: var(--t-hover-in);
+  }
+  .btn--primary:hover {
+    background: var(--blue-700);
+    transform: translateY(-1px);
+  }
+  .btn--glass:hover {
+    background: var(--white);
+    box-shadow: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(0 0 0 / 8%) 0 0 0 0.5px, rgb(20 38 89 / 12%) 0 10px 24px;
+  }
+  .btn--subtle:hover {
+    background: var(--accent-subtle-pressed);
+  }
+  .btn--danger:hover {
+    background: var(--red-800);
+    transform: translateY(-1px);
+  }
+  /* The arrow disc turns into a gold coin and the arrow nudges forward. */
+  .btn:hover .btn__disc {
+    background: var(--coin);
+    color: var(--gold-rule);
+    box-shadow: rgb(201 138 30 / 60%) 0 0 0 1px inset;
+    transition-duration: var(--t-hover-in);
+  }
+  .btn:hover .btn__disc .icon {
+    translate: 2px 0;
+    transition-duration: 200ms;
+  }
+}
+.btn:active {
+  transition-duration: 100ms;
+}
+.btn--primary:active {
+  background: var(--blue-800);
+  transform: scale(0.97);
+  box-shadow: rgb(255 255 255 / 25%) 0 1px 0 inset, rgb(54 91 235 / 24%) 0 4px 10px;
+}
+.btn--nav.btn--primary {
+  box-shadow: none;
+}
+.btn--glass:active {
+  transform: scale(0.97);
+}
+.btn--subtle:active {
+  transform: scale(0.97);
+}
+.btn--danger:active {
+  transform: scale(0.97);
+}
+.btn[disabled] {
+  cursor: progress;
+}
+.btn .icon {
+  flex: none;
+}
+
+/* Arrow disc on the hero CTA (hover above) */
+.btn__disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 18%);
+  color: var(--white);
+  transition: background var(--t-hover-out), color var(--t-hover-out), box-shadow var(--t-hover-out);
+}
+.btn__disc .icon {
+  transition: translate var(--t-hover-out) var(--ease-out-soft);
+}
+
+/* Spinner for "Sending…" */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgb(255 255 255 / 40%);
+  border-top-color: var(--white);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* Chips */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 10px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.chip--success {
+  background: var(--success-surface);
+  color: var(--success);
+}
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Scroll-linked reveals (motion moment B). Only hidden when JS is running
+   and motion is allowed, so the page is complete without either. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal]:not(.is-in) {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  .js [data-reveal] {
+    transition:
+      opacity 480ms var(--ease-out-soft),
+      transform 480ms var(--ease-out-soft);
+    transition-delay: calc(var(--i, 0) * 60ms);
+  }
+}
+/* For one style flush, while motion.ts shows what is already on screen. */
+.reveal-instant *,
+.reveal-instant *::before,
+.reveal-instant *::after {
+  transition: none !important;
+}
+/* Page changes (<ClientRouter />): the page fades out in place and the next
+   one rises 10 px as it fades in; going back, it settles from 10 px above.
+   The nav bar and the lockup are named in Nav.astro, so they hold still on
+   top. While the router places the new page (top, #fragment or the restored
+   position) scrolling is instant: html.vt-swap, from scripts/router.ts. */
+html.vt-swap {
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: 140ms var(--ease-in-out) both vt-fade-out;
+  }
+  ::view-transition-new(root) {
+    animation: 300ms 40ms var(--ease-out-soft) both vt-rise;
+  }
+  html[data-astro-transition='back']::view-transition-new(root) {
+    animation-name: vt-settle;
+  }
+}
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes vt-settle {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* Motion moment A, the app icon: the coin drops into the slot. Played by
+   the hero (Hero.astro) and the invite page (i.astro). */
+@keyframes hero-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes hero-coin {
+  0% {
+    opacity: 0;
+    transform: translateY(-330px);
+    animation-timing-function: linear;
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-250px);
+    animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
+  }
+  46.7% {
+    transform: translateY(70px);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  73.3% {
+    transform: translateY(-18px);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); /* --ease-in-out: var() is not read inside @keyframes */
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes hero-slot {
+  0% {
+    opacity: 0;
+  }
+  21% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  57.9% {
+    transform: scaleX(1);
+  }
+  65% {
+    transform: scaleX(1.03);
+  }
+  73.7%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+@keyframes hero-plate {
+  0%,
+  57.9% {
+    fill-opacity: 0.14;
+  }
+  65% {
+    fill-opacity: 0.34;
+  }
+  73.7%,
+  100% {
+    fill-opacity: 0.14;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 200ms !important;
+    transition-property: opacity, color, background-color, border-color !important;
+    scroll-behavior: auto !important;
+  }
+  .spinner {
+    animation: spin 1600ms linear infinite !important;
+  }
+}
+
+@media print {
+  .site-nav,
+  .site-footer,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    font-size: 11pt;
+  }
+}
+
+/* Hue discs: category icons on cards (36 px), floats (40 px) */
+.disc {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+.disc--32 {
+  width: 32px;
+  height: 32px;
+}
+.disc--40 {
+  width: 40px;
+  height: 40px;
+}
+.disc--lilac {
+  background: linear-gradient(in oklab 180deg, var(--hue-lilac-start), var(--hue-lilac-end));
+  color: var(--hue-lilac-ink);
+}
+.disc--sand {
+  background: linear-gradient(in oklab 180deg, var(--hue-sand-start), var(--hue-sand-end));
+  color: var(--hue-sand-ink);
+}
+.disc--sky {
+  background: linear-gradient(in oklab 180deg, var(--hue-sky-start), var(--hue-sky-end));
+  color: var(--hue-sky-ink);
+}
+.disc--mint {
+  background: linear-gradient(in oklab 180deg, var(--hue-mint-start), var(--hue-mint-end));
+  color: var(--hue-mint-ink);
+}
+.disc--white {
+  background: rgb(255 255 255 / 75%);
+}

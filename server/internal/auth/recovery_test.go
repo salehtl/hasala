@@ -44,7 +44,7 @@ func publishRecoveryKey(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, pub ed255
 // the recovery phrase reproduces.
 func TestRecoveryKeyEnrollsAWriterWithNoOtherDeviceInvolved(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-enrolls"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-enrolls"))
 	w := newWriters(pool, newClock())
 
 	// The original device, and the account's one self-approval, spent.
@@ -82,7 +82,7 @@ func TestRecoveryKeyEnrollsAWriterWithNoOtherDeviceInvolved(t *testing.T) {
 // must not fall through the `!hadDevice` branch into a refusal.
 func TestRecoveryKeyAuthorizesTheVeryFirstWriter(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-first"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-first"))
 	w := newWriters(pool, newClock())
 
 	recovery := newDevice(t, "recovery-authorizer")
@@ -99,7 +99,7 @@ func TestRecoveryKeyAuthorizesTheVeryFirstWriter(t *testing.T) {
 // bootstrap, and it is not reachable from a session.
 func TestRecoveryKeyDoesNotReopenTheBootstrapOrHelpAStolenSession(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-bounds"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-bounds"))
 	w := newWriters(pool, newClock())
 
 	original := newDevice(t, "dev-original")
@@ -142,7 +142,7 @@ func TestRecoveryKeyDoesNotReopenTheBootstrapOrHelpAStolenSession(t *testing.T) 
 // on exactly the rules it had.
 func TestAnAccountWithNoPublishedKeysIsUnchanged(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-absent"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-absent"))
 	w := newWriters(pool, newClock())
 
 	original := newDevice(t, "dev-original")
@@ -161,8 +161,8 @@ func TestAnAccountWithNoPublishedKeysIsUnchanged(t *testing.T) {
 // assuming it.
 func TestARecoveryKeyAuthorizesOnlyItsOwnAccount(t *testing.T) {
 	pool := pgtest.New(t)
-	alice := mustUpsert(t, pool, appleIdentity("sub-recovery-alice"))
-	bob := mustUpsert(t, pool, appleIdentity("sub-recovery-bob"))
+	alice := mustUpsert(t, pool, testIdentity("sub-recovery-alice"))
+	bob := mustUpsert(t, pool, testIdentity("sub-recovery-bob"))
 	w := newWriters(pool, newClock())
 
 	aliceRecovery := newDevice(t, "alice-recovery")
@@ -183,7 +183,7 @@ func TestARecoveryKeyAuthorizesOnlyItsOwnAccount(t *testing.T) {
 // blank cheque.
 func TestARecoverySignatureAuthorizesOnlyItsOwnEnrollment(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-binding"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-binding"))
 	w := newWriters(pool, newClock())
 	recovery := newDevice(t, "recovery-authorizer")
 	publishRecoveryKey(t, pool, u, recovery.pub)
@@ -204,7 +204,7 @@ func TestARecoverySignatureAuthorizesOnlyItsOwnEnrollment(t *testing.T) {
 // device — which is a denial of service the phrase should not be able to cause.
 func TestTheRecoveryKeyIsNotAWriterAndCannotRevoke(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-not-a-writer"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-not-a-writer"))
 	w := newWriters(pool, newClock())
 
 	original := newDevice(t, "dev-original")
@@ -234,7 +234,7 @@ func TestTheRecoveryKeyIsNotAWriterAndCannotRevoke(t *testing.T) {
 // server that lied about it would produce codes that do not match.
 func TestARecoveryEnrollmentIsVisibleInTheKeyHistory(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-history"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-history"))
 	w := newWriters(pool, newClock())
 
 	original := newDevice(t, "dev-original")
@@ -278,7 +278,7 @@ func TestARecoveryEnrollmentIsVisibleInTheKeyHistory(t *testing.T) {
 // must not authorize anything either.
 func TestASmallOrderRecoveryKeyAuthorizesNothing(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-recovery-smallorder"))
+	u := mustUpsert(t, pool, testIdentity("sub-recovery-smallorder"))
 	w := newWriters(pool, newClock())
 
 	original := newDevice(t, "dev-original")

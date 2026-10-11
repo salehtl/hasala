@@ -31,14 +31,21 @@ BIP-39 English wordlist
   implementation, trezor/python-mnemonic (https://github.com/trezor/python-mnemonic).
 
 Inter
-  Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
-  SIL Open Font License, Version 1.1 (LICENSES/OFL-1.1.txt)
+  Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  SIL Open Font License, Version 1.1 (LICENSES/OFL-1.1.txt; also next to each
+  copy of the font, as web/src/assets/fonts/Inter-OFL.txt and
+  ios/HasalaKit/Sources/HasalaDesign/Fonts/OFL.txt)
+
+  web/src/assets/fonts/inter-latin-opsz-wght.woff2 is the Latin subset of the
+  Inter variable font (opsz and wght axes), vendored from
+  @fontsource-variable/inter 5.3.0. The website (web/) serves it as its only
+  font.
 
   ios/HasalaKit/Sources/HasalaDesign/Fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf
   are the four static faces of Inter 4.1 (font version 4.001), each written out
   of the release's Inter.ttc as a single-face file with fontTools; glyphs, names
   and metadata are unchanged. They are bundled into the iOS app together with the
-  licence (Fonts/OFL.txt beside them). "Inter" is not a Reserved Font Name.
+  release's licence file (Fonts/OFL.txt). "Inter" is not a Reserved Font Name.
 
 Dependencies that are not copied into this repository
 =====================================================
@@ -50,10 +57,41 @@ Go modules
   licence text (and, where it has one, its NOTICE), which a binary
   distribution must carry. `go-licenses report ./...` in server/ lists them.
 
+Swift packages
+  ios/HasalaCore/ depends on exactly two packages, pinned `exact:` in
+  ios/HasalaCore/Package.swift and recorded in ios/HasalaCore/Package.resolved.
+  They are fetched at build time and are not vendored here; each ships its own
+  licence text, which a binary distribution must carry.
+
+  GRDB.swift 7.11.1
+    Copyright (C) 2015-2025 Gwendal Roué
+    https://github.com/groue/GRDB.swift
+    MIT License (LICENSES/MIT.txt)
+
+  Swift Collections 1.7.2
+    Copyright (c) Apple Inc. and the Swift project authors
+    https://github.com/apple/swift-collections
+    Apache License 2.0 (LICENSES/Apache-2.0.txt)
+
 npm packages
   reference/ledgerd-client/ and reference/ledgerd-pwa/ declare their
   dependencies in their package.json and bun.lock files. They are installed at
   build time and are not vendored here.
+
+  The website (web/) and its Lighthouse CI tooling (web/lighthouse/) do the
+  same. The built site (web/dist, not committed) bundles code from three of
+  them (vite comes in through astro) into the JavaScript it serves, all under
+  the MIT License (LICENSES/MIT.txt):
+    - astro (Copyright (c) 2021 Fred K. Schott), whose client router runs on
+      every page; https://github.com/withastro/astro
+    - vite (Copyright (c) 2019-present, VoidZero Inc. and Vite contributors),
+      whose module-preload helper is bundled into the invite page's script;
+      https://github.com/vitejs/vite
+    - uqr (Copyright (c) Project Nayuki; Copyright (c) 2023 Anthony Fu), the
+      QR code encoder on the invite page; https://github.com/unjs/uqr
+  The site lists them, and Inter, with their licence texts at
+  https://hasala.app/licenses (web/src/pages/licenses.astro, from
+  web/src/data/licenses.ts).
 
 What is not in this repository
 ==============================

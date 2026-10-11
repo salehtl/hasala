@@ -92,7 +92,7 @@ func countRows(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int {
 // whose ops every other device would replay.
 func TestSecondWriterRequiresProofOfKeyPossession(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-possession"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-possession"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -122,7 +122,7 @@ func TestSecondWriterRequiresProofOfKeyPossession(t *testing.T) {
 // key without saying what that key authorized.
 func TestSignatureIsBoundToTheWriterIDAndKey(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-binding"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-binding"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -203,7 +203,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	w := newWriters(pool, newClock())
 
 	t.Run("cannot bootstrap with one", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-small-boot"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-small-boot"))
 		n := mustChallenge(t, w, u)
 		if err := w.Register(bgctx, u, "dev-evil", identityKey, n, forgedSig); !errors.Is(err, ErrKeyUnusable) {
 			t.Fatalf("bootstrap with the identity key: %v, want ErrKeyUnusable", err)
@@ -220,7 +220,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	})
 
 	t.Run("cannot be enrolled as a later writer", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-small-later"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-small-later"))
 		a := newDevice(t, "dev-a")
 		mustEnroll(t, w, u, a, a)
 		n := mustChallenge(t, w, u)
@@ -233,7 +233,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	// script, a restore from before this check existed — must not be able to
 	// authorize anything either.
 	t.Run("cannot authorize even if already in the roster", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-small-roster"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-small-roster"))
 		if _, err := pool.Exec(bgctx,
 			`INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
 			 VALUES ($1,'dev-planted','device',$2,now())`, u, []byte(identityKey)); err != nil {
@@ -251,7 +251,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	})
 
 	t.Run("a key that is not a curve point at all", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-notapoint"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-notapoint"))
 		// y = 2 is not the y-coordinate of any point on edwards25519 — found by
 		// enumeration, because most 32-byte strings ARE valid points (0xFF*32,
 		// the obvious guess, decodes fine and has large order, so it is refused
@@ -326,7 +326,7 @@ func TestSigningDomainsAreDistinctAndPrefixFree(t *testing.T) {
 
 func TestChallengesAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-entropy"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-entropy"))
 	w := newWriters(pool, newClock())
 
 	seen := map[string]bool{}
@@ -348,7 +348,7 @@ func TestChallengesAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 // ATTACK: replay a nonce that already registered a writer.
 func TestChallengeIsSingleUse(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-replay"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-replay"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -386,7 +386,7 @@ const goroutines = 12
 
 func TestChallengeIsSingleUseUnderConcurrency(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-race"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-race"))
 	w := newWriters(pool, newClock())
 
 	authorizer := newDevice(t, "dev-a")
@@ -443,7 +443,7 @@ func TestChallengeIsSingleUseUnderConcurrency(t *testing.T) {
 	if got := countRows(t, pool, deviceWriterCount, u); got != rounds+1 {
 		t.Fatalf("%d device writer rows after the race, want %d", got, rounds+1)
 	}
-	if got := countRows(t, pool, deviceKeyHistoryCount, u, IngestWriterID); got != rounds+1 {
+	if got := countRows(t, pool, deviceKeyHistoryCount, u, "ingest"); got != rounds+1 {
 		t.Fatalf("%d device key_history rows after the race, want %d", got, rounds+1)
 	}
 }
@@ -490,7 +490,7 @@ func TestConcurrentBootstrapsCannotBothWin(t *testing.T) {
 	// proof the lock is doing its job.
 	const rounds = 8
 	for round := 0; round < rounds; round++ {
-		u := mustUpsert(t, pool, appleIdentity(fmt.Sprintf("sub-writer-bootrace-%d", round)))
+		u := mustUpsert(t, pool, testIdentity(fmt.Sprintf("sub-writer-bootrace-%d", round)))
 		racers := make([]device, goroutines)
 		nonces := make([][]byte, goroutines)
 		for i := range racers {
@@ -538,7 +538,7 @@ func TestConcurrentBootstrapsCannotBothWin(t *testing.T) {
 // have used it is out of the attacker's reach, then spend it.
 func TestChallengeExpires(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-expiry"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-expiry"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -559,8 +559,8 @@ func TestChallengeExpires(t *testing.T) {
 // user A, hoping the nonce is looked up by itself.
 func TestChallengeIsBoundToTheUserItWasIssuedFor(t *testing.T) {
 	pool := pgtest.New(t)
-	alice := mustUpsert(t, pool, appleIdentity("sub-writer-alice"))
-	mallory := mustUpsert(t, pool, appleIdentity("sub-writer-mallory"))
+	alice := mustUpsert(t, pool, testIdentity("sub-writer-alice"))
+	mallory := mustUpsert(t, pool, testIdentity("sub-writer-mallory"))
 	w := newWriters(pool, newClock())
 
 	n := mustChallenge(t, w, mallory)
@@ -583,8 +583,8 @@ func TestChallengeIsBoundToTheUserItWasIssuedFor(t *testing.T) {
 // account B (whose roster is empty, so B is still in its bootstrap window).
 func TestAnotherUsersEnrolledKeyCannotAuthorizeAWriter(t *testing.T) {
 	pool := pgtest.New(t)
-	alice := mustUpsert(t, pool, appleIdentity("sub-writer-a2"))
-	bob := mustUpsert(t, pool, appleIdentity("sub-writer-b2"))
+	alice := mustUpsert(t, pool, testIdentity("sub-writer-a2"))
+	bob := mustUpsert(t, pool, testIdentity("sub-writer-b2"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -615,7 +615,7 @@ func TestAnotherUsersEnrolledKeyCannotAuthorizeAWriter(t *testing.T) {
 // would only need to wait for (or provoke) a revocation.
 func TestBootstrapIsAvailableOnlyOnce(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-bootstrap"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-bootstrap"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -638,7 +638,7 @@ func TestBootstrapIsAvailableOnlyOnce(t *testing.T) {
 // use it to enroll a writer.
 func TestRevokedKeyCannotAuthorizeANewWriter(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-revoked-key"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-revoked-key"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -667,7 +667,7 @@ func TestRevokedKeyCannotAuthorizeANewWriter(t *testing.T) {
 // bootstrap attack above, if bootstrap were reopenable) using a key of its own.
 func TestRevocationRequiresAnEnrolledKey(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-revoke-auth"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-revoke-auth"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -727,7 +727,7 @@ func TestRevocationRequiresAnEnrolledKey(t *testing.T) {
 
 func TestRegistrationAppendsToKeyHistory(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-history"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-history"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -739,7 +739,7 @@ func TestRegistrationAppendsToKeyHistory(t *testing.T) {
 
 	rows, err := pool.Query(bgctx,
 		`SELECT writer_id, pubkey, event, at FROM key_history WHERE user_id=$1 AND writer_id <> $2 ORDER BY id`,
-		u, IngestWriterID)
+		u, "ingest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -781,7 +781,7 @@ func TestRegistrationAppendsToKeyHistory(t *testing.T) {
 // to fail at the database, not merely be absent from this package's SQL.
 func TestKeyHistoryIsAppendOnly(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-immutable"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-immutable"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -791,161 +791,29 @@ func TestKeyHistoryIsAppendOnly(t *testing.T) {
 	if _, err := pool.Exec(bgctx,
 		`UPDATE key_history SET pubkey=$1 WHERE user_id=$2`, []byte(evil.pub), u); err == nil {
 		t.Fatal("a key_history entry was rewritten")
-	} else if !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("UPDATE was refused, but not by the append-only guard: %v", err)
+	} else if !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("UPDATE was refused, but not by the runtime grants: %v", err)
 	}
 
 	if _, err := pool.Exec(bgctx, `DELETE FROM key_history WHERE user_id=$1`, u); err == nil {
 		t.Fatal("a key_history entry was deleted")
-	} else if !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("DELETE was refused, but not by the append-only guard: %v", err)
+	} else if !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("DELETE was refused, but not by the runtime grants: %v", err)
 	}
 
 	if _, err := pool.Exec(bgctx, `TRUNCATE key_history`); err == nil {
 		t.Fatal("key_history was truncated")
-	} else if !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("TRUNCATE was refused, but not by the append-only guard: %v", err)
+	} else if !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("TRUNCATE was refused, but not by the runtime grants: %v", err)
 	}
 
 	var pub []byte
 	if err := pool.QueryRow(bgctx,
-		`SELECT pubkey FROM key_history WHERE user_id=$1 AND writer_id <> $2`, u, IngestWriterID).Scan(&pub); err != nil {
+		`SELECT pubkey FROM key_history WHERE user_id=$1 AND writer_id <> $2`, u, "ingest").Scan(&pub); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(pub, a.pub) {
 		t.Fatal("the recorded public key changed")
-	}
-}
-
-// asRole runs one statement as another database role and returns its error.
-// SET LOCAL confines the change to the transaction, which is rolled back.
-func asRole(t *testing.T, pool *pgxpool.Pool, role, sql string) error {
-	t.Helper()
-	tx, err := pool.Begin(bgctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback(bgctx) //nolint:errcheck // the statement under test may have aborted it
-	if _, err := tx.Exec(bgctx, `SET LOCAL ROLE `+role); err != nil {
-		t.Fatal(err)
-	}
-	_, err = tx.Exec(bgctx, sql)
-	return err
-}
-
-// newRuntimeRole creates the non-owner role the deployment recipe describes.
-// Roles are cluster-wide while databases are per-test, so the name is derived
-// from the database to stay unique in the shared cluster scripts/check.sh
-// boots. DROP OWNED BY revokes every privilege granted to the role in this
-// database — including default-privilege entries, which would otherwise make
-// DROP ROLE fail.
-func newRuntimeRole(t *testing.T, pool *pgxpool.Pool) string {
-	t.Helper()
-	var db string
-	if err := pool.QueryRow(bgctx, `SELECT current_database()`).Scan(&db); err != nil {
-		t.Fatal(err)
-	}
-	role := "ledger_runtime_" + db
-	if _, err := pool.Exec(bgctx, `CREATE ROLE `+role+` NOLOGIN`); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		// Registered after pgtest.New's cleanup, so it runs BEFORE the database
-		// is dropped (t.Cleanup is LIFO) — DROP OWNED needs the objects to exist.
-		if _, err := pool.Exec(bgctx, `DROP OWNED BY `+role); err != nil {
-			t.Errorf("drop owned by %s: %v", role, err)
-		}
-		if _, err := pool.Exec(bgctx, `DROP ROLE `+role); err != nil {
-			t.Errorf("drop role %s: %v", role, err)
-		}
-	})
-	return role
-}
-
-// grantRuntimePrivileges applies the recipe documented in 00003_writers.sql,
-// verbatim. If this function and that comment ever disagree, the comment is a
-// deployment instruction that does not work.
-func grantRuntimePrivileges(t *testing.T, pool *pgxpool.Pool, role string) {
-	t.Helper()
-	var owner string
-	if err := pool.QueryRow(bgctx, `SELECT current_user`).Scan(&owner); err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range []string{
-		`GRANT USAGE ON SCHEMA public TO ` + role,
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ` + role,
-		`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ` + role,
-		`ALTER DEFAULT PRIVILEGES FOR ROLE ` + owner + ` IN SCHEMA public
-		   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ` + role,
-		`ALTER DEFAULT PRIVILEGES FOR ROLE ` + owner + ` IN SCHEMA public
-		   GRANT USAGE, SELECT ON SEQUENCES TO ` + role,
-	} {
-		if _, err := pool.Exec(bgctx, stmt); err != nil {
-			t.Fatalf("%s: %v", stmt, err)
-		}
-	}
-}
-
-// The recipe in 00003_writers.sql is a deployment instruction, so it has to
-// actually run an application workload — not just be refused in the right
-// places. Two failures it is pinned against, both of which produce a runtime
-// role that cannot serve a single registration:
-//
-//   - key_history.id is a bigserial, so an INSERT calls nextval() on its
-//     sequence. Table grants alone give "permission denied for sequence".
-//   - GRANT ... ON ALL TABLES is a snapshot of the schema at that instant, not
-//     a policy. A table created by a LATER migration (Tasks 8+ add several) is
-//     unreachable until ALTER DEFAULT PRIVILEGES is in place.
-func TestDocumentedRuntimeRoleGrantsWork(t *testing.T) {
-	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-grants"))
-	// A committed key_history row: the guard is a per-ROW trigger, so an UPDATE
-	// against an empty table touches nothing and raises nothing. Without this
-	// the last assertion below passes for the wrong reason.
-	a := newDevice(t, "dev-a")
-	mustEnroll(t, newWriters(pool, newClock()), u, a, a)
-	role := newRuntimeRole(t, pool)
-
-	// Before the sequence grant: the table grant alone is not enough.
-	if _, err := pool.Exec(bgctx,
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO `+role); err != nil {
-		t.Fatal(err)
-	}
-	insert := `INSERT INTO key_history (user_id, writer_id, pubkey, event, at)
-	           VALUES ('` + u.String() + `', 'dev-a', NULL, 'registered', now())`
-	if err := asRole(t, pool, role, insert); err == nil {
-		t.Fatal("table grants alone let a bigserial INSERT through; the recipe would not have needed the sequence grant")
-	} else if !strings.Contains(err.Error(), "permission denied for sequence") {
-		t.Fatalf("table-grants-only INSERT: %v, want permission denied for sequence", err)
-	}
-
-	// A table added by a later migration, before default privileges are set.
-	if _, err := pool.Exec(bgctx, `CREATE TABLE future_task8_table (id int)`); err != nil {
-		t.Fatal(err)
-	}
-	if err := asRole(t, pool, role, `SELECT * FROM future_task8_table`); err == nil {
-		t.Fatal("ON ALL TABLES reached a table created afterwards; the default-privileges step would be unnecessary")
-	} else if !strings.Contains(err.Error(), "permission denied") {
-		t.Fatalf("future table without default privileges: %v", err)
-	}
-
-	// Now the full documented recipe.
-	grantRuntimePrivileges(t, pool, role)
-
-	if err := asRole(t, pool, role, insert); err != nil {
-		t.Fatalf("the documented grants do not permit a registration's key_history INSERT: %v", err)
-	}
-	if _, err := pool.Exec(bgctx, `CREATE TABLE future_task9_table (id bigserial PRIMARY KEY, x int)`); err != nil {
-		t.Fatal(err)
-	}
-	if err := asRole(t, pool, role, `INSERT INTO future_task9_table (x) VALUES (1)`); err != nil {
-		t.Fatalf("a table created after the default-privileges step is still unreachable: %v", err)
-	}
-
-	// And the guard still binds this role, with all of that granted.
-	if err := asRole(t, pool, role, `UPDATE key_history SET pubkey = '\x00'::bytea`); err == nil ||
-		!strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("the full recipe unbound the append-only guard: %v", err)
 	}
 }
 
@@ -957,52 +825,45 @@ func TestDocumentedRuntimeRoleGrantsWork(t *testing.T) {
 // what the owner can still do — so the requirement is executable rather than a
 // sentence in a report.
 func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
-	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-role"))
+	pool, owner := pgtest.NewWithOwner(t)
+	u := mustUpsert(t, pool, testIdentity("sub-writer-role"))
 	w := newWriters(pool, newClock())
 	a := newDevice(t, "dev-a")
 	mustEnroll(t, w, u, a, a)
 
-	role := newRuntimeRole(t, pool)
-	grantRuntimePrivileges(t, pool, role)
-
-	// The workload this role exists to run still works: appending is the whole
-	// point of an append-only log, and a guard that blocked it would be a
-	// passing test and a dead application.
-	if err := asRole(t, pool, role,
+	// The workload the runtime role exists to run still works: appending is
+	// the whole point of an append-only log.
+	if _, err := pool.Exec(bgctx,
 		`INSERT INTO key_history (user_id, writer_id, pubkey, event, at)
-		 VALUES ('`+u.String()+`', 'dev-b', NULL, 'registered', now())`); err != nil {
+		 VALUES ($1, 'dev-b', NULL, 'registered', now())`, u); err != nil {
 		t.Fatalf("the runtime role cannot append to key_history: %v", err)
 	}
-
-	// A non-owner with full DML is refused by the trigger...
-	err := asRole(t, pool, role, `UPDATE key_history SET pubkey = '\x00'::bytea`)
-	if err == nil || !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("non-owner UPDATE: %v, want the append-only guard", err)
+	// The runtime role holds no UPDATE or DELETE at all (spec 02 D-6): the
+	// grants are the first wall...
+	for _, sql := range []string{`UPDATE key_history SET pubkey = '\x00'::bytea`, `DELETE FROM key_history`} {
+		if _, err := pool.Exec(bgctx, sql); err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Fatalf("runtime %s: %v, want permission denied", sql, err)
+		}
 	}
-	// ...including the DELETE half, which the cascade carve-out could have
-	// widened by accident.
-	err = asRole(t, pool, role, `DELETE FROM key_history`)
-	if err == nil || !strings.Contains(err.Error(), "append-only") {
-		t.Fatalf("non-owner DELETE: %v, want the append-only guard", err)
+	// ...and it cannot switch the trigger off, because that needs ownership.
+	if _, err := pool.Exec(bgctx, `ALTER TABLE key_history DISABLE TRIGGER key_history_no_rewrite`); err == nil ||
+		!strings.Contains(err.Error(), "must be owner") {
+		t.Fatalf("runtime DISABLE TRIGGER: %v, want a must-be-owner error", err)
 	}
-	// ...and cannot switch the trigger off, because that needs ownership.
-	err = asRole(t, pool, role, `ALTER TABLE key_history DISABLE TRIGGER key_history_no_rewrite`)
-	if err == nil || !strings.Contains(err.Error(), "must be owner") {
-		t.Fatalf("non-owner DISABLE TRIGGER: %v, want a must-be-owner error", err)
+	// The trigger is the second wall, and it binds the OWNER too...
+	for _, sql := range []string{`UPDATE key_history SET pubkey = '\x00'::bytea`, `DELETE FROM key_history`} {
+		if _, err := owner.Exec(bgctx, sql); err == nil || !strings.Contains(err.Error(), "append-only") {
+			t.Fatalf("owner %s: %v, want the append-only guard", sql, err)
+		}
 	}
-
-	// The owner, however, CAN — which is exactly why the runtime role must not
-	// be the owner. Asserted rather than assumed, so the day someone finds a
-	// way to make the guard hold against its owner, this test says so.
-	if _, err := pool.Exec(bgctx, `ALTER TABLE key_history DISABLE TRIGGER key_history_no_rewrite`); err != nil {
+	// ...but the owner CAN disable it, which is exactly why serve refuses to
+	// run as the owner (internal/pg.CheckServing, O2). Asserted rather than
+	// assumed, so the day the guard holds against its owner, this test says so.
+	if _, err := owner.Exec(bgctx, `ALTER TABLE key_history DISABLE TRIGGER key_history_no_rewrite`); err != nil {
 		t.Fatalf("owner could not disable the trigger: %v", err)
 	}
-	if _, err := pool.Exec(bgctx, `UPDATE key_history SET pubkey = '\x00'::bytea`); err != nil {
+	if _, err := owner.Exec(bgctx, `UPDATE key_history SET at = at - interval '1 day'`); err != nil {
 		t.Fatalf("owner could not rewrite the log with the trigger off: %v", err)
-	}
-	if _, err := pool.Exec(bgctx, `ALTER TABLE key_history ENABLE TRIGGER key_history_no_rewrite`); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -1011,15 +872,11 @@ func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
 // account, not a rewrite of a live account's history.
 func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-cascade"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-cascade"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
 	mustEnroll(t, w, u, a, a)
-	if _, err := w.EnsureIngestWriter(bgctx, u); err != nil {
-		t.Fatal(err)
-	}
-
 	if _, err := pool.Exec(bgctx, `DELETE FROM users WHERE id=$1`, u); err != nil {
 		t.Fatalf("deleting a user must cascade through key_history: %v", err)
 	}
@@ -1034,75 +891,9 @@ func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
 // The ingest writer and the roster
 // ---------------------------------------------------------------------------
 
-// ATTACK: register a client-controlled key under the writer id the server's own
-// ingest pipeline uses. The ingest chain is the one a client trusts as
-// "server-ingested provenance" (spec §3.3(b)); a client writer wearing that id
-// would launder its own ops into it.
-func TestClientCannotRegisterTheIngestWriterID(t *testing.T) {
-	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-ingest-id"))
-	w := newWriters(pool, newClock())
-
-	d := newDevice(t, IngestWriterID)
-	n := mustChallenge(t, w, u)
-	if err := w.Register(bgctx, u, d.id, d.pub, n, d.signEnrollment(n, d)); !errors.Is(err, ErrWriterIDReserved) {
-		t.Fatalf("registering writer_id %q: %v, want ErrWriterIDReserved", IngestWriterID, err)
-	}
-
-	// Same for revocation: a client must not be able to retire the server's
-	// writer and stop its own ingest.
-	if _, err := w.EnsureIngestWriter(bgctx, u); err != nil {
-		t.Fatal(err)
-	}
-	a := newDevice(t, "dev-a")
-	mustEnroll(t, w, u, a, a)
-	n2 := mustChallenge(t, w, u)
-	if err := w.Revoke(bgctx, u, IngestWriterID, n2, a.signRevocation(n2, IngestWriterID)); !errors.Is(err, ErrWriterIDReserved) {
-		t.Fatalf("revoking the ingest writer: %v, want ErrWriterIDReserved", err)
-	}
-}
-
-func TestEnsureIngestWriterIsIdempotent(t *testing.T) {
-	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-ingest"))
-	w := newWriters(pool, newClock())
-
-	id, err := w.EnsureIngestWriter(bgctx, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if id != IngestWriterID {
-		t.Fatalf("ingest writer id = %q, want %q", id, IngestWriterID)
-	}
-	for i := 0; i < 3; i++ {
-		if _, err := w.EnsureIngestWriter(bgctx, u); err != nil {
-			t.Fatalf("call %d: %v", i, err)
-		}
-	}
-	if n := countRows(t, pool, `SELECT count(*) FROM writers WHERE user_id=$1`, u); n != 1 {
-		t.Fatalf("%d writer rows, want 1", n)
-	}
-	if n := countRows(t, pool, `SELECT count(*) FROM key_history WHERE user_id=$1`, u); n != 1 {
-		t.Fatalf("%d key_history rows, want 1 (one per actual creation)", n)
-	}
-
-	roster, err := w.Roster(bgctx, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(roster) != 1 || roster[0].Kind != KindIngest || roster[0].PubKey != nil {
-		t.Fatalf("ingest roster entry = %+v", roster)
-	}
-
-	// The ingest writer must not count as an enrolled key: it has none, and a
-	// user whose only writer is the server's is still on its first device.
-	a := newDevice(t, "dev-a")
-	mustEnroll(t, w, u, a, a)
-}
-
 func TestRosterReportsEveryWriterWithItsState(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-roster"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-roster"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -1122,11 +913,8 @@ func TestRosterReportsEveryWriterWithItsState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Three, not two: every account's roster carries the server's own writer
-	// from its first sign-in (auth.UpsertUser), and a roster that omitted it is
-	// a roster no checkpoint can cover the ingest chain from.
-	if len(roster) != 3 {
-		t.Fatalf("%d roster entries, want 3 (dev-a, dev-b, ingest): %+v", len(roster), roster)
+	if len(roster) != 2 {
+		t.Fatalf("%d roster entries, want 2 (dev-a, dev-b): %+v", len(roster), roster)
 	}
 	byID := map[string]Writer{}
 	for _, wr := range roster {
@@ -1149,7 +937,7 @@ func TestRosterReportsEveryWriterWithItsState(t *testing.T) {
 
 func TestRegisterRejectsUnusableInput(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-input"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-input"))
 	w := newWriters(pool, newClock())
 	a := newDevice(t, "dev-a")
 	n := mustChallenge(t, w, u)
@@ -1196,7 +984,7 @@ func TestRegisterRejectsUnusableInput(t *testing.T) {
 
 func TestRegisteringTheSameWriterOrKeyTwiceIsRefused(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-dupe"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-dupe"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -1233,7 +1021,7 @@ func TestRegisteringTheSameWriterOrKeyTwiceIsRefused(t *testing.T) {
 // Authorization has to be decided before any existence check reports back.
 func TestAuthorizationIsCheckedBeforeExistence(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-oracle"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-oracle"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")

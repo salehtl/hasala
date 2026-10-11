@@ -88,7 +88,7 @@ func TestInviteCodeNormalizationIsForgiving(t *testing.T) {
 		t.Fatalf("spaced/dashed code does not normalize back: %q", NormalizeInviteCode(spaced))
 	}
 	// And it is the NORMALIZED form the redemption keys on, end to end.
-	u, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-normalize"), spaced)
+	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-normalize"), spaced)
 	if err != nil {
 		t.Fatalf("a spaced code did not redeem: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestInviteCodeNormalizationIsForgiving(t *testing.T) {
 func TestEmptyInviteCodeIsRefused(t *testing.T) {
 	pool := pgtest.New(t)
 	mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-empty"), ""); !errors.Is(err, ErrNotInvited) {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-empty"), ""); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("err = %v, want ErrNotInvited", err)
 	}
 	if n := countUsers(t, pool); n != 0 {
@@ -118,7 +118,7 @@ func TestValidCodeCreatesExactlyOneAccountAndIsMarkedRedeemed(t *testing.T) {
 	pool := pgtest.New(t)
 	code := mustMint(t, pool, "the beta tester")
 
-	u, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-first"), code)
+	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-first"), code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,31 +139,24 @@ func TestValidCodeCreatesExactlyOneAccountAndIsMarkedRedeemed(t *testing.T) {
 		t.Fatalf("redeemed_by = %v, want %v", redeemedBy, u)
 	}
 
-	// The counter row and the ingest writer are still created — the invite gate
-	// wraps UpsertUser's transaction rather than replacing it.
-	var seqs, writers int
+	// The counter row is still created — the invite gate wraps UpsertUser's
+	// transaction rather than replacing it.
+	var seqs int
 	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM oplog_seq WHERE user_id = $1`, u).Scan(&seqs); err != nil {
 		t.Fatal(err)
 	}
 	if seqs != 1 {
 		t.Fatalf("oplog_seq rows = %d, want 1", seqs)
 	}
-	if err := pool.QueryRow(bgctx,
-		`SELECT count(*) FROM writers WHERE user_id = $1 AND writer_id = 'ingest'`, u).Scan(&writers); err != nil {
-		t.Fatal(err)
-	}
-	if writers != 1 {
-		t.Fatalf("ingest writer rows = %d, want 1", writers)
-	}
 }
 
 func TestASpentCodeCreatesNoSecondAccount(t *testing.T) {
 	pool := pgtest.New(t)
 	code := mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-one"), code); err != nil {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-one"), code); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-two"), code); !errors.Is(err, ErrNotInvited) {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-two"), code); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("err = %v, want ErrNotInvited", err)
 	}
 	if n := countUsers(t, pool); n != 1 {
@@ -174,7 +167,7 @@ func TestASpentCodeCreatesNoSecondAccount(t *testing.T) {
 func TestAWrongCodeCreatesNoAccount(t *testing.T) {
 	pool := pgtest.New(t)
 	mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-wrong"), "AAAAAAAAAAAAAAAAAAAAAAAA"); !errors.Is(err, ErrNotInvited) {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-wrong"), "AAAAAAAAAAAAAAAAAAAAAAAA"); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("err = %v, want ErrNotInvited", err)
 	}
 	if n := countUsers(t, pool); n != 0 {
@@ -187,11 +180,11 @@ func TestAWrongCodeCreatesNoAccount(t *testing.T) {
 func TestAnExistingUserSignsInWithNoCode(t *testing.T) {
 	pool := pgtest.New(t)
 	code := mustMint(t, pool, "")
-	first, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-return"), code)
+	first, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-return"), code)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-return"), "")
+	again, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-return"), "")
 	if err != nil {
 		t.Fatalf("a returning user was refused: %v", err)
 	}
@@ -214,10 +207,10 @@ func TestAReturningUserDoesNotSpendACode(t *testing.T) {
 	pool := pgtest.New(t)
 	first := mustMint(t, pool, "")
 	spare := mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-spare"), first); err != nil {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-spare"), first); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-spare"), spare); err != nil {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-spare"), spare); err != nil {
 		t.Fatal(err)
 	}
 	var redeemed int
@@ -228,7 +221,7 @@ func TestAReturningUserDoesNotSpendACode(t *testing.T) {
 	if redeemed != 1 {
 		t.Fatalf("%d codes redeemed, want 1: a returning sign-in spent a spare code", redeemed)
 	}
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-other"), spare); err != nil {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-other"), spare); err != nil {
 		t.Fatalf("the spare code was consumed and can no longer invite anyone: %v", err)
 	}
 }
@@ -248,7 +241,7 @@ func TestConcurrentRedemptionOfOneCodeCreatesOneAccount(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-race-"+string(rune('a'+i))), code)
+			_, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-race-"+string(rune('a'+i))), code)
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -279,14 +272,14 @@ func TestConcurrentRedemptionOfOneCodeCreatesOneAccount(t *testing.T) {
 func TestDeletingAnAccountDoesNotFreeItsInviteCode(t *testing.T) {
 	pool := pgtest.New(t)
 	code := mustMint(t, pool, "")
-	u, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-deleted"), code)
+	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-deleted"), code)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(bgctx, `DELETE FROM users WHERE id = $1`, u); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-after"), code); !errors.Is(err, ErrNotInvited) {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-after"), code); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("err = %v, want ErrNotInvited: a deleted account freed its code", err)
 	}
 	// The row is still there, marked spent, with the link to the person gone.
@@ -311,7 +304,7 @@ func TestDeletingAnAccountDoesNotFreeItsInviteCode(t *testing.T) {
 // Deleting an account takes the operator's NOTE about that person with it, and
 // takes nobody else's.
 //
-// 00020, purge.go's notUserLinked classification and deploy/README-v2.md all
+// 00020, purge.go's notUserLinked classification and ledgerd's deploy README all
 // said the same thing — "the link to the person removed … an unattributable
 // residue", "what survives is 'some code was spent, and nobody knows by whom'"
 // — and all three described `redeemed_by ON DELETE SET NULL` and stopped
@@ -331,11 +324,11 @@ func TestDeletingAnAccountForgetsTheOperatorsNoteAboutThemAndNobodyElses(t *test
 	stayCode := mustMint(t, pool, "the beta tester from the bank thread")
 	outstanding := mustMint(t, pool, "for the colleague who has not signed up yet")
 
-	gone, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-note-gone"), goneCode)
+	gone, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-gone"), goneCode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-note-stays"), stayCode); err != nil {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-stays"), stayCode); err != nil {
 		t.Fatal(err)
 	}
 
@@ -350,7 +343,7 @@ func TestDeletingAnAccountForgetsTheOperatorsNoteAboutThemAndNobodyElses(t *test
 
 	if got := noteOf(t, pool, goneCode); got != "" {
 		t.Fatalf("note = %q after the account was deleted: the row still says who spent it, "+
-			"which is what 00020, purge.notUserLinked and deploy/README-v2.md all promise it "+
+			"which is what 00020, purge.notUserLinked and ledgerd's deploy README all promise it "+
 			"does not", got)
 	}
 	if got := noteOf(t, pool, stayCode); got != "the beta tester from the bank thread" {
@@ -376,7 +369,7 @@ func TestDeletingAnAccountForgetsTheOperatorsNoteAboutThemAndNobodyElses(t *test
 	if redeemedBy != nil {
 		t.Fatalf("redeemed_by = %v, want NULL", *redeemedBy)
 	}
-	if _, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-note-after"), goneCode); !errors.Is(err, ErrNotInvited) {
+	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-after"), goneCode); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("err = %v, want ErrNotInvited: reaping the note freed the code", err)
 	}
 }
@@ -393,7 +386,7 @@ func TestNoTextTheOperatorWroteAboutADeletedAccountSurvivesInTheInviteRow(t *tes
 	pool := pgtest.New(t)
 	const secret = "dr jane-example, the tester from the clinic"
 	code := mustMint(t, pool, secret)
-	u, err := UpsertUserInvited(bgctx, pool, appleIdentity("sub-note-scan"), code)
+	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-scan"), code)
 	if err != nil {
 		t.Fatal(err)
 	}

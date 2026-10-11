@@ -8,14 +8,16 @@ beta; every deployment is **QA** until a production VPS exists.
 
 | Path | What it is |
 | --- | --- |
-| `server/` | The Go backend (module `github.com/salehtl/hasala/server`), forked from ledgerd at `4b01e36`. Postgres. |
-| `ios/` | The native SwiftUI app and its Swift packages (`HasalaCore` = the ported client core). Not in this tree yet. |
+| `server/` | The Go backend `hasalad` (module `github.com/salehtl/hasala/server`), forked from ledgerd at `4b01e36`. Postgres. |
+| `server/oracle/` | A separate Go module: ledgerd's frozen v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Test-time oracle only; the server's build graph cannot reach it. |
+| `ios/` | The native SwiftUI app and its Swift packages (`HasalaCore` = the ported client core; `HasalaKit` = the design system, read models and the Maya mock). |
 | `conformance/` | Shared fixtures. Go, the TypeScript reference and Swift must all produce byte-identical output against them. |
 | `reference/ledgerd-client/` | ledgerd's TypeScript client core. **Reference and fixture oracle only** — the Swift port must match it. Not shipped. |
 | `reference/ledgerd-pwa/` | ledgerd's React PWA. Reference for product logic (`src/lib/`) only. Not shipped. |
+| `web/` | The hasala.app website: Astro + Bun, static output. See "Website" below. |
 | `design/` | Logo and exported assets. Not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | (Planned) generic deployment notes for the QA host. Host names, addresses, accounts and credentials never go here. |
-| `docs/` | Not in this tree yet: Hasala's architecture and decisions will live here. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
+| `docs/` | `docs/legal/` holds the privacy policy, terms, security and support pages that the website renders (`status: "final"`; a page that still has an `[[OWNER: ...]]` note must go back to `status: "draft"`). Hasala's architecture and decisions will live in `docs/` too; not in this tree yet. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
 
 ## Build and test
 
@@ -28,9 +30,10 @@ standard-library advisories; gopls, govulncheck and golangci-lint are rebuilt
 with it. `server/go.mod`'s `toolchain` line is that security floor, and
 `govulncheck ./...` in `server/` should report nothing reachable.
 
-- `scripts/check.sh` is the gate: real-mail fence, toolchain floor, v1ref
-  fence, `go vet` and `go test` in `server/` against one throwaway Postgres
-  (unix socket only), the reference client's typecheck and `bun test`, and the
+- `scripts/check.sh` is the gate: real-mail fence, toolchain floor, the
+  hasalad fences (`server/cmd/hasalad/fence_test.go`), `go vet` and `go test`
+  in `server/` and then `server/oracle/` against one throwaway Postgres (unix
+  socket only), the reference client's typecheck and `bun test`, and the
   conformance suites. Once per checkout first:
   `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
 - CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
@@ -38,7 +41,8 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   anything else, then `nix flake check` and `scripts/check.sh` in the
   devShell), `vuln` (`govulncheck ./...` in `server/`, failing on anything
   reachable) and `secrets` (gitleaks over the full history). Keep those job
-  names: required status checks match them by name. `.gitleaks.toml` allowlists
+  names: required status checks match them by name. A fourth job, `web`,
+  checks the website (see "Website") and is not a required check. `.gitleaks.toml` allowlists
   known public test vectors only, each scoped to its rule, its files and its
   exact value; never widen it to pass a real secret.
 - Real bank mail is **not** in this repository. The real-mail conformance cases
@@ -50,7 +54,7 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   with `scripts/private-fixtures-lock.sh write` and commit both. Never commit a
   real message, account or card number (masked or not), name, amount, date or
   reference here — use synthetic stand-ins. No real transaction amount or date
-  is committed anywhere in this tree, `server/internal/v1ref` included.
+  is committed anywhere in this tree, `server/oracle/v1ref` included.
   `scripts/check.sh`'s first step (the real-mail fence) refuses the private
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
   toolchain needed) on every push and pull request before anything else.
@@ -58,10 +62,12 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `Hasala.xcodeproj` is generated from `ios/project.yml` by XcodeGen **2.46.0**
   (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
   and committed. The flake pins that XcodeGen (`nix build .#xcodegen`, on PATH in
-  the darwin devShell); nixpkgs' own 2.44.1 writes a project without resources. Tests: `swift test --package-path ios/HasalaKit` (design tokens,
-  money formatting, the Maya mock) and `xcodebuild test -project
+  the darwin devShell); nixpkgs' own 2.44.1 writes a project without resources.
+  Tests: `swift test --package-path ios/HasalaKit` (design tokens, money
+  formatting, the Maya mock, text contrast) and `xcodebuild test -project
   ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
-  (unit tests plus the UI smoke test). Design tokens are generated from
+  (unit tests, and UI tests that run the accessibility audit at the default
+  and `.accessibility3` text sizes). Design tokens are generated from
   `design/tokens/paper-tokens.json` by `swift ios/tools/tokens/generate.swift`
   (`--check` in CI). Debug builds run the synthetic Maya scenario
   (`-HasalaScenario maya|mayaHidden`); Release builds never reach the mocks.
@@ -69,9 +75,47 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
   from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. CI job `ios` builds
   and tests unsigned in the simulator; it is not a required check.
-- `nix build .#server` builds `cmd/ledgerd` (the binary keeps that name for
-  now), `nix flake check` builds it and checks formatting, `nix fmt` formats
-  Nix and Go.
+- `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
+  checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
+  which is byte-frozen).
+- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
+  `console` (a stub until the console is built) and `version`; configuration
+  is `HASALA_*` environment variables over an optional TOML file
+  (`server/config.example.toml`). Two Postgres roles: `hasala_migrate` owns the
+  schema and is the only role `hasalad migrate` runs as; `hasala_runtime`
+  serves, and every other mode refuses to start as the owner, as a superuser
+  or behind the embedded migrations. Tests boot their own throwaway cluster
+  (`internal/pgtest`; `HASALA_TEST_POSTGRES_URL` reuses one).
+
+## Website
+
+`web/` is the hasala.app marketing site and the public pages under it
+(`/privacy`, `/terms`, `/security` and `/support` are rendered from
+`docs/legal/*.md`): Astro, static output, Bun as the package manager, from the
+same devShell. From `web/`:
+
+- `bun install --frozen-lockfile` once, then `bun run dev` while editing.
+- `bun run check` is `astro check`. `bun run build` writes `dist/` and then
+  runs `scripts/check-dist.ts`, which fails the build if any inline script or
+  style is not covered by the one CSP every page shares, if any element has a
+  `style=""` attribute, or if `/` loads more than 15 KB of JavaScript (gzip).
+- `bun run preview` (Astro's preview server) or `bun scripts/serve-dist.ts`,
+  which serves `dist/` on 127.0.0.1:4321 with the `_headers`, `_redirects`
+  and trailing-slash handling of production, and gzip.
+- `web/lighthouse/run.sh` runs Lighthouse CI on `/` (mobile and desktop)
+  against that server. It needs Node and Chrome, so it runs in CI (job `web`),
+  which keeps the reports as a workflow artifact; it asserts performance
+  >= 0.9 and accessibility, best practices and SEO >= 0.95.
+- PUBLIC_* settings (API base, Turnstile site key) are in `web/.env.example`;
+  they are public and baked into the build.
+
+The legal pages stay `noindex` and out of the sitemap while their front
+matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
+changing that. `/licenses` lists the third-party code and font the built
+site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
+dependency reaches `dist/`. Deploying (`bunx wrangler deploy` from `web/`, Workers Static
+Assets, see `web/wrangler.jsonc`) is done only with the owner's approval;
+neither CI nor an agent deploys.
 
 ## Decisions (2026-10-11)
 
@@ -91,8 +135,8 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
 - **Auth**: passkeys (RP ID `hasala.app`) + 12-word recovery phrase; invite
   codes; WebAuthn step-up for every auth/key/mailbox management operation.
 - **Outbound mail**: Cloudflare Email Service.
-- **Hosting (QA)**: the QA host behind Cloudflare Tunnel; ledgerd listens on
-  localhost only.
+- **Hosting (QA)**: the QA host behind Cloudflare Tunnel; hasalad listens on
+  loopback only and has no TLS code.
 - Bundle ID `app.hasala.ios`. Google OAuth consent: production, unverified
   (≤100 users).
 

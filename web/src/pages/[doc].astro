@@ -1,0 +1,826 @@
+---
+/**
+ * /privacy, /terms, /security, /support: the "Legal template" boards. The
+ * words come from docs/legal/*.md (another team owns them); this page only
+ * lays them out: header, "In plain words", sticky table of contents, and a
+ * draft banner while the frontmatter says status: draft.
+ */
+import { render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import { LEGAL_PAGES, legalEntry, type LegalSlug } from '../lib/legal';
+import { SITE } from '../data/site';
+
+export function getStaticPaths() {
+  return LEGAL_PAGES.map((p) => ({ params: { doc: p.slug } }));
+}
+
+const slug = Astro.params.doc as LegalSlug;
+const page = LEGAL_PAGES.find((p) => p.slug === slug)!;
+const entry = await legalEntry(slug);
+const rendered = entry ? await render(entry) : null;
+const Content = rendered?.Content;
+const toc = (rendered?.headings ?? []).filter((h) => h.depth === 2);
+
+const data = entry?.data;
+const title = data?.title ?? page.fallbackTitle;
+const description = data?.description ?? page.fallbackDescription;
+const isDraft = !entry || (data?.status ?? 'draft') === 'draft';
+const updated = data?.lastUpdated ?? data?.updated;
+const updatedText = updated?.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const version = data?.version ? `Version ${data.version}` : 'Beta';
+const plainWords = typeof data?.plainWords === 'string' ? data.plainWords : null;
+const contact = data?.contact ?? (slug === 'privacy' ? SITE.privacyEmail : slug === 'security' ? SITE.securityEmail : SITE.supportEmail);
+const crumb = slug === 'support' || slug === 'security' ? 'Help' : 'Legal';
+const others = LEGAL_PAGES.filter((p) => p.slug !== slug);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: title,
+  description,
+  url: `${SITE.url}/${slug}`,
+  inLanguage: 'en',
+  ...(updated ? { dateModified: updated.toISOString().slice(0, 10) } : {}),
+  isPartOf: { '@id': `${SITE.url}/#website` },
+  breadcrumb: {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Hasala', item: SITE.url },
+      { '@type': 'ListItem', position: 2, name: title, item: `${SITE.url}/${slug}` },
+    ],
+  },
+};
+---
+
+<Base title={title} description={description} path={`/${slug}`} noindex={isDraft} ogType="article" jsonLd={jsonLd} class="legal-page">
+  <header class="doc-head">
+    <div class="container doc-head__inner">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <ol role="list">
+          <li><a href="/">Hasala</a></li>
+          <li aria-hidden="true"><Icon name="chevron-right" size={12} stroke={1.5} /></li>
+          <li><span>{crumb}</span></li>
+        </ol>
+      </nav>
+      <h1 class="doc-title">{title}</h1>
+      <p class="doc-standfirst">{data?.standfirst ?? description}</p>
+      <div class="doc-meta">
+        {
+          updatedText && (
+            <span class="doc-updated">
+              <Icon name="clock" size={14} stroke={1.5} />
+              Last updated <time datetime={updated!.toISOString().slice(0, 10)}>{updatedText}</time>
+            </span>
+          )
+        }
+        <span class="doc-version">{version}</span>
+        <span class="doc-sep no-print" aria-hidden="true" data-print-only hidden></span>
+        <button type="button" class="doc-print no-print" data-print hidden>Print or save as PDF</button>
+      </div>
+      {
+        isDraft && (
+          <div class="draft" role="note">
+            <strong>Draft.</strong>
+            <span>{data?.draftNote ?? 'This page is being written and is not final yet.'}</span>
+          </div>
+        )
+      }
+    </div>
+  </header>
+
+  <div class="container doc-body">
+    {
+      toc.length > 0 && (
+        <aside class="rail" aria-label="On this page">
+          <details class="toc-mobile no-print">
+            <summary>
+              <span class="toc-mobile__label">On this page</span>
+              <span class="toc-mobile__current" data-toc-current>
+                <b>1</b> {toc[0].text}
+              </span>
+              <span class="toc-mobile__chev" aria-hidden="true">
+                <Icon name="chevron" size={12} stroke={1.8} />
+              </span>
+            </summary>
+            <ol role="list" class="toc-list">
+              {toc.map((h, i) => (
+                <li>
+                  <a href={`#${h.slug}`} data-toc={h.slug}>
+                    <b>{i + 1}</b>
+                    {h.text}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </details>
+
+          <div class="rail__desktop">
+            <p class="rail__label">On this page</p>
+            <ol role="list" class="toc-list toc-list--rail">
+              {toc.map((h, i) => (
+                <li>
+                  <a href={`#${h.slug}`} data-toc={h.slug}>
+                    <b>{i + 1}</b>
+                    <span>{h.text}</span>
+                  </a>
+                </li>
+              ))}
+            </ol>
+            <div class="rail__card">
+              <p>Questions about this page?</p>
+              <a href={`mailto:${contact}`}>{contact}</a>
+            </div>
+            <div class="rail__also">
+              <p class="rail__label">Also read</p>
+              <ul role="list">
+                {others.map((o) => (
+                  <li>
+                    <a href={`/${o.slug}`}>{o.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </aside>
+      )
+    }
+
+    <article class="prose" data-doc>
+      {
+        plainWords && (
+          <aside class="plain-words" aria-label="In plain words">
+            <span class="plain-words__coin" aria-hidden="true" />
+            <div>
+              <p class="plain-words__title">In plain words</p>
+              <p>{plainWords}</p>
+            </div>
+          </aside>
+        )
+      }
+      {
+        Content ? (
+          <Content />
+        ) : (
+          <div class="empty">
+            <h2>Being written</h2>
+            <p>
+              This page isn’t ready yet. Until it is, write to <a href={`mailto:${contact}`}>{contact}</a> and a person who builds Hasala will reply.
+            </p>
+          </div>
+        )
+      }
+      <footer class="doc-end">
+        <span>{updatedText ? `Last updated ${updatedText}` : 'Not yet published'}</span>
+        <a href="#main" class="doc-top no-print">Back to top <Icon name="arrow-top" size={12} stroke={1.6} /></a>
+      </footer>
+    </article>
+  </div>
+</Base>
+
+<script>
+  // Table of contents: marks the section being read; copy-link buttons on
+  // headings; "Print or save as PDF". onPage: set up again for every legal
+  // page the router swaps in, and torn down when it swaps one out.
+  import { onPage } from '../scripts/page';
+
+  onPage((signal) => {
+    const doc = document.querySelector('[data-doc]');
+    if (!doc) return;
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-toc]')];
+    const current = document.querySelector<HTMLElement>('[data-toc-current]');
+    const heads = [...doc.querySelectorAll<HTMLElement>('h2[id]')];
+    if (heads.length) {
+      let last: HTMLElement | null = null;
+      let ticking = false;
+      const update = () => {
+        ticking = false;
+        let active = heads[0];
+        for (const h of heads) if (h.getBoundingClientRect().top < innerHeight * 0.35) active = h;
+        if (active === last) return;
+        last = active;
+        links.forEach((l) => {
+          if (l.dataset.toc === active.id) l.setAttribute('aria-current', 'true');
+          else l.removeAttribute('aria-current');
+        });
+        if (current) {
+          const b = document.createElement('b');
+          b.textContent = String(heads.indexOf(active) + 1);
+          current.replaceChildren(b, ' ', active.querySelector(`#${CSS.escape(active.id)}-text`)?.textContent ?? active.textContent ?? '');
+        }
+      };
+      addEventListener(
+        'scroll',
+        () => {
+          if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(update);
+          }
+        },
+        { passive: true, signal },
+      );
+      update();
+    }
+    document.querySelector('.toc-mobile')?.addEventListener(
+      'click',
+      (e) => {
+        if ((e.target as Element).closest('a')) (e.currentTarget as HTMLDetailsElement).open = false;
+      },
+      { signal },
+    );
+
+    heads.forEach((h) => {
+      // Name the heading by its own text, so the button below doesn't add
+      // "Copy link to …" to what a screen reader announces for the heading.
+      const text = document.createElement('span');
+      text.id = `${h.id}-text`;
+      text.append(...h.childNodes);
+      h.append(text);
+      h.setAttribute('aria-labelledby', text.id);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'anchor-copy no-print';
+      btn.setAttribute('aria-label', `Copy link to “${h.textContent}”`);
+      btn.innerHTML =
+        '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6.5 9.5 9.5 6.5M7 4.5l1.2-1.2a2.8 2.8 0 0 1 4 4L11 8.5M9 11.5l-1.2 1.2a2.8 2.8 0 0 1-4-4L5 7.5"/></svg><span class="anchor-copy__note" role="status"></span>';
+      btn.addEventListener('click', async () => {
+        const url = `${location.origin}${location.pathname}#${h.id}`;
+        // Keep the router's history state, so Back and Forward still work.
+        history.replaceState(history.state, '', `#${h.id}`);
+        const note = btn.querySelector('span')!;
+        try {
+          await navigator.clipboard.writeText(url);
+          note.textContent = `#${h.id} · link copied`;
+        } catch {
+          note.textContent = `#${h.id}`;
+        }
+        setTimeout(() => (note.textContent = ''), 2400);
+      });
+      h.append(btn);
+    });
+
+    const print = document.querySelector<HTMLButtonElement>('[data-print]');
+    if (print && typeof window.print === 'function') {
+      print.hidden = false;
+      document.querySelectorAll<HTMLElement>('[data-print-only]').forEach((el) => (el.hidden = false));
+      print.addEventListener('click', () => window.print(), { signal });
+    }
+  });
+</script>
+
+<style>
+  .doc-head {
+    padding: 112px 0 24px;
+    background: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 60%, oklab(100% 0 0) 100%);
+    border-bottom: 1px solid var(--neutral-200);
+  }
+  .doc-head__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .crumbs ol {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+  .crumbs a:hover {
+    color: var(--text-primary);
+  }
+  .crumbs :global(.icon) {
+    color: var(--neutral-400);
+  }
+  .doc-title {
+    font-size: clamp(36px, 27.83px + 2.095vw, 60px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: calc(1em + 4px);
+  }
+  .doc-standfirst {
+    max-width: 680px;
+    color: var(--neutral-700);
+    font-size: clamp(17px, 15.89px + 0.286vw, 20px);
+    line-height: 1.55;
+  }
+  .doc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding-top: 4px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 18px;
+  }
+  .doc-updated {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 10px;
+    border-radius: var(--r-pill);
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 6%) 0 0 0 1px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .doc-updated :global(.icon) {
+    color: var(--neutral-600);
+  }
+  .doc-sep {
+    width: 3px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--neutral-400);
+  }
+  .doc-print {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-link);
+    font-weight: 500;
+  }
+  .doc-print:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .draft {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    max-width: 840px;
+    margin-top: 8px;
+    padding: 14px 18px;
+    border-radius: 16px;
+    background: var(--amber-50);
+    box-shadow: rgb(123 81 0 / 18%) 0 0 0 1px inset;
+    color: var(--amber-800);
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .doc-body {
+    display: flex;
+    flex-direction: column;
+    padding: 0 0 72px;
+  }
+  .rail__desktop {
+    display: none;
+  }
+  .toc-mobile {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 var(--gutter);
+    background: rgb(255 255 255 / 94%);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--neutral-200);
+  }
+  .toc-mobile summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 56px;
+    list-style: none;
+    cursor: pointer;
+  }
+  .toc-mobile summary::-webkit-details-marker {
+    display: none;
+  }
+  .toc-mobile__label {
+    flex: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .toc-mobile__current {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toc-mobile__current :global(b) {
+    margin-right: 6px;
+    color: var(--accent);
+    font-family: var(--font-figure);
+  }
+  .toc-mobile__chev {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--neutral-100);
+    transition: rotate 160ms var(--ease-out-soft);
+  }
+  .toc-mobile[open] .toc-mobile__chev {
+    rotate: 180deg;
+  }
+  .toc-mobile .toc-list {
+    max-height: 60vh;
+    overflow: auto;
+    padding-bottom: 12px;
+  }
+  .toc-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .toc-list a {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 0 7px 14px;
+    border-left: 2px solid var(--neutral-200);
+    color: var(--neutral-700);
+    font-size: 15px;
+    line-height: 20px;
+    transition: color var(--t-hover-out), border-color var(--t-hover-out);
+  }
+  .toc-list a b {
+    flex: none;
+    width: 18px;
+    color: var(--neutral-500);
+    font-family: var(--font-figure);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .toc-list a:hover {
+    color: var(--text-primary);
+  }
+  .toc-list a[aria-current='true'] {
+    border-left-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .toc-list a[aria-current='true'] b {
+    color: var(--accent);
+  }
+
+  @media (min-width: 1024px) {
+    .doc-head {
+      padding: 148px 0 48px;
+    }
+    .doc-head__inner {
+      gap: 20px;
+      padding-left: 360px;
+    }
+    .doc-body {
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 100px;
+      padding: 48px 0 140px;
+    }
+    .rail {
+      position: sticky;
+      top: 120px;
+      flex: 0 0 260px;
+      max-height: calc(100vh - 140px);
+      overflow: auto;
+      padding-top: 6px;
+    }
+    .toc-mobile {
+      display: none;
+    }
+    .rail__desktop {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .rail__label {
+      padding-bottom: 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      line-height: 16px;
+      text-transform: uppercase;
+    }
+    .toc-list--rail a {
+      margin-left: 0;
+    }
+    .rail__card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--neutral-100);
+      font-size: 14px;
+      line-height: 20px;
+    }
+    .rail__card p {
+      font-weight: 600;
+    }
+    .rail__card a {
+      color: var(--text-link);
+      font-weight: 500;
+    }
+    .rail__also ul {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 15px;
+      line-height: 20px;
+    }
+    .rail__also a:hover {
+      color: var(--accent);
+    }
+  }
+</style>
+
+<style is:global>
+  /* The rendered Markdown. 680 px measure, 18/30 body. */
+  .prose {
+    counter-reset: section;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 680px;
+    min-width: 0;
+    padding-top: 32px;
+    color: var(--neutral-700);
+    font-size: 17px;
+    line-height: 28px;
+  }
+  .prose > * {
+    margin: 0;
+  }
+  .prose h2 {
+    counter-increment: section;
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 28px;
+    padding-top: 40px;
+    border-top: 1px solid var(--neutral-200);
+    color: var(--text-primary);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 30px;
+    scroll-margin-top: 112px;
+  }
+  .prose h2::before {
+    content: counter(section);
+    width: 18px;
+    color: var(--accent);
+    font-family: var(--font-figure);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .prose > .plain-words:first-child + h2,
+  .prose > h2:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .prose h3 {
+    padding-top: 8px;
+    color: var(--text-primary);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 26px;
+    scroll-margin-top: 112px;
+  }
+  .prose h4 {
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .prose a {
+    color: var(--text-link);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: rgb(54 91 235 / 35%);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+  }
+  .prose a:hover {
+    color: var(--blue-700);
+    text-decoration-color: currentColor;
+  }
+  .prose strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .prose ul,
+  .prose ol {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-left: 22px;
+  }
+  .prose ul li::marker {
+    color: var(--accent);
+  }
+  .prose ol li::marker {
+    color: var(--accent);
+    font-family: var(--font-figure);
+    font-weight: 600;
+  }
+  .prose li > p {
+    margin: 0;
+  }
+  .prose blockquote {
+    padding: 18px 20px;
+    border-radius: 18px;
+    background: var(--blue-50);
+    color: var(--blue-800);
+    font-size: 16px;
+    line-height: 25px;
+  }
+  .prose table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .prose th,
+  .prose td {
+    padding: 10px 14px 10px 0;
+    border-bottom: 1px solid var(--neutral-200);
+    text-align: left;
+    vertical-align: top;
+  }
+  .prose th {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .prose hr {
+    border: 0;
+    border-top: 1px solid var(--neutral-200);
+  }
+  .prose code {
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--neutral-100);
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+  }
+  .prose mark.owner-note {
+    display: inline;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--amber-50);
+    box-shadow: rgb(123 81 0 / 22%) 0 0 0 1px inset;
+    color: var(--amber-800);
+    font-size: 0.9em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .prose mark.placeholder {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--neutral-100);
+    color: var(--text-secondary);
+  }
+  .plain-words {
+    display: flex;
+    gap: 14px;
+    padding: 20px 22px;
+    border-radius: 20px;
+    background: linear-gradient(in oklab 180deg, oklab(96.2% 0.008 0.03) 0%, oklab(93.5% 0.012 0.04) 100%);
+    color: var(--hue-sand-ink);
+    font-size: 17px;
+    line-height: 27px;
+  }
+  .plain-words__coin {
+    position: relative;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    margin-top: 2px;
+    border-radius: 50%;
+    background: var(--coin);
+    box-shadow: var(--gold-edge) 0 1.5px 0;
+  }
+  .plain-words__coin::before,
+  .plain-words__coin::after {
+    content: '';
+    position: absolute;
+    left: 9px;
+    right: 9px;
+    height: 1.8px;
+    border-radius: 1px;
+    background: var(--gold-rule);
+  }
+  .plain-words__coin::before {
+    top: 11px;
+  }
+  .plain-words__coin::after {
+    top: 15px;
+  }
+  .plain-words p {
+    margin: 0;
+  }
+  .plain-words__title {
+    font-weight: 700;
+  }
+  .anchor-copy {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent-subtle);
+    color: var(--accent);
+    opacity: 0;
+    transition: opacity var(--t-hover-out);
+  }
+  .prose h2:hover .anchor-copy,
+  .anchor-copy:focus-visible,
+  .anchor-copy:has(.anchor-copy__note:not(:empty)) {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .anchor-copy {
+      opacity: 1;
+    }
+  }
+  .anchor-copy__note {
+    position: absolute;
+    left: calc(100% + 10px);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .empty {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 28px;
+    border-radius: 24px;
+    background: var(--neutral-100);
+  }
+  .empty h2 {
+    color: var(--text-primary);
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .empty a {
+    color: var(--text-link);
+    font-weight: 600;
+  }
+  .doc-end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--neutral-200);
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .doc-top {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-link);
+    font-weight: 500;
+  }
+  @media (min-width: 1024px) {
+    .prose {
+      gap: 20px;
+      padding-top: 0;
+      font-size: 18px;
+      line-height: 30px;
+    }
+    .prose h2 {
+      margin-top: 28px;
+      padding-top: 48px;
+      font-size: 28px;
+      line-height: 34px;
+    }
+    .prose h3 {
+      font-size: 20px;
+      line-height: 28px;
+    }
+  }
+</style>

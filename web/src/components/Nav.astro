@@ -1,0 +1,417 @@
+---
+import { NAV } from '../data/site';
+import Wordmark from './Wordmark.astro';
+import Icon from './Icon.astro';
+
+interface Props {
+  /** full: landing, legal, 404. invite: /i. minimal: /freeze (lockup only). */
+  variant?: 'full' | 'invite' | 'minimal';
+}
+const { variant = 'full' } = Astro.props;
+/*
+ * Client-side navigation (<ClientRouter /> in Base.astro): the header is kept,
+ * not re-rendered, between pages with the same variant, so its markup must be
+ * the same on all of them (every link says /#section, also on the home page;
+ * nav.ts resets what changes per page). The bar and the lockup carry
+ * view-transition names, so they hold still while the page fades under them;
+ * between variants the bar cross-fades. The name sits on .nav itself, the
+ * element with the backdrop-filter, so the frost still blurs the page.
+ */
+---
+
+<header class="site-nav" data-nav data-variant={variant} transition:persist={`nav-${variant}`}>
+  <nav class="nav" aria-label="Main" transition:name="site-nav" transition:animate="initial">
+    <a class="nav__home" href="/" aria-label="Hasala home" transition:name="wordmark" transition:animate="initial">
+      <Wordmark id="wm-nav" class="nav__wordmark" />
+    </a>
+
+    {
+      variant !== 'minimal' && (
+        <ul class="nav__links" role="list">
+          {NAV.map((item) => (
+            <li>
+              <a class="nav__link" href={item.href} data-spy={item.id}>
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+
+    {
+      variant === 'full' && (
+        <div class="nav__cta">
+          <a class="nav__code" href="/i">
+            Have a code?
+          </a>
+          <a class="btn btn--primary btn--nav" href="/#invite" data-invite-cta>
+            <span class="nav__cta-long">Request an invite</span>
+            <span class="nav__cta-short">Get an invite</span>
+          </a>
+        </div>
+      )
+    }
+    {
+      variant === 'invite' && (
+        <div class="nav__cta">
+          <a class="btn btn--subtle btn--nav nav__privacy" href="/#privacy">
+            How privacy works
+          </a>
+        </div>
+      )
+    }
+
+    {
+      variant !== 'minimal' && (
+        <button class="nav__menu-btn" type="button" popovertarget="site-menu" aria-label="Menu">
+          <Icon name="menu" size={22} stroke={2.2} />
+        </button>
+      )
+    }
+  </nav>
+
+  {
+    variant !== 'minimal' && (
+      <div id="site-menu" class="nav__menu" popover>
+        <ul role="list">
+          {NAV.map((item) => (
+            <li>
+              <a href={item.href}>{item.label}</a>
+            </li>
+          ))}
+          <li>
+            <a href="/i">Have a code?</a>
+          </li>
+        </ul>
+        <a class="btn btn--primary" href="/#invite">
+          Request an invite
+        </a>
+      </div>
+    )
+  }
+</header>
+
+<style>
+  .site-nav {
+    position: fixed;
+    inset: 16px 0 auto;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .nav {
+    --frost: rgb(255 255 255 / 72%);
+    --blur: 16px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: min(1200px, 100% - 32px);
+    height: 56px;
+    margin-inline: auto;
+    padding: 0 6px 0 16px;
+    border-radius: 34px;
+    background-color: var(--frost);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(180%) brightness(104%);
+    backdrop-filter: blur(var(--blur)) saturate(180%) brightness(104%);
+    box-shadow:
+      var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
+      var(--glass-rim-shade) -1.5px -1.5px 1px -0.5px inset,
+      var(--glass-rim-hairline) 0 0 0 0.5px inset,
+      var(--glass-rim-glow) 0 0 12px inset,
+      var(--glass-shadow-far) 0 8px 24px,
+      var(--glass-shadow-near) 0 1px 2px,
+      var(--glass-outline) 0 0 0 0.5px;
+    pointer-events: auto;
+    transition:
+      background-color 240ms var(--ease-out-soft),
+      box-shadow 240ms var(--ease-out-soft),
+      backdrop-filter 240ms var(--ease-out-soft);
+  }
+  .nav::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(in oklab 135deg, var(--glass-sheen) 0%, oklab(100% 0 0 / 0%) 34%, oklab(100% 0 0 / 0%) 66%, var(--glass-sheen-end) 100%);
+    pointer-events: none;
+  }
+  :global(.is-scrolled) .nav {
+    --frost: rgb(255 255 255 / 92%);
+    --blur: 24px;
+    box-shadow:
+      var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
+      var(--glass-rim-shade) -1.5px -1.5px 1px -0.5px inset,
+      var(--glass-rim-hairline) 0 0 0 0.5px inset,
+      var(--glass-rim-glow) 0 0 12px inset,
+      rgb(0 0 0 / 12%) 0 10px 30px,
+      var(--glass-shadow-near) 0 1px 2px,
+      var(--glass-outline) 0 0 0 0.5px;
+  }
+  .nav__home,
+  .nav__cta,
+  .nav__menu-btn {
+    position: relative;
+  }
+  .nav__home {
+    display: flex;
+    align-items: center;
+    flex: none;
+    color: var(--text-primary);
+    border-radius: 12px;
+  }
+  /* Below 560 px only the mark and "Hasala" show: the lockup is cropped. */
+  .nav__wordmark {
+    display: block;
+    height: 30px;
+    width: calc(30px * 368 / 86);
+    overflow: hidden;
+  }
+  .nav__wordmark :global(svg) {
+    width: auto;
+    max-width: none;
+    height: 100%;
+  }
+  .nav__links {
+    display: none;
+    align-items: center;
+    gap: 4px;
+  }
+  .nav__link {
+    position: relative;
+    display: block;
+    padding: 10px 16px;
+    border-radius: var(--r-pill);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 20px;
+    transition:
+      background-color var(--t-hover-out),
+      color var(--t-hover-out);
+  }
+  .nav__link:hover {
+    background-color: var(--glass-selected);
+    transition-duration: var(--t-hover-in);
+  }
+  .nav__link[aria-current='true'] {
+    color: var(--accent);
+  }
+  /* The current-section dot: always there, so it crossfades between links. */
+  .nav__link::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    width: 5px;
+    height: 5px;
+    margin-left: -2.5px;
+    border-radius: 50%;
+    background: var(--gold-300);
+    box-shadow: var(--gold-edge) 0 1px 0;
+    opacity: 0;
+    scale: 0.4;
+    transition:
+      opacity 200ms var(--ease-out-soft),
+      scale 200ms var(--ease-out-soft);
+  }
+  .nav__link[aria-current='true']::after {
+    opacity: 1;
+    scale: 1;
+  }
+  .nav__cta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .nav__code {
+    display: none;
+    padding: 10px 14px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 20px;
+    border-radius: var(--r-pill);
+    transition: color var(--t-hover-out);
+  }
+  .nav__code:hover {
+    color: var(--text-primary);
+  }
+  .nav__cta .btn--nav {
+    --btn-h: 44px;
+    --btn-px: 16px;
+  }
+  .nav__cta-long {
+    display: none;
+  }
+  .nav__privacy {
+    display: none;
+  }
+  .nav__menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-primary);
+    transition:
+      background-color var(--t-hover-out),
+      scale 100ms var(--ease-out-soft);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .nav__menu-btn:hover {
+      background: var(--glass-selected);
+    }
+  }
+  .nav__menu-btn:active {
+    scale: 0.95;
+  }
+
+  .nav__menu {
+    inset: 80px 16px auto;
+    width: auto;
+    max-width: 420px;
+    margin: 0 0 0 auto;
+    padding: 12px;
+    border: 0;
+    border-radius: 28px;
+    background: rgb(255 255 255 / 94%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    box-shadow:
+      var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
+      rgb(0 0 0 / 14%) 0 18px 40px,
+      var(--glass-outline) 0 0 0 0.5px;
+    color: var(--text-primary);
+  }
+  .nav__menu:popover-open {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .nav__menu ul {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .nav__menu li a {
+    display: block;
+    padding: 14px 16px;
+    border-radius: 16px;
+    font-size: 17px;
+    font-weight: 500;
+  }
+  .nav__menu li a:active {
+    background: var(--glass-selected);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .nav__menu li a:hover {
+      background: var(--glass-selected);
+    }
+  }
+  .nav__menu .btn {
+    width: 100%;
+  }
+  .nav__menu::backdrop {
+    background: rgb(0 0 0 / 12%);
+  }
+  /* The menu opens out of its button (top right) and closes a little faster.
+     Where transitions on display/overlay aren't supported it is instant. */
+  @media (prefers-reduced-motion: no-preference) {
+    .nav__menu {
+      transform-origin: top right;
+      opacity: 0;
+      scale: 0.96;
+      translate: 0 -6px;
+      transition:
+        opacity 150ms var(--ease-out-soft),
+        scale 150ms var(--ease-out-soft),
+        translate 150ms var(--ease-out-soft),
+        overlay 150ms allow-discrete,
+        display 150ms allow-discrete;
+    }
+    .nav__menu::backdrop {
+      opacity: 0;
+      transition:
+        opacity 150ms var(--ease-out-soft),
+        overlay 150ms allow-discrete,
+        display 150ms allow-discrete;
+    }
+    .nav__menu:popover-open {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+      transition-duration: 200ms;
+    }
+    .nav__menu:popover-open::backdrop {
+      opacity: 1;
+      transition-duration: 200ms;
+    }
+    @starting-style {
+      .nav__menu:popover-open {
+        opacity: 0;
+        scale: 0.96;
+        translate: 0 -6px;
+      }
+      .nav__menu:popover-open::backdrop {
+        opacity: 0;
+      }
+    }
+  }
+
+  @media (min-width: 560px) {
+    .nav__wordmark {
+      height: 32px;
+      width: calc(32px * 576.3 / 86);
+    }
+  }
+  @media (min-width: 1024px) {
+    .site-nav {
+      top: 24px;
+    }
+    .nav {
+      height: var(--nav-h);
+      padding: 0 10px 0 24px;
+    }
+    .nav__links {
+      display: flex;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .nav__code {
+      display: block;
+    }
+    .nav__cta .btn--nav {
+      --btn-h: 48px;
+      --btn-px: 22px;
+    }
+    .nav__cta-long {
+      display: inline;
+    }
+    .nav__cta-short {
+      display: none;
+    }
+    .nav__privacy {
+      display: inline-flex;
+    }
+    .nav__menu-btn,
+    .nav__menu {
+      display: none;
+    }
+  }
+  [data-variant='minimal'] .nav {
+    justify-content: flex-start;
+  }
+</style>
+
+<script>
+  import '../scripts/nav';
+</script>

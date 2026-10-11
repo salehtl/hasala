@@ -8,9 +8,8 @@
 //	account's budget — in one place, not per endpoint.
 //
 // So there is exactly one exported operation, [Gate.Admit], and it is called
-// from the two seams where attacker-scale durable bytes can accumulate: the op
-// log append (internal/oplog) and the quarantine hold
-// (internal/quarantine). It is deliberately NOT called from an endpoint. An
+// from the one seam where attacker-scale durable bytes can accumulate: the op
+// log append (internal/oplog). It is deliberately NOT called from an endpoint. An
 // endpoint check is the thing the next feature forgets; a check inside the
 // appender cannot be forgotten, because there is no second way to append.
 //
@@ -27,22 +26,19 @@
 //     count of every denial. See the note on [Gate.recordRefusal] for why it is
 //     the one write here that does NOT join the caller's transaction.
 //
-// # Ceilings are per resource FAMILY
+// # The vocabulary (spec 02 §5.4)
 //
-// The design states one ceiling for "the op log", not one per stream, so
-// account_limits.oplog_bytes bounds oplog_hot_bytes + oplog_cold_bytes
-// TOGETHER: admission for either stream compares the pair's sum plus the delta.
-// Quarantine has two independent ceilings — bytes OR holds — because 500 tiny
-// held messages are as much of a nuisance as 100 MiB of large ones, and either
-// one refuses on its own.
+// One ledger resource, oplog_hot_bytes, bounded by account_limits.oplog_bytes
+// (default 256 MiB). ledgerd's oplog_cold_bytes, quarantine_* and smtp_daily
+// went with the cold stream, the quarantine and SMTP. Refusal-only resources
+// (upload_bytes, headroom, suspended) name no ledger row and no ceiling.
 //
 // # Lock ordering
 //
 // Admit locks every row of the target's family with a single ORDER BY resource
 // ... FOR UPDATE, so two transactions touching the same family take the same
-// rows in the same order and cannot deadlock against each other. Families are
-// disjoint, so an append (oplog_*) and a quarantine hold (quarantine_*) never
-// contend at all. The caller's own ordering rule matters as much: oplog's
+// rows in the same order and cannot deadlock against each other. The caller's
+// own ordering rule matters as much: oplog's
 // appendTx calls Admit only AFTER allocSeq has taken the per-account counter
 // lock, which serializes same-account appends one step earlier and leaves this
 // gate contending on a row that is already exclusively held.
@@ -65,14 +61,8 @@ import (
 // which is the correct amount of friction for a claim that a new write path can
 // fill the disk.
 const (
-	// ResourceOplogHotBytes counts durable bytes in the hot op-log stream.
+	// ResourceOplogHotBytes counts durable bytes in the op log.
 	ResourceOplogHotBytes = "oplog_hot_bytes"
-	// ResourceOplogColdBytes counts durable bytes in the cold op-log stream.
-	ResourceOplogColdBytes = "oplog_cold_bytes"
-	// ResourceQuarantineBytes counts held raw message bytes.
-	ResourceQuarantineBytes = "quarantine_bytes"
-	// ResourceQuarantineCount counts held messages.
-	ResourceQuarantineCount = "quarantine_count"
 )
 
 // The refusal-only resources: things that decline a write without the ledger
@@ -88,8 +78,6 @@ const (
 	// charged BEFORE the append. It is the flow shaper, not the ceiling: a
 	// refusal here says "too soon", where a ceiling refusal says "too much".
 	ResourceUploadBytes = "upload_bytes"
-	// ResourceSMTPDaily is the per-account daily inbound message allowance.
-	ResourceSMTPDaily = "smtp_daily"
 	// ResourceHeadroom is the box-level free-space fuse, which refuses every
 	// account's durable writes rather than one account's.
 	ResourceHeadroom = "headroom"
@@ -99,21 +87,19 @@ const (
 
 // refusalResources is the closed set account_refusals.resource accepts.
 //
-// It is DELIBERATELY wider than the four ledger resources above, and the width
-// is the point: the design's promise is that no refusal is silently dropped, so
-// every source of a refusal must have somewhere to be counted — the four
-// cumulative ceilings, the upload-byte limiter, the SMTP daily allowance, the
-// headroom fuse, and suspension. Migration 00031 states the same set as a CHECK
-// constraint and is the authority; this slice exists so a wrong name is a Go
-// error naming the resource rather than a constraint violation inside a
-// buffered retry loop that then retries forever.
+// It is DELIBERATELY wider than the ledger resource above, and the width is the
+// point: no refusal is silently dropped, so every source of a refusal must have
+// somewhere to be counted — the ceiling, the upload-byte limiter, the headroom
+// fuse, and suspension. The baseline migration states the same set as a CHECK
+// constraint (account_refusals_resource_is_closed) and is the authority; this
+// slice exists so a wrong name is a Go error naming the resource rather than a
+// constraint violation inside a buffered retry loop that then retries forever.
 //
 // Adding a member here without adding it to the CHECK constraint moves the
 // failure back into the database, so the two change together or not at all.
 var refusalResources = []string{
-	ResourceOplogHotBytes, ResourceOplogColdBytes,
-	ResourceQuarantineBytes, ResourceQuarantineCount,
-	ResourceUploadBytes, ResourceSMTPDaily,
+	ResourceOplogHotBytes,
+	ResourceUploadBytes,
 	ResourceHeadroom, ResourceSuspended,
 }
 
@@ -130,25 +116,12 @@ type family struct {
 var families = map[string]family{
 	ResourceOplogHotBytes: {
 		limitColumn: "oplog_bytes",
-		members:     []string{ResourceOplogColdBytes, ResourceOplogHotBytes},
-	},
-	ResourceOplogColdBytes: {
-		limitColumn: "oplog_bytes",
-		members:     []string{ResourceOplogColdBytes, ResourceOplogHotBytes},
-	},
-	ResourceQuarantineBytes: {
-		limitColumn: "quarantine_bytes",
-		members:     []string{ResourceQuarantineBytes},
-	},
-	ResourceQuarantineCount: {
-		limitColumn: "quarantine_count",
-		members:     []string{ResourceQuarantineCount},
+		members:     []string{ResourceOplogHotBytes},
 	},
 }
 
 // ErrRefused reports that a write was declined because the account is at or
-// over its ceiling. Callers map it to a status: 413 or 429 on the API, 452 on
-// SMTP. Match it with errors.Is; the concrete [RefusedError] carries the
+// over its ceiling. Callers map it to a status: 413 account_full on the API. Match it with errors.Is; the concrete [RefusedError] carries the
 // numbers an operator wants.
 //
 // It is deliberately distinct from every other failure Admit can return: a
@@ -219,9 +192,8 @@ func (g *Gate) clock() time.Time {
 // wrote is only durable if the caller's own write is, which is the entire point
 // of taking a tx rather than a pool.
 //
-// delta may be negative: that is a release (an expiry sweep, a
-// confirm-and-reingest that moves bytes from quarantine into the op log, a
-// future compaction). A release is never refused by a ceiling — an account
+// delta may be negative: that is a release (an expiry sweep, a future
+// compaction). A release is never refused by a ceiling — an account
 // already over a lowered limit must still be able to shrink — but a release
 // larger than the stored amount returns [ErrLedgerUnderflow] and changes
 // nothing.
@@ -416,9 +388,9 @@ func (g *Gate) overrideDay() *string {
 
 // CountRefusals adds n to (userID, today in UTC, resource) in account_refusals.
 //
-// It is the ONE writer of that table. Both refusal paths — this package's
-// ceilings and internal/smtpd's per-account refusals — go through it, and
-// that is not tidiness. The two used to be separate statements with two
+// It is the ONE writer of that table. Every refusal path — this package's
+// ceilings and the API's refusal-only resources — goes through it, and that
+// is not tidiness. The two used to be separate statements with two
 // different day clocks (one computed in Go, one in the database) and only one
 // of them carried the purged-account guard, so the same table could record two
 // different "todays" an hour apart and could also write a row for an account
@@ -427,12 +399,10 @@ func (g *Gate) overrideDay() *string {
 // # One day clock, and it is the database's
 //
 // The day is `(now() AT TIME ZONE 'UTC')::date`, computed by Postgres, for two
-// reasons. It is the same stamp smtp_rejections and the diagnostics rows carry,
-// so "what happened on the 2nd" means one thing across every table an operator
-// joins; and a count buffered in memory (smtpd batches its refusals for up to
-// two seconds) is stamped when it LANDS rather than when the process that
-// buffered it thought the day was, which is the only stamp both writers can
-// agree on. day is a test-only override, nil in production.
+// reasons. It is one stamp for every table an operator joins, so "what
+// happened on the 2nd" means one thing everywhere; and a count buffered in
+// memory is stamped when it LANDS rather than when the process that buffered
+// it thought the day was, which is the only stamp every writer can agree on. day is a test-only override, nil in production.
 //
 // # It must not run in the caller's transaction
 //
@@ -443,9 +413,9 @@ func (g *Gate) overrideDay() *string {
 // while writes are being declined all day. Taking a pool makes that a
 // compile-time property rather than a comment somebody has to obey.
 //
-// A row naming a purged account is SKIPPED rather than reported: smtpd retries
-// these writes out of an in-memory buffer, so an error that can never succeed
-// is an error that is retried forever.
+// A row naming a purged account is SKIPPED rather than reported: a caller
+// that retries these writes out of a buffer would otherwise retry, forever,
+// an error that can never succeed.
 func CountRefusals(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, resource string, n int64) error {
 	return countRefusals(ctx, pool, userID, resource, n, nil)
 }

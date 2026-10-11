@@ -10,12 +10,10 @@ import (
 // proved only that they hold a session — and both of them cost the server real
 // resources per request:
 //
-//   - POST /api/v1/auth/exchange is UNAUTHENTICATED and drives the IdP
-//     verification path. auth.cachingKeySet already caps outbound JWKS fetches
-//     at one per provider per minute, so the amplifier that policy closed does
-//     not reopen here; what is left is a stream of unauthenticated base64
-//     decodes, signature verifications and, on success, a user upsert plus a
-//     session insert. That is worth bounding before it reaches any of them.
+//   - the passkey ceremonies are UNAUTHENTICATED and every begin mints a
+//     ceremony row; on success a finish costs a signature verification, a user
+//     upsert and a session insert. That is worth bounding before it reaches
+//     any of them.
 //   - POST /api/v1/writers/challenge mints a 32-byte row per call, for anyone
 //     holding a session. auth.Writers.Challenge sweeps expired rows
 //     opportunistically, but the sweep is one retention period BEHIND expiry,
@@ -24,14 +22,14 @@ import (
 //
 // # Memory, and why the key space is bounded
 //
-// The sign-in limiter is keyed by client address, which is attacker-chosen: an
+// The passkey limiter is keyed by client address, which is attacker-chosen: an
 // unbounded map is a memory-exhaustion primitive dressed as a defence.
 // MaxKeys caps it. When the map is full, Allow first sweeps buckets that have
 // refilled to full (i.e. idle for at least burst/rate) and, if that frees
 // nothing, falls back to ONE shared bucket rather than denying. Denying on
 // pressure would let an attacker with many source addresses lock every
 // legitimate caller out — trading an amplification nuisance for an outage,
-// which is the same trap auth's package doc rejects for negative caching of
+// which is the same trap internal/googlejwt avoids for negative caching of
 // JWKS kids.
 //
 // The zero rate is legal and means "burst only, never refills"; the tests use

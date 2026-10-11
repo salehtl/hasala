@@ -3,8 +3,8 @@ package auth
 // keyhistory.go is the READ side of the append-only key-history log.
 //
 // It exists because for the whole of Phase 1 there was no read side. The log
-// was written on every registration, every revocation and every ingest-writer
-// creation (appendKeyHistory in writer.go), guarded by two triggers against
+// was written on every registration and every revocation (appendKeyHistory
+// in writer.go), guarded by two triggers against
 // rewrite and truncation, and then never selected by a single line of
 // production code. Spec §3.4 and §2:176 both tell the user that peer devices
 // detect key substitution by comparing this log across devices, and §2 is the
@@ -33,10 +33,11 @@ import (
 
 // KeyHistoryEntry is one append-only log row.
 //
-// PubKey is nil for the keyless ingest writer, which is a fact a peer needs:
-// "a writer with no key was added" and "a writer with THIS key was added" are
-// different events, and collapsing them would let a substitution hide behind a
-// missing field.
+// PubKey may be nil only for an entry that names no key. None is written
+// today (ledgerd's keyless ingest writer is retired, spec 02 §2), but the
+// distinction stays a fact a peer needs: "a writer with no key was added" and
+// "a writer with THIS key was added" are different events, and collapsing
+// them would let a substitution hide behind a missing field.
 type KeyHistoryEntry struct {
 	// ID is the log position. It is monotonic per user and is what makes "the
 	// head" a well-defined thing to hash.

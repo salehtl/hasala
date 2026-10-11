@@ -1,0 +1,527 @@
+---
+/**
+ * hasala.app/i/<code>: the invite page ("Invite · hasala.app/i/<code>").
+ * One static page serves every code (public/_redirects rewrites /i/* here);
+ * a few lines of script read the code from the address bar. On an iPhone
+ * with Hasala installed the link opens the app instead (universal link).
+ *
+ * The invite email links to /i/<CODE>#<LINK_KEY>. The page may show the
+ * code, never calls the API, loads nothing from anyone else and sends no
+ * referrer. It shows the external-TestFlight steps (testers are invited by
+ * email or link, need no App Store Connect account and never see each
+ * other) and no "Saved until" line. The older /i#<CODE> form works too.
+ */
+import { Picture } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import AppIcon from '../components/brand/AppIcon.astro';
+import homeScreen from '../assets/screens/home-screen.png';
+import { SITE } from '../data/site';
+---
+
+<Base
+  title="You’ve been invited"
+  description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and type your invite code."
+  path="/i"
+  noindex
+  nav="invite"
+  referrer="no-referrer"
+>
+  <section class="invite" aria-labelledby="invite-title">
+    <div class="container invite__inner">
+      <div class="invite__copy">
+        <div class="invite__badge">
+          <span class="invite__tile"><AppIcon id="invite-icon" size={60} /></span>
+          <p class="invite__code-chip">
+            <span class="invite__coin" aria-hidden="true"></span>
+            <span>Invite</span>
+            <code data-code hidden></code>
+          </p>
+          <p class="invite__badge-meta">Personal, and works once</p>
+        </div>
+
+        <h1 id="invite-title" class="display-xl invite__title">You’ve been invited.</h1>
+        <p class="lead invite__lead">
+          A place in the Hasala beta is saved for you. Setting up takes about five minutes on your iPhone.
+        </p>
+
+        <div class="invite__ctas">
+          <a class="btn btn--primary" href={SITE.testFlightAppStore}>Get TestFlight</a>
+        </div>
+
+        <ol class="isteps" role="list">
+          <li>
+            <span class="coin-badge">1</span>
+            <div class="isteps__text">
+              <h2>Install TestFlight</h2>
+              <p>Get TestFlight, Apple’s free app for trying betas, from the App Store on your iPhone.</p>
+            </div>
+            <a class="btn btn--subtle btn--sm isteps__btn" href={SITE.testFlightAppStore}>Get TestFlight</a>
+          </li>
+          <li>
+            <span class="coin-badge">2</span>
+            <div class="isteps__text">
+              <h2>Accept the TestFlight invitation</h2>
+              <p>
+                Open Apple’s TestFlight invitation email on your iPhone and tap View in TestFlight, or open the TestFlight link from your invite. Then tap Accept.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="coin-badge">3</span>
+            <div class="isteps__text">
+              <h2>Install Hasala</h2>
+              <p>In TestFlight, tap Install. Hasala appears on your home screen.</p>
+            </div>
+          </li>
+          <li>
+            <span class="coin-badge">4</span>
+            <div class="isteps__text">
+              <h2>Open Hasala and type this code</h2>
+              <p>
+                Open Hasala on your iPhone and type <b data-code-text>the code from your invite email</b> when it asks. Opening this link again on your iPhone can
+                also fill it in for you. You’ll set up sign-in and write down 12 words.
+              </p>
+            </div>
+            <button class="btn btn--subtle btn--sm isteps__btn" type="button" data-copy-code hidden>
+              <Icon name="copy" size={16} stroke={1.6} /><span>Copy code</span>
+            </button>
+          </li>
+        </ol>
+
+        <p class="invite__note">
+          Apple handles the TestFlight invitation, so Apple sees your email address and that you installed Hasala. Other testers never see you.
+        </p>
+
+        <div class="invite__qr" data-qr-wrap hidden>
+          <span class="invite__qr-box" data-qr aria-hidden="true"></span>
+          <p>
+            <b>Reading this on a computer?</b>
+            Point your iPhone’s camera here to open this invite on the phone. Invites are personal and work once.
+          </p>
+        </div>
+
+        <p class="invite__fine">Invites are personal and work once. Not expecting this? You can ignore it.</p>
+      </div>
+
+      <div class="invite__stage" aria-hidden="true">
+        <div class="device device--invite">
+          <Picture src={homeScreen} formats={['avif', 'webp']} widths={[402, 804]} sizes="402px" width={402} height={884} loading="eager" alt="" />
+        </div>
+        <div class="invite__saved">
+          <span class="invite__saved-coin"></span>
+          <span><b>Your place is saved</b><small>Invite <span data-code-plain>for you</span></small></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { onPage } from '../scripts/page';
+
+  // The code: 24 base32 characters, from /i/<code> or, in the
+  // older form, from /i#<code>. Hyphens and spaces are ignored, as in the app.
+  const norm = (v: string) => v.toUpperCase().replace(/[\s-]/g, '');
+  const isCode = (v: string) => /^[A-Z2-7]{24}$/.test(v);
+
+  // Read again on every visit: a client-side navigation lands here without a reload.
+  onPage((signal) => {
+    if (!document.querySelector('[data-code]')) return;
+    const fragment = location.hash.slice(1);
+    const match = /^\/i\/([^/?#]+)/.exec(location.pathname);
+    let code = '';
+    let linkKey = '';
+    try {
+      code = match ? norm(decodeURIComponent(match[1])) : '';
+    } catch {
+      code = '';
+    }
+    if (isCode(code)) {
+      // The link key proves the address; only the email carries it.
+      if (/^[A-Za-z0-9_-]{43}$/.test(fragment)) linkKey = fragment;
+    } else {
+      code = isCode(norm(fragment)) ? norm(fragment) : '';
+    }
+    if (!code) return;
+
+    const shown = code.match(/.{4}/g)!.join('-');
+    document.querySelectorAll<HTMLElement>('[data-code]').forEach((el) => {
+      el.textContent = shown;
+      el.hidden = false;
+    });
+    document.querySelectorAll<HTMLElement>('[data-code-text]').forEach((el) => (el.textContent = shown));
+    // The small "Your place is saved" chip has room for the start of the code only.
+    document.querySelectorAll<HTMLElement>('[data-code-plain]').forEach((el) => (el.textContent = `${shown.slice(0, 9)}…`));
+
+    const copy = document.querySelector<HTMLButtonElement>('[data-copy-code]');
+    if (copy && navigator.clipboard) {
+      copy.hidden = false;
+      copy.addEventListener(
+        'click',
+        async () => {
+          const label = copy.querySelector('span')!;
+          try {
+            await navigator.clipboard.writeText(shown);
+            label.textContent = 'Copied';
+          } catch {
+            label.textContent = shown;
+          }
+          setTimeout(() => (label.textContent = 'Copy code'), 2000);
+        },
+        { signal },
+      );
+    }
+
+    // A QR code of this link, link key included, for people reading on a computer.
+    if (matchMedia('(min-width: 1024px) and (pointer: fine)').matches) {
+      import('uqr').then(({ encode }) => {
+        const box = document.querySelector('[data-qr]');
+        if (signal.aborted || !box) return;
+        const { data, size } = encode(`https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`, { ecc: 'M', border: 0 });
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+        svg.setAttribute('shape-rendering', 'crispEdges');
+        let d = '';
+        data.forEach((row, y) => row.forEach((on, x) => on && (d += `M${x} ${y}h1v1h-1z`)));
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('fill', '#202023');
+        svg.append(path);
+        box.replaceChildren(svg);
+        document.querySelector<HTMLElement>('[data-qr-wrap]')!.hidden = false;
+      });
+    }
+  });
+</script>
+
+<style>
+  .invite {
+    position: relative;
+    overflow: clip;
+    background: var(--wash-hero);
+  }
+  .invite__inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 104px 0 56px;
+  }
+  .invite__copy {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .invite__badge {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas: 'tile chip' 'tile meta';
+    align-items: center;
+    column-gap: 14px;
+  }
+  .invite__tile {
+    grid-area: tile;
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    box-shadow: rgb(20 38 89 / 26%) 0 10px 22px;
+  }
+  .invite__tile :global(svg) {
+    width: 100%;
+    height: 100%;
+  }
+  .invite__code-chip {
+    grid-area: chip;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .invite__coin {
+    display: none;
+  }
+  .invite__code-chip {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .invite__code-chip code {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .invite__badge-meta {
+    grid-area: meta;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .invite__title {
+    letter-spacing: -0.05em;
+  }
+  .invite__lead {
+    max-width: 600px;
+  }
+  .invite__ctas {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .invite__ctas .btn--glass {
+    font-size: 16px;
+  }
+  .isteps {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 18px;
+    border-radius: 24px;
+    background: var(--white);
+    box-shadow: rgb(20 38 89 / 8%) 0 10px 30px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+  }
+  .isteps li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: 6px 14px;
+    padding: 16px 0;
+  }
+  .isteps li + li {
+    border-top: 1px solid var(--neutral-200);
+  }
+  .isteps .coin-badge {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+  .isteps__text h2 {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+  .isteps__text p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 21px;
+  }
+  .isteps__text b {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+  .isteps__btn {
+    display: none;
+  }
+  .isteps__btn[data-copy-code]:not([hidden]) {
+    display: inline-flex;
+    grid-column: 2;
+    justify-self: start;
+  }
+  .invite__qr {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .invite__qr[hidden] {
+    display: none;
+  }
+  .invite__qr-box {
+    flex: none;
+    width: 84px;
+    height: 84px;
+    padding: 10px;
+    border-radius: 16px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 8%) 0 0 0 1px;
+  }
+  .invite__qr p {
+    max-width: 380px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 21px;
+  }
+  .invite__qr b {
+    display: block;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .invite__note {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .invite__fine {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 19px;
+    text-align: center;
+  }
+  .invite__stage {
+    display: none;
+  }
+
+  @media (min-width: 640px) {
+    .invite__ctas {
+      flex-direction: row;
+    }
+  }
+  @media (min-width: 1024px) {
+    .invite__inner {
+      flex-direction: row;
+      min-height: 1000px;
+      padding: 148px 0 80px;
+    }
+    .invite__copy {
+      width: 600px;
+      gap: 24px;
+    }
+    .invite__badge {
+      display: flex;
+    }
+    .invite__tile,
+    .invite__badge-meta,
+    .invite__ctas,
+    .invite__fine {
+      display: none;
+    }
+    .invite__code-chip {
+      height: 34px;
+      padding: 0 14px 0 8px;
+      border-radius: var(--r-pill);
+      background: rgb(255 255 255 / 78%);
+      box-shadow: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 4px 12px;
+      font-size: 14px;
+    }
+    .invite__coin {
+      display: block;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--coin);
+      box-shadow: var(--gold-edge) 0 1px 0;
+    }
+    .invite__code-chip code {
+      font-size: 13px;
+    }
+    .isteps {
+      padding: 8px 24px;
+      border-radius: 28px;
+    }
+    .isteps li {
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      padding: 20px 0;
+    }
+    .isteps__btn {
+      display: inline-flex;
+    }
+    .isteps__btn[data-copy-code]:not([hidden]) {
+      grid-column: auto;
+    }
+    .isteps__text h2 {
+      font-size: 18px;
+      line-height: 24px;
+    }
+    .invite__stage {
+      position: absolute;
+      top: 150px;
+      right: 36px;
+      display: block;
+      width: 418px;
+      height: 900px;
+      transform: scale(0.8);
+      transform-origin: top right;
+    }
+    .device--invite {
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 418px;
+      padding: 8px;
+      border-radius: 62px;
+      background: #0d0d10;
+      box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
+    }
+    .device--invite :global(img) {
+      display: block;
+      width: 402px;
+      height: 884px;
+      border-radius: 54px;
+    }
+    .invite__saved {
+      position: absolute;
+      left: 272px;
+      top: 495px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 22px 12px 12px;
+      border-radius: var(--r-pill);
+      background: rgb(255 255 255 / 90%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      backdrop-filter: blur(20px) saturate(180%);
+      box-shadow: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(20 38 89 / 16%) 0 18px 40px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+      rotate: 3deg;
+      white-space: nowrap;
+    }
+    .invite__saved-coin {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--coin);
+      box-shadow: var(--gold-edge) 0 2px 0;
+    }
+    .invite__saved b {
+      display: block;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 20px;
+    }
+    .invite__saved small {
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 18px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .invite__copy {
+      width: 640px;
+    }
+    .invite__stage {
+      transform: none;
+    }
+  }
+
+  /* The hero's coin drops into the tile (keyframes in global.css); on large
+     screens the "place is saved" pill settles instead. Once per page load:
+     not after a client-side navigation (html.routed, scripts/router.ts). */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html:not(.routed)) .invite__tile :global(.ai-tile) {
+      animation: hero-fade 160ms linear both;
+    }
+    :global(html:not(.routed)) .invite__tile :global(.ai-slot) {
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: hero-slot 760ms linear both;
+    }
+    :global(html:not(.routed)) .invite__tile :global(.ai-plate) {
+      animation: hero-plate 760ms linear both;
+    }
+    :global(html:not(.routed)) .invite__tile :global(.ai-coin) {
+      animation: hero-coin 600ms 160ms both;
+    }
+    :global(html:not(.routed)) .invite__saved {
+      animation: invite-saved 520ms 900ms var(--ease-out-soft) both;
+    }
+  }
+  @keyframes invite-saved {
+    from {
+      opacity: 0;
+      translate: 0 -16px;
+      rotate: 6deg;
+    }
+  }
+</style>

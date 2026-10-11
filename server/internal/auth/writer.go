@@ -89,19 +89,16 @@ package auth
 //
 // # What the append-only guard on key_history actually binds
 //
-// The trigger in 00003_writers.sql refuses UPDATE, TRUNCATE, and DELETE-while-
-// the-user-exists for EVERY role, superusers included — triggers cannot be
-// skipped. What it cannot stop is the table's OWNER, who needs no more than
-// `ALTER TABLE ... DISABLE TRIGGER` to switch it off first and then rewrite the
-// log freely.
+// The baseline's append-only trigger refuses UPDATE, TRUNCATE, and
+// DELETE-while-the-user-exists for EVERY role, superusers included — triggers
+// cannot be skipped. What it cannot stop is the table's OWNER, who needs no
+// more than `ALTER TABLE ... DISABLE TRIGGER` to switch it off first and then
+// rewrite the log freely.
 //
-// That matters right now, because cmd/ledgerd opens ONE pool from
-// cfg.Server.DSN and runs pg.Migrate on it: the role that serves requests is
-// the role that created these tables, so today it owns them and the guard does
-// not bind it. The fix belongs to deployment, not to this package — migrate as
-// a separate owner role and grant the runtime role only DML — and
-// TestKeyHistoryGuardBindsANonOwnerRuntimeRole pins both halves of that
-// requirement so it is executable rather than a sentence in a report.
+// That is why hasalad never serves as the owner: `hasalad migrate` runs as
+// hasala_migrate, which owns the schema, and every other mode connects as
+// hasala_runtime and refuses to start as the owner (spec 02 §5.6, O2).
+// TestKeyHistoryGuardBindsANonOwnerRuntimeRole pins both halves.
 
 import (
 	"context"
@@ -115,28 +112,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/salehtl/hasala/server/internal/oplog"
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// Writer kinds and the one reserved writer id. These strings are also the CHECK
-// constraint on writers.kind, so they are a closed vocabulary.
-const (
-	// KindDevice is a client writer holding an Ed25519 identity key.
-	KindDevice = "device"
-	// KindIngest is the server's own writer. It has no key: its chain proves
-	// storage integrity, never operator honesty (spec §3.3(b)).
-	KindIngest = "ingest"
-	// IngestWriterID is the fixed writer id of every user's ingest writer. It
-	// is reserved: a client registering under it would be laundering its own
-	// ops into the provenance the UI labels "server-ingested".
-	//
-	// Defined as oplog's constant rather than repeating the literal: the same
-	// string is what oplog.AppendIngest writes into op_log.writer_id and into
-	// every ingest blob's AAD, and a drift between the two would enroll one
-	// writer while the log filled up under another.
-	IngestWriterID = oplog.IngestWriterID
-)
+// KindDevice is the only writer kind (the writers_kind_is_device CHECK): a
+// client writer holding an Ed25519 identity key. ledgerd's keyless server
+// "ingest" writer went with the ingest path (spec 02 §2.3).
+const KindDevice = "device"
 
 // key_history event vocabulary, matching that table's CHECK constraint.
 const (
@@ -177,6 +159,15 @@ const (
 // double as an enrollment. Both end in a NUL that cannot appear in the ASCII
 // domain label itself, so the prefix can never be confused with the start of
 // the payload.
+//
+// These are ledgerd's domains, on purpose. The messages under them are still
+// ledgerd's byte formats (nonce, writer id, Ed25519 key), which the reference
+// client speaks. Spec 01 gives hasala/v1/writer-registration and
+// hasala/v1/writer-revocation to the NEW formats (D13, D14: the AAK certifies
+// the DWK and the DAK; revocation pins the final head) that WS-3 builds, and
+// one domain must never name two formats, or a signature over the old one
+// could be presented as the new one. WS-3 switches the domain and the format
+// together.
 const (
 	registrationDomain = "ledger-v2-writer-registration\x00"
 	revocationDomain   = "ledger-v2-writer-revocation\x00"
@@ -256,7 +247,7 @@ type Writer struct {
 	UserID   uuid.UUID
 	WriterID string
 	Kind     string
-	// PubKey is nil for the ingest writer, which has no key by design.
+	// PubKey is the writer's Ed25519 key (writers.pubkey is NOT NULL).
 	PubKey       ed25519.PublicKey
 	RegisteredAt time.Time
 	// RevokedAt is the zero time while the writer is live.
@@ -454,7 +445,7 @@ func (w *Writers) consumeChallenge(ctx context.Context, userID uuid.UUID, nonce 
 // A live session token is a precondition for obtaining the nonce and is not an
 // input here: by construction, holding one cannot enroll anything.
 //
-// writerID must match [A-Za-z0-9._-]{1,64} and may not be IngestWriterID.
+// writerID must match [A-Za-z0-9._-]{1,64}.
 func (w *Writers) Register(ctx context.Context, userID uuid.UUID, writerID string, pub ed25519.PublicKey, nonce, sig []byte) error {
 	if err := w.checkArgs(userID, writerID, nonce, sig); err != nil {
 		return err
@@ -678,66 +669,6 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, writerID string,
 	return nil
 }
 
-// EnsureIngestWriter creates this user's server-side writer if it does not
-// exist and returns its id. It is idempotent and appends to key_history only on
-// the call that actually creates the row.
-//
-// No challenge and no signature: this writer is the server's own, it holds no
-// key, and its chain is explicitly not evidence about the operator (§3.3(b)).
-// It is created by the ingest path, never by a client request.
-func (w *Writers) EnsureIngestWriter(ctx context.Context, userID uuid.UUID) (string, error) {
-	if w.Pool == nil {
-		return "", errors.New("auth: Writers.Pool is nil")
-	}
-	if userID == uuid.Nil {
-		return "", errors.New("auth: ensure ingest writer: user id is zero")
-	}
-	tx, err := w.begin(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer w.rollback(ctx, tx)
-
-	if err := ensureIngestWriterTx(ctx, tx, userID, w.now()); err != nil {
-		return "", err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return "", fmt.Errorf("auth: ensure ingest writer: commit: %w", err)
-	}
-	return IngestWriterID, nil
-}
-
-// ensureIngestWriterTx is the statement pair, inside the caller's transaction.
-//
-// Split out so [UpsertUser] can run it in the SAME transaction that creates the
-// user and its oplog_seq row. That is where the real caller is: the writer has
-// to exist from the account's first moment, not from its first email, because a
-// checkpoint names one head per ROSTER writer and a brand-new account's first
-// checkpoint must already cover `ingest|hot` and `ingest|cold` at counter 0.
-// Creating it lazily on the first delivery would instead make every account's
-// first email an I11 coverage hard stop until some device happened to
-// checkpoint again — a hard stop on the most ordinary path there is.
-//
-// Idempotent: ON CONFLICT DO NOTHING, and the key-history entry is appended
-// only on the call that actually inserted. A duplicate entry on every sign-in
-// would be noise in precisely the log peer devices audit for key substitution.
-func ensureIngestWriterTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.Time) error {
-	var created bool
-	err := tx.QueryRow(ctx,
-		`INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
-		 VALUES ($1,$2,$3,NULL,$4)
-		 ON CONFLICT (user_id, writer_id) DO NOTHING
-		 RETURNING true`,
-		userID, IngestWriterID, KindIngest, now).Scan(&created)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // already present
-	}
-	if err != nil {
-		return fmt.Errorf("auth: ensure ingest writer for user %s: %w", userID, err)
-	}
-	return appendKeyHistory(ctx, tx, userID, IngestWriterID, nil, EventRegistered, now)
-}
-
 // Roster returns every writer of a user, revoked ones included. A peer device
 // needs the revoked entries: "this writer was retired" and "this writer was
 // never here" are different facts when auditing a chain.
@@ -852,8 +783,6 @@ func (w *Writers) checkArgs(userID uuid.UUID, writerID string, nonce, sig []byte
 		return errors.New("auth: Writers.Pool is nil")
 	case userID == uuid.Nil:
 		return fmt.Errorf("%w: user id is zero", ErrRegistrationRejected)
-	case writerID == IngestWriterID:
-		return ErrWriterIDReserved
 	case !validWriterID(writerID):
 		return ErrWriterIDInvalid
 	case len(nonce) != ChallengeNonceBytes:

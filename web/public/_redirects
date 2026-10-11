@@ -1,0 +1,4 @@
+# Invite links: hasala.app/i/<code> is one static page that reads the code
+# from the address bar. On an iPhone with Hasala installed, the universal link
+# (/.well-known/apple-app-site-association) opens the app instead.
+/i/*  /i  200

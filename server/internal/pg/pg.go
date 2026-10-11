@@ -1,9 +1,13 @@
-// Package pg owns the v2 Postgres connection pool and the embedded migration set.
+// Package pg owns the Postgres connection pool, the embedded migration set
+// (one baseline, spec 02 §5.3), the migration runner behind `hasalad migrate`
+// (spec 02 §5.5) and the startup refusals every serving mode runs
+// (owner.go, spec 02 §5.6).
 package pg
 
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -87,4 +91,92 @@ func MigrateDown(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 	return goose.DownToContext(ctx, db, "migrations", 0)
+}
+
+// EmbeddedVersions returns the version of every embedded migration, ascending.
+func EmbeddedVersions() ([]int64, error) {
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
+	goose.SetBaseFS(migrations)
+	ms, err := goose.CollectMigrations("migrations", 0, goose.MaxVersion)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int64, len(ms))
+	for i, m := range ms {
+		out[i] = m.Version
+	}
+	return out, nil
+}
+
+// LatestEmbedded is the highest embedded migration version.
+func LatestEmbedded() (int64, error) {
+	vs, err := EmbeddedVersions()
+	if err != nil {
+		return 0, err
+	}
+	if len(vs) == 0 {
+		return 0, errors.New("pg: no embedded migrations")
+	}
+	return vs[len(vs)-1], nil
+}
+
+// AppliedVersion is the highest applied migration, or 0 when goose_db_version
+// does not exist yet (a fresh database). It needs only SELECT on
+// goose_db_version, so the runtime and backup roles can call it.
+func AppliedVersion(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	// Through the catalog rather than to_regclass: a role without USAGE on
+	// the schema (the runtime role before the baseline grants it) gets
+	// "permission denied" from to_regclass, where the answer is "not yet".
+	var exists bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relname = 'goose_db_version')`).Scan(&exists); err != nil {
+		return 0, fmt.Errorf("pg: look for goose_db_version: %w", err)
+	}
+	if !exists {
+		return 0, nil
+	}
+	var v *int64
+	if err := pool.QueryRow(ctx,
+		`SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&v); err != nil {
+		return 0, fmt.Errorf("pg: read goose_db_version: %w", err)
+	}
+	if v == nil {
+		return 0, nil
+	}
+	return *v, nil
+}
+
+// Pending counts the embedded migrations not yet applied (spec 02 §5.5
+// --pending): 0 for a fresh database's absent ledger means "nothing to back
+// up", not "nothing to apply", so it counts against AppliedVersion = 0.
+func Pending(ctx context.Context, pool *pgxpool.Pool) (int, error) {
+	applied, err := AppliedVersion(ctx, pool)
+	if err != nil {
+		return 0, err
+	}
+	// Through the catalog rather than to_regclass: a role without USAGE on
+	// the schema (the runtime role before the baseline grants it) gets
+	// "permission denied" from to_regclass, where the answer is "not yet".
+	var exists bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relname = 'goose_db_version')`).Scan(&exists); err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	vs, err := EmbeddedVersions()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, v := range vs {
+		if v > applied {
+			n++
+		}
+	}
+	return n, nil
 }

@@ -8,8 +8,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/salehtl/hasala/server/internal/blob"
 )
 
 // ---------------------------------------------------------------------------
@@ -281,13 +279,15 @@ func TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce(t *testing.T) {
 }
 
 func TestExecuteBoundsExceedTheLargestStorableMail(t *testing.T) {
-	// The SMTP DATA cap is blob.MaxColdMail, and normalization can INFLATE a
+	// ledgerd's SMTP DATA cap was 1,000,000 bytes (blob.MaxColdMail, retired with
+	// the SMTP lane); the Swift port keeps the bound for Gmail messages. Normalization can INFLATE a
 	// message — a base64'd UTF-16 part decodes to longer UTF-8 — so a body bound
 	// equal to the raw cap would refuse mail the receiver had already accepted
 	// and stored. Asserted rather than left as arithmetic in a comment, so
 	// raising one of the two numbers without the other fails here.
-	if MaxBodyBytes < 2*blob.MaxColdMail {
-		t.Fatalf("MaxBodyBytes = %d, want at least 2x blob.MaxColdMail (%d)", MaxBodyBytes, blob.MaxColdMail)
+	const maxRawMail = 1_000_000
+	if MaxBodyBytes < 2*maxRawMail {
+		t.Fatalf("MaxBodyBytes = %d, want at least 2x the raw mail cap (%d)", MaxBodyBytes, maxRawMail)
 	}
 	if MaxEmptyGroups > 32 {
 		t.Fatalf("MaxEmptyGroups = %d exceeds diag's own cap; the diagnostics row would be refused whole", MaxEmptyGroups)

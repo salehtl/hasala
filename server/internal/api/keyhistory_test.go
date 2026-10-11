@@ -66,24 +66,19 @@ func TestKeyHistoryIsServedToTheDeviceItDescribes(t *testing.T) {
 	u := h.user("sub-history")
 	tok := h.session(u)
 
-	// A brand-new account already has one entry: the server's own keyless
-	// ingest writer. A peer that could not see it would read the first device
-	// registration as the whole history.
-	first := h.keyHistory(t, tok)
-	if len(first.Entries) != 1 {
-		t.Fatalf("a new account's key history has %d entries, want the ingest writer's: %+v",
+	// A brand-new account has no entries: there is no server-side writer
+	// any more (spec 02 §2 retires ledgerd's keyless ingest writer).
+	if first := h.keyHistory(t, tok); len(first.Entries) != 0 {
+		t.Fatalf("a new account's key history has %d entries, want none: %+v",
 			len(first.Entries), first.Entries)
-	}
-	if e := first.Entries[0]; e.WriterID != auth.IngestWriterID || e.Event != auth.EventRegistered || e.PubKey != "" {
-		t.Fatalf("first entry = %+v, want the keyless ingest writer registered", e)
 	}
 
 	privA := h.writer(u, "dev-a")
 	privB := h.enrollSignedBy(u, "dev-b", privA)
 
 	got := h.keyHistory(t, tok)
-	if len(got.Entries) != 3 {
-		t.Fatalf("entries = %d, want 3: %+v", len(got.Entries), got.Entries)
+	if len(got.Entries) != 2 {
+		t.Fatalf("entries = %d, want 2: %+v", len(got.Entries), got.Entries)
 	}
 	// Oldest first, and the head is last: the ordering the comparison code
 	// depends on.
@@ -95,10 +90,10 @@ func TestKeyHistoryIsServedToTheDeviceItDescribes(t *testing.T) {
 			t.Fatalf("entries are not in chronological order: %+v", got.Entries)
 		}
 	}
-	if got.Entries[1].WriterID != "dev-a" || got.Entries[2].WriterID != "dev-b" {
-		t.Fatalf("writer ids = %q, %q", got.Entries[1].WriterID, got.Entries[2].WriterID)
+	if got.Entries[0].WriterID != "dev-a" || got.Entries[1].WriterID != "dev-b" {
+		t.Fatalf("writer ids = %q, %q", got.Entries[0].WriterID, got.Entries[1].WriterID)
 	}
-	for _, e := range got.Entries[1:] {
+	for _, e := range got.Entries {
 		key, err := base64.StdEncoding.DecodeString(e.PubKey)
 		if err != nil {
 			t.Fatalf("entry %+v: pubkey is not base64: %v", e, err)
@@ -114,8 +109,8 @@ func TestKeyHistoryIsServedToTheDeviceItDescribes(t *testing.T) {
 	h.revoke(u, "dev-a", privB)
 
 	after := h.keyHistory(t, tok)
-	if len(after.Entries) != 4 {
-		t.Fatalf("after revocation, entries = %d, want 4: %+v", len(after.Entries), after.Entries)
+	if len(after.Entries) != 3 {
+		t.Fatalf("after revocation, entries = %d, want 3: %+v", len(after.Entries), after.Entries)
 	}
 	head := after.Entries[len(after.Entries)-1]
 	if head.WriterID != "dev-a" || head.Event != auth.EventRevoked {
