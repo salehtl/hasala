@@ -69,7 +69,7 @@ struct BuildInfoTests {
   /// `BuildInfo` is not main-actor isolated: background work can read it.
   @Test nonisolated func isReadableOffTheMainActor() async {
     let footer = await Task.detached { BuildInfo.current.footer }.value
-    #expect(footer.hasPrefix("Hasala QA · 0.1.0 ("))
+    #expect(footer.hasPrefix("Hasala QA · 0.2.0 ("))
   }
 
   /// The app's own Info.plist carries every key (spec 06 §4.2) and the export
@@ -78,7 +78,7 @@ struct BuildInfoTests {
     let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
     #expect(info.environment == "qa")
     #expect(info.apiBaseURL.host() == "api.hasala.app")
-    #expect(info.marketingVersion == "0.1.0")
+    #expect(info.marketingVersion == "0.2.0")
     #expect(Bundle.main.object(forInfoDictionaryKey: "ITSAppUsesNonExemptEncryption") as? Bool == false)
     #expect(Bundle.main.bundleIdentifier == "app.hasala.ios")
     #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String == "Hasala")
