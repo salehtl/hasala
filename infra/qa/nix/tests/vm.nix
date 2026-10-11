@@ -417,10 +417,10 @@ in
           if not built:
               # The whole console environment passed the server's own checks
               # (fence F7-4 and spec 07 §8.1): the only refusal is "not built".
-              log = machine.succeed("journalctl -u hasala-console -o cat")
-              assert "operator console is not built yet" in log, log
+              console_log = machine.succeed("journalctl -u hasala-console -o cat")
+              assert "operator console is not built yet" in console_log, console_log
               for refusal in ["refuses to start with", "HASALA_CONSOLE_", "is under the RP ID", "HASALA_TESTFLIGHT_MODE is"]:
-                  assert refusal not in log, (refusal, log)
+                  assert refusal not in console_log, (refusal, console_log)
               print("SKIPPED: console header checks (internal/console is not built yet, spec 07 §8, WS-19)")
               machine.succeed("systemctl stop hasala-console.service; systemctl reset-failed hasala-console.service || true")
               machine.succeed(
