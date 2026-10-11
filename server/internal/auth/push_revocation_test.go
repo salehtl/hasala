@@ -52,7 +52,7 @@ func TestRevokingAWriterStopsThatDevicesNotifications(t *testing.T) {
 	c := newClock()
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
-	u := mustUpsert(t, pool, appleIdentity("sub-push-revoke-writer"))
+	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-writer"))
 
 	stolen, replacement := newDevice(t, "stolen-phone"), newDevice(t, "replacement")
 	mustEnroll(t, w, u, stolen, stolen)
@@ -91,8 +91,8 @@ func TestRevokingAWriterLeavesOtherAccountsAlone(t *testing.T) {
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
 
-	a := mustUpsert(t, pool, appleIdentity("sub-push-revoke-a"))
-	b := mustUpsert(t, pool, appleIdentity("sub-push-revoke-b"))
+	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-a"))
+	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-b"))
 	const shared = "iphone"
 
 	da, db := newDevice(t, shared), newDevice(t, shared)
@@ -132,7 +132,7 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 	c := newClock()
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
-	u := mustUpsert(t, pool, appleIdentity("sub-push-revoke-session"))
+	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-session"))
 
 	phone, tablet := newDevice(t, "phone"), newDevice(t, "tablet")
 	mustEnroll(t, w, u, phone, phone)
@@ -179,8 +179,8 @@ func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
 
-	a := mustUpsert(t, pool, appleIdentity("sub-push-revoke-all-a"))
-	b := mustUpsert(t, pool, appleIdentity("sub-push-revoke-all-b"))
+	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-a"))
+	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-b"))
 
 	for _, u := range []uuid.UUID{a, b} {
 		d := newDevice(t, "only-device")

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/pgtest"
@@ -31,7 +32,7 @@ func mustUpsert(t *testing.T, pool *pgxpool.Pool, id Identity) uuid.UUID {
 	return u
 }
 
-func appleIdentity(sub string) Identity { return Identity{IdP: IdPApple, Subject: sub} }
+func testIdentity(sub string) Identity { return Identity{IdP: IdPPasskey, Subject: sub} }
 
 // ---------------------------------------------------------------------------
 // Session tokens
@@ -39,7 +40,7 @@ func appleIdentity(sub string) Identity { return Identity{IdP: IdPApple, Subject
 
 func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-clear"))
+	u := mustUpsert(t, pool, testIdentity("sub-clear"))
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -77,7 +78,7 @@ func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 // shrink that.
 func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-entropy"))
+	u := mustUpsert(t, pool, testIdentity("sub-entropy"))
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -103,7 +104,7 @@ func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 
 func TestExpiredSessionIsRejected(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-expiry"))
+	u := mustUpsert(t, pool, testIdentity("sub-expiry"))
 	c := newClock()
 	s := newSessions(pool, time.Minute, c)
 
@@ -130,7 +131,7 @@ func TestExpiredSessionIsRejected(t *testing.T) {
 
 func TestRevokedSessionIsRejected(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-revoke"))
+	u := mustUpsert(t, pool, testIdentity("sub-revoke"))
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -173,7 +174,7 @@ func TestRevokedSessionIsRejected(t *testing.T) {
 
 func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-unknown"))
+	u := mustUpsert(t, pool, testIdentity("sub-unknown"))
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 	if _, err := s.Issue(bgctx, u); err != nil {
@@ -195,8 +196,8 @@ func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 // It must not touch another user's sessions.
 func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 	pool := pgtest.New(t)
-	mine := mustUpsert(t, pool, appleIdentity("sub-mine"))
-	theirs := mustUpsert(t, pool, appleIdentity("sub-theirs"))
+	mine := mustUpsert(t, pool, testIdentity("sub-mine"))
+	theirs := mustUpsert(t, pool, testIdentity("sub-theirs"))
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -228,7 +229,7 @@ func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 
 func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-config"))
+	u := mustUpsert(t, pool, testIdentity("sub-config"))
 	c := newClock()
 
 	if _, err := (&Sessions{Pool: pool, TTL: 0, Now: c.now}).Issue(bgctx, u); err == nil {
@@ -251,7 +252,7 @@ func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
 // this function actually does it, in the same transaction.
 func TestUpsertUserCreatesTheUserAndItsOplogSeqRowTogether(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-new"))
+	u := mustUpsert(t, pool, testIdentity("sub-new"))
 	if u == uuid.Nil {
 		t.Fatal("returned the zero uuid")
 	}
@@ -271,7 +272,7 @@ func TestUpsertUserCreatesTheUserAndItsOplogSeqRowTogether(t *testing.T) {
 func TestUpsertUserNeverStoresTheRawSubject(t *testing.T) {
 	pool := pgtest.New(t)
 	const sub = "001234.deadbeefcafe.0001"
-	u := mustUpsert(t, pool, appleIdentity(sub))
+	u := mustUpsert(t, pool, testIdentity(sub))
 
 	var idp string
 	var hash []byte
@@ -279,14 +280,14 @@ func TestUpsertUserNeverStoresTheRawSubject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if idp != IdPApple {
+	if idp != IdPPasskey {
 		t.Fatalf("idp = %q", idp)
 	}
 	if bytes.Contains(hash, []byte(sub)) {
 		t.Fatal("the users table contains the raw IdP subject")
 	}
-	if !bytes.Equal(hash, SubjectHash(IdPApple, sub)) {
-		t.Fatalf("stored %x, want SubjectHash %x", hash, SubjectHash(IdPApple, sub))
+	if !bytes.Equal(hash, SubjectHash(IdPPasskey, sub)) {
+		t.Fatalf("stored %x, want SubjectHash %x", hash, SubjectHash(IdPPasskey, sub))
 	}
 }
 
@@ -295,7 +296,7 @@ func TestUpsertUserNeverStoresTheRawSubject(t *testing.T) {
 // which would hand the next append a seq that already exists.
 func TestUpsertUserIsIdempotentAndDoesNotResetTheSeqCounter(t *testing.T) {
 	pool := pgtest.New(t)
-	id := appleIdentity("sub-repeat")
+	id := testIdentity("sub-repeat")
 	first := mustUpsert(t, pool, id)
 
 	if _, err := pool.Exec(bgctx, `UPDATE oplog_seq SET next_seq = 42 WHERE user_id = $1`, first); err != nil {
@@ -328,7 +329,7 @@ func TestUpsertUserIsIdempotentAndDoesNotResetTheSeqCounter(t *testing.T) {
 // retrying a slow request, races two first-logins for one identity.
 func TestUpsertUserIsSafeUnderConcurrentFirstLogin(t *testing.T) {
 	pool := pgtest.New(t)
-	id := appleIdentity("sub-race")
+	id := testIdentity("sub-race")
 
 	const n = 8
 	ids := make([]uuid.UUID, n)
@@ -378,16 +379,19 @@ func TestUpsertUserIsSafeUnderConcurrentFirstLogin(t *testing.T) {
 	}
 }
 
-// The same opaque subject string from two different providers is two different
-// people. The users table's UNIQUE (idp, idp_sub_hash) says so; this pins that
-// UpsertUser actually feeds it distinct hashes.
-func TestUpsertUserSeparatesIdentitiesAcrossProviders(t *testing.T) {
+// ledgerd's IdPs are retired (spec 02 §2.3): neither UpsertUser nor a direct
+// INSERT can create an 'apple' or 'google' user any more.
+func TestTheRetiredIdentityProvidersAreRefused(t *testing.T) {
 	pool := pgtest.New(t)
-	const sub = "same-string"
-	apple := mustUpsert(t, pool, Identity{IdP: IdPApple, Subject: sub})
-	google := mustUpsert(t, pool, Identity{IdP: IdPGoogle, Subject: sub})
-	if apple == google {
-		t.Fatal("an apple and a google identity with the same subject collapsed into one user")
+	for _, idp := range []string{"apple", "google"} {
+		if _, err := UpsertUser(bgctx, pool, Identity{IdP: idp, Subject: "x"}); err == nil {
+			t.Fatalf("UpsertUser accepted idp %q", idp)
+		}
+		_, err := pool.Exec(bgctx, `INSERT INTO users (idp, idp_sub_hash) VALUES ($1, $2)`, idp, SubjectHash(idp, "x"))
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_idp_is_closed" {
+			t.Fatalf("INSERT with idp %q answered %v, want users_idp_is_closed", idp, err)
+		}
 	}
 }
 
@@ -396,7 +400,8 @@ func TestUpsertUserRejectsAnUnusableIdentity(t *testing.T) {
 	cases := map[string]Identity{
 		"empty idp":     {IdP: "", Subject: "x"},
 		"unknown idp":   {IdP: "facebook", Subject: "x"},
-		"empty subject": {IdP: IdPApple, Subject: ""},
+		"retired idp":   {IdP: "apple", Subject: "x"},
+		"empty subject": {IdP: IdPPasskey, Subject: ""},
 	}
 	for name, id := range cases {
 		t.Run(name, func(t *testing.T) {

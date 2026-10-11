@@ -92,7 +92,7 @@ func countRows(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int {
 // whose ops every other device would replay.
 func TestSecondWriterRequiresProofOfKeyPossession(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-possession"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-possession"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -122,7 +122,7 @@ func TestSecondWriterRequiresProofOfKeyPossession(t *testing.T) {
 // key without saying what that key authorized.
 func TestSignatureIsBoundToTheWriterIDAndKey(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-binding"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-binding"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -203,7 +203,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	w := newWriters(pool, newClock())
 
 	t.Run("cannot bootstrap with one", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-small-boot"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-small-boot"))
 		n := mustChallenge(t, w, u)
 		if err := w.Register(bgctx, u, "dev-evil", identityKey, n, forgedSig); !errors.Is(err, ErrKeyUnusable) {
 			t.Fatalf("bootstrap with the identity key: %v, want ErrKeyUnusable", err)
@@ -220,7 +220,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	})
 
 	t.Run("cannot be enrolled as a later writer", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-small-later"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-small-later"))
 		a := newDevice(t, "dev-a")
 		mustEnroll(t, w, u, a, a)
 		n := mustChallenge(t, w, u)
@@ -233,7 +233,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	// script, a restore from before this check existed — must not be able to
 	// authorize anything either.
 	t.Run("cannot authorize even if already in the roster", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-small-roster"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-small-roster"))
 		if _, err := pool.Exec(bgctx,
 			`INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
 			 VALUES ($1,'dev-planted','device',$2,now())`, u, []byte(identityKey)); err != nil {
@@ -251,7 +251,7 @@ func TestSmallOrderPublicKeysAreRefused(t *testing.T) {
 	})
 
 	t.Run("a key that is not a curve point at all", func(t *testing.T) {
-		u := mustUpsert(t, pool, appleIdentity("sub-writer-notapoint"))
+		u := mustUpsert(t, pool, testIdentity("sub-writer-notapoint"))
 		// y = 2 is not the y-coordinate of any point on edwards25519 — found by
 		// enumeration, because most 32-byte strings ARE valid points (0xFF*32,
 		// the obvious guess, decodes fine and has large order, so it is refused
@@ -273,7 +273,7 @@ func TestRegistrationMessageEncodingIsPinnedAndUnambiguous(t *testing.T) {
 	pub := ed25519.PublicKey(bytes.Repeat([]byte{0xCD}, ed25519.PublicKeySize))
 
 	got := RegistrationMessage(nonce, "dev-a", pub)
-	want := append([]byte("hasala/v1/writer-registration\x00"), nonce...)
+	want := append([]byte("ledger-v2-writer-registration\x00"), nonce...)
 	want = append(want, 0x00)
 	want = append(want, "dev-a"...)
 	want = append(want, 0x00)
@@ -284,7 +284,7 @@ func TestRegistrationMessageEncodingIsPinnedAndUnambiguous(t *testing.T) {
 
 	// The domain prefix keeps a registration message out of every other
 	// signing context this key will ever be used in.
-	if !bytes.HasPrefix(RevocationMessage(nonce, "dev-a"), []byte("hasala/v1/writer-revocation\x00")) {
+	if !bytes.HasPrefix(RevocationMessage(nonce, "dev-a"), []byte("ledger-v2-writer-revocation\x00")) {
 		t.Fatal("revocation messages must carry their own domain prefix")
 	}
 
@@ -326,7 +326,7 @@ func TestSigningDomainsAreDistinctAndPrefixFree(t *testing.T) {
 
 func TestChallengesAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-entropy"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-entropy"))
 	w := newWriters(pool, newClock())
 
 	seen := map[string]bool{}
@@ -348,7 +348,7 @@ func TestChallengesAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 // ATTACK: replay a nonce that already registered a writer.
 func TestChallengeIsSingleUse(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-replay"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-replay"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -386,7 +386,7 @@ const goroutines = 12
 
 func TestChallengeIsSingleUseUnderConcurrency(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-race"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-race"))
 	w := newWriters(pool, newClock())
 
 	authorizer := newDevice(t, "dev-a")
@@ -490,7 +490,7 @@ func TestConcurrentBootstrapsCannotBothWin(t *testing.T) {
 	// proof the lock is doing its job.
 	const rounds = 8
 	for round := 0; round < rounds; round++ {
-		u := mustUpsert(t, pool, appleIdentity(fmt.Sprintf("sub-writer-bootrace-%d", round)))
+		u := mustUpsert(t, pool, testIdentity(fmt.Sprintf("sub-writer-bootrace-%d", round)))
 		racers := make([]device, goroutines)
 		nonces := make([][]byte, goroutines)
 		for i := range racers {
@@ -538,7 +538,7 @@ func TestConcurrentBootstrapsCannotBothWin(t *testing.T) {
 // have used it is out of the attacker's reach, then spend it.
 func TestChallengeExpires(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-expiry"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-expiry"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -559,8 +559,8 @@ func TestChallengeExpires(t *testing.T) {
 // user A, hoping the nonce is looked up by itself.
 func TestChallengeIsBoundToTheUserItWasIssuedFor(t *testing.T) {
 	pool := pgtest.New(t)
-	alice := mustUpsert(t, pool, appleIdentity("sub-writer-alice"))
-	mallory := mustUpsert(t, pool, appleIdentity("sub-writer-mallory"))
+	alice := mustUpsert(t, pool, testIdentity("sub-writer-alice"))
+	mallory := mustUpsert(t, pool, testIdentity("sub-writer-mallory"))
 	w := newWriters(pool, newClock())
 
 	n := mustChallenge(t, w, mallory)
@@ -583,8 +583,8 @@ func TestChallengeIsBoundToTheUserItWasIssuedFor(t *testing.T) {
 // account B (whose roster is empty, so B is still in its bootstrap window).
 func TestAnotherUsersEnrolledKeyCannotAuthorizeAWriter(t *testing.T) {
 	pool := pgtest.New(t)
-	alice := mustUpsert(t, pool, appleIdentity("sub-writer-a2"))
-	bob := mustUpsert(t, pool, appleIdentity("sub-writer-b2"))
+	alice := mustUpsert(t, pool, testIdentity("sub-writer-a2"))
+	bob := mustUpsert(t, pool, testIdentity("sub-writer-b2"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -615,7 +615,7 @@ func TestAnotherUsersEnrolledKeyCannotAuthorizeAWriter(t *testing.T) {
 // would only need to wait for (or provoke) a revocation.
 func TestBootstrapIsAvailableOnlyOnce(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-bootstrap"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-bootstrap"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -638,7 +638,7 @@ func TestBootstrapIsAvailableOnlyOnce(t *testing.T) {
 // use it to enroll a writer.
 func TestRevokedKeyCannotAuthorizeANewWriter(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-revoked-key"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-revoked-key"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -667,7 +667,7 @@ func TestRevokedKeyCannotAuthorizeANewWriter(t *testing.T) {
 // bootstrap attack above, if bootstrap were reopenable) using a key of its own.
 func TestRevocationRequiresAnEnrolledKey(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-revoke-auth"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-revoke-auth"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -727,7 +727,7 @@ func TestRevocationRequiresAnEnrolledKey(t *testing.T) {
 
 func TestRegistrationAppendsToKeyHistory(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-history"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-history"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -781,7 +781,7 @@ func TestRegistrationAppendsToKeyHistory(t *testing.T) {
 // to fail at the database, not merely be absent from this package's SQL.
 func TestKeyHistoryIsAppendOnly(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-immutable"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-immutable"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -826,7 +826,7 @@ func TestKeyHistoryIsAppendOnly(t *testing.T) {
 // sentence in a report.
 func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-role"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-role"))
 	w := newWriters(pool, newClock())
 	a := newDevice(t, "dev-a")
 	mustEnroll(t, w, u, a, a)
@@ -872,7 +872,7 @@ func TestKeyHistoryGuardBindsANonOwnerRuntimeRole(t *testing.T) {
 // account, not a rewrite of a live account's history.
 func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-cascade"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-cascade"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -893,7 +893,7 @@ func TestKeyHistoryIsRemovedWithItsUser(t *testing.T) {
 
 func TestRosterReportsEveryWriterWithItsState(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-roster"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-roster"))
 	c := newClock()
 	w := newWriters(pool, c)
 
@@ -937,7 +937,7 @@ func TestRosterReportsEveryWriterWithItsState(t *testing.T) {
 
 func TestRegisterRejectsUnusableInput(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-input"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-input"))
 	w := newWriters(pool, newClock())
 	a := newDevice(t, "dev-a")
 	n := mustChallenge(t, w, u)
@@ -984,7 +984,7 @@ func TestRegisterRejectsUnusableInput(t *testing.T) {
 
 func TestRegisteringTheSameWriterOrKeyTwiceIsRefused(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-dupe"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-dupe"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")
@@ -1021,7 +1021,7 @@ func TestRegisteringTheSameWriterOrKeyTwiceIsRefused(t *testing.T) {
 // Authorization has to be decided before any existence check reports back.
 func TestAuthorizationIsCheckedBeforeExistence(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, appleIdentity("sub-writer-oracle"))
+	u := mustUpsert(t, pool, testIdentity("sub-writer-oracle"))
 	w := newWriters(pool, newClock())
 
 	a := newDevice(t, "dev-a")

@@ -653,7 +653,12 @@ const (
 	// own prefixes for the same reason: a signature captured from one flow must
 	// be worthless in another, and this is the flow where being wrong is
 	// unrecoverable.
-	deletionDomain = "hasala/v1/account-delete\x00"
+	//
+	// ledgerd's domain, because this is still ledgerd's message (nonce and
+	// user id). Spec 01 D16 gives hasala/v1/account-delete to the step-up
+	// format WS-3 builds; one domain never names two formats, so the domain
+	// changes with the format.
+	deletionDomain = "ledger/v2 account-delete\x00"
 )
 
 // ErrDeletionRejected is every authorization failure this package produces:

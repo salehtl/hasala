@@ -46,7 +46,7 @@ CREATE TABLE users (
   idp_sub_hash bytea NOT NULL,
   created_at   timestamptz NOT NULL DEFAULT now(),
   status       text NOT NULL DEFAULT 'active',
-  CONSTRAINT users_idp_is_closed CHECK (idp IN ('apple','google','passkey')),
+  CONSTRAINT users_idp_is_closed CHECK (idp IN ('passkey')),
   CONSTRAINT users_idp_sub_hash_is_sha256 CHECK (octet_length(idp_sub_hash) = 32),
   CONSTRAINT users_identity_uniq UNIQUE (idp, idp_sub_hash),
   CONSTRAINT users_status_is_closed CHECK (status IN ('active','suspended'))

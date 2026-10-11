@@ -463,8 +463,7 @@ func upsertUser(ctx context.Context, pool *pgxpool.Pool, id Identity, invite *[]
 		return uuid.Nil, errors.New("auth: UpsertUser: pool is nil")
 	}
 	if !validIdP(id.IdP) {
-		return uuid.Nil, fmt.Errorf("auth: UpsertUser: idp is %q, want one of %q, %q, %q",
-			id.IdP, IdPApple, IdPGoogle, IdPPasskey)
+		return uuid.Nil, fmt.Errorf("auth: UpsertUser: idp is %q, want %q", id.IdP, IdPPasskey)
 	}
 	if id.Subject == "" {
 		return uuid.Nil, errors.New("auth: UpsertUser: identity has no subject")

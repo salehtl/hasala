@@ -159,9 +159,18 @@ const (
 // double as an enrollment. Both end in a NUL that cannot appear in the ASCII
 // domain label itself, so the prefix can never be confused with the start of
 // the payload.
+//
+// These are ledgerd's domains, on purpose. The messages under them are still
+// ledgerd's byte formats (nonce, writer id, Ed25519 key), which the reference
+// client speaks. Spec 01 gives hasala/v1/writer-registration and
+// hasala/v1/writer-revocation to the NEW formats (D13, D14: the AAK certifies
+// the DWK and the DAK; revocation pins the final head) that WS-3 builds, and
+// one domain must never name two formats, or a signature over the old one
+// could be presented as the new one. WS-3 switches the domain and the format
+// together.
 const (
-	registrationDomain = "hasala/v1/writer-registration\x00"
-	revocationDomain   = "hasala/v1/writer-revocation\x00"
+	registrationDomain = "ledger-v2-writer-registration\x00"
+	revocationDomain   = "ledger-v2-writer-revocation\x00"
 )
 
 // Registration rejection reasons. All of them wrap ErrRegistrationRejected, so
@@ -274,7 +283,7 @@ func (w *Writers) now() time.Time {
 // the two cannot drift silently, and TestRegistrationMessageEncodingIsPinned...
 // pins the bytes.
 //
-//	"hasala/v1/writer-registration\x00" || nonce || 0x00 || writerID || 0x00 || pubkey
+//	"ledger-v2-writer-registration\x00" || nonce || 0x00 || writerID || 0x00 || pubkey
 //
 // # Why the message is not just the nonce
 //

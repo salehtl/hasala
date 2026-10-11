@@ -769,7 +769,7 @@ func TestDeletionMessageIsDomainSeparated(t *testing.T) {
 	u := uuid.New()
 	nonce := make([]byte, ChallengeNonceBytes)
 	msg := DeletionMessage(nonce, u)
-	if !strings.HasPrefix(string(msg), "hasala/v1/account-delete\x00") {
+	if !strings.HasPrefix(string(msg), "ledger/v2 account-delete\x00") {
 		t.Fatalf("DeletionMessage has no domain prefix: %q", msg[:32])
 	}
 	other := DeletionMessage(nonce, uuid.New())

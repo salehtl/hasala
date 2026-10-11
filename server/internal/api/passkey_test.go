@@ -253,7 +253,7 @@ func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 
 func TestAddPasskeyIsRefusedForAnAccountWithoutOne(t *testing.T) {
 	h := newHarness(t).passkeys()
-	tok := h.session(h.user("apple-only"))
+	tok := h.session(h.user("no-passkey"))
 	w := h.req("POST", "/api/v1/auth/passkey/add/begin", tok, map[string]any{})
 	// A live session, and still refused: this account has no user handle to
 	// bind a credential to, and minting one would be account linking.

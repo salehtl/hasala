@@ -29,16 +29,12 @@ import (
 	"time"
 )
 
-// The identity vocabulary of users.idp. These strings are a closed set and are
-// part of SubjectHash's input. Only IdPPasskey can be minted by any route
-// since the surgery; IdPApple and IdPGoogle remain in the vocabulary (and in
-// the users.idp CHECK) only until WS-3 replaces the users table with the
-// email-keyed account of spec 02 §5.3.
-const (
-	IdPApple   = "apple"
-	IdPGoogle  = "google"
-	IdPPasskey = "passkey"
-)
+// The identity vocabulary of users.idp. It is a closed set and part of
+// SubjectHash's input. ledgerd's 'apple' and 'google' went with the ID-token
+// exchange (spec 02 §2.3, §2.4): the passkey ceremony is the only thing that
+// mints an identity, and the users.idp CHECK admits nothing else, until WS-3
+// replaces the users table with the email-keyed account of spec 02 §5.3.
+const IdPPasskey = "passkey"
 
 // Identity is who a ceremony says the bearer is: a provider plus that
 // provider's opaque subject string. The Subject is the raw value; it is hashed
@@ -63,5 +59,5 @@ func SubjectHash(idp, subject string) []byte {
 }
 
 func validIdP(idp string) bool {
-	return idp == IdPApple || idp == IdPGoogle || idp == IdPPasskey
+	return idp == IdPPasskey
 }
