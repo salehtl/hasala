@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		151E619D211EDCF6599F04C5 /* CoreCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = 39F59297A15B967DDD100B2C /* CoreCrypto */; };
 		1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */ = {isa = PBXBuildFile; productRef = 34C3DF8F9E664D62F761D750 /* HasalaModels */; };
 		233C4F4AF054981975026771 /* HasalaDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */; };
 		40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */ = {isa = PBXBuildFile; productRef = D4E305223EA1101548600E38 /* HasalaMocks */; };
@@ -32,6 +33,7 @@
 /* Begin PBXFileReference section */
 		0187135A8AD204B6D05A454D /* HasalaUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HasalaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2558017F5B5D3271CE609AB7 /* HasalaKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HasalaKit; path = HasalaKit; sourceTree = SOURCE_ROOT; };
+		6AC0DA4E2D6313E21DBF5E50 /* HasalaCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HasalaCore; path = HasalaCore; sourceTree = SOURCE_ROOT; };
 		6B1A24344278E2914568DEF3 /* Hasala.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hasala.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		80EB6346B66A9649F68EF67D /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		985A440AE226C368D57A3AD3 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */,
 				233C4F4AF054981975026771 /* HasalaDesign in Frameworks */,
 				40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */,
+				151E619D211EDCF6599F04C5 /* CoreCrypto in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +103,7 @@
 		3F434A001FBD45974A4DF414 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				6AC0DA4E2D6313E21DBF5E50 /* HasalaCore */,
 				2558017F5B5D3271CE609AB7 /* HasalaKit */,
 			);
 			name = Packages;
@@ -181,6 +185,7 @@
 				34C3DF8F9E664D62F761D750 /* HasalaModels */,
 				9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */,
 				D4E305223EA1101548600E38 /* HasalaMocks */,
+				39F59297A15B967DDD100B2C /* CoreCrypto */,
 			);
 			productName = Hasala;
 			productReference = 6B1A24344278E2914568DEF3 /* Hasala.app */;
@@ -242,6 +247,7 @@
 			mainGroup = D21BE40AB0D056F511C7E382;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				8A1503CEEA6D71201A4EA0F6 /* XCLocalSwiftPackageReference "HasalaCore" */,
 				6919C4AA69B33810CF4D78D5 /* XCLocalSwiftPackageReference "HasalaKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -590,12 +596,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = HasalaKit;
 		};
+		8A1503CEEA6D71201A4EA0F6 /* XCLocalSwiftPackageReference "HasalaCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = HasalaCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		34C3DF8F9E664D62F761D750 /* HasalaModels */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HasalaModels;
+		};
+		39F59297A15B967DDD100B2C /* CoreCrypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreCrypto;
 		};
 		9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */ = {
 			isa = XCSwiftPackageProductDependency;

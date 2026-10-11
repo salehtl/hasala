@@ -20,6 +20,8 @@ options:
 packages:
   HasalaKit:
     path: HasalaKit
+  HasalaCore:
+    path: HasalaCore
 settings:
   base:
     DEVELOPMENT_TEAM: 8CFG28JHP3
@@ -48,6 +50,10 @@ targets:
         product: HasalaDesign
       - package: HasalaKit
         product: HasalaMocks
+      # Onboarding and Sign-in & security (WS-14): phrase, password, address and
+      # name rules (spec 04 §6.1.2, §6.7, §6.8).
+      - package: HasalaCore
+        product: CoreCrypto
   HasalaTests:
     type: bundle.unit-test
     platform: iOS
