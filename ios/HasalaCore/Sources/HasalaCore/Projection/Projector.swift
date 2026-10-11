@@ -81,7 +81,8 @@ public enum Projector {
     try db.write { db in
       try ensureSchema(db)
       try db.execute(sql: "UPDATE projection_meta SET value = '0' WHERE key = 'complete'")
-      for t in ProjectionSchema.tables where t != "projection_meta" { try db.execute(sql: "DELETE FROM \(t)") }
+      // Children before parents: `txn_part` and `rule_pattern` reference `txn` and `rule`.
+      for t in ProjectionSchema.tables.reversed() where t != "projection_meta" { try db.execute(sql: "DELETE FROM \(t)") }
       try writeTxns(db, state, categorizer: categorizer, pending: pendingIDs)
       try writeCategories(db, taxonomy)
       try writeRules(db, state, taxonomy: taxonomy)

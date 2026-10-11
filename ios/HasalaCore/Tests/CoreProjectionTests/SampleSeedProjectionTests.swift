@@ -47,6 +47,22 @@ struct SampleSeedProjectionTests {
     #expect(try p.reader.isUsable())
   }
 
+  @Test("projecting again over rules and split parts replaces them (children are cleared before parents)")
+  func reproject() throws {
+    var (s, p) = try Self.loaded()
+    let txn = try #require(s.txns.values.first { $0.merchantRaw == "ZUMA DIFC" })
+    var a = OpAuthor(AuthorContext(writerID: Self.writer, nowMs: Self.anchor + 60_000, ownLastMs: Self.anchor + 1_000, maxAuthored: [:], random: SeededRandom(seed: "split")))
+    a.split(txnID: txn.id, parentVersion: txn.version, parts: [(category: "dining", amountMinor: 30_000, note: nil), (category: "entertainment", amountMinor: 11_200, note: "Birthday")])
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Self.writer, into: &s)
+    let dictionary = try MerchantDictionary.bundled().get()
+    for at in [Self.anchor + 1, Self.anchor + 2] {
+      try p.project(s, pending: [], writerID: Self.writer, dictionary: dictionary, projectedAtMs: at)
+    }
+    #expect(try p.reader.rules().count == 6)
+    #expect(try p.reader.parts(txn.id).map(\.amountMinor) == [30_000, 11_200])
+    #expect(try p.reader.meta()?.projectedAtMs == Self.anchor + 2)
+  }
+
   @Test("Activity, Review and the sample rows: 26 in October, 6 to review, sample-<n> message ids")
   func activity() throws {
     let (_, p) = try Self.loaded()
