@@ -1,0 +1,313 @@
+{
+  "name": "category-payload-shapes",
+  "group": "config",
+  "note": "A spending category needs a bucket and the other kinds must not carry one; id, name, kind and active are required; an invalid redefinition leaves the previous one.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k1",
+            "name": "One",
+            "kind": "spending",
+            "bucket": "need",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k1",
+            "name": "One",
+            "kind": "spending",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k2",
+            "name": "Two",
+            "kind": "income",
+            "bucket": "need",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k3",
+            "name": "Three",
+            "kind": "savings",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "",
+            "name": "Four",
+            "kind": "excluded",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k5",
+            "kind": "excluded",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-7",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k6",
+            "name": "Six",
+            "kind": "excluded"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-8",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k7",
+            "name": "Seven",
+            "kind": "excluded",
+            "active": true,
+            "color": ""
+          }
+        }
+      ]
+    },
+    {
+      "seq": "9",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-payload-shapes-9",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k1",
+            "name": "One",
+            "kind": "spending",
+            "bucket": "luxury",
+            "active": true
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "7",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "8",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "9",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [
+        [
+          "k1",
+          {
+            "active": true,
+            "bucket": "need",
+            "color": null,
+            "id": "k1",
+            "kind": "spending",
+            "name": "One"
+          }
+        ]
+      ],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "9"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "3972daa186b5082fa1d6e4f6d8274258c71976887a52f644a19263d7c5ccbbf0",
+    "order": {
+      "banks": [],
+      "categories": [
+        "k1"
+      ]
+    },
+    "diagnostics": {
+      "full_state_sha256": "fbfaca5ebed49ac7019f0b27bc6dbad64c3fef39fd4f74991e2e0c88819e82d4",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-2: a spending category needs a bucket of need, want or saving, got undefined"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-3: a income category must not carry a bucket, got \"need\""
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-4: kind must be spending, income or excluded, got \"savings\""
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-5: id must be a non-empty string, got \"\""
+        },
+        {
+          "at_seq": "6",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-6: name must be a non-empty string, got undefined"
+        },
+        {
+          "at_seq": "7",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-7: active must be a boolean, got undefined"
+        },
+        {
+          "at_seq": "8",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-8: color must be a non-empty string, got \"\""
+        },
+        {
+          "at_seq": "9",
+          "kind": "invalid_payload",
+          "detail": "category_defined category-payload-shapes-9: a spending category needs a bucket of need, want or saving, got \"luxury\""
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

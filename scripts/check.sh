@@ -336,25 +336,34 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 # directory under conformance/ must appear here: a new fixture set cannot land
 # without saying what checks it.
 #
-# Two sets have fewer than two executors, on purpose and visibly:
+# Some sets have fewer than two executors here, on purpose and visibly:
 #   fx      TypeScript only. The FX fold exists only client-side; Go has no reader.
 #   crypto  No reader at all. Its consumer (ledgerd's retired app/ bench) was
 #           deleted (see the ledgerd repo-migration inventory, archived).
 #           Listed so the gap stays on screen.
-#   structure  TypeScript only since WS-1: its Go executor was ledgerd's
-#           diagnostics telemetry (internal/diag), retired with it (spec 02 §2).
+#   authres, categorize, norm-dates, replay
+#           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
+#           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
+#           executor joins CI's `swift` job with the port (WS-8, WS-10). The
+#           TypeScript entry is the freshness check (the committed files are
+#           byte-identical to what the generator writes now, computed in
+#           memory, no network) plus the oracle reading its own files back.
+#           Go has no reader: the server never reads mail or folds ops.
 #
 # A Go package under ./oracle/ is run from the oracle module.
 CONFORMANCE=(
+	"authres||src/mail/authres-conformance.test.ts"
 	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
+	"categorize||src/categorize/oracle-conformance.test.ts"
 	"crypto||"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"
 	"fx||src/replay/fx.test.ts"
 	"import|./oracle/v1ref/importer|src/importer/importer.test.ts"
+	"norm-dates||src/norm/dates-conformance.test.ts"
 	"normalizer|./internal/norm|src/norm/conformance.test.ts"
 	"op|./internal/oplog/opref|src/wire/op.test.ts"
-	"structure||src/diag/structure.test.ts"
+	"replay||src/replay/replay-conformance.test.ts"
 	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"
 	"ts|./internal/oplog/opref|src/wire/blob.test.ts"
 )

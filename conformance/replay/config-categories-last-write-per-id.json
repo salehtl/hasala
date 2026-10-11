@@ -1,0 +1,214 @@
+{
+  "name": "categories-last-write-per-id",
+  "group": "config",
+  "note": "category_defined is last write per id; active:false retires without deleting; declaration order is kept.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "categories-last-write-per-id-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "groceries",
+            "name": "Groceries",
+            "kind": "spending",
+            "bucket": "need",
+            "color": "#88aa66",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "categories-last-write-per-id-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "salary",
+            "name": "Salary",
+            "kind": "income",
+            "bucket": null,
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "categories-last-write-per-id-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "dining",
+            "name": "Dining",
+            "kind": "spending",
+            "bucket": "want",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "categories-last-write-per-id-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "groceries",
+            "name": "Food",
+            "kind": "spending",
+            "bucket": "want",
+            "color": "#88aa66",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "categories-last-write-per-id-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "salary",
+            "name": "Salary",
+            "kind": "income",
+            "active": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "categories-last-write-per-id-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "transfer",
+            "name": "Transfers",
+            "kind": "excluded",
+            "active": true
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [
+        [
+          "dining",
+          {
+            "active": true,
+            "bucket": "want",
+            "color": null,
+            "id": "dining",
+            "kind": "spending",
+            "name": "Dining"
+          }
+        ],
+        [
+          "groceries",
+          {
+            "active": true,
+            "bucket": "want",
+            "color": "#88aa66",
+            "id": "groceries",
+            "kind": "spending",
+            "name": "Food"
+          }
+        ],
+        [
+          "salary",
+          {
+            "active": false,
+            "bucket": null,
+            "color": null,
+            "id": "salary",
+            "kind": "income",
+            "name": "Salary"
+          }
+        ],
+        [
+          "transfer",
+          {
+            "active": true,
+            "bucket": null,
+            "color": null,
+            "id": "transfer",
+            "kind": "excluded",
+            "name": "Transfers"
+          }
+        ]
+      ],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "57d098f157d7ea515653cac0ceeed00bff3fb04becbf4edb3f5e1e0ed0556ec6",
+    "order": {
+      "banks": [],
+      "categories": [
+        "groceries",
+        "salary",
+        "dining",
+        "transfer"
+      ]
+    },
+    "diagnostics": {
+      "full_state_sha256": "57d098f157d7ea515653cac0ceeed00bff3fb04becbf4edb3f5e1e0ed0556ec6",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

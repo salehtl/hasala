@@ -1,0 +1,177 @@
+{
+  "name": "bank-payload-shapes",
+  "group": "config",
+  "note": "A malformed bank_declared is an invalid_payload and leaves the set alone.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "bank-payload-shapes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "enbd",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "bank-payload-shapes-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "bank-payload-shapes-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "enbd",
+            "active": "no"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "bank-payload-shapes-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": 7,
+            "active": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "bank-payload-shapes-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "active": false
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [
+        [
+          "enbd",
+          true
+        ]
+      ],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "5"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "bc9ea22d48a49c823f878c8f96b22e9a5c8a415aef0f60ace50f28ac9c6eff10",
+    "order": {
+      "banks": [
+        "enbd"
+      ],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "3453002313ee766fd2b793fb32559e5906150868c0c3b0b830a3a781197c7b75",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "bank_declared bank-payload-shapes-2: bank must be a non-empty string, got \"\""
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "bank_declared bank-payload-shapes-3: active must be a boolean, got \"no\""
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "bank_declared bank-payload-shapes-4: bank must be a non-empty string, got 7"
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "bank_declared bank-payload-shapes-5: bank must be a non-empty string, got undefined"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

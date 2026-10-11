@@ -40,7 +40,7 @@
  * re-derives it in memory and `fx.test.ts` calls it on every run, so an edited
  * case that was never regenerated fails here rather than passing quietly.
  *
- *     cd client && bun run gen-fx-conformance
+ *     cd reference/ledgerd-client && bun run gen-fx-conformance
  *
  * # Why the op builders live in this file
  *
@@ -625,7 +625,7 @@ export function buildCases(): FXCase[] {
 }
 
 const MANIFEST_NOTE =
-  "Written by client/scripts/gen-fx-conformance.ts. Regenerate with `cd client && bun run gen-fx-conformance`; do not hand-edit. " +
+  "Written by reference/ledgerd-client/scripts/gen-fx-conformance.ts. Regenerate with `cd reference/ledgerd-client && bun run gen-fx-conformance`; do not hand-edit. " +
   "Every case is a complete log: fold `entries` in seq order (entries sharing a seq are one blob, applied in array order) and compare against `expect`. " +
   "Every integer is a decimal string, including seq. null is a value: a null snapshot means no rate existed at or after that row's position, and a null rate head is a live rate_unset, which is not the same as a currency with no rate at all. " +
   "`snapshots` names every transaction the fold materializes, superseded rows included. `pending` lists still-unfrozen live ids sorted by UTF-8 bytes, because the engine holds them in a set and Go would hold them in a map. `anomalies` is in fold order. " +
@@ -663,7 +663,7 @@ function build(): { manifest: string; files: { file: string; text: string }[] } 
  */
 export async function assertFXCasesAreFresh(): Promise<void> {
   const { manifest, files } = build();
-  const fix = "regenerate with `cd client && bun run gen-fx-conformance`";
+  const fix = "regenerate with `cd reference/ledgerd-client && bun run gen-fx-conformance`";
   const onDisk = await Bun.file(`${FX_CONFORMANCE_DIR}/manifest.json`).text();
   if (onDisk !== manifest) throw new Error(`conformance/fx/manifest.json is stale: ${fix}`);
   for (const f of files) {

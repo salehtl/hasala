@@ -1,0 +1,602 @@
+{
+  "name": "mailbox-message-id",
+  "group": "fold",
+  "note": "A complete mailbox provenance keeps its message id; a malformed one folds to null without an anomaly; a supersede carries its own.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb"
+          },
+          "parent_version": null,
+          "ingest_id": "b75bdd4bf010afa5c0448eec8c6ed8fc899413c9391d46c1d6b1846839b4e03a",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": {
+              "provider": "gmail",
+              "grant_id": "acct-1",
+              "message_id": "gmail-msg-abc123"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb0"
+          },
+          "parent_version": null,
+          "ingest_id": "a0db201ee473493b492e3a7c7c529adc5c3c76435de8840fdeda890138a720f3",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": {
+              "provider": "gmail",
+              "grant_id": "acct-1",
+              "message_id": ""
+            }
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb1"
+          },
+          "parent_version": null,
+          "ingest_id": "c41c70bbbc50aaa00bb7b170e2a4dd52f8bad761e7930a631be8f3c3e020dcfe",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": {
+              "provider": "gmail",
+              "message_id": "m"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb2"
+          },
+          "parent_version": null,
+          "ingest_id": "9bc575ca10f746ac3ea6ebc3627c318d7089954aedb94db3d0e677b9430083b1",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": "gmail"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb3"
+          },
+          "parent_version": null,
+          "ingest_id": "a7178e311f8a1f597972beee00825637feca7cd8c422d03a089ad7e5edfc6186",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": null
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_superseded",
+          "op_id": "mailbox-message-id-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb4"
+          },
+          "parent_version": null,
+          "ingest_id": "b75bdd4bf010afa5c0448eec8c6ed8fc899413c9391d46c1d6b1846839b4e03a",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642",
+            "tier": "template",
+            "needs_review": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_superseded",
+          "op_id": "mailbox-message-id-7",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "mb5"
+          },
+          "parent_version": null,
+          "ingest_id": "a0db201ee473493b492e3a7c7c529adc5c3c76435de8840fdeda890138a720f3",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "B",
+            "last4": "8642",
+            "provenance": {
+              "provider": "gmail",
+              "grant_id": "acct-1",
+              "message_id": "gmail-msg-def456"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|25000|debit|B|2026-06-05",
+          [
+            "mb5"
+          ]
+        ],
+        [
+          "8642|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "mb4"
+          ]
+        ],
+        [
+          "unparsed|9bc575ca10f746ac3ea6ebc3627c318d7089954aedb94db3d0e677b9430083b1",
+          [
+            "mb2"
+          ]
+        ],
+        [
+          "unparsed|a7178e311f8a1f597972beee00825637feca7cd8c422d03a089ad7e5edfc6186",
+          [
+            "mb3"
+          ]
+        ],
+        [
+          "unparsed|c41c70bbbc50aaa00bb7b170e2a4dd52f8bad761e7930a631be8f3c3e020dcfe",
+          [
+            "mb1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "7"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000mb",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-1",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000mb0",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb0",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-2",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000mb1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb1",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-3",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000mb2",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb2",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-4",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000mb3",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb3",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-5",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000mb4",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb4",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-6",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000mb5",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "mb5",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-7",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "9bc575ca10f746ac3ea6ebc3627c318d7089954aedb94db3d0e677b9430083b1",
+          "mb2"
+        ],
+        [
+          "a0db201ee473493b492e3a7c7c529adc5c3c76435de8840fdeda890138a720f3",
+          "mb5"
+        ],
+        [
+          "a7178e311f8a1f597972beee00825637feca7cd8c422d03a089ad7e5edfc6186",
+          "mb3"
+        ],
+        [
+          "b75bdd4bf010afa5c0448eec8c6ed8fc899413c9391d46c1d6b1846839b4e03a",
+          "mb4"
+        ],
+        [
+          "c41c70bbbc50aaa00bb7b170e2a4dd52f8bad761e7930a631be8f3c3e020dcfe",
+          "mb1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "mb4",
+            "mb5"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "mb",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "mb",
+            "ingest_id": "b75bdd4bf010afa5c0448eec8c6ed8fc899413c9391d46c1d6b1846839b4e03a",
+            "last4": "",
+            "mailbox_message_id": "gmail-msg-abc123",
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": "mailbox-message-id-6",
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "mb0",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "mb0",
+            "ingest_id": "a0db201ee473493b492e3a7c7c529adc5c3c76435de8840fdeda890138a720f3",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": "mailbox-message-id-7",
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "mb1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "mb1",
+            "ingest_id": "c41c70bbbc50aaa00bb7b170e2a4dd52f8bad761e7930a631be8f3c3e020dcfe",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "mb2",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "mb2",
+            "ingest_id": "9bc575ca10f746ac3ea6ebc3627c318d7089954aedb94db3d0e677b9430083b1",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "mb3",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "mb3",
+            "ingest_id": "a7178e311f8a1f597972beee00825637feca7cd8c422d03a089ad7e5edfc6186",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "mb4",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "mb4",
+            "ingest_id": "b75bdd4bf010afa5c0448eec8c6ed8fc899413c9391d46c1d6b1846839b4e03a",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": false,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "template",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "mb5",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "mb5",
+            "ingest_id": "a0db201ee473493b492e3a7c7c529adc5c3c76435de8840fdeda890138a720f3",
+            "last4": "8642",
+            "mailbox_message_id": "gmail-msg-def456",
+            "merchant_raw": "B",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "541e257ac116fb931ede322a5e820cba125e1cbad24f7355b53315ae53469fdb",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "541e257ac116fb931ede322a5e820cba125e1cbad24f7355b53315ae53469fdb",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

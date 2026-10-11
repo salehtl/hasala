@@ -1,0 +1,194 @@
+{
+  "name": "rule-and-txn-share-an-id",
+  "group": "fold",
+  "note": "Heads are keyed by (kind, id).",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "rule-and-txn-share-an-id-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "x"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-and-txn-share-an-id-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "x"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 10
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_categorized",
+          "op_id": "rule-and-txn-share-an-id-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "x"
+          },
+          "parent_version": 1,
+          "payload": {
+            "category": "dining"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "x"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "rule\u0000x",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "x",
+            "kind": "rule",
+            "op_id": "rule-and-txn-share-an-id-2",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000x",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "x",
+            "kind": "txn",
+            "op_id": "rule-and-txn-share-an-id-3",
+            "version": 2,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "x"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "x"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [
+        [
+          "x",
+          {
+            "category": "groceries",
+            "match": "contains",
+            "pattern": "carrefour",
+            "priority": 10,
+            "version": 1
+          }
+        ]
+      ],
+      "txns": [
+        [
+          "x",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": "dining",
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "x",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": false,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 2
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "f6889b5c09f70eb99fc35faa77969460f5a41efcbfc462a06c0391d3de5f0d9e",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "f6889b5c09f70eb99fc35faa77969460f5a41efcbfc462a06c0391d3de5f0d9e",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

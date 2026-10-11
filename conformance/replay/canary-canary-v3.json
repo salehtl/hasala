@@ -1,0 +1,1005 @@
+{
+  "name": "canary-v3",
+  "group": "canary",
+  "note": "The fold-fingerprint canary of replay/snapshot.ts: every v3 op type, a real fork, a duplicate ingest, a supersede, a split, an unparsed row, frozen and pending FX and a rate_unset.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "canary-01",
+          "authored_at": "2020-01-02T01:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "canary-02",
+          "authored_at": "2020-01-03T02:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD",
+            "rate_micro": "3672500"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "canary-03",
+          "authored_at": "2020-01-04T03:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "JPY",
+            "rate_micro": "24500"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_unset",
+          "op_id": "canary-04",
+          "authored_at": "2020-01-05T04:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "JPY"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "canary-05",
+          "authored_at": "2020-01-06T05:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c1"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+          "payload": {
+            "amount_minor": "1001",
+            "currency": "AED",
+            "direction": "credit",
+            "posted_at": "2020-01-02T12:00:00Z",
+            "merchant_raw": "CANARY MERCHANT 1",
+            "last4": "1001",
+            "needs_review": false,
+            "tier": "heuristic"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "canary-06",
+          "authored_at": "2020-01-07T06:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c2"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+          "payload": {
+            "amount_minor": "1002",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2020-01-03T12:00:00Z",
+            "merchant_raw": "CANARY MERCHANT 2",
+            "last4": "1002",
+            "needs_review": true,
+            "tier": "template"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "canary-07",
+          "authored_at": "2020-01-08T07:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c3"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+          "payload": {
+            "amount_minor": "1003",
+            "currency": "GBP",
+            "direction": "credit",
+            "posted_at": "2020-01-04T12:00:00Z",
+            "merchant_raw": "CANARY MERCHANT 3",
+            "last4": "1003",
+            "needs_review": false,
+            "tier": "heuristic"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "canary-08",
+          "authored_at": "2020-01-09T08:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c4"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2020-01-05T00:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "9",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_categorized",
+          "op_id": "canary-09",
+          "authored_at": "2020-01-01T00:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "category": "groceries"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "10",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_split",
+          "op_id": "canary-10",
+          "authored_at": "2020-01-02T01:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c1"
+          },
+          "parent_version": 2,
+          "payload": {
+            "parts": [
+              {
+                "category": "food",
+                "amount_minor": "600"
+              },
+              {
+                "category": "household",
+                "amount_minor": "401"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "11",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "canary-11",
+          "authored_at": "2020-01-03T02:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c2"
+          },
+          "parent_version": 1,
+          "payload": {
+            "merchant_raw": "CANARY EDITED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "12",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_categorized",
+          "op_id": "canary-12",
+          "authored_at": "2020-01-04T03:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c3"
+          },
+          "parent_version": 1,
+          "payload": {
+            "category": "travel"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "13",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_categorized",
+          "op_id": "canary-13",
+          "authored_at": "2020-01-05T04:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c3"
+          },
+          "parent_version": 1,
+          "payload": {
+            "category": "transport"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "14",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "canary-14",
+          "authored_at": "2020-01-06T05:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c5"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+          "payload": {
+            "amount_minor": "1005",
+            "currency": "AED",
+            "direction": "credit",
+            "posted_at": "2020-01-06T12:00:00Z",
+            "merchant_raw": "CANARY MERCHANT 5",
+            "last4": "1005",
+            "needs_review": false,
+            "tier": "heuristic"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "15",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_superseded",
+          "op_id": "canary-15",
+          "authored_at": "2020-01-07T06:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "c6"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+          "payload": {
+            "amount_minor": "1006",
+            "currency": "USD",
+            "direction": "debit",
+            "posted_at": "2020-01-07T12:00:00Z",
+            "merchant_raw": "CANARY MERCHANT 6",
+            "last4": "1006",
+            "needs_review": true,
+            "tier": "template"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "16",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "canary-16",
+          "authored_at": "2020-01-08T07:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r1"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "CANARY",
+            "match": "contains",
+            "category": "misc",
+            "priority": 10
+          }
+        }
+      ]
+    },
+    {
+      "seq": "17",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "canary-17",
+          "authored_at": "2020-01-09T08:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r2"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "^CAN",
+            "match": "regex",
+            "category": "other",
+            "priority": 90
+          }
+        }
+      ]
+    },
+    {
+      "seq": "18",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "canary-18",
+          "authored_at": "2020-01-01T00:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "dib",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "19",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "canary-19",
+          "authored_at": "2020-01-02T01:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "enbd",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "20",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "canary-20",
+          "authored_at": "2020-01-03T02:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "enbd",
+            "active": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "21",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "canary-21",
+          "authored_at": "2020-01-04T03:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 60,
+            "want": 20,
+            "saving": 20
+          }
+        }
+      ]
+    },
+    {
+      "seq": "22",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "canary-22",
+          "authored_at": "2020-01-05T04:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50,
+            "want": 30,
+            "saving": 20,
+            "monthly_total_minor": "9007199254740993"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "23",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "canary-23",
+          "authored_at": "2020-01-06T05:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k1",
+            "name": "Groceries",
+            "kind": "spending",
+            "bucket": "need",
+            "color": "#88aa66",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "24",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "canary-24",
+          "authored_at": "2020-01-07T06:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k1",
+            "name": "Food",
+            "kind": "spending",
+            "bucket": "want",
+            "color": "#88aa66",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "25",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "canary-25",
+          "authored_at": "2020-01-08T07:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k2",
+            "name": "Salary",
+            "kind": "income",
+            "bucket": null,
+            "active": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "26",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "writer_checkpoint",
+          "op_id": "canary-26",
+          "authored_at": "2020-01-09T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "heads": [
+              {
+                "writer_id": "dev-a",
+                "stream": "hot",
+                "counter": "3",
+                "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              {
+                "writer_id": "ingest",
+                "stream": "hot",
+                "counter": "7",
+                "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "14",
+          "detail": "",
+          "kind": "duplicate_ingest"
+        }
+      ],
+      "banks": [
+        [
+          "dib",
+          true
+        ],
+        [
+          "enbd",
+          false
+        ]
+      ],
+      "budgetMonthlyTotal": "9007199254740993",
+      "budgetSplit": {
+        "need": 50,
+        "saving": 20,
+        "want": 30
+      },
+      "byFingerprint": [
+        [
+          "1001|1001|credit|CANARY MERCHANT 1|2020-01-02",
+          [
+            "c1"
+          ]
+        ],
+        [
+          "1003|1003|credit|CANARY MERCHANT 3|2020-01-04",
+          [
+            "c3"
+          ]
+        ],
+        [
+          "1006|1006|debit|CANARY MERCHANT 6|2020-01-07",
+          [
+            "c6"
+          ]
+        ],
+        [
+          "unparsed|0000000000000000000000000000000000000000000000000000000000000004",
+          [
+            "c4"
+          ]
+        ]
+      ],
+      "categories": [
+        [
+          "k1",
+          {
+            "active": true,
+            "bucket": "want",
+            "color": "#88aa66",
+            "id": "k1",
+            "kind": "spending",
+            "name": "Food"
+          }
+        ],
+        [
+          "k2",
+          {
+            "active": false,
+            "bucket": null,
+            "color": null,
+            "id": "k2",
+            "kind": "income",
+            "name": "Salary"
+          }
+        ]
+      ],
+      "checkpoints": [
+        {
+          "counter": "3",
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stream": "hot",
+          "writer_id": "dev-a"
+        },
+        {
+          "counter": "7",
+          "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "stream": "hot",
+          "writer_id": "ingest"
+        }
+      ],
+      "cursors": {
+        "cold": "0",
+        "hot": "26"
+      },
+      "forks": [
+        {
+          "at_seq": "13",
+          "entity": {
+            "id": "c3",
+            "kind": "txn"
+          },
+          "loser_op": "canary-12",
+          "winner_op": "canary-13"
+        }
+      ],
+      "heads": [
+        [
+          "rule\u0000r1",
+          {
+            "authored_at_ms": 1578466800000,
+            "id": "r1",
+            "kind": "rule",
+            "op_id": "canary-16",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "rule\u0000r2",
+          {
+            "authored_at_ms": 1578556800000,
+            "id": "r2",
+            "kind": "rule",
+            "op_id": "canary-17",
+            "version": 1,
+            "writer_id": "dev-b"
+          }
+        ],
+        [
+          "txn\u0000c1",
+          {
+            "authored_at_ms": 1577926800000,
+            "id": "c1",
+            "kind": "txn",
+            "op_id": "canary-10",
+            "version": 3,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000c2",
+          {
+            "authored_at_ms": 1578016800000,
+            "id": "c2",
+            "kind": "txn",
+            "op_id": "canary-11",
+            "version": 2,
+            "writer_id": "dev-b"
+          }
+        ],
+        [
+          "txn\u0000c3",
+          {
+            "authored_at_ms": 1578196800000,
+            "id": "c3",
+            "kind": "txn",
+            "op_id": "canary-13",
+            "version": 3,
+            "writer_id": "dev-b"
+          }
+        ],
+        [
+          "txn\u0000c4",
+          {
+            "authored_at_ms": 1578556800000,
+            "id": "c4",
+            "kind": "txn",
+            "op_id": "canary-08",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000c6",
+          {
+            "authored_at_ms": 1578376800000,
+            "id": "c6",
+            "kind": "txn",
+            "op_id": "canary-15",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": "AED",
+      "liveByIngestID": [
+        [
+          "0000000000000000000000000000000000000000000000000000000000000001",
+          "c1"
+        ],
+        [
+          "0000000000000000000000000000000000000000000000000000000000000002",
+          "c6"
+        ],
+        [
+          "0000000000000000000000000000000000000000000000000000000000000003",
+          "c3"
+        ],
+        [
+          "0000000000000000000000000000000000000000000000000000000000000004",
+          "c4"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "GBP",
+          [
+            "c3"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [
+        [
+          "JPY",
+          "2020-01-05T04:00:00.000Z"
+        ],
+        [
+          "USD",
+          "2020-01-03T02:00:00.000Z"
+        ]
+      ],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ],
+        [
+          "JPY",
+          null
+        ],
+        [
+          "USD",
+          "3672500"
+        ]
+      ],
+      "rules": [
+        [
+          "r1",
+          {
+            "category": "misc",
+            "match": "contains",
+            "pattern": "CANARY",
+            "priority": 10,
+            "version": 1
+          }
+        ],
+        [
+          "r2",
+          {
+            "category": "other",
+            "match": "regex",
+            "pattern": "^CAN",
+            "priority": 90,
+            "version": 1
+          }
+        ]
+      ],
+      "txns": [
+        [
+          "c1",
+          {
+            "amount_home_minor": "1001",
+            "amount_minor": "1001",
+            "category": "groceries",
+            "currency": "AED",
+            "direction": "credit",
+            "duplicate_disposition": null,
+            "id": "c1",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+            "last4": "1001",
+            "mailbox_message_id": null,
+            "merchant_raw": "CANARY MERCHANT 1",
+            "needs_review": false,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2020-01-02T12:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [
+              {
+                "amount_minor": "600",
+                "category": "food"
+              },
+              {
+                "amount_minor": "401",
+                "category": "household"
+              }
+            ],
+            "superseded_by": null,
+            "tier": "heuristic",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 3
+          }
+        ],
+        [
+          "c2",
+          {
+            "amount_home_minor": "1002",
+            "amount_minor": "1002",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "c2",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+            "last4": "1002",
+            "mailbox_message_id": null,
+            "merchant_raw": "CANARY EDITED",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2020-01-03T12:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": "canary-15",
+            "tier": "template",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 2
+          }
+        ],
+        [
+          "c3",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "1003",
+            "category": "transport",
+            "currency": "GBP",
+            "direction": "credit",
+            "duplicate_disposition": null,
+            "id": "c3",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+            "last4": "1003",
+            "mailbox_message_id": null,
+            "merchant_raw": "CANARY MERCHANT 3",
+            "needs_review": false,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2020-01-04T12:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "heuristic",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 3
+          }
+        ],
+        [
+          "c4",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "c4",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2020-01-05T00:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "c6",
+          {
+            "amount_home_minor": "3695",
+            "amount_minor": "1006",
+            "category": null,
+            "currency": "USD",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "c6",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+            "last4": "1006",
+            "mailbox_message_id": null,
+            "merchant_raw": "CANARY MERCHANT 6",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2020-01-07T12:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "template",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "ba914763d51f00d238c9fb44364581d4e3daf8380a3ec1ccb72e28946cd9cb1e",
+    "order": {
+      "banks": [
+        "dib",
+        "enbd"
+      ],
+      "categories": [
+        "k1",
+        "k2"
+      ]
+    },
+    "diagnostics": {
+      "full_state_sha256": "f6460159bb075d1e4083cc58f288d316f93ad75b8fe308a5cf363038bb4d6d09",
+      "anomalies": [
+        {
+          "at_seq": "14",
+          "kind": "duplicate_ingest",
+          "detail": "canary-14 re-ingests 000000000000\u2026, live as c1"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}
