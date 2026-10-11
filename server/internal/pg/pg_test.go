@@ -2,46 +2,90 @@ package pg_test
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/md5"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/salehtl/hasala/server/internal/blob"
+	"github.com/salehtl/hasala/server/internal/blob/blobtest"
+	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pg"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
-func TestMigrationsCreateUsersAndSessions(t *testing.T) {
+var bg = context.Background()
+
+func mustExec(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) {
+	t.Helper()
+	if _, err := pool.Exec(bg, sql, args...); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+}
+
+// sqlState returns the SQLSTATE and constraint name of a Postgres error.
+func sqlState(err error) (code, constraint string) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code, pgErr.ConstraintName
+	}
+	return "", ""
+}
+
+func wantsError(t *testing.T, pool *pgxpool.Pool, what, sql string, args ...any) {
+	t.Helper()
+	if _, err := pool.Exec(bg, sql, args...); err == nil {
+		t.Fatalf("%s was accepted", what)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The baseline
+// ---------------------------------------------------------------------------
+
+// TestTheBaselineHoldsExactlyTheKeptTables is the surgery's schema pin (spec 02
+// §2.5): the retired tables are absent, and nothing appears that nobody
+// classified.
+func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 	pool := pgtest.New(t)
-	ctx := context.Background()
-	var n int
-	err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM information_schema.tables
-		  WHERE table_schema='public' AND table_name IN ('users','sessions')`).Scan(&n)
+	rows, err := pool.Query(bg, `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 {
-		t.Fatalf("expected users+sessions tables, found %d", n)
+	var got []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, n)
+	}
+	want := []string{
+		"account_deletion_challenges", "account_limits", "account_refusals", "account_usage",
+		"apns_tokens", "deleted_account_sessions", "goose_db_version", "invite_codes", "key_history",
+		"op_log", "oplog_seq", "sessions", "user_key_wraps", "user_keys", "users",
+		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("public tables are %v, want %v", got, want)
 	}
 }
 
 func TestEachTestGetsAnIsolatedDatabase(t *testing.T) {
-	ctx := context.Background()
 	a, b := pgtest.New(t), pgtest.New(t)
-	if _, err := a.Exec(ctx, `INSERT INTO users (id, idp, idp_sub_hash, created_at)
-		VALUES (gen_random_uuid(), 'apple', '\x00'::bytea, now())`); err != nil {
-		t.Fatal(err)
-	}
+	oplogtest.NewUser(t, a)
 	var n int
-	if err := b.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&n); err != nil {
+	if err := b.QueryRow(bg, `SELECT count(*) FROM users`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
@@ -49,220 +93,216 @@ func TestEachTestGetsAnIsolatedDatabase(t *testing.T) {
 	}
 }
 
+func TestTheBaselineRefusesToRunAsAnyoneButTheSchemaOwner(t *testing.T) {
+	_, owner := pgtest.NewWithOwner(t)
+	su := pgtest.Superuser(t, owner)
+	if err := pg.MigrateDown(bg, owner); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	// As the superuser, the baseline's own guard refuses.
+	err := pg.Migrate(bg, su)
+	if err == nil || !strings.Contains(err.Error(), "must be applied as hasala_migrate") {
+		t.Fatalf("the baseline ran as a superuser: %v", err)
+	}
+	if err := pg.Migrate(bg, owner); err != nil {
+		t.Fatalf("re-up as the owner: %v", err)
+	}
+}
+
 func TestMigrationsAreReversible(t *testing.T) {
-	// goose's Down path is dead code unless something runs it; a broken Down
-	// block is only discovered during an emergency rollback otherwise.
-	pool := pgtest.New(t)
-	ctx := context.Background()
-	if err := pg.MigrateDown(ctx, pool); err != nil {
+	_, owner := pgtest.NewWithOwner(t)
+	if err := pg.MigrateDown(bg, owner); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	var n int
-	pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables
-	                     WHERE table_schema='public' AND table_name='users'`).Scan(&n)
-	if n != 0 {
-		t.Fatal("Down left the users table behind")
+	if err := owner.QueryRow(bg, `SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'goose_db_version'`).Scan(&n); err != nil {
+		t.Fatal(err)
 	}
-	if err := pg.Migrate(ctx, pool); err != nil {
+	if n != 0 {
+		t.Fatalf("Down left %d tables behind", n)
+	}
+	if err := pg.Migrate(bg, owner); err != nil {
 		t.Fatalf("re-up: %v", err)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Per-account isolation schema (00030-00032)
-// ---------------------------------------------------------------------------
-
-// atVersion returns a pool migrated to exactly version, so a test can seed the
-// rows a later migration is supposed to read.
-func atVersion(t *testing.T, version int64) *pgxpool.Pool {
-	t.Helper()
+// TestTheSealedPredicateIsTheSpecsByteForByte pins hasala_frame_is_sealed: the
+// md5 of its body as installed equals the constant serve compares at startup
+// (O7) and spec 01 §8.2's V-F value, and the migration file carries the body
+// verbatim (AT-IDX-4).
+func TestTheSealedPredicateIsTheSpecsByteForByte(t *testing.T) {
 	pool := pgtest.New(t)
-	ctx := context.Background()
-	if err := pg.MigrateDown(ctx, pool); err != nil {
-		t.Fatalf("down: %v", err)
-	}
-	if err := pg.MigrateTo(ctx, pool, version); err != nil {
-		t.Fatalf("up to %d: %v", version, err)
-	}
-	return pool
-}
-
-func mustExec(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) {
-	t.Helper()
-	if _, err := pool.Exec(context.Background(), sql, args...); err != nil {
-		t.Fatalf("%s: %v", sql, err)
-	}
-}
-
-// wantsError runs a statement that MUST be refused. A test that only asserts
-// the happy path cannot tell a constraint from a comment.
-func wantsError(t *testing.T, pool *pgxpool.Pool, what, sql string, args ...any) {
-	t.Helper()
-	if _, err := pool.Exec(context.Background(), sql, args...); err == nil {
-		t.Fatalf("%s: statement was accepted, expected a refusal", what)
-	}
-}
-
-func newTestUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
-	t.Helper()
-	sum := sha256.Sum256([]byte(sub))
-	var u uuid.UUID
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO users (idp, idp_sub_hash, created_at) VALUES ('apple', $1, now()) RETURNING id`,
-		sum[:]).Scan(&u); err != nil {
-		t.Fatalf("create user %q: %v", sub, err)
-	}
-	return u
-}
-
-func usage(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, resource string) int64 {
-	t.Helper()
-	var n int64
-	err := pool.QueryRow(context.Background(),
-		`SELECT amount FROM account_usage WHERE user_id = $1 AND resource = $2`, u, resource).Scan(&n)
-	if err != nil {
-		t.Fatalf("read %s for %s: %v", resource, u, err)
-	}
-	return n
-}
-
-// TestTheUsageLedgerIsBackfilledFromExistingRows is the test the whole
-// MigrateTo helper exists for. A ledger that starts at zero on a box that
-// already holds data hands every existing account its entire budget a second
-// time, and the failure is invisible: nothing about a zero row looks wrong.
-func TestTheUsageLedgerIsBackfilledFromExistingRows(t *testing.T) {
-	pool := atVersion(t, 30)
-	ctx := context.Background()
-
-	// Two accounts, so the backfill has to attribute rather than total.
-	loud := newTestUser(t, pool, "loud")
-	quiet := newTestUser(t, pool, "quiet")
-	empty := newTestUser(t, pool, "empty") // no op log, no quarantine at all
-
-	mustExec(t, pool, `INSERT INTO oplog_seq (user_id, next_seq) VALUES ($1, 1), ($2, 1), ($3, 1)`,
-		loud, quiet, empty)
-
-	// Deliberately uneven: two hot blobs and one cold for `loud`, one hot for
-	// `quiet`. Hand-computed below rather than re-derived with the same SQL the
-	// migration uses, which would only prove the query equals itself.
-	appendOp := func(u uuid.UUID, seq int, stream string, size int) {
-		mustExec(t, pool, `INSERT INTO op_log
-		  (user_id, seq, stream, writer_id, writer_counter, type_flag,
-		   blob, size_bucket, blob_hash, prev_hash)
-		  VALUES ($1, $2, $3, 'w1', $2, 'ingest', $4, $5, $6, $7)`,
-			u, seq, stream, make([]byte, size), size, make([]byte, 32), make([]byte, 32))
-	}
-	appendOp(loud, 1, "hot", 1024)
-	appendOp(loud, 2, "hot", 4096)
-	appendOp(loud, 3, "cold", 65536)
-	appendOp(quiet, 1, "hot", 1024)
-
-	hold := func(u uuid.UUID, body []byte) {
-		mustExec(t, pool, `INSERT INTO quarantine
-		  (user_id, ingest_id, received_at, expires_at, outer_domain, dkim, arc, size_bucket, blob)
-		  VALUES ($1, $2, now(), now() + interval '30 days', 'dib.ae', 'pass', 'none', 1024, $3)`,
-			u, sha256sum(body), body)
-	}
-	hold(loud, []byte("held one"))   // 8 bytes
-	hold(loud, []byte("held two !")) // 10 bytes
-
-	if err := pg.MigrateTo(ctx, pool, 31); err != nil {
-		t.Fatalf("up to 31: %v", err)
-	}
-
-	for _, c := range []struct {
-		u        uuid.UUID
-		who      string
-		resource string
-		want     int64
-	}{
-		{loud, "loud", "oplog_hot_bytes", 1024 + 4096},
-		{loud, "loud", "oplog_cold_bytes", 65536},
-		{loud, "loud", "quarantine_bytes", 8 + 10},
-		{loud, "loud", "quarantine_count", 2},
-		{quiet, "quiet", "oplog_hot_bytes", 1024},
-		{quiet, "quiet", "oplog_cold_bytes", 0},
-		{quiet, "quiet", "quarantine_bytes", 0},
-		{quiet, "quiet", "quarantine_count", 0},
-		// An account with nothing still gets all four rows: an absent row and a
-		// zero row must mean the same thing, or admission has to decide what a
-		// missing row implies.
-		{empty, "empty", "oplog_hot_bytes", 0},
-		{empty, "empty", "oplog_cold_bytes", 0},
-		{empty, "empty", "quarantine_bytes", 0},
-		{empty, "empty", "quarantine_count", 0},
-	} {
-		if got := usage(t, pool, c.u, c.resource); got != c.want {
-			t.Errorf("%s %s = %d, want %d", c.who, c.resource, got, c.want)
-		}
-	}
-
-	var rows int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_usage`).Scan(&rows); err != nil {
+	var sum string
+	if err := pool.QueryRow(bg, `SELECT md5(prosrc) FROM pg_proc
+		WHERE proname = 'hasala_frame_is_sealed' AND pronamespace = 'public'::regnamespace`).Scan(&sum); err != nil {
 		t.Fatal(err)
 	}
-	if rows != 12 {
-		t.Errorf("account_usage holds %d rows, want 12 (3 accounts x 4 resources)", rows)
+	if pg.SealedFunctionMD5 != "cecad4a55664c960ee9e1e301a76c30d" {
+		t.Fatalf("pg.SealedFunctionMD5 = %s, want spec 01 §8.2's value", pg.SealedFunctionMD5)
+	}
+	if sum != pg.SealedFunctionMD5 {
+		t.Fatalf("md5(prosrc) = %s, want spec 01 §8.2's cecad4a55664c960ee9e1e301a76c30d", sum)
+	}
+	raw, err := os.ReadFile("migrations/00001_baseline.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)AS \$fn\$(.*?)\$fn\$`).FindSubmatch(raw)
+	if m == nil {
+		t.Fatal("the baseline has no $fn$ body")
+	}
+	if got := md5.Sum(m[1]); hex.EncodeToString(got[:]) != pg.SealedFunctionMD5 {
+		t.Fatalf("the migration file's body hashes to %x, not the pinned constant", got)
 	}
 }
 
-// TestTheUsageLedgerRefusesANegativeAmount pins the CHECK. Three paths
-// decrement, and a decrement bigger than the balance means the ledger has
-// already lost track; without the constraint that becomes free quota instead of
-// an error somebody sees.
-func TestTheUsageLedgerRefusesANegativeAmount(t *testing.T) {
+// TestTheSQLPredicateAgreesWithLooksSealed is spec 01 AT-P1 for the database:
+// every case of the V-F set, accepted or refused, the same way by Go and SQL.
+// A NULL is NULL (N-02: only NOT NULL refuses it).
+func TestTheSQLPredicateAgreesWithLooksSealed(t *testing.T) {
 	pool := pgtest.New(t)
-	u := newTestUser(t, pool, "over-decrement")
-	mustExec(t, pool, `INSERT INTO account_usage (user_id, resource, amount)
-	                   VALUES ($1, 'oplog_hot_bytes', 100)`, u)
-	wantsError(t, pool, "decrement below zero",
-		`UPDATE account_usage SET amount = amount - 101 WHERE user_id = $1 AND resource = 'oplog_hot_bytes'`, u)
-	wantsError(t, pool, "insert a negative balance",
-		`INSERT INTO account_usage (user_id, resource, amount) VALUES ($1, 'quarantine_count', -1)`, u)
-	wantsError(t, pool, "an unknown resource",
-		`INSERT INTO account_usage (user_id, resource, amount) VALUES ($1, 'disk_bytes', 1)`, u)
-	if got := usage(t, pool, u, "oplog_hot_bytes"); got != 100 {
-		t.Fatalf("balance is %d after the refused statements, want 100", got)
+	for _, c := range blobtest.LooksSealedCases() {
+		var ok bool
+		if err := pool.QueryRow(bg, `SELECT hasala_frame_is_sealed($1)`, c.Frame).Scan(&ok); err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+		goOK := blob.LooksSealed(c.Frame) == nil
+		if ok != goOK || ok != (c.Want == "") {
+			t.Errorf("%s: SQL %v, Go %v, want %q", c.Name, ok, goOK, c.Want)
+		}
+	}
+	var null *bool
+	if err := pool.QueryRow(bg, `SELECT hasala_frame_is_sealed(NULL)`).Scan(&null); err != nil {
+		t.Fatal(err)
+	}
+	if null != nil {
+		t.Fatalf("hasala_frame_is_sealed(NULL) = %v, want NULL", *null)
 	}
 }
 
-// TestTheDefaultLimitPolicyIsPresentAndPermanent covers the row every account
-// without an override depends on. Its absence leaves Admit with nothing to
-// compare against, and both ways of handling that are bad in opposite
-// directions.
+// TestADirectInsertOfARefusedFrameFailsTheCheck is AT-P3: no write path, the
+// application's or a hand-written INSERT, stores a frame the predicate
+// refuses. A 1-byte and an empty blob fail with a CHECK violation, not a
+// get_byte range error.
+func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
+	pool := pgtest.New(t)
+	u := oplogtest.NewUser(t, pool)
+	oplogtest.NewWriter(t, pool, u, "dev-a")
+	insert := func(frame []byte, size int) error {
+		_, err := pool.Exec(bg, `INSERT INTO op_log (user_id, seq, stream, writer_id, writer_counter, type_flag,
+			blob, size_bucket, blob_hash, prev_hash) VALUES ($1, 1, 'hot', 'dev-a', 1, 'edit', $2, $3, $4, $4)`,
+			u, frame, size, make([]byte, 32))
+		return err
+	}
+	for _, c := range blobtest.LooksSealedCases() {
+		if c.Want == "" {
+			continue
+		}
+		size := len(c.Frame)
+		if !blob.IsBucket(size) {
+			size = 1024
+		}
+		err := insert(c.Frame, size)
+		code, _ := sqlState(err)
+		if code != "23514" {
+			t.Errorf("%s: insert answered %v, want a CHECK violation", c.Name, err)
+		}
+	}
+	// A frame that passes the predicate but names another position.
+	other := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 2}
+	s := blobtest.MustSeal3(other, blob.ZeroHash, []byte(`{}`))
+	err := insert(s.Bytes, s.SizeBucket)
+	if _, name := sqlState(err); name != "op_log_aad_matches_position" {
+		t.Fatalf("a frame sealed for counter 2 stored at counter 1: %v", err)
+	}
+	// And the honest one goes in.
+	here := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 1}
+	s = blobtest.MustSeal3(here, blob.ZeroHash, []byte(`{}`))
+	if err := insert(s.Bytes, s.SizeBucket); err != nil {
+		t.Fatalf("an honest frame was refused: %v", err)
+	}
+}
+
+// TestTheLogIsAppendOnlyForEveryRoleButTheCascade is spec 02 D-5/D-6 and
+// AT-DB-7: the runtime role holds no UPDATE or DELETE on op_log and
+// key_history and no DELETE on writers; the trigger refuses the owner too;
+// and deleting the account still removes every row through the cascade.
+func TestTheLogIsAppendOnlyForEveryRoleButTheCascade(t *testing.T) {
+	pool, owner := pgtest.NewWithOwner(t)
+	u := oplogtest.NewUser(t, pool)
+	oplogtest.NewWriter(t, pool, u, "dev-a")
+	oplogtest.Append(t, pool, u, "dev-a", 3)
+	mustExec(t, pool, `INSERT INTO key_history (user_id, writer_id, pubkey, event, at)
+		SELECT user_id, writer_id, pubkey, 'registered', now() FROM writers WHERE user_id = $1`, u)
+
+	for _, sql := range []string{
+		`UPDATE op_log SET created_at = now() WHERE user_id = $1`,
+		`DELETE FROM op_log WHERE user_id = $1`,
+		`UPDATE key_history SET at = now() WHERE user_id = $1`,
+		`DELETE FROM key_history WHERE user_id = $1`,
+		`DELETE FROM writers WHERE user_id = $1`,
+	} {
+		_, err := pool.Exec(bg, sql, u)
+		if code, _ := sqlState(err); code != "42501" {
+			t.Errorf("runtime: %s answered %v, want permission denied", sql, err)
+		}
+		_, err = owner.Exec(bg, sql, u)
+		if code, _ := sqlState(err); code != "23514" {
+			t.Errorf("owner: %s answered %v, want the append-only trigger's refusal", sql, err)
+		}
+	}
+	// Revoke once, and only once.
+	mustExec(t, pool, `UPDATE writers SET revoked_at = now() WHERE user_id = $1`, u)
+	if _, err := pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1`, u); err == nil {
+		t.Fatal("a writer was revoked twice")
+	}
+	// The account goes, and everything with it.
+	mustExec(t, pool, `DELETE FROM users WHERE id = $1`, u)
+	for _, table := range []string{"op_log", "key_history", "writers", "oplog_seq", "account_usage"} {
+		var n int
+		if err := owner.QueryRow(bg, `SELECT count(*) FROM `+table+` WHERE user_id = $1`, u).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("%s still holds %d rows of a deleted account", table, n)
+		}
+	}
+}
+
+func TestTheRuntimeRoleCannotWriteTheMigrationLedger(t *testing.T) {
+	pool := pgtest.New(t)
+	for _, sql := range []string{
+		`INSERT INTO goose_db_version (version_id, is_applied) VALUES (999, true)`,
+		`UPDATE goose_db_version SET is_applied = false`,
+		`DELETE FROM goose_db_version`,
+	} {
+		if _, err := pool.Exec(bg, sql); err == nil {
+			t.Errorf("runtime: %s was accepted", sql)
+		}
+	}
+	if _, err := pg.AppliedVersion(bg, pool); err != nil {
+		t.Fatalf("the runtime role cannot read the ledger: %v", err)
+	}
+}
+
+// TestTheDefaultLimitPolicyIsPresentAndPermanent: the default row every
+// account without an override depends on (spec 02 §5.4: 256 MiB).
 func TestTheDefaultLimitPolicyIsPresentAndPermanent(t *testing.T) {
 	pool := pgtest.New(t)
-	ctx := context.Background()
-	var oplog, qbytes, qcount int64
-	err := pool.QueryRow(ctx, `SELECT oplog_bytes, quarantine_bytes, quarantine_count
-	                             FROM account_limits WHERE user_id IS NULL`).Scan(&oplog, &qbytes, &qcount)
-	if err != nil {
+	var oplog int64
+	if err := pool.QueryRow(bg, `SELECT oplog_bytes FROM account_limits WHERE user_id IS NULL`).Scan(&oplog); err != nil {
 		t.Fatalf("read the default policy: %v", err)
 	}
-	// The design's beta ceilings, in binary megabytes.
-	if oplog != 256*1024*1024 || qbytes != 100*1024*1024 || qcount != 500 {
-		t.Errorf("default policy is (%d, %d, %d), want (%d, %d, 500)",
-			oplog, qbytes, qcount, 256*1024*1024, 100*1024*1024)
+	if oplog != 256*1024*1024 {
+		t.Errorf("default policy is %d, want %d", oplog, 256*1024*1024)
 	}
-	wantsError(t, pool, "deleting the default policy",
-		`DELETE FROM account_limits WHERE user_id IS NULL`)
-	wantsError(t, pool, "a second default policy",
-		`INSERT INTO account_limits (user_id, oplog_bytes, quarantine_bytes, quarantine_count)
-		 VALUES (NULL, 1, 1, 1)`)
-
-	// An override is one row per account, and updating the default is expected.
-	u := newTestUser(t, pool, "override")
-	mustExec(t, pool, `INSERT INTO account_limits (user_id, oplog_bytes, quarantine_bytes, quarantine_count)
-	                   VALUES ($1, 1, 2, 3)`, u)
-	wantsError(t, pool, "a second override for one account",
-		`INSERT INTO account_limits (user_id, oplog_bytes, quarantine_bytes, quarantine_count)
-		 VALUES ($1, 4, 5, 6)`, u)
-	mustExec(t, pool, `UPDATE account_limits SET oplog_bytes = 1 WHERE user_id IS NULL`)
-
-	// The lookup the admission gate performs: the override wins, and an account
-	// without one falls through to the default.
+	wantsError(t, pool, "deleting the default policy", `DELETE FROM account_limits WHERE user_id IS NULL`)
+	wantsError(t, pool, "a second default policy", `INSERT INTO account_limits (user_id, oplog_bytes) VALUES (NULL, 1)`)
+	u := oplogtest.NewUser(t, pool)
+	mustExec(t, pool, `INSERT INTO account_limits (user_id, oplog_bytes) VALUES ($1, 1)`, u)
+	wantsError(t, pool, "a second override for one account", `INSERT INTO account_limits (user_id, oplog_bytes) VALUES ($1, 4)`, u)
 	var got int64
-	if err := pool.QueryRow(ctx, `SELECT oplog_bytes FROM account_limits
+	if err := pool.QueryRow(bg, `SELECT oplog_bytes FROM account_limits
 	                               WHERE user_id = $1 OR user_id IS NULL
 	                               ORDER BY user_id NULLS LAST LIMIT 1`, u).Scan(&got); err != nil {
 		t.Fatal(err)
@@ -272,174 +312,162 @@ func TestTheDefaultLimitPolicyIsPresentAndPermanent(t *testing.T) {
 	}
 }
 
-// TestTheRefusalAggregateHoldsCountsAndNothingElse is a schema-shape assertion
-// on purpose. "Counts only, no sender and no content" is a privacy promise, and
-// the way it gets broken is a later task adding one helpful column.
-func TestTheRefusalAggregateHoldsCountsAndNothingElse(t *testing.T) {
+// TestTheResourceVocabularyIsClosed is spec 02 §5.4's vocabulary in SQL.
+func TestTheResourceVocabularyIsClosed(t *testing.T) {
 	pool := pgtest.New(t)
-	rows, err := pool.Query(context.Background(),
-		`SELECT attname FROM pg_attribute
-		  WHERE attrelid = 'public.account_refusals'::regclass AND attnum > 0 AND NOT attisdropped
-		  ORDER BY attnum`)
-	if err != nil {
-		t.Fatal(err)
+	u := oplogtest.NewUser(t, pool)
+	for _, r := range []string{"oplog_hot_bytes", "upload_bytes", "headroom", "suspended"} {
+		mustExec(t, pool, `INSERT INTO account_refusals (user_id, day, resource, count) VALUES ($1, current_date, $2, 1)`, u, r)
 	}
-	defer rows.Close()
-	var cols []string
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			t.Fatal(err)
-		}
-		cols = append(cols, c)
+	for _, r := range []string{"oplog_cold_bytes", "quarantine_bytes", "quarantine_count", "smtp_daily"} {
+		wantsError(t, pool, "refusal "+r, `INSERT INTO account_refusals (user_id, day, resource, count) VALUES ($1, current_date, $2, 1)`, u, r)
+		wantsError(t, pool, "usage "+r, `INSERT INTO account_usage (user_id, resource, amount) VALUES ($1, $2, 1)`, u, r)
 	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"user_id", "day", "resource", "count"}
-	if !slices.Equal(cols, want) {
-		t.Fatalf("account_refusals columns are %v, want exactly %v — a refusal record "+
-			"carries no sender, no address and no content", cols, want)
-	}
-
-	u := newTestUser(t, pool, "refused")
-	mustExec(t, pool, `INSERT INTO account_refusals (user_id, day, resource, count)
-	                   VALUES ($1, current_date, 'oplog_hot_bytes', 1)
-	                   ON CONFLICT (user_id, day, resource) DO UPDATE SET count = account_refusals.count + 1`, u)
-	wantsError(t, pool, "a refusal reason nothing can produce",
-		`INSERT INTO account_refusals (user_id, day, resource, count)
-		 VALUES ($1, current_date, 'because', 1)`, u)
 }
 
-// TestAccountStatusIsActiveOrSuspended covers P3's one column, including the
-// default that every existing row was backfilled with.
 func TestAccountStatusIsActiveOrSuspended(t *testing.T) {
 	pool := pgtest.New(t)
-	u := newTestUser(t, pool, "status")
+	u := oplogtest.NewUser(t, pool)
 	var status string
-	if err := pool.QueryRow(context.Background(),
-		`SELECT status FROM users WHERE id = $1`, u).Scan(&status); err != nil {
+	if err := pool.QueryRow(bg, `SELECT status FROM users WHERE id = $1`, u).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
 	if status != "active" {
 		t.Fatalf("a new account is %q, want active", status)
 	}
 	mustExec(t, pool, `UPDATE users SET status = 'suspended' WHERE id = $1`, u)
-	wantsError(t, pool, "a third status",
-		`UPDATE users SET status = 'deleted' WHERE id = $1`, u)
-	wantsError(t, pool, "no status at all",
-		`UPDATE users SET status = NULL WHERE id = $1`, u)
-}
-
-// TestThePersistedSMTPCounterKeepsTheRollingWindowState pins the columns that
-// make persistence faithful rather than a summary: the limiter's counter is
-// (start, cur, prev) under a window, and all four are stored.
-func TestThePersistedSMTPCounterKeepsTheRollingWindowState(t *testing.T) {
-	pool := pgtest.New(t)
-	u := newTestUser(t, pool, "smtp")
-	mustExec(t, pool, `INSERT INTO smtp_user_counters
-	  (user_id, kind, reason, window_seconds, window_start, cur, prev)
-	  VALUES ($1, 'messages', '', 86400, now(), 7, 3)`, u)
-	mustExec(t, pool, `INSERT INTO smtp_user_counters
-	  (user_id, kind, reason, window_seconds, window_start, cur, prev)
-	  VALUES ($1, 'notice', 'over_quota', 86400, now(), 2, 0)`, u)
-
-	// The key shapes that would be read back into nothing, or would shadow the
-	// row that should have been read.
-	wantsError(t, pool, "a messages row with a reason",
-		`INSERT INTO smtp_user_counters (user_id, kind, reason, window_seconds, window_start, cur, prev)
-		 VALUES ($1, 'messages', 'over_quota', 86400, now(), 1, 0)`, u)
-	wantsError(t, pool, "a notice row with no reason",
-		`INSERT INTO smtp_user_counters (user_id, kind, reason, window_seconds, window_start, cur, prev)
-		 VALUES ($1, 'notice', '', 86400, now(), 1, 0)`, u)
-	wantsError(t, pool, "a second row for one counter",
-		`INSERT INTO smtp_user_counters (user_id, kind, reason, window_seconds, window_start, cur, prev)
-		 VALUES ($1, 'messages', '', 86400, now(), 1, 0)`, u)
-	wantsError(t, pool, "a zero window",
-		`INSERT INTO smtp_user_counters (user_id, kind, reason, window_seconds, window_start, cur, prev)
-		 VALUES ($1, 'notice', 'too_large', 0, now(), 1, 0)`, u)
-	wantsError(t, pool, "a count above the limiter's ceiling",
-		`INSERT INTO smtp_user_counters (user_id, kind, reason, window_seconds, window_start, cur, prev)
-		 VALUES ($1, 'notice', 'too_large', 86400, now(), 1073741825, 0)`, u)
-	wantsError(t, pool, "a negative count",
-		`INSERT INTO smtp_user_counters (user_id, kind, reason, window_seconds, window_start, cur, prev)
-		 VALUES ($1, 'notice', 'too_large', 86400, now(), -1, 0)`, u)
-
-	// The restore read: the whole state of one counter, in one row.
-	var window int
-	var start time.Time
-	var cur, prev int64
-	if err := pool.QueryRow(context.Background(),
-		`SELECT window_seconds, window_start, cur, prev FROM smtp_user_counters
-		  WHERE user_id = $1 AND kind = 'messages' AND reason = ''`, u).
-		Scan(&window, &start, &cur, &prev); err != nil {
-		t.Fatal(err)
-	}
-	if window != 86400 || cur != 7 || prev != 3 || start.IsZero() {
-		t.Fatalf("restored state is (window %d, start %v, cur %d, prev %d)", window, start, cur, prev)
-	}
-}
-
-// TestTheNewIsolationTablesAreGrantedToTheRuntimeRole exercises the GRANT block
-// that never fires in an ordinary test run — pgtest has no ledger_runtime, so
-// the DO block is a no-op and a missing grant would only surface in production.
-// Creating the role and re-running the migrations is the only way to see it.
-func TestTheNewIsolationTablesAreGrantedToTheRuntimeRole(t *testing.T) {
-	pool := pgtest.New(t)
-	ctx := context.Background()
-	if err := pg.MigrateDown(ctx, pool); err != nil {
-		t.Fatalf("down: %v", err)
-	}
-	// NOLOGIN: this role is never connected as here, only granted to.
-	mustExec(t, pool, `CREATE ROLE ledger_runtime NOLOGIN`)
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DROP OWNED BY ledger_runtime`)
-		_, _ = pool.Exec(context.Background(), `DROP ROLE IF EXISTS ledger_runtime`)
-	})
-	if err := pg.Migrate(ctx, pool); err != nil {
-		t.Fatalf("re-up: %v", err)
-	}
-	for _, table := range []string{"account_usage", "account_limits", "account_refusals", "smtp_user_counters"} {
-		for _, priv := range []string{"SELECT", "INSERT", "UPDATE", "DELETE"} {
-			var ok bool
-			if err := pool.QueryRow(ctx,
-				`SELECT has_table_privilege('ledger_runtime', $1, $2)`, table, priv).Scan(&ok); err != nil {
-				t.Fatal(err)
-			}
-			if !ok {
-				t.Errorf("ledger_runtime has no %s on %s: this fails ONLY in production, "+
-					"on the first write after deploy", priv, table)
-			}
-		}
-	}
-}
-
-func sha256sum(b []byte) []byte {
-	sum := sha256.Sum256(b)
-	return sum[:]
+	wantsError(t, pool, "a third status", `UPDATE users SET status = 'deleted' WHERE id = $1`, u)
 }
 
 func TestParallelMigrationsDoNotRaceOnGooseGlobals(t *testing.T) {
-	// goose.SetDialect/SetBaseFS mutate unsynchronized package-level state
-	// (dialect.go, goose.go in the vendored source) that pg.Migrate calls on
-	// every invocation. Nothing else in this suite runs concurrently, so a
-	// missing mutex around that state would sit unnoticed until the first
-	// t.Parallel() test anywhere in the ~20 v2 packages this harness exists
-	// to serve — this test exists to be that first one, under `go test -race`.
+	// goose's SetDialect/SetBaseFS mutate unsynchronized package-level state;
+	// this is the t.Parallel() test that `go test -race` would catch it in.
 	for i := 0; i < 8; i++ {
 		t.Run(fmt.Sprintf("db%d", i), func(t *testing.T) {
 			t.Parallel()
-			pool := pgtest.New(t) // New -> pg.Migrate, called concurrently across subtests
-			ctx := context.Background()
+			pool := pgtest.New(t)
 			var n int
-			if err := pool.QueryRow(ctx,
-				`SELECT count(*) FROM information_schema.tables
-				  WHERE table_schema='public' AND table_name IN ('users','sessions')`).Scan(&n); err != nil {
+			if err := pool.QueryRow(bg, `SELECT count(*) FROM pg_tables WHERE schemaname = 'public'`).Scan(&n); err != nil {
 				t.Fatal(err)
 			}
-			if n != 2 {
-				t.Fatalf("expected users+sessions tables, found %d", n)
+			if n == 0 {
+				t.Fatal("no tables")
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The startup refusals (spec 02 §5.6) and the migrate checks (§5.5)
+// ---------------------------------------------------------------------------
+
+func refusalCode(err error) string {
+	var r *pg.RefusalError
+	if errors.As(err, &r) {
+		return r.Code
+	}
+	return ""
+}
+
+func TestServingAsTheRuntimeRolePassesEveryCheck(t *testing.T) {
+	pool := pgtest.New(t)
+	var warned []string
+	if err := pg.CheckServing(bg, pool, func(s string) { warned = append(warned, s) }); err != nil {
+		t.Fatalf("CheckServing as hasala_runtime: %v", err)
+	}
+	if len(warned) != 0 {
+		t.Fatalf("unexpected warnings: %v", warned)
+	}
+}
+
+func TestServingRefusesTheSchemaOwnerAndASuperuser(t *testing.T) {
+	_, owner := pgtest.NewWithOwner(t)
+	if got := refusalCode(pg.CheckServing(bg, owner, nil)); got != "O2" {
+		t.Fatalf("serving as the schema owner: refusal %q, want O2", got)
+	}
+	if got := refusalCode(pg.CheckServing(bg, pgtest.Superuser(t, owner), nil)); got != "O1" {
+		t.Fatalf("serving as a superuser: refusal %q, want O1", got)
+	}
+}
+
+// Each refusal is reached by the one schema change it guards against, made as
+// the owner (the only role that can make it).
+func TestServingRefusesAWeakenedSchema(t *testing.T) {
+	cases := []struct {
+		code string
+		sql  []string
+	}{
+		{"O4", []string{`DELETE FROM goose_db_version WHERE version_id > 0`}},
+		{"O5", []string{`ALTER TABLE op_log DROP CONSTRAINT op_log_blob_is_sealed`}},
+		{"O5", []string{`ALTER TABLE op_log DROP CONSTRAINT op_log_stream_is_hot`,
+			`ALTER TABLE op_log ADD CONSTRAINT op_log_stream_is_hot CHECK (stream = 'hot') NOT VALID`}},
+		{"O6", []string{`GRANT DELETE ON op_log TO hasala_runtime`}},
+		{"O7", []string{`CREATE OR REPLACE FUNCTION hasala_frame_is_sealed(b bytea) RETURNS boolean
+			LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $fn$ SELECT true $fn$`}},
+		{"O8", []string{`ALTER TABLE op_log ALTER COLUMN blob DROP NOT NULL`}},
+	}
+	for _, c := range cases {
+		t.Run(c.code+"/"+strings.Fields(c.sql[0])[0], func(t *testing.T) {
+			pool, owner := pgtest.NewWithOwner(t)
+			for _, sql := range c.sql {
+				mustExec(t, owner, sql)
+			}
+			if got := refusalCode(pg.CheckServing(bg, pool, nil)); got != c.code {
+				t.Fatalf("refusal %q, want %s", got, c.code)
+			}
+		})
+	}
+}
+
+// O3 on a role of its own: membership is cluster-wide, and granting it to the
+// shared hasala_runtime would refuse every other package's tests running
+// against the same cluster at that moment.
+func TestServingRefusesAMemberOfTheOwnerRole(t *testing.T) {
+	_, owner := pgtest.NewWithOwner(t)
+	su := pgtest.Superuser(t, owner)
+	role := fmt.Sprintf("o3_%d", os.Getpid())
+	db := owner.Config().ConnConfig.Database
+	mustExec(t, su, `CREATE ROLE `+role+` LOGIN NOSUPERUSER NOINHERIT IN ROLE hasala_migrate`)
+	t.Cleanup(func() {
+		_, _ = su.Exec(bg, `DROP OWNED BY `+role)
+		_, _ = su.Exec(bg, `DROP ROLE IF EXISTS `+role)
+	})
+	mustExec(t, su, `GRANT CONNECT ON DATABASE `+db+` TO `+role)
+	member := pgtest.OpenAs(t, owner, role)
+	if got := refusalCode(pg.CheckServing(bg, member, nil)); got != "O3" {
+		t.Fatalf("serving as a member of hasala_migrate: refusal %q, want O3", got)
+	}
+}
+
+func TestADatabaseAheadOfTheBinaryOnlyWarns(t *testing.T) {
+	pool, owner := pgtest.NewWithOwner(t)
+	mustExec(t, owner, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (2, true)`)
+	var warned []string
+	if err := pg.CheckServing(bg, pool, func(s string) { warned = append(warned, s) }); err != nil {
+		t.Fatalf("a database ahead of the binary refused: %v", err)
+	}
+	if len(warned) != 1 || !strings.Contains(warned[0], "ahead") {
+		t.Fatalf("warnings %v, want one naming both versions", warned)
+	}
+}
+
+func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
+	pool, owner := pgtest.NewWithOwner(t)
+	if err := pg.CheckMigrator(bg, owner); err != nil {
+		t.Fatalf("the owner was refused: %v", err)
+	}
+	if got := refusalCode(pg.CheckMigrator(bg, pool)); got != "M1" {
+		t.Fatalf("migrate as the runtime role: refusal %q, want M1", got)
+	}
+	if err := pg.MigrateLocked(bg, owner, 0); err != nil {
+		t.Fatalf("an up-to-date migrate is a no-op: %v", err)
+	}
+	n, err := pg.Pending(bg, pool)
+	if err != nil || n != 0 {
+		t.Fatalf("Pending = %d, %v; want 0", n, err)
+	}
+	latest, err := pg.LatestEmbedded()
+	if err != nil || latest != 1 {
+		t.Fatalf("LatestEmbedded = %d, %v; want the baseline, 1", latest, err)
 	}
 }
