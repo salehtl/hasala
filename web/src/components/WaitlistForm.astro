@@ -1,25 +1,42 @@
 ---
 /**
  * "Request an invite", in the states of the Paper board "Waitlist · States"
- * (default, focus, error, success) plus "another bank". It is a real form:
- * without JavaScript it posts to the API like any form (the browser checks
- * the fields first; the server answers with a 303 to /joined). With it, the
- * script validates, posts JSON and shows the success card in place.
+ * (default, focus, error, success) plus "another bank". PUBLIC_WAITLIST_MODE
+ * (src/lib/env.ts) decides where a request goes.
  *
- * The waitlist is double opt-in, so success means "check your email", and
- * every valid submission gets the same answer whether or not the address is
- * already on the list (Hasala design archive, private).
+ * "api": a real form. Without JavaScript it posts to the API like any form
+ * (the browser checks the fields first; the server answers with a 303 to
+ * /joined). With it, the script validates, posts JSON and shows the success
+ * card in place. The waitlist is double opt-in, so success means "check your
+ * email", and every valid submission gets the same answer whether or not the
+ * address is already on the list (Hasala design archive, private).
+ *
+ * "email" (until the API is live): nothing is posted and Turnstile is never
+ * loaded. With JavaScript the script validates the same way, then opens a
+ * pre-filled email to SITE.supportEmail and shows how to finish. Without it,
+ * the fields have no names, so submitting sends nothing and only opens
+ * /joined, which says to email us.
  */
 import Icon from './Icon.astro';
 import WaitlistCoin from './brand/WaitlistCoin.astro';
-import { BANKS } from '../data/site';
-import { API_BASE, TURNSTILE_SITEKEY } from '../lib/env';
+import { BANKS, SITE } from '../data/site';
+import { API_BASE, TURNSTILE_SITEKEY, WAITLIST_MODE } from '../lib/env';
+
+const byEmail = WAITLIST_MODE === 'email';
+/** Field names are sent only to the API; in "email" mode a no-JS submit must carry nothing. */
+const named = (name: string) => (byEmail ? undefined : name);
 ---
 
-<div class="waitlist" data-waitlist data-state="default" data-api={API_BASE}>
+<div class="waitlist" data-waitlist data-state="default" data-api={byEmail ? undefined : API_BASE} data-mail={byEmail ? SITE.supportEmail : undefined}>
   <WaitlistCoin id="wl-coin" />
 
-  <form class="wl-card wl-form" action={`${API_BASE}/v1/waitlist`} method="post" data-waitlist-form data-astro-reload>
+  <form
+    class="wl-card wl-form"
+    action={byEmail ? '/joined' : `${API_BASE}/v1/waitlist`}
+    method={byEmail ? 'get' : 'post'}
+    data-waitlist-form
+    data-astro-reload
+  >
     <div class="wl-head">
       <h3 class="wl-title">Request an invite</h3>
       <p class="wl-sub">Two fields. About ten seconds.</p>
@@ -29,7 +46,7 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../lib/env';
       <label for="wl-email">Email</label>
       <input
         id="wl-email"
-        name="email"
+        name={named('email')}
         type="email"
         inputmode="email"
         autocomplete="email"
@@ -46,7 +63,7 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../lib/env';
     <div class="field" data-field="bank">
       <label for="wl-bank">Your bank</label>
       <span class="field__select">
-        <select id="wl-bank" name="bank" required aria-describedby="wl-bank-error">
+        <select id="wl-bank" name={named('bank')} required aria-describedby="wl-bank-error">
           <option value="" selected disabled>Choose a bank</option>
           {BANKS.map((b) => <option value={b.value}>{b.name}</option>)}
           <option value="other">Another bank</option>
@@ -58,15 +75,15 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../lib/env';
 
     <div class="field field--other" data-field="other" hidden>
       <label for="wl-other">Which one? <span class="field__optional">Optional</span></label>
-      <input id="wl-other" name="otherBank" type="text" autocomplete="off" maxlength="64" placeholder="For example, ADCB" aria-describedby="wl-other-error" />
+      <input id="wl-other" name={named('otherBank')} type="text" autocomplete="off" maxlength="64" placeholder="For example, ADCB" aria-describedby="wl-other-error" />
       <p class="field__error" id="wl-other-error" hidden><Icon name="alert" size={16} stroke={1.5} /><span></span></p>
     </div>
 
     <div class="hp" aria-hidden="true">
       <label for="wl-website">Leave this empty</label>
-      <input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+      <input id="wl-website" name={named('website')} type="text" tabindex="-1" autocomplete="off" />
     </div>
-    <input type="hidden" name="source" value="web" />
+    {!byEmail && <input type="hidden" name="source" value="web" />}
 
     {TURNSTILE_SITEKEY && <div class="cf-turnstile" data-sitekey={TURNSTILE_SITEKEY} />}
 
@@ -79,27 +96,52 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../lib/env';
     <p class="wl-fine">We’ll only email you about the beta. <a class="link" href="/privacy">Privacy Policy</a>.</p>
   </form>
 
-  <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
-    <div class="wl-head">
-      <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Check your email.</h3>
-      <p class="wl-done__text">
-        We’ve sent a link to <b data-done-email></b>. Tap <b class="wl-done__strong">Confirm my email</b> in it to put your address on the list. The link works for 7
-        days. Invites go out in small batches, usually within a few weeks.
-      </p>
-    </div>
-    <dl class="wl-summary">
-      <div><dt>Email</dt><dd data-done-email></dd></div>
-      <div><dt>Bank</dt><dd data-done-bank></dd></div>
-    </dl>
-    <p class="wl-from">
-      <Icon name="mail" size={16} stroke={1.6} />
-      <span>Our emails come from no‑reply@hasala.app. Nothing after a few minutes? Check your spam folder, and add the address to your contacts so the invite doesn’t land there.</span>
-    </p>
-    <button class="btn btn--subtle wl-copy" type="button" data-copy-link>
-      <Icon name="link" size={16} stroke={1.6} /><span>Copy link for a friend</span>
-    </button>
-    <p class="wl-fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
-  </section>
+  {
+    byEmail ? (
+      <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
+        <div class="wl-head">
+          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Now send the email.</h3>
+          <p class="wl-done__text">
+            Your email app should open with a message to <b class="wl-done__strong">{SITE.supportEmail}</b> — send it and we’ll add you to the list.
+          </p>
+        </div>
+        <dl class="wl-summary">
+          <div><dt>Email</dt><dd data-done-email></dd></div>
+          <div><dt>Bank</dt><dd data-done-bank></dd></div>
+        </dl>
+        <p class="wl-from">
+          <Icon name="mail" size={16} stroke={1.6} />
+          <span>Nothing opened? <a class="link" href={`mailto:${SITE.supportEmail}`} data-mailto>Try again</a>, or write to {SITE.supportEmail} yourself with the email and bank above.</span>
+        </p>
+        <button class="btn btn--subtle wl-copy" type="button" data-copy={SITE.supportEmail} data-copied="Address copied">
+          <Icon name="copy" size={16} stroke={1.6} /><span>Copy {SITE.supportEmail}</span>
+        </button>
+        <p class="wl-fine">Nothing reaches us until you send it.</p>
+      </section>
+    ) : (
+      <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
+        <div class="wl-head">
+          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Check your email.</h3>
+          <p class="wl-done__text">
+            We’ve sent a link to <b data-done-email></b>. Tap <b class="wl-done__strong">Confirm my email</b> in it to put your address on the list. The link works for 7
+            days. Invites go out in small batches, usually within a few weeks.
+          </p>
+        </div>
+        <dl class="wl-summary">
+          <div><dt>Email</dt><dd data-done-email></dd></div>
+          <div><dt>Bank</dt><dd data-done-bank></dd></div>
+        </dl>
+        <p class="wl-from">
+          <Icon name="mail" size={16} stroke={1.6} />
+          <span>Our emails come from no‑reply@hasala.app. Nothing after a few minutes? Check your spam folder, and add the address to your contacts so the invite doesn’t land there.</span>
+        </p>
+        <button class="btn btn--subtle wl-copy" type="button" data-copy={`${SITE.url}/#invite`} data-copied="Link copied">
+          <Icon name="link" size={16} stroke={1.6} /><span>Copy link for a friend</span>
+        </button>
+        <p class="wl-fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
+      </section>
+    )
+  }
 </div>
 
 <script>

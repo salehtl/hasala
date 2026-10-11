@@ -109,8 +109,14 @@ same devShell. From `web/`:
   against that server. It needs Node and Chrome, so it runs in CI (job `web`),
   which keeps the reports as a workflow artifact; it asserts performance
   >= 0.9 and accessibility, best practices and SEO >= 0.95.
-- PUBLIC_* settings (API base, Turnstile site key) are in `web/.env.example`;
-  they are public and baked into the build.
+- PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
+  `web/.env.example`; they are public and baked into the build.
+  `PUBLIC_WAITLIST_MODE` is `email` (the default, until the API is live: the
+  invite and "Tell us" forms open a pre-filled email to support@hasala.app,
+  post nothing and load no Turnstile; without JavaScript the invite form lands
+  on `/joined`, which says to email us) or `api` (they post to the API, as
+  designed). Switching to `api` is that one setting, plus dropping the "while
+  sign-ups are handled by email" sentences from `docs/legal/privacy.md`.
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before

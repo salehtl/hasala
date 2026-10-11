@@ -119,7 +119,7 @@ When you create your Hasala account, we delete your address from the waitlist; y
 
 If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. It's deleted with your account.
 
-If you tell us your bank on our website without asking for an invite, we count it. We don't store your email address, your IP address or anything else that identifies you with it.
+If you tell us your bank on our website without asking for an invite, we count it. We don't store your email address, your IP address or anything else that identifies you with it. While the website's forms are handled by email, telling us your bank there opens an email to support@hasala.app in your own email app instead; if you send it, we count the bank and keep the email like any other support email.
 
 ### Things you send us
 
@@ -130,9 +130,11 @@ If you tell us your bank on our website without asking for an invite, we count i
 
 ### The website
 
-**Asking for an invite.** When you ask for an invite at hasala.app, we store your email address, the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), and the dates you asked, confirmed, were invited and joined. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days at most. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list, which deletes your address straight away. If you join Hasala, the bank you told us about moves to your account and stays with it until you delete the account. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
+**Asking for an invite.** While sign-ups are handled by email, the invite form on hasala.app doesn't send anything to us. It opens an email to support@hasala.app in your own email app, with the address and bank you entered, and we receive it only if you send it. We keep that email like any other support email (see [How long we keep data](#how-long-we-keep-data)) and use it only to add you to the waitlist.
 
-**Telling us your bank.** See [Bank requests](#bank-requests) above: a bank you tell us about on the website is only counted.
+Once the form sends sign-ups to our server, we store your email address, the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), and the dates you asked, confirmed, were invited and joined. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days at most. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list, which deletes your address straight away. If you join Hasala, the bank you told us about moves to your account and stays with it until you delete the account. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
+
+**Telling us your bank.** See [Bank requests](#bank-requests) above: a bank you tell us about on the website is only counted. While the forms are handled by email, it reaches us only as an email you choose to send.
 
 **Bot checks.** Our forms can use Cloudflare Turnstile to tell people from bots. When it's switched on, Cloudflare looks at technical details from your browser, including your IP address, to decide; we receive only the answer.
 

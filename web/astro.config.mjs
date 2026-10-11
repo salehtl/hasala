@@ -14,7 +14,12 @@ import cspUnion from './src/lib/csp-union.mjs';
 const env = loadEnv(process.env.NODE_ENV ?? 'production', process.cwd(), 'PUBLIC_');
 const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
 const API_ORIGIN = new URL(API_BASE).origin;
-const TURNSTILE = Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
+// "email" (default) or "api"; see src/lib/env.ts. Turnstile loads only in "api" mode.
+const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'email';
+if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
+  throw new Error(`PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`);
+}
+const TURNSTILE = WAITLIST_MODE === 'api' && Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
 // Cloudflare Web Analytics: Cloudflare's edge injects its beacon script into
 // every HTML page (it is not in dist/), and the beacon reports to

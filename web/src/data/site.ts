@@ -3,6 +3,7 @@
  * the JSON-LD, /llms.txt and /llms-full.txt all read from here, so a claim
  * changes in one place. Keep every line true to the product as shipped.
  */
+import { WAITLIST_MODE } from '../lib/env';
 
 export const SITE = {
   name: 'Hasala',
@@ -111,6 +112,12 @@ export const VISIBILITY = [
   },
 ] as const;
 
+/** How asking for an invite works, by PUBLIC_WAITLIST_MODE (src/lib/env.ts). */
+const ASK_FOR_INVITE =
+  WAITLIST_MODE === 'email'
+    ? 'Ask for an invite here. For now, the form opens an email to support@hasala.app for you to send, and we add you to the list.'
+    : 'Ask for an invite here, then tap Confirm my email in the email we send.';
+
 export const FAQ = [
   {
     q: 'Do you need my bank login?',
@@ -138,6 +145,6 @@ export const FAQ = [
   },
   {
     q: 'How does the TestFlight beta work?',
-    a: "TestFlight is Apple's free app for trying beta apps. Ask for an invite here, then tap Confirm my email in the email we send. When there's room, we email your invite from no-reply@hasala.app. Install TestFlight, accept Apple's TestFlight invitation from its email or the link in your invite, install Hasala, then open it and enter your invite code. Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later and a Gmail address that gets your bank alerts.",
+    a: `TestFlight is Apple's free app for trying beta apps. ${ASK_FOR_INVITE} When there's room, we email your invite from no-reply@hasala.app. Install TestFlight, accept Apple's TestFlight invitation from its email or the link in your invite, install Hasala, then open it and enter your invite code. Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later and a Gmail address that gets your bank alerts.`,
   },
 ] as const;
