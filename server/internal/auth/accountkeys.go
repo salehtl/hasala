@@ -206,8 +206,12 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 		return Bootstrapped{}, fmt.Errorf("%w: authority_sig or registration_sig", ErrBadSignature)
 	}
 
+	var viaPending []byte // the pending key this bootstrap was authorized by
+	if pendingPath {
+		viaPending = pending
+	}
 	write := func(ctx context.Context, tx pgx.Tx, _ Proven) error {
-		return k.bootstrapTx(ctx, tx, session, b)
+		return k.bootstrapTx(ctx, tx, session, b, viaPending)
 	}
 	if pendingPath {
 		tx, err := pgtx.BeginReadCommitted(ctx, k.Pool)
@@ -240,7 +244,11 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 
 // bootstrapTx is spec 01 §10.3.3: account_keys, the PRF wrap, the writer and
 // its key_history row, the pending key cleared, account_usage, the binding.
-func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session SessionInfo, b Bootstrap) error {
+// viaPending is the pending authority key that authorized a step-up-free
+// bootstrap (nil for a stepped-up one): the pending key and the attestation
+// were read outside this transaction, so the clear re-checks that very key
+// and requires one row.
+func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session SessionInfo, b Bootstrap, viaPending []byte) error {
 	userID := session.UserID
 	if err := lockUser(ctx, tx, userID); err != nil {
 		return err
@@ -270,7 +278,16 @@ func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session Sessio
 	if err := insertWriterTx(ctx, tx, userID, b.Writer, now); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx,
+	if viaPending != nil {
+		tag, err := tx.Exec(ctx,
+			`UPDATE users SET authority_pubkey_pending = NULL WHERE id = $1 AND authority_pubkey_pending = $2`, userID, viaPending)
+		if err != nil {
+			return fmt.Errorf("auth: bootstrap: clear the pending authority key: %w", err)
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("%w: the pending authority key changed during the bootstrap", ErrKeysMalformed)
+		}
+	} else if _, err := tx.Exec(ctx,
 		`UPDATE users SET authority_pubkey_pending = NULL WHERE id = $1 AND authority_pubkey_pending IS NOT NULL`, userID); err != nil {
 		return fmt.Errorf("auth: bootstrap: clear the pending authority key: %w", err)
 	}
