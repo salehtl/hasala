@@ -1,0 +1,6 @@
+{
+  "Simulator Target Bundle": "app.hasala.ios",
+  "aps": {
+    "content-available": 1
+  }
+}
