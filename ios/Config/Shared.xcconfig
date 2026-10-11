@@ -50,14 +50,19 @@ INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = Hasala saves your monthly reca
 INFOPLIST_KEY_NSCameraUsageDescription = Hasala uses the camera only to scan the reset code shown on your other iPhone.
 
 // Hasala* Info.plist values, read only through BuildInfo (spec 06 §2.3, §4.2).
-// The Google client and the Pub/Sub topic are not used before Gate A1, so they
-// stay `unset` (spec 06 §15.2) until the owner fills them in for A1 (spec 06
-// §14.3); the cloud project id is not published before then.
+// The Google iOS OAuth client is public by design (no secret; it ships in every
+// binary). The redirect scheme is its reversed id: Gmail's redirect URI is
+// `<scheme>:/oauth2redirect`, which ASWebAuthenticationSession captures itself, so
+// the scheme is deliberately not registered in CFBundleURLTypes (spec 06 DV-2;
+// inspect-ipa.sh I4 refuses an .ipa that registers one).
+// The Pub/Sub topic stays `unset`: the app takes the watch topic from the server's
+// GET /meta (`gmail_watch_topic`) and skips users.watch while it is absent, so the
+// cloud project id is not published in the build.
 HASALA_ENVIRONMENT = qa
 SLASH = /
 HASALA_API_BASE_URL = https:$(SLASH)$(SLASH)api.hasala.app
-HASALA_GOOGLE_IOS_CLIENT_ID = unset
-HASALA_GOOGLE_REDIRECT_SCHEME = unset
+HASALA_GOOGLE_IOS_CLIENT_ID = 987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9.apps.googleusercontent.com
+HASALA_GOOGLE_REDIRECT_SCHEME = com.googleusercontent.apps.987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9
 HASALA_GMAIL_PUBSUB_TOPIC = unset
 // archive.sh passes the first 12 hex of HEAD.
 HASALA_GIT_COMMIT = unset
