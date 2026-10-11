@@ -1,0 +1,18 @@
+# lint-expect: L7
+# The operator console's port (spec 07; M16).
+tunnel: 00000000-0000-4000-8000-000000000000
+credentials-file: /run/credentials/cloudflared-hasala.service/tunnel.json
+metrics: 127.0.0.1:9472
+no-autoupdate: true
+loglevel: info
+transport-loglevel: warn
+originRequest:
+  connectTimeout: 5s
+  noHappyEyeballs: true
+  keepAliveConnections: 16
+  keepAliveTimeout: 90s
+ingress:
+  - hostname: api.hasala.app
+    path: '^/(api/v1/.*|hooks/gmail/pubsub)$'
+    service: http://127.0.0.1:8472
+  - service: http_status:404

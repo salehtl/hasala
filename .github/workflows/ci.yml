@@ -6,19 +6,21 @@
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac) and `web` (the website) are not required checks.
+# client core on a Mac), `web` (the website) and `nixos-vm` (the QA module
+# booted in a NixOS VM) are not required checks.
 #
 # Path-aware on pull requests, failing closed: the first job, `changes`, lists
-# the files the pull request changes, and `gate`, `vuln`, `swift` and `web` are
-# skipped only when every one of them is on that job's list of paths it does
-# not read. Any other path runs the job, a path nobody anticipated included.
-# `secrets` always runs. Jobs are skipped with a job-level `if:`, never a
-# workflow-level `paths:` filter: a skipped job still reports its check, as
-# "skipped", which a required check counts as passing, whereas a workflow that
-# never starts leaves its required checks pending forever. If `changes` does not
-# succeed, every job runs. A push to main and a manual run (workflow_dispatch)
-# run every job. The weekly govulncheck of main is a separate workflow,
-# vuln-weekly.yml, so that its run never records checks on main's head.
+# the files the pull request changes, and `gate`, `vuln`, `swift`, `web` and
+# `nixos-vm` are skipped only when every one of them is on that job's list of
+# paths it does not read. Any other path runs the job, a path nobody
+# anticipated included. `secrets` always runs. Jobs are skipped with a
+# job-level `if:`, never a workflow-level `paths:` filter: a skipped job still
+# reports its check, as "skipped", which a required check counts as passing,
+# whereas a workflow that never starts leaves its required checks pending
+# forever. If `changes` does not succeed, every job runs. A push to main and a
+# manual run (workflow_dispatch) run every job. The weekly govulncheck of main
+# is a separate workflow, vuln-weekly.yml, so that its run never records checks
+# on main's head.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 name: CI
@@ -45,13 +47,13 @@ defaults:
 
 jobs:
   # Which jobs the pull request needs, as outputs `gate` (read by gate and
-  # vuln), `swift` and `web`, each "true" or "false"; any other event sets all
-  # three to "true". The checkout of a pull request is its merge commit
-  # (refs/pull/N/merge) and depth 2 fetches both parents, so `git diff HEAD^1
-  # HEAD` is exactly what merging would change on the base as it is now.
-  # --no-renames lists both ends of a move, so moving a file out of an area
-  # still counts for that area. -z prints every path verbatim, NUL-terminated:
-  # without it git C-quotes non-ASCII and special characters
+  # vuln), `swift`, `web` and `nixos_vm`, each "true" or "false"; any other
+  # event sets all four to "true". The checkout of a pull request is its merge
+  # commit (refs/pull/N/merge) and depth 2 fetches both parents, so
+  # `git diff HEAD^1 HEAD` is exactly what merging would change on the base as
+  # it is now. --no-renames lists both ends of a move, so moving a file out of
+  # an area still counts for that area. -z prints every path verbatim,
+  # NUL-terminated: without it git C-quotes non-ASCII and special characters
   # ("server/caf\303\251.go") and no anchored pattern matches the line.
   changes:
     runs-on: ubuntu-latest
@@ -60,6 +62,7 @@ jobs:
       gate: ${{ steps.areas.outputs.gate }}
       swift: ${{ steps.areas.outputs.swift }}
       web: ${{ steps.areas.outputs.web }}
+      nixos_vm: ${{ steps.areas.outputs.nixos_vm }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,7 +75,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if [[ "$EVENT" != pull_request ]]; then
-            printf '%s=true\n' gate swift web | tee -a "$GITHUB_OUTPUT"
+            printf '%s=true\n' gate swift web nixos_vm | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
           changed="$RUNNER_TEMP/changed-paths"
@@ -107,11 +110,16 @@ jobs:
           # or *.nix (the flake's formatting check covers them wherever they
           # are) and any go.mod, go.sum, go.work or go.work.sum. check.sh also
           # runs the HasalaCore lints over ios/, but `secrets` runs them too.
+          # infra/ is read (nix flake check evaluates and builds its checks).
           skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
           # swift reads ios/ and conformance/ only.
           skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
           skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
+          # nixos-vm reads infra/ (the module and the VM test), server/ (the
+          # hasalad it boots) and the flake (cloudflared, PostgreSQL and the
+          # nixpkgs it builds them from).
+          skip_unless nixos_vm "$none|^(docs|web|ios|conformance|reference|scripts)/|^\.gitleaks\.toml$"
 
   # A skipped required job reports "skipped", which passes. Each job below is
   # skipped only when `changes` succeeded and said "false".
@@ -139,8 +147,19 @@ jobs:
           use-gha-cache: true
           diagnostic-endpoint: ""
 
-      - name: nix flake check
-        run: nix flake check --print-build-logs
+      # Every check is evaluated, and every check except the NixOS VM test is
+      # built. The VM test needs KVM and minutes; it has its own job below
+      # (nixos-vm), which is not a required check.
+      - name: nix flake check (evaluate everything)
+        run: nix flake check --no-build
+      - name: nix flake check (build every check but qa-vm)
+        run: |
+          set -euo pipefail
+          checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "qa-vm" ])' \
+            | jq -r '.[] | ".#checks.x86_64-linux." + .')"
+          echo "$checks"
+          # shellcheck disable=SC2086 # one installable per word
+          nix build --no-link --print-build-logs $checks
 
       - name: Build the devShell
         run: nix develop --command true
@@ -152,6 +171,39 @@ jobs:
       # devShell's TMPDIR, on a unix socket only: no service container, no TCP.
       - name: scripts/check.sh
         run: nix develop --command scripts/check.sh
+
+  # Spec 05 §14 AT-V*: services.hasala booted in a NixOS VM (own Postgres,
+  # migrations, the API on loopback, nothing on 0.0.0.0, the console's kernel
+  # rule and header refusals, encrypted backups). Informational: it is not a
+  # required check, so a slow or flaky runner never blocks a merge. Skipped,
+  # like the jobs above, only when `changes` succeeded and said "false".
+  nixos-vm:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.nixos_vm != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Let the NixOS VM test use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+          extra-conf: |
+            system-features = nixos-test benchmark big-parallel kvm
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
+          diagnostic-endpoint: ""
+      - name: qa-vm
+        run: nix build --no-link --print-build-logs .#checks.x86_64-linux.qa-vm
 
   # vuln-weekly.yml runs the same scan on main every week.
   vuln:

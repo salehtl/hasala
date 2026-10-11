@@ -1,0 +1,22 @@
+# Spec 05 §7.4 step 4: URL<TAB>expected ingress rule index (0 = the API, 1 = the 404 catch-all).
+# cloudflared matches the path only, never the query.
+https://api.hasala.app/api/v1/healthz	0
+https://api.hasala.app/api/v1/sync	0
+https://api.hasala.app/api/v1/auth/passkeys/AbC_-123	0
+https://api.hasala.app/hooks/gmail/pubsub	0
+https://api.hasala.app/api/v1/waitlist	0
+https://api.hasala.app/api/v1/bank-requests	0
+https://api.hasala.app/api/v1/healthz?x=/metrics	0
+https://api.hasala.app/waitlist	1
+https://api.hasala.app/console	1
+https://api.hasala.app/healthz	1
+https://api.hasala.app/	1
+https://api.hasala.app/admin/	1
+https://api.hasala.app/metrics	1
+https://api.hasala.app/hooks/gmail/pubsub/x	1
+https://api.hasala.app/api/v2/sync	1
+https://api.hasala.app/api/v1	1
+https://api.hasala.app/debug/pprof/	1
+https://hasala.app/.well-known/apple-app-site-association	1
+https://evil.hasala.app/api/v1/healthz	1
+https://api.hasala.app.evil.example/api/v1/healthz	1
