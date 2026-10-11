@@ -19,6 +19,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/blob/blobtest"
+	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -47,8 +48,8 @@ type seeder func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID)
 // key deviceKey returns; several seeders need it (op_log and apns_tokens
 // reference writers).
 func ensureWriter(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
-	exec(t, pool, `INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
-	               VALUES ($1, 'device-1', 'device', $2, now()) ON CONFLICT DO NOTHING`, u, devicePub(t, u))
+	exec(t, pool, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
+	               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', 'ed25519', $2, $3, now()) ON CONFLICT DO NOTHING`, u, devicePub(t, u), oplogtest.DAK(t))
 }
 
 // ensureSession gives the account one live session and returns its hash.
@@ -75,20 +76,21 @@ var seeders = map[string]seeder{
 		ensureWriter(t, pool, u)
 		prev := blob.ZeroHash
 		for c := int64(1); c <= 2; c++ {
-			s := blobtest.MustSeal3(blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "device-1", WriterCounter: c},
+			s := blobtest.MustSeal3(blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "ios-00000000-0000-4000-8000-000000000206", WriterCounter: c},
 				prev, []byte(`{"v":4}`))
 			h := blob.Hash(prev, s)
 			exec(t, pool, `INSERT INTO op_log
 			  (user_id, seq, stream, writer_id, writer_counter, type_flag, blob, size_bucket, blob_hash, prev_hash)
-			  VALUES ($1, $2, 'hot', 'device-1', $2, 'edit', $3, $4, $5, $6)`,
+			  VALUES ($1, $2, 'hot', 'ios-00000000-0000-4000-8000-000000000206', $2, 'edit', $3, $4, $5, $6)`,
 				u, c, s.Bytes, s.SizeBucket, h[:], prev[:])
 			prev = h
 		}
 	},
 	"public.writers": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) { ensureWriter(t, pool, u) },
 	"public.key_history": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
-		exec(t, pool, `INSERT INTO key_history (user_id, writer_id, pubkey, event, at)
-		               VALUES ($1, 'device-1', $2, 'registered', now())`, u, devicePub(t, u))
+		exec(t, pool, `INSERT INTO key_history (user_id, writer_id, alg, pubkey, dak_pubkey, event, authorized_by, nonce, signature, at)
+		               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', 'ed25519', $2, $3, 'registered', 'authority', $4, $5, now())`,
+			u, devicePub(t, u), oplogtest.DAK(t), randBytes(t, 32), randBytes(t, 64))
 	},
 	"public.writer_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO writer_challenges (nonce, user_id, issued_at, expires_at)
@@ -104,39 +106,48 @@ var seeders = map[string]seeder{
 		ensureWriter(t, pool, u)
 		session := ensureSession(t, pool, u)
 		exec(t, pool, `INSERT INTO apns_tokens (user_id, writer_id, session_hash, token_hex, environment, created_at, updated_at)
-		               VALUES ($1, 'device-1', $2, $3, 'production', now(), now())`,
+		               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', $2, $3, 'production', now(), now())`,
 			u, session, hex.EncodeToString(randBytes(t, 32)))
 	},
 	"public.webauthn_credentials": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_credentials
-		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, created_at)
-		  VALUES ($2, $1, $3, $4, 1, true, true, now())`,
-			u, randBytes(t, 20), randBytes(t, 32), randBytes(t, 77))
+		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, attestation_sha256, created_at)
+		  VALUES ($2, $1, $3, $4, 1, true, true, $5, now())`,
+			u, randBytes(t, 20), randBytes(t, 32), randBytes(t, 77), randBytes(t, 32))
 	},
 	// An 'add' ceremony, the only kind that names an account: a registration's
 	// account does not exist yet and a discoverable login does not know whose
 	// it is. Those carry a NULL user_id and correctly survive a purge.
 	"public.webauthn_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_ceremonies
-		  (id, kind, user_id, user_handle, session_data, created_at, expires_at)
-		  VALUES ($2, 'add', $1, $3, '{"challenge":"x"}'::jsonb, now(), now() + interval '5 minutes')`,
-			u, u.String()+"-ceremony", randBytes(t, 32))
+		  (id, kind, user_id, user_handle, session_data, add_nonce, created_at, expires_at)
+		  VALUES ($2, 'add', $1, $3, '{"challenge":"x"}'::jsonb, $4, now(), now() + interval '5 minutes')`,
+			u, u.String()+"-ceremony", randBytes(t, 32), randBytes(t, 32))
 	},
 	// The account's wrapped key material: a blob that outlived its user would
 	// be the one artefact capable of opening that user's data.
-	"public.user_keys": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
-		exec(t, pool, `INSERT INTO user_keys
-		  (user_id, ingest_pubkey, wrapped_keys, key_version, recovery_pubkey, created_at, updated_at)
-		  VALUES ($1, $2, $3, 1, $4, now(), now())`, u, randBytes(t, 32), randBytes(t, 149), randBytes(t, 32))
+	"public.account_keys": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO account_keys
+		  (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey, recovery_wrap, phrase_box,
+		   current_epoch, created_at, updated_at)
+		  VALUES ($1, 1, $2, $3, $4, $5, $6, 1, now(), now())`, u, randBytes(t, 32), randBytes(t, 32), randBytes(t, 32),
+			append([]byte{1, 1}, randBytes(t, 125)...), append([]byte{1}, randBytes(t, 44)...))
 	},
-	"public.user_key_wraps": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+	"public.account_key_wraps": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		credential := randBytes(t, 20)
 		exec(t, pool, `INSERT INTO webauthn_credentials
-		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, created_at)
-		  VALUES ($2, $1, $3, $4, 1, true, true, now())`,
-			u, credential, randBytes(t, 32), randBytes(t, 77))
-		exec(t, pool, `INSERT INTO user_key_wraps (user_id, credential_id, wrapped, wrap_version, created_at)
-		               VALUES ($1, $2, $3, 1, now())`, u, credential, randBytes(t, 159))
+		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, attestation_sha256, created_at)
+		  VALUES ($2, $1, $3, $4, 1, true, true, $5, now())`,
+			u, credential, randBytes(t, 32), randBytes(t, 77), randBytes(t, 32))
+		exec(t, pool, `INSERT INTO account_key_wraps (user_id, credential_id, wrap, wrap_version, created_at)
+		               VALUES ($1, $2, $3, 1, now())`, u, credential, append([]byte{1, 2}, randBytes(t, 125)...))
+	},
+	// A step-up challenge names the account and the session it was issued to.
+	"public.step_up_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		session := ensureSession(t, pool, u)
+		exec(t, pool, `INSERT INTO step_up_challenges (nonce, user_id, session_hash, action, params_hash, proof_kind, issued_at, expires_at)
+		               VALUES ($2, $1, $3, 'passkey.delete', $4, 'passkey', now(), now() + interval '5 minutes')`,
+			u, randBytes(t, 32), session, randBytes(t, 32))
 	},
 	// The per-account isolation tables: how many bytes a forgotten person
 	// stored, the ceiling an operator set for one named account, and which
@@ -354,7 +365,7 @@ func TestEveryTableIsClassified(t *testing.T) {
 	}
 	for _, want := range []string{
 		"public.op_log", "public.key_history", "public.writers", "public.sessions",
-		"public.apns_tokens", "public.user_keys", "public.user_key_wraps",
+		"public.apns_tokens", "public.account_keys", "public.account_key_wraps", "public.step_up_challenges",
 	} {
 		if !slices.ContainsFunc(c.UserScoped, func(r Relation) bool { return r.String() == want }) {
 			t.Fatalf("%s is not classified as user-scoped: %+v", want, c)

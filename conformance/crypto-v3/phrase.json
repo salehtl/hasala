@@ -1,0 +1,1176 @@
+{
+  "note": "spec 01 §4.3: checksum = SHA256(E)[0] >> 4; twelve 11-bit indices, MSB first. Typed input: NFKD, lowercase, every run of W to one U+0020, trim, split; then count (length), exact word match (unknownWord with the 0-based index and the normalized word), checksum. normalized is the word list after normalization, before validation.",
+  "wordlist_sha256": "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda",
+  "published": [
+    {
+      "entropy": "00000000000000000000000000000000",
+      "words": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    },
+    {
+      "entropy": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
+      "words": "legal winner thank year wave sausage worth useful legal winner thank yellow"
+    },
+    {
+      "entropy": "80808080808080808080808080808080",
+      "words": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above"
+    },
+    {
+      "entropy": "ffffffffffffffffffffffffffffffff",
+      "words": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"
+    },
+    {
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2",
+      "words": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic"
+    },
+    {
+      "entropy": "c0ba5a8e914111210f2bd131f3d5e08d",
+      "words": "scheme spot photo card baby mountain device kick cradle pact join borrow"
+    },
+    {
+      "entropy": "77c2b00716cec7213839159e404db50d",
+      "words": "jelly better achieve collect unaware mountain thought cargo oxygen act hood bridge"
+    }
+  ],
+  "round_trip": [
+    {
+      "entropy": "55f429e44eb9353c3c63677b81ee6af0",
+      "words": "field pattern jungle output nation own various hollow knee author one tide"
+    },
+    {
+      "entropy": "eeb4a3307ef50814e58cda2d7f7ec514",
+      "words": "upgrade pink slot worth explain apology normal opera coin winner rally chuckle"
+    },
+    {
+      "entropy": "3a17ba1628394d03f0049c607f719617",
+      "words": "deliver saddle machine expire network limit scale near gather wine grain company"
+    },
+    {
+      "entropy": "13759fc11b677f1edfb4259ffa6f823b",
+      "words": "beach provide utility cycle jewel month learn lucky paper square they isolate"
+    },
+    {
+      "entropy": "751ec81d29ca3f7d20d70e6388549bf2",
+      "words": "insect wagon also fatal physical salon local tide glory dress cheap torch"
+    },
+    {
+      "entropy": "a60dfcfd491b19f687b92ff10981b626",
+      "words": "plastic husband dismiss mutual ranch win bus chalk valve equal horn era"
+    },
+    {
+      "entropy": "9e175932110a93e6b32dbc6c0de9f7b3",
+      "words": "own river erode capital powder viable smile resource hire hungry law grunt"
+    },
+    {
+      "entropy": "c4f62f869dee6511049801c5eb0f9e75",
+      "words": "shaft ramp ticket design town mass bar ability shine flash travel twenty"
+    },
+    {
+      "entropy": "3f04d8b51f33a7d82f4ae60ec484fd1e",
+      "words": "disease chat coil dinosaur denial ugly rule fresh attract category dismiss diagram"
+    },
+    {
+      "entropy": "d8f9ccf293dc3a65582cb1fe3b1c9ab2",
+      "words": "suggest solar device chicken senior crawl gaze normal wreck suggest chase govern"
+    },
+    {
+      "entropy": "24447c5acd964a5f5bf715b9f4188ba0",
+      "words": "cattle catalog birth open gorilla cook hurt tired rigid patch carry doll"
+    },
+    {
+      "entropy": "6d38fe4819b5f5d4576830b51b8d47cc",
+      "words": "honey side must cricket gap tuition frozen alcohol relax symbol faint odor"
+    },
+    {
+      "entropy": "c01ec2799375ddfa53389dc53b5b9df7",
+      "words": "scale voyage oyster cheap fruit wood erupt beauty share suspect trash uphold"
+    },
+    {
+      "entropy": "862f35ef3802db5f87eb79dd6b1b4086",
+      "words": "mail keen knock hybrid color quit cabbage hundred talent flee south artwork"
+    },
+    {
+      "entropy": "a54d47dbab9f40bf55581e51bbaf2cae",
+      "words": "pipe health want fire village garden fever adult faculty talent sleep fringe"
+    },
+    {
+      "entropy": "9277249515a461ea70fefd3739f135b5",
+      "words": "mystery rice census clip ecology vivid sentence text damp sort estate hello"
+    },
+    {
+      "entropy": "1248e8c889905f2fc9cc2f8b69daecaf",
+      "words": "banner elder cram basket album obey cheese magnet merge excite robot furnace"
+    },
+    {
+      "entropy": "89a650481d70190b2f51f4885ad2f3ae",
+      "words": "meadow crater bamboo depend account machine run direct marriage story rude frozen"
+    },
+    {
+      "entropy": "c5d2bf2a2212fd2c2614aaba637bef46",
+      "words": "shift nominee skin during cool noodle obscure next risk bridge wink middle"
+    },
+    {
+      "entropy": "f4aa3da6ce4668dd070bf87531b58617",
+      "words": "visa faint have orient grief hub bring lecture inside misery ghost conduct"
+    }
+  ],
+  "cases": [
+    {
+      "name": "canonical",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "uppercase",
+      "input": "OZONE DRILL GRAB FIBER CURTAIN GRACE PUDDING THANK CRUISE ELDER EIGHT PICNIC",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "mixed case",
+      "input": "Ozone DRILL grab Fiber curtain grace pudding thank cruise elder eight PICNIC",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "NBSP separators",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+202F separators",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "full-width letters",
+      "input": "ｏｚｏｎｅ ｄｒｉｌｌ grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "ligature fi (U+FB01) folds by NFKD",
+      "input": "ozone drill grab ﬁber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "tabs and newlines",
+      "input": "ozone\tdrill\tgrab\tfiber\tcurtain\tgrace\npudding\r\nthank\r\ncruise\r\nelder\r\neight\r\npicnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+FEFF before and between",
+      "input": "﻿ozone ﻿drill ﻿grab ﻿fiber ﻿curtain ﻿grace ﻿pudding ﻿thank ﻿cruise ﻿elder ﻿eight ﻿picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "leading and trailing whitespace",
+      "input": "  \tozone drill grab fiber curtain grace pudding thank cruise elder eight picnic \n ",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "runs of spaces",
+      "input": "ozone   drill   grab   fiber   curtain   grace   pudding   thank   cruise   elder   eight   picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+3000 ideographic space",
+      "input": "ozone　drill　grab　fiber　curtain　grace　pudding　thank　cruise　elder　eight　picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+2028 and U+2029",
+      "input": "ozone\u2028drill\u2028grab\u2028fiber\u2028curtain\u2028grace\u2029pudding\u2028thank\u2028cruise\u2028elder\u2028eight\u2028picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+1680 ogham space",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+2003 em space",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+205F medium mathematical space",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "vertical tab and form feed",
+      "input": "ozone\u000bdrill\u000bgrab\u000bfiber\u000bcurtain\u000bgrace\fpudding\u000bthank\u000bcruise\u000belder\u000beight\u000bpicnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "U+2000 and U+200A",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "entropy": "9e885d952ad362caeb4efe34a8e91bd2"
+    },
+    {
+      "name": "combining accent (e + U+0301) is not a word",
+      "input": "ozoné drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozoné",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 0,
+        "word": "ozoné"
+      }
+    },
+    {
+      "name": "precomposed é decomposes and is not a word",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise eldér eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "eldér",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 9,
+        "word": "eldér"
+      }
+    },
+    {
+      "name": "U+200B zero-width space is not whitespace",
+      "input": "ozone​drill​grab​fiber​curtain​grace​pudding​thank​cruise​elder​eight​picnic",
+      "normalized": [
+        "ozone​drill​grab​fiber​curtain​grace​pudding​thank​cruise​elder​eight​picnic"
+      ],
+      "error": {
+        "kind": "length",
+        "count": 1
+      }
+    },
+    {
+      "name": "zero-width space inside a word",
+      "input": "ozone drill grab fiber curtain grace pudding th​ank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "th​ank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 7,
+        "word": "th​ank"
+      }
+    },
+    {
+      "name": "trailing period",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic.",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic."
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 11,
+        "word": "picnic."
+      }
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "normalized": [],
+      "error": {
+        "kind": "length",
+        "count": 0
+      }
+    },
+    {
+      "name": "whitespace only",
+      "input": " \t \n",
+      "normalized": [],
+      "error": {
+        "kind": "length",
+        "count": 0
+      }
+    },
+    {
+      "name": "11 words",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight"
+      ],
+      "error": {
+        "kind": "length",
+        "count": 11
+      }
+    },
+    {
+      "name": "13 words",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic zoo",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic",
+        "zoo"
+      ],
+      "error": {
+        "kind": "length",
+        "count": 13
+      }
+    },
+    {
+      "name": "prefix of a word is not the word",
+      "input": "ozone drill grab fiber curt grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curt",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 4,
+        "word": "curt"
+      }
+    },
+    {
+      "name": "unknown word at index 0",
+      "input": "hasala drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "hasala",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 0,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 1",
+      "input": "ozone hasala grab fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "hasala",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 1,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 2",
+      "input": "ozone drill hasala fiber curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "hasala",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 2,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 3",
+      "input": "ozone drill grab hasala curtain grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "hasala",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 3,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 4",
+      "input": "ozone drill grab fiber hasala grace pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "hasala",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 4,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 5",
+      "input": "ozone drill grab fiber curtain hasala pudding thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "hasala",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 5,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 6",
+      "input": "ozone drill grab fiber curtain grace hasala thank cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "hasala",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 6,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 7",
+      "input": "ozone drill grab fiber curtain grace pudding hasala cruise elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "hasala",
+        "cruise",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 7,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 8",
+      "input": "ozone drill grab fiber curtain grace pudding thank hasala elder eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "hasala",
+        "elder",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 8,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 9",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise hasala eight picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "hasala",
+        "eight",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 9,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 10",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder hasala picnic",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "hasala",
+        "picnic"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 10,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "unknown word at index 11",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight hasala",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "hasala"
+      ],
+      "error": {
+        "kind": "unknownWord",
+        "index": 11,
+        "word": "hasala"
+      }
+    },
+    {
+      "name": "checksum failure: last word abandon",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight abandon",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "abandon"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word ability",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight ability",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "ability"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word able",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight able",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "able"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word above",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight above",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "above"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word absent",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight absent",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "absent"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word absorb",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight absorb",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "absorb"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word abstract",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight abstract",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "abstract"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word absurd",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight absurd",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "absurd"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word abuse",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight abuse",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "abuse"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word access",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight access",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "access"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word accident",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight accident",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "accident"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    },
+    {
+      "name": "checksum failure: last word account",
+      "input": "ozone drill grab fiber curtain grace pudding thank cruise elder eight account",
+      "normalized": [
+        "ozone",
+        "drill",
+        "grab",
+        "fiber",
+        "curtain",
+        "grace",
+        "pudding",
+        "thank",
+        "cruise",
+        "elder",
+        "eight",
+        "account"
+      ],
+      "error": {
+        "kind": "checksum"
+      }
+    }
+  ]
+}

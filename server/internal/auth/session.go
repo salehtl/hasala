@@ -574,3 +574,51 @@ func IdentityMatchesUser(ctx context.Context, pool *pgxpool.Pool, userID uuid.UU
 	}
 	return subtle.ConstantTimeCompare(want, SubjectHash(id.IdP, id.Subject)) == 1, nil
 }
+
+// SessionInfo is what a writer-bound route needs about the calling session:
+// its account, its hash (step-up rows are bound to it) and the writer it is
+// bound to ("" when unbound; spec 02 §9.4).
+type SessionInfo struct {
+	UserID   uuid.UUID
+	Hash     []byte
+	WriterID string
+}
+
+// ErrSessionBound means a bind was asked of a session that is already bound
+// (409 session_bound): a bound session is never re-bound.
+var ErrSessionBound = errors.New("auth: the session is already bound to a writer")
+
+// Info resolves token exactly as Resolve does and also answers its hash and
+// bound writer.
+func (s *Sessions) Info(ctx context.Context, token string) (SessionInfo, error) {
+	userID, err := s.Resolve(ctx, token)
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	hash := tokenHash(token)
+	var writer *string
+	if err := s.Pool.QueryRow(ctx, `SELECT writer_id FROM sessions WHERE token_hash = $1`, hash).Scan(&writer); err != nil {
+		return SessionInfo{}, fmt.Errorf("auth: session binding: %w", err)
+	}
+	info := SessionInfo{UserID: userID, Hash: hash}
+	if writer != nil {
+		info.WriterID = *writer
+	}
+	return info, nil
+}
+
+// bindSessionTx binds an unbound, live session of userID to writerID inside
+// the caller's transaction (bootstrap and writer registration, spec 02 §9.4).
+func bindSessionTx(ctx context.Context, tx pgx.Tx, sessionHash []byte, userID uuid.UUID, writerID string) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE sessions SET writer_id = $3
+		  WHERE token_hash = $1 AND user_id = $2 AND writer_id IS NULL AND revoked_at IS NULL`,
+		sessionHash, userID, writerID)
+	if err != nil {
+		return fmt.Errorf("auth: bind session: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrSessionBound
+	}
+	return nil
+}
