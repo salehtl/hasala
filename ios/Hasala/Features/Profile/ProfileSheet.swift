@@ -8,12 +8,24 @@ import SwiftUI
 
 /// Your profile (Paper board, and its page-14 variant with Sign-in & security): who you are, whether bank alerts are
 /// working, your money things, and settings. A large sheet with its own stack.
+///
+/// A Release build shows only rows that work (`BuildSurface`): the pages still to come
+/// (bank alerts, accounts, privacy) and the settings with nothing behind them yet (Face ID
+/// lock, notifications) are left out, and account actions follow `capabilities`.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
   @State private var path: [ProfileRoute] = []
   @State private var confirmSignOut = false
   @Environment(\.dismiss) private var dismiss
+  /// Present once the account gate runs; sign out, delete and Sign-in & security need it.
+  @Environment(AccountSession.self) private var session: AccountSession?
+
+  private var unfinished: Bool { BuildSurface.showsUnfinished }
+
+  private func can(_ action: AccountCapabilities) -> Bool {
+    session?.capabilities.contains(action) ?? false
+  }
 
   init(app: AppModel) {
     self.app = app
@@ -31,12 +43,17 @@ struct ProfileSheet: View {
           money
           settings
           VStack(spacing: 12) {
-            Button("Sign out") { confirmSignOut = true }
-              .buttonStyle(.pill(.tertiary, fill: true))
-              .foregroundStyle(HColor.listRowDestructive)
-              .accessibilityIdentifier("profile.signOut")
-            Button("Delete your account") { model.deleteAccount() }
-              .buttonStyle(.pill(.destructiveText, size: .small))
+            if can(.signOut) {
+              Button("Sign out") { confirmSignOut = true }
+                .buttonStyle(.pill(.tertiary, fill: true))
+                .foregroundStyle(HColor.listRowDestructive)
+                .accessibilityIdentifier("profile.signOut")
+            }
+            if can(.deleteAccount) {
+              Button("Delete your account") { path.append(.deleteAccount) }
+                .buttonStyle(.pill(.destructiveText, size: .small))
+                .accessibilityIdentifier("profile.delete")
+            }
             Text(BuildInfo.current.footer)
               .hType(.footnote)
               .foregroundStyle(HColor.textSecondary)
@@ -55,7 +72,7 @@ struct ProfileSheet: View {
         ProfilePage(app: app, model: model, route: route)
       }
       .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
-        Button("Sign out", role: .destructive) { model.signOut() }
+        Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
       } message: {
         // TODO(01 §14 S-26): the sign-out copy, verbatim, with N-08's offline line.
@@ -63,6 +80,16 @@ struct ProfileSheet: View {
       }
     }
     .overlay(alignment: .bottom) { ToastHost(app: app) }
+  }
+
+  /// Signs out of this iPhone (S-26): the session ends, local data stays. The account gate
+  /// then shows the welcome screens in place of the app, this sheet with it.
+  private func signOut() {
+    guard let session else { return }
+    Task {
+      await session.account.signOut()
+      session.signedOut()
+    }
   }
 
   private var identity: some View {
@@ -84,44 +111,59 @@ struct ProfileSheet: View {
     .padding(.top, 8)
   }
 
-  private var mailboxCard: some View {
+  /// The bank alerts status. It opens Profile › Bank alerts where that page exists; a
+  /// Release build shows the status alone.
+  @ViewBuilder private var mailboxCard: some View {
+    if unfinished {
+      Button { path.append(.bankAlerts) } label: { mailboxStatus(chevron: true) }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("profile.bankAlerts")
+    } else {
+      mailboxStatus(chevron: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("profile.bankAlerts")
+    }
+  }
+
+  private func mailboxStatus(chevron: Bool) -> some View {
     let m = snap.mailbox
     let (title, hue): (String, Hue) = switch m.status {
     case .working: ("Bank alerts are working", .mint)
     case .quiet: ("Bank alerts went quiet", .sand)
-    case .reconnect: ("Reconnect Gmail", .rose)
-    case .notConnected: ("Connect Gmail", .sky)
+    // Without the Bank alerts page the card can't act, so it states the status.
+    case .reconnect: (chevron ? "Reconnect Gmail" : "Gmail needs reconnecting", .rose)
+    case .notConnected: (chevron ? "Connect Gmail" : "Gmail isn't connected", .sky)
     }
-    return Button { path.append(.bankAlerts) } label: {
-      HStack(spacing: 12) {
-        Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
-          .overlay { Image(systemName: m.status == .working ? "checkmark" : "envelope").foregroundStyle(hue.ink) }
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 0) {
-          Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-          Text("Last email \(m.lastEmail)").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-          Text(m.banks).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-        }
-        Spacer()
+    return HStack(spacing: 12) {
+      Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
+        .overlay { Image(systemName: m.status == .working ? "checkmark" : "envelope").foregroundStyle(hue.ink) }
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 0) {
+        Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
+        Text("Last email \(m.lastEmail)").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        Text(m.banks).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+      }
+      Spacer()
+      if chevron {
         Image(systemName: "chevron.right").foregroundStyle(HColor.textOnHueSecondary).accessibilityHidden(true)
       }
-      .padding(16)
-      .background(hue.gradient, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     }
-    .buttonStyle(.plain)
-    .accessibilityIdentifier("profile.bankAlerts")
+    .padding(16)
+    .background(hue.gradient, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
   }
 
   private var money: some View {
     VStack(alignment: .leading, spacing: 12) {
       SectionTitle(title: "Your money")
       ListCard {
-        Button { path.append(.accounts) } label: {
-          NavRow(title: "Accounts", detail: snap.accounts.rendered(hidden: model.hidden)) {
-            HueDisc(hue: .sky, glyph: .bank)
+        if unfinished {
+          Button { path.append(.accounts) } label: {
+            NavRow(title: "Accounts", detail: snap.accounts.rendered(hidden: model.hidden)) {
+              HueDisc(hue: .sky, glyph: .bank)
+            }
           }
+          .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         Button { path.append(.bills) } label: {
           NavRow(title: "Bills", detail: snap.bills) {
             HueDisc(hue: .sand, glyph: .bill)
@@ -139,10 +181,11 @@ struct ProfileSheet: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("profile.rules")
         if let projects = snap.projects {
-          NavRow(title: "Projects", detail: projects.rendered(hidden: model.hidden)) {
+          // TODO(spec 04 §16.1 "Project detail"): Project detail; until then the row only reads.
+          NavRow(title: "Projects", detail: projects.rendered(hidden: model.hidden), chevron: unfinished) {
             HueDisc(hue: .peach, glyph: .flag)
           }
-          // TODO(spec 04 §16.1 "Project detail"): Project detail.
+          .accessibilityElement(children: .combine)
         }
       }
     }
@@ -152,32 +195,38 @@ struct ProfileSheet: View {
     VStack(alignment: .leading, spacing: 12) {
       SectionTitle(title: "Settings")
       ListCard {
-        Button { path.append(.security) } label: {
-          NavRow(title: "Sign-in & security") { RowIcon(systemName: "checkmark.shield") } trailing: {
-            DetailLine(parts: [.status("Protected", .success)], hidden: false)
+        if session != nil || unfinished {
+          Button { path.append(.security) } label: {
+            NavRow(title: "Sign-in & security") { RowIcon(systemName: "checkmark.shield") } trailing: {
+              DetailLine(parts: [.status("Protected", .success)], hidden: false)
+            }
           }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("profile.security")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.security")
         // TODO(spec 04 §16.2 X1): Currency and exchange rates (PENDING PO-17).
         settingValue("Currency", "dollarsign.circle", "AED")
-        Button { path.append(.notifications) } label: {
-          NavRow(title: "Notifications") { RowIcon(systemName: "bell") } trailing: {
-            Text(snap.prefs.notifications.label).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        // TODO(spec 04 §9): local notifications and the Face ID lock (§11) are not in this
+        // build, so a Release build doesn't offer their settings yet.
+        if unfinished {
+          Button { path.append(.notifications) } label: {
+            NavRow(title: "Notifications") { RowIcon(systemName: "bell") } trailing: {
+              Text(snap.prefs.notifications.label).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+            }
           }
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.notifications")
-        Toggle(isOn: Binding(get: { snap.prefs.faceIDLock }, set: { model.setFaceIDLock($0) })) {
-          HStack(spacing: HSpacing.listRowGap) {
-            RowIcon(systemName: "faceid")
-            Text("Face ID lock").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("profile.notifications")
+          Toggle(isOn: Binding(get: { snap.prefs.faceIDLock }, set: { model.setFaceIDLock($0) })) {
+            HStack(spacing: HSpacing.listRowGap) {
+              RowIcon(systemName: "faceid")
+              Text("Face ID lock").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+            }
           }
+          .tint(HColor.actionAccent)
+          .padding(.horizontal, HSpacing.listRowInsetInline)
+          .frame(minHeight: HSpacing.listRowMinHeight)
+          .accessibilityIdentifier("profile.faceID")
         }
-        .tint(HColor.actionAccent)
-        .padding(.horizontal, HSpacing.listRowInsetInline)
-        .frame(minHeight: HSpacing.listRowMinHeight)
-        .accessibilityIdentifier("profile.faceID")
         // Appearance is compiled but hidden (spec 04 §14.9, `Feature.appearance == false`).
         // TODO(spec 04 §16.2 X5): Swipe directions page.
         settingValue("Swipe directions", "arrow.left.and.right", snap.swipeSummary)
@@ -189,14 +238,23 @@ struct ProfileSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("profile.export")
-        Button { path.append(.privacy) } label: {
-          NavRow(title: "Privacy and data") { RowIcon(systemName: "hand.raised") }
+        if unfinished {
+          Button { path.append(.privacy) } label: {
+            NavRow(title: "Privacy and data") { RowIcon(systemName: "hand.raised") }
+          }
+          .buttonStyle(.plain)
+        } else {
+          Link(destination: URL(string: "https://hasala.app/privacy")!) {
+            NavRow(title: "Privacy policy") { RowIcon(systemName: "hand.raised") }
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("profile.privacy")
         }
-        .buttonStyle(.plain)
         Button { path.append(.help) } label: {
           NavRow(title: "Get help") { RowIcon(systemName: "questionmark.circle") }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("profile.help")
       }
     }
   }
@@ -247,9 +305,9 @@ private struct ProfilePage: View {
       // TODO(spec 04 §16.2 X7; 01 §14 S-02–S-06, S-18, S-42, S-43, PENDING PO-12).
       placeholder("Privacy and data", "hand.raised", "Who can see what, and how your data is kept.")
     case .help:
-      // TODO(spec 04 §16.2 X8): HelpView (FAQ, TestFlight feedback, Copy diagnostics).
-      placeholder("Get help", "questionmark.circle",
-                  "Send feedback from TestFlight: take a screenshot in Hasala and tap Share Beta Feedback.")
+      HelpPage()
+    case .deleteAccount:
+      if let session { DeleteAccountPage(session: session) }
     }
   }
 

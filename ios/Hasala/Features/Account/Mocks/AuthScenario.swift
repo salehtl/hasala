@@ -34,6 +34,9 @@
     case relaunchInterrupted
     /// Relaunch after a new-iPhone sign-in was killed before unlock.
     case relaunchSignedIn
+    /// Signed in on the App Review demo account (`review_account`), over HasalaMocks'
+    /// `mayaSample` ledger: Home says "Sample data".
+    case mayaSample
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -41,8 +44,20 @@
     }
 
     /// The session for `scenario`; nil means the Maya scenarios (signed in, ready).
+    ///
+    /// The mock offers every account action, except on the Release surface
+    /// (`BuildSurface`), where it offers the beta's, as the live service does.
     @MainActor
     static func session(for scenario: AuthScenario?) -> AccountSession {
+      let session = makeSession(for: scenario)
+      if let mock = session.account as? MockAccountService, !BuildSurface.showsUnfinished {
+        mock.capabilities = .beta
+      }
+      return session
+    }
+
+    @MainActor
+    private static func makeSession(for scenario: AuthScenario?) -> AccountSession {
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount)
       func services(_ account: MockAccountService) -> AccountServices {
         AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
@@ -51,6 +66,11 @@
       switch scenario {
       case nil, .passkeyUser:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
+      case .mayaSample:
+        let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
+                                     phase: .ready)
+        session.reviewAccount = true
+        return session
       case .resetApproval:
         let account = MockAccountService(existing: .passkey, signedIn: true)
         account.pendingReset = PendingReset(id: "reset-1", askedAgo: "1 minute ago", email: MockAccountService.existingEmail)

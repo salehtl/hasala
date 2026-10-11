@@ -235,6 +235,12 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   static let freeze = AccountCapabilities(rawValue: 1 << 14)
   /// Show the 12 words again behind a step-up.
   static let viewPhrase = AccountCapabilities(rawValue: 1 << 15)
+  /// Remove one of the account's passkeys.
+  static let removePasskey = AccountCapabilities(rawValue: 1 << 16)
+  /// Set, change or remove the account's password.
+  static let changePassword = AccountCapabilities(rawValue: 1 << 17)
+  /// Remove another device from the account's roster.
+  static let removeDevice = AccountCapabilities(rawValue: 1 << 18)
 
   /// Every action above. The default for services that don't say (the Debug mocks).
   static let all: AccountCapabilities = [
@@ -246,12 +252,14 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .resetPassword, .recoverAccess,
     .rotatePhrase, .addPasskey, .changeEmail,
     .freeze, .viewPhrase,
+    .removePasskey, .changePassword, .removeDevice,
   ]
 
   /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, leaving
   /// (sign out, sign out everywhere, delete, remove this iPhone) and viewing the words.
-  /// Password reset, access recovery, phrase rotation, adding a passkey, changing the
-  /// email and freezing stay hidden.
+  /// Password reset, access recovery, phrase rotation, adding or removing a passkey,
+  /// setting or changing the password, removing another device, changing the email and
+  /// freezing stay hidden.
   static let beta: AccountCapabilities = [
     .signupPasskey, .signupPassword,
     .signInPasskey, .signInPassword,
