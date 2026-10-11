@@ -7,6 +7,7 @@
 // message is filed without review only when Gmail's Authentication-Results verdict passes for a
 // domain in T (the trust gate, `MessageDisposer`).
 import CoreMail
+import CoreTemplate
 import Foundation
 
 public enum BankDomains {
@@ -85,6 +86,16 @@ public enum BankDomains {
     }
     while out.last == 0x2e { out.removeLast() }
     return String(decoding: out, as: UTF8.self)
+  }
+
+  /// The sender domains of a bank's bundled templates (Setup's bank step authors
+  /// `sender_trust_set {trusted: true}` for each, 03c §7.2), lower-cased, sorted, unique.
+  public static func templateDomains(bank: String, templates: [TemplateDefinition]) -> [String] {
+    var out = Set<String>()
+    for t in templates where t.bank == bank {
+      for d in t.match.senderDomain { out.insert(String(decoding: d.utf8.map(asciiLower), as: UTF8.self)) }
+    }
+    return out.sorted { Array($0.utf8).lexicographicallyPrecedes(Array($1.utf8)) }
   }
 
   public enum TypedDomainError: Error, Sendable, Equatable {

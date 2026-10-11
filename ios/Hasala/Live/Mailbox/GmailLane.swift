@@ -51,11 +51,51 @@ nonisolated final class GmailLane: Sendable {
   func connect(backfillDays: Int) async -> ConnectResult {
     let r = await engine.connect(presenter: presenter, backfillDays: backfillDays)
     if case .connected = r {
+      // The scan itself runs from `firstScan()` (foreground) or the processing task.
       BackgroundScheduler.shared.scheduleProcessing()
-      _ = await engine.runCycle(trigger: .launch)
     }
     return r
   }
+
+  /// The first scan (Setup 2 of 5, Paper FR2-0): runs scan cycles in the foreground and yields
+  /// their progress; the stream ends at "Are these your cards?" (or a halt). The scan continues
+  /// in `app.hasala.ios.processing` if the user leaves the screen (§7.7 step 3).
+  func firstScan() -> AsyncStream<MailboxProgress> {
+    let engine = self.engine
+    return AsyncStream { continuation in
+      let job = Task {
+        await engine.setProgressHandler { continuation.yield($0) }
+        for _ in 0..<50 where !Task.isCancelled {
+          let r = await engine.runCycle(trigger: .refresh)
+          if r.phase != .scanning || (r.haltedOn != nil && r.haltedOn != .stagingFull) { break }
+        }
+        await engine.setProgressHandler(nil)
+        continuation.finish()
+      }
+      continuation.onTermination = { _ in job.cancel() }
+    }
+  }
+
+  /// "Are these your cards?" (Setup 5 of 5, Paper G9Q-0).
+  func discoveredCards() async -> ScanSummary { await engine.scanSummary() }
+
+  /// "Continue with {k} cards": `card_linked` for each card (mine or not mine), then the backfill.
+  func confirmCards(_ decisions: [CardDecision]) async -> CycleReport {
+    await engine.confirmCards(decisions)
+  }
+
+  /// The sender domains Setup's bank step trusts for a bank (03c §7.2), e.g. "dib" → dib.ae.
+  static func senderDomains(bank: String) -> [String] {
+    BankDomains.templateDomains(bank: bank, templates: BundledTemplates.load().templates.map(\.definition))
+  }
+
+  /// Bank alerts (spec 04 §7.10).
+  func status() async -> MailboxStatus { await engine.status() }
+  func disconnect() async -> Bool { await engine.disconnect() }
+  func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
+    await engine.importSender(typed)
+  }
+  func viewEmail(messageID: String) async -> EmailView { await engine.viewEmail(messageID: messageID) }
 
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
     await engine.runCycle(trigger: trigger, deadlineMs: deadlineMs)

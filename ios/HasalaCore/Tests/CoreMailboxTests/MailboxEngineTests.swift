@@ -77,6 +77,7 @@ let day: Int64 = 86_400_000
       CardDecision(card: CardKey(bank: "enbd", last4: "8642"), state: .mine),
     ])
     #expect(done.ops == 5 && done.review == 2)
+    #expect(done.sortedBy == ["dictionary": 3, "none": 1, "unparsed": 1])
     #expect(done.phase == .active && done.completed)
     #expect(await rig.ledger.authoredCards.count == 3)
     let drafts = await rig.enqueued()
@@ -114,6 +115,18 @@ let day: Int64 = 86_400_000
     await rig.ledger.setTrust(["dib.ae": true])
     let r = await rig.engine.runCycle(trigger: .launch)
     #expect(r.staged == 1 && r.phase == .awaitingCards)
+  }
+
+  @Test func progressIsReportedForTheFirstScanBoard() async {
+    let rig = Rig()
+    for i in 0..<3 { rig.gmail.add(SyntheticMail.dibCard(id: "d\(i)", dateMs: Rig.t0 - Int64(i + 1) * day)) }
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    await rig.connectAndActivate()
+    let log = seen.all
+    #expect(log.contains(MailboxProgress(stage: .downloading, done: 3, total: 3)))
+    #expect(log.contains(MailboxProgress(stage: .awaitingCards, done: 3, total: 3)))
+    #expect(log.last == MailboxProgress(stage: .done, done: 3, total: 3))
   }
 
   @Test func stagingCapEndsTheListing() async {
@@ -378,4 +391,11 @@ let day: Int64 = 86_400_000
     #expect(ra.ops + rb.ops == 1)
     #expect(await rig.enqueued().filter { $0.messageID == "x" }.count == 1)
   }
+}
+
+final class ProgressLog: @unchecked Sendable {
+  private let lock = NSLock()
+  private var items: [MailboxProgress] = []
+  func append(_ p: MailboxProgress) { lock.withLock { items.append(p) } }
+  var all: [MailboxProgress] { lock.withLock { items } }
 }

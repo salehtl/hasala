@@ -57,11 +57,38 @@ public struct CycleReport: Sendable, Equatable {
   public var setAside = 0
   public var staged = 0
   public var dup = 0
+  /// Authored rows by `category_source.kind` ("rule", "dictionary", "none", ... ; unparsed rows
+  /// count as "unparsed"), for "264 transactions, sorted." summaries.
+  public var sortedBy: [String: Int] = [:]
   public var haltedOn: MailboxHaltCode?
   /// The checkpoint advanced (or the scan / backfill phase finished).
   public var completed = false
   public var phase: MailboxPhase = .unlinked
   public init() {}
+
+  mutating func count(_ d: MailboxIngestDraft) {
+    ops += 1
+    if d.needsReview { review += 1 }
+    let kind =
+      d.payload["unparsed"] == .bool(true) ? "unparsed" : (d.payload["category_source"]?["kind"]?.stringValue ?? "none")
+    sortedBy[kind, default: 0] += 1
+  }
+}
+
+/// Progress of a scan or backfill, for the first-scan board (Paper FR2-0: "182 of 268 alerts").
+public struct MailboxProgress: Sendable, Equatable {
+  public enum Stage: Sendable, Equatable {
+    case listing, downloading, authoring, awaitingCards, done
+    case failed(MailboxHaltCode)
+  }
+  public var stage: Stage
+  public var done: Int
+  public var total: Int
+  public init(stage: Stage, done: Int, total: Int) {
+    self.stage = stage
+    self.done = done
+    self.total = total
+  }
 }
 
 public enum ConnectResult: Sendable, Equatable {
@@ -143,6 +170,7 @@ public actor MailboxEngine {
   let sleep: @Sendable (Int64) async -> Void
 
   private var busy = false
+  private var onProgress: (@Sendable (MailboxProgress) -> Void)?
   /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
   /// Cards confirmed on "Are these your cards?" (§7.7 step 5), applied to the staged backfill
@@ -174,6 +202,13 @@ public actor MailboxEngine {
     self.clock = clock
     self.random = random
     self.sleep = sleep
+  }
+
+  /// Receives scan and backfill progress (called on the engine's executor; hop to the UI).
+  public func setProgressHandler(_ h: (@Sendable (MailboxProgress) -> Void)?) { onProgress = h }
+
+  func emit(_ stage: MailboxProgress.Stage, _ done: Int, _ total: Int) {
+    onProgress?(MailboxProgress(stage: stage, done: done, total: total))
   }
 
   // MARK: - Serialization
@@ -509,6 +544,7 @@ public actor MailboxEngine {
     if !cut {
       state.phase = .awaitingCards
       report.completed = true
+      emit(.awaitingCards, listed.count, listed.count)
     }
     return await finish(&state, report)
   }
@@ -559,6 +595,9 @@ public actor MailboxEngine {
   ) async -> CycleReport {
     var report = report
     let cards = (await ledger.knownCards()).merging(confirmedCards) { _, confirmed in confirmed }
+    let total = (try? await store.stagedCount()) ?? 0
+    var authored = 0
+    emit(.authoring, 0, total)
     while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
       guard let batch = try? await store.staged(limit: config.backfillBatch), !batch.isEmpty else { break }
@@ -574,13 +613,14 @@ public actor MailboxEngine {
         let draft = MessageDisposer.finalize(m, grantID: config.grantID, cards: cards, categorizer: categorizer)
         c.drafts.append(draft)
         c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
-        report.ops += 1
-        if draft.needsReview { report.review += 1 }
+        report.count(draft)
       }
       do { try await store.commit(c) } catch {
         report.haltedOn = .offline
         return await finish(&state, report)
       }
+      authored += batch.count
+      emit(.authoring, authored, total)
     }
     switch await ledger.flush() {
     case .accountFull: return await halt(&state, .accountFull, report)
@@ -623,6 +663,7 @@ public actor MailboxEngine {
       state.phase = .active
       state.lastSuccessAtMs = clock.nowMs()
       report.completed = true
+      emit(.done, total, total)
     }
     return await finish(&state, report)
   }
@@ -789,6 +830,8 @@ public actor MailboxEngine {
     let todo = all.filter { !accounted.contains($0) && !projected.contains($0) }
     var i = 0
     run.width = config.downloadWidth
+    let skipped = all.count - todo.count
+    emit(.downloading, skipped, all.count)
     while i < todo.count {
       // A BGTask expiration cancels the task: stop at this boundary, everything so far committed.
       if Task.isCancelled { return true }
@@ -813,6 +856,7 @@ public actor MailboxEngine {
       for r in results {
         try await account(r.fetched, mode: mode, run: &run, report: &report)
       }
+      emit(.downloading, skipped + i, all.count)
     }
     return false
   }
@@ -939,8 +983,7 @@ public actor MailboxEngine {
           c.stage.append(m)
         case .author:
           let draft = MessageDisposer.finalize(m, grantID: config.grantID, cards: run.cards, categorizer: categorizer)
-          report.ops += 1
-          if draft.needsReview { report.review += 1 }
+          report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))
         }
@@ -1013,6 +1056,7 @@ public actor MailboxEngine {
 
   func finish(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
+    if let h = report.haltedOn, h != .stagingFull { emit(.failed(h), 0, 0) }
     try? await store.commit(commitState(state))
     report.phase = state.phase
     return report

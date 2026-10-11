@@ -162,6 +162,12 @@ import Testing
     #expect(throws: BankDomains.TypedDomainError.notQuerySafe) { try BankDomains.normalizeTyped("a\"b.ae") }
   }
 
+  @Test func bankTemplateDomains() {
+    let defs = BundledTemplates.load().templates.map(\.definition)
+    #expect(BankDomains.templateDomains(bank: "dib", templates: defs) == ["dib.ae"])
+    #expect(BankDomains.templateDomains(bank: "enbd", templates: defs) == ["emiratesnbd.com"])
+  }
+
   @Test func domainOfFromHeader() {
     #expect(BankDomains.domainOf("DIB Alerts <Alerts@DIB.ae>") == "dib.ae")
     #expect(BankDomains.domainOf("plain@x.example") == "x.example")
