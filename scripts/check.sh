@@ -348,7 +348,9 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 #   authres, categorize, norm-dates, replay
 #           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
 #           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
-#           executor joins CI's `swift` job with the port (WS-8, WS-10). The
+#           executor joins CI's `swift` job with the port (WS-8, WS-10; replay
+#           and categorize: HasalaCoreConformanceTests' ReplayConformanceTests
+#           and CategorizeConformanceTests). The
 #           TypeScript entry is the freshness check (the committed files are
 #           byte-identical to what the generator writes now, computed in
 #           memory, no network) plus the oracle reading its own files back.
