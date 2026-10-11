@@ -73,11 +73,11 @@ let package = Package(
     core("CoreJSON", "JSON", ["HasalaText"]),
     core("CoreTime", "Time"),
     core("CoreMoney", "Money", ["HasalaText"]),
-    // Resource-only. The two single-file resources are added by their owners,
-    // one line each, when the file lands (SwiftPM refuses a missing resource):
-    //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5)
+    // Resource-only. The single-file resources are added by their owners, one
+    // line each, when the file lands (SwiftPM refuses a missing resource):
+    //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5), landed
     //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2)
-    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample")]),
+    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample"), .copy("merchant-dictionary.json")]),
 
     // L1
     core("CoreWire", "Wire", l0),
@@ -96,7 +96,9 @@ let package = Package(
 
     // L3: the only GRDB users (R6).
     core("CoreStore", "Store", l0 + l1 + l2 + [grdb, ordered]),
-    core("CoreProjection", "Projection", ["CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
+    // L0 and CoreWire too (lower layers): the projector computes local dates
+    // (CoreTime), writes gates JSON (CoreJSON) and folds the pending overlay (CoreWire ops).
+    core("CoreProjection", "Projection", l0 + ["CoreWire", "CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
 
     // L4
     core("CoreSync", "Sync", l0 + l1 + l2 + l3),
