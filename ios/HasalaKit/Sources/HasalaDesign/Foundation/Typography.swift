@@ -118,10 +118,13 @@ public struct HFigure: Sendable, Hashable {
   /// Tabular digits, so amounts line up in lists (spec 04 §14.4). Off for heroes and
   /// widgets, where Paper sets proportional figures.
   public var tabular: Bool
+  /// The largest Dynamic Type size this figure grows to. `.display` and `.hero` stop
+  /// at `.accessibility3`; larger sizes reflow the layout instead (spec 04 §14.4).
+  public var maxDynamicTypeSize: DynamicTypeSize
 
   public init(
     size: CGFloat, leading: CGFloat, weight: HWeight, tracking: CGFloat = 0, textStyle: Font.TextStyle,
-    tabular: Bool = false
+    tabular: Bool = false, maxDynamicTypeSize: DynamicTypeSize = .accessibility5
   ) {
     self.size = size
     self.leading = leading
@@ -129,6 +132,7 @@ public struct HFigure: Sendable, Hashable {
     self.tracking = tracking
     self.textStyle = textStyle
     self.tabular = tabular
+    self.maxDynamicTypeSize = maxDynamicTypeSize
   }
 
   public func weight(_ w: HWeight) -> HFigure {
@@ -139,10 +143,12 @@ public struct HFigure: Sendable, Hashable {
 
   /// Home hero, recap: 56/58 bold, −1.2.
   public static let display = HFigure(size: HFontSize.numericDisplay, leading: HLeading.numericDisplay,
-                                      weight: .bold, tracking: HTracking.numericDisplay, textStyle: .largeTitle)
+                                      weight: .bold, tracking: HTracking.numericDisplay, textStyle: .largeTitle,
+                                      maxDynamicTypeSize: .accessibility3)
   /// Kit hero: 44/46 bold, −0.8.
   public static let hero = HFigure(size: HFontSize.numericHero, leading: HLeading.numericHero, weight: .bold,
-                                   tracking: HTracking.numericHero, textStyle: .largeTitle)
+                                   tracking: HTracking.numericHero, textStyle: .largeTitle,
+                                   maxDynamicTypeSize: .accessibility3)
   /// Sheet heroes, posters, widgets: 34/40 bold, −0.5.
   public static let large = HFigure(size: HFontSize.numericLarge, leading: HLeading.numericLarge, weight: .bold,
                                     tracking: HTracking.numericLarge, textStyle: .title)
@@ -153,7 +159,9 @@ public struct HFigure: Sendable, Hashable {
   public static let small = HFigure(size: HFontSize.numericSmall, leading: HLeading.numericSmall, weight: .bold,
                                     textStyle: .title3)
   /// The "AED" unit beside a display figure: 20/24 semibold.
-  public static let displayUnit = HFigure(size: 20, leading: 24, weight: .semibold, textStyle: .title3)
+  /// Capped with the display figure it sits beside.
+  public static let displayUnit = HFigure(size: 20, leading: 24, weight: .semibold, textStyle: .title3,
+                                          maxDynamicTypeSize: .accessibility3)
   /// The "AED" unit beside a large figure, and stat values: 17/22.
   public static let unit = HFigure(size: HFontSize.numericUnit, leading: HLeading.numericUnit, weight: .semibold,
                                    textStyle: .body)
@@ -217,6 +225,44 @@ public extension View {
   /// Applies an Inter text style (font, tracking, line height, case).
   func hType(_ type: HType) -> some View { modifier(HTypeModifier(type: type)) }
 
-  /// Applies a rounded figure style.
-  func hFigure(_ figure: HFigure) -> some View { modifier(HFigureModifier(figure: figure)) }
+  /// Applies a rounded figure style, scaled with Dynamic Type up to its cap.
+  func hFigure(_ figure: HFigure) -> some View {
+    // Outside the modifier, so its @ScaledMetric reads the capped size.
+    modifier(HFigureModifier(figure: figure))
+      .dynamicTypeSize(...figure.maxDynamicTypeSize)
+      .modifier(CappedFigureMarker(capped: figure.maxDynamicTypeSize < .accessibility5))
+  }
+
+  /// One line, as Paper draws it, at the default text size and smaller; above it the
+  /// text wraps instead of truncating, and the layouts around it reflow (spec 04 §17).
+  func singleLineAtDefaultTextSize() -> some View { lineLimitAtDefaultTextSize(1) }
+
+  /// At most `lines` lines at the default text size and smaller; unlimited above it.
+  func lineLimitAtDefaultTextSize(_ lines: Int) -> some View { modifier(LineLimitAtDefaultTextSize(lines: lines)) }
+}
+
+struct LineLimitAtDefaultTextSize: ViewModifier {
+  let lines: Int
+  @Environment(\.dynamicTypeSize) private var size
+
+  func body(content: Content) -> some View {
+    content.lineLimit(size <= .large ? lines : nil)
+  }
+}
+
+/// The accessibility identifier on text whose growth stops below the largest size on
+/// purpose (spec 04 §14.4). The UI tests' accessibility audit accepts "Dynamic Type
+/// partially unsupported" only on these.
+public let hasalaCappedFigureIdentifier = "hasala.cappedFigure"
+
+struct CappedFigureMarker: ViewModifier {
+  let capped: Bool
+
+  func body(content: Content) -> some View {
+    if capped {
+      content.accessibilityIdentifier(hasalaCappedFigureIdentifier)
+    } else {
+      content
+    }
+  }
 }

@@ -28,6 +28,8 @@ struct SearchView: View {
                 }
                 .padding(.horizontal, HSpacing.listRowInsetInline)
                 .frame(minHeight: HSpacing.listRowMinHeight)
+                // The whole row is the button, for touch and for VoiceOver's frame.
+                .contentShape(Rectangle())
               }
               .buttonStyle(.plain)
             }

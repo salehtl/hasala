@@ -95,7 +95,7 @@ public struct EverydayHero: Sendable, Hashable {
   /// How much of the month has gone: the ink tick.
   public var today: Permille
   public var verdict: Verdict
-  /// "· about AED 337 a day".
+  /// "about AED 337 a day" (the view draws the "·" before it when it sits on the verdict line).
   public var verdictDetail: MoneyPhrase
   public var stats: [HeroStat]
   /// The wash behind the hero: sky on track, sand over pace, rose over budget.

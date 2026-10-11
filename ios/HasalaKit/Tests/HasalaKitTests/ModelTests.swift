@@ -68,7 +68,7 @@ struct MayaTests {
   @Test func heroMatchesTheBoard() {
     let hero = Maya.home.hero
     #expect(MoneyFormat.string(hero.left.minor) == "7,417.55")
-    #expect(hero.verdictDetail.rendered(hidden: false) == "· about AED 337 a day")
+    #expect(hero.verdictDetail.rendered(hidden: false) == "about AED 337 a day")
     #expect(hero.stats.map { MoneyFormat.string($0.value.minor) } == ["2,282.45", "8,005.89", "1,039.15"])
     #expect(hero.spent.value == 235)
     #expect(hero.today.value == 320)

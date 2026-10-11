@@ -17,8 +17,56 @@ extension View {
       .shadow(color: widgetShadowFar, radius: 12, x: 0, y: 8)
   }
 
+  /// A Small widget: at least the 175 pt unit, taller when its text needs it (large
+  /// Dynamic Type sizes). It fills the height it is offered, so a canvas row that
+  /// settles its height with `.fixedSize(horizontal: false, vertical: true)` gets
+  /// two cards of equal height with their figures on the bottom edge.
   func smallWidget() -> some View {
-    frame(maxWidth: .infinity, minHeight: HContainer.widgetUnit, maxHeight: HContainer.widgetUnit, alignment: .leading)
+    frame(maxWidth: .infinity, minHeight: HContainer.widgetUnit, maxHeight: .infinity, alignment: .topLeading)
+  }
+}
+
+/// A row with a leading and a trailing part. It stays one line while both fit at their
+/// natural width; otherwise, and always at the accessibility text sizes, the trailing
+/// part moves under the leading one instead of either truncating (spec 04 §17).
+public struct ReflowingRow<Leading: View, Trailing: View>: View {
+  let spacing: CGFloat
+  let alignment: VerticalAlignment
+  let leading: Leading
+  let trailing: Trailing
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  public init(
+    spacing: CGFloat = 8, alignment: VerticalAlignment = .center, @ViewBuilder leading: () -> Leading,
+    @ViewBuilder trailing: () -> Trailing
+  ) {
+    self.spacing = spacing
+    self.alignment = alignment
+    self.leading = leading()
+    self.trailing = trailing()
+  }
+
+  public var body: some View {
+    if typeSize.isAccessibilitySize {
+      stacked
+    } else {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: alignment, spacing: 0) {
+          leading
+          Spacer(minLength: spacing)
+          trailing
+        }
+        stacked
+      }
+    }
+  }
+
+  private var stacked: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      leading
+      trailing
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
@@ -46,7 +94,7 @@ public struct BudgetPaceWidgetView: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      HStack {
+      ReflowingRow {
         HStack(spacing: 8) {
           Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
             .overlay {
@@ -56,21 +104,23 @@ public struct BudgetPaceWidgetView: View {
             .accessibilityHidden(true)
           Text("Budget pace").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         }
-        Spacer(minLength: 8)
+      } trailing: {
         Text(model.monthGone).hType(.footnote).foregroundStyle(HColor.textSecondary)
       }
       ForEach(model.rows) { row in
         VStack(spacing: 6) {
-          HStack(spacing: 8) {
-            Circle()
-              .fill(LinearGradient(colors: [Color(row.bucket.tokens.end), row.bucket.dotEnd],
-                                   startPoint: UnitPoint(x: 0.33, y: 0), endPoint: UnitPoint(x: 0.67, y: 1)))
-              .frame(width: 10, height: 10)
-            Text(row.bucket.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-            Text(MoneyPhrase([.amount(row.spent, .compact), .text(" of "), .amount(row.budget, .compact)])
-              .rendered(hidden: hidden))
-              .hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimit(1)
-            Spacer(minLength: 4)
+          ReflowingRow(spacing: 12) {
+            HStack(spacing: 8) {
+              Circle()
+                .fill(LinearGradient(colors: [Color(row.bucket.tokens.end), row.bucket.dotEnd],
+                                     startPoint: UnitPoint(x: 0.33, y: 0), endPoint: UnitPoint(x: 0.67, y: 1)))
+                .frame(width: 10, height: 10)
+              Text(row.bucket.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+              Text(MoneyPhrase([.amount(row.spent, .compact), .text(" of "), .amount(row.budget, .compact)])
+                .rendered(hidden: hidden))
+                .hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
+            }
+          } trailing: {
             if row.verdict == .done {
               HStack(spacing: 4) {
                 Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
@@ -78,11 +128,12 @@ public struct BudgetPaceWidgetView: View {
               }
               .foregroundStyle(HColor.statusSuccessForeground)
             } else {
+              // .subheadline is 15 pt at the default size and follows Dynamic Type.
               Text(MoneyPhrase([.amount(row.left, .compact), .text(" left")]).rendered(hidden: hidden))
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(.subheadline, design: .rounded, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(row.left.isNegative ? HColor.paceOverBudget : HColor.textPrimary)
-                .lineLimit(1)
+                .singleLineAtDefaultTextSize()
             }
           }
           ProgressLine(row.progress, fill: row.verdict.fill)
@@ -127,7 +178,8 @@ public struct NextBillWidgetView: View {
       VStack(alignment: .leading, spacing: 2) {
         MoneyText(model.amount, figure: .large, unit: HFigure.compact.weight(.semibold), hidden: hidden,
                   hiddenGlyphs: 3, color: HColor.textPrimary, unitGap: 4)
-        Text(model.caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimit(1)
+        // Two lines: a 169 pt card (a 390 pt-wide phone) cannot always fit it in one.
+        Text(model.caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimitAtDefaultTextSize(2)
       }
     }
     .smallWidget()
@@ -236,7 +288,8 @@ public struct ProjectWidgetView: View {
     VStack(alignment: .leading) {
       HStack(spacing: 8) {
         HueDisc(hue: .peach, glyph: model.glyph, size: 34, iconSize: 18)
-        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary).lineLimit(1)
+        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+          .singleLineAtDefaultTextSize()
       }
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
@@ -246,7 +299,7 @@ public struct ProjectWidgetView: View {
             Text("left").hFigure(HFigure.compact.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           }
           Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
-            .lineLimit(1)
+            .lineLimitAtDefaultTextSize(2)
         }
         ProgressLine(model.progress)
       }
@@ -272,16 +325,16 @@ public struct GoalWidgetView: View {
       HStack(spacing: 6) {
         Image(systemName: model.glyph.symbolName).font(.system(size: 14, weight: .semibold))
           .accessibilityHidden(true)
-        Text(model.name).hType(.footnote.weight(.semibold)).lineLimit(1)
+        Text(model.name).hType(.footnote.weight(.semibold)).singleLineAtDefaultTextSize()
       }
       .foregroundStyle(Hue.mint.ink)
-      .frame(height: 34)
+      .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 0) {
           Text(model.percentLabel).hFigure(.hero).foregroundStyle(Hue.mint.ink)
           Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-            .lineLimit(1)
+            .lineLimitAtDefaultTextSize(2)
         }
         ProgressLine(model.progress, fill: Hue.mint.ink, track: HColor.progressTrackOnHue)
       }
@@ -304,10 +357,10 @@ public struct TodayWidgetView: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      HStack {
+      ReflowingRow {
         Text("Today").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
-        Spacer()
+      } trailing: {
         Text(model.summary.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
           .accessibilityLabel(model.summary.spoken(hidden: hidden))
       }

@@ -45,7 +45,7 @@ public enum Maya {
     spent: Permille.ratio(2_282_45, of: 9_700_00),
     today: Permille(320),
     verdict: .onTrack,
-    verdictDetail: MoneyPhrase([.text("· about AED "), .amount(.aed(337_16), .rounded, hidden: 3), .text(" a day")]),
+    verdictDetail: MoneyPhrase([.text("about AED "), .amount(.aed(337_16), .rounded, hidden: 3), .text(" a day")]),
     stats: [
       HeroStat("Spent", .aed(2_282_45)),
       HeroStat("Bills paid", .aed(8_005_89)),

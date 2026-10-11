@@ -32,8 +32,33 @@ public extension Glyph {
 /// An amount in the rounded figure face, optionally with its "AED" unit before it.
 ///
 /// Hidden amounts become bullets (Paper "Home · Amounts hidden") and read as "Amount hidden".
+/// Money in is drawn "+" and money owed "−" (U+2212), and VoiceOver reads "plus AED 25,000" /
+/// "minus AED 4,210.50" (spec 04 §14.4, §17); money out has no sign.
 public struct MoneyText: View {
-  public enum Sign: Sendable { case none, plusForIncome, minusForDebt }
+  public enum Sign: Sendable {
+    /// Money out, or a balance: no sign.
+    case none
+    /// Money in: "+".
+    case income
+    /// Money owed: "−".
+    case debt
+
+    var glyph: String {
+      switch self {
+      case .none: ""
+      case .income: "+"
+      case .debt: "\u{2212}"
+      }
+    }
+
+    var spoken: String {
+      switch self {
+      case .none: ""
+      case .income: "plus "
+      case .debt: "minus "
+      }
+    }
+  }
 
   let money: Money
   let figure: HFigure
@@ -44,10 +69,12 @@ public struct MoneyText: View {
   let color: Color
   let unitColor: Color?
   let unitGap: CGFloat
+  let sign: Sign
 
   public init(
     _ money: Money, figure: HFigure, unit: HFigure? = nil, style: MoneyStyle = .exact, hidden: Bool = false,
-    hiddenGlyphs: Int = 4, color: Color = HColor.moneyOut, unitColor: Color? = nil, unitGap: CGFloat = 8
+    hiddenGlyphs: Int = 4, color: Color = HColor.moneyOut, unitColor: Color? = nil, unitGap: CGFloat = 8,
+    sign: Sign = .none
   ) {
     self.money = money
     self.figure = figure
@@ -58,14 +85,20 @@ public struct MoneyText: View {
     self.color = color
     self.unitColor = unitColor
     self.unitGap = unitGap
+    self.sign = sign
   }
+
+  /// The sign leads the whole amount: "+AED 25,000", or "+25,000.00" without a unit.
+  private var shownSign: String { hidden ? "" : sign.glyph }
 
   public var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: unitGap) {
       if let unit {
-        Text(money.currency).hFigure(unit).foregroundStyle(unitColor ?? color)
+        Text(shownSign + money.currency).hFigure(unit).foregroundStyle(unitColor ?? color)
       }
-      Text(hidden ? MoneyFormat.hidden(count: hiddenGlyphs) : MoneyFormat.string(money.minor, style: style))
+      Text(hidden
+        ? MoneyFormat.hidden(count: hiddenGlyphs)
+        : (unit == nil ? shownSign : "") + MoneyFormat.string(money.minor, style: style))
         .hFigure(hidden ? figure.forHiddenGlyphs : figure)
         .tracking(hidden ? 2 : figure.tracking)
         .lineLimit(1)
@@ -74,7 +107,8 @@ public struct MoneyText: View {
         .contentTransition(.numericText())
     }
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(hidden ? "Amount hidden" : "\(money.currency) \(MoneyFormat.string(money.minor, style: style))")
+    .accessibilityLabel(
+      hidden ? "Amount hidden" : "\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))")
   }
 }
 
@@ -137,7 +171,8 @@ public struct StatusPillView: View {
       Text(pill.text).hType(.footnote.weight(.semibold)).foregroundStyle(pill.tone.foreground)
     }
     .padding(.horizontal, 10)
-    .frame(height: 26)
+    .padding(.vertical, 4)
+    .frame(minHeight: 26)
     .background(surface == .white ? HColor.white : pill.tone.surface, in: Capsule())
     .accessibilityElement(children: .combine)
   }
@@ -149,19 +184,22 @@ public struct CountBadge: View {
 
   let count: Int
   let tone: Tone
+  /// 24 pt (ink, 13 pt figure) or 20 pt (12 pt figure) at the default text size; both scale.
+  @ScaledMetric private var height: CGFloat
 
   public init(_ count: Int, tone: Tone = .ink) {
     self.count = count
     self.tone = tone
+    _height = ScaledMetric(wrappedValue: tone == .ink ? 24 : 20, relativeTo: tone == .ink ? .footnote : .caption)
   }
 
   public var body: some View {
-    let height: CGFloat = tone == .ink ? 24 : 20
+    // .footnote is 13 pt and .caption 12 pt at the default size; both follow Dynamic Type.
     Text("\(count)")
-      .font(.system(size: tone == .ink ? 13 : 12, weight: .bold, design: .rounded))
+      .font(.system(tone == .ink ? .footnote : .caption, design: .rounded, weight: .bold))
       .foregroundStyle(HColor.white)
       .padding(.horizontal, tone == .ink ? 7 : 6)
-      .frame(minWidth: height, minHeight: height, maxHeight: height)
+      .frame(minWidth: height, minHeight: height)
       .background(background, in: Capsule())
   }
 
@@ -194,24 +232,33 @@ public struct SectionHeader: View {
   }
 
   public var body: some View {
-    HStack(alignment: subtitle == nil ? .firstTextBaseline : .bottom) {
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 8) {
-          Text(title).hType(.section).foregroundStyle(HColor.textPrimary)
-            .accessibilityAddTraits(.isHeader)
-          if let count { CountBadge(count).accessibilityLabel("\(count) items") }
-        }
-        if let subtitle {
-          Text(subtitle).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-        }
+    // The action moves under the title when they do not fit side by side.
+    ReflowingRow(alignment: subtitle == nil ? .firstTextBaseline : .bottom) {
+      heading
+    } trailing: {
+      actionButton
+    }
+  }
+
+  private var heading: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 8) {
+        Text(title).hType(.section).foregroundStyle(HColor.textPrimary)
+          .accessibilityAddTraits(.isHeader)
+        if let count { CountBadge(count).accessibilityLabel("\(count) items") }
       }
-      Spacer(minLength: 8)
-      if let actionTitle {
-        Button(actionTitle) { action?() }
-          .buttonStyle(.plain)
-          .hType(.body.weight(.medium))
-          .foregroundStyle(HColor.textLink)
+      if let subtitle {
+        Text(subtitle).hType(.subheadline).foregroundStyle(HColor.textSecondary)
       }
+    }
+  }
+
+  @ViewBuilder private var actionButton: some View {
+    if let actionTitle {
+      Button(actionTitle) { action?() }
+        .buttonStyle(.plain)
+        .hType(.body.weight(.medium))
+        .foregroundStyle(HColor.textLink)
     }
   }
 }
@@ -219,12 +266,15 @@ public struct SectionHeader: View {
 /// The pace bar (Paper "kit Money and pace"): an 8 pt bar on a 16 pt lane, the ink tick is today.
 /// No tick for bills (`today == nil`). Colour carries the verdict; the sentence says it.
 public struct PaceBar: View {
+  let label: String
   let spent: Permille
   let today: Permille?
   let verdict: Verdict
   let onWash: Bool
 
-  public init(spent: Permille, today: Permille?, verdict: Verdict, onWash: Bool = false) {
+  /// `label` is what VoiceOver names the bar: the category or budget it measures ("Dining").
+  public init(_ label: String, spent: Permille, today: Permille?, verdict: Verdict, onWash: Bool = false) {
+    self.label = label
     self.spent = spent
     self.today = today
     self.verdict = verdict
@@ -259,8 +309,10 @@ public struct PaceBar: View {
       .frame(height: HSpacing.paceMarkerHeight)
     }
     .frame(height: HSpacing.paceMarkerHeight)
+    // One element (spec 04 §17), read like text: it is a graphic, not a control.
     .accessibilityElement()
-    .accessibilityLabel("Pace")
+    .accessibilityAddTraits(.isStaticText)
+    .accessibilityLabel(label)
     .accessibilityValue(accessibilityValue)
   }
 

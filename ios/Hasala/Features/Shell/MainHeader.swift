@@ -41,8 +41,21 @@ struct MainHeader: ToolbarContent {
         Button(action: onExtra) {
           Image(systemName: "bell")
             .foregroundStyle(Self.iconColor)
+            .overlay(alignment: .topTrailing) {
+              if unread > 0 {
+                // Drawn here rather than with .badge(): the bar's own badge grows with
+                // Dynamic Type until it covers the bell, and is the system red. Paper
+                // ("Home · Default"): 20 pt, action-destructive, a 2 pt white ring, its
+                // centre 15 pt right of and 17 pt above the button's. The button's label
+                // carries the count for VoiceOver.
+                CountBadge(unread, tone: .alert)
+                  .background(Capsule().fill(HColor.white).padding(-2))
+                  .dynamicTypeSize(...DynamicTypeSize.large)
+                  .offset(x: 15, y: -16)
+                  .accessibilityHidden(true)
+              }
+            }
         }
-        .badge(unread)
         .accessibilityLabel(unread > 0 ? "Notifications, \(unread) unread" : "Notifications")
         .accessibilityIdentifier("header.notifications")
       }
