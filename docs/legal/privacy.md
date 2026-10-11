@@ -257,7 +257,7 @@ Our server is located in the United Arab Emirates. Cloudflare, Google and Apple 
 | Invite records | Unused invites expire after 14 days, unless we set a different expiry. 30 days after an invite is used, expires or is withdrawn, its note, address hash and link key are forgotten, and an unused one is deleted. A used invite stays linked to your account until you delete it. |
 | Server logs | Our logs never contain your email address, IP address, tokens or sealed data. They hold technical events and error codes, and your random account ID only when a server error affects your account. They have no fixed period: the oldest entries are removed automatically as the log storage fills up. |
 | Admin records | A record of what we do in our admin tool, such as sending an invite, kept for 400 days. It refers to people only by internal IDs, never by email address or name. |
-| Support emails | As long as we need them to help you, and no longer than 12 months after your last message. Ask us and we'll delete them sooner. |
+| Support emails | As long as we need them to help you. Ask us and we'll delete them sooner. |
 | Waitlist sign-up, not confirmed | 7 days. |
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. |
 | Website bank votes | Kept. They contain nothing that identifies you. |
@@ -317,7 +317,7 @@ Because your transactions, budget and plan are sealed, we can't read them, so we
 
 ### How to exercise your rights
 
-Email privacy@hasala.app from the email address on your account. We'll reply within 30 days. We may ask you to confirm the request in the app, or by replying from that address, so that we know it's you. We don't charge for requests.
+Email privacy@hasala.app from the email address on your account. We'll reply as soon as we can, and within the time the law requires. We may ask you to confirm the request in the app, or by replying from that address, so that we know it's you. We don't charge for requests.
 
 If you're not satisfied with our answer, you can complain to the UAE Data Office.
 

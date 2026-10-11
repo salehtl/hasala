@@ -95,9 +95,9 @@ Please don't put details of an unfixed vulnerability in TestFlight feedback, pub
 
 ### What to expect
 
-- We'll confirm we received your report within 3 business days.
+- We'll confirm we received your report.
 - We'll keep you updated while we investigate and fix it.
-- We aim to fix serious issues within 30 days of confirming them, and we'll agree a disclosure date with you.
+- We'll fix serious issues as quickly as we can and agree a disclosure date with you.
 - With your permission, we'll credit you once the issue is fixed.
 
 There is no paid bug bounty during the beta.
