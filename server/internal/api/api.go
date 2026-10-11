@@ -292,6 +292,9 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		s.Passkeys = pk
 	}
 	s.StepUp = &auth.StepUp{Pool: pool, Passkeys: s.Passkeys}
+	if s.Passkeys != nil {
+		s.Passkeys.StepUp = s.StepUp
+	}
 	s.Writers.StepUp = s.StepUp
 	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
 	return s, nil
@@ -356,6 +359,9 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.StepUp.Passkeys == nil {
 		s.StepUp.Passkeys = s.Passkeys
+	}
+	if s.Passkeys != nil && s.Passkeys.StepUp == nil {
+		s.Passkeys.StepUp = s.StepUp
 	}
 	if s.Writers != nil && s.Writers.StepUp == nil {
 		s.Writers.StepUp = s.StepUp
@@ -434,6 +440,8 @@ func (s *Server) mountPasskeys(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/passkey/register/finish", s.passkeyLimited(s.handlePasskeyRegisterFinish))
 	mux.HandleFunc("POST /api/v1/auth/passkey/login/begin", s.passkeyLimited(s.handlePasskeyLoginBegin))
 	mux.HandleFunc("POST /api/v1/auth/passkey/login/finish", s.passkeyLimited(s.handlePasskeyLoginFinish))
+	// Add (S + WB, step-up passkey.add, DWK at finish) and delete (step-up
+	// passkey.delete): spec 02 #10, #11, #13, §10.5.
 	mux.HandleFunc("POST /api/v1/auth/passkey/add/begin", s.passkeyLimitedSession(s.handlePasskeyAddBegin))
 	mux.HandleFunc("POST /api/v1/auth/passkey/add/finish", s.passkeyLimitedSession(s.handlePasskeyAddFinish))
 	mux.HandleFunc("GET /api/v1/auth/passkeys", s.passkeyLimitedSession(s.handleListPasskeys))

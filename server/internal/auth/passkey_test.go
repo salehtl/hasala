@@ -574,12 +574,12 @@ func TestAddingASecondPasskeyKeepsOneAccountAndOneHandle(t *testing.T) {
 	p := newPasskeys(t, pool)
 	userID, first := enroll(t, p, mustMint(t, pool, "two devices"))
 
-	id, opts, err := p.BeginAdd(bgctx, userID)
+	id, opts, err := p.testBeginAdd(t, userID)
 	if err != nil {
-		t.Fatalf("BeginAdd: %v", err)
+		t.Fatalf("testBeginAdd: %v", err)
 	}
 	second := authtest.New(t)
-	credID, err := p.FinishAdd(bgctx, id, userID, second.Create(t, opts))
+	credID, err := p.testFinishAdd(bgctx, id, userID, second.Create(t, opts))
 	if err != nil {
 		t.Fatalf("FinishAdd: %v", err)
 	}
@@ -615,14 +615,14 @@ func TestAddCeremonyIsBoundToTheSessionThatStartedIt(t *testing.T) {
 	victim, _ := enroll(t, p, mustMint(t, pool, "victim"))
 	attacker, _ := enroll(t, p, mustMint(t, pool, "attacker"))
 
-	id, opts, err := p.BeginAdd(bgctx, victim)
+	id, opts, err := p.testBeginAdd(t, victim)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := authtest.New(t)
 	// The attacker's own live session, finishing a ceremony that was begun for
 	// somebody else's account.
-	if _, err := p.FinishAdd(bgctx, id, attacker, a.Create(t, opts)); err == nil {
+	if _, err := p.testFinishAdd(bgctx, id, attacker, a.Create(t, opts)); err == nil {
 		t.Fatal("a ceremony begun for one account was finished by another")
 	} else if !errors.Is(err, ErrPasskeyRejected) {
 		t.Fatalf("cross-account FinishAdd: %v, want ErrPasskeyRejected", err)
@@ -635,8 +635,8 @@ func TestAddIsRefusedForAnAccountWithNoPasskeyIdentity(t *testing.T) {
 	// An Apple account: it has no user handle, so there is nothing to bind a
 	// new credential to without silently minting a second identity.
 	u := mustUpsert(t, pool, testIdentity("sub-no-passkey"))
-	if _, _, err := p.BeginAdd(bgctx, u); !errors.Is(err, ErrNoPasskeyIdentity) {
-		t.Fatalf("BeginAdd on a non-passkey account: %v, want ErrNoPasskeyIdentity", err)
+	if _, _, err := p.testBeginAdd(t, u); !errors.Is(err, ErrNoPasskeyIdentity) {
+		t.Fatalf("testtestBeginAdd on a non-passkey account: %v, want ErrNoPasskeyIdentity", err)
 	}
 }
 

@@ -72,7 +72,7 @@ import (
 //  3. The account the credential's user handle NAMES is the same one its
 //     foreign key says. The two are derived independently (SubjectHash vs a
 //     column), so agreement is a real check, and it is the same tripwire
-//     FinishLogin and FinishAdd carry.
+//     FinishLogin and verifyAdd carry.
 //  4. go-webauthn verifies the signature, the challenge, the origin, the RP id
 //     hash and the user-verification flag. None of that is re-implemented here;
 //     this is the one path where a hand-rolled mistake is an auth bypass.

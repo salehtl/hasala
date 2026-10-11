@@ -78,6 +78,9 @@ type Authenticator struct {
 	// LastAttestationObject is the raw attestationObject of the last Create,
 	// whose SHA-256 bootstrap's auth_hash names (spec 01 §10.3.1).
 	LastAttestationObject []byte
+	// LastClientDataJSON is the raw clientDataJSON of the last Create, whose
+	// SHA-256 PasskeyAddMessage names (spec 01 §10.7).
+	LastClientDataJSON []byte
 }
 
 // New returns an authenticator with a fresh key and credential id.
@@ -199,6 +202,7 @@ func (a *Authenticator) Create(t *testing.T, opts *protocol.CredentialCreation) 
 		t.Fatal(err)
 	}
 	a.LastAttestationObject = obj
+	a.LastClientDataJSON = cd
 	resp := protocol.CredentialCreationResponse{
 		PublicKeyCredential: a.publicKeyCredential(),
 		AttestationResponse: protocol.AuthenticatorAttestationResponse{

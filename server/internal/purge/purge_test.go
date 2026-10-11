@@ -120,9 +120,9 @@ var seeders = map[string]seeder{
 	// it is. Those carry a NULL user_id and correctly survive a purge.
 	"public.webauthn_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_ceremonies
-		  (id, kind, user_id, user_handle, session_data, created_at, expires_at)
-		  VALUES ($2, 'add', $1, $3, '{"challenge":"x"}'::jsonb, now(), now() + interval '5 minutes')`,
-			u, u.String()+"-ceremony", randBytes(t, 32))
+		  (id, kind, user_id, user_handle, session_data, add_nonce, created_at, expires_at)
+		  VALUES ($2, 'add', $1, $3, '{"challenge":"x"}'::jsonb, $4, now(), now() + interval '5 minutes')`,
+			u, u.String()+"-ceremony", randBytes(t, 32), randBytes(t, 32))
 	},
 	// The account's wrapped key material: a blob that outlived its user would
 	// be the one artefact capable of opening that user's data.

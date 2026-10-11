@@ -28,12 +28,12 @@ import (
 // ceremony, so the rows under test are the ones production writes.
 func addPasskey(t *testing.T, p *Passkeys, userID uuid.UUID) *authtest.Authenticator {
 	t.Helper()
-	id, opts, err := p.BeginAdd(bgctx, userID)
+	id, opts, err := p.testBeginAdd(t, userID)
 	if err != nil {
-		t.Fatalf("BeginAdd: %v", err)
+		t.Fatalf("testBeginAdd: %v", err)
 	}
 	a := authtest.New(t)
-	if _, err := p.FinishAdd(bgctx, id, userID, a.Create(t, opts)); err != nil {
+	if _, err := p.testFinishAdd(bgctx, id, userID, a.Create(t, opts)); err != nil {
 		t.Fatalf("FinishAdd: %v", err)
 	}
 	return a
@@ -246,7 +246,7 @@ func TestDeleteCredentialRefusesTheAccountsLastPasskey(t *testing.T) {
 	p := newPasskeys(t, pool)
 	userID, only := enroll(t, p, mustMint(t, pool, "one device"))
 
-	if _, err := p.DeleteCredential(bgctx, userID, only.CredID, nil); !errors.Is(err, ErrLastPasskey) {
+	if _, err := p.deleteCredential(bgctx, userID, only.CredID, nil); !errors.Is(err, ErrLastPasskey) {
 		t.Fatalf("DeleteCredential on the last passkey: %v, want ErrLastPasskey", err)
 	}
 	if n := countCredentials(t, pool, userID); n != 1 {
@@ -269,10 +269,10 @@ func TestDeleteCredentialRefusesTheLastOneEvenAfterOthersWereRemoved(t *testing.
 	userID, first := enroll(t, p, mustMint(t, pool, "down to one"))
 	second := addPasskey(t, p, userID)
 
-	if _, err := p.DeleteCredential(bgctx, userID, first.CredID, nil); err != nil {
+	if _, err := p.deleteCredential(bgctx, userID, first.CredID, nil); err != nil {
 		t.Fatalf("DeleteCredential with two enrolled: %v", err)
 	}
-	if _, err := p.DeleteCredential(bgctx, userID, second.CredID, nil); !errors.Is(err, ErrLastPasskey) {
+	if _, err := p.deleteCredential(bgctx, userID, second.CredID, nil); !errors.Is(err, ErrLastPasskey) {
 		t.Fatalf("DeleteCredential on the remaining passkey: %v, want ErrLastPasskey", err)
 	}
 	if n := countCredentials(t, pool, userID); n != 1 {
@@ -302,7 +302,7 @@ func TestConcurrentDeletesCannotEmptyAnAccount(t *testing.T) {
 		wg.Add(1)
 		go func(id []byte) {
 			defer wg.Done()
-			_, err := p.DeleteCredential(bgctx, userID, id, nil)
+			_, err := p.deleteCredential(bgctx, userID, id, nil)
 			mu.Lock()
 			errs = append(errs, err)
 			mu.Unlock()
@@ -341,14 +341,14 @@ func TestDeleteCredentialCannotTouchAnotherAccountsPasskey(t *testing.T) {
 	addPasskey(t, p, attacker) // so the attacker is not stopped by the last-passkey rule
 	victim, victimCred := enroll(t, p, mustMint(t, pool, "victim"))
 
-	_, err := p.DeleteCredential(bgctx, attacker, victimCred.CredID, nil)
+	_, err := p.deleteCredential(bgctx, attacker, victimCred.CredID, nil)
 	if !errors.Is(err, ErrCredentialUnknown) {
 		t.Fatalf("deleting another account's credential: %v, want ErrCredentialUnknown", err)
 	}
 	if n := countCredentials(t, pool, victim); n != 1 {
 		t.Fatalf("the victim has %d credentials, want 1", n)
 	}
-	if _, err := p.DeleteCredential(bgctx, attacker, []byte("no such credential"), nil); !errors.Is(err, ErrCredentialUnknown) {
+	if _, err := p.deleteCredential(bgctx, attacker, []byte("no such credential"), nil); !errors.Is(err, ErrCredentialUnknown) {
 		t.Fatalf("deleting an id that exists nowhere: %v, want the SAME ErrCredentialUnknown", err)
 	}
 }
@@ -373,7 +373,7 @@ func TestDeletingACredentialTakesItsKeyWrapWithIt(t *testing.T) {
 		t.Fatalf("%d wraps before the delete, want 2", n)
 	}
 
-	if _, err := p.DeleteCredential(bgctx, userID, first.CredID, nil); err != nil {
+	if _, err := p.deleteCredential(bgctx, userID, first.CredID, nil); err != nil {
 		t.Fatalf("DeleteCredential: %v", err)
 	}
 
@@ -429,7 +429,7 @@ func TestDeletingACredentialEndsOnlyThatCredentialsSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	revoked, err := p.DeleteCredential(bgctx, userID, lost.CredID, SessionHash(caller))
+	revoked, err := p.deleteCredential(bgctx, userID, lost.CredID, SessionHash(caller))
 	if err != nil {
 		t.Fatalf("DeleteCredential: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := p.DeleteCredential(bgctx, userID, thisDevice.CredID, SessionHash(caller)); err != nil {
+	if _, err := p.deleteCredential(bgctx, userID, thisDevice.CredID, SessionHash(caller)); err != nil {
 		t.Fatalf("DeleteCredential: %v", err)
 	}
 	if _, err := sessions.Resolve(bgctx, caller); !errors.Is(err, ErrSessionRevoked) {
@@ -505,7 +505,7 @@ func TestRemovingACredentialDoesNotDeleteItsSessionRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.DeleteCredential(bgctx, userID, first.CredID, nil); err != nil {
+	if _, err := p.deleteCredential(bgctx, userID, first.CredID, nil); err != nil {
 		t.Fatalf("DeleteCredential: %v", err)
 	}
 

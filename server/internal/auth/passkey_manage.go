@@ -3,15 +3,15 @@ package auth
 // Managing enrolled passkeys: listing them, and removing one.
 //
 // It is a separate file from passkey.go for the same reason reauth.go is —
-// nothing here is a ceremony. There is no challenge, no webauthn_ceremonies
-// row, no begin step and no signature to verify: the caller already holds a
-// session, and a session is exactly the authority these two operations need,
-// because neither of them can be used to GAIN access. One reads a list of
-// opaque ids; the other takes access away.
+// nothing here is a ceremony. Listing needs only a session. Removing needs
+// step-up passkey.delete with T = (credential_id) (spec 02 #13, §10.5; spec
+// 01 §10.7): a stolen session must not be able to strip the owner's passkeys,
+// so the removal runs inside that step-up's transaction (DeletePasskey,
+// passkey_guarded.go). deleteCredentialTx below is the removal itself.
 //
 // # The refusal that matters
 //
-// [Passkeys.DeleteCredential] refuses to remove an account's LAST credential,
+// deleteCredentialTx refuses to remove an account's LAST credential,
 // and that refusal is here rather than in the API layer or in the screen. A
 // passkey is the only way into a v2 account: there is no password, no reset
 // mail, and the recovery phrase unlocks DATA — it does not restore ACCESS.
@@ -90,6 +90,8 @@ import (
 // nothing about the credential was rejected, the operation was — the HTTP layer
 // answers it 409 with its own code rather than collapsing it into the package's
 // one 401.
+// The HTTP code is spec 02's last_authenticator: this tree has no passwords,
+// so the only passkey is always the account's last authenticator.
 var ErrLastPasskey = errors.New("auth: refusing to remove the account's last passkey")
 
 // Credential is one enrolled authenticator, in the only shape anything outside
@@ -151,16 +153,15 @@ func (p *Passkeys) ListCredentials(ctx context.Context, userID uuid.UUID) ([]Cre
 	return out, nil
 }
 
-// DeleteCredential removes one of userID's credentials and ends the sessions
-// that credential created. It reports how many sessions it revoked.
+// deleteCredentialTx removes one of userID's credentials inside tx and ends the sessions that credential created. It reports how
+// many sessions it revoked.
 //
 // keepSessionHash is the SessionHash of the caller's own bearer token. It
 // spares that session from the UNATTRIBUTED sweep only — a session this server
 // cannot attribute is revoked on suspicion, and the one it is answering right
 // now is the one session it has no reason to suspect. It does NOT spare a
 // caller whose session was minted by the credential being removed; see the file
-// header. Pass nil to spare nothing, which is the honest degenerate case (no
-// caller session means no session to keep) rather than a silent no-op.
+// header. Pass nil to spare nothing.
 //
 // Two rejections, and they are different kinds of fact:
 //
@@ -169,33 +170,22 @@ func (p *Passkeys) ListCredentials(ctx context.Context, userID uuid.UUID) ([]Cre
 //     credential is somebody else's" — telling them apart says whether an id
 //     exists and whose it is.
 //   - ErrLastPasskey: it is theirs, and it is the only one. See the file header.
-func (p *Passkeys) DeleteCredential(ctx context.Context, userID uuid.UUID, credentialID, keepSessionHash []byte) (int64, error) {
-	if p == nil || p.Pool == nil {
-		return 0, errors.New("auth: Passkeys is not configured")
-	}
+func deleteCredentialTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, credentialID, keepSessionHash []byte, now time.Time) (int64, error) {
 	if userID == uuid.Nil {
-		return 0, errors.New("auth: passkey: DeleteCredential: user id is zero")
+		return 0, errors.New("auth: passkey: deleteCredentialTx: user id is zero")
 	}
 	if len(credentialID) == 0 {
 		return 0, ErrCredentialUnknown
 	}
 
-	// READ COMMITTED pinned rather than inherited, for the reason upsertUser
-	// pins it: default_transaction_isolation is settable per database, per role
-	// and by a pooler, and the lock-then-count below relies on a waiter taking a
-	// FRESH snapshot when the lock is released. Under REPEATABLE READ the second
-	// transaction would wake up and still see the row the first one deleted,
-	// which is precisely the miscount this lock exists to prevent.
-	tx, err := p.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
-	if err != nil {
-		return 0, fmt.Errorf("auth: passkey: delete credential: begin: %w", err)
-	}
-	defer func() {
-		rbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_ = tx.Rollback(rbCtx)
-	}()
-
+	// tx must be READ COMMITTED, pinned rather than inherited (StepUp.Run uses
+	// pgtx.BeginReadCommitted): default_transaction_isolation is settable per
+	// database, per role and by a pooler, and the lock-then-count below relies
+	// on a waiter taking a FRESH snapshot when the lock is released. Under
+	// REPEATABLE READ the second transaction would wake up and still see the
+	// row the first one deleted, which is precisely the miscount this lock
+	// exists to prevent.
+	//
 	// Every credential row of this account, locked. The lock is what makes the
 	// count below a fact rather than a guess: a concurrent delete against the
 	// same account blocks here and re-reads afterwards.
@@ -240,7 +230,7 @@ func (p *Passkeys) DeleteCredential(ctx context.Context, userID uuid.UUID, crede
 	// keep a session no passkey backs any more. Proved by mutation:
 	// TestRemovingTheCredentialYourOwnSessionUsesSignsYouOut fails on this
 	// swap.
-	revoked, err := revokeCredentialSessionsTx(ctx, tx, userID, credentialID, keepSessionHash, p.now())
+	revoked, err := revokeCredentialSessionsTx(ctx, tx, userID, credentialID, keepSessionHash, now)
 	if err != nil {
 		return 0, err
 	}
@@ -261,9 +251,6 @@ func (p *Passkeys) DeleteCredential(ctx context.Context, userID uuid.UUID, crede
 		return 0, fmt.Errorf("auth: passkey: delete credential: removed %d rows, want 1", tag.RowsAffected())
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("auth: passkey: delete credential: commit: %w", err)
-	}
 	return revoked, nil
 }
 

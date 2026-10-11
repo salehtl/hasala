@@ -17,9 +17,25 @@
 --     account's address, which bootstrap's email_hash binds. The signup work
 --     that sets it at account creation makes it NOT NULL;
 --   * webauthn_credentials gain attestation_sha256 (R-01), webauthn_ceremonies
---     the register binding (authority_pubkey, register_nonce);
+--     the register binding (authority_pubkey, register_nonce) and the add
+--     binding (add_nonce: the passkey.add step-up nonce PasskeyAddMessage
+--     signs, spec 01 §10.7);
 --   * sessions gain the writer binding (spec 02 §9.4);
 --   * step_up_challenges (spec 02 §8.1).
+--
+-- Two ADD COLUMN ... NOT NULL statements below have no default
+-- (webauthn_credentials.attestation_sha256, writers.dak_pubkey). They apply
+-- only to empty tables, which holds because no database has been deployed with
+-- 00001 yet: the QA database is created from scratch (or this file is squashed
+-- into the baseline) before the first deploy. Against a database that already
+-- holds credentials or writers this migration fails, on purpose: there is no
+-- honest value to backfill.
+--
+-- users.email_norm is nullable here and nothing in this tree writes it yet;
+-- spec 01 §9 wants it NOT NULL plus email_verified_at. The signup work (spec
+-- 02 #43-#45) sets it at account creation and tightens the column. Until
+-- then bootstrap refuses every account it cannot bind an address for, so this
+-- tree must not be deployed to real users before signup lands.
 
 -- +goose StatementBegin
 DO $$
@@ -54,7 +70,10 @@ ALTER TABLE webauthn_ceremonies
     (kind = 'register') = (authority_pubkey IS NOT NULL)
     AND (kind = 'register') = (register_nonce IS NOT NULL)
     AND (authority_pubkey IS NULL OR octet_length(authority_pubkey) = 32)
-    AND (register_nonce IS NULL OR octet_length(register_nonce) = 32));
+    AND (register_nonce IS NULL OR octet_length(register_nonce) = 32)),
+  ADD COLUMN add_nonce bytea,
+  ADD CONSTRAINT webauthn_ceremonies_add_binding CHECK (
+    (kind = 'add') = (add_nonce IS NOT NULL) AND (add_nonce IS NULL OR octet_length(add_nonce) = 32));
 
 -- ── writers ─────────────────────────────────────────────────────────────────
 -- The table is empty before the first deploy; the DAK has no default because a

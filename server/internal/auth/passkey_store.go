@@ -49,18 +49,29 @@ type ceremony struct {
 	// §10.3, D01). Set for kind register only (the CHECK enforces it).
 	AuthorityPubkey []byte
 	RegisterNonce   []byte
-	ExpiresAt       time.Time
+	// AddNonce binds an add ceremony to the passkey.add step-up that opened
+	// it: PasskeyAddMessage at add/finish signs this nonce (spec 01 §10.7,
+	// D33). Set for kind add only (the CHECK enforces it).
+	AddNonce  []byte
+	ExpiresAt time.Time
 	sessionJSON     []byte
 }
 
-// putCeremony records a ceremony that has just begun.
+// putCeremony records a ceremony that has just begun, on the pool.
 func (p *Passkeys) putCeremony(ctx context.Context, c ceremony) error {
+	return p.putCeremonyOn(ctx, p.Pool, c)
+}
+
+// putCeremonyOn records a ceremony through q: add/begin writes it inside the
+// passkey.add step-up's transaction, so the nonce is spent exactly when the
+// ceremony exists.
+func (p *Passkeys) putCeremonyOn(ctx context.Context, q execer, c ceremony) error {
 	raw, err := json.Marshal(c.Session)
 	if err != nil {
 		return fmt.Errorf("auth: passkey: marshal session data: %w", err)
 	}
 	now := p.now()
-	var handle, invite, authority, regNonce any
+	var handle, invite, authority, regNonce, addNonce any
 	if len(c.UserHandle) > 0 {
 		handle = c.UserHandle
 	}
@@ -70,11 +81,14 @@ func (p *Passkeys) putCeremony(ctx context.Context, c ceremony) error {
 	if len(c.AuthorityPubkey) > 0 {
 		authority, regNonce = c.AuthorityPubkey, c.RegisterNonce
 	}
-	if _, err := p.Pool.Exec(ctx,
+	if len(c.AddNonce) > 0 {
+		addNonce = c.AddNonce
+	}
+	if _, err := q.Exec(ctx,
 		`INSERT INTO webauthn_ceremonies (id, kind, user_id, user_handle, session_data, invite_code_hash,
-		   authority_pubkey, register_nonce, created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		c.ID, string(c.Kind), c.UserID, handle, raw, invite, authority, regNonce, now, now.Add(CeremonyTTL)); err != nil {
+		   authority_pubkey, register_nonce, add_nonce, created_at, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		c.ID, string(c.Kind), c.UserID, handle, raw, invite, authority, regNonce, addNonce, now, now.Add(CeremonyTTL)); err != nil {
 		return fmt.Errorf("auth: passkey: record ceremony: %w", err)
 	}
 	return nil
@@ -99,9 +113,10 @@ func (p *Passkeys) claimCeremony(ctx context.Context, id string, kind ceremonyKi
 	var c ceremony
 	err := p.Pool.QueryRow(ctx,
 		`DELETE FROM webauthn_ceremonies WHERE id = $1 AND kind = $2
-		 RETURNING id, kind, user_id, user_handle, session_data, invite_code_hash, authority_pubkey, register_nonce, expires_at`,
+		 RETURNING id, kind, user_id, user_handle, session_data, invite_code_hash, authority_pubkey, register_nonce,
+		           add_nonce, expires_at`,
 		id, string(kind)).Scan(&c.ID, &c.Kind, &c.UserID, &c.UserHandle, &c.sessionJSON, &c.InviteHash,
-		&c.AuthorityPubkey, &c.RegisterNonce, &c.ExpiresAt)
+		&c.AuthorityPubkey, &c.RegisterNonce, &c.AddNonce, &c.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Unknown, already spent, or begun as a different kind. All one answer:
 		// which of the three it was is an oracle in a response and is in the

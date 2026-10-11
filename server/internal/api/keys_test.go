@@ -149,6 +149,13 @@ func (k *keyed) bootstrapRequest(d *authtest.Device, kind byte, authHash []byte,
 // stepUp begins a passkey step-up on token's session and proves it.
 func (k *keyed) stepUp(token string, action keyproto.Action, fields ...[]byte) *StepUpWire {
 	k.h.t.Helper()
+	return k.stepUpWith(token, k.authn, action, fields...)
+}
+
+// stepUpWith is stepUp proved by authenticator a. Every authenticator of the
+// account draws its signature counter from k.counter, so each one's rises.
+func (k *keyed) stepUpWith(token string, a *authtest.Authenticator, action keyproto.Action, fields ...[]byte) *StepUpWire {
+	k.h.t.Helper()
 	ph, _ := keyproto.ParamsHash(action, fields...)
 	w := k.h.req("POST", "/api/v1/auth/step-up/begin", token, StepUpBeginRequest{
 		Action: string(action), ParamsHash: hex.EncodeToString(ph[:]), ProofKind: "passkey",
@@ -162,7 +169,7 @@ func (k *keyed) stepUp(token string, action keyproto.Action, fields ...[]byte) *
 		k.h.t.Fatalf("step-up challenge %s, want %s", b.Challenge, b64url(c[:]))
 	}
 	return &StepUpWire{Nonce: b.Nonce, Proof: StepUpProofWire{Kind: "passkey",
-		Assertion: k.authn.AssertChallenge(k.h.t, authtest.RPID, c[:], k.counter.Add(1))}}
+		Assertion: a.AssertChallenge(k.h.t, authtest.RPID, c[:], k.counter.Add(1))}}
 }
 
 // enrol registers d over HTTP on a fresh session and returns that session.
