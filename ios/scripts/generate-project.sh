@@ -36,7 +36,7 @@ if [[ "${1:-}" == "--check" ]]; then
 	trap 'rm -rf "$tmp"' EXIT
 	# XcodeGen reads the target folders (it lists Info.plist and the entitlements as
 	# exceptions only if they exist), so the check runs on a copy of the sources.
-	for d in project.yml Config Hasala HasalaTests HasalaUITests HasalaKit/Package.swift; do
+	for d in project.yml Config Hasala HasalaTests HasalaUITests HasalaKit/Package.swift HasalaCore/Package.swift; do
 		mkdir -p "$tmp/$(dirname "$d")"
 		cp -R "$here/$d" "$tmp/$d"
 	done
