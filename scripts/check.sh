@@ -18,6 +18,9 @@
 # In order:
 #   0. The real-mail fence: no real bank mail has come back into this tree.
 #      It needs no toolchain; `scripts/check.sh --fence-only` runs it alone.
+#  0b. HasalaCore's source lints (ios/scripts/check-imports.sh and
+#      check-forbidden.sh): grep only, so they run on Linux too. The Swift
+#      build and tests themselves run in CI's `swift` job on a Mac.
 #   1. The Go toolchain is at least server/go.mod's `toolchain` line.
 #   2. The hasalad fences (spec 02 §4.4, cmd/hasalad/fence_test.go): the
 #      server's build graph never reaches the oracle module, the test sealers
@@ -131,6 +134,15 @@ echo "no real-mail fixture or private expectation file in the public tree"
 if [[ -n "$FENCE_ONLY" ]]; then
 	exit 0
 fi
+
+# --- 0b. HasalaCore source lints ------------------------------------------------
+# The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
+# scan and the R2/R3/R7/R8 grep lints. The half of check-imports.sh that
+# compares imports.allow with Package.swift needs `swift`; CI's `swift` job
+# runs it.
+step "HasalaCore import and API lints"
+"$ROOT/ios/scripts/check-imports.sh" --no-manifest
+"$ROOT/ios/scripts/check-forbidden.sh"
 
 cd "$ROOT/server"
 

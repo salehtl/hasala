@@ -1,0 +1,58 @@
+# What each HasalaCore source directory may import (spec 04 §2.3; rules R1 and
+# R6 of §2.4). Checked by ios/scripts/check-imports.sh, which fails on any
+# `import` in Sources/HasalaCore/<dir>/ that its line here does not list.
+#
+#   <dir>  <module> <module> ...
+#
+# `*` is added to every directory. A directory's other modules are its
+# package dependencies, exactly as Package.swift declares them (the script
+# checks that against the manifest whenever `swift` is available, so this file
+# cannot widen the target graph), plus its §2.3 system modules.
+#
+# SwiftPM lets a target import anything its dependencies link, transitively;
+# this file is what keeps, for example, GRDB out of everything but Store and
+# Projection (R6). The script also refuses, whatever this file says: GRDB
+# outside Store/Projection, FoundationModels outside Model, and the modules
+# §2.3 bans from the core outright.
+
+*             Foundation os Synchronization
+
+# L0
+Primitives    CryptoKit Security zlib CommonCrypto
+Text
+JSON          HasalaText
+Time
+Money         HasalaText
+Resources
+
+# L1. Template's ICU module map over libicucore is added here (and in
+# Package.swift) by its owner when it lands.
+Wire          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
+Crypto        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CryptoKit Security zlib
+Auth          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
+Norm          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
+Template      CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
+Mail          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
+
+# L2
+Replay        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire OrderedCollections
+Invariants    CoreReplay CoreWire CoreCrypto
+Categorize    CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources OrderedCollections
+Domain        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreReplay CoreCategorize OrderedCollections
+
+# L3: the only GRDB importers (R6).
+Store         CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain GRDB OrderedCollections
+Projection    CoreReplay CoreDomain CoreCategorize GRDB OrderedCollections
+
+# L4
+Sync          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection
+Outbox        CoreSync
+Mailbox       CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreOutbox CoreSync
+Signals       CoreDomain CoreProjection OrderedCollections
+
+# A: the only FoundationModels importer.
+Model         CoreCategorize FoundationModels
+
+# T: test support, never linked by the app.
+TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals
+SoftAuth      CorePrimitives CoreAuth
