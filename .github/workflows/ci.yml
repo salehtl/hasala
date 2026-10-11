@@ -285,11 +285,14 @@ jobs:
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
-  # The iOS app (ios/): token generator freshness, the HasalaKit package tests on
-  # macOS, then a simulator build with the unit and UI smoke tests. Nothing is
-  # signed here (CODE_SIGNING_ALLOWED=NO) and no Apple credential exists in CI;
-  # archives, signing and uploads happen only on the owner's Mac
-  # (ios/scripts/archive.sh, ios/scripts/upload.sh). Not a required check.
+  # The iOS app (ios/): token generator freshness, the release-script tests (with
+  # the system's tools and again inside the Nix devShell, where GNU coreutils come
+  # first on PATH) and shellcheck, the HasalaKit package tests on macOS, then a
+  # simulator build with the unit and UI smoke tests. Nothing is signed for
+  # distribution here (CODE_SIGNING_ALLOWED=NO; the script tests sign a synthetic
+  # app ad hoc) and no Apple credential exists in CI; archives, signing and uploads
+  # happen only on the owner's Mac (ios/scripts/archive.sh, ios/scripts/upload.sh).
+  # Not a required check.
   # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
   ios:
     needs: changes
@@ -319,10 +322,16 @@ jobs:
           fi
 
       # XcodeGen 2.46.0 from the flake (packages.aarch64-darwin.xcodegen, pinned
-      # by hash): only that one package is built, not the devShell. A missing
-      # or different XcodeGen fails the step (generate-project.sh exits 2).
+      # by hash). A missing or different XcodeGen fails the step
+      # (generate-project.sh exits 2). The darwin devShell is built too, for the
+      # release-script tests below.
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
+          diagnostic-endpoint: ""
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
           diagnostic-endpoint: ""
 
       - name: Project matches ios/project.yml (XcodeGen 2.46.0, AT-01)
@@ -330,10 +339,20 @@ jobs:
           xcodegen="$(nix build .#xcodegen --no-link --print-out-paths)/bin/xcodegen"
           XCODEGEN="$xcodegen" ios/scripts/generate-project.sh --check
 
-      - name: Release script tests (build numbers, upload prechecks; offline)
-        run: |
-          ios/scripts/tests/build_number_test.sh
-          ios/scripts/tests/upload_precheck_test.sh
+      # Offline: fake keys, a stub xcodebuild and a stub xcrun (altool never
+      # runs), synthetic .ipa files, and a temporary build directory.
+      - name: Release script tests (build numbers, keys, prechecks, inspection; offline)
+        run: ios/scripts/tests/run.sh
+
+      # The owner's shell is the devShell (.envrc: use flake), where GNU stat and
+      # date come first on PATH; the scripts must work there too.
+      - name: Release script tests in the Nix devShell (GNU coreutils first)
+        run: ios/scripts/tests/devshell_test.sh
+
+      - name: shellcheck the iOS scripts
+        run: >-
+          nix shell --inputs-from . nixpkgs#shellcheck --command
+          shellcheck -S warning ios/scripts/*.sh ios/scripts/tests/*.sh
 
       - name: HasalaKit tests (macOS)
         run: swift test --package-path ios/HasalaKit
