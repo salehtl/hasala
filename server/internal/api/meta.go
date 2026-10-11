@@ -46,7 +46,7 @@ func (s *Server) mountMeta(mux *http.ServeMux) {
 }
 
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
-	if !s.MetaPerIP.Allow(clientKey(r)) {
+	if !s.MetaPerIP.Allow(s.clientKey(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many requests; try again shortly")
 		return
 	}

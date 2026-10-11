@@ -96,6 +96,18 @@ var notUserLinked = []string{
 	"public.deleted_account_sessions",
 	// goose's own migration ledger.
 	"public.goose_db_version",
+	// The account ceremonies' keyless tables (spec 02 §5.3, §15.3): pauses and
+	// counters keyed by an email_tag or a writer hash and swept within a day;
+	// device-freeze nonces, which name a writer id and no account; the key
+	// fingerprints.
+	"public.email_code_pauses",
+	"public.rate_counters",
+	"public.device_freeze_challenges",
+	"public.server_meta",
+	// Spec 07 §2.12: the bank catalog and the waitlist. A purged account's
+	// joined entry is erased by 07's purge step (WS-19).
+	"public.banks",
+	"public.waitlist_entries",
 }
 
 // Report is what a purge did, per table. It is returned even on the paths that

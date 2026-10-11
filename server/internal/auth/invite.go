@@ -1,31 +1,15 @@
 package auth
 
-// Single-use invite codes: the closed beta's gate on account CREATION.
+// Invites (spec 07 §2.5, §4.4; spec 02 §14.1). Spec 07 owns minting, sending,
+// states and the console; this file owns redemption inside account creation,
+// the join hook it calls, and the CLI's printed codes (`invite mint
+// [--review]`) until WS-19's invite work replaces them.
 //
-// # What this gates, and what it deliberately does not
-//
-// It gates the creation of a `users` row and nothing else. An account that
-// already exists signs in with no code, for ever, and a code presented by a
-// returning user is ignored rather than spent — a beta gate that logged people
-// out of their own ledger the day the operator stopped minting codes would be a
-// worse failure than an open sign-up.
-//
-// # Why a code and not an allowlist
-//
-// See 00020_invite_codes.sql: an IdP `subject` is not knowable until the first
-// sign-in, which is the event being gated, so there is no moment at which an
-// operator could put it on a list. The secret has to be one the operator
-// invents, which means it has to be handed over out of band. That is the whole
-// design.
-//
-// # The one distinguishable rejection in the whole auth surface
-//
-// Every other authentication failure in this system collapses to a byte-
-// identical 401, because telling a caller WHICH check failed is an oracle. This
-// one is different on purpose: `not_invited` is a fact about the deployment's
-// policy, not about the credential, and it tells the person holding the phone
-// the one thing they need to know — that re-entering their Apple password will
-// never help. It reveals nothing an attacker could not learn by trying a code.
+// A code is 15 random bytes as 24 unpadded base32 characters, stored only as
+// SHA-256 of its normalized form. An invite the worker emails carries an
+// address (email_tag) and a 32-byte link key (stored as its SHA-256), which
+// travel in https://hasala.app/i/<CODE>#<LINK_KEY>: the fragment never reaches
+// a server, so only the email proves the address.
 
 import (
 	"context"
@@ -39,33 +23,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrNotInvited means account creation was required and no unredeemed code
-// authorized it. It is returned INSTEAD of a user id, so a caller that ignores
-// it cannot end up holding a session for an account that was never made.
-var ErrNotInvited = errors.New("auth: account creation needs an unredeemed invite code")
+// ErrNotInvited is the one distinguishable signup answer (403 not_invited):
+// an unknown, spent, revoked or expired code, or an addressed invite used with
+// another address.
+var ErrNotInvited = errors.New("auth: account creation needs a redeemable invite")
 
-// inviteCodeBytes is the entropy behind a code: 15 bytes is 120 bits, which is
-// not guessable and encodes to exactly 24 base32 characters with no padding.
-// The padding matters more than it sounds — a code ending in "=" is a code a
-// human retypes wrongly and a URL escapes.
 const inviteCodeBytes = 15
 
-// inviteAlphabet is RFC 4648 base32: A-Z and 2-7, no 0/1/8/9. Chosen over
-// base64 because the code is READ ALOUD and RETYPED: base32 has no case
-// distinction to lose, no `+` or `/` to escape, and no characters that a
-// messaging app will linkify.
 var inviteAlphabet = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// NormalizeInviteCode is the single definition of "the same code", applied
-// identically at mint and at redemption so the two cannot drift.
-//
-// It upper-cases, and it drops the separators a person adds while transcribing:
-// spaces, tabs, newlines and dashes. Nothing else is stripped — a code
-// containing a character that is not in the alphabet is simply a code that
-// matches no row, which is the correct answer and not something to repair.
+// NormalizeInviteCode strips spaces, tabs, line breaks, hyphens and
+// underscores and uppercases the rest, so a code read aloud, pasted with its
+// display hyphens or typed in lowercase still matches.
 func NormalizeInviteCode(raw string) string {
 	var b strings.Builder
 	b.Grow(len(raw))
@@ -79,131 +50,163 @@ func NormalizeInviteCode(raw string) string {
 	return strings.ToUpper(b.String())
 }
 
-// inviteCodeHash is the only representation of a code that is ever persisted.
-// Unsalted SHA-256, on the same terms as sessions.token_hash: the input is 120
-// bits from crypto/rand, so there is no dictionary to attack.
-func inviteCodeHash(code string) []byte {
-	sum := sha256.Sum256([]byte(NormalizeInviteCode(code)))
+// InviteCodeHash is SHA-256(NormalizeInviteCode(code)), or nil for a code that
+// normalizes to nothing.
+func InviteCodeHash(code string) []byte {
+	n := NormalizeInviteCode(code)
+	if n == "" {
+		return nil
+	}
+	sum := sha256.Sum256([]byte(n))
 	return sum[:]
 }
 
-// InviteCodeHash is inviteCodeHash for callers that must hold a code across two
-// round trips: a passkey registration takes the code at `register/begin` and
-// cannot spend it until `register/finish`, so the ceremony row carries this
-// digest rather than the code itself (00025_passkeys.sql).
-//
-// An empty or separator-only code hashes to NOTHING — nil, not the digest of the
-// empty string — so a caller who offered no code cannot end up holding a value
-// that might one day match a row. redeemInviteTx treats a nil hash as
-// ErrNotInvited for the same reason.
-func InviteCodeHash(code string) []byte {
-	if NormalizeInviteCode(code) == "" {
-		return nil
-	}
-	return inviteCodeHash(code)
+// MintOptions describes a printed CLI invite (spec 07 §3.2: `invite mint`).
+type MintOptions struct {
+	Note   string
+	TTL    time.Duration // 1–30 days; zero is 14 days
+	Review bool          // a Beta App Review invite (spec 02 §14.2): unaddressed, never emailed
+	// EmailTag and LinkKey make an addressed invite (the shape 07's worker
+	// mints for an emailed invite). LinkKey needs EmailTag; neither goes with
+	// Review.
+	EmailTag []byte
+	LinkKey  []byte
+	Now      time.Time
 }
 
-// MintInvite creates one code and returns it. The plaintext is returned exactly
-// once, to exactly one caller, and is not recoverable from the database
-// afterwards — an operator who loses it mints another.
-//
-// note is the operator's own words about who it is for. It may be empty.
-func MintInvite(ctx context.Context, pool *pgxpool.Pool, note string, now time.Time) (string, error) {
-	if pool == nil {
-		return "", errors.New("auth: MintInvite: pool is nil")
-	}
+// MintInvite mints one active invite and returns its code, shown once.
+func MintInvite(ctx context.Context, q queryExecer, o MintOptions) (string, error) {
 	raw := make([]byte, inviteCodeBytes)
 	if _, err := rand.Read(raw); err != nil {
-		// Unreachable on Go 1.25 (crypto/rand panics rather than failing), but a
-		// silently short code is a guessable one, so it is checked.
 		return "", fmt.Errorf("auth: MintInvite: read random: %w", err)
 	}
 	code := inviteAlphabet.EncodeToString(raw)
-	var noteArg any
-	if note != "" {
-		noteArg = note
+	ttl := o.TTL
+	if ttl == 0 {
+		ttl = 14 * 24 * time.Hour
 	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO invite_codes (code_hash, note, created_at) VALUES ($1, $2, $3)`,
-		inviteCodeHash(code), noteArg, now); err != nil {
+	now := o.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	var note, tag, link any
+	if o.Note != "" {
+		note = o.Note
+	}
+	if len(o.EmailTag) > 0 {
+		tag = o.EmailTag
+	}
+	if len(o.LinkKey) > 0 {
+		h := sha256.Sum256(o.LinkKey)
+		link = h[:]
+	}
+	if _, err := q.Exec(ctx,
+		`INSERT INTO invite_codes (code_hash, link_key_hash, email_tag, origin, review, state, note, ttl,
+		   created_at, minted_at, expires_at, mint_count)
+		 VALUES ($1, $2, $3, 'cli', $4, 'active', $5, $6, $7, $7, $8, 1)`,
+		InviteCodeHash(code), link, tag, o.Review, note, ttl, now, now.Add(ttl)); err != nil {
 		return "", fmt.Errorf("auth: MintInvite: %w", err)
 	}
 	return code, nil
 }
 
-// InviteSummary is one row of the operator's listing. The code is absent
-// because it is not stored; Hash is its short prefix, which is enough to tell
-// two rows apart in a terminal and useless as a credential.
+// InviteSummary is one row of `hasalad invite list`. It never carries a code.
 type InviteSummary struct {
-	Hash       string
+	ID         uuid.UUID
+	State      string
+	Review     bool
+	Addressed  bool
 	Note       string
 	CreatedAt  time.Time
+	ExpiresAt  *time.Time
 	RedeemedAt *time.Time
 	RedeemedBy *uuid.UUID
 }
 
-// ListInvites reports every code, newest first, for `hasalad invite list`. A
-// capability an operator cannot enumerate is one they cannot manage.
-func ListInvites(ctx context.Context, pool *pgxpool.Pool) ([]InviteSummary, error) {
-	if pool == nil {
-		return nil, errors.New("auth: ListInvites: pool is nil")
-	}
-	rows, err := pool.Query(ctx,
-		`SELECT code_hash, coalesce(note, ''), created_at, redeemed_at, redeemed_by
-		   FROM invite_codes ORDER BY created_at DESC, code_hash`)
+// ListInvites lists every invite, newest first.
+func ListInvites(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}) ([]InviteSummary, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, state, review, email_tag IS NOT NULL, coalesce(note, ''), created_at, expires_at, redeemed_at, redeemed_by
+		   FROM invite_codes ORDER BY created_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("auth: ListInvites: %w", err)
 	}
 	defer rows.Close()
 	var out []InviteSummary
 	for rows.Next() {
-		var (
-			hash []byte
-			s    InviteSummary
-		)
-		if err := rows.Scan(&hash, &s.Note, &s.CreatedAt, &s.RedeemedAt, &s.RedeemedBy); err != nil {
+		var s InviteSummary
+		if err := rows.Scan(&s.ID, &s.State, &s.Review, &s.Addressed, &s.Note, &s.CreatedAt, &s.ExpiresAt,
+			&s.RedeemedAt, &s.RedeemedBy); err != nil {
 			return nil, fmt.Errorf("auth: ListInvites: %w", err)
 		}
-		s.Hash = fmt.Sprintf("%x", hash[:6])
 		out = append(out, s)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("auth: ListInvites: %w", err)
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
-// redeemInviteTx spends one code inside the caller's transaction, which MUST be
-// the transaction that creates the account.
-//
-// The single-use guarantee is the `redeemed_at IS NULL` predicate, not
-// anything in Go: two transactions presenting the same code serialize on that
-// row, and the second re-evaluates the predicate after the first commits (the
-// caller pins READ COMMITTED for exactly this reason) and matches zero rows.
-// A check-then-update in application code would let both through.
-// It takes the HASH rather than the code, because the two callers hold the code
-// at different times: the ID-token exchange has the plaintext in the request it
-// is serving, while a passkey registration took it one round trip earlier and
-// kept only the digest (see InviteCodeHash). Hashing at the edge rather than
-// here means there is exactly one moment in either flow at which a live code
-// exists in memory.
-func redeemInviteTx(ctx context.Context, tx pgx.Tx, codeHash []byte, userID uuid.UUID, now time.Time) error {
-	// An absent code is refused here rather than treated as "no code offered".
-	// The caller decides whether a code is REQUIRED; once it is, an empty
-	// string is a failed attempt like any other and must not normalize into a
-	// hash that could ever match a row.
+// invite is what signup reads about a redeemable invite.
+type invite struct {
+	ID          uuid.UUID
+	EmailTag    []byte
+	LinkKeyHash []byte
+	Review      bool
+}
+
+// redeemableInvite reads the invite a code names if it is redeemable now
+// (state = 'active' AND expires_at > now).
+func redeemableInvite(ctx context.Context, q querier, codeHash []byte, now time.Time) (invite, error) {
 	if len(codeHash) == 0 {
-		return ErrNotInvited
+		return invite{}, ErrNotInvited
 	}
-	tag, err := tx.Exec(ctx,
-		`UPDATE invite_codes SET redeemed_at = $1, redeemed_by = $2
-		  WHERE code_hash = $3 AND redeemed_at IS NULL`,
-		now, userID, codeHash)
+	var inv invite
+	err := q.QueryRow(ctx,
+		`SELECT id, email_tag, link_key_hash, review FROM invite_codes
+		  WHERE code_hash = $1 AND state = 'active' AND expires_at > $2`, codeHash, now).
+		Scan(&inv.ID, &inv.EmailTag, &inv.LinkKeyHash, &inv.Review)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return invite{}, ErrNotInvited
+	}
 	if err != nil {
-		return fmt.Errorf("auth: redeem invite: %w", err)
+		return invite{}, fmt.Errorf("auth: read invite: %w", err)
 	}
-	if tag.RowsAffected() != 1 {
-		return ErrNotInvited
+	return inv, nil
+}
+
+// redeemInviteTx spends the invite inside the account-creation transaction
+// (spec 02 §14.1): exactly one active, unexpired row, still bound to this
+// address when it is addressed, or ErrNotInvited and the transaction fails.
+func redeemInviteTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID uuid.UUID, now time.Time) (invite, error) {
+	var inv invite
+	err := tx.QueryRow(ctx,
+		`UPDATE invite_codes SET state = 'redeemed', redeemed_at = $2, redeemed_by = $3, closed_at = $2
+		  WHERE code_hash = $1 AND state = 'active' AND expires_at > $2
+		    AND (email_tag IS NULL OR email_tag = $4)
+		 RETURNING id, email_tag, link_key_hash, review`, codeHash, now, userID, emailTag).
+		Scan(&inv.ID, &inv.EmailTag, &inv.LinkKeyHash, &inv.Review)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return invite{}, ErrNotInvited
+	}
+	if err != nil {
+		return invite{}, fmt.Errorf("auth: redeem invite: %w", err)
+	}
+	return inv, nil
+}
+
+// onInviteRedeemedTx is spec 07 §3.1's join hook, in the account-creation
+// transaction: the entry linked to the invite, and every other entry with the
+// account's address tag, joins and loses its plaintext address. Steps 2 and 3
+// (bank requests, TestFlight enrolments) arrive with those tables (WS-19).
+func onInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID uuid.UUID, emailTag []byte, now time.Time) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE waitlist_entries
+		    SET state = 'joined', joined_at = $3, email_norm = NULL, updated_at = $3,
+		        confirmed_at = coalesce(confirmed_at, $3), invited_at = coalesce(invited_at, $3)
+		  WHERE state <> 'joined'
+		    AND (id = (SELECT waitlist_entry_id FROM invite_codes WHERE id = $1) OR email_tag = $2)`,
+		inviteID, emailTag, now); err != nil {
+		return fmt.Errorf("auth: join hook: %w", err)
 	}
 	return nil
 }

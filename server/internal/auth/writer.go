@@ -110,6 +110,8 @@ func (w Writer) Live() bool { return w.RevokedAt.IsZero() }
 // Writers owns writer registration, revocation and the key-history log.
 type Writers struct {
 	Pool *pgxpool.Pool
+	// Mail receives the device_removed alert; nil records events without mail.
+	Mail *Mailer
 	// StepUp verifies the writer.revoke step-up.
 	StepUp *StepUp
 	// Now defaults to time.Now; one clock decides minting and expiry.
@@ -271,6 +273,9 @@ func (w *Writers) Register(ctx context.Context, userID uuid.UUID, sessionHash []
 	if err := insertWriterTx(ctx, tx, userID, r, w.now()); err != nil {
 		return err
 	}
+	if err := recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceAdded, WriterID: r.WriterID}, w.now()); err != nil {
+		return err
+	}
 	if err := bindSessionTx(ctx, tx, sessionHash, userID, r.WriterID); err != nil {
 		return err
 	}
@@ -403,11 +408,19 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			return fmt.Errorf("auth: append key history (revoked %s): %w", r.WriterID, err)
 		}
 		if _, err := tx.Exec(ctx,
-			`UPDATE sessions SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
+			`UPDATE sessions SET revoked_at = $3, revoked_reason = 'writer'
+			  WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
 			userID, r.WriterID, now); err != nil {
 			return fmt.Errorf("auth: revoke the writer's sessions: %w", err)
 		}
-		return forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, r.WriterID)
+		if err := forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, r.WriterID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND approved_by_writer = $2 AND consumed_at IS NULL`,
+			userID, r.WriterID); err != nil {
+			return fmt.Errorf("auth: revoke: drop the writer's pending approvals: %w", err)
+		}
+		return recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceRemoved, WriterID: r.WriterID}, now)
 	})
 }
 

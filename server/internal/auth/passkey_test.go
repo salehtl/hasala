@@ -67,23 +67,16 @@ func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCod
 		t.Fatalf("users = %d, want exactly 1", n)
 	}
 	var (
-		idp      string
-		subHash  []byte
+		handle   []byte
 		redeemed *time.Time
 		by       *uuid.UUID
 	)
-	if err := pool.QueryRow(bgctx, `SELECT idp, idp_sub_hash FROM users WHERE id = $1`, userID).
-		Scan(&idp, &subHash); err != nil {
+	if err := pool.QueryRow(bgctx, `SELECT user_handle FROM users WHERE id = $1`, userID).Scan(&handle); err != nil {
 		t.Fatal(err)
 	}
-	if idp != IdPPasskey {
-		t.Fatalf("users.idp = %q, want %q", idp, IdPPasskey)
-	}
-	// The subject is the user handle, so the row is addressable from an
-	// assertion and from nothing else.
-	want := SubjectHash(IdPPasskey, base64.RawURLEncoding.EncodeToString(a.Handle))
-	if !bytes.Equal(subHash, want) {
-		t.Fatal("users.idp_sub_hash is not SubjectHash(passkey, base64url(user handle))")
+	// The account is addressable from an assertion's handle and from nothing else.
+	if !bytes.Equal(handle, a.Handle) {
+		t.Fatal("users.user_handle is not the handle the authenticator was given")
 	}
 
 	if err := pool.QueryRow(bgctx, `SELECT redeemed_at, redeemed_by FROM invite_codes`).
@@ -121,7 +114,7 @@ func TestPasskeyRegistrationWithAValidInviteCreatesOnePasskeyUserAndSpendsTheCod
 }
 
 // ---------------------------------------------------------------------------
-// (b) an already-redeemed code
+// (b) an already-claimed signup (its invite is spent with it)
 // ---------------------------------------------------------------------------
 
 func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.T) {
@@ -136,13 +129,13 @@ func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.
 	if err != nil {
 		// A begin-time pre-check is permitted, and if it fires it must fire as
 		// exactly this error.
-		if !errors.Is(err, ErrNotInvited) {
-			t.Fatalf("BeginRegistration with a spent code: %v, want ErrNotInvited", err)
+		if !errors.Is(err, ErrCodeRejected) {
+			t.Fatalf("BeginRegistration with a claimed signup: %v, want ErrCodeRejected", err)
 		}
 	} else {
 		a := authtest.New(t)
-		if _, _, err := p.FinishRegistration(bgctx, id, a.Create(t, opts)); !errors.Is(err, ErrNotInvited) {
-			t.Fatalf("FinishRegistration with a spent code: %v, want ErrNotInvited", err)
+		if _, _, err := p.FinishRegistration(bgctx, id, a.Create(t, opts)); !errors.Is(err, ErrCodeRejected) {
+			t.Fatalf("FinishRegistration with a claimed signup: %v, want ErrCodeRejected", err)
 		}
 	}
 
@@ -185,8 +178,8 @@ func TestTwoRegistrationsBegunAgainstOneLiveCodeYieldOneAccount(t *testing.T) {
 	if _, _, err := p.FinishRegistration(bgctx, idA, a.Create(t, optsA)); err != nil {
 		t.Fatalf("first FinishRegistration: %v", err)
 	}
-	if _, _, err := p.FinishRegistration(bgctx, idB, b.Create(t, optsB)); !errors.Is(err, ErrNotInvited) {
-		t.Fatalf("second FinishRegistration: %v, want ErrNotInvited", err)
+	if _, _, err := p.FinishRegistration(bgctx, idB, b.Create(t, optsB)); !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("second FinishRegistration: %v, want ErrCodeRejected", err)
 	}
 	if n := countUsers(t, pool); n != 1 {
 		t.Fatalf("users = %d, want 1", n)
@@ -629,14 +622,22 @@ func TestAddCeremonyIsBoundToTheSessionThatStartedIt(t *testing.T) {
 	}
 }
 
-func TestAddIsRefusedForAnAccountWithNoPasskeyIdentity(t *testing.T) {
+// A password-only account adds its first passkey under the account's own
+// handle (spec 02 §10.5: a device proof lets it), never a second identity.
+func TestAddUsesTheAccountsHandleEvenWithNoPasskeyYet(t *testing.T) {
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
-	// An Apple account: it has no user handle, so there is nothing to bind a
-	// new credential to without silently minting a second identity.
-	u := mustUpsert(t, pool, testIdentity("sub-no-passkey"))
-	if _, _, err := p.testBeginAdd(t, u); !errors.Is(err, ErrNoPasskeyIdentity) {
-		t.Fatalf("testtestBeginAdd on a non-passkey account: %v, want ErrNoPasskeyIdentity", err)
+	u := newTestUser(t, pool)
+	var handle []byte
+	if err := pool.QueryRow(bgctx, `SELECT user_handle FROM users WHERE id = $1`, u).Scan(&handle); err != nil {
+		t.Fatal(err)
+	}
+	_, opts, err := p.testBeginAdd(t, u)
+	if err != nil {
+		t.Fatalf("begin add on a password-only account: %v", err)
+	}
+	if id, ok := opts.Response.User.ID.(protocol.URLEncodedBase64); !ok || !bytes.Equal(id, handle) {
+		t.Fatal("the add ceremony does not name the account's handle")
 	}
 }
 

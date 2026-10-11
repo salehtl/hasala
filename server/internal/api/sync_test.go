@@ -58,9 +58,8 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
 }
 
-// user creates an account for a passkey identity with the given subject, with
-// synthetic account keys (so it can upload). The IdP columns are ledgerd's and
-// survive until the signup work's schema (spec 02 §5.3).
+// user creates an account with synthetic account keys (so it can upload). sub
+// only names it in the test.
 func (h *harness) user(sub string) uuid.UUID {
 	h.t.Helper()
 	u := h.userWithoutKeys(sub)
@@ -71,11 +70,7 @@ func (h *harness) user(sub string) uuid.UUID {
 // userWithoutKeys is an account that has not bootstrapped.
 func (h *harness) userWithoutKeys(sub string) uuid.UUID {
 	h.t.Helper()
-	u, err := auth.UpsertUser(bg, h.pool, auth.Identity{IdP: auth.IdPPasskey, Subject: sub})
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	return u
+	return oplogtest.NewUserWithoutKeys(h.t, h.pool)
 }
 
 func (h *harness) session(u uuid.UUID) string {

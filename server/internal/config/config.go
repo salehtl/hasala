@@ -142,8 +142,11 @@ type AuthConfig struct {
 	// PasswordHashConcurrency gates PBKDF2 (spec 02 §16.2), 1–8.
 	PasswordHashConcurrency int `toml:"password_hash_concurrency"`
 	// AuthKeyFile (HASALA_AUTH_KEY_FILE) holds the 32-byte auth_key, 64 hex
-	// (spec 01 §4.11). Never TOML. Loaded by internal/authkeys (WS-3).
+	// (spec 01 §4.11): the pepper, code and tag keys. Never TOML.
 	AuthKeyFile string `toml:"-"`
+	// SaltKeyFile (HASALA_SALT_KEY_FILE) holds the never-rotated salt_key, 64
+	// hex, which keys only the public password salt (review 2 F-04). Never TOML.
+	SaltKeyFile string `toml:"-"`
 }
 
 // HeadroomConfig is the disk fuse (internal/headroom).
@@ -390,6 +393,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	integer("HASALA_PASSWORD_HASH_CONCURRENCY", &conc)
 	c.Auth.PasswordHashConcurrency = int(conc)
 	str("HASALA_AUTH_KEY_FILE", &c.Auth.AuthKeyFile)
+	str("HASALA_SALT_KEY_FILE", &c.Auth.SaltKeyFile)
 
 	str("HASALA_HEADROOM_PATH", &c.Headroom.Path)
 	integer("HASALA_HEADROOM_FLOOR_BYTES", &c.Headroom.FloorBytes)
@@ -477,6 +481,7 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 	credDir, _ := lookup("CREDENTIALS_DIRECTORY")
 	for name, path := range map[string]string{
 		"HASALA_AUTH_KEY_FILE":          c.Auth.AuthKeyFile,
+		"HASALA_SALT_KEY_FILE":          c.Auth.SaltKeyFile,
 		"HASALA_APNS_KEY_FILE":          c.APNs.KeyFile,
 		"HASALA_MAILBOX_ROUTE_KEY_FILE": c.Gmail.RouteKeyFile,
 		"HASALA_EMAIL_API_TOKEN_FILE":   c.Email.APITokenFile,
@@ -694,8 +699,8 @@ func (c Config) ValidateFor(mode string) error {
 		if c.Headroom.Path == "" {
 			return errors.New("serve needs headroom.path (HASALA_HEADROOM_PATH): the filesystem the disk fuse samples")
 		}
-		if c.Server.TrustedProxy == ProxyCloudflare && c.Auth.AuthKeyFile == "" {
-			return errors.New("serve needs HASALA_AUTH_KEY_FILE with trusted_proxy = cloudflare")
+		if c.Server.TrustedProxy == ProxyCloudflare && (c.Auth.AuthKeyFile == "" || c.Auth.SaltKeyFile == "") {
+			return errors.New("serve needs HASALA_AUTH_KEY_FILE and HASALA_SALT_KEY_FILE with trusted_proxy = cloudflare")
 		}
 	case "console":
 		return c.validateConsole()

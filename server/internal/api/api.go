@@ -81,11 +81,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -206,6 +206,15 @@ type Server struct {
 	// field-by-field.
 	Deletion *purge.Challenges
 
+	// Accounts owns signup, passwords, recovery, resets, email change and
+	// freeze (spec 02 §10.4, §10.7–§10.13). Nil means those routes are NOT
+	// mounted: they need the server's key files (spec 01 §4.11).
+	Accounts *auth.Accounts
+
+	// TrustedProxy is server.trusted_proxy: "cloudflare" keys per-IP limiters
+	// by Cf-Connecting-Ip from a loopback peer only (clientip.go).
+	TrustedProxy string
+
 	// Passkeys is the WebAuthn relying party. Nil means the passkey routes are
 	// NOT MOUNTED: a deployment that has not been told its own domain
 	// (`auth.rp_id`) cannot run a ceremony, and a sign-in route that exists only
@@ -237,6 +246,16 @@ type Server struct {
 	SyncUploadBytes *Limiter
 	// MetaPerIP is GET /api/v1/meta's meta-ip.
 	MetaPerIP *Limiter
+	// The account routes' limiters (spec 02 §16.2). Sign-in uses PasskeyPerIP
+	// and PasskeyGlobal, which are signin-ip and signin-global.
+	RecoverPerIP    *Limiter
+	CodePerIP       *Limiter
+	ResetPerIP      *Limiter
+	FreezePerIP     *Limiter
+	FreezeGlobal    *Limiter
+	DevFreezeIP     *Limiter
+	DevFreezeWriter *Limiter
+	DevFreezeGlobal *Limiter
 
 	// Meta is what GET /api/v1/meta reports (meta.go).
 	Meta Meta
@@ -297,6 +316,8 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	s.Writers.StepUp = s.StepUp
 	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
+	s.TrustedProxy = cfg.Server.TrustedProxy
+	s.Sessions.Max = cfg.Auth.SessionMax
 	return s, nil
 }
 
@@ -372,6 +393,7 @@ func (s *Server) Handler() http.Handler {
 	if s.PullByteBudget <= 0 {
 		s.PullByteBudget = pullByteBudget
 	}
+	s.defaultAccountLimiters()
 
 	mux := http.NewServeMux()
 	// Unauthenticated and unconditional. See health.go for why it pings the
@@ -475,19 +497,31 @@ func (s *Server) mountSync(mux *http.ServeMux) {
 type authedHandler func(w http.ResponseWriter, r *http.Request, userID uuid.UUID)
 
 // requireSession resolves the bearer token and hands the handler the user id it
-// names.
+// names; the whole session is in the request's context (sessionInfo). It
+// refuses a frozen account and a restricted session (403 account_frozen,
+// spec 02 §9.8); requireSessionFrozenOK is for the few routes §9.8 admits.
 //
-// EVERY rejection — absent header, wrong scheme, unknown token, expired token,
-// revoked token — produces the identical 401: same status, same body, same
-// headers. auth returns distinct sentinels for these on purpose (they are
-// useful in a log, and "expired" or "revoked" confirms the token was once real
-// where "unknown" does not), and telling them apart in a RESPONSE is an oracle.
-// The reason goes to the operator log instead.
+// EVERY rejection — absent header, wrong scheme, unknown token, expired, idle
+// or revoked token — produces the identical 401. auth returns distinct
+// sentinels (useful in a log); telling them apart in a RESPONSE is an oracle.
+// The one deliberate exception is a deleted account's token: 410
+// account_deleted, the only wipe signal.
 //
 // A failure that is not a rejection — the database is unreachable — is a 500,
-// not a 401: reporting infrastructure trouble as "your credential is invalid"
-// sends a user off to re-authenticate for no reason.
+// not a 401.
 func (s *Server) requireSession(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, false)
+}
+
+// requireSessionFrozenOK is requireSession for GET /account, step-up begin
+// (account.unfreeze only, checked by the handler) and unfreeze.
+func (s *Server) requireSessionFrozenOK(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, true)
+}
+
+type sessionCtxKey struct{}
+
+func (s *Server) sessionGate(h authedHandler, frozenOK bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r)
 		if !ok {
@@ -495,26 +529,14 @@ func (s *Server) requireSession(h authedHandler) http.HandlerFunc {
 			writeUnauthorized(w)
 			return
 		}
-		userID, err := s.Sessions.Resolve(r.Context(), token)
+		info, err := s.Sessions.Info(r.Context(), token)
 		if err != nil {
-			// Checked BEFORE the collapse below, which it wraps. This is the
-			// one rejection that is deliberately distinguishable, and it has to
-			// be: a client may only wipe its local ledger on "there is nothing
-			// to sign in to", never on "sign in again". Wiping on a 401 would
-			// fire on every routine token expiry and destroy an offline user's
-			// outbox, so the two must not be the same answer.
-			//
-			// It is not an oracle: it is a fact about an account that no longer
-			// exists, offered only to a caller who already holds that account's
-			// session token. See auth.ErrSessionAccountDeleted and the
-			// deleted_account_sessions table.
 			if errors.Is(err, auth.ErrSessionAccountDeleted) {
 				s.logf("api: %s %s: session belongs to a deleted account", r.Method, r.URL.Path)
 				writeAccountDeleted(w)
 				return
 			}
 			if errors.Is(err, auth.ErrSessionInvalid) {
-				// The reason is logged, never returned.
 				s.logf("api: %s %s: session rejected: %v", r.Method, r.URL.Path, err)
 				writeUnauthorized(w)
 				return
@@ -523,28 +545,27 @@ func (s *Server) requireSession(h authedHandler) http.HandlerFunc {
 			writeErr(w, http.StatusInternalServerError, "internal", "")
 			return
 		}
-		// Suspension (design P3). Non-read methods only: a suspended account's
-		// devices keep pulling, listing and comparing hashes, deliberately, so
-		// a pause never looks like data loss. Sign-in is outside this
-		// middleware and stays open for the same reason — a read-only device
-		// still needs a session. See guards.go.
-		if !isRead(r.Method) {
-			suspended, err := s.accountSuspended(r.Context(), userID)
-			if err != nil {
-				// Not a 403. "We could not read your status" is infrastructure
-				// trouble, and answering it as a suspension would tell a user
-				// their account was paused by an operator who did nothing.
-				s.logf("api: %s %s: account status for %s: %v", r.Method, r.URL.Path, userID, err)
-				writeErr(w, http.StatusInternalServerError, "internal", "")
-				return
-			}
-			if suspended {
-				s.logf("api: %s %s: refused, account %s is suspended", r.Method, r.URL.Path, userID)
-				writeAccountSuspended(w)
-				return
-			}
+		userID := info.UserID
+		st, err := s.accountStatus(r.Context(), userID)
+		if err != nil {
+			s.logf("api: %s %s: account status for %s: %v", r.Method, r.URL.Path, userID, err)
+			writeErr(w, http.StatusInternalServerError, "internal", "")
+			return
 		}
-		h(w, r, userID)
+		// A frozen account, or a restricted session, reaches only §9.8's list.
+		if !frozenOK && (st.Frozen || info.Restricted) {
+			s.logf("api: %s %s: refused, account %s is frozen", r.Method, r.URL.Path, userID)
+			writeErr(w, http.StatusForbidden, "account_frozen", "")
+			return
+		}
+		// Suspension (spec 02 §9.6): non-read methods only, so a pause never
+		// looks like data loss. Sign-in is outside this middleware.
+		if !isRead(r.Method) && st.Suspended {
+			s.logf("api: %s %s: refused, account %s is suspended", r.Method, r.URL.Path, userID)
+			writeAccountSuspended(w)
+			return
+		}
+		h(w, r.WithContext(context.WithValue(r.Context(), sessionCtxKey{}, info)), userID)
 	}
 }
 
@@ -701,25 +722,4 @@ func parseLimit(r *http.Request, def, max int) (int, error) {
 		n = max
 	}
 	return n, nil
-}
-
-// clientKey is the rate-limit key for an unauthenticated caller: the remote
-// address with the port stripped, so one host cannot get a fresh budget per
-// connection. It is attacker-chosen (there is no proxy in front of this
-// listener today, and no X-Forwarded-For is trusted — trusting one would let
-// any caller pick their own key and defeat the limit entirely), which is why
-// Limiter bounds its key space.
-//
-// BEHIND CLOUDFLARE THIS IS ONE KEY. hasalad listens on loopback behind
-// cloudflared, so every request arrives from 127.0.0.1 and the per-IP limiters
-// degenerate into global ones. Spec 02 §16.1 (clientip.go, WS-3) replaces this
-// with Cf-Connecting-Ip trusted from loopback only (IPv6 keyed by its /64) when
-// server.trusted_proxy = cloudflare; until then nothing here trusts a
-// forwarded-for header, which would let any caller pick its own key.
-func clientKey(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }

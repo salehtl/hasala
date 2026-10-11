@@ -504,7 +504,6 @@ func TestStepUpBeginRefusals(t *testing.T) {
 		"keys.bootstrap by device":  {keyproto.ActionKeysBootstrap, keyproto.ProofDevice, ErrStepUpBadRequest},
 		"password.reset by passkey": {keyproto.ActionPasswordReset, keyproto.ProofPasskey, ErrStepUpBadRequest},
 		"an action outside the set": {"writer.register", keyproto.ProofPasskey, ErrStepUpBadRequest},
-		"device_code (not built)":   {keyproto.ActionPasswordReset, keyproto.ProofDeviceCode, ErrStepUpUnsupported},
 	} {
 		if _, err := f.stepUp.Begin(bgctx, f.user, i.Hash, i.WriterID, c.a, ph, c.k); !errors.Is(err, c.want) {
 			t.Errorf("%s: %v, want %v", name, err, c.want)
@@ -520,8 +519,8 @@ func TestStepUpBeginRefusals(t *testing.T) {
 	}
 }
 
-// A device proof: the DAK first, then the password. This build stores no
-// passwords, so a valid DAK signature fails at the password step (and burns),
+// A device proof: the DAK first, then the password. This account has no
+// password, so a valid DAK signature fails at the password step (and burns),
 // and an invalid one fails before it.
 func TestStepUpDeviceProofChecksTheDAKFirst(t *testing.T) {
 	f := newKeyFixture(t)

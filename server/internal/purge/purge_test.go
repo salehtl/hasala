@@ -60,8 +60,8 @@ func ensureSession(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) []byte {
 		return h
 	}
 	h = randBytes(t, 32)
-	exec(t, pool, `INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
-	               VALUES ($2, $1, now(), now() + interval '1 hour')`, u, h)
+	exec(t, pool, `INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
+	               VALUES ($2, $1, 'login', now(), now(), now() + interval '1 hour')`, u, h)
 	return h
 }
 
@@ -164,6 +164,53 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO account_refusals (user_id, day, resource, count)
 		               VALUES ($1, current_date, 'oplog_hot_bytes', 3)`, u)
 	},
+	// The account ceremonies (spec 02 §5.3). A signup ceremony carries the
+	// reserved id with no foreign key (the account does not exist yet), so the
+	// purge's explicit sweep is what erases its plaintext address.
+	"public.signup_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO signup_ceremonies (id, user_id, invite_code_hash, email_norm, email_tag, display_name,
+		                 email_proven, signup_nonce, claimed_at, created_at, expires_at)
+		               VALUES ($2, $1, $3, $4, $5, 'Maya', true, $6, now(), now(), now() + interval '30 minutes')`,
+			u, u.String()+"-signup", randBytes(t, 32), "s-"+u.String()+"@example.test", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.email_codes": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO email_codes (code_id, purpose, email_tag, user_id, ceremony_kind, ceremony_id, code_mac,
+		                 sent, created_at, expires_at)
+		               VALUES (gen_random_uuid(), 'email_verify', $2, $1, 'email_verify', $4, $3, true, now(), now() + interval '10 minutes')`,
+			u, randBytes(t, 32), randBytes(t, 32), u.String())
+	},
+	"public.password_login_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO password_login_ceremonies (id, user_id, email_tag, nonce, created_at, expires_at)
+		               VALUES ($2, $1, $3, $4, now(), now() + interval '5 minutes')`, u, u.String()+"-pl", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.recovery_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO recovery_ceremonies (id, user_id, recover_nonce, code_id, created_at, expires_at)
+		               VALUES ($2, $1, $3, gen_random_uuid(), now(), now() + interval '10 minutes')`, u, u.String()+"-rc", randBytes(t, 32))
+	},
+	"public.password_reset_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO password_reset_ceremonies (id, user_id, email_tag, code_id, reset_nonce, created_at, expires_at)
+		               VALUES ($2, $1, $3, gen_random_uuid(), $4, now(), now() + interval '10 minutes')`,
+			u, u.String()+"-pr", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.email_change_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO email_change_ceremonies (id, user_id, new_email_norm, new_email_tag, new_in_use,
+		                 change_nonce, code_old_id, code_new_id, created_at, expires_at)
+		               VALUES (gen_random_uuid(), $1, $2, $3, false, $4, gen_random_uuid(), gen_random_uuid(), now(), now() + interval '10 minutes')`,
+			u, "n-"+u.String()+"@example.test", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.freeze_tokens": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO freeze_tokens (token_hash, user_id, trigger_kind, trigger_at, created_at, expires_at)
+		               VALUES ($2, $1, 'new_sign_in', now(), now(), now() + interval '7 days')`, u, randBytes(t, 32))
+	},
+	"public.auth_events": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO auth_events (user_id, kind, at, method) VALUES ($1, 'sign_in_new', now(), 'passkey')`, u)
+	},
+	"public.mail_log": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id, params,
+		                 status, next_attempt_at, created_at)
+		               VALUES ('alert', 'new_passkey', 'transactional', $2, $3, 'm•••@example.test', $1, '{}', 'queued', now(), now())`,
+			u, "a-"+u.String()+"@example.test", randBytes(t, 32))
+	},
 }
 
 func newUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
@@ -171,7 +218,7 @@ func newUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
 	sum := sha256.Sum256([]byte(sub + uuid.NewString()))
 	var u uuid.UUID
 	if err := pool.QueryRow(bg,
-		`INSERT INTO users (idp, idp_sub_hash, created_at) VALUES ('passkey', $1, now()) RETURNING id`,
+		`INSERT INTO users (user_handle, created_at, email_norm, email_verified_at, display_name) VALUES ($1, now(), 'u-' || gen_random_uuid() || '@example.test', now(), 'Test User') RETURNING id`,
 		sum[:]).Scan(&u); err != nil {
 		t.Fatalf("create user %q: %v", sub, err)
 	}

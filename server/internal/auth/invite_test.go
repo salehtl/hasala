@@ -2,29 +2,48 @@ package auth
 
 import (
 	"crypto/sha256"
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-func mustMint(t *testing.T, pool *pgxpool.Pool, note string) string {
+// mintCode mints a printed CLI invite and returns its code.
+func mintCode(t *testing.T, pool *pgxpool.Pool, note string) string {
 	t.Helper()
-	code, err := MintInvite(bgctx, pool, note, time.Now().UTC())
+	code, err := MintInvite(bgctx, pool, MintOptions{Note: note, Now: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return code
+}
+
+// mustMint is a ready signup for a passkey registration: a printed invite and a
+// proven signup ceremony on a fresh address, written directly (the passkey
+// tests need no server keys). It returns the signup id.
+func mustMint(t *testing.T, pool *pgxpool.Pool, note string) string {
+	t.Helper()
+	code := mintCode(t, pool, note)
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	if _, err := pool.Exec(bgctx,
+		`INSERT INTO signup_ceremonies (id, user_id, invite_code_hash, email_norm, email_tag, display_name,
+		   email_proven, signup_nonce, created_at, expires_at)
+		 VALUES ($1, gen_random_uuid(), $2, $3, $4, 'Test User', true, $5, $6, $7)`,
+		id, InviteCodeHash(code), "u-"+uuid.NewString()+"@example.test", authtest.RandBytesTB(t, 32),
+		authtest.RandBytesTB(t, 32), now, now.Add(SignupTTL)); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func countUsers(t *testing.T, pool *pgxpool.Pool) int {
@@ -36,409 +55,43 @@ func countUsers(t *testing.T, pool *pgxpool.Pool) int {
 	return n
 }
 
-// ---------------------------------------------------------------------------
-// The code itself
-// ---------------------------------------------------------------------------
-
 func TestMintedInviteIsNeverStoredInTheClear(t *testing.T) {
 	pool := pgtest.New(t)
-	code := mustMint(t, pool, "the operator's brother")
-
-	var stored []byte
-	var note string
-	if err := pool.QueryRow(bgctx, `SELECT code_hash, note FROM invite_codes`).Scan(&stored, &note); err != nil {
+	code := mintCode(t, pool, "for maya")
+	var (
+		hash  []byte
+		state string
+	)
+	if err := pool.QueryRow(bgctx, `SELECT code_hash, state FROM invite_codes`).Scan(&hash, &state); err != nil {
 		t.Fatal(err)
-	}
-	if strings.Contains(string(stored), code) {
-		t.Fatal("the invite_codes table contains the code itself")
 	}
 	want := sha256.Sum256([]byte(code))
-	if string(stored) != string(want[:]) {
-		t.Fatalf("stored hash is not SHA-256 of the code")
-	}
-	if note != "the operator's brother" {
-		t.Fatalf("note = %q, want the operator's words back", note)
+	if string(hash) != string(want[:]) || state != "active" {
+		t.Fatalf("stored %x (%s), want SHA-256 of the code and active", hash, state)
 	}
 }
 
-func TestMintedInvitesAreDistinct(t *testing.T) {
-	pool := pgtest.New(t)
-	seen := map[string]bool{}
-	for i := 0; i < 32; i++ {
-		code := mustMint(t, pool, "")
-		if seen[code] {
-			t.Fatalf("minted the same code twice: %q", code)
-		}
-		seen[code] = true
-	}
-}
-
-// The code is typed by a human off a message. Case and the separators a person
-// adds while reading it aloud must not decide whether their account is created.
 func TestInviteCodeNormalizationIsForgiving(t *testing.T) {
-	pool := pgtest.New(t)
-	code := mustMint(t, pool, "")
-	lower := strings.ToLower(code)
-	spaced := " " + code[:4] + "-" + code[4:] + "\n"
-
-	if NormalizeInviteCode(lower) != code {
-		t.Fatalf("lower-cased code does not normalize back: %q", NormalizeInviteCode(lower))
-	}
-	if NormalizeInviteCode(spaced) != code {
-		t.Fatalf("spaced/dashed code does not normalize back: %q", NormalizeInviteCode(spaced))
-	}
-	// And it is the NORMALIZED form the redemption keys on, end to end.
-	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-normalize"), spaced)
-	if err != nil {
-		t.Fatalf("a spaced code did not redeem: %v", err)
-	}
-	if u == uuid.Nil {
-		t.Fatal("no user created")
-	}
-}
-
-// An empty string must not normalize into something that matches a row, and
-// must not be mistaken for "no code required".
-func TestEmptyInviteCodeIsRefused(t *testing.T) {
-	pool := pgtest.New(t)
-	mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-empty"), ""); !errors.Is(err, ErrNotInvited) {
-		t.Fatalf("err = %v, want ErrNotInvited", err)
-	}
-	if n := countUsers(t, pool); n != 0 {
-		t.Fatalf("%d users created by a refused sign-up", n)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Redemption
-// ---------------------------------------------------------------------------
-
-func TestValidCodeCreatesExactlyOneAccountAndIsMarkedRedeemed(t *testing.T) {
-	pool := pgtest.New(t)
-	code := mustMint(t, pool, "the beta tester")
-
-	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-first"), code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := countUsers(t, pool); n != 1 {
-		t.Fatalf("%d users, want exactly 1", n)
-	}
-
-	var redeemedAt *time.Time
-	var redeemedBy *uuid.UUID
-	if err := pool.QueryRow(bgctx,
-		`SELECT redeemed_at, redeemed_by FROM invite_codes`).Scan(&redeemedAt, &redeemedBy); err != nil {
-		t.Fatal(err)
-	}
-	if redeemedAt == nil {
-		t.Fatal("the code is still unredeemed")
-	}
-	if redeemedBy == nil || *redeemedBy != u {
-		t.Fatalf("redeemed_by = %v, want %v", redeemedBy, u)
-	}
-
-	// The counter row is still created — the invite gate wraps UpsertUser's
-	// transaction rather than replacing it.
-	var seqs int
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM oplog_seq WHERE user_id = $1`, u).Scan(&seqs); err != nil {
-		t.Fatal(err)
-	}
-	if seqs != 1 {
-		t.Fatalf("oplog_seq rows = %d, want 1", seqs)
-	}
-}
-
-func TestASpentCodeCreatesNoSecondAccount(t *testing.T) {
-	pool := pgtest.New(t)
-	code := mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-one"), code); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-two"), code); !errors.Is(err, ErrNotInvited) {
-		t.Fatalf("err = %v, want ErrNotInvited", err)
-	}
-	if n := countUsers(t, pool); n != 1 {
-		t.Fatalf("%d users, want 1: a spent code created a second account", n)
-	}
-}
-
-func TestAWrongCodeCreatesNoAccount(t *testing.T) {
-	pool := pgtest.New(t)
-	mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-wrong"), "AAAAAAAAAAAAAAAAAAAAAAAA"); !errors.Is(err, ErrNotInvited) {
-		t.Fatalf("err = %v, want ErrNotInvited", err)
-	}
-	if n := countUsers(t, pool); n != 0 {
-		t.Fatalf("%d users created by a wrong code", n)
-	}
-}
-
-// The whole point of "gates account CREATION only": a returning user signs in
-// with no code and spends nothing.
-func TestAnExistingUserSignsInWithNoCode(t *testing.T) {
-	pool := pgtest.New(t)
-	code := mustMint(t, pool, "")
-	first, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-return"), code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-return"), "")
-	if err != nil {
-		t.Fatalf("a returning user was refused: %v", err)
-	}
-	if again != first {
-		t.Fatalf("second sign-in returned %v, want %v", again, first)
-	}
-	var unredeemed int
-	if err := pool.QueryRow(bgctx,
-		`SELECT count(*) FROM invite_codes WHERE redeemed_at IS NULL`).Scan(&unredeemed); err != nil {
-		t.Fatal(err)
-	}
-	if unredeemed != 0 {
-		t.Fatalf("%d unredeemed codes: the returning sign-in should have spent nothing new", unredeemed)
-	}
-}
-
-// A returning user presenting a still-good code must not burn it. The field is
-// ignored entirely, not "used if present".
-func TestAReturningUserDoesNotSpendACode(t *testing.T) {
-	pool := pgtest.New(t)
-	first := mustMint(t, pool, "")
-	spare := mustMint(t, pool, "")
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-spare"), first); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-spare"), spare); err != nil {
-		t.Fatal(err)
-	}
-	var redeemed int
-	if err := pool.QueryRow(bgctx,
-		`SELECT count(*) FROM invite_codes WHERE redeemed_at IS NOT NULL`).Scan(&redeemed); err != nil {
-		t.Fatal(err)
-	}
-	if redeemed != 1 {
-		t.Fatalf("%d codes redeemed, want 1: a returning sign-in spent a spare code", redeemed)
-	}
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-other"), spare); err != nil {
-		t.Fatalf("the spare code was consumed and can no longer invite anyone: %v", err)
-	}
-}
-
-// Redemption is atomic: two requests racing on one code produce one account.
-func TestConcurrentRedemptionOfOneCodeCreatesOneAccount(t *testing.T) {
-	pool := pgtest.New(t)
-	code := mustMint(t, pool, "")
-
-	const racers = 6
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var ok, refused int
-	start := make(chan struct{})
-	for i := 0; i < racers; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			<-start
-			_, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-race-"+string(rune('a'+i))), code)
-			mu.Lock()
-			defer mu.Unlock()
-			switch {
-			case err == nil:
-				ok++
-			case errors.Is(err, ErrNotInvited):
-				refused++
-			default:
-				t.Errorf("unexpected error: %v", err)
-			}
-		}(i)
-	}
-	close(start)
-	wg.Wait()
-
-	if ok != 1 {
-		t.Fatalf("%d of %d concurrent redemptions succeeded, want exactly 1", ok, racers)
-	}
-	if refused != racers-1 {
-		t.Fatalf("%d refusals, want %d", refused, racers-1)
-	}
-	if n := countUsers(t, pool); n != 1 {
-		t.Fatalf("%d users, want 1", n)
-	}
-}
-
-// Deleting an account must not put its invite code back into circulation.
-func TestDeletingAnAccountDoesNotFreeItsInviteCode(t *testing.T) {
-	pool := pgtest.New(t)
-	code := mustMint(t, pool, "")
-	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-deleted"), code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(bgctx, `DELETE FROM users WHERE id = $1`, u); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-after"), code); !errors.Is(err, ErrNotInvited) {
-		t.Fatalf("err = %v, want ErrNotInvited: a deleted account freed its code", err)
-	}
-	// The row is still there, marked spent, with the link to the person gone.
-	var redeemedAt *time.Time
-	var redeemedBy *uuid.UUID
-	if err := pool.QueryRow(bgctx,
-		`SELECT redeemed_at, redeemed_by FROM invite_codes`).Scan(&redeemedAt, &redeemedBy); err != nil {
-		t.Fatal(err)
-	}
-	if redeemedAt == nil {
-		t.Fatal("the code came back unredeemed")
-	}
-	if redeemedBy != nil {
-		t.Fatalf("redeemed_by = %v, want NULL after the account was deleted", *redeemedBy)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// What an invite row is allowed to remember about a deleted account
-// ---------------------------------------------------------------------------
-
-// Deleting an account takes the operator's NOTE about that person with it, and
-// takes nobody else's.
-//
-// 00020, purge.go's notUserLinked classification and ledgerd's deploy README all
-// said the same thing — "the link to the person removed … an unattributable
-// residue", "what survives is 'some code was spent, and nobody knows by whom'"
-// — and all three described `redeemed_by ON DELETE SET NULL` and stopped
-// there. `note` is operator free text whose own documented example in 00020 is
-// `the operator's brother`, and it survived beside `redeemed_at`, the timestamp of
-// that person's sign-up. In a beta of a dozen people that pair names the
-// deleted account outright, to precisely the party the row is kept for.
-//
-// TWO accounts, not one, and the second one's note is checked: a fixture with a
-// single deletion cannot tell "cleared the right note" from "cleared every
-// note", and the second failure is a silent loss of the operator's whole audit
-// trail on an account that was never deleted.
-func TestDeletingAnAccountForgetsTheOperatorsNoteAboutThemAndNobodyElses(t *testing.T) {
-	pool := pgtest.New(t)
-
-	goneCode := mustMint(t, pool, "the operator's brother")
-	stayCode := mustMint(t, pool, "the beta tester from the bank thread")
-	outstanding := mustMint(t, pool, "for the colleague who has not signed up yet")
-
-	gone, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-gone"), goneCode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-stays"), stayCode); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := noteOf(t, pool, goneCode); got != "the operator's brother" {
-		t.Fatalf("note before deletion = %q; this test cannot see a reaping that never had "+
-			"anything to reap", got)
-	}
-
-	if _, err := pool.Exec(bgctx, `DELETE FROM users WHERE id = $1`, gone); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := noteOf(t, pool, goneCode); got != "" {
-		t.Fatalf("note = %q after the account was deleted: the row still says who spent it, "+
-			"which is what 00020, purge.notUserLinked and ledgerd's deploy README all promise it "+
-			"does not", got)
-	}
-	if got := noteOf(t, pool, stayCode); got != "the beta tester from the bank thread" {
-		t.Fatalf("a LIVE account's note = %q: deleting one account destroyed another's record", got)
-	}
-	if got := noteOf(t, pool, outstanding); got != "for the colleague who has not signed up yet" {
-		t.Fatalf("an UNREDEEMED code's note = %q: `mint-invite --show` is the only answer to "+
-			"'who is this outstanding code for' and it just lost it", got)
-	}
-
-	// Everything the operator is promised DOES survive still survives: the row,
-	// the spent flag, and the refusal to hand the code out again.
-	var redeemedAt *time.Time
-	var redeemedBy *uuid.UUID
-	if err := pool.QueryRow(bgctx,
-		`SELECT redeemed_at, redeemed_by FROM invite_codes WHERE code_hash = $1`,
-		inviteCodeHash(goneCode)).Scan(&redeemedAt, &redeemedBy); err != nil {
-		t.Fatal(err)
-	}
-	if redeemedAt == nil {
-		t.Fatal("the code came back unredeemed: reaping the note must not un-spend the row")
-	}
-	if redeemedBy != nil {
-		t.Fatalf("redeemed_by = %v, want NULL", *redeemedBy)
-	}
-	if _, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-after"), goneCode); !errors.Is(err, ErrNotInvited) {
-		t.Fatalf("err = %v, want ErrNotInvited: reaping the note freed the code", err)
-	}
-}
-
-// The claim in full, measured against the row rather than against the one
-// column somebody remembered: after the account is gone, no text column of the
-// invite row contains anything the operator wrote about that person.
-//
-// This is the version that does not go stale. The three descriptions are about
-// the ROW ("nobody knows by whom"), so a future column carrying an email, a
-// referrer or a support-ticket id would falsify them exactly as `note` did —
-// and would fail here without anybody remembering to come back.
-func TestNoTextTheOperatorWroteAboutADeletedAccountSurvivesInTheInviteRow(t *testing.T) {
-	pool := pgtest.New(t)
-	const secret = "dr jane-example, the tester from the clinic"
-	code := mustMint(t, pool, secret)
-	u, err := UpsertUserInvited(bgctx, pool, testIdentity("sub-note-scan"), code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(bgctx, `DELETE FROM users WHERE id = $1`, u); err != nil {
-		t.Fatal(err)
-	}
-
-	rows, err := pool.Query(bgctx,
-		`SELECT column_name FROM information_schema.columns
-		  WHERE table_schema = 'public' AND table_name = 'invite_codes'
-		    AND data_type IN ('text', 'character varying', 'character')
-		  ORDER BY column_name`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var cols []string
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			t.Fatal(err)
-		}
-		cols = append(cols, c)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	if len(cols) == 0 {
-		t.Fatal("invite_codes has no text columns at all: this scan is vacuous")
-	}
-	for _, col := range cols {
-		var v *string
-		if err := pool.QueryRow(bgctx,
-			`SELECT `+col+` FROM invite_codes WHERE code_hash = $1`,
-			inviteCodeHash(code)).Scan(&v); err != nil {
-			t.Fatal(err)
-		}
-		if v != nil && strings.Contains(*v, "jane-example") {
-			t.Fatalf("invite_codes.%s still reads %q after the account was deleted", col, *v)
+	code := "ABCDEFGHIJKLMNOPQRSTUVWX"
+	for _, in := range []string{"abcd-efgh-ijkl-mnop-qrst-uvwx", " ABCD EFGH\tIJKL\nMNOP_QRST-UVWX "} {
+		if NormalizeInviteCode(in) != code {
+			t.Fatalf("NormalizeInviteCode(%q) = %q", in, NormalizeInviteCode(in))
 		}
 	}
+	if InviteCodeHash(" - ") != nil {
+		t.Fatal("a code that normalizes to nothing hashes to something")
+	}
 }
 
-func noteOf(t *testing.T, pool *pgxpool.Pool, code string) string {
-	t.Helper()
-	var note string
-	if err := pool.QueryRow(bgctx,
-		`SELECT coalesce(note, '') FROM invite_codes WHERE code_hash = $1`,
-		inviteCodeHash(code)).Scan(&note); err != nil {
+// A review invite is unaddressed and CLI-only (07 §2.5's CHECK).
+func TestAReviewInviteCarriesNoAddress(t *testing.T) {
+	pool := pgtest.New(t)
+	if _, err := MintInvite(bgctx, pool, MintOptions{Review: true}); err != nil {
 		t.Fatal(err)
 	}
-	return note
+	if _, err := MintInvite(bgctx, pool, MintOptions{Review: true, EmailTag: authtest.RandBytesTB(t, 32)}); err == nil {
+		t.Fatal("an addressed review invite was accepted")
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -552,7 +205,7 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 	codes := make([]string, 0, sample)
 	decoded := make([][]byte, 0, sample)
 	for i := 0; i < sample; i++ {
-		codes = append(codes, mustMint(t, pool, ""))
+		codes = append(codes, mintCode(t, pool, ""))
 	}
 
 	// --- Shape. A short code fails HERE, before any statistic: 2 bytes encode

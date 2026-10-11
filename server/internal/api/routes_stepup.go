@@ -16,7 +16,7 @@ import (
 // answered here (spec 01 AT-C9); the guarded route recomputes params_hash from
 // its own request and spends the nonce in the action's transaction.
 func (s *Server) mountStepUp(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/auth/step-up/begin", s.requireSession(s.handleStepUpBegin))
+	mux.HandleFunc("POST /api/v1/auth/step-up/begin", s.requireSessionFrozenOK(s.handleStepUpBegin))
 }
 
 // StepUpBeginRequest is #9.
@@ -53,6 +53,19 @@ func (s *Server) handleStepUpBegin(w http.ResponseWriter, r *http.Request, userI
 	info, ok := s.sessionInfo(w, r)
 	if !ok {
 		return
+	}
+	// A frozen account or a restricted session may begin account.unfreeze and
+	// nothing else (spec 02 §9.8).
+	if keyproto.Action(req.Action) != keyproto.ActionAccountUnfreeze {
+		st, err := s.accountStatus(r.Context(), userID)
+		if err != nil {
+			s.writeKeyErr(w, r, err)
+			return
+		}
+		if st.Frozen || info.Restricted {
+			writeErr(w, http.StatusForbidden, "account_frozen", "")
+			return
+		}
 	}
 	b, err := s.StepUp.Begin(r.Context(), userID, info.Hash, info.WriterID,
 		keyproto.Action(req.Action), ph, keyproto.ProofKind(req.ProofKind))

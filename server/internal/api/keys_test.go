@@ -71,7 +71,7 @@ func (h *harness) onboard(bootstrap bool) *keyed {
 	k := &keyed{h: h, device: authtest.NewDevice(h.t)}
 	aakSeed := authtest.RandBytesTB(h.t, 32)
 	w := h.req("POST", "/api/v1/auth/passkey/register/begin", "", PasskeyRegisterBeginRequest{
-		InviteCode: h.invite("keys"), AuthorityPubkey: b64(cryptoref.AAKPub(aakSeed)),
+		SignupID: h.invite("keys"), AuthorityPubkey: b64(cryptoref.AAKPub(aakSeed)),
 	})
 	wantStatus(h.t, w, http.StatusOK)
 	begun := decodeJSON[PasskeyRegisterBeginResponse](h.t, w)
@@ -96,7 +96,7 @@ func (h *harness) onboard(bootstrap bool) *keyed {
 	fw := h.req("POST", "/api/v1/auth/passkey/register/finish", "", PasskeyFinishRequest{
 		CeremonyID: begun.CeremonyID, Credential: k.authn.Create(h.t, &createOpts),
 	})
-	wantStatus(h.t, fw, http.StatusOK)
+	wantStatus(h.t, fw, http.StatusCreated)
 	sess := decodeJSON[SessionResponse](h.t, fw)
 	k.user, k.token = mustUUID(h.t, sess.UserID), sess.SessionToken
 	k.counter.Store(2)

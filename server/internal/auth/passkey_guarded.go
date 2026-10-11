@@ -164,9 +164,14 @@ func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a Passkey
 			return nil, fmt.Errorf("auth: passkey add: store wrap: %w", err)
 		}
 	}
+	if err := recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyAdded, CredentialID: credID,
+		WriterID: session.WriterID}, p.now()); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("auth: passkey add: commit: %w", err)
 	}
+	p.Mail.Kick()
 	return credID, nil
 }
 
@@ -194,7 +199,10 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		var err error
 		revoked, err = deleteCredentialTx(ctx, tx, session.UserID, credentialID, session.Hash, p.now())
-		return err
+		if err != nil {
+			return err
+		}
+		return recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyRemoved, CredentialID: credentialID}, p.now())
 	})
 	return revoked, err
 }

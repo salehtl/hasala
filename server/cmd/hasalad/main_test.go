@@ -184,7 +184,7 @@ func TestMigrateThenOperateAsTheRuntimeRole(t *testing.T) {
 	if code != 0 || strings.TrimSpace(out) == "" {
 		t.Fatalf("invite mint exited %d with %q (%s)", code, out, msg)
 	}
-	if code, out, msg := hasalad(t, asRuntime, "invite", "list"); code != 0 || !strings.Contains(out, "1 still outstanding") {
+	if code, out, msg := hasalad(t, asRuntime, "invite", "list"); code != 0 || !strings.Contains(out, "1 invite(s), 1 active") {
 		t.Fatalf("invite list exited %d with %q (%s)", code, out, msg)
 	}
 	if code, _, msg := hasalad(t, asRuntime, "verify", "structural"); code != 0 {
@@ -213,23 +213,18 @@ func TestMigrateThenOperateAsTheRuntimeRole(t *testing.T) {
 	}
 }
 
-// Until clientip.go (WS-3) keys limits by Cf-Connecting-Ip, a cloudflare
-// deployment's per-IP limits are global, and serve says so at WARN.
-func TestServeWarnsThatTheCloudflareProxyIsNotHonouredYet(t *testing.T) {
+// clientip.go keys the per-IP limits by Cf-Connecting-Ip behind Cloudflare, so
+// serve no longer warns that it does not.
+func TestServeNoLongerWarnsAboutTheCloudflareProxy(t *testing.T) {
 	var buf bytes.Buffer
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	defer slog.SetDefault(prev)
 
 	var cfg config.Config
-	cfg.Server.TrustedProxy = config.ProxyNone
-	logGroups(cfg)
-	if strings.Contains(buf.String(), "not honoured") {
-		t.Fatalf("trusted_proxy = none warned: %s", buf.String())
-	}
 	cfg.Server.TrustedProxy = config.ProxyCloudflare
 	logGroups(cfg)
-	if !strings.Contains(buf.String(), "level=WARN") || !strings.Contains(buf.String(), "ONE global limit") {
-		t.Fatalf("trusted_proxy = cloudflare did not warn: %s", buf.String())
+	if strings.Contains(buf.String(), "not honoured") || strings.Contains(buf.String(), "ONE global limit") {
+		t.Fatalf("trusted_proxy = cloudflare still warns: %s", buf.String())
 	}
 }

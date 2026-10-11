@@ -217,7 +217,11 @@ func deleteCredentialTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, creden
 	if !found {
 		return 0, ErrCredentialUnknown
 	}
-	if total <= 1 {
+	var hasPassword bool
+	if err := tx.QueryRow(ctx, `SELECT password_hash IS NOT NULL FROM users WHERE id = $1`, userID).Scan(&hasPassword); err != nil {
+		return 0, fmt.Errorf("auth: passkey: delete credential: %w", err)
+	}
+	if total <= 1 && !hasPassword {
 		return 0, ErrLastPasskey
 	}
 
@@ -289,7 +293,7 @@ func revokeCredentialSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 	                       OR (credential_id IS NULL AND token_hash IS DISTINCT FROM $3::bytea))`
 
 	tag, err := tx.Exec(ctx,
-		`UPDATE sessions SET revoked_at = $4 WHERE revoked_at IS NULL AND `+doomed,
+		`UPDATE sessions SET revoked_at = $4, revoked_reason = 'others' WHERE revoked_at IS NULL AND `+doomed,
 		userID, credID, keepHash, now)
 	if err != nil {
 		return 0, fmt.Errorf("auth: revoke sessions of credential for %s: %w", userID, err)

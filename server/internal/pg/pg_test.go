@@ -72,8 +72,11 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 	}
 	want := []string{
 		"account_deletion_challenges", "account_key_wraps", "account_keys", "account_limits", "account_refusals",
-		"account_usage", "apns_tokens", "deleted_account_sessions", "goose_db_version", "invite_codes", "key_history",
-		"op_log", "oplog_seq", "sessions", "step_up_challenges", "users",
+		"account_usage", "apns_tokens", "auth_events", "banks", "deleted_account_sessions", "device_freeze_challenges",
+		"email_change_ceremonies", "email_code_pauses", "email_codes", "freeze_tokens", "goose_db_version",
+		"invite_codes", "key_history", "mail_log", "op_log", "oplog_seq", "password_login_ceremonies",
+		"password_reset_ceremonies", "rate_counters", "recovery_ceremonies", "server_meta", "sessions",
+		"signup_ceremonies", "step_up_challenges", "users", "waitlist_entries",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
 	if !slices.Equal(got, want) {
@@ -397,7 +400,8 @@ func TestAccountStatusIsActiveOrSuspended(t *testing.T) {
 	if status != "active" {
 		t.Fatalf("a new account is %q, want active", status)
 	}
-	mustExec(t, pool, `UPDATE users SET status = 'suspended' WHERE id = $1`, u)
+	mustExec(t, pool, `UPDATE users SET status = 'suspended', suspended_at = now() WHERE id = $1`, u)
+	wantsError(t, pool, "a suspension without its time", `UPDATE users SET status = 'active' WHERE id = $1`, u)
 	wantsError(t, pool, "a third status", `UPDATE users SET status = 'deleted' WHERE id = $1`, u)
 }
 
@@ -533,9 +537,9 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 		t.Fatalf("Pending = %d, %v; want 0", n, err)
 	}
 	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
-	// baseline before the first QA deploy): today 00010_keys.
+	// baseline before the first QA deploy): today 00010_keys and 00011_accounts.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 10 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 10", latest, err)
+	if err != nil || latest != 11 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 11", latest, err)
 	}
 }
