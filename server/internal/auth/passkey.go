@@ -67,6 +67,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
@@ -314,14 +315,12 @@ func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string, aut
 	if len(hash) == 0 {
 		return "", nil, nil, ErrNotInvited
 	}
-	var spendable bool
-	if err := p.Pool.QueryRow(ctx,
-		`SELECT true FROM invite_codes WHERE code_hash = $1 AND redeemed_at IS NULL`, hash).
-		Scan(&spendable); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil, nil, ErrNotInvited
-		}
+	spendable, err := invites.Redeemable(ctx, p.Pool, hash, time.Now())
+	if err != nil {
 		return "", nil, nil, fmt.Errorf("auth: passkey: check invite: %w", err)
+	}
+	if !spendable {
+		return "", nil, nil, ErrNotInvited
 	}
 
 	handle := make([]byte, userHandleBytes)

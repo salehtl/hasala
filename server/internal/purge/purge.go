@@ -96,6 +96,17 @@ var notUserLinked = []string{
 	"public.deleted_account_sessions",
 	// goose's own migration ledger.
 	"public.goose_db_version",
+	// Spec 07 §2.12: the bank catalog, and the waitlist with its tokens. An
+	// entry is an address that has not become an account (or, once joined, a
+	// tag with no address); the account's own joined entry and its mail rows
+	// are erased by the purge's address match (spec 02 §15.2 step 3, TODO for
+	// full parity), and the 30-day sweep deletes joined entries regardless.
+	"public.banks",
+	"public.waitlist_entries",
+	"public.waitlist_tokens",
+	// The operator audit log: internal ids and actions, never an address, and
+	// append-only by trigger for 400 days.
+	"public.admin_audit",
 }
 
 // Report is what a purge did, per table. It is returned even on the paths that

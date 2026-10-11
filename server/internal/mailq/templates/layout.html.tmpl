@@ -1,0 +1,13 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{{.Title}}</title></head>
+<body>
+<div hidden>{{.Preview}}</div>
+<p><strong>Hasala</strong></p>
+<p>{{.Greeting}}</p>
+{{template "content" .}}
+<hr>
+<p>{{.Why}} Questions? <a href="https://hasala.app/support">hasala.app/support</a> · Privacy: <a href="https://hasala.app/privacy">hasala.app/privacy</a> · Sent by Hasala from no-reply@hasala.app.</p>
+<p>Hasala never asks for your recovery phrase, your password or a code by email, by phone or on a website. Don't reply to this email.</p>
+</body>
+</html>{{end}}
