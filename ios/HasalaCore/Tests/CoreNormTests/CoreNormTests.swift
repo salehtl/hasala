@@ -190,6 +190,22 @@ struct StageTests {
     #expect(ContinuousClock.now - start < .seconds(5))
   }
 
+  @Test("hostile plain text and headers stay linear: many short lines, many failing words")
+  func hostileLinear() throws {
+    // 500,000 one-character lines: the line join once re-scanned its output per line.
+    let lines = utf8("Content-Type: text/plain\r\n\r\n" + String(repeating: "x\n", count: 500_000))
+    var start = ContinuousClock.now
+    let text = try Normalizer.normalize(version: 1, raw: lines, receivedAtMs: at).text
+    #expect(ContinuousClock.now - start < .seconds(5))
+    #expect(text.utf8.count == 999_999)
+    // 250,000 encoded-word openers that never complete: each failure once copied the rest.
+    let words = utf8(String(repeating: "=?utf-8?B?", count: 250_000))
+    start = ContinuousClock.now
+    let decoded = try MIME.decodeWords(words)
+    #expect(ContinuousClock.now - start < .seconds(5))
+    #expect(decoded.utf8.count == words.count)
+  }
+
   @Test("forward unwrapping: a marker alone still sets forwarded; both header layouts recover")
   func unwrap() {
     let f = Unwrap.unwrapForward(from: "outer@x.y", subject: "Fwd: Subj", body: "Begin forwarded message:\n> From: inner@a.b\n> body")

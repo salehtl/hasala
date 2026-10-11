@@ -381,7 +381,10 @@ public enum Normalizer {
       i += 1
     }
 
-    var out = String.UnicodeScalarView()
+    // A scalar array, not String.UnicodeScalarView: appending to the view re-checks the
+    // string's tail each time, which made this quadratic on bodies of many short lines.
+    var out: Scalars = []
+    out.reserveCapacity(decoded.count)
     var line: Scalars = []
     func flush() {
       let t = Unwrap.trimExplicit(line[...])
@@ -407,7 +410,7 @@ public enum Normalizer {
       line.append(c)
     }
     flush()
-    return String(out)
+    return NormText.string(out)
   }
 
   // MARK: - Dates
