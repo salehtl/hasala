@@ -111,7 +111,13 @@ final class AccountRuntime {
         mailbox: lane.map { lane -> @Sendable (MailboxTrigger, Int64?) async -> CycleReport in
           { @Sendable trigger, deadlineMs in await lane.cycle(trigger: trigger, deadlineMs: deadlineMs) }
         },
-        committed: { await store.reload() },
+        committed: {
+          if let lane {
+            let health = LedgerStateMapper.health(await lane.status(), nowMs: context.clock.nowMs())
+            await MainActor.run { store.mailbox = health }
+          }
+          await store.reload()
+        },
         stopped: stopped))
     box.set(coordinator)
     try await observer.open()

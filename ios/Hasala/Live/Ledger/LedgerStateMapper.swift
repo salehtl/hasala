@@ -304,6 +304,32 @@ nonisolated enum LedgerStateMapper {
     return clamp(n.year, n.month, day)
   }
 
+  // MARK: Mailbox
+
+  /// Bank alerts' health for Profile (spec 04 §7.10; content-free).
+  static func health(_ st: MailboxStatus, nowMs: Int64) -> MailboxHealth {
+    let status: MailboxHealth.Status
+    switch st.hero {
+    case .working, .catchingUp, .otherDevice: status = .working
+    case .needsYou: status = .reconnect
+    case .notConnected: status = .notConnected
+    }
+    let newest = st.health.compactMap(\.lastEmailAtMs).max() ?? st.lastSuccessAtMs
+    let names = Set(st.health.compactMap { row in bankNames.first { row.domain.contains($0.key) }?.value }).sorted()
+    return MailboxHealth(
+      status: status, lastEmail: newest.map { ago(nowMs - $0) } ?? "", banks: names.joined(separator: " and "),
+      unreadable: st.unreadable)
+  }
+
+  /// "4 min ago", "3 h ago", "2 days ago".
+  static func ago(_ ms: Int64) -> String {
+    let minutes = max(0, ms / 60_000)
+    if minutes < 1 { return "just now" }
+    if minutes < 60 { return "\(minutes) min ago" }
+    if minutes < 48 * 60 { return "\(minutes / 60) h ago" }
+    return "\(minutes / (24 * 60)) days ago"
+  }
+
   // MARK: Rules
 
   static func ruleMatch(_ m: String) -> RuleMatch {

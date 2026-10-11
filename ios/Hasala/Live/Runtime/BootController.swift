@@ -126,6 +126,14 @@ final class BootController {
     }
   }
 
+  /// The open runtime, waiting for one that is opening (a silent push or a background
+  /// task that launched the app).
+  func openedRuntime() async -> AccountRuntime? {
+    if let runtime { return runtime }
+    await opening?.value
+    return runtime
+  }
+
   /// The app came to the foreground: catch up (at most once a minute).
   func foreground() {
     guard let rt = runtime else { return }
