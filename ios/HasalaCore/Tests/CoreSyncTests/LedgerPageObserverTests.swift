@@ -99,6 +99,18 @@ struct LedgerPageObserverTests {
     #expect(try await r.observer.currentState() == State())
   }
 
+  @Test("an on-disk projection is excluded from backup once written")
+  func fileHygiene() async throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-observer-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileHygiene.prepareDirectory(dir)
+    let projection = try ProjectionStore.open(directory: dir)
+    let r = try Rig(projection: projection)
+    try await r.observer.open()
+    let url = try #require(projection.url)
+    #expect(url.lastPathComponent == "projection.sqlite" && FileHygiene.isExcluded(url))
+  }
+
   @Test("pages fold onto the state, commit with their snapshot, and project once the pull ends")
   func foldAndProject() async throws {
     let r = try Rig()

@@ -40,6 +40,8 @@ public actor LedgerPageObserver: PageObserver {
   private var lastAuthoredMs: Int64?
   /// Why the last projection failed, if it did (content-free); nil after a success.
   public private(set) var projectionFailure: String?
+  /// The projection's files were excluded from backup (after their first write).
+  private var hygieneDone = false
 
   /// `dictionary` is the bundled merchant dictionary (`MerchantDictionary.bundled()`;
   /// `.empty` when its tier is disabled).
@@ -196,6 +198,10 @@ public actor LedgerPageObserver: PageObserver {
       try projection.project(
         s, pending: pending, writerID: context.writerID.string, dictionary: dictionary, projectedAtMs: context.clock.nowMs())
       projectionFailure = nil
+      // §4.1: plaintext financial data stays out of backups; WAL and SHM exist only after a write.
+      if !hygieneDone, let url = projection.url {
+        hygieneDone = (try? FileHygiene.excludeDatabaseFiles(at: url)) != nil
+      }
     } catch {
       projectionFailure = String(describing: type(of: error))
       try? context.store.recordFoldEvent(kind: "projection_failed", detail: projectionFailure ?? "", at: context.clock.nowMs())

@@ -96,8 +96,7 @@ enum Scenarios {
     let tokens = RefreshingGmailTokenProvider(
       oauth: oauth, store: SecretsGmailRefreshTokenStore(secrets: a.context.secrets, userID: a.context.userID), clock: clock)
     let authoring = MailboxAuthoring(store: a.context.store, writerID: a.context.writerID.string, random: a.context.random)
-    let persistence = LedgerMailboxPersistence(
-      tables: MailboxTableStore(writer: a.context.store.db), author: authoring.opAuthor, nowMs: { clock.nowMs() })
+    let persistence = LedgerMailboxPersistence(store: a.context.store, authoring: authoring, nowMs: { clock.nowMs() })
     let ledger = RuntimeMailboxLedger(engine: a.engine, observer: a.observer, outbox: a.outbox, authoring: authoring)
     let engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: a.context.userID.string), oauth: oauth, tokens: tokens, gmailHTTP: gmail,

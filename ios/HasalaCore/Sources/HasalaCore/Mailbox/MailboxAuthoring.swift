@@ -66,3 +66,11 @@ public final class MailboxAuthoring: Sendable {
     { [self] drafts, at in try author(drafts, atMs: at) }
   }
 }
+
+extension LedgerMailboxPersistence {
+  /// The production persistence: the mailbox tables of the account's
+  /// `ledger.sqlite`, authoring every draft through `authoring`.
+  public init(store: LedgerStore, authoring: MailboxAuthoring, nowMs: @escaping @Sendable () -> Int64) {
+    self.init(tables: MailboxTableStore(writer: store.db), author: authoring.opAuthor, nowMs: nowMs)
+  }
+}
