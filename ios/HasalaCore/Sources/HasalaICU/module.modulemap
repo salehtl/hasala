@@ -1,0 +1,9 @@
+// The ICU regular-expression C API (uregex_*) and the one case-folding call CoreTemplate
+// needs, over the system's libicucore (spec 04 §2.3: "the C API uregex_* via a module map
+// over libicucore"). The SDKs ship libicucore.tbd but not unicode/uregex.h, so the
+// declarations are written out in HasalaICU.h, from ICU's stable C API.
+module HasalaICU [system] {
+  header "HasalaICU.h"
+  link "icucore"
+  export *
+}
