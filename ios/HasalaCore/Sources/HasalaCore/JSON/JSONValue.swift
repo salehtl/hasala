@@ -1,5 +1,5 @@
 // A strict JSON value that keeps what `JSONSerialization` and `JSONDecoder`
-// throw away (spec 04 §2.2; spec 03c §1.1-§1.2; client-core-a §3 hazards 1-3):
+// throw away (spec 04 §2.2; spec 03c §1.1-§1.2):
 //
 //   - the NUMBER LITERAL, exactly as written: `1`, `1.0` and `1e0` are three
 //     different literals, and the v4 decoders refuse the last two where an
@@ -11,7 +11,7 @@
 //
 // Byte-exact module (spec 04 §2.4 R2): no Foundation JSON, no Double on any
 // path that decides a value, no Character iteration.
-import CoreText
+import HasalaText
 
 public enum JSONValue: Sendable, Hashable {
   case null

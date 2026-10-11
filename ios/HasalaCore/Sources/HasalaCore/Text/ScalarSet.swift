@@ -3,7 +3,7 @@
 // Every whitespace or trim set in the oracle is a FIXED list, written out, and
 // none of them is Foundation's `CharacterSet.whitespaces(AndNewlines)` (which
 // differs from all of them). One named set per call site of the TypeScript or
-// Go source, so a port reads the set it means (client-core-b §11).
+// Go source, so a port reads the set it means (spec 03c §1.6).
 
 /// A fixed set of Unicode scalars, independent of the OS's Unicode tables.
 public struct ScalarSet: Sendable, Hashable {

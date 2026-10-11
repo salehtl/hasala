@@ -14,8 +14,8 @@
 //
 // Errors carry a coarse reason and a byte offset only, never parser prose or
 // input content: callers report `"<what>: body is not valid JSON (<n> bytes)"`
-// (client-core-a §3 hazard 1), because the text reaches materialized state.
-import CoreText
+// and nothing more, because the text can reach materialized state.
+import HasalaText
 
 public enum JSONParseError: Error, Equatable, Sendable {
   case syntax(offset: Int)

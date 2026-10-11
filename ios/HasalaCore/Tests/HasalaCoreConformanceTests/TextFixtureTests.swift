@@ -1,8 +1,8 @@
 // conformance/dict/matching.json (Go's own answers, internal/dict
-// TestWriteDictConformanceFixtures): the CoreText building blocks the
+// TestWriteDictConformanceFixtures): the HasalaText building blocks the
 // categorization canon is made of, against Go's verdicts.
 import CorePrimitives
-import CoreText
+import HasalaText
 import Foundation
 import Testing
 

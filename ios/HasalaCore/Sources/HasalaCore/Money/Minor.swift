@@ -4,7 +4,7 @@
 // `Int128` and comes back with an explicit overflow answer: Swift arithmetic
 // traps, and a trap in the fold is a bug, never a path (spec 04 §2.4 R9). Money
 // on the wire is a JSON STRING of decimal digits.
-import CoreText
+import HasalaText
 
 public enum MoneyError: Error, Equatable, Sendable {
   /// Not the field's wire grammar.
@@ -104,7 +104,7 @@ public enum MoneyGrammar {
 
   /// Fields inherited from v3 (`amount_minor`, `amount_home_minor`, split
   /// amounts): wire/op.ts `parseDecimal`'s `^[0-9]+$` (leading zeros allowed)
-  /// plus the Int64 cap Go has (spec 03c §1.3; client-core-b D6).
+  /// plus the Int64 cap Go has, so v3 fixtures still pass (spec 03c §1.3).
   public static func parseV3(_ s: String) throws(MoneyError) -> Int64 {
     let u = Array(s.utf8)
     guard ASCII.isDecimal(s) else { throw .grammar }

@@ -7,7 +7,17 @@
 // workstreams that fill them never edit this file concurrently. A module that is
 // not implemented yet is a target holding a placeholder file. The layering is
 // the target graph: a module may depend only on modules in a lower layer (or
-// ones listed explicitly in §2.2), and the compiler enforces it.
+// ones listed explicitly in §2.2). The compiler enforces only part of that:
+// SwiftPM lets a target import any module its dependencies link, transitively
+// (so a `Sync/` file could `import GRDB`). `imports.allow` and
+// `ios/scripts/check-imports.sh` close that hole: each directory may import its
+// declared dependencies and its §2.3 system modules, and nothing else.
+//
+// One name deviates from §2.2: its `CoreText` module (`Text/`) is `HasalaText`
+// here. A package module called `CoreText` shadows Apple's CoreText framework,
+// so the package does not build for iOS (GRDB's dependency scan resolves
+// `CoreText` to this module) and a client that links both cannot reach
+// `CTFont*`.
 //
 // Two third-party packages, pinned `exact:` (spec 04 §2.1; recorded in NOTICE):
 // GRDB (MIT), linked by CoreStore and CoreProjection only (R6), and
@@ -17,7 +27,7 @@ import PackageDescription
 // MARK: - Layers (spec 04 §2.2)
 
 let l0: [Target.Dependency] = [
-  "CorePrimitives", "CoreText", "CoreJSON", "CoreTime", "CoreMoney", "CoreResources",
+  "CorePrimitives", "HasalaText", "CoreJSON", "CoreTime", "CoreMoney", "CoreResources",
 ]
 let l1: [Target.Dependency] = ["CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreMail"]
 let l2: [Target.Dependency] = ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain"]
@@ -39,7 +49,7 @@ func core(
 /// each but the resource-only CoreResources and CoreTestSupport has a
 /// `<Module>Tests` unit-test target in `Tests/<Module>Tests`.
 let libraries = [
-  "CorePrimitives", "CoreText", "CoreJSON", "CoreTime", "CoreMoney", "CoreResources",
+  "CorePrimitives", "HasalaText", "CoreJSON", "CoreTime", "CoreMoney", "CoreResources",
   "CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreMail",
   "CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain",
   "CoreStore", "CoreProjection",
@@ -59,10 +69,10 @@ let package = Package(
   targets: [
     // L0: no dependencies outside L0 (WS-7, apart from CoreResources' content).
     core("CorePrimitives", "Primitives"),
-    core("CoreText", "Text"),
-    core("CoreJSON", "JSON", ["CoreText"]),
+    core("HasalaText", "Text"),  // §2.2 `CoreText`, renamed: see the header
+    core("CoreJSON", "JSON", ["HasalaText"]),
     core("CoreTime", "Time"),
-    core("CoreMoney", "Money", ["CoreText"]),
+    core("CoreMoney", "Money", ["HasalaText"]),
     // Resource-only. The two single-file resources are added by their owners,
     // one line each, when the file lands (SwiftPM refuses a missing resource):
     //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5)

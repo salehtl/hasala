@@ -1,8 +1,8 @@
-// CoreText unit tests. The Go-verdict tables for whitespace and lower-casing
+// HasalaText unit tests. The Go-verdict tables for whitespace and lower-casing
 // run against conformance/dict/matching.json in HasalaCoreConformanceTests.
 import Testing
 
-@testable import CoreText
+@testable import HasalaText
 
 @Suite("scalar sets and trims")
 struct ScalarSetTests {

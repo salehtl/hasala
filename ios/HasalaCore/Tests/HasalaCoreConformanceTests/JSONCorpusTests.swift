@@ -9,7 +9,7 @@
 // Failures name the file and the JSON path only, never a value: the private
 // files hold real mail.
 import CoreJSON
-import CoreText
+import HasalaText
 import Foundation
 import Testing
 
