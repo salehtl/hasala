@@ -18,11 +18,15 @@ struct RootView: View {
       let scenario = Scenario.fromLaunchArguments(ProcessInfo.processInfo.arguments)
       return AppModel(snapshot: Maya.home, amountsHidden: scenario.startsWithAmountsHidden)
     }()
+    /// The account gate (onboarding, sign-in, walls) on the in-memory account mock; the
+    /// page-14 scenarios pick its starting state (`AuthScenario`).
+    @State private var session = AuthScenario.session(
+      for: AuthScenario.fromLaunchArguments(ProcessInfo.processInfo.arguments))
   #endif
 
   var body: some View {
     #if HASALA_MOCKS
-      MainView(app: app)
+      AccountRootView(session: session) { MainView(app: app) }
     #else
       ShellView(build: .current)
     #endif

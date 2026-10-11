@@ -98,6 +98,9 @@ targets:
         product: CoreSignals
       - package: HasalaCore
         product: HasalaModel
+      # The Keychain adapter for the live account service (WS-14).
+      - package: HasalaCore
+        product: HasalaKeychain
   HasalaTests:
     type: bundle.unit-test
     platform: iOS
