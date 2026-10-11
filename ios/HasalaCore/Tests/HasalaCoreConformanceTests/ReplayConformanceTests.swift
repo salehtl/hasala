@@ -113,4 +113,21 @@ struct ReplayConformanceTests {
     guard case .state(let viaBlobs) = try Self.fold(c) else { return }
     #expect(direct.serialized() == viaBlobs.serialized())
   }
+
+  @Test("FoldCanary's v3 half is the canary-canary-v3 log, and folds to its state")
+  func canaryCopyIsFaithful() throws {
+    let c = try Fixtures.json("replay/canary-canary-v3.json")
+    let log = try c.array("log")
+    let ours = FoldCanary.log()
+    #expect(ours.count > log.count)
+    var s = State()
+    for (i, item) in log.enumerated() {
+      let wantOps = try OpCodec.decodeBlobOps(try Self.body(item))
+      #expect(ours[i].seq == Int64(try item.string("seq"))!)
+      #expect(ours[i].writerID == (try item.string("writer_id")))
+      #expect(ours[i].ops == wantOps)
+      try Replay.foldOps(ours[i].ops, seq: ours[i].seq, writerID: ours[i].writerID, into: &s)
+    }
+    #expect(s.serializedSHA256(blankingDiagnostics: true) == (try c["expect"]!.string("state_sha256")))
+  }
 }
