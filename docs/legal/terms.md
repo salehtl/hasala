@@ -18,7 +18,7 @@ By creating a Hasala account or using the beta, you agree to these terms and to 
 
 ### Invite-only
 
-Hasala is in a private beta. You need an invitation through Apple's TestFlight and a Hasala invite code to create an account. Invite codes are personal. Please don't share or sell them. We decide who is invited, and we may limit the number of testers.
+Hasala is in a private beta. You need access to the beta on Apple's TestFlight and a Hasala invite code to create an account. Invite codes are personal. Please don't share or sell them. We decide who is invited, and we may limit the number of testers.
 
 ### What a beta means
 
@@ -66,7 +66,7 @@ You are responsible for keeping your sign-in methods and your iPhone secure. In 
 - **Your 12-word recovery phrase is your account.** Anyone who has it can read your data, sign in as you and add devices. Keep it private and stored somewhere safe.
 - **We can't reset your recovery phrase.** If you lose your recovery phrase and every passkey, and have no signed-in iPhone, your account and data can't be recovered. Not even by us.
 - **A password reset needs your 12 words or a signed-in iPhone.** If you sign in with email and password, keep at least one of these available.
-- **Hasala will never ask for your recovery phrase** in an email, a notification or on a website. Only type it into the Hasala app.
+- **Hasala will never ask for your recovery phrase, your password or a code** in an email, a notification, a phone call or on a website. Only type them into the Hasala app.
 - Keep a passcode on your iPhone, and keep two-factor authentication on for your Apple Account. Your passkey is stored in iCloud Keychain.
 
 Tell us straight away at security@hasala.app if you think someone else has access to your account.
@@ -117,7 +117,7 @@ We may end your access if you seriously or repeatedly break these terms. We may 
 
 Hasala's source code is source-available, at [github.com/salehtl/hasala](https://github.com/salehtl/hasala), under the Functional Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2). The licence text is in [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md).
 
-That licence covers your use of the code. These terms cover your use of the Hasala service that we run. Each version of the code becomes available under the Apache License 2.0 two years after it is released. Until then, it may not be used to offer a competing product or service. Read the licence itself for the exact terms.
+That licence covers your use of the code. These terms cover your use of the Hasala service that we run. Each version of the code becomes available under the Apache License 2.0 two years after it is released. Until then, it may not be used in a commercial product or service that competes with Hasala. Read the licence itself for the exact terms.
 
 The name Hasala (حصّالة) and the Slot mark, Hasala's logo, are trademarks and are not covered by the licence. See [TRADEMARKS.md](https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md) for how you may refer to them.
 
