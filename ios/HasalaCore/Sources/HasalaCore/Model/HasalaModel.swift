@@ -26,6 +26,17 @@ import Foundation
       self.modelTag = modelTag
     }
 
+    /// Greedy, at most 24 tokens (03c §8.6.4). The iOS 27 SDK renamed the
+    /// label to `samplingMode:` and deprecated `sampling:`; the iOS 26 SDK
+    /// (Xcode 26, Swift 6.3, which CI builds with) has only `sampling:`.
+    static var options: GenerationOptions {
+      #if compiler(>=6.4)
+        GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 24)
+      #else
+        GenerationOptions(sampling: .greedy, maximumResponseTokens: 24)
+      #endif
+    }
+
     public func availability() -> ModelAvailability {
       let model = SystemLanguageModel(useCase: .general)
       switch model.availability {
@@ -52,7 +63,7 @@ import Foundation
         let schema = try GenerationSchema(root: root, dependencies: [])
         let reply = try await session.respond(
           to: ModelTier.prompt(subject: subject), schema: schema, includeSchemaInPrompt: true,
-          options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 24))
+          options: Self.options)
         let id: String = try reply.content.value(String.self, forProperty: "category")
         return allowed.contains { $0.id == id } ? .category(id) : .unknown
       } catch let error as LanguageModelSession.GenerationError {
