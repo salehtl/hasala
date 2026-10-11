@@ -57,7 +57,7 @@ final class BootController {
     holder.boot = self
     account.hooks = LiveAccountHooks(
       engine: { [weak self] in self?.runtime?.engine },
-      left: { [weak self] in await self?.closeRuntime() })
+      left: { [weak self] in await self?.left() })
   }
 
   /// Setup and the root view wait for the runtime: setup authors into it, and resumes
@@ -169,6 +169,13 @@ final class BootController {
     }
   }
 
+  /// This iPhone left the account (signed out, removed, the account deleted): the
+  /// runtime closes and the gate goes back to Welcome, whichever screen asked.
+  private func left() async {
+    await closeRuntime()
+    if session.phase != .signedOut { session.signedOut() }
+  }
+
   /// Closes the open account's runtime (sign-out, removal, deletion, a wipe).
   func closeRuntime() async {
     opening?.cancel()
@@ -273,8 +280,17 @@ private final class RuntimeHolder {
   weak var boot: BootController?
 }
 
-/// The live graph's entry points for UIKit callbacks (`AppDelegate`).
+/// The live graph, once per process, and its entry point for UIKit callbacks
+/// (`AppDelegate`).
 @MainActor
 enum AppGraph {
-  static var boot: BootController?
+  private(set) static var boot: BootController?
+
+  /// The process's live graph, built on first use.
+  static func live() -> BootController {
+    if let boot { return boot }
+    let made = BootController(env: .live())
+    boot = made
+    return made
+  }
 }

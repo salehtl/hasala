@@ -33,11 +33,8 @@ struct RootView: View {
 
 /// The live graph: the account gate, setup, and the app over the open account.
 struct LiveRootView: View {
-  @State private var boot: BootController = {
-    let boot = BootController(env: .live())
-    AppGraph.boot = boot
-    return boot
-  }()
+  /// One live graph per process (`@State`'s initial value is evaluated on every init).
+  @State private var boot = AppGraph.live()
   @Environment(\.scenePhase) private var scenePhase
 
   var body: some View {
