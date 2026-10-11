@@ -154,8 +154,10 @@ struct EngineTests {
   /// (measured 2026-10-11 against Go's regexp and Bun): a capture inside a group repeated more
   /// than once keeps its last participating value in Go and ICU, while JavaScript resets it on
   /// every iteration; and `[a-z]` under `i` matches U+212A in Go, V8 and WebKit (and here), but
-  /// not in Bun's JavaScriptCore (tmpl/agreement.test.ts pins that as a Bun bug). The dialect
-  /// accepts the first shape; no shipping template uses it.
+  /// not in Bun's JavaScriptCore (tmpl/agreement.test.ts pins that as a Bun bug); and Bun
+  /// 1.3.13 finds no match for `(?:^b)?A` in "c A", where Go, V8 and ICU match "A" at 2 (also
+  /// pinned there). The dialect accepts the first and last shapes; no shipping template uses
+  /// either.
   @Test("where JavaScript and Go disagree on an accepted pattern, ICU answers as Go does")
   func goSemantics() throws {
     let re = try ICUPattern.compile("(?:(?P<v>a)|b){2}", caseInsensitive: false)
@@ -164,6 +166,10 @@ struct EngineTests {
     let m = try #require(try re.firstMatch(in: u))
     #expect(m.groups[0] == 0..<1)  // Go: [0 2 0 1]; JavaScript: v undefined
     #expect(try match("[a-z]", "\u{212A}", ci: true) == "\u{212A}")
+    #expect(Dialect.validatePattern("(?:^b)?A", flags: []) == [])
+    let anchored = try ICUPattern.compile("(?:^b)?A", caseInsensitive: false)
+    let text = Array("c A".utf16)
+    #expect(try anchored.firstMatch(in: text)?.range == 2..<3)  // Go: [2 3]; Bun: no match
   }
 
   @Test("ICU set operators and nested sets have no meaning in a translated pattern")
@@ -251,6 +257,23 @@ struct ExecutorTests {
     let r = try t.execute(subject: "", normalizedBody: String(repeating: "1", count: 1_000_000))
     #expect(r.error == .tooLarge)
     #expect(!r.matched)
+  }
+
+  @Test("a cancelled task stops before the next pattern search and records no verdict")
+  func cancellation() async throws {
+    let t = try CompiledTemplate(json: Self.definition())
+    let task = Task { () -> TemplateError? in
+      withUnsafeCurrentTask { $0?.cancel() }
+      do throws(TemplateError) {
+        _ = try t.execute(subject: "", normalizedBody: "Amt: 1.00")
+        return nil
+      } catch {
+        return error
+      }
+    }
+    #expect(await task.value == .cancelled)
+    // The same body outside a cancelled task matches.
+    #expect(try t.execute(subject: "", normalizedBody: "Amt: 1.00").matched)
   }
 
   @Test("load-time refusals: dialect, unknown fields, impossible requirements")

@@ -574,21 +574,23 @@ enum MIME {
     guard let firstIdx = Bytes.index(of: marker, in: v) else { return NormText.decodeUTF8(v) }
 
     var out: [UInt8] = Array(v[0..<firstIdx])
-    var header = Array(v[firstIdx...])
+    // `base` is where Go's remaining `header` slice starts; indices below are absolute into
+    // `v`, so advancing never copies the tail (copying made repeated failing words quadratic).
+    var base = firstIdx
     var betweenWords = false
     while true {
-      guard let start = Bytes.index(of: marker, in: header) else { break }
+      guard let start = Bytes.index(of: marker, in: v, from: base) else { break }
       var cur = start + 2
-      guard let q = Bytes.index(of: 0x3f, in: header, from: cur) else { break }
-      let charset = Array(header[cur..<q])
+      guard let q = Bytes.index(of: 0x3f, in: v, from: cur) else { break }
+      let charset = Array(v[cur..<q])
       cur = q + 1
-      if header.count < cur + 4 { break }  // "Q??=".length
-      let encoding = header[cur]
+      if v.count < cur + 4 { break }  // "Q??=".length
+      let encoding = v[cur]
       cur += 1
-      if header[cur] != 0x3f { break }
+      if v[cur] != 0x3f { break }
       cur += 1
-      guard let j = Bytes.index(of: [0x3f, 0x3d], in: header, from: cur) else { break }
-      let text = header[cur..<j]
+      guard let j = Bytes.index(of: [0x3f, 0x3d], in: v, from: cur) else { break }
+      let text = v[cur..<j]
       let end = j + 2
 
       let content: [UInt8]?
@@ -600,12 +602,12 @@ enum MIME {
       guard let content else {
         // Go writes the "=?" back out and rescans from just after it.
         betweenWords = false
-        out.append(contentsOf: header[0..<(start + 2)])
-        header = Array(header[(start + 2)...])
+        out.append(contentsOf: v[base..<(start + 2)])
+        base = start + 2
         continue
       }
-      if start > 0 && (!betweenWords || hasNonWhitespace(header[0..<start])) {
-        out.append(contentsOf: header[0..<start])
+      if start > base && (!betweenWords || hasNonWhitespace(v[base..<start])) {
+        out.append(contentsOf: v[base..<start])
       }
       if Bytes.latin1Lower(charset) == Bytes.of("utf-8") {
         out.append(contentsOf: content)
@@ -615,10 +617,10 @@ enum MIME {
         }
         out.append(contentsOf: converted.utf8)
       }
-      header = Array(header[end...])
+      base = end
       betweenWords = true
     }
-    out.append(contentsOf: header)
+    out.append(contentsOf: v[base...])
     return NormText.decodeUTF8(out)
   }
 

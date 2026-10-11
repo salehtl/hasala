@@ -26,8 +26,11 @@ public enum MailHeaders {
   }
 
   /// The header block of raw message bytes, decoded as WHATWG UTF-8 (one U+FFFD per invalid
-  /// sequence), the way the lane decodes a fetched message before reading its headers.
+  /// sequence, and one leading byte-order mark dropped, as `TextDecoder` does by default), the
+  /// way the lane decodes a fetched message before reading its headers.
   public static func headerBlock(rawMessage: some Collection<UInt8>) -> String {
-    headerBlock(String(decoding: rawMessage, as: UTF8.self))
+    var scalars = String(decoding: rawMessage, as: UTF8.self).unicodeScalars
+    if scalars.first == "\u{FEFF}" { scalars.removeFirst() }
+    return headerBlock(String(scalars))
   }
 }

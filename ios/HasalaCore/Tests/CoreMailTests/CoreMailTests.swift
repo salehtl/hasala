@@ -185,6 +185,12 @@ struct MailHeaderTests {
     #expect(MailHeaders.headerBlock("A: 1\r\nB: 2") == "A: 1\r\nB: 2")
     #expect(MailHeaders.headerBlock("") == "")
     #expect(MailHeaders.headerBlock(rawMessage: Array("A: 1\r\n\r\nbody".utf8)) == "A: 1")
+    // One leading BOM is dropped, as TextDecoder drops it: a BOM then a blank line is an
+    // empty header block, not a block that runs on into the body.
+    let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
+    #expect(MailHeaders.headerBlock(rawMessage: bom + Array("\r\n\r\nA: 1\r\n\r\n".utf8)) == "")
+    #expect(MailHeaders.headerBlock(rawMessage: bom + Array("A: 1\r\n\r\nbody".utf8)) == "A: 1")
+    #expect(MailHeaders.headerBlock(rawMessage: bom + bom + Array("A: 1\r\n\r\nbody".utf8)) == "\u{FEFF}A: 1")
     // A large body no longer counts against the A-R bound.
     let big = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n"
       + String(repeating: "x", count: 900_000)

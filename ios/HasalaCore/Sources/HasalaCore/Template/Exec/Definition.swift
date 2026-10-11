@@ -10,6 +10,11 @@ public enum TemplateError: Error, Equatable, Sendable {
   case definition(String)
   /// A pattern that violates the dialect, with Go's reason codes in scan order.
   case dialect(String, codes: [String])
+  /// The calling task was cancelled; checked before every pattern search. A run's worst case
+  /// is its pattern count times ICU's per-search limit (several seconds on a hostile 2 MB
+  /// body), so the caller's deadline is enforced by cancelling the task that runs `execute`
+  /// (inventory client-core-b §2.3). Not a verdict: nothing about the message is recorded.
+  case cancelled
 }
 
 public struct TemplateDefinition: Sendable, Equatable {
