@@ -87,15 +87,19 @@ package api
 // over a failed purge would be the worst possible outcome of this endpoint.
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/purge"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
@@ -119,16 +123,24 @@ const reauthMaxAge = 5 * time.Minute
 // of the re-authentication is not a second, independently-checked age: the
 // assertion is over the challenge, and the challenge dies on its own clock.
 type DeleteAccountRequest struct {
-	// Assertion is the browser's PublicKeyCredential for a
-	// navigator.credentials.get() over Nonce, forwarded to go-webauthn's own
-	// parser untouched — this package never has to agree with the library
-	// about the shape of an authenticator response.
-	Assertion json.RawMessage `json:"assertion"`
-	// Nonce is the challenge from POST /api/v1/account/challenge (base64). It
-	// is BOTH the assertion's challenge and the device key's message.
-	Nonce string `json:"nonce"`
-	// Sig is the Ed25519 signature over purge.DeletionMessage(nonce, user_id)
-	// by an enrolled device writer (base64).
+	// StepUp, WriterID and Sig are spec 02 #41, the app's form: an
+	// account.delete step-up (T = (uuid_str(user_id)); a UV passkey assertion,
+	// or the session writer's DAK plus the password), and WriterID's Ed25519
+	// signature over keyproto.DeletionMessage(step_up.nonce, user_id) (D16).
+	// A body with step_up takes this path.
+	StepUp   *StepUpWire `json:"step_up,omitempty"`
+	WriterID string      `json:"writer_id,omitempty"`
+
+	// Assertion and Nonce are ledgerd's form, kept for passkey accounts: the
+	// browser's PublicKeyCredential for a navigator.credentials.get() over
+	// Nonce, forwarded to go-webauthn's own parser untouched, and the
+	// challenge from POST /api/v1/account/challenge (base64), which is BOTH
+	// the assertion's challenge and the device key's message.
+	Assertion json.RawMessage `json:"assertion,omitempty"`
+	Nonce     string          `json:"nonce,omitempty"`
+	// Sig is the device writer's Ed25519 signature (base64): over
+	// keyproto.DeletionMessage(step_up.nonce, user_id) with step_up, else
+	// over purge.DeletionMessage(nonce, user_id).
 	Sig string `json:"sig"`
 }
 
@@ -196,6 +208,10 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, use
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
+	if req.StepUp != nil {
+		s.deleteWithStepUp(w, r, userID, req)
+		return
+	}
 
 	// Malformed input is a 400: it describes the caller's own submission and
 	// says nothing about the account. An ABSENT credential is not malformed —
@@ -260,6 +276,72 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
+	s.purgeAccount(w, r, userID)
+}
+
+// deleteWithStepUp is spec 02 §15.2's #41: the session, an account.delete
+// step-up (passkey, or DAK plus password: the password account's only path),
+// and a live writer's signature over the step-up's own nonce, checked inside
+// the step-up's transaction, so a wrong signature burns the nonce like a
+// wrong proof. The step-up commits before the purge, whose cascade would
+// otherwise wait on the nonce row the step-up holds.
+func (s *Server) deleteWithStepUp(w http.ResponseWriter, r *http.Request, userID uuid.UUID, req DeleteAccountRequest) {
+	su, ok := decodeStepUp(w, req.StepUp)
+	if !ok {
+		return
+	}
+	sig, ok := b64Field(w, req.Sig, "sig")
+	if !ok {
+		return
+	}
+	if len(req.Assertion) > 0 || req.Nonce != "" {
+		writeErr(w, http.StatusBadRequest, "bad_request", "step_up replaces assertion and nonce")
+		return
+	}
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	if s.StepUp == nil {
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
+	}
+	ph, err := keyproto.ParamsHash(keyproto.ActionAccountDelete, []byte(userID.String()))
+	if err != nil {
+		s.writeKeyErr(w, r, err)
+		return
+	}
+	g := auth.Guarded{UserID: userID, SessionHash: info.Hash, BoundWriter: info.WriterID,
+		Action: keyproto.ActionAccountDelete, ParamsHash: ph, StepUp: su}
+	err = s.StepUp.Run(r.Context(), g, func(ctx context.Context, tx pgx.Tx, _ auth.Proven) error {
+		var (
+			pub  []byte
+			live bool
+		)
+		err := tx.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+			userID, req.WriterID).Scan(&pub, &live)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !live) {
+			return fmt.Errorf("%w: the signer is not a live writer of the account", auth.ErrStepUpFailed)
+		}
+		if err != nil {
+			return err
+		}
+		msg, err := keyproto.DeletionMessage(su.Nonce, userID)
+		if err != nil || !keyproto.VerifyEd25519(pub, msg, sig) {
+			return fmt.Errorf("%w: the deletion signature does not verify", auth.ErrStepUpFailed)
+		}
+		return nil
+	})
+	if err != nil {
+		s.writeKeyErr(w, r, err)
+		return
+	}
+	s.purgeAccount(w, r, userID)
+}
+
+// purgeAccount is the end both deletion forms share: collect the tokens,
+// purge, wake every device account-gone, 204.
+func (s *Server) purgeAccount(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	// Every device hears that the account is gone (spec 02 §12.5); the tokens
 	// go with the purge, so they are read first.
 	tokens := s.accountTokens(r.Context(), userID, "")

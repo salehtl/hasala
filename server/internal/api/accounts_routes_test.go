@@ -71,6 +71,12 @@ func (h *harness) passwordSignup(keys *authkeys.Keys, fake *mail.Fake, addr stri
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	return h.passwordSignupWith(keys, fake, addr, code)
+}
+
+// passwordSignupWith is passwordSignup with a given invite code.
+func (h *harness) passwordSignupWith(keys *authkeys.Keys, fake *mail.Fake, addr, code string) pwAccount {
+	h.t.Helper()
 	w := h.req("POST", "/api/v1/auth/signup/begin", "", SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya Rahman"})
 	wantStatus(h.t, w, http.StatusOK)
 	sb := decodeJSON[SignupBeginResponse](h.t, w)

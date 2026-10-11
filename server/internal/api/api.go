@@ -261,9 +261,13 @@ type Server struct {
 	// Gmail, when set, mounts the mailbox link and the Pub/Sub hook
 	// (routes_mailboxlink.go, routes_hooks.go).
 	Gmail *GmailOptions
-	// Web, when set, mounts spec 07's website routes: the waitlist and bank
-	// requests (routes_waitlist.go, routes_bankrequests.go).
+	// Web, when set, mounts spec 07's website routes: the waitlist and the
+	// anonymous bank request (routes_waitlist.go, routes_bankrequests.go).
+	// The app's signed-in bank request is mounted either way.
 	Web *WebOptions
+	// BankUser is the signed-in bank request's per-account limiter (spec 07
+	// §5.9); Handler fills it in (Web.BankUser when set).
+	BankUser *Limiter
 
 	// Headroom is the box-level disk fuse (internal/headroom). When it is
 	// tripped every non-read request is refused with a temporary 503 while
