@@ -39,12 +39,14 @@ version "two components" refused 'MARKETING_VERSION = 1.2'
 # hasala_absent: true only for "searched everything, found nothing".
 printf 'alpha\nbeta\n' >"$work/text"
 printf 'head\0\1\2 localhost \0tail' >"$work/binary"
-absent() { # absent NAME WANT(true|false) ERE PATH...
-	local name="$1" want="$2" got=false
-	shift 2
-	if hasala_absent "$@" 2>/dev/null; then got=true; fi
-	if [[ "$got" == "$want" ]]; then ok "hasala_absent $name: $got"; else bad "hasala_absent $name: $got, want $want"; fi
+printf 'head\0\1\2 LocalHost \0tail' >"$work/binary-capitals"
+absent_with() { # absent_with FUNCTION NAME WANT(true|false) ERE PATH...
+	local fn="$1" name="$2" want="$3" got=false
+	shift 3
+	if "$fn" "$@" 2>/dev/null; then got=true; fi
+	if [[ "$got" == "$want" ]]; then ok "$fn $name: $got"; else bad "$fn $name: $got, want $want"; fi
 }
+absent() { absent_with hasala_absent "$@"; }
 absent "no match" true 'gamma' "$work/text"
 absent "a match" false 'beta' "$work/text"
 absent "a match in a binary file" false 'localhost' "$work/binary"
@@ -52,6 +54,15 @@ absent "a match in a directory" false 'localhost' "$work"
 absent "a missing file" false 'gamma' "$work/missing"
 absent "a missing file beside a clean one" false 'gamma' "$work/text" "$work/missing"
 absent "no path at all" false 'gamma'
+absent "matches case: LocalHost is not localhost" true 'localhost' "$work/binary-capitals"
+# hasala_absent_i: the same, in any case (I12's dev-host search).
+absent_i() { absent_with hasala_absent_i "$@"; }
+absent_i "no match" true 'gamma' "$work/text"
+absent_i "a match in another case" false 'localhost' "$work/binary-capitals"
+absent_i "a match, pattern in capitals" false 'BETA' "$work/text"
+absent_i "a missing file" false 'gamma' "$work/missing"
+absent_i "a missing file beside a clean one" false 'gamma' "$work/text" "$work/missing"
+absent_i "no path at all" false 'gamma'
 
 # hasala_record_build and hasala_build_root
 hasala_record_build "$work/root" 991231.12359
