@@ -5,6 +5,8 @@ import SwiftUI
 struct HasalaApp: App {
   init() {
     HasalaFonts.register()
+    // BGTaskScheduler handlers must be registered before launch finishes (spec 04 §7.9).
+    BackgroundScheduler.shared.register()
   }
 
   var body: some Scene {

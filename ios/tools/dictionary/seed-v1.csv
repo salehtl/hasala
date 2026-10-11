@@ -1,0 +1,167 @@
+match,pattern,category,display
+contains,carrefour,groceries,Carrefour
+contains,spinneys,groceries,Spinneys
+contains,waitrose,groceries,Waitrose
+contains,lulu hypermarket,groceries,Lulu
+starts_with,lulu,groceries,Lulu
+contains,union coop,groceries,Union Coop
+contains,choithrams,groceries,Choithrams
+contains,al maya,groceries,Al Maya
+contains,viva supermarket,groceries,Viva
+contains,west zone,groceries,West Zone
+contains,nesto,groceries,Nesto
+contains,geant,groceries,Geant
+contains,kibsons,groceries,Kibsons
+contains,talabat mart,groceries,talabat mart
+contains,instashop,groceries,InstaShop
+contains,el grocer,groceries,el Grocer
+contains,zoom store,groceries,ZOOM
+contains,daily fresh,groceries,Daily Fresh
+contains,grandiose,groceries,Grandiose
+contains,almadina,groceries,Al Madina
+contains,كارفور,groceries,Carrefour
+contains,talabat,dining,talabat
+contains,deliveroo,dining,Deliveroo
+contains,careem food,dining,Careem Food
+contains,noon food,dining,noon Food
+contains,zomato,dining,Zomato
+contains,starbucks,dining,Starbucks
+contains,costa coffee,dining,Costa Coffee
+contains,tim hortons,dining,Tim Hortons
+contains,mcdonald,dining,McDonald's
+starts_with,kfc,dining,KFC
+contains,burger king,dining,Burger King
+contains,hardee,dining,Hardee's
+contains,pizza hut,dining,Pizza Hut
+contains,domino,dining,Domino's
+contains,papa john,dining,Papa John's
+contains,subway,dining,Subway
+contains,shake shack,dining,Shake Shack
+contains,five guys,dining,Five Guys
+contains,nando,dining,Nando's
+contains,paul bakery,dining,PAUL
+contains,cheesecake factory,dining,The Cheesecake Factory
+contains,common grounds,dining,Common Grounds
+contains,arabica,dining,% Arabica
+contains,joe & the juice,dining,Joe & The Juice
+contains,dunkin,dining,Dunkin'
+contains,krispy kreme,dining,Krispy Kreme
+contains,baskin robbins,dining,Baskin Robbins
+contains,zuma,dining,Zuma
+contains,salt camp,dining,SALT
+contains,tea time,dining,Tea Time
+contains,طلبات,dining,talabat
+contains,careem,transport,Careem
+contains,uber,transport,Uber
+contains,hala taxi,transport,Hala
+contains,dubai taxi,transport,Dubai Taxi
+contains,enoc,transport,ENOC
+contains,eppco,transport,EPPCO
+contains,adnoc,transport,ADNOC
+contains,emarat,transport,Emarat
+contains,salik,transport,Salik
+starts_with,rta,transport,RTA
+contains,nol card,transport,nol
+contains,parkin,transport,Parkin
+contains,mawaqif,transport,Mawaqif
+contains,darb toll,transport,Darb
+contains,udrive,transport,Udrive
+contains,ekar,transport,ekar
+contains,aster pharmacy,healthcare,Aster Pharmacy
+contains,life pharmacy,healthcare,Life Pharmacy
+contains,boots pharmacy,healthcare,Boots
+contains,bin sina,healthcare,BinSina
+contains,supercare pharmacy,healthcare,Supercare Pharmacy
+contains,medicina pharmacy,healthcare,Medicina
+contains,mediclinic,healthcare,Mediclinic
+contains,aster clinic,healthcare,Aster Clinic
+contains,aster hospital,healthcare,Aster Hospital
+starts_with,nmc,healthcare,NMC
+contains,king's college hospital,healthcare,King's College Hospital
+contains,american hospital,healthcare,American Hospital
+contains,axa insurance,insurance,AXA
+contains,oman insurance,insurance,Oman Insurance
+contains,sukoon insurance,insurance,Sukoon
+contains,orient insurance,insurance,Orient Insurance
+contains,daman,insurance,Daman
+contains,dewa,utilities,DEWA
+exact,dewa,utilities,DEWA
+contains,sewa,utilities,SEWA
+contains,addc,utilities,ADDC
+contains,etisalat,utilities,e&
+exact,du,utilities,du
+contains,du telecom,utilities,du
+contains,empower,utilities,Empower
+contains,emicool,utilities,Emicool
+contains,lootah gas,utilities,Lootah Gas
+contains,vox cinema,entertainment,VOX Cinemas
+starts_with,vox,entertainment,VOX Cinemas
+contains,reel cinema,entertainment,Reel Cinemas
+contains,novo cinema,entertainment,Novo Cinemas
+contains,dubai parks,entertainment,Dubai Parks
+contains,img worlds,entertainment,IMG Worlds
+contains,ski dubai,entertainment,Ski Dubai
+contains,dubai frame,entertainment,Dubai Frame
+contains,at the top,entertainment,At the Top
+contains,platinumlist,entertainment,Platinumlist
+contains,virginmegastore tickets,entertainment,Virgin Tickets
+contains,ikea,shopping,IKEA
+contains,noon.com,shopping,noon
+exact,noon,shopping,noon
+contains,amazon.ae,shopping,Amazon
+contains,namshi,shopping,Namshi
+contains,sharaf dg,shopping,Sharaf DG
+contains,jumbo electronics,shopping,Jumbo
+contains,virgin megastore,shopping,Virgin Megastore
+contains,ace hardware,shopping,ACE
+contains,home centre,shopping,Home Centre
+contains,centrepoint,shopping,Centrepoint
+contains,max fashion,shopping,Max
+starts_with,h&m,shopping,H&M
+contains,zara,shopping,Zara
+contains,decathlon,shopping,Decathlon
+contains,sephora,shopping,Sephora
+contains,faces,shopping,Faces
+contains,shein,shopping,SHEIN
+contains,aliexpress,shopping,AliExpress
+contains,emax,shopping,Emax
+contains,danube home,shopping,Danube Home
+contains,dragon mart,shopping,Dragon Mart
+contains,emirates airline,travel,Emirates
+contains,emirates.com,travel,Emirates
+contains,flydubai,travel,flydubai
+contains,etihad,travel,Etihad
+contains,air arabia,travel,Air Arabia
+contains,booking.com,travel,Booking.com
+contains,airbnb,travel,Airbnb
+contains,agoda,travel,Agoda
+contains,expedia,travel,Expedia
+contains,marriott,travel,Marriott
+contains,hilton,travel,Hilton
+contains,jumeirah,travel,Jumeirah
+contains,rove hotel,travel,Rove
+contains,dnata travel,travel,dnata Travel
+exact,netflix.com,subscriptions,Netflix
+contains,netflix,subscriptions,Netflix
+contains,spotify,subscriptions,Spotify
+contains,anghami,subscriptions,Anghami
+starts_with,osn,subscriptions,OSN+
+contains,shahid,subscriptions,Shahid
+contains,disney plus,subscriptions,Disney+
+contains,apple.com/bill,subscriptions,Apple
+contains,youtube premium,subscriptions,YouTube Premium
+contains,google storage,subscriptions,Google One
+contains,icloud,subscriptions,iCloud+
+contains,chatgpt,subscriptions,ChatGPT
+contains,adobe,subscriptions,Adobe
+contains,microsoft 365,subscriptions,Microsoft 365
+contains,amazon prime,subscriptions,Amazon Prime
+contains,noon minutes,groceries,noon Minutes
+contains,fitness first,subscriptions,Fitness First
+contains,gymnation,subscriptions,GymNation
+contains,sarwa,investments,Sarwa
+contains,stake,investments,Stake
+contains,baraka,investments,Baraka
+contains,ejari,rent,Ejari
+contains,tabby,debt,tabby
+contains,tamara,debt,Tamara

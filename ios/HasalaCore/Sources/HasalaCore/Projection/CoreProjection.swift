@@ -1,5 +1,9 @@
-// CoreProjection (Projection/), spec 04 §2.2. Owner: WS-10. Holds projection.sqlite (spec 04
-// §4.3), Projector and LedgerReader.
+// CoreProjection (Projection/), spec 04 §2.2. Owner: WS-10.
 //
-// Placeholder: the target exists so the package graph is fixed on day 1 and the owner never
-// edits Package.swift. Replace this file when the module is filled.
+//   - Schema.swift        projection.sqlite: tables and views (04 §4.3; 03c §3.9, §4.4, §5.6, §6.3,
+//                         §7.3; 03a §5), rebuilt whole on a version change
+//   - Projector.swift     State (+ the pending overlay) → the tables, one transaction, `complete`
+//   - LedgerReader.swift  typed queries and ValueObservation streams for the screens
+//
+// The only GRDB users besides CoreStore (R6). The database is plaintext financial data:
+// the caller opens it under the same file protection and backup exclusion as the store (04 §4.1).
