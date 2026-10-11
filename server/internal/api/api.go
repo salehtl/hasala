@@ -12,9 +12,9 @@
 // one:
 //
 //	routes_session.go      logout, logout-all (F4)                  WS-3
-//	routes_writers.go      writer challenge, register, roster       WS-3
+//	routes_writers.go      writer challenge, register, revoke, roster WS-3
 //	routes_account.go      account deletion                         WS-3
-//	routes_stepup.go       step-up begin                            WS-3 (empty)
+//	routes_stepup.go       step-up begin                            WS-3
 //	routes_signup.go, routes_password.go, routes_reset.go,
 //	routes_recover.go, routes_email.go, routes_freeze.go,
 //	routes_events.go                                                WS-3 (empty)
@@ -23,8 +23,8 @@
 //	routes_hooks.go        POST /hooks/gmail/pubsub                 WS-4 (empty)
 //	routes_waitlist.go, routes_bankrequests.go   07's public routes  WS-19 (empty)
 //
-// The sync routes are in sync.go (WS-2), keys in keys.go and keywraps.go, the
-// passkey ceremonies in passkey.go and passkeymanage.go.
+// The sync routes are in sync.go (WS-2), keys and the bootstrap in keys.go and
+// keywraps.go, the passkey ceremonies in passkey.go and passkeymanage.go.
 //
 // # The contract
 //
@@ -155,6 +155,19 @@ const (
 	sessionBurst   = 20
 	sessionMaxKeys = 4096
 
+	// Step-up begin (spec 02 §16.2 stepup-user): one per guarded action a
+	// person takes, each a row.
+	stepUpRate    = 10.0 / 60.0 // 10/minute sustained
+	stepUpBurst   = 20
+	stepUpMaxKeys = 4096
+
+	// Pulls and hash lists (spec 02 §16.2 pull-user), plus at most
+	// maxConcurrentPulls in flight per account (§11.3).
+	pullRate           = 10.0
+	pullBurst          = 50
+	pullMaxKeys        = 4096
+	maxConcurrentPulls = 2
+
 	// POST /api/v1/sync gets two budgets: a request rate for POOL fairness
 	// (one account cannot occupy the 16-connection pool with back-to-back
 	// append transactions) and a byte-weighted bucket for the bytes that land
@@ -181,6 +194,12 @@ type Server struct {
 	Writers  *auth.Writers
 	Appender *oplog.Appender
 
+	// StepUp verifies the action-bound step-ups (spec 02 §8); AccountKeys owns
+	// the bootstrap, GET /keys and the PRF wraps. Handler fills both in over
+	// Pool and Passkeys when a Server was built field by field.
+	StepUp      *auth.StepUp
+	AccountKeys *auth.AccountKeys
+
 	// Deletion owns ledgerd's account-deletion challenge lane until WS-3's
 	// step-up replaces it. NEVER nil and ALWAYS mounted: App Review 5.1.1(v)
 	// requires in-app deletion. Handler fills it in when a Server was built
@@ -202,6 +221,12 @@ type Server struct {
 	AccountPerUser *Limiter
 	// SessionPerUser bounds logout and logout-all.
 	SessionPerUser *Limiter
+	// StepUpPerUser is spec 02's stepup-user: every begin writes a row.
+	StepUpPerUser *Limiter
+	// PullPerUser is spec 02's pull-user; pulls also hold one of
+	// maxConcurrentPulls slots per account while they run.
+	PullPerUser *Limiter
+	pulls       pullSlots
 	// PasskeyPerIP and PasskeyGlobal bound all the passkey routes, including
 	// the ones that require a session — the limiter runs before the session is
 	// resolved, so omitting the credential is not a way around it.
@@ -266,6 +291,12 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		}
 		s.Passkeys = pk
 	}
+	s.StepUp = &auth.StepUp{Pool: pool, Passkeys: s.Passkeys}
+	if s.Passkeys != nil {
+		s.Passkeys.StepUp = s.StepUp
+	}
+	s.Writers.StepUp = s.StepUp
+	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
 	return s, nil
 }
 
@@ -316,6 +347,27 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.Deletion == nil {
 		s.Deletion = &purge.Challenges{Pool: s.Pool, Now: s.now}
+	}
+	if s.StepUpPerUser == nil {
+		s.StepUpPerUser = NewLimiter(stepUpRate, stepUpBurst, stepUpMaxKeys, s.now)
+	}
+	if s.PullPerUser == nil {
+		s.PullPerUser = NewLimiter(pullRate, pullBurst, pullMaxKeys, s.now)
+	}
+	if s.StepUp == nil {
+		s.StepUp = &auth.StepUp{Pool: s.Pool, Passkeys: s.Passkeys}
+	}
+	if s.StepUp.Passkeys == nil {
+		s.StepUp.Passkeys = s.Passkeys
+	}
+	if s.Passkeys != nil && s.Passkeys.StepUp == nil {
+		s.Passkeys.StepUp = s.StepUp
+	}
+	if s.Writers != nil && s.Writers.StepUp == nil {
+		s.Writers.StepUp = s.StepUp
+	}
+	if s.AccountKeys == nil {
+		s.AccountKeys = &auth.AccountKeys{Pool: s.Pool, StepUp: s.StepUp}
 	}
 	if s.PullByteBudget <= 0 {
 		s.PullByteBudget = pullByteBudget
@@ -388,21 +440,22 @@ func (s *Server) mountPasskeys(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/passkey/register/finish", s.passkeyLimited(s.handlePasskeyRegisterFinish))
 	mux.HandleFunc("POST /api/v1/auth/passkey/login/begin", s.passkeyLimited(s.handlePasskeyLoginBegin))
 	mux.HandleFunc("POST /api/v1/auth/passkey/login/finish", s.passkeyLimited(s.handlePasskeyLoginFinish))
+	// Add (S + WB, step-up passkey.add, DWK at finish) and delete (step-up
+	// passkey.delete): spec 02 #10, #11, #13, §10.5.
 	mux.HandleFunc("POST /api/v1/auth/passkey/add/begin", s.passkeyLimitedSession(s.handlePasskeyAddBegin))
 	mux.HandleFunc("POST /api/v1/auth/passkey/add/finish", s.passkeyLimitedSession(s.handlePasskeyAddFinish))
 	mux.HandleFunc("GET /api/v1/auth/passkeys", s.passkeyLimitedSession(s.handleListPasskeys))
 	mux.HandleFunc("DELETE /api/v1/auth/passkeys/{credential_id}", s.passkeyLimitedSession(s.handleDeletePasskey))
 }
 
-// mountKeys mounts the account's key material and the key-history log.
-//
-// PUT /api/v1/keys (write-once, session-only) is ledgerd's; spec 02 §2.4
-// retires it in favour of POST /api/v1/account/bootstrap, which WS-3 builds.
-// It stays until then so the beta's key path is not left with no writer.
+// mountKeys mounts the account's key material and the key-history log
+// (keys.go, keywraps.go, keyhistory.go). ledgerd's write-once PUT
+// /api/v1/keys is retired (spec 02 §2.4): keys arrive only through the
+// bootstrap.
 func (s *Server) mountKeys(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/key-history", s.requireSession(s.handleKeyHistory))
 	mux.HandleFunc("GET /api/v1/keys", s.requireSession(s.handleGetKeys))
-	mux.HandleFunc("PUT /api/v1/keys", s.requireSession(s.handlePublishKeys))
+	mux.HandleFunc("POST /api/v1/account/bootstrap", s.requireSession(s.handleBootstrap))
 	mux.HandleFunc("GET /api/v1/keys/wraps", s.requireSession(s.handleGetKeyWraps))
 	mux.HandleFunc("POST /api/v1/keys/wraps", s.requireSession(s.handlePutKeyWrap))
 	mux.HandleFunc("DELETE /api/v1/keys/wraps", s.requireSession(s.handleDeleteKeyWrap))

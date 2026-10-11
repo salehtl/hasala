@@ -25,8 +25,8 @@ var bg = context.Background()
 func insertUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	u := oplogtest.NewUser(t, pool)
-	oplogtest.NewWriter(t, pool, u, "dev-a")
-	oplogtest.NewWriter(t, pool, u, "dev-b")
+	oplogtest.NewWriter(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a")
+	oplogtest.NewWriter(t, pool, u, "ios-00000000-0000-4000-8000-00000000000b")
 	return u
 }
 
@@ -35,7 +35,7 @@ func insertUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 func appendHot(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		oplogtest.Append(t, pool, u, "dev-a", 1)
+		oplogtest.Append(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a", 1)
 	}
 }
 
@@ -44,8 +44,8 @@ func appendHot(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 func appendPairs(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		oplogtest.Append(t, pool, u, "dev-a", 1)
-		oplogtest.Append(t, pool, u, "dev-b", 1)
+		oplogtest.Append(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a", 1)
+		oplogtest.Append(t, pool, u, "ios-00000000-0000-4000-8000-00000000000b", 1)
 	}
 }
 

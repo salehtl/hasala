@@ -48,7 +48,7 @@ defaults:
 jobs:
   # Which jobs the pull request needs, as outputs `gate` (read by gate and
   # vuln), `swift`, `ios`, `web` and `nixos_vm`, each "true" or "false"; any
-  # other event sets all five to "true". The checkout of a pull request is its merge
+  # other event sets all of them to "true". The checkout of a pull request is its merge
   # commit (refs/pull/N/merge) and depth 2 fetches both parents, so
   # `git diff HEAD^1 HEAD` is exactly what merging would change on the base as
   # it is now. --no-renames lists both ends of a move, so moving a file out of
@@ -115,9 +115,9 @@ jobs:
           skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
           # swift reads ios/ and conformance/ only.
           skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
-          # ios (the app) reads ios/, the Paper tokens under design/tokens/
-          # it is generated from, and the flake that pins its XcodeGen.
-          skip_unless ios "$none|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^design/tokens/'
+          # ios (the app) reads ios/, design/ (the Paper tokens it is generated
+          # from) and the flake (which pins its XcodeGen).
+          skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$'
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
           skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
           # nixos-vm reads infra/ (the module and the VM test), server/ (the
@@ -303,7 +303,7 @@ jobs:
 
       - name: Select the newest Xcode
         run: |
-          xcode="$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)"
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
           sudo xcode-select -s "$xcode"
           xcodebuild -version
           swift --version
@@ -362,7 +362,7 @@ jobs:
             -project ios/Hasala.xcodeproj -scheme Hasala \
             -destination "id=$udid" \
             -resultBundlePath "$RUNNER_TEMP/Hasala.xcresult" \
-            CODE_SIGNING_ALLOWED=NO HASALA_WARNINGS_AS_ERRORS=YES
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
 
       - name: Keep the test report
         if: always()

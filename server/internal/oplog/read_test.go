@@ -18,13 +18,13 @@ func seedInterleaved(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 	t.Helper()
 	a := &Appender{Pool: pool}
 	for i := 0; i < n; i++ {
-		for _, w := range []string{"dev-a", "dev-b"} {
+		for _, w := range []string{"ios-00000000-0000-4000-8000-00000000000a", "ios-00000000-0000-4000-8000-00000000000b"} {
 			c, head, err := a.Head(bg, u, w, blob.StreamHot)
 			if err != nil {
 				t.Fatal(err)
 			}
 			rows, _ := chainFrom(t, u, w, blob.StreamHot, c+1, head, 1)
-			if _, err := a.AppendClient(bg, u, w, blob.StreamHot, rows); err != nil {
+			if _, err := a.AppendClient(bg, u, w, blob.StreamHot, rows, testHeadSig(u, w, rows)); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -64,7 +64,7 @@ func TestReadReturnsTheLogInSeqOrderAndEachChainVerifies(t *testing.T) {
 	}
 	// One writer's rows are 1,3,5,7,9 in seq, which is NOT a gap: each chain
 	// is per writer, and each verifies from genesis on its own.
-	for _, w := range []string{"dev-a", "dev-b"} {
+	for _, w := range []string{"ios-00000000-0000-4000-8000-00000000000a", "ios-00000000-0000-4000-8000-00000000000b"} {
 		mine := writerRows(rows, w)
 		if len(mine) != 5 || mine[1].Seq-mine[0].Seq != 2 {
 			t.Fatalf("%s: %d rows; the fixture is not interleaved", w, len(mine))
@@ -221,7 +221,7 @@ func TestHashesCoverEveryRowAndLinkAsAChain(t *testing.T) {
 	if len(hashes) != len(rows) {
 		t.Fatalf("%d hashes for %d rows", len(hashes), len(rows))
 	}
-	prev := map[string][32]byte{"dev-a": blob.ZeroHash, "dev-b": blob.ZeroHash}
+	prev := map[string][32]byte{"ios-00000000-0000-4000-8000-00000000000a": blob.ZeroHash, "ios-00000000-0000-4000-8000-00000000000b": blob.ZeroHash}
 	for i, h := range hashes {
 		if h.Seq != rows[i].Seq || h.WriterID != rows[i].WriterID || h.WriterCounter != rows[i].WriterCounter {
 			t.Fatalf("hash %d describes a different row than the log does", i)
@@ -298,11 +298,11 @@ func TestPartiallyAppliedBatchIsNamedSoTheAPICanTellTheClientWhatToDo(t *testing
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows[:2]); err != nil {
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows[:2], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows[:2])); err != nil {
 		t.Fatal(err)
 	}
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows[1:])
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows[1:], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows[1:]))
 	if !errors.Is(err, ErrPartiallyApplied) {
 		t.Fatalf("a straddling resend returned %v, want ErrPartiallyApplied", err)
 	}
