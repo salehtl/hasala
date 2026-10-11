@@ -7,8 +7,8 @@
 //
 // Not built yet (TODO for full parity, spec 07 §8.7–§8.8): entry detail and
 // deletion, the TestFlight screens, banks and the broadcast, the account list
-// and its actions, reveal and retry in the email log, the audit screen,
-// metrics and the kernel rule (an infra change).
+// and its actions, reveal and retry in the email log, the audit screen and
+// the Prometheus metrics (/metrics is a 404; /healthz is served, health.go).
 package console
 
 import (
@@ -54,8 +54,9 @@ type Console struct {
 	TTL     time.Duration
 	Now     func() time.Time
 
-	queue *mailq.Queue
-	kCSRF []byte
+	queue  *mailq.Queue
+	kCSRF  []byte
+	tunnel refusalLog
 }
 
 // New builds a console with a fresh CSRF key (a restart invalidates open
@@ -135,6 +136,7 @@ func (c *Console) identify(next http.Handler) http.Handler {
 		for name := range r.Header {
 			if strings.HasPrefix(strings.ToLower(name), "cf-") || strings.EqualFold(name, "Cdn-Loop") {
 				slog.Error("console: a Cloudflare header reached the console")
+				c.tunnel.add(c.now())
 				refuse(w, "cloudflare_header")
 				return
 			}

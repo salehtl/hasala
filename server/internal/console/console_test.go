@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
@@ -126,5 +128,39 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 	_ = pool.QueryRow(bg, `SELECT count(*) FROM invite_codes WHERE origin = 'cli' AND state = 'active'`).Scan(&printed)
 	if printed != 1 {
 		t.Fatalf("%d printed invites", printed)
+	}
+}
+
+// Spec 07 §13.3 (probe P8): /healthz is ok until a request carrying a
+// Cloudflare header reaches the console; then it is 503 for 24 hours.
+func TestHealthzTurnsOnATunnelLeak(t *testing.T) {
+	c := New(pgtest.New(t), host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	health := func() (int, HealthBody) {
+		w := httptest.NewRecorder()
+		c.HealthHandler().ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+		var b HealthBody
+		if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil {
+			t.Fatalf("body %q: %v", w.Body, err)
+		}
+		return w.Code, b
+	}
+	if code, b := health(); code != http.StatusOK || b != (HealthBody{Status: "ok", DB: "ok", ASC: "disabled"}) {
+		t.Fatalf("healthy: %d %+v", code, b)
+	}
+	req(c, "GET", "/", nil, func(r *http.Request) { r.Header.Set("Cdn-Loop", "cloudflare") })
+	req(c, "GET", "/", nil, func(r *http.Request) { r.Header.Set("Cf-Ray", "x") })
+	if code, b := health(); code != http.StatusServiceUnavailable || b.Status != "fail" || b.TunnelRefusals24 != 2 {
+		t.Fatalf("after a leak: %d %+v", code, b)
+	}
+	c.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	if code, _ := health(); code != http.StatusOK {
+		t.Fatalf("a day later: %d", code)
+	}
+	for _, p := range []string{"/metrics", "/", "/api/v1/healthz"} {
+		w := httptest.NewRecorder()
+		c.HealthHandler().ServeHTTP(w, httptest.NewRequest("GET", p, nil))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s on the health listener: %d", p, w.Code)
+		}
 	}
 }

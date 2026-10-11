@@ -41,20 +41,37 @@ func runConsole(env *runEnv, args []string) error {
 	}
 	defer pool.Close()
 	c := console.New(pool, cfg.Console.Host, cfg.Console.Tailnet, cfg.Console.Logins, cfg.Auth.InviteTTL)
-	ln, err := net.Listen("tcp", cfg.Console.Listen)
-	if err != nil {
-		return fmt.Errorf("listen %s: %w", cfg.Console.Listen, err)
+	servers := []struct {
+		addr, what string
+		h          http.Handler
+	}{{cfg.Console.Listen, "listening", c.Handler()}}
+	if cfg.Console.MetricsListen != "" {
+		servers = append(servers, struct {
+			addr, what string
+			h          http.Handler
+		}{cfg.Console.MetricsListen, "healthz listening", c.HealthHandler()})
 	}
-	srv := newHTTPServer(c.Handler())
-	errc := make(chan error, 1)
-	go func() {
-		slog.Info("hasalad console: listening", "addr", ln.Addr().String())
-		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errc <- err
-			return
+	var running []*http.Server
+	errc := make(chan error, len(servers))
+	for _, sv := range servers {
+		ln, err := net.Listen("tcp", sv.addr)
+		if err != nil {
+			for _, s := range running {
+				_ = s.Close()
+			}
+			return fmt.Errorf("listen %s: %w", sv.addr, err)
 		}
-		errc <- nil
-	}()
+		srv := newHTTPServer(sv.h)
+		running = append(running, srv)
+		slog.Info("hasalad console: "+sv.what, "addr", ln.Addr().String())
+		go func() {
+			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errc <- err
+				return
+			}
+			errc <- nil
+		}()
+	}
 	var serveErr error
 	select {
 	case serveErr = <-errc:
@@ -62,8 +79,10 @@ func runConsole(env *runEnv, args []string) error {
 	}
 	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutCtx); err != nil && serveErr == nil {
-		serveErr = err
+	for _, srv := range running {
+		if err := srv.Shutdown(shutCtx); err != nil && serveErr == nil {
+			serveErr = err
+		}
 	}
 	return serveErr
 }
