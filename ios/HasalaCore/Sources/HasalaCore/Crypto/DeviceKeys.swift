@@ -85,27 +85,42 @@ public enum HeadCheck {
 
   /// Checks a page. Writers are checked in the order they first appear.
   public static func verify(userID: UserID, rows: [Row], roster: [WriterID: RosterWriter]) throws(ReaderHardStop) {
+    if let f = firstFailure(userID: userID, rows: rows, roster: roster) { throw .tampered(f.reason) }
+  }
+
+  /// The first failing row (its index in `rows`) and why, or `nil`. A missing or
+  /// bad signature is reported at the writer's head row; a row past a revoked
+  /// writer's pinned head at that row.
+  public static func firstFailure(userID: UserID, rows: [Row], roster: [WriterID: RosterWriter])
+    -> (index: Int, reason: TamperReason)?
+  {
     var order: [WriterID] = []
-    var last: [WriterID: Row] = [:]
-    for r in rows {
-      if last[r.writerID] == nil { order.append(r.writerID) }
-      if let l = last[r.writerID], l.counter > r.counter { continue }
-      last[r.writerID] = r
+    var head: [WriterID: Int] = [:]
+    for (i, r) in rows.enumerated() {
+      guard let h = head[r.writerID] else {
+        order.append(r.writerID)
+        head[r.writerID] = i
+        continue
+      }
+      if r.counter >= rows[h].counter { head[r.writerID] = i }
     }
     for w in order {
-      guard let entry = roster[w] else { throw .tampered(.unknownWriter) }
-      let top = last[w]!
-      guard let sig = top.headSig else { throw .tampered(.headUnsigned) }
+      let i = head[w]!
+      guard let entry = roster[w] else { return (i, .unknownWriter) }
+      let top = rows[i]
+      guard let sig = top.headSig else { return (i, .headUnsigned) }
       let message = SigningMessage.head(userID: userID, counter: top.counter, blobHash: top.blobHash, writerID: w)
       guard Ed25519.verify(publicKey: entry.dwkPublicKey, signature: sig, message: message) else {
-        throw .tampered(.headInvalid)
+        return (i, .headInvalid)
       }
       if let pin = entry.revokedAt {
-        for r in rows where r.writerID == w {
-          if r.counter > pin.counter { throw .tampered(.afterRevocation) }
-          if r.counter == pin.counter, r.blobHash != pin.hash { throw .tampered(.afterRevocation) }
+        for (j, r) in rows.enumerated() where r.writerID == w {
+          if r.counter > pin.counter || (r.counter == pin.counter && r.blobHash != pin.hash) {
+            return (j, .afterRevocation)
+          }
         }
       }
     }
+    return nil
   }
 }

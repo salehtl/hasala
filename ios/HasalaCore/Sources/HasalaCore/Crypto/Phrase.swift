@@ -80,8 +80,10 @@ public enum Phrase {
     var text = String(scalars)
     while text.unicodeScalars.first == " " { text.unicodeScalars.removeFirst() }
     while text.unicodeScalars.last == " " { text.unicodeScalars.removeLast() }
-    // Split keeping empties, as Go's strings.Split and JavaScript's split do:
-    // an empty input is ONE (empty) word.
+    // An input of nothing but W is zero words (the Go generator's reading,
+    // pinned by crypto-v3/phrase.json). After the collapse and trim there are no
+    // empty words otherwise.
+    if text.isEmpty { return [] }
     return text.unicodeScalars.split(separator: " ", omittingEmptySubsequences: false).map { String($0) }
   }
 

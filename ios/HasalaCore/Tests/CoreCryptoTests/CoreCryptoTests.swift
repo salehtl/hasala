@@ -110,7 +110,8 @@ struct PhraseTests {
     let good = "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic"
     #expect(throws: PhraseError.length(count: 11)) { try Phrase.entropy(typed: "ozone drill grab fiber curtain grace pudding thank cruise elder eight") }
     #expect(throws: PhraseError.length(count: 13)) { try Phrase.entropy(typed: good + " picnic") }
-    #expect(throws: PhraseError.length(count: 1)) { try Phrase.entropy(typed: "  ") }
+    #expect(throws: PhraseError.length(count: 0)) { try Phrase.entropy(typed: "  ") }
+    #expect(throws: PhraseError.length(count: 1)) { try Phrase.entropy(typed: "ozone\u{200B}drill") }
     #expect(throws: PhraseError.unknownWord(index: 0, word: "ozon")) { try Phrase.entropy(typed: "ozon" + good.dropFirst(5)) }
     #expect(throws: PhraseError.unknownWord(index: 11, word: "pi\u{301}cnic")) {
       try Phrase.entropy(typed: good.replacingOccurrences(of: "picnic", with: "pícnic"))

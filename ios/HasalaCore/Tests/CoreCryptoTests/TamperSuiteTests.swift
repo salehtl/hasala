@@ -292,6 +292,38 @@ struct TamperSuiteTests {
     try HeadCheck.verify(userID: testUser, rows: [try row(1, h1, signedBy: other.seed, writer: w2)], roster: revokedRoster)
   }
 
+  @Test("PageReader: R0-R10 in order over a two-row page")
+  func pageReader() throws {
+    let dwk = Ed25519.generate()
+    let sig = try Ed25519.sign(
+      seed: dwk.seed,
+      message: SigningMessage.head(userID: testUser, counter: 2, blobHash: base.frame2.blobHash, writerID: testWriter))
+    func row(_ f: SealedFrame, _ c: Int64, sig: Data?, blob: Data? = nil) -> PageReader.Row {
+      PageReader.Row(
+        stream: "hot", writerID: testWriter.string, counter: c, sizeBucket: 1024, prevHash: f.prevHash.bytes,
+        blobHash: f.blobHash.bytes, headSig: sig, blob: blob ?? f.bytes)
+    }
+    func state(roster: [WriterID: HeadCheck.RosterWriter], own: (writer: WriterID, authoredHead: Int64)? = nil) -> PageReader.State {
+      PageReader.State(
+        userID: testUser, opener: base.opener, serverEpoch: nil, pinnedHeads: [:], roster: roster, own: own)
+    }
+    let roster = [testWriter: HeadCheck.RosterWriter(dwkPublicKey: dwk.publicKey, revokedAt: nil)]
+    let page = [row(base.frame1, 1, sig: nil), row(base.frame2, 2, sig: sig)]
+    let ok = PageReader.read(page, state: state(roster: roster))
+    #expect(ok.stop == nil && ok.rows.count == 2)
+    if case .opened(_, let ops)? = ok.rows.last { #expect(ops.first?.type == .rateSet) } else { Issue.record("row 2") }
+    #expect(PageReader.read(page, state: state(roster: [:])).stop == .hardStop(.tampered(.unknownWriter)))
+    #expect(PageReader.read([page[1]], state: state(roster: roster)).stop == .hardStop(.tampered(.chainBreak)))
+    let unsigned = PageReader.read([page[0], row(base.frame2, 2, sig: nil)], state: state(roster: roster))
+    #expect(unsigned.stop == .hardStop(.tampered(.headUnsigned)) && unsigned.stopRow == 1)
+    #expect(
+      PageReader.read(page, state: state(roster: roster, own: (testWriter, 1))).stop
+        == .hardStop(.tampered(.ownChainConflict)))
+    var shortBlob = page
+    shortBlob[0] = row(base.frame1, 1, sig: nil, blob: base.frame1.bytes.prefix(1000))
+    #expect(PageReader.read(shortBlob, state: state(roster: roster)).stop == .hardStop(.tampered(.rowShape)))
+  }
+
   @Test("the sealer: bucket sizing, a fresh nonce per seal, an epoch mismatch is a programming error")
   func sealer() throws {
     let sealer = Sealer(epoch: 1, key: base.k1)
