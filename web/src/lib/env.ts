@@ -5,4 +5,17 @@
  * API's edge admits).
  */
 export const API_BASE = (import.meta.env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
-export const TURNSTILE_SITEKEY: string = import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '';
+
+/**
+ * How "Request an invite" and the Banks "Tell us" form send what people
+ * enter. "email" (the default, until the API is live): nothing is posted
+ * and Turnstile is never loaded; submitting opens a pre-filled email to
+ * SITE.supportEmail in the visitor's own email app, and the no-JS fallback
+ * is /joined, which says to email us. "api": the forms post to API_BASE as
+ * before. astro.config.mjs reads the same variable (for the CSP) and fails
+ * the build on any other value.
+ */
+export const WAITLIST_MODE: 'email' | 'api' = import.meta.env.PUBLIC_WAITLIST_MODE === 'api' ? 'api' : 'email';
+
+/** Turnstile runs only in "api" mode: in "email" mode there is nothing to protect. */
+export const TURNSTILE_SITEKEY: string = WAITLIST_MODE === 'api' ? import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '' : '';

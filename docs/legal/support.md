@@ -14,9 +14,9 @@ Hasala (حصّالة, "piggy bank") is a private budgeting app for iPhone in the
 
 ### How do I join the beta?
 
-Hasala is invite-only for now. Ask for an invite at [hasala.app](/#invite), then tap **Confirm my email** in the email we send you. Invites go out in small batches. When yours is ready, we email you the steps: install TestFlight, accept Apple's TestFlight invitation from its email or the link in your invite, install Hasala, then open it and enter your invite code. Apple handles the TestFlight invitation, so it sees your email address and that you installed Hasala. Other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day.
+Hasala is invite-only for now. Ask for an invite at [hasala.app](/#invite). While sign-ups are handled by email, the form opens an email to us: send it, and we add the address you sent it from. Invites go out in small batches. When yours is ready, we email you the steps: install TestFlight, accept Apple's TestFlight invitation from its email or the link in your invite, install Hasala, then open it and enter your invite code. Apple handles the TestFlight invitation, so it sees your email address and that you installed Hasala. Other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day.
 
-To leave the waitlist, use **Leave the list** in any email we sent you. It deletes your address straight away.
+To leave the waitlist, email support@hasala.app from the address you signed up with, and we delete it.
 
 ### Which banks work?
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Lighthouse CI on / of the built site, mobile (Lighthouse's default) and
-# desktop. Needs a built web/dist (`bun run build` in web/), Node and Chrome:
-# CI uses the runner image's; this does not download a browser. Reports go to
-# the filesystem only (never temporary-public-storage), one folder per preset.
+# desktop. Needs a built web/dist (`bun run build` in web/), Node (the
+# devShell's) and Chrome: CI uses the runner image's; this does not download
+# a browser. Reports go to the filesystem only (never
+# temporary-public-storage), one folder per preset.
 #
 #   web/lighthouse/run.sh [reports-dir]      (default web/lighthouse/reports)
 #
