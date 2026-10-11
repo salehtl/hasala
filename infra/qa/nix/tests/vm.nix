@@ -97,7 +97,10 @@ in
         after = [ "local-fs.target" ];
         conflicts = [ "shutdown.target" ];
         unitConfig.DefaultDependencies = false;
-        path = [ pkgs.coreutils ];
+        path = [
+          pkgs.coreutils
+          pkgs.openssl
+        ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
@@ -109,7 +112,9 @@ in
           hex() { printf '%s' "hasala-vm-test-$1" | sha256sum | cut -c1-64; }
           printf '%s' "$(hex auth-key)" > "$d/auth-key"
           printf '%s' dummy-email-send-token > "$d/email-token"
-          printf '%s' 'dummy apns key' > "$d/apns.p8"
+          # serve refuses anything but a PKCS#8 EC P-256 key; this one is
+          # throwaway and never reaches APNs (the VM has no egress).
+          openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$d/apns.p8"
           chmod 0400 "$d"/*
         '';
       };
