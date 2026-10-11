@@ -19,7 +19,7 @@ Key facts:
 - Privacy: your transactions, budget and plan are end-to-end encrypted on the iPhone before they sync. Hasala's server stores sealed data it cannot open.
 - Sign-in: verified email and a display name; Face ID (passkey, recommended) or email and password. A password never unlocks your data: your passkey or your 12-word recovery phrase does. Hasala cannot reset the recovery phrase.
 - Price: free during the beta.
-- Source code: source-available under FSL-1.1-ALv2 (not open source): https://github.com/salehtl/hasala
+- Source code: source-available under the Functional Source License (FSL-1.1-ALv2); each version becomes Apache-2.0 two years after release. The name Hasala and the Slot mark are trademarks not covered by the licence: https://github.com/salehtl/hasala
 
 ## Pages
 
@@ -29,6 +29,7 @@ Key facts:
 - [Terms of Service](${SITE.url}/terms)
 - [Security and disclosure](${SITE.url}/security)
 - [Support](${SITE.url}/support)
+- [Third-party licences](${SITE.url}/licenses): software the website ships to your browser
 - [Request an invite](${SITE.url}/#invite)
 
 ## Optional

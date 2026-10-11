@@ -1,0 +1,272 @@
+---
+/**
+ * /licenses: the third-party software the site ships to the browser, with
+ * each licence's full text (src/data/licenses.ts keeps the list), and how
+ * Hasala's own code is licensed. No script of its own: the licence texts
+ * open with <details>.
+ */
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import { SITE } from '../data/site';
+import { THIRD_PARTY, mitLicense } from '../data/licenses';
+import interOfl from '../assets/fonts/Inter-OFL.txt?raw';
+
+const title = 'Third-party licences';
+const description = 'The third-party software the hasala.app website sends to your browser, with the full text of each licence, and how Hasala’s own code is licensed.';
+const textFor = (p: (typeof THIRD_PARTY)[number]) => (p.license === 'OFL-1.1' ? interOfl.trim() : mitLicense(p.copyright).trim());
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: title,
+  description,
+  url: `${SITE.url}/licenses`,
+  inLanguage: 'en',
+  isPartOf: { '@id': `${SITE.url}/#website` },
+};
+---
+
+<Base title={title} description={description} path="/licenses" jsonLd={jsonLd}>
+  <header class="lic-head">
+    <div class="container lic-head__inner">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <ol role="list">
+          <li><a href="/">Hasala</a></li>
+          <li aria-hidden="true"><Icon name="chevron-right" size={12} stroke={1.5} /></li>
+          <li><span>Legal</span></li>
+        </ol>
+      </nav>
+      <h1 class="lic-title">{title}</h1>
+      <p class="lic-standfirst">The software from other people that this website sends to your browser, and the licences it comes under.</p>
+    </div>
+  </header>
+
+  <div class="container lic-body">
+    <section class="lic-own" aria-labelledby="own-title">
+      <h2 id="own-title">Hasala’s own code</h2>
+      <p>
+        Hasala’s code, this website included, is source-available at <a href={SITE.repoUrl}>github.com/salehtl/hasala</a> under the Functional Source License,
+        Version 1.1, ALv2 Future License (<a href={SITE.licenseUrl}>FSL-1.1-ALv2</a>). Each version becomes available under the Apache License 2.0 two years after
+        it is released. The name Hasala (حصّالة) and the Slot mark are trademarks and are not covered by the licence; see <a href={SITE.trademarksUrl}
+          >TRADEMARKS.md</a
+        >.
+      </p>
+      <p>
+        The repository’s <a href={`${SITE.repoUrl}/blob/main/NOTICE`}>NOTICE</a> file lists the third-party material in the code itself.
+      </p>
+    </section>
+
+    <section aria-labelledby="third-title">
+      <h2 id="third-title">Sent to your browser</h2>
+      <p class="lic-intro">Everything else this website runs or shows is Hasala’s own. It loads nothing from other websites, apart from Cloudflare’s bot check on forms when that is switched on.</p>
+      <ul role="list" class="lic-list">
+        {
+          THIRD_PARTY.map((p) => (
+            <li class="lic-item" id={p.name.toLowerCase()}>
+              <div class="lic-item__head">
+                <h3>
+                  <a href={p.homepage}>{p.name}</a>
+                </h3>
+                <a class="lic-item__badge" href={p.licenseUrl}>
+                  {p.license}
+                </a>
+              </div>
+              <p>{p.use}</p>
+              <p class="lic-item__meta">
+                {p.copyright.map((c) => (
+                  <span>{c}</span>
+                ))}
+                <span>{p.licenseName}</span>
+              </p>
+              <details class="lic-text">
+                <summary>
+                  Licence text <Icon name="chevron" size={12} stroke={1.8} />
+                </summary>
+                <pre>{textFor(p)}</pre>
+              </details>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .lic-head {
+    padding: 112px 0 24px;
+    background: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 60%, oklab(100% 0 0) 100%);
+    border-bottom: 1px solid var(--neutral-200);
+  }
+  .lic-head__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .crumbs ol {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+  .crumbs a:hover {
+    color: var(--text-primary);
+  }
+  .crumbs :global(.icon) {
+    color: var(--neutral-400);
+  }
+  .lic-title {
+    font-size: clamp(36px, 27.83px + 2.095vw, 60px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: calc(1em + 4px);
+  }
+  .lic-standfirst {
+    max-width: 680px;
+    color: var(--neutral-700);
+    font-size: clamp(17px, 15.89px + 0.286vw, 20px);
+    line-height: 1.55;
+  }
+  .lic-body {
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+    padding: 32px 0 72px;
+    color: var(--neutral-700);
+    font-size: 17px;
+    line-height: 28px;
+  }
+  .lic-body section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 760px;
+  }
+  .lic-body h2 {
+    color: var(--text-primary);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 30px;
+  }
+  .lic-body a {
+    color: var(--text-link);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: rgb(54 91 235 / 35%);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+  }
+  .lic-body a:hover {
+    color: var(--blue-700);
+    text-decoration-color: currentColor;
+  }
+  .lic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .lic-item {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 20px 22px;
+    border-radius: 20px;
+    background: var(--neutral-50);
+    box-shadow: rgb(0 0 0 / 6%) 0 0 0 1px inset;
+    scroll-margin-top: 112px;
+  }
+  .lic-item__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+  }
+  .lic-item h3 {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 26px;
+  }
+  .lic-item h3 a {
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .lic-item h3 a:hover {
+    color: var(--accent);
+  }
+  .lic-body .lic-item__badge {
+    padding: 2px 10px;
+    border-radius: var(--r-pill);
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 8%) 0 0 0 1px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
+    text-decoration: none;
+  }
+  .lic-item__meta {
+    display: flex;
+    flex-direction: column;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .lic-text summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-link);
+    font-size: 15px;
+    font-weight: 500;
+    list-style: none;
+    cursor: pointer;
+  }
+  .lic-text summary::-webkit-details-marker {
+    display: none;
+  }
+  .lic-text summary :global(.icon) {
+    transition: rotate 160ms var(--ease-out-soft);
+  }
+  .lic-text[open] summary :global(.icon) {
+    rotate: 180deg;
+  }
+  .lic-text pre {
+    max-height: 420px;
+    margin-top: 12px;
+    padding: 16px;
+    overflow: auto;
+    border-radius: 12px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 6%) 0 0 0 1px;
+    color: var(--neutral-700);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 19px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  @media (min-width: 1024px) {
+    .lic-head {
+      padding: 148px 0 48px;
+    }
+    .lic-head__inner {
+      gap: 20px;
+    }
+    .lic-body {
+      padding: 48px 0 140px;
+      font-size: 18px;
+      line-height: 30px;
+    }
+    .lic-body h2 {
+      font-size: 28px;
+      line-height: 34px;
+    }
+  }
+</style>

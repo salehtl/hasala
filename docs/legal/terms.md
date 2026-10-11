@@ -2,18 +2,15 @@
 title: "Beta Terms of Use"
 description: "The terms for using the invite-only Hasala beta: what to expect, what we ask of you, and the limits of what we can promise."
 lastUpdated: 2026-10-11
-status: "draft"
-draftNote: "Draft pending owner review. This is not legal advice and has not been reviewed by a lawyer. Do not publish until every [[OWNER]] marker is resolved."
+status: "final"
 plainWords: "Hasala is an early, invite-only beta. It's free while the beta runs, it may have bugs or change, and it isn't financial advice. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
 ---
 
 ## About these terms
 
-These terms are an agreement between you and the operator of Hasala:
+These terms are an agreement between you and **Saleh Lootah**, an individual based in the United Arab Emirates, who runs Hasala. Hasala is not a company. We can be reached by email only; the addresses are under [Contact](#contact).
 
-[OPERATOR LEGAL NAME, ADDRESS]
-
-In these terms, "Hasala", "we" and "us" mean that operator. "The service" means the Hasala iPhone app (App Store name "Hasala Budgeting"), our server, and the website at hasala.app.
+In these terms, "Hasala", "we" and "us" mean Saleh Lootah, as the operator of Hasala. "The service" means the Hasala iPhone app (App Store name "Hasala Budgeting"), our server, and the website at hasala.app.
 
 By creating a Hasala account or using the beta, you agree to these terms and to our [Privacy Policy](/privacy). If you don't agree, please don't use Hasala.
 
@@ -31,7 +28,7 @@ Hasala is unfinished. During the beta:
 - Hasala may have bugs, including bugs that show wrong amounts, miss transactions or put transactions in the wrong category;
 - the service may be slow or unavailable at times, including for maintenance;
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
-- we may need to reset the beta service. If we do, we'll tell you in advance where we can, so that you can export your data first. [[OWNER: Confirm whether the QA server may be wiped during the beta (for example before a format change), and the notice you will give.]]
+- we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll tell you in the app or by email at least 7 days before, so that you can export your data first.
 
 Hasala is English only. It runs on iPhone, and reads bank alerts only from a Gmail account. At launch it supports alerts from Dubai Islamic Bank (DIB) and Emirates NBD.
 
@@ -56,7 +53,7 @@ Hasala helps you see and plan your own spending. It is not a bank, a payment ser
 
 ### Eligibility
 
-You must be at least [[OWNER: 18 or 21]] years old and able to form a binding contract to use Hasala. Hasala is meant for people managing their own personal finances in the UAE.
+You must be at least 18 years old and able to form a binding contract to use Hasala. Hasala is meant for people managing their own personal finances in the UAE.
 
 ### Your account details
 
@@ -114,13 +111,15 @@ Deleting the app from your iPhone does not delete your account.
 
 ### We can end the beta or your access
 
-We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk or a legal requirement, we'll give you at least [[OWNER: notice period, for example 30 days]] notice so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
+We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk or a legal requirement, we'll give you at least 30 days' notice, in the app or by email, so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
 
 ## Source-available code
 
-Hasala's source code is published as source-available at [github.com/salehtl/hasala](https://github.com/salehtl/hasala), under the Functional Source License, Version 1.1, with the Apache License 2.0 as the future licence (FSL-1.1-ALv2).
+Hasala's source code is source-available, at [github.com/salehtl/hasala](https://github.com/salehtl/hasala), under the Functional Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2). The licence text is in [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md).
 
-That licence covers your use of the code. These terms cover your use of the Hasala service that we run. Under the FSL, each version of the code becomes available under the Apache License 2.0 two years after we make it available. Until then, it may not be used to offer a competing product or service. Read the licence itself for the exact terms. Hasala's name and logo are not licensed for use under it. [[OWNER: Confirm the trade mark position.]]
+That licence covers your use of the code. These terms cover your use of the Hasala service that we run. Each version of the code becomes available under the Apache License 2.0 two years after it is released. Until then, it may not be used to offer a competing product or service. Read the licence itself for the exact terms.
+
+The name Hasala (حصّالة) and the Slot mark, Hasala's logo, are trademarks and are not covered by the licence. See [TRADEMARKS.md](https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md) for how you may refer to them.
 
 ## Our responsibility to you
 
@@ -135,11 +134,9 @@ To the extent the law allows:
 - we aren't responsible for losses caused by relying on Hasala's figures, categories or reminders, such as missed bill payments or bank charges;
 - we aren't responsible for losing access to your data if you lose your recovery phrase and every passkey and signed-in device;
 - we aren't responsible for problems caused by Google, Apple, Cloudflare, your bank, or your device; and
-- our total liability to you for any claim about the beta is limited to AED [[OWNER: amount, for example 100]].
+- our total liability to you for any claim about the beta is limited to AED 100.
 
 Nothing in these terms limits liability that cannot be limited under UAE law, including liability for fraud, wilful misconduct or gross negligence.
-
-[[OWNER: Have UAE counsel review this section. Article 296 of the UAE Civil Transactions Law voids clauses that exclude liability for harmful acts, so the exclusions here may need narrowing.]]
 
 ### Your responsibility
 
@@ -147,13 +144,11 @@ If you break these terms, for example by misusing someone else's mailbox, you ar
 
 ## Governing law
 
-These terms are governed by the laws of the United Arab Emirates as applied in the Emirate of [UAE EMIRATE]. The courts of [UAE EMIRATE] have jurisdiction over any dispute about them. Before going to court, please contact us so we can try to resolve the issue informally.
-
-[[OWNER: Confirm the emirate, and whether a free-zone court (DIFC or ADGM) or arbitration should apply instead.]]
+These terms are governed by the laws of the United Arab Emirates as applied in the Emirate of Dubai. The courts of Dubai have jurisdiction over any dispute about them. Before going to court, please contact us so we can try to resolve the issue informally.
 
 ## Changes to these terms
 
-We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is significant, we'll tell you in the app or by email before it takes effect. [[OWNER: Decide the notice period, for example 14 days.]] If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
+We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is material, we'll tell you in the app or by email at least 30 days before it takes effect. If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
 
 ## General
 
@@ -165,8 +160,8 @@ We'll update these terms as Hasala changes. The date at the top shows when they 
 
 ## Contact
 
-- Questions about these terms: [[OWNER: support@hasala.app]]
+We can be reached by email only.
+
+- Questions about these terms: support@hasala.app
 - Security reports: security@hasala.app
 - Help with the app: see our [Support](/support) page.
-
-Postal address: [OPERATOR LEGAL NAME, ADDRESS]

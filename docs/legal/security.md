@@ -2,8 +2,7 @@
 title: "Security"
 description: "How Hasala protects your data, what its design can and can't defend against, and how to report a security problem to security@hasala.app."
 lastUpdated: 2026-10-11
-status: "draft"
-draftNote: "Draft pending owner review. This is not legal advice and has not been reviewed by a lawyer. Do not publish until every [[OWNER]] marker is resolved."
+status: "final"
 plainWords: "Hasala reads your bank alerts and seals your money data on your iPhone, so our server stores only data it can't open. Your recovery phrase and passkey are what unlock it. If you find a security problem, email security@hasala.app. We won't take legal action against good-faith research that follows this policy."
 ---
 
@@ -45,7 +44,7 @@ A password never unlocks data. If you sign in with a password on a new iPhone, H
 
 ### Sensitive actions need a fresh check
 
-Some actions need you to confirm it's you again, and they are tied to that exact action. These are connecting Gmail, adding or removing a passkey or device, changing your recovery phrase, signing out everywhere, and deleting your account. When a device or passkey is added or removed, your other iPhones show a security notification. [[OWNER: Confirm how this check works for accounts that sign in with a password only.]]
+Some actions need you to confirm it's you again, and they are tied to that exact action. These are connecting Gmail, adding or removing a passkey or device, changing your recovery phrase, signing out everywhere, and deleting your account. With a passkey, the check is Face ID. If you sign in with a password only, it's your password, entered on an iPhone already added to your account, which also checks your Face ID or passcode; a password alone, or a code from your email alone, is never enough. When a device or passkey is added or removed, your other iPhones show a security notification.
 
 ### Freezing your account
 
@@ -68,13 +67,14 @@ Our server wakes Hasala on your iPhone with a silent, empty signal through Apple
 
 No design is perfect. These are the limits we know about and accept during the beta.
 
-- **Metadata.** Our server and Cloudflare can see when you sync, roughly how much data you store, your IP address, and when new mail reaches your Gmail. They can't see what the mail says or what your transactions are.
-- **Your Gmail address.** Google sends it to our server each time new mail arrives. We keep only a keyed hash of it, but the server sees it briefly.
+- **Metadata.** Our server and Cloudflare can see when you sync, roughly how much data you store, your IP address, and when something changes in your Gmail. They can't see what the mail says or what your transactions are.
+- **Your Gmail address.** Google sends it to our server each time something changes in your Gmail. We keep only a keyed hash of it, but the server sees it briefly.
 - **Your recovery phrase is your account.** Anyone who has your 12 words and can sign in, or can get a code from your email, can read your data and add devices. Making a new phrase stops the old words from working with our server (our encrypted backups keep the old recovery data for up to 30 days), but it can't take back what someone already got with them. If you think someone has seen your words, the fix is to create a new account.
 - **Your Apple Account.** Your passkey syncs through iCloud Keychain. Someone who can sign in to your Apple Account and knows one of your device passcodes can get into Hasala as you. Keep two-factor authentication on.
 - **An unlocked iPhone.** Anyone who can unlock your iPhone can open Hasala. Face ID lock hides Hasala until you unlock it. It doesn't change how your data is encrypted.
 - **A compromised server.** A server we no longer control can't read your sealed data. But it could stop or delay sync, or send fake notification text. That is why Hasala will never ask for your recovery phrase in a notification, an email or on a website.
-- **The beta server itself.** The server's disks are not encrypted at rest. What's stored there is sealed data plus the account details in our Privacy Policy. Two people have administrator access to it. [[OWNER: Confirm both statements before publishing, and update them when a production server replaces the beta host.]]
+- **Your password.** If you use one, your iPhone sends our server a scrambled form of it, never the password itself. Our server and Cloudflare see that scrambled form when you sign in. Someone holding it could sign in as you, though never unlock your data, or try to guess your password from it, which is slow by design. A passkey avoids this, which is why we recommend one.
+- **The beta server itself.** The beta runs on hardware operated by the developer. A small number of trusted people have administrative access to it; because your financial data is end-to-end encrypted on your iPhone, they can't read it. What's stored there is sealed data plus the account details in our [Privacy Policy](/privacy#what-we-collect-and-why), which they can see. Encryption of the server's disks at rest is being added before the public launch.
 
 ## Reporting a vulnerability
 
@@ -89,20 +89,18 @@ Email **security@hasala.app** with:
 - what an attacker could do with it; and
 - how you'd like to be credited, if at all.
 
-To encrypt your report, use our PGP key.
-
-[[OWNER: Paste the PGP public key block here, in a code block, with its fingerprint; or remove this paragraph.]]
+If your report contains something sensitive, such as a working exploit, you can say so in a first email without the details, and we'll agree with you how to send them.
 
 Please don't put details of an unfixed vulnerability in TestFlight feedback, public issues or social media.
 
 ### What to expect
 
-- We'll confirm we received your report within [[OWNER: 3 business days]].
+- We'll confirm we received your report within 3 business days.
 - We'll keep you updated while we investigate and fix it.
-- We aim to fix serious issues within [[OWNER: 30 days]] of confirming them, and we'll agree a disclosure date with you.
+- We aim to fix serious issues within 30 days of confirming them, and we'll agree a disclosure date with you.
 - With your permission, we'll credit you once the issue is fixed.
 
-There is no paid bug bounty during the beta. [[OWNER: Confirm.]]
+There is no paid bug bounty during the beta.
 
 ## Scope
 
@@ -111,7 +109,7 @@ There is no paid bug bounty during the beta. [[OWNER: Confirm.]]
 - The Hasala iPhone app (TestFlight beta builds).
 - Our API at api.hasala.app.
 - The website at hasala.app, including the invite links and the files that let the app sign in with passkeys.
-- Hasala's source code, once it is published.
+- Hasala's source code at [github.com/salehtl/hasala](https://github.com/salehtl/hasala).
 - Design problems, such as a way for our server, Cloudflare or another party to read or change sealed data, or to sign in without your passkey, password or recovery phrase.
 
 ### Out of scope
@@ -141,10 +139,9 @@ Acting in good faith means that you:
 - don't use or share what you find beyond what's needed to show the problem; and
 - give us reasonable time to fix the issue before telling anyone else.
 
-This safe harbour covers only claims we control. It can't bind Cloudflare, Google, Apple or any authority. [[OWNER: Have counsel confirm this wording is compatible with UAE law, including Federal Decree-Law No. 34 of 2021 on Combatting Rumours and Cybercrimes.]]
+This safe harbour covers only claims we control. It can't bind Cloudflare, Google, Apple or any authority.
 
 ## Contact
 
 - Security reports: security@hasala.app
-- PGP key: see [How to report](#how-to-report)
 - Privacy questions: see our [Privacy Policy](/privacy#contact)

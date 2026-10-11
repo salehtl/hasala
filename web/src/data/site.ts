@@ -22,6 +22,10 @@ export const SITE = {
   ogImageAlt:
     "Hasala: Know what's left. Keep it to yourself. A gold dirham coin dropping into a slot on a blue background. Private beta, iPhone, UAE.",
   testFlightAppStore: 'https://apps.apple.com/app/testflight/id899247664',
+  /** The source: source-available under FSL-1.1-ALv2 (never call it open source). */
+  repoUrl: 'https://github.com/salehtl/hasala',
+  licenseUrl: 'https://github.com/salehtl/hasala/blob/main/LICENSE.md',
+  trademarksUrl: 'https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md',
   requirements: ['iPhone with iOS 26 or later', 'A Gmail address that gets your bank alerts', 'English for now. Expect a few rough edges'],
 } as const;
 
@@ -76,6 +80,8 @@ export const FOOTER = [
     links: [
       { href: '/privacy', label: 'Privacy Policy' },
       { href: '/terms', label: 'Terms of Service' },
+      { href: '/licenses', label: 'Licences' },
+      { href: 'https://github.com/salehtl/hasala', label: 'Source code' },
     ],
   },
 ] as const;

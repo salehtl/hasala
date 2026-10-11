@@ -2,14 +2,11 @@
 title: "Help and Support"
 description: "Answers for Hasala beta testers: missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
 lastUpdated: 2026-10-11
-status: "draft"
-draftNote: "Draft pending owner review. Menu paths must be checked against the shipped build. Do not publish until every [[OWNER]] marker is resolved."
+status: "final"
 plainWords: "Most problems are fixed by checking that Gmail is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. A forgotten password needs your 12 words or an iPhone that's still signed in. You can delete your account in the app at any time."
 ---
 
 ## Common questions
-
-[[OWNER: Check every menu path on this page (for example Profile › Bank alerts) against the shipped build.]]
 
 ### What is Hasala?
 
@@ -43,7 +40,7 @@ On your iPhone, in this order: your own rules, then a built-in list of UAE merch
 
 ### Why does Google say it hasn't verified Hasala?
 
-During the beta, Google shows a warning when you connect Gmail, because its review of Hasala's Gmail access isn't complete. To continue, tap **Advanced** on that screen, then the link to go to Hasala. You can remove Hasala's access at any time. [[OWNER: Update or remove this answer once Google verification is complete.]]
+During the beta, Google shows a warning when you connect Gmail, because its review of Hasala's Gmail access isn't complete. To continue, tap **Advanced** on that screen, then the link to go to Hasala. You can remove Hasala's access at any time.
 
 ### Does Hasala work with SMS alerts or email forwarding?
 
@@ -59,11 +56,11 @@ Hasala is free during the beta.
 
 ### Why don't notifications show amounts?
 
-To protect your privacy on the Lock Screen, notifications are generic by default, for example "New transaction". You can turn on detailed notifications in Settings › Notifications. [[OWNER: Confirm the path and the setting's name.]]
+To protect your privacy on the Lock Screen, notifications are generic by default, for example "New transaction". You can turn on **Show amounts and merchants** in Settings › Notifications.
 
 ### Where is Hasala's source code?
 
-Hasala's code is published as source-available under the FSL-1.1-ALv2 licence, at [github.com/salehtl/hasala](https://github.com/salehtl/hasala). Source-available means you can read it, but it isn't open source.
+At [github.com/salehtl/hasala](https://github.com/salehtl/hasala). It's source-available under the Functional Source License (FSL-1.1-ALv2): you can read, run and change it, but not use it to offer a competing product or service. Each version becomes available under the Apache License 2.0 two years after it's released. The name Hasala and the Slot mark are trademarks and aren't covered by the licence. See [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md) for the exact terms.
 
 ## Missing transactions or alerts
 
@@ -84,7 +81,7 @@ Hasala can only see alerts your bank emails to you. In your bank's app or online
 - turn on **email** alerts for card purchases, transfers and account activity, not only SMS; and
 - make sure the alerts go to the **same Gmail address** you connected to Hasala.
 
-Open Gmail and confirm the alerts are arriving there, directly from your bank. [[OWNER: Say whether alerts in other labels, Spam, or forwarded from another address are read.]]
+Open Gmail and confirm the alerts are arriving there, directly from your bank. Hasala finds them in any label, archived mail and Spam included, but not in Trash. Alerts forwarded from another email address may not be found, and any that are go to **Review** for you to check.
 
 ### 3. Check your bank is supported
 
@@ -106,7 +103,7 @@ If Hasala couldn't read an alert fully, it isn't dropped. It goes to **Review**,
 
 ### 6. Still missing?
 
-If Hasala notices a bank has gone quiet, it sends a "Bank alerts went quiet" notification. If you're still stuck, email us. Include **Copy diagnostics** from Profile › Bank alerts. [[OWNER: Confirm where Copy diagnostics lives.]] Diagnostics contain only counts and status codes, never amounts, merchants or email addresses.
+If Hasala notices a bank has gone quiet, it sends a "Bank alerts went quiet" notification. If you're still stuck, email us. Include the diagnostics from **Settings › Get help › Copy diagnostics**. Diagnostics contain only the app and iOS versions, your iPhone model, counts and status codes, never amounts, merchants or email addresses.
 
 ## Moving to a new iPhone
 
@@ -118,7 +115,7 @@ Your sealed data is kept on our server, so you can move to a new iPhone without 
 2. Install Hasala from TestFlight and open it.
 3. Sign in with Face ID. Your passkey unlocks your data.
 4. Reconnect Gmail. Go to **Profile › Bank alerts** and tap **Read them here instead**, so the new iPhone reads your alerts.
-5. Remove your old iPhone in **Profile › Devices** if you no longer use it. [[OWNER: Confirm the path.]]
+5. Remove your old iPhone in **Profile › Sign-in & security › Devices** if you no longer use it.
 
 Some passkey managers other than iCloud Keychain can't unlock Hasala on a new device. If yours can't, Hasala asks for your 12-word recovery phrase instead.
 
@@ -128,7 +125,7 @@ Sign in, then enter your 12-word recovery phrase when Hasala asks. A password si
 
 ### If you've lost every passkey
 
-Choose **Lost your passkey? Use your recovery phrase**. Hasala makes a new passkey on this iPhone and lets your other devices know.
+On the sign-in screen, choose **Can't get in at all?** and use your 12-word recovery phrase with a code we email you. Hasala makes a new passkey or password on this iPhone and lets your other devices know.
 
 ### Restoring from an iPhone backup
 
@@ -141,21 +138,21 @@ A password reset needs one of two things:
 - **your 12-word recovery phrase**; or
 - **an iPhone that's already signed in to Hasala.**
 
-On the sign-in screen, tap **Forgot password**, then follow the steps with either one. [[OWNER: Confirm the exact flow and button names.]]
+On the sign-in screen, tap **Forgot password?** and follow the steps. You'll approve the reset by scanning a code with an iPhone that's still signed in. If you don't have one, choose **Can't get in at all?** instead and use your 12 words with a code we email you.
 
-If you have a passkey, you can also just sign in with Face ID and change your password in Settings.
+If you have a passkey, you can also just sign in with Face ID and change your password in **Profile › Sign-in & security › Password**.
 
 If you have none of these (no recovery phrase, no passkey and no signed-in iPhone), we can't reset your password or recover your data. This isn't a policy choice. We don't hold the keys to your data.
 
 ### Lost your recovery phrase?
 
-If you still have a signed-in iPhone or a passkey, create a new recovery phrase in **Settings › Recovery phrase**. Write the new words down, and throw away any words you wrote down before. Your old words stop working with Hasala. [[OWNER: Confirm the path.]] If you think someone has seen your words, a new phrase won't undo that; see our [Security](/security) page. We can't reset or show your recovery phrase for you.
+If you still have a signed-in iPhone or a passkey, create a new recovery phrase in **Profile › Sign-in & security › Recovery phrase › Make new words**. Write the new words down, and throw away any words you wrote down before. Your old words stop working with Hasala. If you think someone has seen your words, a new phrase won't undo that; see our [Security](/security) page. We can't reset or show your recovery phrase for you.
 
 Hasala will never ask for your recovery phrase in an email, a notification or on a website. Only type it into the Hasala app.
 
 ## Delete your account
 
-Deleting your account is permanent and can't be undone. If you want to keep your data, export it first from **Profile › Export**. [[OWNER: Confirm the path.]]
+Deleting your account is permanent and can't be undone. If you want to keep your data, export it first from **Settings › Export your data**.
 
 1. Open Hasala and go to **Profile › Delete your account**.
 2. Read the summary and confirm it's you.
@@ -169,7 +166,7 @@ Afterwards:
 - You can check that Hasala no longer has Gmail access in your Google Account under **Security › Your connections to third-party apps and services**.
 - Delete the Hasala app.
 
-If you can't open the app any more and want your account deleted, email us from your account's email address. [[OWNER: Confirm this process and how requests are verified.]]
+If you can't open the app any more and want your account deleted, email privacy@hasala.app from your account's email address. We'll reply to that address and ask you to confirm before we delete anything.
 
 ## Leave the beta
 
@@ -185,10 +182,10 @@ If you can't open the app any more and want your account deleted, email us from 
 
 ## Contact us
 
-- Help and feedback: [[OWNER: support@hasala.app]]. You can also send feedback, with screenshots, from the TestFlight app. Check screenshots before you send them, because they may show your amounts.
-- Privacy questions and requests: [[OWNER: privacy@hasala.app]]
+- Help and feedback: support@hasala.app. You can also send feedback, with screenshots, from the TestFlight app. Check screenshots before you send them, because they may show your amounts.
+- Privacy questions and requests: privacy@hasala.app
 - Security problems: security@hasala.app. See our [Security](/security) page.
 
-We're a small team, so replies can take a few days. [[OWNER: State the expected response time.]]
+Hasala is a small, independent project, so replies can take a few days. We aim to reply within 5 business days.
 
 Please never send us your recovery phrase or your password. We'll never ask for them. If we ask for a sample bank alert to add support for your bank, remove your card and account numbers before you send it.

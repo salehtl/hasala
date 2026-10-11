@@ -72,13 +72,19 @@ npm packages
   build time and are not vendored here.
 
   The website (web/) and its Lighthouse CI tooling (web/lighthouse/) do the
-  same. The built site (web/dist, not committed) bundles code from two of
-  them into the JavaScript it serves, both under the MIT License
-  (LICENSES/MIT.txt):
+  same. The built site (web/dist, not committed) bundles code from three of
+  them (vite comes in through astro) into the JavaScript it serves, all under
+  the MIT License (LICENSES/MIT.txt):
     - astro (Copyright (c) 2021 Fred K. Schott), whose client router runs on
       every page; https://github.com/withastro/astro
+    - vite (Copyright (c) 2019-present, VoidZero Inc. and Vite contributors),
+      whose module-preload helper is bundled into the invite page's script;
+      https://github.com/vitejs/vite
     - uqr (Copyright (c) Project Nayuki; Copyright (c) 2023 Anthony Fu), the
       QR code encoder on the invite page; https://github.com/unjs/uqr
+  The site lists them, and Inter, with their licence texts at
+  https://hasala.app/licenses (web/src/pages/licenses.astro, from
+  web/src/data/licenses.ts).
 
 What is not in this repository
 ==============================
