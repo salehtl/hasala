@@ -76,6 +76,10 @@ func runServe(env *runEnv, args []string) error {
 	fuse := startHeadroom(cfg, srvAPI)
 	defer fuse.Stop()
 	logGroups(cfg)
+	ex, err := wireExtras(ctx, cfg, pool, srvAPI)
+	if err != nil {
+		return err
+	}
 
 	sweeps := []<-chan struct{}{
 		startSweep(ctx, "deleted-account tombstone sweep", tombstoneSweep(srvAPI.Sessions)),
@@ -119,6 +123,7 @@ func runServe(env *runEnv, args []string) error {
 	for _, done := range sweeps {
 		<-done
 	}
+	ex.wait()
 	return serveErr
 }
 
@@ -165,11 +170,9 @@ func logGroups(cfg config.Config) {
 	if cfg.Server.TrustedProxy == config.ProxyCloudflare {
 		slog.Warn(proxyNotHonoured)
 	}
-	if len(on) > 0 {
-		// The configuration is validated so deployments can be prepared; the
-		// senders, the hook and the metrics listener are WS-4's and WS-5's.
-		slog.Warn("hasalad serve: these groups are configured but not served by this build yet",
-			"groups", strings.Join(on, ","))
+	if cfg.Server.MetricsListen != "" {
+		// The metrics listener is WS-5's.
+		slog.Warn("hasalad serve: metrics_listen is configured but not served by this build yet")
 	}
 }
 
