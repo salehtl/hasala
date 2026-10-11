@@ -108,8 +108,12 @@ struct GlassBackButton: View {
         .font(.system(size: 18, weight: .semibold))
         .foregroundStyle(HColor.textPrimary)
         .frame(width: 48, height: 48)
+        // The whole circle is the hit area, for touch and for VoiceOver: on iOS 26 a
+        // plain button's accessibility frame otherwise shrinks to the glyph.
+        .contentShape([.interaction, .accessibility], Circle())
     }
     .buttonStyle(.plain)
+    .frame(width: 48, height: 48)
     .glassEffect(.regular.interactive(), in: Circle())
     .accessibilityLabel("Back")
     .accessibilityIdentifier("account.back")
