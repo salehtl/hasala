@@ -1,0 +1,127 @@
+{
+  "name": "unparsed-row-materializes",
+  "group": "fold",
+  "note": "An unparsed message is a row on the review surface with no money.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-row-materializes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": null,
+          "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "unparsed|ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          [
+            "u1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "1"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000u1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "u1",
+            "kind": "txn",
+            "op_id": "unparsed-row-materializes-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "u1"
+        ]
+      ],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "u1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "u1",
+            "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "f34a48e6ac9b7014ca2f27568f8343769791ee495d0d15cb480e8c5f371988a0",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "f34a48e6ac9b7014ca2f27568f8343769791ee495d0d15cb480e8c5f371988a0",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

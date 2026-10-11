@@ -1,0 +1,96 @@
+{
+  "name": "version-floors",
+  "group": "blobs",
+  "note": "The configuration ops need schema v3 and the disposition v2; stamped lower, the blob is set aside rather than folded.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":2,\"kind\":\"ops\",\"ops\":[{\"v\":2,\"type\":\"bank_declared\",\"op_id\":\"b2\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"bank\":\"enbd\",\"active\":true}}]}"
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "2",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_duplicate_disposition\",\"op_id\":\"d1\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"t\"},\"parent_version\":1,\"payload\":{\"other_txn_id\":\"u\",\"disposition\":\"same\"}}]}"
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "3",
+      "body": "{\"v\":3,\"kind\":\"ops\",\"ops\":[{\"v\":3,\"type\":\"bank_declared\",\"op_id\":\"b3\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"bank\":\"enbd\",\"active\":true}}]}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [
+        [
+          "enbd",
+          true
+        ]
+      ],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "1",
+          "stream": "hot",
+          "writer_counter": "1",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "2",
+          "stream": "hot",
+          "writer_counter": "2",
+          "writer_id": "dev-a"
+        }
+      ]
+    },
+    "state_sha256": "63908f13e0242c77e73303e061fbef563719b8cb8ce28b1ff4760df866515f3d",
+    "order": {
+      "banks": [
+        "enbd"
+      ],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "46101930894775474456b6acc540de526a597ce79641658b42f5bc8e1eb0c5b3",
+      "anomalies": [],
+      "unreadable": [
+        {
+          "seq": "1",
+          "reason": "op 0: type bank_declared requires schema v3"
+        },
+        {
+          "seq": "2",
+          "reason": "op 0: type txn_duplicate_disposition requires schema v2"
+        }
+      ]
+    }
+  }
+}

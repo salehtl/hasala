@@ -334,6 +334,19 @@ describe("forward dates — explicit layouts, never Date.parse", () => {
     expect(parseForwardDate("8 February 2026 at 15:61")).toBeNull();
     expect(parseForwardDate("Xyz 8, 2026 at 12:52 PM")).toBeNull();
   });
+  test("a layout space matches a run of spaces, as in Go's time.Parse", () => {
+    expect(iso(parseForwardDate("Feb  8, 2026 at 12:52 PM"))).toBe("2026-02-08T12:52:00.000Z");
+    expect(iso(parseForwardDate("8 February 2026  at   15:36"))).toBe("2026-02-08T15:36:00.000Z");
+    // Only spaces: a tab is not a layout space in Go either.
+    expect(parseForwardDate("8\tFebruary 2026 at 15:36")).toBeNull();
+    // And a space the layout does not have is still refused.
+    expect(parseForwardDate("Feb 8 , 2026 at 12:52 PM")).toBeNull();
+  });
+  test("a year below 100 is that year, not 19xx", () => {
+    expect(iso(parseForwardDate("8 February 0050 at 15:36"))).toBe("0050-02-08T15:36:00.000Z");
+    // Year 0 is a leap year in Go's proleptic calendar.
+    expect(iso(parseForwardDate("29 February 0000 at 15:36"))).toBe("0000-02-29T15:36:00.000Z");
+  });
 });
 
 // ---------------------------------------------------------------------------

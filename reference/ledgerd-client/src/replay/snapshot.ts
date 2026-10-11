@@ -332,8 +332,11 @@ function canaryOp(type: OpType, writer: string, rest: Partial<Op> & { payload: u
  *
  * Do not "tidy" it. Every branch it walks is a branch a `replay.ts` change can
  * be caught on.
+ *
+ * Exported for `scripts/gen-replay-conformance.ts`, which publishes the state
+ * it folds to as `conformance/replay/canary-v3.json`.
  */
-function CANARY(): LogEntry[] {
+export function CANARY(): LogEntry[] {
   const id = (n: number): string => `c${n.toString(10)}`;
   const ing = (n: number): string => `${n.toString(16).padStart(64, "0")}`;
   const txn = (n: number, over: Record<string, unknown> = {}): Record<string, unknown> => ({

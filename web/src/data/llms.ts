@@ -13,7 +13,7 @@ Hasala (Arabic: ${SITE.arabicName}, "piggy bank") has the App Store name "${SITE
 Key facts:
 
 - Platform: iPhone only, iOS 26 or later. No Android app, no web app.
-- Where transactions come from: the bank alert emails in your own Gmail, read-only. Your iPhone asks Gmail only for messages from your bank's alert senders, so the rest of your inbox, headers included, is never downloaded. There is no email forwarding and no bank login.
+- Where transactions come from: the bank alert emails in your own Gmail, read-only. Your iPhone asks Gmail only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; if Gmail's search also returns an email that only looks like it is from your bank, the iPhone reads just its sender details and sets it aside. There is no email forwarding and no bank login.
 - Banks at launch: ${BANKS.map((b) => b.name).join(' and ')}. Other banks are added by demand.
 - Categorization happens on the iPhone: your own rules first, then a built-in list of UAE merchants, then Apple's on-device model (English merchant names), then you review. Nothing is sent to an AI service.
 - Privacy: your transactions, budget and plan are end-to-end encrypted on the iPhone before they sync. Hasala's server stores sealed data it cannot open.
@@ -48,7 +48,7 @@ export function llmsFullTxt(legal: { title: string; url: string; body: string }[
   return plain(`${llmsTxt()}
 ## How it works
 
-1. Connect Gmail. Sign in with Face ID or a password, then give Hasala read-only access. Your iPhone fetches only your bank's alerts; the rest of your inbox is never downloaded. Setup takes a few minutes; there is no bank login and nothing to upload.
+1. Connect Gmail. Sign in with Face ID or a password, then give Hasala read-only access. Your iPhone asks Gmail only for your bank's alerts; your other mail stays in Gmail. Setup takes a few minutes; there is no bank login and nothing to upload.
 2. Sorted on your iPhone. Every alert becomes a transaction, categorized on the phone. Correct one once and Hasala remembers the merchant.
 3. Sealed, then synced. Your transactions, budget and plan are encrypted on the iPhone with a key only your devices hold before they sync.
 

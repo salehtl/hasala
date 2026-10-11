@@ -28,7 +28,7 @@ No. Hasala never connects to your bank and never asks for your bank details. It 
 
 ### Can Hasala read my other emails?
 
-Your iPhone asks Gmail only for messages from your banks' alert addresses. The rest of your inbox is never downloaded, and no email is ever sent to our server. Hasala can't send, delete or change your email. See [Gmail and Google user data](/privacy#gmail-and-google-user-data) for the details.
+Your iPhone asks Gmail only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like it's from your bank, Hasala reads just its sender details on your iPhone and then sets it aside. No email is ever sent to our server. Hasala can't send, delete or change your email. See [Gmail and Google user data](/privacy#gmail-and-google-user-data) for the details.
 
 ### Can you see my transactions?
 
@@ -60,7 +60,7 @@ To protect your privacy on the Lock Screen, notifications are generic by default
 
 ### Where is Hasala's source code?
 
-At [github.com/salehtl/hasala](https://github.com/salehtl/hasala). It's source-available under the Functional Source License (FSL-1.1-ALv2): you can read, run and change it, but not use it to offer a competing product or service. Each version becomes available under the Apache License 2.0 two years after it's released. The name Hasala and the Slot mark are trademarks and aren't covered by the licence. See [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md) for the exact terms.
+At [github.com/salehtl/hasala](https://github.com/salehtl/hasala). It's source-available under the Functional Source License (FSL-1.1-ALv2): you can read, run and change it, but not use it in a commercial product or service that competes with Hasala. Each version becomes available under the Apache License 2.0 two years after it's released. The name Hasala and the Slot mark are trademarks and aren't covered by the licence. See [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md) for the exact terms.
 
 ## Missing transactions or alerts
 
@@ -146,9 +146,11 @@ If you have none of these (no recovery phrase, no passkey and no signed-in iPhon
 
 ### Lost your recovery phrase?
 
-If you still have a signed-in iPhone or a passkey, create a new recovery phrase in **Profile › Sign-in & security › Recovery phrase › Make new words**. Write the new words down, and throw away any words you wrote down before. Your old words stop working with Hasala. If you think someone has seen your words, a new phrase won't undo that; see our [Security](/security) page. We can't reset or show your recovery phrase for you.
+If you sign in with a passkey, you can view your 12 words again in **Profile › Sign-in & security › Recovery phrase › View your 12 words**, after Face ID. We email you each time they're shown. Accounts that sign in with a password only can't show them again.
 
-Hasala will never ask for your recovery phrase in an email, a notification or on a website. Only type it into the Hasala app.
+If you'd rather replace them, and you still have a signed-in iPhone or a passkey, create a new recovery phrase in **Profile › Sign-in & security › Recovery phrase › Make new words**. Write the new words down, and throw away any words you wrote down before. Your old words stop working with Hasala. If you think someone has seen your words, a new phrase won't undo that; see our [Security](/security) page. We can't reset your recovery phrase, or show it to you outside the app.
+
+Hasala will never ask for your recovery phrase, your password or a code in an email, a notification, a phone call or on a website. Only type them into the Hasala app.
 
 ## Delete your account
 
@@ -186,6 +188,6 @@ If you can't open the app any more and want your account deleted, email privacy@
 - Privacy questions and requests: privacy@hasala.app
 - Security problems: security@hasala.app. See our [Security](/security) page.
 
-Hasala is a small, independent project, so replies can take a few days. We aim to reply within 5 business days.
+Hasala is a small, independent project, so replies can take a few days.
 
 Please never send us your recovery phrase or your password. We'll never ask for them. If we ask for a sample bank alert to add support for your bank, remove your card and account numbers before you send it.

@@ -1,0 +1,115 @@
+{
+  "name": "latest-checkpoint-replaces",
+  "group": "fold",
+  "note": "The latest writer_checkpoint replaces the earlier one; counters are integers past 2^53.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "writer_checkpoint",
+          "op_id": "latest-checkpoint-replaces-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "heads": [
+              {
+                "writer_id": "dev-b",
+                "stream": "hot",
+                "counter": "2",
+                "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              {
+                "writer_id": "ingest",
+                "stream": "hot",
+                "counter": "4",
+                "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "writer_checkpoint",
+          "op_id": "latest-checkpoint-replaces-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "heads": [
+              {
+                "writer_id": "dev-a",
+                "stream": "hot",
+                "counter": "9007199254740993",
+                "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              },
+              {
+                "writer_id": "ingest",
+                "stream": "cold",
+                "counter": "0",
+                "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [
+        {
+          "counter": "9007199254740993",
+          "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "stream": "hot",
+          "writer_id": "dev-a"
+        },
+        {
+          "counter": "0",
+          "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "stream": "cold",
+          "writer_id": "ingest"
+        }
+      ],
+      "cursors": {
+        "cold": "0",
+        "hot": "2"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "9505ebe341a288bfa58a0bbd9c9b2fba818fc9da4bbef4cc2563415248b1b872",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "9505ebe341a288bfa58a0bbd9c9b2fba818fc9da4bbef4cc2563415248b1b872",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

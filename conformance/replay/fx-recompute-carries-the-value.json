@@ -1,0 +1,226 @@
+{
+  "name": "recompute-carries-the-value",
+  "group": "fx",
+  "note": "conformance/fx: The 'recompute at current rate' action of \u00a73.7:137 is a txn_edited that CARRIES the number, never an instruction to recompute later \u2014 replay stays a pure function of logged data. Setting it back to null re-arms the row for backfill, which the rate_set at seq 6 then performs.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "recompute-carries-the-value-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "recompute-carries-the-value-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD",
+            "rate_micro": "3672500"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "recompute-carries-the-value-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "10000",
+            "currency": "USD",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "M-t1",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "recompute-carries-the-value-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "amount_home_minor": "40000"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "recompute-carries-the-value-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 2,
+          "payload": {
+            "amount_home_minor": null
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "recompute-carries-the-value-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD",
+            "rate_micro": "5000000"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|10000|debit|M-t1|2026-06-05",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "recompute-carries-the-value-5",
+            "version": 3,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": "AED",
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ]
+      ],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [
+        [
+          "USD",
+          "2026-06-05T10:00:00.000Z"
+        ]
+      ],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ],
+        [
+          "USD",
+          "5000000"
+        ]
+      ],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": "50000",
+            "amount_minor": "10000",
+            "category": null,
+            "currency": "USD",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "M-t1",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 3
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "dac1a1c54611de2d011d1e7031ab0b36a94e9ad70efce1deb5fd2c66ad2e2350",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "dac1a1c54611de2d011d1e7031ab0b36a94e9ad70efce1deb5fd2c66ad2e2350",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

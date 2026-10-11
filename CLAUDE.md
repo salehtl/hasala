@@ -36,17 +36,43 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   socket only), the reference client's typecheck and `bun test`, and the
   conformance suites. Once per checkout first:
   `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
-- CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
-  without the private fixtures. Jobs `gate` (`check.sh --fence-only` before
-  anything else, then `nix flake check --no-build`, a build of every check
-  except `qa-vm`, and `scripts/check.sh` in the devShell), `vuln`
-  (`govulncheck ./...` in `server/`, failing on anything reachable) and
-  `secrets` (gitleaks over the full history). Keep those job names: required
-  status checks match them by name. A fourth job, `web`, checks the website
-  (see "Website"), and `nixos-vm` builds `checks.x86_64-linux.qa-vm` with
-  KVM; neither is a required check. `.gitleaks.toml` allowlists
-  known public test vectors only, each scoped to its rule, its files and its
-  exact value; never widen it to pass a real secret.
+- CI is `.github/workflows/ci.yml`, on every pull request and push to `main`
+  (and by hand, `workflow_dispatch`), without the private fixtures. Jobs
+  `gate` (`check.sh --fence-only` before anything else, then
+  `nix flake check --no-build`, a build of every check except `qa-vm`, and
+  `scripts/check.sh` in the devShell), `vuln`
+  (`govulncheck ./...` in `server/` and `server/oracle/`, failing on anything
+  reachable) and `secrets` (the real-mail fence and the HasalaCore lints
+  `ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`, then
+  gitleaks over the full history) are the required checks. Keep those job
+  names: required status checks match them by name. `swift` (HasalaCore on a
+  Mac), `web` (the website, see "Website") and `nixos-vm` (builds
+  `checks.x86_64-linux.qa-vm` with KVM) are not required.
+- CI is path-aware on pull requests and fails closed. Its first job,
+  `changes`, lists the pull request's changed paths (`git diff -z`, so any
+  file name matches as written), and each of `gate`/`vuln`, `swift`, `web`
+  and `nixos-vm` is skipped only when every changed path is on that job's
+  list of paths it does not read; any other path, including one nobody
+  anticipated (a new top-level directory, `go.work`, `.gitattributes`), runs
+  it. No job reads `LICENSES/`, `design/`, root `*.md`, `NOTICE` or
+  `private-fixtures.lock`. `gate` and `vuln` also skip `docs/`, `web/` and
+  `ios/` (except any `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work`,
+  `go.work.sum`), so `infra/` runs them; `swift` reads only `ios/` and
+  `conformance/`; `web` reads only `web/`, `docs/legal/` and the flake;
+  `nixos-vm` reads only `infra/`, `server/` and the flake. `.github/` runs
+  everything, and `secrets` always runs. Jobs are skipped by a
+  job-level `if:` (a skipped required check counts as passing), never by a
+  workflow-level `paths:` filter (that leaves required checks pending
+  forever), and unless `changes` succeeded every job runs. A push to `main` or
+  a manual run runs every job. When a job starts reading a path on its
+  inert list, take it off that list in `changes`.
+- `.github/workflows/vuln-weekly.yml` runs the same govulncheck on `main`
+  every Monday (job `vuln-weekly`, not required), because Go advisories land
+  without commits; it is a separate workflow so it never records checks on
+  `main`'s head under the required names.
+- `.gitleaks.toml` allowlists known public test vectors only, each scoped to
+  its rule, its files and its exact value; never widen it to pass a real
+  secret.
 - Real bank mail is **not** in this repository. The real-mail conformance cases
   and the signed `.eml` fixtures live in the private `salehtl/hasala-fixtures`
   repo under the same paths; set `HASALA_PRIVATE_FIXTURES` to an absolute path
@@ -59,7 +85,8 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   is committed anywhere in this tree, `server/oracle/v1ref` included.
   `scripts/check.sh`'s first step (the real-mail fence) refuses the private
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
-  toolchain needed) on every push and pull request before anything else.
+  toolchain needed) in `secrets` on every push and pull request, and in `gate`
+  before anything else.
 - `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
   which is byte-frozen). The infra checks: `ingress-lint` (both systems; the

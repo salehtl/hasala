@@ -5,8 +5,9 @@
 #
 #   direnv exec . nice -n 10 scripts/check.sh
 #
-# CI (.github/workflows/ci.yml, job `gate`) runs the same script on every pull
-# request and every push to main, without the private fixtures (see "CI" below).
+# CI (.github/workflows/ci.yml, job `gate`) runs the same script on every push
+# to main and every pull request that touches what it reads, without the
+# private fixtures (see "CI" below).
 #
 # It is ledgerd's scripts/v2-check.sh carried over to the monorepo layout:
 # server/ (the Go module, and server/oracle/, the separate module that holds
@@ -63,7 +64,8 @@
 # printed instead of named, and the closing real-corpus count is also raised as
 # an annotation and written to the job summary, so a run without the private
 # fixtures says so on the pull request, not only at the end of a long log. CI
-# also runs `scripts/check.sh --fence-only` before it installs Nix, so the
+# also runs `scripts/check.sh --fence-only` before it installs Nix, and in job
+# `secrets` on every pull request (including those that skip `gate`), so the
 # real-mail fence holds on every push even when the rest cannot build.
 #
 # What this does NOT run is the full-corpus cross-executor diff and the corpus-
@@ -109,8 +111,8 @@ ci_report() {
 # runs. The synthetic families (edge-cases.json, synthetic-*.json, dns.json)
 # are what belongs here. This step needs no fixtures and no toolchain and takes
 # seconds, so it runs first, and `--fence-only` stops right after it: CI runs
-# that on every push and pull request before anything else, so the fence does
-# not depend on the rest of the gate building.
+# that on every push and pull request (job `secrets`, and first in `gate`), so
+# the fence does not depend on the rest of the gate building.
 step "real-mail fence"
 leaked="$(
 	cd "$ROOT"
@@ -139,7 +141,8 @@ fi
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
 # scan and the R2/R3/R7/R8 grep lints. The half of check-imports.sh that
 # compares imports.allow with Package.swift needs `swift`; CI's `swift` job
-# runs it.
+# runs it. CI's `secrets` job also runs these two on every pull request, since
+# `gate` is skipped on one that changes only ios/.
 step "HasalaCore import and API lints"
 "$ROOT/ios/scripts/check-imports.sh" --no-manifest
 "$ROOT/ios/scripts/check-forbidden.sh"
@@ -334,25 +337,39 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 # directory under conformance/ must appear here: a new fixture set cannot land
 # without saying what checks it.
 #
-# Two sets have fewer than two executors, on purpose and visibly:
+# Some sets have fewer than two executors here, on purpose and visibly:
 #   fx      TypeScript only. The FX fold exists only client-side; Go has no reader.
 #   crypto  No reader at all. Its consumer (ledgerd's retired app/ bench) was
 #           deleted (see the ledgerd repo-migration inventory, archived).
 #           Listed so the gap stays on screen.
-#   structure  TypeScript only since WS-1: its Go executor was ledgerd's
-#           diagnostics telemetry (internal/diag), retired with it (spec 02 §2).
+#   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests, CI's
+#           swift job, which also re-checks it); Go opens and verifies it once
+#           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
+#           runner on main yet: listed so the gap stays on screen.
+#   authres, categorize, norm-dates, replay
+#           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
+#           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
+#           executor joins CI's `swift` job with the port (WS-8, WS-10). The
+#           TypeScript entry is the freshness check (the committed files are
+#           byte-identical to what the generator writes now, computed in
+#           memory, no network) plus the oracle reading its own files back.
+#           Go has no reader: the server never reads mail or folds ops.
 #
 # A Go package under ./oracle/ is run from the oracle module.
 CONFORMANCE=(
+	"authres||src/mail/authres-conformance.test.ts"
 	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
+	"categorize||src/categorize/oracle-conformance.test.ts"
 	"crypto||"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"
 	"fx||src/replay/fx.test.ts"
 	"import|./oracle/v1ref/importer|src/importer/importer.test.ts"
+	"norm-dates||src/norm/dates-conformance.test.ts"
 	"normalizer|./internal/norm|src/norm/conformance.test.ts"
 	"op|./internal/oplog/opref|src/wire/op.test.ts"
-	"structure||src/diag/structure.test.ts"
+	"swift||"
+	"replay||src/replay/replay-conformance.test.ts"
 	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"
 	"ts|./internal/oplog/opref|src/wire/blob.test.ts"
 )
