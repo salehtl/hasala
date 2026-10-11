@@ -43,6 +43,8 @@ final class LiveAccountService: AccountService {
       let s = try await AccountCreation.beginSignup(
         env, inviteCode: code.value, email: email, displayName: displayName, inviteLinkKey: linkKey)
       signup = s
+      inviteCode = code.value
+      codeTries = 5
       keys?.wipe()
       keys = nil
       registered = nil
@@ -72,10 +74,13 @@ final class LiveAccountService: AccountService {
     }
   }
 
-  func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) {
-    // A fresh `signup/begin` with the same invite sends a new code (`02` #43).
-    // TODO(WS-14): keep the invite link key across a resend.
-    throw .notInThisBuild
+  /// The invite of the current signup, for "Resend code" (memory only; never logged).
+  private var inviteCode: String?
+
+  func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
+    guard let code = inviteCode, let invite = InviteCode(code) else { throw .refused }
+    // The link key is not sent again: a resend means the address is confirmed by code.
+    return try await beginSignup(code: invite, linkKey: nil, email: ticket.email, displayName: ticket.displayName)
   }
 
   private func freshKeys() throws(AuthFailure) -> NewAccountKeys {

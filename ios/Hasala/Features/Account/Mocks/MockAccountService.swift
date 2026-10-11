@@ -99,9 +99,13 @@
       throw codeTries == 0 ? .codeExpired : .codeWrong(triesLeft: codeTries)
     }
 
-    func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) {
+    func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
       await pause()
       codeTries = 5
+      var t = ticket
+      t.id += "+"
+      t.startedAt = .now
+      return t
     }
 
     func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) {

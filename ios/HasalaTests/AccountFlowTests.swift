@@ -45,6 +45,13 @@ struct AccountFlowTests {
     m.code = "000000"
     await m.submitCode()
     #expect(m.failure == .codeWrong(triesLeft: 4))
+    // "Resend code" starts a fresh ceremony and resets the tries.
+    let firstID = m.ticket?.id
+    await m.resendCode()
+    #expect(m.ticket?.id != firstID)
+    m.code = "000001"
+    await m.submitCode()
+    #expect(m.failure == .codeWrong(triesLeft: 4))
     m.code = MockAccountService.emailCode
     await m.submitCode()
     #expect(m.path.last == .method)

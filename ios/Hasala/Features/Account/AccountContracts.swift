@@ -183,7 +183,9 @@ protocol AccountService: AnyObject {
     async throws(AuthFailure) -> SignupTicket
   /// `signup/verify`. Wrong codes throw `.codeWrong(triesLeft:)` / `.codeExpired`.
   func verifySignupEmail(_ ticket: SignupTicket, code: String) async throws(AuthFailure)
-  func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure)
+  /// A new code: `signup/begin` again with the same invite, address and name. Returns the
+  /// new ceremony (its id replaces the old one).
+  func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket
   /// C1 steps 5-9: create the passkey (one Face ID prompt). A session exists afterwards.
   func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure)
   /// A fresh 12-word phrase made on this iPhone (01 §4.3).

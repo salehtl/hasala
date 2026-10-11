@@ -165,7 +165,7 @@ final class SignupModel {
     busy = true
     defer { busy = false }
     do {
-      try await account.resendSignupCode(ticket)
+      self.ticket = try await account.resendSignupCode(ticket)
       codeSentAt = .now
       code = ""
       failure = nil
