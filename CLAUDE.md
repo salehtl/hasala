@@ -16,7 +16,7 @@ beta; every deployment is **QA** until a production VPS exists.
 | `reference/ledgerd-pwa/` | ledgerd's React PWA. Reference for product logic (`src/lib/`) only. Not shipped. |
 | `web/` | The hasala.app website: Astro + Bun, static output. See "Website" below. |
 | `design/` | Logo and exported assets. Not in this tree yet. The UI source of truth is a private Paper design file. |
-| `infra/qa/` | (Planned) generic deployment notes for the QA host. Host names, addresses, accounts and credentials never go here. |
+| `infra/qa/` | The QA deployment as code: `nix/module.nix` is `nixosModules.hasala` (`services.hasala`: Hasala's own PostgreSQL 17 on a unix socket, migrations, `hasalad serve` and `hasalad console` on loopback, the tunnel, encrypted backups), `cloudflared/` the ingress golden file, lint and fixtures, `nix/tests/` the eval and VM checks, `HOST-PR.md` the host-side change (placeholders only). Host names, addresses, accounts and credentials never go here. |
 | `docs/` | `docs/legal/` holds the privacy policy, terms, security and support pages that the website renders (`status: "final"`; a page that still has an `[[OWNER: ...]]` note must go back to `status: "draft"`). Hasala's architecture and decisions will live in `docs/` too; not in this tree yet. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
 
 ## Build and test
@@ -39,24 +39,37 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
 - CI is `.github/workflows/ci.yml`, on every pull request and push to `main`
   (and by hand, `workflow_dispatch`), without the private fixtures. Jobs
   `gate` (`check.sh --fence-only` before anything else, then
-  `nix flake check` and `scripts/check.sh` in the devShell), `vuln`
+  `nix flake check --no-build`, a build of every check except `qa-vm`, and
+  `scripts/check.sh` in the devShell), `vuln`
   (`govulncheck ./...` in `server/` and `server/oracle/`, failing on anything
-  reachable) and `secrets` (the real-mail fence, then gitleaks over the full
-  history) are the required checks. Keep those job names: required status
-  checks match them by name. `swift` (HasalaCore on a Mac) and `web` (the
-  website, see "Website") are not required.
-- CI is path-aware on pull requests. Its first job, `changes`, diffs the pull
-  request against its base: `gate` and `vuln` run only if `server/`,
-  `conformance/`, `reference/`, `scripts/`, `infra/`, `.github/`, `flake.nix`,
-  `flake.lock`, `.gitleaks.toml` or any `go.mod`, `go.sum`, `*.go` or `*.nix`
-  changed; `swift` only for `ios/`, `conformance/` or `.github/`; `web` only
-  for `web/`, `docs/legal/`, `.github/`, `flake.nix` or `flake.lock`;
-  `secrets` always runs. Jobs are skipped by a job-level `if:` (a skipped
-  required check counts as passing), never by a workflow-level `paths:` filter
-  (that leaves required checks pending forever), and if `changes` fails every
-  job runs. A push to `main` or a manual run runs every job; a weekly schedule
-  runs `vuln` alone on `main`, because Go advisories land without commits.
-  When a job starts reading a new path, add it to the patterns in `changes`.
+  reachable) and `secrets` (the real-mail fence and the HasalaCore lints
+  `ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`, then
+  gitleaks over the full history) are the required checks. Keep those job
+  names: required status checks match them by name. `swift` (HasalaCore on a
+  Mac), `web` (the website, see "Website") and `nixos-vm` (builds
+  `checks.x86_64-linux.qa-vm` with KVM) are not required.
+- CI is path-aware on pull requests and fails closed. Its first job,
+  `changes`, lists the pull request's changed paths (`git diff -z`, so any
+  file name matches as written), and each of `gate`/`vuln`, `swift`, `web`
+  and `nixos-vm` is skipped only when every changed path is on that job's
+  list of paths it does not read; any other path, including one nobody
+  anticipated (a new top-level directory, `go.work`, `.gitattributes`), runs
+  it. No job reads `LICENSES/`, `design/`, root `*.md`, `NOTICE` or
+  `private-fixtures.lock`. `gate` and `vuln` also skip `docs/`, `web/` and
+  `ios/` (except any `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work`,
+  `go.work.sum`), so `infra/` runs them; `swift` reads only `ios/` and
+  `conformance/`; `web` reads only `web/`, `docs/legal/` and the flake;
+  `nixos-vm` reads only `infra/`, `server/` and the flake. `.github/` runs
+  everything, and `secrets` always runs. Jobs are skipped by a
+  job-level `if:` (a skipped required check counts as passing), never by a
+  workflow-level `paths:` filter (that leaves required checks pending
+  forever), and unless `changes` succeeded every job runs. A push to `main` or
+  a manual run runs every job. When a job starts reading a path on its
+  inert list, take it off that list in `changes`.
+- `.github/workflows/vuln-weekly.yml` runs the same govulncheck on `main`
+  every Monday (job `vuln-weekly`, not required), because Go advisories land
+  without commits; it is a separate workflow so it never records checks on
+  `main`'s head under the required names.
 - `.gitleaks.toml` allowlists known public test vectors only, each scoped to
   its rule, its files and its exact value; never widen it to pass a real
   secret.
@@ -76,7 +89,11 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   before anything else.
 - `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
-  which is byte-frozen).
+  which is byte-frozen). The infra checks: `ingress-lint` (both systems; the
+  module's rendered tunnel config against `infra/qa/cloudflared/config.golden.yml`
+  plus `lint.sh`), and on x86_64-linux `module-eval` (every module assertion
+  fires on its misuse) and `qa-vm` (needs KVM). On a Mac,
+  `nix flake check --no-build --all-systems` evaluates the Linux ones.
 - `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
   `console` (a stub until the console is built) and `version`; configuration
   is `HASALA_*` environment variables over an optional TOML file

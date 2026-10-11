@@ -1,67 +1,42 @@
 package api
 
-// keyhistory.go serves the append-only key-history log (spec §3.4) to the
-// device it belongs to.
-//
-// Without this route the log was write-only: appended on every writer
-// registration and revocation, protected by two database triggers, and
-// selected by nothing but tests. §3.4, §3.3(c) and §2:176 all describe peer
-// devices detecting key substitution by comparing a code derived from this
-// log's head — a comparison no device could make, because no device could read
-// the log.
-//
-// # The server deliberately does not compute the comparison code
-//
-// §3.4 is explicit that single-operator infrastructure "cannot make key
-// substitution impossible, only detectable", and detection works only if the
-// audited party is not the one doing the arithmetic. So this returns the
-// entries and the client derives the code, over the canonical ordering
-// [auth.Writers.KeyHistory] documents. A `comparison_code` field in this
-// response would look like the feature and be worth nothing.
-//
-// # This log has no PASSIVE surface, and Phase 3 made that matter more
-//
-// Nothing fetches this route except the approve-a-device panel, during an
-// enrolment. So a peer device sees an entry it did not expect at the NEXT
-// enrolment and never proactively — which was already true and is a thinner
-// guarantee than "detectable" sounds.
-//
-// Phase 3 raised the stakes: `recovery_registered` (00027) records an
-// enrolment authorised by the account's recovery key rather than by another
-// device, and it is exactly the entry a user would want to be TOLD about,
-// because on their own devices it means somebody used their phrase. It is in
-// the log, it is in the comparison digest, and there is no screen that shows it
-// unprompted. A device-log screen is the fix and it belongs in its own task.
+// keyhistory.go serves the append-only key-history log (spec 02 #27) to the
+// device it belongs to. Every entry carries its nonce and signature, so the
+// device verifies the log itself (spec 01 §10.13): registrations under the
+// authority key it derived from its own unwrapped seed, revocations under a
+// writer that was live at that point. The server computes nothing over it.
 
 import (
-	"encoding/base64"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// KeyHistoryEntry is one entry of the log, in wire form.
-//
-// PubKey is empty only for an entry that names no key (none is written since
-// ledgerd's keyless ingest writer was retired). It is a distinct value from a
-// key, not a substitute for one: a peer replaying the log must be able to tell
-// "a writer with no key appeared" from "this device's key changed".
+// KeyHistoryEntry is one entry, in wire form.
 type KeyHistoryEntry struct {
-	ID       int64     `json:"id"`
-	WriterID string    `json:"writer_id"`
-	PubKey   string    `json:"pubkey"` // base64; empty only for a keyless entry
-	Event    string    `json:"event"`  // "registered" | "revoked"
-	At       time.Time `json:"at"`
+	ID                 string    `json:"id"` // decimal
+	WriterID           string    `json:"writer_id"`
+	Alg                string    `json:"alg"`
+	PubKey             string    `json:"pubkey"`               // b64
+	DAKPubkey          *string   `json:"dak_pubkey"`           // b64; registered rows only
+	Event              string    `json:"event"`                // registered | revoked
+	AuthorizedBy       string    `json:"authorized_by"`        // authority | device
+	AuthorizerWriterID *string   `json:"authorizer_writer_id"` // revoked rows
+	FinalCounter       *string   `json:"final_counter"`        // decimal; revoked rows
+	FinalHead          *string   `json:"final_head"`           // b64; revoked rows
+	Nonce              string    `json:"nonce"`                // b64
+	Signature          string    `json:"signature"`            // b64
+	At                 time.Time `json:"at"`
 }
 
-// KeyHistoryResponse answers GET /api/v1/key-history. Entries are OLDEST FIRST
-// and the slice is the complete log; the last element is the head.
+// KeyHistoryResponse answers GET /api/v1/key-history: oldest first, complete;
+// the last element is the head.
 type KeyHistoryResponse struct {
 	Entries []KeyHistoryEntry `json:"entries"`
 }
 
-// handleKeyHistory returns the caller's own key-history log.
 func (s *Server) handleKeyHistory(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	log, err := s.Writers.KeyHistory(r.Context(), userID)
 	if err != nil {
@@ -70,12 +45,25 @@ func (s *Server) handleKeyHistory(w http.ResponseWriter, r *http.Request, userID
 		return
 	}
 	out := KeyHistoryResponse{Entries: make([]KeyHistoryEntry, 0, len(log))}
+	str := func(s string) *string { return &s }
 	for _, e := range log {
-		entry := KeyHistoryEntry{ID: e.ID, WriterID: e.WriterID, Event: e.Event, At: e.At}
-		if e.PubKey != nil {
-			entry.PubKey = base64.StdEncoding.EncodeToString(e.PubKey)
+		x := KeyHistoryEntry{
+			ID: strconv.FormatInt(e.ID, 10), WriterID: e.WriterID, Alg: e.Alg, PubKey: b64(e.PubKey),
+			Event: e.Event, AuthorizedBy: e.AuthorizedBy, Nonce: b64(e.Nonce), Signature: b64(e.Signature), At: e.At,
 		}
-		out.Entries = append(out.Entries, entry)
+		if e.DAKPubkey != nil {
+			x.DAKPubkey = str(b64(e.DAKPubkey))
+		}
+		if e.AuthorizerWriterID != "" {
+			x.AuthorizerWriterID = str(e.AuthorizerWriterID)
+		}
+		if e.FinalCounter != nil {
+			x.FinalCounter = str(strconv.FormatInt(*e.FinalCounter, 10))
+		}
+		if e.FinalHead != nil {
+			x.FinalHead = str(b64(e.FinalHead))
+		}
+		out.Entries = append(out.Entries, x)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

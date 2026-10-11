@@ -1,0 +1,185 @@
+{
+  "note": "The schema-4 op registry as HasalaCore decodes it (00 §3's proposed wire order, confirmed by WS-9), and the envelope codec's bytes. encode_cases: input body → decode → encode → expect_body (JSON.stringify's bytes: Go-struct envelope order, JavaScript payload key order and number spelling, authored_at canonical .sssZ). decode_refusals: the blob is the unit of decode (01 §6.6 R10, T36); expect_reason is the oracle's message, which reaches state.unreadable.",
+  "schema_version": 4,
+  "author_version": 4,
+  "types": [
+    "txn_ingested",
+    "txn_superseded",
+    "txn_categorized",
+    "txn_split",
+    "txn_edited",
+    "txn_duplicate_disposition",
+    "rule_added",
+    "rate_set",
+    "rate_unset",
+    "home_currency_set",
+    "bank_declared",
+    "budget_split_set",
+    "category_defined",
+    "writer_checkpoint",
+    "budget_set",
+    "budget_moved",
+    "income_source_set",
+    "category_plan_role_set",
+    "bill_set",
+    "bill_occurrence_set",
+    "account_set",
+    "card_linked",
+    "account_checkin",
+    "txn_annotated",
+    "merchant_named",
+    "sender_trust_set",
+    "project_defined",
+    "goal_defined"
+  ],
+  "parent_free": [
+    "rate_set",
+    "rate_unset",
+    "home_currency_set",
+    "bank_declared",
+    "budget_split_set",
+    "category_defined",
+    "writer_checkpoint",
+    "budget_set",
+    "budget_moved",
+    "income_source_set",
+    "category_plan_role_set",
+    "bill_occurrence_set",
+    "account_set",
+    "card_linked",
+    "account_checkin",
+    "txn_annotated",
+    "merchant_named",
+    "sender_trust_set"
+  ],
+  "min_versions": {
+    "txn_ingested": 1,
+    "txn_superseded": 1,
+    "txn_categorized": 1,
+    "txn_split": 1,
+    "txn_edited": 1,
+    "txn_duplicate_disposition": 2,
+    "rule_added": 1,
+    "rate_set": 1,
+    "rate_unset": 1,
+    "home_currency_set": 1,
+    "bank_declared": 3,
+    "budget_split_set": 3,
+    "category_defined": 3,
+    "writer_checkpoint": 1,
+    "budget_set": 4,
+    "budget_moved": 4,
+    "income_source_set": 4,
+    "category_plan_role_set": 4,
+    "bill_set": 4,
+    "bill_occurrence_set": 4,
+    "account_set": 4,
+    "card_linked": 4,
+    "account_checkin": 4,
+    "txn_annotated": 4,
+    "merchant_named": 4,
+    "sender_trust_set": 4,
+    "project_defined": 4,
+    "goal_defined": 4
+  },
+  "entity_kinds": {
+    "txn_ingested": "txn",
+    "txn_superseded": "txn",
+    "txn_categorized": "txn",
+    "txn_split": "txn",
+    "txn_edited": "txn",
+    "txn_duplicate_disposition": "txn",
+    "rule_added": "rule",
+    "bill_set": "bill",
+    "project_defined": "project",
+    "goal_defined": "goal"
+  },
+  "reserved": [
+    "profile_set"
+  ],
+  "encode_cases": [
+    {
+      "name": "v4-parent-free-offset-time",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoibWVyY2hhbnRfbmFtZWQiLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBNIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDE0OjAwOjAwLjEyMzQ1NiswNDowMCIsInBheWxvYWQiOnsibWVyY2hhbnRfa2V5IjoiY2FycmVmb3VyIiwibmFtZSI6IkNhcnJlZm91ciJ9fV19",
+      "expect_body_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoibWVyY2hhbnRfbmFtZWQiLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBNIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwLjEyM1oiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwicGF5bG9hZCI6eyJtZXJjaGFudF9rZXkiOiJjYXJyZWZvdXIiLCJuYW1lIjoiQ2FycmVmb3VyIn19XX0="
+    },
+    {
+      "name": "v4-versioned-create-and-edit",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoiZ29hbF9kZWZpbmVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDAwRyIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJlbnRpdHkiOnsia2luZCI6ImdvYWwiLCJpZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMEcxIn0sInBhcmVudF92ZXJzaW9uIjpudWxsLCJwYXlsb2FkIjp7Im5hbWUiOiJIYWpqIiwidGFyZ2V0X21pbm9yIjoiMTUwMDAwMCJ9fSx7InYiOjQsInR5cGUiOiJnb2FsX2RlZmluZWQiLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBIIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAxWiIsImVudGl0eSI6eyJraW5kIjoiZ29hbCIsImlkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwRzEifSwicGFyZW50X3ZlcnNpb24iOjEsInBheWxvYWQiOnsibmFtZSI6IkhhamogMjAyNyJ9fV19",
+      "expect_body_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoiZ29hbF9kZWZpbmVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDAwRyIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMC4wMDBaIiwiZW50aXR5Ijp7ImtpbmQiOiJnb2FsIiwiaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBHMSJ9LCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwicGF5bG9hZCI6eyJuYW1lIjoiSGFqaiIsInRhcmdldF9taW5vciI6IjE1MDAwMDAifX0seyJ2Ijo0LCJ0eXBlIjoiZ29hbF9kZWZpbmVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDAwSCIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMS4wMDBaIiwiZW50aXR5Ijp7ImtpbmQiOiJnb2FsIiwiaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBHMSJ9LCJwYXJlbnRfdmVyc2lvbiI6MSwicGF5bG9hZCI6eyJuYW1lIjoiSGFqaiAyMDI3In19XX0="
+    },
+    {
+      "name": "mixed-versions-blob-v-is-the-max",
+      "input_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoxLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBJMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJlbnRpdHkiOnsia2luZCI6InR4biIsImlkIjoiVDEifSwicGFyZW50X3ZlcnNpb24iOm51bGwsImluZ2VzdF9pZCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJwYXlsb2FkIjp7ImFtb3VudF9taW5vciI6IjI1MDAwIiwiY3VycmVuY3kiOiJBRUQifX0seyJ2IjozLCJ0eXBlIjoiY2F0ZWdvcnlfZGVmaW5lZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQzEiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGFyZW50X3ZlcnNpb24iOm51bGwsInBheWxvYWQiOnsiaWQiOiJncm9jZXJpZXMiLCJuYW1lIjoiR3JvY2VyaWVzIn19XX0=",
+      "expect_body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoxLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBJMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMC4wMDBaIiwiZW50aXR5Ijp7ImtpbmQiOiJ0eG4iLCJpZCI6IlQxIn0sInBhcmVudF92ZXJzaW9uIjpudWxsLCJpbmdlc3RfaWQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicGF5bG9hZCI6eyJhbW91bnRfbWlub3IiOiIyNTAwMCIsImN1cnJlbmN5IjoiQUVEIn19LHsidiI6MywidHlwZSI6ImNhdGVnb3J5X2RlZmluZWQiLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMEMxIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwLjAwMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwicGF5bG9hZCI6eyJpZCI6Imdyb2NlcmllcyIsIm5hbWUiOiJHcm9jZXJpZXMifX1dfQ=="
+    },
+    {
+      "name": "js-key-order-and-number-spelling",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJwYXlsb2FkIjp7ImIiOjEuNTAsIjIiOiJ0d28iLCJhIjoxZTIsIjEiOlt0cnVlLG51bGwsLTBdfSwidHlwZSI6InR4bl9hbm5vdGF0ZWQiLCJ2Ijo0LCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBBIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwWiJ9XX0=",
+      "expect_body_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoidHhuX2Fubm90YXRlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwMEEiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuMDAwWiIsInBhcmVudF92ZXJzaW9uIjpudWxsLCJwYXlsb2FkIjp7IjEiOlt0cnVlLG51bGwsMF0sIjIiOiJ0d28iLCJiIjoxLjUsImEiOjEwMH19XX0="
+    },
+    {
+      "name": "escapes-written-literally",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoic2VuZGVyX3RydXN0X3NldCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwMFMiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJkb21haW4iOiJhPGI+JmPigKjigKnDqVx1MDAwNy8ifX1dfQ==",
+      "expect_body_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoic2VuZGVyX3RydXN0X3NldCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwMFMiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuMDAwWiIsInBhcmVudF92ZXJzaW9uIjpudWxsLCJwYXlsb2FkIjp7ImRvbWFpbiI6ImE8Yj4mY+KAqOKAqcOpXHUwMDA3LyJ9fV19"
+    },
+    {
+      "name": "v3-offset-time-truncated-to-ms",
+      "input_base64": "eyJ2IjoxLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoxLCJ0eXBlIjoicmF0ZV9zZXQiLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBSIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDE0OjAwOjAwLjEyMzQ1NiswNDowMCIsInBheWxvYWQiOnsiY3VycmVuY3kiOiJVU0QiLCJyYXRlIjoiMy42NzI1In19XX0=",
+      "expect_body_base64": "eyJ2IjoxLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoxLCJ0eXBlIjoicmF0ZV9zZXQiLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBSIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwLjEyM1oiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwicGF5bG9hZCI6eyJjdXJyZW5jeSI6IlVTRCIsInJhdGUiOiIzLjY3MjUifX1dfQ=="
+    },
+    {
+      "name": "v3-js-key-order-and-number-spelling",
+      "input_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJwYXlsb2FkIjp7ImIiOjEuNTAsIjIiOiJ0d28iLCJhIjoxZTIsIjEiOlt0cnVlLG51bGwsLTBdfSwidHlwZSI6ImJ1ZGdldF9zcGxpdF9zZXQiLCJ2IjozLCJvcF9pZCI6IjAxSjAwMDAwMDAwMDAwMDAwMDAwMDAwMDBCIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwWiJ9XX0=",
+      "expect_body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjozLCJ0eXBlIjoiYnVkZ2V0X3NwbGl0X3NldCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwMEIiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuMDAwWiIsInBhcmVudF92ZXJzaW9uIjpudWxsLCJwYXlsb2FkIjp7IjEiOlt0cnVlLG51bGwsMF0sIjIiOiJ0d28iLCJiIjoxLjUsImEiOjEwMH19XX0="
+    },
+    {
+      "name": "v3-escapes-written-literally",
+      "input_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjozLCJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwMEQiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiYTxiPiZjXHUyMDI4XHUyMDI5XHUwMGU5XHUwMDA3LyIsImFjdGl2ZSI6dHJ1ZX19XX0=",
+      "expect_body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjozLCJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwMEQiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuMDAwWiIsInBhcmVudF92ZXJzaW9uIjpudWxsLCJwYXlsb2FkIjp7ImJhbmsiOiJhPGI+JmPigKjigKnDqVx1MDAwNy8iLCJhY3RpdmUiOnRydWV9fV19"
+    },
+    {
+      "name": "v3-versioned-edit-with-parent",
+      "input_base64": "eyJ2IjoyLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2R1cGxpY2F0ZV9kaXNwb3NpdGlvbiIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwRDEiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuNVoiLCJlbnRpdHkiOnsia2luZCI6InR4biIsImlkIjoiVDEifSwicGFyZW50X3ZlcnNpb24iOjMsImluZ2VzdF9pZCI6IiIsInBheWxvYWQiOnsib3RoZXJfdHhuX2lkIjoiVDAiLCJkaXNwb3NpdGlvbiI6bnVsbH19XX0=",
+      "expect_body_base64": "eyJ2IjoyLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2R1cGxpY2F0ZV9kaXNwb3NpdGlvbiIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwRDEiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuNTAwWiIsImVudGl0eSI6eyJraW5kIjoidHhuIiwiaWQiOiJUMSJ9LCJwYXJlbnRfdmVyc2lvbiI6MywicGF5bG9hZCI6eyJvdGhlcl90eG5faWQiOiJUMCIsImRpc3Bvc2l0aW9uIjpudWxsfX1dfQ=="
+    }
+  ],
+  "decode_refusals": [
+    {
+      "name": "reserved-profile-set-sets-the-whole-blob-aside",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoicmF0ZV9zZXQiLCJvcF9pZCI6InIiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6e319LHsidiI6NCwidHlwZSI6InByb2ZpbGVfc2V0Iiwib3BfaWQiOiJwIiwiYXV0aG9yZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwWiIsInBheWxvYWQiOnt9fV19",
+      "expect": "set_aside",
+      "expect_reason": "op 1: unknown type \"profile_set\""
+    },
+    {
+      "name": "v4-type-below-its-min-version",
+      "input_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjozLCJ0eXBlIjoiYnVkZ2V0X3NldCIsIm9wX2lkIjoiYiIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXlsb2FkIjp7fX1dfQ==",
+      "expect": "set_aside",
+      "expect_reason": "op 0: type budget_set requires schema v4"
+    },
+    {
+      "name": "blob-v5-is-the-hard-stop",
+      "input_base64": "eyJ2Ijo1LCJraW5kIjoib3BzIiwib3BzIjpbXX0=",
+      "expect": "update_required",
+      "expect_reason": ""
+    },
+    {
+      "name": "op-v5-is-the-hard-stop",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo1LCJ0eXBlIjoicmF0ZV9zZXQiLCJvcF9pZCI6InIiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6e319XX0=",
+      "expect": "update_required",
+      "expect_reason": ""
+    },
+    {
+      "name": "entity-on-a-parent-free-v4-op",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoiYWNjb3VudF9zZXQiLCJvcF9pZCI6ImEiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwiZW50aXR5Ijp7ImtpbmQiOiJhY2NvdW50IiwiaWQiOiJhY19jYXNoIn0sInBheWxvYWQiOnt9fV19",
+      "expect": "set_aside",
+      "expect_reason": "op 0: account_set is parent-free and must not name an entity"
+    },
+    {
+      "name": "versioned-v4-op-without-entity",
+      "input_base64": "eyJ2Ijo0LCJraW5kIjoib3BzIiwib3BzIjpbeyJ2Ijo0LCJ0eXBlIjoiYmlsbF9zZXQiLCJvcF9pZCI6ImIiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6e319XX0=",
+      "expect": "set_aside",
+      "expect_reason": "op 0: bill_set must name an entity"
+    }
+  ]
+}

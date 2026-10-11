@@ -61,7 +61,7 @@ export function versions(): number[] {
 }
 
 type PartUsed = "html" | "plain" | "raw";
-type DateSource = "forward_header" | "received";
+export type DateSource = "forward_header" | "received";
 
 /** Thrown for a version this build cannot run. */
 export class UnknownVersionError extends Error {
@@ -304,7 +304,7 @@ function collapse(s: string): string {
 const pad = (n: number, w: number): string => `${n}`.padStart(w, "0");
 
 /** RFC 3339 in UTC with no fractional seconds, matching Go's time.RFC3339. */
-function formatRFC3339UTC(d: Date): string {
+export function formatRFC3339UTC(d: Date): string {
   return (
     `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1, 2)}-${pad(d.getUTCDate(), 2)}` +
     `T${pad(d.getUTCHours(), 2)}:${pad(d.getUTCMinutes(), 2)}:${pad(d.getUTCSeconds(), 2)}Z`
@@ -333,8 +333,7 @@ export function normalize(version: number, raw: Uint8Array, receivedAt: string):
   // Stage 10.
   const fwd = unwrapForward(ex.from, ex.subject, text);
 
-  const parsed = fwd.date === "" ? null : parseForwardDate(fwd.date);
-  const received = new Date(receivedAt);
+  const { emailDate, dateSource } = emailDateOf(fwd.date, receivedAt);
   return {
     text: fwd.body,
     partUsed: ex.part,
@@ -342,7 +341,20 @@ export function normalize(version: number, raw: Uint8Array, receivedAt: string):
     subject: fwd.subject,
     from: fwd.from,
     forwarded: fwd.found,
-    emailDate: formatRFC3339UTC(parsed ?? received),
+    emailDate,
+    dateSource,
+  };
+}
+
+/**
+ * Stage 10's date: the recovered inner forwarded `Date` value when one of the
+ * closed layouts reads it, else the arrival time; RFC 3339 UTC either way.
+ * `forwardDate` is `""` when no inner Date was recovered.
+ */
+export function emailDateOf(forwardDate: string, receivedAt: string): { emailDate: string; dateSource: DateSource } {
+  const parsed = forwardDate === "" ? null : parseForwardDate(forwardDate);
+  return {
+    emailDate: formatRFC3339UTC(parsed ?? new Date(receivedAt)),
     dateSource: parsed !== null ? "forward_header" : "received",
   };
 }

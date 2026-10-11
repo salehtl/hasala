@@ -55,6 +55,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -65,6 +66,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
 // CeremonyTTL is how long a begun ceremony may be finished within.
@@ -120,8 +123,12 @@ var (
 	ErrClonedAuthenticator = fmt.Errorf("%w: signature counter did not increase", ErrPasskeyRejected)
 
 	// ErrNoPasskeyIdentity means an add-a-passkey ceremony was asked for by an
-	// account that has no user handle to bind one to. See BeginAdd.
+	// account that has no user handle to bind one to. See beginAdd.
 	ErrNoPasskeyIdentity = fmt.Errorf("%w: this account has no passkey identity", ErrPasskeyRejected)
+
+	// ErrBadAuthorityKey is a register/begin whose authority_pubkey is not a
+	// usable Ed25519 key. It is a malformed request (400), not a rejection.
+	ErrBadAuthorityKey = errors.New("auth: passkey: authority_pubkey is not a usable Ed25519 key")
 )
 
 // Passkeys runs the three WebAuthn ceremonies and owns their server-side state.
@@ -137,6 +144,9 @@ type Passkeys struct {
 	// the same reason: this is the one code path where a hand-rolled mistake is
 	// an authentication bypass.
 	WA *webauthn.WebAuthn
+	// StepUp verifies the passkey.add and passkey.delete step-ups (spec 02
+	// #10, #13). Nil refuses those routes; api.NewServer wires it.
+	StepUp *StepUp
 	// Now defaults to time.Now. Ceremony expiry is evaluated against THIS clock
 	// and never against Postgres's, so one clock decides both when a ceremony
 	// was minted and when it dies (see 00022's note on the two-clock defect).
@@ -204,13 +214,11 @@ func NewPasskeys(pool *pgxpool.Pool, rpID, rpDisplayName string, origins []strin
 			// assertion, and without the handle there is no username-less
 			// sign-in — the page would have to ask who you are first.
 			ResidentKey: protocol.ResidentKeyRequirementRequired,
-			// Preferred rather than required. Required would refuse a security
-			// key with no PIN set and an authenticator that cannot do UV at all,
-			// which is a lockout for a user whose only device is one of them.
-			// Every authenticator this actually meets (Touch ID, Face ID,
-			// Windows Hello) does UV anyway, so "required" would buy almost
-			// nothing and cost the tail.
-			UserVerification: protocol.VerificationPreferred,
+			// Required in every ceremony: registration, login, step-up and
+			// recovery (spec 01 §10.2, spec 02 §8.1; replaces ledgerd's
+			// VerificationPreferred, W15). A step-up's whole claim is that the
+			// user approved this action with Face ID or the passcode.
+			UserVerification: protocol.VerificationRequired,
 		},
 		// No attestation. The RP has no use for a signed statement of which
 		// authenticator model was used — it enforces no allow-list of models —
@@ -292,43 +300,64 @@ func passkeyIdentity(handle []byte, now time.Time) Identity {
 // authenticating into a refusal, and both paths are behind the same per-IP rate
 // limiter. The check is NOT the gate — the redemption at finish is, and it is the
 // one that is atomic.
-func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string) (string, *protocol.CredentialCreation, error) {
+func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string, authorityPub []byte) (string, *protocol.CredentialCreation, []byte, error) {
 	if p.Pool == nil || p.WA == nil {
-		return "", nil, errors.New("auth: Passkeys is not configured")
+		return "", nil, nil, errors.New("auth: Passkeys is not configured")
+	}
+	// The authority key is screened before anything is written: a small-order
+	// key would make every later AAK signature forgeable, and binding it into
+	// the ceremony would make the forgery the account's authority.
+	if err := keyproto.CheckEd25519PublicKey(authorityPub); err != nil {
+		return "", nil, nil, fmt.Errorf("%w: %v", ErrBadAuthorityKey, err)
 	}
 	hash := InviteCodeHash(inviteCode)
 	if len(hash) == 0 {
-		return "", nil, ErrNotInvited
+		return "", nil, nil, ErrNotInvited
 	}
 	var spendable bool
 	if err := p.Pool.QueryRow(ctx,
 		`SELECT true FROM invite_codes WHERE code_hash = $1 AND redeemed_at IS NULL`, hash).
 		Scan(&spendable); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil, ErrNotInvited
+			return "", nil, nil, ErrNotInvited
 		}
-		return "", nil, fmt.Errorf("auth: passkey: check invite: %w", err)
+		return "", nil, nil, fmt.Errorf("auth: passkey: check invite: %w", err)
 	}
 
 	handle := make([]byte, userHandleBytes)
 	if _, err := rand.Read(handle); err != nil {
-		return "", nil, fmt.Errorf("auth: passkey: mint user handle: %w", err)
+		return "", nil, nil, fmt.Errorf("auth: passkey: mint user handle: %w", err)
+	}
+	// C_reg binds the authority key into this UV ceremony (spec 01 §10.3 step
+	// 5, D01): the registration the user approves with Face ID is over a
+	// challenge that names the key that will sign the bootstrap, so a session
+	// thief cannot bootstrap its own keys (DEV-2).
+	nonce := make([]byte, keyproto.NonceSize)
+	if _, err := rand.Read(nonce); err != nil {
+		return "", nil, nil, fmt.Errorf("auth: passkey: mint register nonce: %w", err)
+	}
+	creg, err := keyproto.RegisterChallenge(nonce, authorityPub)
+	if err != nil {
+		return "", nil, nil, err
 	}
 	user := passkeyUser{handle: handle, rpName: p.WA.Config.RPDisplayName}
-	opts, session, err := p.WA.BeginRegistration(user)
+	opts, session, err := p.WA.BeginRegistration(user, func(o *protocol.PublicKeyCredentialCreationOptions) {
+		o.Challenge = protocol.URLEncodedBase64(creg[:])
+	})
 	if err != nil {
-		return "", nil, fmt.Errorf("auth: passkey: begin registration: %w", err)
+		return "", nil, nil, fmt.Errorf("auth: passkey: begin registration: %w", err)
 	}
 	id, err := newCeremonyID()
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	if err := p.putCeremony(ctx, ceremony{
 		ID: id, Kind: ceremonyRegister, UserHandle: handle, Session: *session, InviteHash: hash,
+		AuthorityPubkey: authorityPub, RegisterNonce: nonce,
 	}); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	return id, opts, nil
+	return id, opts, nonce, nil
 }
 
 // FinishRegistration verifies the authenticator's response and, if it holds up,
@@ -358,16 +387,18 @@ func (p *Passkeys) FinishRegistration(ctx context.Context, ceremonyID string, re
 		return uuid.Nil, nil, err
 	}
 	user := passkeyUser{handle: c.UserHandle, rpName: p.WA.Config.RPDisplayName}
-	cred, err := p.createCredential(user, c, response)
+	made, err := p.createCredential(user, c, response)
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
+	cred, attestation := made.Credential, made.AttestationSHA256
 
 	now := p.now().UTC()
 	userID, err := p.createAccountWithCredential(ctx, storedCredential{
-		UserHandle: c.UserHandle,
-		Credential: *cred,
-	}, c.InviteHash, now)
+		UserHandle:        c.UserHandle,
+		Credential:        *cred,
+		AttestationSHA256: attestation,
+	}, c.InviteHash, c.AuthorityPubkey, now)
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
@@ -382,13 +413,22 @@ func (p *Passkeys) FinishRegistration(ctx context.Context, ceremonyID string, re
 // un-spends the invite code, and a `DELETE FROM users` does not (redeemed_by is
 // ON DELETE SET NULL, and 00023's trigger clears the note as well). See
 // FinishRegistration.
-func (p *Passkeys) createAccountWithCredential(ctx context.Context, sc storedCredential, inviteHash []byte, now time.Time) (uuid.UUID, error) {
+func (p *Passkeys) createAccountWithCredential(ctx context.Context, sc storedCredential, inviteHash, authorityPub []byte, now time.Time) (uuid.UUID, error) {
 	// ErrNotInvited passes through unwrapped: the HTTP layer keys its one
 	// distinguishable rejection on it.
 	return upsertUser(ctx, p.Pool, passkeyIdentity(sc.UserHandle, now), &inviteHash,
 		func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 			sc.UserID = userID
-			return insertCredential(ctx, tx, sc, now)
+			if err := insertCredential(ctx, tx, sc, now); err != nil {
+				return err
+			}
+			// users.authority_pubkey_pending (spec 01 §10.3 step 8): the key the
+			// UV ceremony bound; bootstrap needs no step-up when it presents this
+			// key and this credential's attestation hash, and clears it.
+			if _, err := tx.Exec(ctx, `UPDATE users SET authority_pubkey_pending = $2 WHERE id = $1`, userID, authorityPub); err != nil {
+				return fmt.Errorf("auth: passkey: record the pending authority key: %w", err)
+			}
+			return nil
 		})
 }
 
@@ -502,26 +542,30 @@ func (p *Passkeys) FinishLogin(ctx context.Context, ceremonyID string, response 
 // Add: a second passkey for an account that already exists
 // ---------------------------------------------------------------------------
 
-// BeginAdd mints a registration challenge for an account that is ALREADY signed
-// in, so a user can enrol a second device.
+// beginAdd mints a registration challenge for an account that is ALREADY
+// signed in, so a user can enrol another passkey, and records the ceremony
+// through q with addNonce, the passkey.add step-up nonce the add/finish
+// signature binds (spec 01 §10.7). Only AddBegin (passkey_guarded.go) reaches
+// it from a request, inside that step-up's transaction.
 //
 // It reuses the account's existing handle rather than minting a new one, and that
 // is not an optimisation: the handle IS the subject, so a second handle would
 // hash to a second `users` row and the new credential would sign into a different,
-// empty account. An account with no handle to reuse — one created under Apple or
-// Google before passkeys existed — is refused with ErrNoPasskeyIdentity rather
-// than silently given a passkey identity it did not have, which would be account
-// linking, and account linking is a feature with its own threat model that nobody
-// has asked for.
+// empty account. An account with no handle to reuse is refused with
+// ErrNoPasskeyIdentity rather than silently given a passkey identity it did not
+// have, which would be account linking.
 //
 // Existing credentials are sent as exclusions, so an authenticator that is already
 // enrolled says so in the browser instead of minting a duplicate row.
-func (p *Passkeys) BeginAdd(ctx context.Context, userID uuid.UUID) (string, *protocol.CredentialCreation, error) {
+func (p *Passkeys) beginAdd(ctx context.Context, q execer, userID uuid.UUID, addNonce []byte) (string, *protocol.CredentialCreation, error) {
 	if p.Pool == nil || p.WA == nil {
 		return "", nil, errors.New("auth: Passkeys is not configured")
 	}
 	if userID == uuid.Nil {
-		return "", nil, errors.New("auth: passkey: BeginAdd: user id is zero")
+		return "", nil, errors.New("auth: passkey: beginAdd: user id is zero")
+	}
+	if len(addNonce) != keyproto.NonceSize {
+		return "", nil, errors.New("auth: passkey: beginAdd: the add nonce is not 32 bytes")
 	}
 	creds, handle, err := p.credentialsForUser(ctx, userID)
 	if err != nil {
@@ -540,29 +584,30 @@ func (p *Passkeys) BeginAdd(ctx context.Context, userID uuid.UUID) (string, *pro
 	if err != nil {
 		return "", nil, err
 	}
-	if err := p.putCeremony(ctx, ceremony{
-		ID: id, Kind: ceremonyAdd, UserID: &userID, UserHandle: handle, Session: *session,
+	if err := p.putCeremonyOn(ctx, q, ceremony{
+		ID: id, Kind: ceremonyAdd, UserID: &userID, UserHandle: handle, Session: *session, AddNonce: addNonce,
 	}); err != nil {
 		return "", nil, err
 	}
 	return id, opts, nil
 }
 
-// FinishAdd stores the new credential against the account that began the
-// ceremony.
+// verifyAdd claims an add ceremony and verifies the new credential's
+// attestation (UV, the ceremony's challenge, origin). It stores nothing:
+// AddFinish checks the DWK signature and then stores.
 //
 // userID comes from the SESSION on the request, and it is checked against the
 // account the ceremony's handle names. Both are required: without the session
 // check anyone holding a ceremony id could complete somebody else's enrolment,
 // and without the handle check a session could finish a ceremony begun for a
 // different account and bolt a credential onto it.
-func (p *Passkeys) FinishAdd(ctx context.Context, ceremonyID string, userID uuid.UUID, response []byte) ([]byte, error) {
+func (p *Passkeys) verifyAdd(ctx context.Context, ceremonyID string, userID uuid.UUID, response []byte) (created, ceremony, error) {
 	if p.Pool == nil || p.WA == nil {
-		return nil, errors.New("auth: Passkeys is not configured")
+		return created{}, ceremony{}, errors.New("auth: Passkeys is not configured")
 	}
 	c, err := p.claimCeremony(ctx, ceremonyID, ceremonyAdd)
 	if err != nil {
-		return nil, err
+		return created{}, ceremony{}, err
 	}
 	// Checked twice, against two independently derived answers: the column the
 	// ceremony was written with, and the account SubjectHash says the handle
@@ -570,41 +615,49 @@ func (p *Passkeys) FinishAdd(ctx context.Context, ceremonyID string, userID uuid
 	// they disagree was written by something that did not go through this file.
 	owner, err := p.userIDForHandle(ctx, c.UserHandle)
 	if err != nil {
-		return nil, err
+		return created{}, ceremony{}, err
 	}
 	if owner != userID || c.UserID == nil || *c.UserID != userID {
-		return nil, fmt.Errorf("%w: this ceremony belongs to a different account", ErrPasskeyRejected)
+		return created{}, ceremony{}, fmt.Errorf("%w: this ceremony belongs to a different account", ErrPasskeyRejected)
 	}
 	user := passkeyUser{handle: c.UserHandle, rpName: p.WA.Config.RPDisplayName}
-	cred, err := p.createCredential(user, c, response)
+	made, err := p.createCredential(user, c, response)
 	if err != nil {
-		return nil, err
+		return created{}, ceremony{}, err
 	}
-	if err := insertCredential(ctx, p.Pool, storedCredential{
-		UserID:     userID,
-		UserHandle: c.UserHandle,
-		Credential: *cred,
-	}, p.now().UTC()); err != nil {
-		return nil, err
-	}
-	return cred.ID, nil
+	return made, c, nil
 }
 
 // ---------------------------------------------------------------------------
 // Shared
 // ---------------------------------------------------------------------------
 
+// created is a verified new credential and the raw response bytes the
+// signatures over it name (spec 01 §10.3.1, §10.7: the SHA-256 of each).
+type created struct {
+	Credential        *webauthn.Credential
+	ClientDataJSON    []byte
+	AttestationObject []byte
+	AttestationSHA256 []byte
+}
+
 // createCredential is the verification both registration ceremonies share.
-func (p *Passkeys) createCredential(user passkeyUser, c ceremony, response []byte) (*webauthn.Credential, error) {
+func (p *Passkeys) createCredential(user passkeyUser, c ceremony, response []byte) (created, error) {
 	parsed, err := protocol.ParseCredentialCreationResponseBytes(response)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+		return created{}, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
 	cred, err := p.WA.CreateCredential(user, c.Session, parsed)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+		return created{}, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
-	return cred, nil
+	if !parsed.Response.AttestationObject.AuthData.Flags.HasUserVerified() {
+		return created{}, fmt.Errorf("%w: user verification flag is clear", ErrPasskeyRejected)
+	}
+	att := []byte(parsed.Raw.AttestationResponse.AttestationObject)
+	h := sha256.Sum256(att)
+	return created{Credential: cred, ClientDataJSON: []byte(parsed.Raw.AttestationResponse.ClientDataJSON),
+		AttestationObject: att, AttestationSHA256: h[:]}, nil
 }
 
 func newCeremonyID() (string, error) {

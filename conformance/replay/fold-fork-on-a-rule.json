@@ -1,0 +1,146 @@
+{
+  "name": "fork-on-a-rule",
+  "group": "fold",
+  "note": "Fork resolution applies to any versioned entity.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "fork-on-a-rule-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r1"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 10
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "fork-on-a-rule-2",
+          "authored_at": "2026-06-05T09:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "shopping",
+            "priority": 10
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "fork-on-a-rule-3",
+          "authored_at": "2026-06-05T12:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "pattern": "carrefour",
+            "match": "exact",
+            "category": "dining",
+            "priority": 5
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [
+        {
+          "at_seq": "3",
+          "entity": {
+            "id": "r1",
+            "kind": "rule"
+          },
+          "loser_op": "fork-on-a-rule-2",
+          "winner_op": "fork-on-a-rule-3"
+        }
+      ],
+      "heads": [
+        [
+          "rule\u0000r1",
+          {
+            "authored_at_ms": 1780660800000,
+            "id": "r1",
+            "kind": "rule",
+            "op_id": "fork-on-a-rule-3",
+            "version": 3,
+            "writer_id": "dev-b"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [
+        [
+          "r1",
+          {
+            "category": "dining",
+            "match": "exact",
+            "pattern": "carrefour",
+            "priority": 5,
+            "version": 3
+          }
+        ]
+      ],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "ff7996cf6abf8e0858df3a9dcbc8e95c6e4747a2d53e66558ddd482749633c50",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "ff7996cf6abf8e0858df3a9dcbc8e95c6e4747a2d53e66558ddd482749633c50",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

@@ -72,7 +72,7 @@ import (
 //  3. The account the credential's user handle NAMES is the same one its
 //     foreign key says. The two are derived independently (SubjectHash vs a
 //     column), so agreement is a real check, and it is the same tripwire
-//     FinishLogin and FinishAdd carry.
+//     FinishLogin and verifyAdd carry.
 //  4. go-webauthn verifies the signature, the challenge, the origin, the RP id
 //     hash and the user-verification flag. None of that is re-implemented here;
 //     this is the one path where a hand-rolled mistake is an auth bypass.
@@ -80,44 +80,52 @@ import (
 //     policy as FinishLogin, and see ErrClonedAuthenticator for why a permanent
 //     zero is not that.
 func (p *Passkeys) VerifyAssertion(ctx context.Context, userID uuid.UUID, challenge, response []byte) error {
+	_, err := p.VerifyAssertionCredential(ctx, userID, challenge, response)
+	return err
+}
+
+// VerifyAssertionCredential is VerifyAssertion, answering which of the
+// account's credentials asserted (a keys.wrap.put step-up requires it to be the
+// wrap's own, spec 01 §10.7).
+func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UUID, challenge, response []byte) ([]byte, error) {
 	if p == nil || p.Pool == nil || p.WA == nil {
-		return errors.New("auth: Passkeys is not configured")
+		return nil, errors.New("auth: Passkeys is not configured")
 	}
 	if userID == uuid.Nil {
-		return fmt.Errorf("%w: user id is zero", ErrPasskeyRejected)
+		return nil, fmt.Errorf("%w: user id is zero", ErrPasskeyRejected)
 	}
 	// A short challenge would be accepted by go-webauthn (it only compares the
 	// echoed value) and would mean this server had authorized an assertion over
 	// something it did not mint. The nonces it does mint are 32 bytes.
 	if len(challenge) < 16 {
-		return fmt.Errorf("%w: challenge is %d bytes, too short to be one of ours", ErrPasskeyRejected, len(challenge))
+		return nil, fmt.Errorf("%w: challenge is %d bytes, too short to be one of ours", ErrPasskeyRejected, len(challenge))
 	}
 	if len(response) == 0 {
 		// An absent assertion is a factor that was not presented. It is the
 		// caller's job to answer it identically to a wrong one.
-		return fmt.Errorf("%w: no assertion presented", ErrPasskeyRejected)
+		return nil, fmt.Errorf("%w: no assertion presented", ErrPasskeyRejected)
 	}
 	parsed, err := protocol.ParseCredentialRequestResponseBytes(response)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+		return nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
 
 	stored, err := p.credentialByID(ctx, parsed.RawID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if stored.UserID != userID {
 		// Deliberately the same sentinel as "no such credential": which of the
 		// two it was tells a caller whether a credential id exists and whose it
 		// is.
-		return fmt.Errorf("%w: credential belongs to a different account", ErrPasskeyRejected)
+		return nil, fmt.Errorf("%w: credential belongs to a different account", ErrPasskeyRejected)
 	}
 	byHandle, err := p.userIDForHandle(ctx, stored.UserHandle)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if byHandle != stored.UserID {
-		return fmt.Errorf("%w: credential owner and user handle disagree", ErrPasskeyRejected)
+		return nil, fmt.Errorf("%w: credential owner and user handle disagree", ErrPasskeyRejected)
 	}
 
 	// The challenge as the authenticator saw it: WebAuthn puts base64url of the
@@ -136,13 +144,22 @@ func (p *Passkeys) VerifyAssertion(ctx context.Context, userID uuid.UUID, challe
 	}
 	cred, err := p.WA.ValidateLogin(user, session, parsed)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+		return nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
 	if cred.Authenticator.CloneWarning {
-		return ErrClonedAuthenticator
+		return nil, ErrClonedAuthenticator
+	}
+	// UV is required in every ceremony (spec 02 §8.1); go-webauthn checks the
+	// flag when the session says "required", and this repeats it so that a
+	// configuration change cannot quietly drop it.
+	if !parsed.Response.AuthenticatorData.Flags.HasUserVerified() {
+		return nil, fmt.Errorf("%w: user verification flag is clear", ErrPasskeyRejected)
 	}
 	// Recorded on the same terms as a sign-in: the counter never goes backwards
 	// and last_used_at moves regardless, because a synced passkey reports a
 	// permanent zero and "it was used just now" is true anyway.
-	return p.touchCredential(ctx, cred.ID, cred.Authenticator.SignCount, p.now().UTC())
+	if err := p.touchCredential(ctx, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
+		return nil, err
+	}
+	return cred.ID, nil
 }

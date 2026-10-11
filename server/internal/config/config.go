@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -473,6 +474,7 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 	if err := c.validateEmail(prod); err != nil {
 		return err
 	}
+	credDir, _ := lookup("CREDENTIALS_DIRECTORY")
 	for name, path := range map[string]string{
 		"HASALA_AUTH_KEY_FILE":          c.Auth.AuthKeyFile,
 		"HASALA_APNS_KEY_FILE":          c.APNs.KeyFile,
@@ -482,7 +484,11 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 		if path == "" {
 			continue
 		}
-		if err := CheckSecretFile(path); err != nil {
+		check := CheckSecretFile
+		if InCredentialsDirectory(path, credDir) {
+			check = CheckCredentialFile
+		}
+		if err := check(path); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 	}
@@ -768,6 +774,36 @@ func CheckSecretFile(path string) error {
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("secret file %s has mode %v: it must grant no group or other permission", path, fi.Mode().Perm())
+	}
+	return nil
+}
+
+// InCredentialsDirectory reports whether path names a file directly inside
+// credDir, the $CREDENTIALS_DIRECTORY systemd gives a unit with
+// LoadCredential= (spec 05 §5.5). An empty credDir matches nothing.
+func InCredentialsDirectory(path, credDir string) bool {
+	if credDir == "" || !filepath.IsAbs(credDir) {
+		return false
+	}
+	return filepath.Dir(filepath.Clean(path)) == filepath.Clean(credDir)
+}
+
+// CheckCredentialFile is CheckSecretFile for a file systemd placed in the
+// unit's credentials directory (LoadCredential=, spec 05 §5.5). systemd
+// writes it root-owned 0400 and grants the unit's user read access through an
+// ACL, so stat shows the ACL mask in the group bits (0440) although no group
+// can read it; the directory itself is reachable by the unit alone. Any
+// permission for other is still refused.
+func CheckCredentialFile(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("secret file: %w", err)
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("secret file %s is not a regular file", path)
+	}
+	if fi.Mode().Perm()&0o027 != 0 {
+		return fmt.Errorf("credential file %s has mode %v: it must grant no write or other permission", path, fi.Mode().Perm())
 	}
 	return nil
 }

@@ -76,6 +76,8 @@ type HashRow struct {
 	WriterCounter int64
 	BlobHash      []byte // 32 bytes
 	PrevHash      []byte // 32 bytes
+
+	headSigned bool // the row ends its batch
 }
 
 // readPageSQL is the paged read, with the byte budget applied IN THE DATABASE.
@@ -98,10 +100,10 @@ type HashRow struct {
 // could never pass it.
 const readPageSQL = `
 SELECT seq, stream, writer_id, writer_counter, type_flag,
-       blob, size_bucket, blob_hash, prev_hash, created_at
+       blob, size_bucket, blob_hash, prev_hash, head_sig, created_at
   FROM (
     SELECT seq, stream, writer_id, writer_counter, type_flag,
-           blob, size_bucket, blob_hash, prev_hash, created_at,
+           blob, size_bucket, blob_hash, prev_hash, head_sig, created_at,
            sum(size_bucket) OVER (ORDER BY seq) AS running,
            row_number()     OVER (ORDER BY seq) AS rn
       FROM op_log
@@ -159,7 +161,7 @@ func Read(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream stri
 		var r Row
 		r.UserID = userID
 		if err := q.Scan(&r.Seq, &r.Stream, &r.WriterID, &r.WriterCounter, &r.TypeFlag,
-			&r.Blob, &r.SizeBucket, &r.BlobHash, &r.PrevHash, &r.CreatedAt); err != nil {
+			&r.Blob, &r.SizeBucket, &r.BlobHash, &r.PrevHash, &r.HeadSig, &r.CreatedAt); err != nil {
 			return nil, fmt.Errorf("oplog: read %s log for user %s: %w", stream, userID, err)
 		}
 		if len(out) > 0 && total+len(r.Blob) > maxBytes {
@@ -174,8 +176,44 @@ func Read(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream stri
 	if err := q.Err(); err != nil {
 		return nil, fmt.Errorf("oplog: read %s log for user %s: %w", stream, userID, err)
 	}
+	q.Close()
+	// A page never ends inside a batch (spec 01 §7.1, spec 02 §11.3): when the
+	// last row carries no head_sig, the rest of its batch follows — at most
+	// maxBatchTail more rows, up to and including the next head-signed one — so
+	// every writer's last row in every page is head-signed (the reader's R2b).
+	// The byte budget may be exceeded by that extension.
+	if n := len(out); n > 0 && out[n-1].HeadSig == nil {
+		tail, err := pool.Query(ctx,
+			`SELECT seq, stream, writer_id, writer_counter, type_flag,
+			        blob, size_bucket, blob_hash, prev_hash, head_sig, created_at
+			   FROM op_log WHERE user_id = $1 AND stream = $2 AND seq > $3
+			  ORDER BY seq LIMIT $4`, userID, stream, out[n-1].Seq, maxBatchTail)
+		if err != nil {
+			return nil, fmt.Errorf("oplog: read %s batch tail for user %s: %w", stream, userID, err)
+		}
+		defer tail.Close()
+		for tail.Next() {
+			var r Row
+			r.UserID = userID
+			if err := tail.Scan(&r.Seq, &r.Stream, &r.WriterID, &r.WriterCounter, &r.TypeFlag,
+				&r.Blob, &r.SizeBucket, &r.BlobHash, &r.PrevHash, &r.HeadSig, &r.CreatedAt); err != nil {
+				return nil, fmt.Errorf("oplog: read %s batch tail for user %s: %w", stream, userID, err)
+			}
+			out = append(out, r)
+			if r.HeadSig != nil {
+				break
+			}
+		}
+		if err := tail.Err(); err != nil {
+			return nil, fmt.Errorf("oplog: read %s batch tail for user %s: %w", stream, userID, err)
+		}
+	}
 	return out, nil
 }
+
+// maxBatchTail is how far a page may run past its limit to reach the end of a
+// batch: a batch holds at most 8 blobs (spec 01 §6.8), so 7 more rows.
+const maxBatchTail = 7
 
 // Hashes returns the per-blob hash list for one stream, in seq order. It reads
 // no blob bodies at all, which is the whole point: a client tracking the cold
@@ -191,12 +229,15 @@ func Hashes(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream st
 	if limit < 1 {
 		limit = 1
 	}
+	// limit + maxBatchTail rows are read, and the page is cut at the first
+	// head-signed row at or after the limit: hash pages end on a batch boundary
+	// as pull pages do (spec 02 §11.3).
 	q, err := pool.Query(ctx,
-		`SELECT seq, stream, writer_id, writer_counter, blob_hash, prev_hash
+		`SELECT seq, stream, writer_id, writer_counter, blob_hash, prev_hash, head_sig IS NOT NULL
 		   FROM op_log
 		  WHERE user_id = $1 AND stream = $2 AND seq > $3
 		  ORDER BY seq
-		  LIMIT $4`, userID, stream, after, limit)
+		  LIMIT $4`, userID, stream, after, limit+maxBatchTail)
 	if err != nil {
 		return nil, fmt.Errorf("oplog: read %s hashes for user %s: %w", stream, userID, err)
 	}
@@ -204,10 +245,17 @@ func Hashes(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream st
 
 	var out []HashRow
 	for q.Next() {
-		var h HashRow
-		if err := q.Scan(&h.Seq, &h.Stream, &h.WriterID, &h.WriterCounter, &h.BlobHash, &h.PrevHash); err != nil {
+		var (
+			h      HashRow
+			signed bool
+		)
+		if err := q.Scan(&h.Seq, &h.Stream, &h.WriterID, &h.WriterCounter, &h.BlobHash, &h.PrevHash, &signed); err != nil {
 			return nil, fmt.Errorf("oplog: read %s hashes for user %s: %w", stream, userID, err)
 		}
+		if len(out) >= limit && out[len(out)-1].headSigned {
+			break
+		}
+		h.headSigned = signed
 		out = append(out, h)
 	}
 	if err := q.Err(); err != nil {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/authtest"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
 // passkeys attaches a relying party to this harness and rebuilds the router, so
@@ -60,7 +62,7 @@ func (h *harness) beginAssert(path, token string) (string, *protocol.CredentialA
 func (h *harness) register(code string) (*authtest.Authenticator, SessionResponse) {
 	h.t.Helper()
 	id, opts := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: code})
+		PasskeyRegisterBeginRequest{InviteCode: code, AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	a := authtest.New(h.t)
 	w := h.req("POST", "/api/v1/auth/passkey/register/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: a.Create(h.t, opts),
@@ -116,7 +118,7 @@ func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
 func TestPasskeyRegistrationWithoutAnInviteIsNotInvited(t *testing.T) {
 	h := newHarness(t).passkeys()
 	w := h.req("POST", "/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: "NOTACODE"})
+		PasskeyRegisterBeginRequest{InviteCode: "NOTACODE", AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	wantStatus(t, w, http.StatusForbidden)
 	if got := w.Body.String(); got != `{"error":"not_invited"}` {
 		t.Fatalf("body = %s, want the byte-identical not_invited answer", got)
@@ -131,9 +133,9 @@ func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T)
 	// Two ceremonies begun against two codes; the credential built for one is
 	// presented against the other's id.
 	idA, optsA := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: h.invite("a")})
+		PasskeyRegisterBeginRequest{InviteCode: h.invite("a"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	idB, _ := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: h.invite("b")})
+		PasskeyRegisterBeginRequest{InviteCode: h.invite("b"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	if idA == idB {
 		t.Fatal("two ceremonies share an id")
 	}
@@ -216,18 +218,14 @@ func TestAddPasskeyNeedsASession(t *testing.T) {
 
 func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 	h := newHarness(t).passkeys()
-	_, session := h.register(h.invite("two devices"))
+	k := h.onboard(true)
 
-	id, opts := h.beginCreate("/api/v1/auth/passkey/add/begin", session.SessionToken, map[string]any{})
-	second := authtest.New(t)
-	w := h.req("POST", "/api/v1/auth/passkey/add/finish", session.SessionToken, PasskeyFinishRequest{
-		CeremonyID: id, Credential: second.Create(t, opts),
-	})
-	wantStatus(t, w, http.StatusOK)
+	second, w := k.addFinish(k.token, prfWrap(4))
+	wantStatus(t, w, http.StatusCreated)
 	out := decodeJSON[PasskeyAddResponse](t, w)
-	raw, err := base64.StdEncoding.DecodeString(out.CredentialID)
+	raw, err := base64.RawURLEncoding.DecodeString(out.CredentialID)
 	if err != nil {
-		t.Fatalf("credential_id %q is not standard base64: %v", out.CredentialID, err)
+		t.Fatalf("credential_id %q is not b64url: %v", out.CredentialID, err)
 	}
 	if string(raw) != string(second.CredID) {
 		t.Fatal("add/finish named a different credential")
@@ -240,24 +238,74 @@ func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("credentials = %d, want 2", n)
 	}
+	// The PRF wrap came in the same transaction.
+	if got := h.countWraps(k.user); got != 2 {
+		t.Fatalf("wraps = %d, want the bootstrap's and the new credential's", got)
+	}
 	// And it signs in as the same account.
 	lid, lopts := h.beginAssert("/api/v1/auth/passkey/login/begin", "")
 	lw := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
-		CeremonyID: lid, Credential: second.Assert(t, lopts, 6),
+		CeremonyID: lid, Credential: second.Assert(t, lopts, k.counter.Add(1)),
 	})
 	wantStatus(t, lw, http.StatusOK)
-	if got := decodeJSON[SessionResponse](t, lw).UserID; got != session.UserID {
-		t.Fatalf("the added credential signed in as %s, want %s", got, session.UserID)
+	if got := decodeJSON[SessionResponse](t, lw).UserID; got != k.user.String() {
+		t.Fatalf("the added credential signed in as %s, want %s", got, k.user)
 	}
 }
 
-func TestAddPasskeyIsRefusedForAnAccountWithoutOne(t *testing.T) {
+// TestAddPasskeyNeedsMoreThanASession is the review's blocker over HTTP: a
+// stolen session, bound or not, cannot enrol a passkey of its own.
+func TestAddPasskeyNeedsMoreThanASession(t *testing.T) {
 	h := newHarness(t).passkeys()
-	tok := h.session(h.user("no-passkey"))
-	w := h.req("POST", "/api/v1/auth/passkey/add/begin", tok, map[string]any{})
-	// A live session, and still refused: this account has no user handle to
-	// bind a credential to, and minting one would be account linking.
-	wantStatus(t, w, http.StatusUnauthorized)
+	h.srv.PasskeyPerIP = NewLimiter(passkeyPerIPRate, 64, passkeyMaxKeys, h.srv.now)
+
+	// Before bootstrap the session has no writer: 403 writer_unbound, even
+	// with a genuine passkey.add step-up.
+	pre := h.onboard(false)
+	w := h.req("POST", "/api/v1/auth/passkey/add/begin", pre.token,
+		PasskeyAddBeginRequest{StepUp: pre.stepUp(pre.token, keyproto.ActionPasskeyAdd)})
+	wantStatus(t, w, http.StatusForbidden)
+	if got := decodeJSON[errorBody](t, w).Error; got != "writer_unbound" {
+		t.Fatalf("add/begin on an unbound session: %q, want writer_unbound", got)
+	}
+
+	k := h.onboard(true)
+	// A bound session with no step-up.
+	w = h.req("POST", "/api/v1/auth/passkey/add/begin", k.token, map[string]any{})
+	wantStatus(t, w, http.StatusForbidden)
+	if got := decodeJSON[errorBody](t, w).Error; got != "step_up_required" {
+		t.Fatalf("add/begin with no step-up: %q, want step_up_required", got)
+	}
+	// A step-up proved by a passkey that is not the account's.
+	su := k.stepUpWith(k.token, authtest.New(t), keyproto.ActionPasskeyAdd)
+	w = h.req("POST", "/api/v1/auth/passkey/add/begin", k.token, PasskeyAddBeginRequest{StepUp: su})
+	wantStatus(t, w, http.StatusForbidden)
+	if got := decodeJSON[errorBody](t, w).Error; got != "step_up_failed" {
+		t.Fatalf("add/begin proved by a stranger's passkey: %q, want step_up_failed", got)
+	}
+
+	// A good step-up, but add/finish signed by a DWK the account never
+	// registered: 400 bad_signature, nothing stored (R-01).
+	su = k.stepUp(k.token, keyproto.ActionPasskeyAdd)
+	id, opts := h.beginCreate("/api/v1/auth/passkey/add/begin", k.token, PasskeyAddBeginRequest{StepUp: su})
+	a := authtest.New(t)
+	resp := a.Create(t, opts)
+	nonce, _ := base64.RawURLEncoding.DecodeString(su.Nonce)
+	m, _ := keyproto.PasskeyAddMessage(nonce, a.LastClientDataJSON, a.LastAttestationObject, nil)
+	w = h.req("POST", "/api/v1/auth/passkey/add/finish", k.token, PasskeyAddFinishRequest{
+		CeremonyID: id, Credential: resp, DWKSig: b64(ed25519.Sign(authtest.NewDevice(t).DWK, m)),
+	})
+	wantStatus(t, w, http.StatusBadRequest)
+	if got := decodeJSON[errorBody](t, w).Error; got != "bad_signature" {
+		t.Fatalf("add/finish under a stranger's DWK: %q, want bad_signature", got)
+	}
+	var n int
+	if err := h.pool.QueryRow(bg, `SELECT count(*) FROM webauthn_credentials WHERE user_id = $1`, k.user).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("credentials = %d after refused adds, want 1", n)
+	}
 }
 
 // ---------------------------------------------------------------------------

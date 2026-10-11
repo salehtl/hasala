@@ -1,0 +1,64 @@
+{
+  "name": "wire-invalid-op-sets-aside-the-blob",
+  "group": "blobs",
+  "note": "One op that fails validateOp sets aside its whole blob, including the valid op beside it.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_ingested\",\"op_id\":\"raw-1-txn_ingested\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"r1\"},\"parent_version\":null,\"ingest_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"payload\":{\"amount_minor\":\"100\",\"currency\":\"AED\",\"direction\":\"debit\",\"posted_at\":\"2026-06-05T09:00:00Z\",\"merchant_raw\":\"RAW\",\"last4\":\"1\"}},{\"v\":1,\"type\":\"rate_set\",\"op_id\":\"bad\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":3,\"payload\":{\"currency\":\"USD\",\"rate_micro\":\"1\"}}]}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "1"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "1",
+          "stream": "hot",
+          "writer_counter": "1",
+          "writer_id": "dev-a"
+        }
+      ]
+    },
+    "state_sha256": "b07531a542eb002521c52ed400309ecfeae7d15255797fb3cf982b439c8df95f",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "fc77cfdda91d1036eb52cfa18701499d93abb04baf815785a27ba75a6c67ec00",
+      "anomalies": [],
+      "unreadable": [
+        {
+          "seq": "1",
+          "reason": "op 1: rate_set is parent-free and must not carry a parent_version"
+        }
+      ]
+    }
+  }
+}

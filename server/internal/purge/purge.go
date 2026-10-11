@@ -800,8 +800,8 @@ func liveDeviceKeys(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (
 	}
 	var keys []ed25519.PublicKey
 	for _, w := range roster {
-		if w.Kind == auth.KindDevice && w.Live() && w.PubKey != nil {
-			keys = append(keys, w.PubKey)
+		if w.Live() && w.PubKey != nil {
+			keys = append(keys, ed25519.PublicKey(w.PubKey))
 		}
 	}
 	return keys, nil

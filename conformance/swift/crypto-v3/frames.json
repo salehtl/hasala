@@ -1,0 +1,97 @@
+{
+  "note": "Frames sealed by CoreCrypto.Sealer (system zlib gzip level 9, nonces from the system CSPRNG) under K_1 = HKDF(AMK, uuid_raw(user_id), D10 ‖ 00 ‖ u32be(1)) with spec 01 §15.5's AMK (40..5f) and user_id. Counters 1-4 chain from 0^32 (each prev_hash is the previous blob_hash); 9, 10 and 99999 carry a synthetic prev_hash = SHA256(\"prev <counter>\"). Open each with its envelope and prev_hash; the plaintext (an op blob) has the listed length and SHA-256; check blob_hash = SHA256(prev_hash ‖ frame) and LooksSealed.",
+  "amk_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+  "frames": [
+    {
+      "file": "frames/swift-1-1024.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "1",
+      "epoch": 1,
+      "aad_len": 83,
+      "bucket": 1024,
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "blob_hash": "a60169e941e78657580b31f2dd65e51030ac293b79f6a19c0533277797276b76",
+      "plaintext_length": 1003,
+      "expect_plaintext_sha256": "126a519a58a454dce7f1cd05438ed5960ce69181a7df016df91ac643defb29e4"
+    },
+    {
+      "file": "frames/swift-2-4096.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "2",
+      "epoch": 1,
+      "aad_len": 83,
+      "bucket": 4096,
+      "prev_hash": "a60169e941e78657580b31f2dd65e51030ac293b79f6a19c0533277797276b76",
+      "blob_hash": "bb0f3354742aadaefc57ca1154c5d044b414b8dd70dde7dacba96fff6bd72dd2",
+      "plaintext_length": 3403,
+      "expect_plaintext_sha256": "16635e141b41456deb87380313a3296dad5bf8e31927478d701b2dd03517a317"
+    },
+    {
+      "file": "frames/swift-3-16384.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "3",
+      "epoch": 1,
+      "aad_len": 83,
+      "bucket": 16384,
+      "prev_hash": "bb0f3354742aadaefc57ca1154c5d044b414b8dd70dde7dacba96fff6bd72dd2",
+      "blob_hash": "7909f80a367e9347997ee5449b2a3f42406d8d1afd71c12bcb0f4cb89bd4ca21",
+      "plaintext_length": 12203,
+      "expect_plaintext_sha256": "a8d53801f03195cdf3ef5d0fd0e967166a7e271992d21ffa0a75a983e7f4f075"
+    },
+    {
+      "file": "frames/swift-4-65536.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "4",
+      "epoch": 1,
+      "aad_len": 83,
+      "bucket": 65536,
+      "prev_hash": "7909f80a367e9347997ee5449b2a3f42406d8d1afd71c12bcb0f4cb89bd4ca21",
+      "blob_hash": "a51a5942346ad44d61c90588984cb582ee0c8a9f2b1c3d814c042f6cff75420e",
+      "plaintext_length": 53539,
+      "expect_plaintext_sha256": "0f0d8fd7608954928a2cbae8b417d7408c5c98b4b6d3ab572afe93bc477e4f40"
+    },
+    {
+      "file": "frames/swift-9-1024.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "9",
+      "epoch": 1,
+      "aad_len": 83,
+      "bucket": 1024,
+      "prev_hash": "d882f371175b2522d5654fcd1d1c0ec75a5c5e99152aa2e49296e199260ad912",
+      "blob_hash": "2eaedda52bdedc9d67f2fc1aba2b474785aea0f8db9b85f0efd354ec9bea340d",
+      "plaintext_length": 271,
+      "expect_plaintext_sha256": "302bca1c32f3cf29fb7af0faa7d2a3636f387939f097464d97131cf4b6685771"
+    },
+    {
+      "file": "frames/swift-10-1024.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "10",
+      "epoch": 1,
+      "aad_len": 84,
+      "bucket": 1024,
+      "prev_hash": "648e4ee785778138756f11c9ea26a7d65e7992c17f670f697a2d6c707c34492e",
+      "blob_hash": "9ae4f2f5643aa79b670cc68024169bca82a7769ee2d4a2fec72aa60a5cb14428",
+      "plaintext_length": 272,
+      "expect_plaintext_sha256": "6357bd393e0e617323c9e95d1e20acc67a6d8c8dbaebead372cd4fa91bdfafcd"
+    },
+    {
+      "file": "frames/swift-99999-1024.bin",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "counter": "99999",
+      "epoch": 1,
+      "aad_len": 87,
+      "bucket": 1024,
+      "prev_hash": "a4861f2fb585885571a2cd18224b600dcbe433446819a6ef1e80712976eb2210",
+      "blob_hash": "de9c34d6c8dbfe91ff97120c6948ec090b0d9ef58a3e4dee246e89cf41aaac5f",
+      "plaintext_length": 275,
+      "expect_plaintext_sha256": "78823d9e841ee63cb12a8e440b9129291d5e67f93b09cf02c9ca10f069ed2557"
+    }
+  ]
+}
