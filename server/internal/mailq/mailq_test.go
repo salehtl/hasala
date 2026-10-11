@@ -300,3 +300,72 @@ func TestSendNowLogsTheSendAndNeverTheSecret(t *testing.T) {
 		t.Fatalf("a failed SendNow is not final: %d %v", n, err)
 	}
 }
+
+// Spec 07 §2.11, §6.6: the sweep drops a final subject-less row's address
+// seven days after it became final, never a row with a subject, a queued row
+// or one being sent; past the retention it deletes every row but one being
+// sent.
+func TestTheLogSweepRedactsAndExpiresRows(t *testing.T) {
+	pool := pgtest.New(t)
+	user := oplogtest.NewUserWithoutKeys(t, pool)
+	q := New(pool, &mail.Fake{}, fixedTagger{})
+	q.Register("test", TestRenderer)
+	orphan := enqueue(t, pool, q, Enqueue{Kind: "test", To: "nobody@example.com"})
+	owned := enqueue(t, pool, q, Enqueue{Kind: "test", To: "maya@example.com", UserID: &user})
+	if n, err := q.Drain(bg); err != nil || n != 2 {
+		t.Fatalf("drain %d %v", n, err)
+	}
+	queued := enqueue(t, pool, q, Enqueue{Kind: "test", To: "later@example.com"})
+	sending := enqueue(t, pool, q, Enqueue{Kind: "test", To: "inflight@example.com"})
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() + interval '1 year' WHERE id = $1`, queued); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET status = 'sending', next_attempt_at = NULL,
+		lease_until = now() + interval '1 minute' WHERE id = $1`, sending); err != nil {
+		t.Fatal(err)
+	}
+	age := func(d string) {
+		t.Helper()
+		if _, err := pool.Exec(bg, `UPDATE mail_log SET created_at = created_at - $1::interval,
+			final_at = final_at - $1::interval, sent_at = sent_at - $1::interval`, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addr := func(id int64) *string {
+		t.Helper()
+		_, _, rcpt, _ := row(t, pool, id)
+		return rcpt
+	}
+	age("6 days")
+	if _, err := q.Sweep(bg); err != nil {
+		t.Fatal(err)
+	}
+	if addr(orphan) == nil {
+		t.Fatal("redacted before seven days")
+	}
+	age("2 days")
+	if _, err := q.Sweep(bg); err != nil {
+		t.Fatal(err)
+	}
+	if addr(orphan) != nil || addr(owned) == nil || addr(queued) == nil || addr(sending) == nil {
+		t.Fatalf("after eight days: orphan %v owned %v queued %v sending %v", addr(orphan), addr(owned), addr(queued), addr(sending))
+	}
+	age("23 days")
+	if _, err := q.Sweep(bg); err != nil {
+		t.Fatal(err)
+	}
+	var left []int64
+	rows, err := pool.Query(bg, `SELECT id FROM mail_log ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id int64
+		_ = rows.Scan(&id)
+		left = append(left, id)
+	}
+	rows.Close()
+	if len(left) != 1 || left[0] != sending {
+		t.Fatalf("rows left after the retention: %v (want only the one being sent, %d)", left, sending)
+	}
+}
