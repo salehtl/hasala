@@ -219,6 +219,8 @@ private struct ProfilePage: View {
   @Bindable var app: AppModel
   let model: any ProfileModel
   let route: ProfileRoute
+  /// Present once the account gate runs; Sign-in & security needs it.
+  @Environment(AccountSession.self) private var session: AccountSession?
 
   var body: some View {
     switch route {
@@ -236,9 +238,11 @@ private struct ProfilePage: View {
       // TODO(spec 04 §16.1 "Accounts", "Accounts · Check in"): AccountsView and Check in.
       placeholder("Accounts", "building.columns", "Net worth, your accounts and check-ins.")
     case .security:
-      // TODO(spec 04 §6.9, §16.4 "Sign-in & security"): SecurityView (passkeys, password, devices,
-      // recovery phrase) belongs to the accounts lane.
-      placeholder("Sign-in & security", "checkmark.shield", "Passkeys, password, this iPhone and your recovery phrase.")
+      if let session {
+        SecurityView(session: session)
+      } else {
+        placeholder("Sign-in & security", "checkmark.shield", "Passkeys, password, this iPhone and your recovery phrase.")
+      }
     case .privacy:
       // TODO(spec 04 §16.2 X7; 01 §14 S-02–S-06, S-18, S-42, S-43, PENDING PO-12).
       placeholder("Privacy and data", "hand.raised", "Who can see what, and how your data is kept.")

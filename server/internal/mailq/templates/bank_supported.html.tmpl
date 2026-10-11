@@ -1,0 +1,3 @@
+{{define "content"}}<h1>{{.BankName}} works with Hasala now.</h1>
+{{if .AccountAudience}}<p>You asked us to support {{.BankName}}. Its alerts work in Hasala now. Update Hasala in TestFlight, then turn on {{.BankName}} in Profile › Bank alerts.</p>{{else}}<p>You asked us to support {{.BankName}}. Its alerts work in Hasala now. You're still on the list for the beta, and we'll email your invite when it's ready.</p>{{end}}
+{{if .LeaveURL}}<p>Changed your mind? <a href="{{.LeaveURL}}">Leave the list</a></p>{{end}}{{end}}

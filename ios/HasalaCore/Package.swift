@@ -54,7 +54,7 @@ let libraries = [
   "CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain",
   "CoreStore", "CoreProjection",
   "CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals",
-  "HasalaModel", "CoreTestSupport", "CoreSoftAuth",
+  "HasalaModel", "HasalaKeychain", "CoreTestSupport", "CoreSoftAuth",
 ]
 let unitTested = libraries.filter { $0 != "CoreResources" && $0 != "CoreTestSupport" }
 
@@ -73,11 +73,15 @@ let package = Package(
     core("CoreJSON", "JSON", ["HasalaText"]),
     core("CoreTime", "Time"),
     core("CoreMoney", "Money", ["HasalaText"]),
-    // Resource-only. The two single-file resources are added by their owners,
-    // one line each, when the file lands (SwiftPM refuses a missing resource):
-    //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5)
-    //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2)
-    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample")]),
+    // Resource-only. The single-file resources are added by their owners, one
+    // line each, when the file lands (SwiftPM refuses a missing resource):
+    //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5), landed
+    //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2), landed
+    core(
+      "CoreResources", "Resources",
+      resources: [
+        .copy("templates"), .copy("sample"), .copy("merchant-dictionary.json"), .copy("common-passwords-v1.txt"),
+      ]),
 
     // L1
     core("CoreWire", "Wire", l0),
@@ -96,7 +100,9 @@ let package = Package(
 
     // L3: the only GRDB users (R6).
     core("CoreStore", "Store", l0 + l1 + l2 + [grdb, ordered]),
-    core("CoreProjection", "Projection", ["CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
+    // L0 and CoreWire too (lower layers): the projector computes local dates
+    // (CoreTime), writes gates JSON (CoreJSON) and folds the pending overlay (CoreWire ops).
+    core("CoreProjection", "Projection", l0 + ["CoreWire", "CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
 
     // L4
     core("CoreSync", "Sync", l0 + l1 + l2 + l3),
@@ -107,6 +113,11 @@ let package = Package(
 
     // A: the only FoundationModels importer; nothing in L0-L4 depends on it.
     core("HasalaModel", "Model", ["CoreCategorize"]),
+    // A: the data-protection Keychain behind CoreStore's SecretStore (spec 04
+    // §4.4). An adapter like HasalaModel: it needs Security, which §2.3 keeps
+    // out of L0-L4, and lives here so its query logic runs under `swift test`.
+    // Linked by the app only (its Platform layer); nothing in L0-L4 depends on it.
+    core("HasalaKeychain", "Keychain", ["CorePrimitives", "CoreStore"]),
 
     // The system-library module CoreTemplate reaches ICU through (Sources/HasalaICU: a module
     // map and the declarations of the few uregex_* functions used; no code).

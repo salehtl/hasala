@@ -96,6 +96,17 @@ var notUserLinked = []string{
 	"public.deleted_account_sessions",
 	// goose's own migration ledger.
 	"public.goose_db_version",
+	// Spec 07 §2.12: the bank catalog, and the waitlist with its tokens. An
+	// entry is an address that has not become an account (or, once joined, a
+	// tag with no address); the account's own joined entry and its mail rows
+	// are erased by the purge's address match (spec 02 §15.2 step 3, TODO for
+	// full parity), and the 30-day sweep deletes joined entries regardless.
+	"public.banks",
+	"public.waitlist_entries",
+	"public.waitlist_tokens",
+	// The operator audit log: internal ids and actions, never an address, and
+	// append-only by trigger for 400 days.
+	"public.admin_audit",
 }
 
 // Report is what a purge did, per table. It is returned even on the paths that
@@ -510,6 +521,16 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (Rep
 		rep.Rows[r.String()] = n
 	}
 
+	// The account's address also sits in rows that never carried its user_id
+	// (spec 02 §15.2 step 3, spec 07 §6.6): the signup code, the waitlist
+	// emails and the invite were sent before the account existed. A queued row
+	// to it is deleted, a sending one is suppressed without its address, a
+	// final one keeps only its hint and tag; and the account's joined waitlist
+	// entry goes now rather than in 30 days.
+	if err := eraseAddress(ctx, tx, users); err != nil {
+		return rep, err
+	}
+
 	// The one statement that matters. Everything else cascades from it, which
 	// is what satisfies the append-only triggers — see the package comment.
 	//
@@ -841,4 +862,24 @@ func verifiedByAny(keys []ed25519.PublicKey, msg, sig []byte) bool {
 		}
 	}
 	return false
+}
+
+// eraseAddress is the plaintext-address half of a purge (spec 07 §6.6).
+func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID) error {
+	for _, q := range []string{
+		`DELETE FROM mail_log WHERE status = 'queued'
+		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now()
+		  WHERE status = 'sending'
+		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL
+		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`DELETE FROM waitlist_entries WHERE state = 'joined'
+		    AND id IN (SELECT waitlist_entry_id FROM invite_codes WHERE redeemed_by = ANY($1))`,
+	} {
+		if _, err := tx.Exec(ctx, q, users); err != nil {
+			return fmt.Errorf("purge: erase the address: %w", err)
+		}
+	}
+	return nil
 }
