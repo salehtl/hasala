@@ -360,3 +360,78 @@ public enum SyntheticMail {
       internalDateMs: dateMs, from: "Offers <offers@\(bankDomain)>")
   }
 }
+
+// MARK: - Through URLSession
+
+/// Serves a `FakeGmail` to a real `URLSession` (spec 04 §2.2 "FakeGmail (URLProtocol)"), so the
+/// production `URLSessionHTTPExchange` is exercised too: request encoding, headers, status and
+/// body handling, with no socket and no network.
+public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
+  static let header = "X-Hasala-Fake-Gmail"
+  private static let registry = NSLock()
+  nonisolated(unsafe) private static var fakes: [String: FakeGmail] = [:]
+  nonisolated(unsafe) private static var next = 0
+
+  /// An ephemeral-configured exchange whose every request is answered by `fake`.
+  public static func exchange(for fake: FakeGmail) -> URLSessionHTTPExchange {
+    let id = registry.withLock { () -> String in
+      next += 1
+      let id = "fake-\(next)"
+      fakes[id] = fake
+      return id
+    }
+    let c = URLSessionConfiguration.ephemeral
+    c.protocolClasses = [FakeGmailURLProtocol.self]
+    c.httpAdditionalHeaders = [header: id]
+    return URLSessionHTTPExchange(configuration: c)
+  }
+
+  public override class func canInit(with request: URLRequest) -> Bool { request.value(forHTTPHeaderField: header) != nil }
+  public override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  public override func startLoading() {
+    let req = request
+    guard let id = req.value(forHTTPHeaderField: Self.header), let fake = Self.registry.withLock({ Self.fakes[id] }),
+      let url = req.url, let method = HTTPRequest.Method(rawValue: req.httpMethod ?? "GET")
+    else {
+      client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+      return
+    }
+    var body = req.httpBody
+    if body == nil, let stream = req.httpBodyStream {
+      stream.open()
+      var data = Data()
+      var buf = [UInt8](repeating: 0, count: 4096)
+      while stream.hasBytesAvailable {
+        let n = stream.read(&buf, maxLength: buf.count)
+        if n <= 0 { break }
+        data.append(buf, count: n)
+      }
+      stream.close()
+      body = data
+    }
+    let headers = (req.allHTTPHeaderFields ?? [:]).filter { $0.key != Self.header }.map { ($0.key, $0.value) }
+    let client = self.client
+    let protocolSelf = UnsafeSendable(self)
+    Task {
+      do {
+        let res = try await fake.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
+        let http = HTTPURLResponse(url: url, statusCode: res.status, httpVersion: "HTTP/1.1", headerFields: [
+          "Content-Type": "application/json"
+        ])!
+        client?.urlProtocol(protocolSelf.value, didReceive: http, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(protocolSelf.value, didLoad: res.body)
+        client?.urlProtocolDidFinishLoading(protocolSelf.value)
+      } catch {
+        client?.urlProtocol(protocolSelf.value, didFailWithError: URLError(.notConnectedToInternet))
+      }
+    }
+  }
+
+  public override func stopLoading() {}
+}
+
+struct UnsafeSendable<T>: @unchecked Sendable {
+  let value: T
+  init(_ v: T) { value = v }
+}

@@ -292,3 +292,27 @@ import Testing
     #expect(p.fields == nil)
   }
 }
+
+@Suite struct URLSessionExchangeTests {
+  @Test func gmailClientWorksOverARealURLSession() async throws {
+    let g = FakeGmail()
+    g.add(SyntheticMail.enbdAlert(id: "u1", dateMs: Rig.t0))
+    let c = GmailClient(http: FakeGmailURLProtocol.exchange(for: g), accessToken: "tok")
+    let page = try await c.messagesList(query: BankDomains.query(["emiratesnbd.com"], sinceSec: 0), pageToken: nil)
+    #expect(page.ids == ["u1"])
+    #expect(g.requests.last?.authorization == "Bearer tok")
+    let raw = try await c.messageRaw(id: "u1")
+    #expect(try Base64.decodeURL(raw.rawBase64URL) == Data(SyntheticMail.enbdAlert(id: "u1", dateMs: Rig.t0).raw))
+    await #expect(throws: GmailAPIError.status(404, op: "raw")) { try await c.messageRaw(id: "missing") }
+  }
+
+  @Test func tokenExchangeFormSurvivesURLSession() async throws {
+    let g = FakeGmail()
+    let oauth = GoogleOAuthClient(
+      config: GmailOAuthConfig(clientID: "synthetic-client", redirectScheme: "com.googleusercontent.apps.synthetic"),
+      http: FakeGmailURLProtocol.exchange(for: g))
+    let grant = try await oauth.refresh(refreshToken: "fake-refresh-token")
+    #expect(grant.accessToken == "fake-access-token" && grant.refreshToken == nil)
+    #expect(g.requests.last?.form.first { $0.0 == "client_id" }?.1 == "synthetic-client")
+  }
+}
