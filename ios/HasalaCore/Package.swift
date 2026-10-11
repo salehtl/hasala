@@ -54,7 +54,7 @@ let libraries = [
   "CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain",
   "CoreStore", "CoreProjection",
   "CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals",
-  "HasalaModel", "CoreTestSupport", "CoreSoftAuth",
+  "HasalaModel", "HasalaKeychain", "CoreTestSupport", "CoreSoftAuth",
 ]
 let unitTested = libraries.filter { $0 != "CoreResources" && $0 != "CoreTestSupport" }
 
@@ -106,6 +106,11 @@ let package = Package(
 
     // A: the only FoundationModels importer; nothing in L0-L4 depends on it.
     core("HasalaModel", "Model", ["CoreCategorize"]),
+    // A: the data-protection Keychain behind CoreStore's SecretStore (spec 04
+    // §4.4). An adapter like HasalaModel: it needs Security, which §2.3 keeps
+    // out of L0-L4, and lives here so its query logic runs under `swift test`.
+    // Linked by the app only (its Platform layer); nothing in L0-L4 depends on it.
+    core("HasalaKeychain", "Keychain", ["CorePrimitives", "CoreStore"]),
 
     // T: test support, never linked by the app target.
     core("CoreTestSupport", "TestSupport", l0 + l1 + l2 + l3 + l4),
