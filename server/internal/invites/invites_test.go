@@ -117,3 +117,43 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 		t.Fatalf("list %d %v", len(list), err)
 	}
 }
+
+// Spec 02 §14.1's binding without an address (the passkey ceremony): an
+// unaddressed invite opens with its code; an addressed one only with its link
+// key.
+func TestRedeemableWithoutAddress(t *testing.T) {
+	pool := pgtest.New(t)
+	now := time.Now()
+	_, printed, err := MintPrinted(bg, pool, "", DefaultTTL, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _, lkh, _ := NewLinkKey()
+	other, _, _, _ := NewLinkKey()
+	const addressed = "ADDRESSEDCODEADDRESSEDCO"
+	if _, err := pool.Exec(bg, `INSERT INTO invite_codes (code_hash, email_tag, link_key_hash, origin, state, created_at,
+		minted_at, expires_at, mint_count) VALUES ($1, $2, $3, 'admin', 'active', now(), now(), now() + interval '1 day', 1)`,
+		CodeHash(addressed), bytes.Repeat([]byte{4}, 32), lkh); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		code string
+		key  []byte
+		want bool
+	}{
+		{"unaddressed, code alone", printed, nil, true},
+		{"unaddressed, any key", printed, other, true},
+		{"addressed, code alone", addressed, nil, false},
+		{"addressed, another key", addressed, other, false},
+		{"addressed, short key", addressed, raw[:31], false},
+		{"addressed, its key", addressed, raw, true},
+		{"unknown code", "UNKNOWNCODEUNKNOWNCODEUN", raw, false},
+		{"no code", "", nil, false},
+	} {
+		got, err := RedeemableWithoutAddress(bg, pool, CodeHash(c.code), c.key, now)
+		if err != nil || got != c.want {
+			t.Errorf("%s: %v %v, want %v", c.name, got, err, c.want)
+		}
+	}
+}

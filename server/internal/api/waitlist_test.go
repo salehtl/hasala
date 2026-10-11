@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/salehtl/hasala/server/internal/authkeys"
+	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/mailq"
@@ -176,8 +177,30 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 		t.Fatalf("already-invited email %+v", sent)
 	}
 
-	// Redemption joins the entry and forgets its address.
-	_, sess := h.register(code)
+	// An addressed invite does not open with its code alone (spec 02 §14.1:
+	// the code is in the link's path, which scanners see), nor with another
+	// key; a malformed key is a 400.
+	begin := func(key string) *httptest.ResponseRecorder {
+		return h.req("POST", "/api/v1/auth/passkey/register/begin", "", PasskeyRegisterBeginRequest{
+			InviteCode: code, InviteLinkKey: key, AuthorityPubkey: b64(authtest.AuthorityPub(t))})
+	}
+	notInvited := `{"error":"not_invited"}`
+	for _, k := range []string{"", base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))} {
+		if w := begin(k); w.Code != http.StatusForbidden || w.Body.String() != notInvited {
+			t.Fatalf("addressed invite with key %q: %d %s", k, w.Code, w.Body)
+		}
+	}
+	for _, k := range []string{"short", key + "A", strings.Repeat("*", 43)} {
+		wantStatus(t, begin(k), http.StatusBadRequest)
+	}
+	// A refused unknown code answers the same bytes.
+	if w := h.req("POST", "/api/v1/auth/passkey/register/begin", "", PasskeyRegisterBeginRequest{
+		InviteCode: strings.Repeat("A", 24), AuthorityPubkey: b64(authtest.AuthorityPub(t))}); w.Body.String() != notInvited {
+		t.Fatalf("unknown code: %s", w.Body)
+	}
+
+	// Redemption (with the link's key) joins the entry and forgets its address.
+	_, sess := h.registerLinked(code, key)
 	var state string
 	var email *string
 	if err := h.pool.QueryRow(bg, `SELECT state, email_norm FROM waitlist_entries WHERE id = $1`, entry).Scan(&state, &email); err != nil ||

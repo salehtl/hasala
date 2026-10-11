@@ -346,6 +346,32 @@ func Redeemable(ctx context.Context, q Querier, codeHash []byte, now time.Time) 
 	return ok, err
 }
 
+// RedeemableWithoutAddress is the passkey ceremony's gate, which has no
+// address to bind (spec 02 §14.1's binding): the code must be redeemable, and
+// an ADDRESSED invite (email_tag set: every console invite and every `invite
+// mint --email`) is accepted only with its link key, which only the email to
+// that address carries. A code alone (typed, pasted, or the link's path
+// without its fragment) opens an unaddressed invite only. linkKey may be nil.
+func RedeemableWithoutAddress(ctx context.Context, q Querier, codeHash, linkKey []byte, now time.Time) (bool, error) {
+	if len(codeHash) == 0 {
+		return false, nil
+	}
+	var tag, lkh []byte
+	err := q.QueryRow(ctx,
+		`SELECT email_tag, link_key_hash FROM invite_codes WHERE code_hash = $1 AND state = 'active' AND expires_at > $2`,
+		codeHash, now).Scan(&tag, &lkh)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("invites: redeemable: %w", err)
+	}
+	if tag == nil {
+		return true, nil
+	}
+	return linkKey != nil && LinkKeyMatches(linkKey, lkh), nil
+}
+
 // Sweep runs spec 07 §2.11's invite sweeps: expiry (an expired invite's entry
 // goes back to confirmed), forget (30 days after closing, the tag, note and
 // link key go) and delete. It reports what it did.
