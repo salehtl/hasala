@@ -135,6 +135,12 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 		holders = append(holders, h)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		// A read that failed part-way is not "no such link".
+		s.logf("api: gmail hook: route: %v", err)
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
+	}
 	if len(holders) == 0 {
 		g.Counters.Unknown.Add(1)
 		w.WriteHeader(http.StatusNoContent)
