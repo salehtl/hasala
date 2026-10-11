@@ -1,5 +1,5 @@
 {
-  "note": "Sealed by client/scripts/gen-fixtures.ts. Regenerate with `cd client && bun run gen-fixtures`; do not hand-edit. Go opens these bytes in oplog.TestTypeScriptSealedBlobsOpenInGo.",
+  "note": "Sealed by reference/ledgerd-client/scripts/gen-fixtures.ts. Regenerate with `cd reference/ledgerd-client && bun run gen-fixtures`; do not hand-edit. Go opens these bytes in oplog.TestTypeScriptSealedBlobsOpenInGo.",
   "buckets": [
     1024,
     4096,

@@ -1,0 +1,201 @@
+{
+  "name": "rate-shapes",
+  "group": "fold",
+  "note": "Rates are positive decimal strings; currency codes are three letters, upper-cased.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "rate-shapes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "aed"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "rate-shapes-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "usd",
+            "rate_micro": "3672500"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "rate-shapes-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "EUR",
+            "rate_micro": 4010000
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "rate-shapes-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "GBP",
+            "rate_micro": "0"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "rate-shapes-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "GB",
+            "rate_micro": "1"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "rate-shapes-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "GBP",
+            "rate_micro": "-1"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": "AED",
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [
+        [
+          "USD",
+          "2026-06-05T10:00:00.000Z"
+        ]
+      ],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ],
+        [
+          "USD",
+          "3672500"
+        ]
+      ],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "e9e4a91a329850966638db72bd694d6a5aef7bf7a1deaea4f3f72255fd63291b",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "b5137e81480762772406140d0db81479bf8c491fd8fcd9b0a37bbbc2af9c0a28",
+      "anomalies": [
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "rate_set rate-shapes-3: rate_micro must be a decimal-integer string, got 4010000"
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "rate_set rate-shapes-4: rate_micro is 0, and amounts are always positive"
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "rate_set rate-shapes-5: currency must be a three-letter currency code, got \"GB\""
+        },
+        {
+          "at_seq": "6",
+          "kind": "invalid_payload",
+          "detail": "rate_set rate-shapes-6: rate_micro: want a decimal-integer string, got \"-1\""
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

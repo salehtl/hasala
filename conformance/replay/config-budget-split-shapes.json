@@ -1,0 +1,267 @@
+{
+  "name": "budget-split-shapes",
+  "group": "config",
+  "note": "Whole percentages summing to exactly 100; an invalid split leaves the valid one standing.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50,
+            "want": 30,
+            "saving": 20,
+            "monthly_total_minor": "9007199254740993"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50,
+            "want": 30,
+            "saving": 30
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50.5,
+            "want": 29.5,
+            "saving": 20
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": -10,
+            "want": 90,
+            "saving": 20
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 101,
+            "want": 0,
+            "saving": -1
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": "50",
+            "want": 30,
+            "saving": 20
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-7",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50,
+            "want": 30,
+            "saving": 20,
+            "monthly_total_minor": 1500000
+          }
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-shapes-8",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50,
+            "want": 30,
+            "saving": 20,
+            "monthly_total_minor": "-1"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "7",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "8",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": "9007199254740993",
+      "budgetSplit": {
+        "need": 50,
+        "saving": 20,
+        "want": 30
+      },
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "8"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "a3a640f62256f5ec9cf7cc92fd2f5909779cf3aa200ed383a7cae7c5245d1afb",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "c535bbf5342f0cdecdfd9679f8f6efbb4835e60a218e5f218b3b6882671069fe",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-2: need + want + saving must be 100, got 110 (50/30/30)"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-3: need must be an integer, got 50.5"
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-4: need is -10, and a percentage is between 0 and 100"
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-5: need is 101, and a percentage is between 0 and 100"
+        },
+        {
+          "at_seq": "6",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-6: need must be an integer, got \"50\""
+        },
+        {
+          "at_seq": "7",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-7: monthly_total_minor must be a decimal-integer string, got 1500000"
+        },
+        {
+          "at_seq": "8",
+          "kind": "invalid_payload",
+          "detail": "budget_split_set budget-split-shapes-8: monthly_total_minor: want a decimal-integer string, got \"-1\""
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

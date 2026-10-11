@@ -1,0 +1,226 @@
+{
+  "name": "op-structure-refusals",
+  "group": "blobs",
+  "note": "Each blob carries one structurally invalid op: an unknown type, no op_id, a bad timestamp, a missing entity, an entity with no id, a negative or fractional or unsafe parent_version, a bad ingest id, a non-object op.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_deleted\",\"op_id\":\"o1\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"t\"},\"parent_version\":1,\"payload\":{}}]}"
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "2",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"rate_set\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"currency\":\"USD\",\"rate_micro\":\"1\"}}]}"
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "3",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"rate_set\",\"op_id\":\"o3\",\"authored_at\":\"2026-06-05 10:00:00\",\"parent_version\":null,\"payload\":{\"currency\":\"USD\",\"rate_micro\":\"1\"}}]}"
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "4",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_categorized\",\"op_id\":\"o4\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":1,\"payload\":{}}]}"
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "5",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_categorized\",\"op_id\":\"o5\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"\"},\"parent_version\":1,\"payload\":{}}]}"
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "6",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_categorized\",\"op_id\":\"o6\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"t\"},\"parent_version\":-1,\"payload\":{}}]}"
+    },
+    {
+      "seq": "7",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "7",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_categorized\",\"op_id\":\"o7\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"t\"},\"parent_version\":1.5,\"payload\":{}}]}"
+    },
+    {
+      "seq": "8",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "8",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_categorized\",\"op_id\":\"o8\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"t\"},\"parent_version\":9007199254740993,\"payload\":{}}]}"
+    },
+    {
+      "seq": "9",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "9",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"txn_ingested\",\"op_id\":\"raw-1-txn_ingested\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"entity\":{\"kind\":\"txn\",\"id\":\"r1\"},\"parent_version\":null,\"ingest_id\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"payload\":{\"amount_minor\":\"100\",\"currency\":\"AED\",\"direction\":\"debit\",\"posted_at\":\"2026-06-05T09:00:00Z\",\"merchant_raw\":\"RAW\",\"last4\":\"1\"}}]}"
+    },
+    {
+      "seq": "10",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "10",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[\"not an op\"]}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "10"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "1",
+          "stream": "hot",
+          "writer_counter": "1",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "2",
+          "stream": "hot",
+          "writer_counter": "2",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "3",
+          "stream": "hot",
+          "writer_counter": "3",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "4",
+          "stream": "hot",
+          "writer_counter": "4",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "5",
+          "stream": "hot",
+          "writer_counter": "5",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "6",
+          "stream": "hot",
+          "writer_counter": "6",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "7",
+          "stream": "hot",
+          "writer_counter": "7",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "8",
+          "stream": "hot",
+          "writer_counter": "8",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "9",
+          "stream": "hot",
+          "writer_counter": "9",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "10",
+          "stream": "hot",
+          "writer_counter": "10",
+          "writer_id": "dev-a"
+        }
+      ]
+    },
+    "state_sha256": "24b97b0e71f26a634f42ed46e3bafeaf47e0fbafdc40640c3057df2319a57049",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "d4915793bc4939ea10408f0e1d1f1358454a65a5eacece24145ea282a4953efe",
+      "anomalies": [],
+      "unreadable": [
+        {
+          "seq": "1",
+          "reason": "op 0: unknown type \"txn_deleted\""
+        },
+        {
+          "seq": "2",
+          "reason": "op 0: op_id is empty"
+        },
+        {
+          "seq": "3",
+          "reason": "want an RFC3339 timestamp, got \"2026-06-05 10:00:00\""
+        },
+        {
+          "seq": "4",
+          "reason": "op 0: txn_categorized must name an entity"
+        },
+        {
+          "seq": "5",
+          "reason": "op 0: entity needs both a kind and an id"
+        },
+        {
+          "seq": "6",
+          "reason": "op 0: parent_version -1 is negative"
+        },
+        {
+          "seq": "7",
+          "reason": "op 0: parent_version is written as 1.5, which Go refuses as a non-integer literal"
+        },
+        {
+          "seq": "8",
+          "reason": "op 0: parent_version is 9007199254740993, outside the range a JSON number carries exactly \u2014 Go's int64 can hold it and this executor cannot"
+        },
+        {
+          "seq": "9",
+          "reason": "op 0: txn_ingested needs a 64-hex-char ingest_id, got \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\""
+        },
+        {
+          "seq": "10",
+          "reason": "op 0: not a JSON object"
+        }
+      ]
+    }
+  }
+}

@@ -21,8 +21,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/blob/blobtest"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog"
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
@@ -56,9 +58,18 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
 }
 
-// user creates an account for a passkey identity with the given subject. The
-// IdP columns are ledgerd's and survive until WS-3's schema (spec 02 §5.3).
+// user creates an account for a passkey identity with the given subject, with
+// synthetic account keys (so it can upload). The IdP columns are ledgerd's and
+// survive until the signup work's schema (spec 02 §5.3).
 func (h *harness) user(sub string) uuid.UUID {
+	h.t.Helper()
+	u := h.userWithoutKeys(sub)
+	oplogtest.AddKeys(h.t, h.pool, u)
+	return u
+}
+
+// userWithoutKeys is an account that has not bootstrapped.
+func (h *harness) userWithoutKeys(sub string) uuid.UUID {
 	h.t.Helper()
 	u, err := auth.UpsertUser(bg, h.pool, auth.Identity{IdP: auth.IdPPasskey, Subject: sub})
 	if err != nil {
@@ -76,28 +87,71 @@ func (h *harness) session(u uuid.UUID) string {
 	return tok
 }
 
-// writer enrolls a device writer through the real capability path (challenge +
-// signature), because a roster row planted by hand would not prove the upload
-// handler consults the roster the same way the rest of the system does.
+// writer enrols a live device writer directly in the roster, with the
+// deterministic DWK oplogtest.DWK(id) signs heads with. Registration itself
+// (the AAK signature) is routes_writers_test.go's subject.
 func (h *harness) writer(u uuid.UUID, id string) ed25519.PrivateKey {
 	h.t.Helper()
-	pub, priv, err := ed25519.GenerateKey(nil)
-	if err != nil {
+	return oplogtest.NewWriter(h.t, h.pool, u, id)
+}
+
+// bind binds tok's session to writer id directly (spec 02 §9.4's binding is
+// set by registration and bootstrap; these tests are about what a bound
+// session may do).
+func (h *harness) bind(tok, id string) {
+	h.t.Helper()
+	if _, err := h.pool.Exec(bg, `UPDATE sessions SET writer_id = $2 WHERE token_hash = $1`, auth.SessionHash(tok), id); err != nil {
 		h.t.Fatal(err)
 	}
-	nonce, err := h.srv.Writers.Challenge(bg, u)
+}
+
+// signHeads controls req's convenience for POST /api/v1/sync: an
+// UploadRequest without a head_sig is signed with the writer's deterministic
+// DWK, and an unbound session is bound to the request's writer when that
+// writer exists on the session's account. Tests about heads and binding turn
+// it off.
+var signHeads = true
+
+// prepareUpload applies signHeads to one upload body.
+func (h *harness) prepareUpload(token string, req *UploadRequest) {
+	h.t.Helper()
+	if !signHeads || token == "" {
+		return
+	}
+	info, err := h.srv.Sessions.Info(bg, token)
 	if err != nil {
-		h.t.Fatal(err)
+		return
 	}
-	sig := ed25519.Sign(priv, auth.RegistrationMessage(nonce, id, pub))
-	if err := h.srv.Writers.Register(bg, u, id, pub, nonce, sig); err != nil {
-		h.t.Fatalf("register writer %s: %v", id, err)
+	if info.WriterID == "" {
+		_, _ = h.pool.Exec(bg, `UPDATE sessions SET writer_id = $3
+			WHERE token_hash = $1 AND writer_id IS NULL
+			  AND EXISTS (SELECT 1 FROM writers WHERE user_id = $2 AND writer_id = $3)`, info.Hash, info.UserID, req.WriterID)
 	}
-	return priv
+	if req.HeadSig != "" || len(req.Blobs) == 0 || !keyproto.ValidWriterID(req.WriterID) {
+		return
+	}
+	last := req.Blobs[len(req.Blobs)-1]
+	c, err1 := strconv.ParseInt(last.WriterCounter, 10, 64)
+	hash, err2 := hex.DecodeString(last.BlobHash)
+	if err1 != nil || err2 != nil || len(hash) != 32 {
+		return
+	}
+	m, err := keyproto.HeadMessage(info.UserID, uint64(c), hash, req.WriterID)
+	if err != nil {
+		return
+	}
+	req.HeadSig = base64.StdEncoding.EncodeToString(ed25519.Sign(oplogtest.DWK(req.WriterID), m))
 }
 
 func (h *harness) req(method, path, token string, body any) *httptest.ResponseRecorder {
 	h.t.Helper()
+	switch b := body.(type) {
+	case UploadRequest:
+		h.prepareUpload(token, &b)
+		body = b
+	case *UploadRequest:
+		h.prepareUpload(token, b)
+	}
 	var r *http.Request
 	switch b := body.(type) {
 	case nil:
@@ -148,19 +202,23 @@ func wantError(t *testing.T, w *httptest.ResponseRecorder, code string) {
 	}
 }
 
+// seedWriter is the writer h.seed appends under.
+var seedWriter = oplogtest.WID(0x5eed)
+
 // seed appends n sealed frame v3 rows for the account through the real
-// appender, under a writer named "seed" enrolled for the purpose.
+// appender, under seedWriter, enrolled for the purpose.
 func (h *harness) seed(u uuid.UUID, n int) {
 	h.t.Helper()
 	var exists bool
 	if err := h.pool.QueryRow(bg,
-		`SELECT EXISTS (SELECT 1 FROM writers WHERE user_id = $1 AND writer_id = 'seed')`, u).Scan(&exists); err != nil {
+		`SELECT EXISTS (SELECT 1 FROM writers WHERE user_id = $1 AND writer_id = $2)`, u, seedWriter).Scan(&exists); err != nil {
 		h.t.Fatal(err)
 	}
 	if !exists {
-		oplogtest.NewWriter(h.t, h.pool, u, "seed")
+		oplogtest.AddKeys(h.t, h.pool, u)
+		oplogtest.NewWriter(h.t, h.pool, u, seedWriter)
 	}
-	oplogtest.Append(h.t, h.pool, u, "seed", n)
+	oplogtest.Append(h.t, h.pool, u, seedWriter, n)
 }
 
 // sealUpload builds one wire blob for the upload endpoint: a frame v3 sealed
@@ -356,7 +414,11 @@ func TestAPullTruncatedByTheByteBudgetIsNotComplete(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.seed(u, 5)
+	// Five one-row batches: a page never ends inside a batch (spec 02 §11.3),
+	// so the byte budget can cut only between batches.
+	for i := 0; i < 5; i++ {
+		h.seed(u, 1)
+	}
 	h.srv.PullByteBudget = 2 * 1024 // two smallest-bucket blobs
 	h.h = h.srv.Handler()
 
@@ -412,10 +474,10 @@ func TestUploadAppendsAndIsIdempotentOnResend(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
-	blobs, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 3)
-	body := UploadRequest{WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs}
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 3)
+	body := UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs}
 	w := h.req("POST", "/api/v1/sync", tok, body)
 	wantStatus(t, w, http.StatusOK)
 	first := decodeJSON[UploadResponse](t, w)
@@ -435,11 +497,11 @@ func TestUploadAppendsAndIsIdempotentOnResend(t *testing.T) {
 func TestUploadRejectsAWriterIDTheCallerDoesNotOwn(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
-	h.writer(b, "dev-b")
-	blobs, _ := uploadChain(t, a, "dev-b", 1, blob.ZeroHash, 1)
+	h.writer(b, "ios-00000000-0000-4000-8000-00000000000b")
+	blobs, _ := uploadChain(t, a, "ios-00000000-0000-4000-8000-00000000000b", 1, blob.ZeroHash, 1)
 
 	w := h.req("POST", "/api/v1/sync", h.session(a), UploadRequest{
-		WriterID: "dev-b", Stream: blob.StreamHot, Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-00000000000b", Stream: blob.StreamHot, Blobs: blobs,
 	})
 	wantStatus(t, w, http.StatusForbidden)
 	if n := countRows(t, h.pool, a); n != 0 {
@@ -453,15 +515,15 @@ func TestUploadRejectsAWriterIDTheCallerDoesNotOwn(t *testing.T) {
 func TestUploadCannotWriteIntoAnotherUsersLog(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
-	h.writer(a, "dev-a")
-	h.writer(b, "dev-a") // same writer id, different account
+	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
+	h.writer(b, "ios-00000000-0000-4000-8000-00000000000a") // same writer id, different account
 
 	// Blobs sealed for user b's AAD, submitted on user a's session. There is no
 	// user field on the wire, so the only way to aim at b is through the AAD —
 	// and the position check must refuse it.
-	blobs, _ := uploadChain(t, b, "dev-a", 1, blob.ZeroHash, 1)
+	blobs, _ := uploadChain(t, b, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 1)
 	w := h.req("POST", "/api/v1/sync", h.session(a), UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs,
 	})
 	wantStatus(t, w, http.StatusBadRequest)
 	if n := countRows(t, h.pool, b); n != 0 {
@@ -476,22 +538,22 @@ func TestUploadRejectsARevokedWriter(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	priv := h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
+	h.bind(tok, "ios-00000000-0000-4000-8000-00000000000a")
 
-	// A device retiring itself is the ordinary revocation flow: the target's
-	// own live key may authorize it.
-	nonce, err := h.srv.Writers.Challenge(bg, u)
-	if err != nil {
+	// Revocation itself (step-up, the pinned head) is auth's to test; here
+	// the writer row is revoked and its session survived, which is the state
+	// the upload path must refuse on its own (403 writer_revoked).
+	if _, err := h.pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1 AND writer_id = $2`,
+		u, "ios-00000000-0000-4000-8000-00000000000a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.srv.Writers.Revoke(bg, u, "dev-a", nonce, ed25519.Sign(priv, auth.RevocationMessage(nonce, "dev-a"))); err != nil {
-		t.Fatal(err)
-	}
-	blobs, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 1)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 1)
 	w := h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs,
 	})
 	wantStatus(t, w, http.StatusForbidden)
+	wantError(t, w, "writer_revoked")
 	if n := countRows(t, h.pool, u); n != 0 {
 		t.Fatalf("%d rows were appended by a revoked writer", n)
 	}
@@ -500,14 +562,14 @@ func TestUploadRejectsARevokedWriter(t *testing.T) {
 func TestUploadRejectsBlobWhoseAADDoesNotMatchTheRow(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
 	// Sealed for counter 5, submitted as counter 1. The bytes are well formed
 	// and the chain arithmetic is honest; only the position is a lie.
-	b, _ := sealUpload(t, u, "dev-a", 5, blob.ZeroHash, `{"moved":true}`)
+	b, _ := sealUpload(t, u, "ios-00000000-0000-4000-8000-00000000000a", 5, blob.ZeroHash, `{"moved":true}`)
 	b.WriterCounter = "1"
 	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{b},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{b},
 	})
 	wantStatus(t, w, http.StatusBadRequest)
 	if n := countRows(t, h.pool, u); n != 0 {
@@ -519,14 +581,14 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
-	good, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"op":1}`)
+	good, _ := sealUpload(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, `{"op":1}`)
 
 	mismatched := good
 	mismatched.SizeBucket = good.SizeBucket * 2
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{mismatched},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{mismatched},
 	}), http.StatusBadRequest)
 
 	notABucket := good
@@ -534,7 +596,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	notABucket.Blob = base64.StdEncoding.EncodeToString(raw[:len(raw)-1])
 	notABucket.SizeBucket = len(raw) - 1
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{notABucket},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{notABucket},
 	}), http.StatusBadRequest)
 
 	oversize := good
@@ -542,7 +604,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	oversize.Blob = base64.StdEncoding.EncodeToString(big)
 	oversize.SizeBucket = len(big)
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{oversize},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{oversize},
 	}), http.StatusRequestEntityTooLarge)
 
 	// The framing version is frozen (blob's package doc: "Nothing else may
@@ -553,7 +615,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	empty := good
 	empty.Blob, empty.SizeBucket = "", 0
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{empty},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{empty},
 	}), http.StatusBadRequest)
 
 	badVersion := good
@@ -562,7 +624,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	raw2[0] = blob.Version3 + 1
 	badVersion.Blob = base64.StdEncoding.EncodeToString(raw2)
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{badVersion},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{badVersion},
 	}), http.StatusBadRequest)
 
 	if n := countRows(t, h.pool, u); n != 0 {
@@ -573,10 +635,10 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 func TestUploadRefusesAnyStreamButHot(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
-	h.writer(u, "dev-a")
-	b, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"raw":true}`)
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
+	b, _ := sealUpload(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, `{"raw":true}`)
 	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
-		WriterID: "dev-a", Stream: "cold", Blobs: []UploadBlob{b},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: "cold", Blobs: []UploadBlob{b},
 	})
 	wantStatus(t, w, http.StatusBadRequest)
 	wantError(t, w, "bad_stream")
@@ -589,12 +651,12 @@ func TestUploadReportsAChainBreakAsAConflict(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
-	blobs, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 3)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 3)
 	// Skip counter 1: the batch starts above the stored head.
 	w := h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs[1:],
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs[1:],
 	})
 	wantStatus(t, w, http.StatusConflict)
 	if n := countRows(t, h.pool, u); n != 0 {
@@ -611,14 +673,14 @@ func TestABatchThatDoesNotChainToItselfIsAClientErrorNotATamperSignal(t *testing
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
 	// Row 2's blob_hash is not SHA256(prev || bytes): purely a local mistake.
-	blobs, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 2)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 2)
 	bad := blobs[1]
 	bad.BlobHash = hex.EncodeToString(make([]byte, 32))
 	w := h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{blobs[0], bad},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{blobs[0], bad},
 	})
 	wantStatus(t, w, http.StatusBadRequest)
 	if bytes.Contains(w.Body.Bytes(), []byte("chain_break")) {
@@ -626,11 +688,11 @@ func TestABatchThatDoesNotChainToItselfIsAClientErrorNotATamperSignal(t *testing
 	}
 
 	// A batch whose rows do not link to each other is the same class.
-	blobs2, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 2)
+	blobs2, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 2)
 	unlinked := blobs2[1]
 	unlinked.PrevHash = hex.EncodeToString(bytes.Repeat([]byte{7}, 32))
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{blobs2[0], unlinked},
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{blobs2[0], unlinked},
 	}), http.StatusBadRequest)
 
 	if n := countRows(t, h.pool, u); n != 0 {
@@ -640,9 +702,9 @@ func TestABatchThatDoesNotChainToItselfIsAClientErrorNotATamperSignal(t *testing
 	// The head-relative case is still the hard stop: whether the client skipped
 	// or the server lost rows is genuinely ambiguous, and that is the one this
 	// signal is for.
-	good, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 3)
+	good, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 3)
 	conflict := h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: good[1:],
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: good[1:],
 	})
 	wantStatus(t, conflict, http.StatusConflict)
 	if !bytes.Contains(conflict.Body.Bytes(), []byte("chain_break")) {
@@ -654,17 +716,17 @@ func TestUploadTellsAPartialResendToResendAboveTheHead(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
-	blobs, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 3)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 3)
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs[:2],
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs[:2],
 	}), http.StatusOK)
 
 	// Counters 1..2 are applied; resending 2..3 straddles the head. The server
 	// refuses rather than trimming, and must say what the client should do.
 	w := h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs[1:],
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs[1:],
 	})
 	wantStatus(t, w, http.StatusConflict)
 	if !bytes.Contains(w.Body.Bytes(), []byte("read the chain head and resend only the rows above it")) {
@@ -672,7 +734,7 @@ func TestUploadTellsAPartialResendToResendAboveTheHead(t *testing.T) {
 	}
 	// And the documented remedy must work.
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: blobs[2:],
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs[2:],
 	}), http.StatusOK)
 }
 
@@ -693,16 +755,16 @@ func TestConcurrentUploadsFromOneWriterProduceOneWinner(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		u := h.user(fmt.Sprintf("race-%d", round))
 		tok := h.session(u)
-		h.writer(u, "dev-a")
-		one, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 1)
-		two, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"other":true}`)
+		h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
+		one, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 1)
+		two, _ := sealUpload(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, `{"other":true}`)
 
 		var wg sync.WaitGroup
 		codes := make([]int, 2)
 		start := make(chan struct{})
 		for i, body := range []UploadRequest{
-			{WriterID: "dev-a", Stream: blob.StreamHot, Blobs: one},
-			{WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{two}},
+			{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: one},
+			{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: []UploadBlob{two}},
 		} {
 			wg.Add(1)
 			go func(i int, body UploadRequest) {
@@ -819,74 +881,22 @@ func TestABearerTokenAloneCannotRegisterAWriter(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	pub, _, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := authtest.NewDevice(t)
 	nonce := decodeJSON[ChallengeResponse](t, h.req("POST", "/api/v1/writers/challenge", tok, nil))
 
-	// A session buys a nonce and nothing else: without a signature from a key
-	// that may authorize the enrollment, registration must fail (spec §3.4).
+	// A session buys a nonce and nothing else: without the authority key's
+	// signature, registration fails (spec 01 §10.5), whatever key signs.
+	raw, _ := base64.StdEncoding.DecodeString(nonce.Nonce)
+	m, _ := keyproto.RegistrationMessage(raw, d.WriterID, d.DWKPub(), d.DAKPub())
 	w := h.req("POST", "/api/v1/writers/register", tok, RegisterRequest{
-		WriterID: "dev-a",
-		PubKey:   base64.StdEncoding.EncodeToString(pub),
-		Nonce:    nonce.Nonce,
-		Sig:      base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize)),
+		WriterID: d.WriterID, Alg: "ed25519", PubKey: b64(d.DWKPub()), DAKPubkey: b64(d.DAKPub()),
+		Nonce: nonce.Nonce, Sig: b64(ed25519.Sign(d.DWK, m)),
 	})
-	wantStatus(t, w, http.StatusForbidden)
+	wantStatus(t, w, http.StatusBadRequest)
+	wantError(t, w, "bad_signature")
 	roster := decodeJSON[WritersResponse](t, h.req("GET", "/api/v1/writers", tok, nil))
-	var devices int
-	for _, wr := range roster.Writers {
-		if wr.Kind == auth.KindDevice {
-			devices++
-		}
-	}
-	if devices != 0 {
-		t.Fatalf("a bare session enrolled %d writers", devices)
-	}
-}
-
-func TestWriterRegistrationFailuresDoNotDiscloseWhatExists(t *testing.T) {
-	h := newHarness(t)
-	u := h.user("u")
-	tok := h.session(u)
-	priv := h.writer(u, "dev-a")
-	pubA := priv.Public().(ed25519.PublicKey)
-	pubNew, _, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	register := func(writerID string, pub ed25519.PublicKey, signer ed25519.PrivateKey) *httptest.ResponseRecorder {
-		n := decodeJSON[ChallengeResponse](t, h.req("POST", "/api/v1/writers/challenge", tok, nil))
-		raw, err := base64.StdEncoding.DecodeString(n.Nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sig := ed25519.Sign(signer, auth.RegistrationMessage(raw, writerID, pub))
-		return h.req("POST", "/api/v1/writers/register", tok, RegisterRequest{
-			WriterID: writerID,
-			PubKey:   base64.StdEncoding.EncodeToString(pub),
-			Nonce:    n.Nonce,
-			Sig:      base64.StdEncoding.EncodeToString(sig),
-		})
-	}
-
-	// Three distinct server-side reasons: the writer id is taken, the key is
-	// already enrolled, and nothing authorized the request. The caller must not
-	// be able to tell them apart.
-	taken := register("dev-a", pubNew, priv)                 // auth.ErrWriterExists
-	keyTaken := register("dev-c", pubA, priv)                // auth.ErrKeyAlreadyEnrolled
-	unauthorized := register("dev-d", pubNew, mustNewKey(t)) // auth.ErrNotAuthorized
-
-	for i, w := range []*httptest.ResponseRecorder{taken, keyTaken, unauthorized} {
-		if w.Code != taken.Code || w.Body.String() != taken.Body.String() {
-			t.Fatalf("rejection %d answered %d %s; the first answered %d %s — the difference discloses which fact is true",
-				i, w.Code, w.Body.String(), taken.Code, taken.Body.String())
-		}
-	}
-	if taken.Code != http.StatusForbidden {
-		t.Fatalf("a rejected registration returned %d, want 403", taken.Code)
+	if len(roster.Writers) != 0 {
+		t.Fatalf("a bare session enrolled %d writers", len(roster.Writers))
 	}
 }
 
@@ -902,18 +912,18 @@ func mustNewKey(t *testing.T) ed25519.PrivateKey {
 func TestRosterIsScopedToTheCaller(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
-	h.writer(a, "dev-a")
-	h.writer(b, "dev-b")
+	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
+	h.writer(b, "ios-00000000-0000-4000-8000-00000000000b")
 
 	// One entry: there is no server-side writer any more (spec 02 §2 retires
 	// ledgerd's per-account `ingest` writer with the mail path).
 	roster := decodeJSON[WritersResponse](t, h.req("GET", "/api/v1/writers", h.session(a), nil))
-	if len(roster.Writers) != 1 || roster.Writers[0].WriterID != "dev-a" {
+	if len(roster.Writers) != 1 || roster.Writers[0].WriterID != "ios-00000000-0000-4000-8000-00000000000a" {
 		t.Fatalf("roster for user a is %+v, want dev-a alone", roster.Writers)
 	}
 	got := roster.Writers[0]
-	if got.PubKey == "" || got.Kind != auth.KindDevice {
-		t.Fatalf("roster entry is missing its key material or kind: %+v", got)
+	if got.PubKey == "" || got.DAKPubkey == "" || got.Alg != "ed25519" {
+		t.Fatalf("roster entry is missing its key material or alg: %+v", got)
 	}
 	if got.RevokedAt != nil {
 		t.Fatal("a live writer came back with a revoked_at")
@@ -987,10 +997,12 @@ func TestRegistrationAttemptsAreRateLimited(t *testing.T) {
 	other := h.session(h.user("other"))
 
 	body := RegisterRequest{
-		WriterID: "dev-a",
-		PubKey:   base64.StdEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize)),
-		Nonce:    base64.StdEncoding.EncodeToString(make([]byte, auth.ChallengeNonceBytes)),
-		Sig:      base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize)),
+		WriterID:  "ios-00000000-0000-4000-8000-00000000000a",
+		Alg:       "ed25519",
+		PubKey:    base64.StdEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize)),
+		DAKPubkey: base64.StdEncoding.EncodeToString(make([]byte, 65)),
+		Nonce:     base64.StdEncoding.EncodeToString(make([]byte, auth.ChallengeNonceBytes)),
+		Sig:       base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize)),
 	}
 	attempted, limited := 0, 0
 	for i := 0; i < 30; i++ {
@@ -1117,6 +1129,9 @@ func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
 		"DELETE /api/v1/mailbox/senders",
 		"GET /api/v1/relay/addresses",
 		"POST /api/v1/relay/deliver",
+		// ledgerd's write-once key publication, retired for the AAK-signed
+		// bootstrap (spec 02 §2.4).
+		"PUT /api/v1/keys",
 		// `/` (the SPA fallback) and every /admin/* route, ledgerd's admin
 		// listener among them: a sample of what that console served.
 		"GET /",
@@ -1196,5 +1211,42 @@ func wireToRow(t *testing.T, r Row) oplog.Row {
 		SizeBucket:    r.SizeBucket,
 		BlobHash:      bh,
 		PrevHash:      ph,
+	}
+}
+
+func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("u")
+	tok := h.session(u)
+	// Two slots held: the third concurrent pull is refused.
+	if !h.srv.pulls.acquire(u) || !h.srv.pulls.acquire(u) {
+		t.Fatal("two slots were not available")
+	}
+	w := h.req("GET", "/api/v1/sync?stream=hot", tok, nil)
+	wantStatus(t, w, http.StatusTooManyRequests)
+	wantError(t, w, "rate_limited")
+	h.srv.pulls.release(u)
+	wantStatus(t, h.req("GET", "/api/v1/sync/hashes?stream=hot", tok, nil), http.StatusOK)
+	h.srv.pulls.release(u)
+	if n := len(h.srv.pulls.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold slots", n)
+	}
+	// pull-user's own budget.
+	h.srv.PullPerUser = NewLimiter(0, 2, 16, time.Now)
+	h.h = h.srv.Handler()
+	// A pull refused for want of a slot spends no pull-user token.
+	if !h.srv.pulls.acquire(u) || !h.srv.pulls.acquire(u) {
+		t.Fatal("two slots were not available")
+	}
+	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusTooManyRequests)
+	h.srv.pulls.release(u)
+	h.srv.pulls.release(u)
+	for i := 0; i < 2; i++ {
+		wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusOK)
+	}
+	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusTooManyRequests)
+	// And a pull the limiter refuses gives its slot back.
+	if n := len(h.srv.pulls.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold slots after a limiter refusal", n)
 	}
 }

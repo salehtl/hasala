@@ -85,7 +85,8 @@ let package = Package(
     core("CoreCrypto", "Crypto", l0 + ["CoreWire"]),
     core("CoreAuth", "Auth", l0),  // §2.2: L0, CoreJSON (in L0)
     core("CoreNorm", "Norm", l0),
-    core("CoreTemplate", "Template", l0),
+    // §2.3: ICU's C API (uregex_*) through a module map over libicucore.
+    core("CoreTemplate", "Template", l0 + ["HasalaICU"]),
     core("CoreMail", "Mail", l0),
 
     // L2
@@ -107,6 +108,10 @@ let package = Package(
 
     // A: the only FoundationModels importer; nothing in L0-L4 depends on it.
     core("HasalaModel", "Model", ["CoreCategorize"]),
+
+    // The system-library module CoreTemplate reaches ICU through (Sources/HasalaICU: a module
+    // map and the declarations of the few uregex_* functions used; no code).
+    .systemLibrary(name: "HasalaICU", path: "Sources/HasalaICU"),
 
     // T: test support, never linked by the app target.
     core("CoreTestSupport", "TestSupport", l0 + l1 + l2 + l3 + l4),

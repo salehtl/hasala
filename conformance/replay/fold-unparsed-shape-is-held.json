@@ -1,0 +1,366 @@
+{
+  "name": "unparsed-shape-is-held",
+  "group": "fold",
+  "note": "Each payload claims unparsed while breaking one rule of the shape; only the last is the real thing.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "44ba554e17977b31413d531e0aa4e02e87a7a38115d3be3b33c95f85fac2a4f7",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": null,
+          "ingest_id": "3c417b7ea567c3115deebed7319de56c4d008e6990b0d45ed5cfa53d4c5d37fa",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t3"
+          },
+          "parent_version": null,
+          "ingest_id": "47d1607efc92e4e3b765be65c7ec2ac063524455d36ae201aec7cccd4a6e431e",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "template",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t4"
+          },
+          "parent_version": null,
+          "ingest_id": "09aa0e04c49911f9599e8fb6ab4a7d2ebe16847d2048014b63a5f77c0e2430d0",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "AED",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t5"
+          },
+          "parent_version": null,
+          "ingest_id": "5bf9f5aa2bcd8de51821bbd78cdad3846ceb18812aca1c5c663ea5fc157bdc39",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "credit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t6"
+          },
+          "parent_version": null,
+          "ingest_id": "924041206a718d066b809c4446acdab935471aa06e841ceff839ab8ef5839b1c",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": false,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-shape-is-held-7",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t7"
+          },
+          "parent_version": null,
+          "ingest_id": "31bd9995e7328652c3375f00a02eabed1f015b2e04bbf01a5ca6ae8bc7eb98a4",
+          "payload": {
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "1",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "unparsed|31bd9995e7328652c3375f00a02eabed1f015b2e04bbf01a5ca6ae8bc7eb98a4",
+          [
+            "t7"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "7"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t7",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t7",
+            "kind": "txn",
+            "op_id": "unparsed-shape-is-held-7",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "31bd9995e7328652c3375f00a02eabed1f015b2e04bbf01a5ca6ae8bc7eb98a4",
+          "t7"
+        ]
+      ],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t7",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "t7",
+            "ingest_id": "31bd9995e7328652c3375f00a02eabed1f015b2e04bbf01a5ca6ae8bc7eb98a4",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "977b730b820da6cd5c296924786f755bbe91f032182b30bb201d1662316cb531",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "6c06784a69c7147b1e77191afd32f7740c3cbf945b9b170649c5c1658752e9ae",
+      "anomalies": [
+        {
+          "at_seq": "1",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested unparsed-shape-is-held-1: amount_minor is 0, and amounts are always positive"
+        },
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested unparsed-shape-is-held-2: unparsed is true but amount_minor is 25000: an unparsed message carries no amount"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested unparsed-shape-is-held-3: unparsed is true but tier is \"template\": nothing was extracted, so no tier produced it"
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested unparsed-shape-is-held-4: unparsed is true but currency is \"AED\": an unparsed message carries no currency"
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested unparsed-shape-is-held-5: unparsed is true but direction is \"credit\": an unparsed message carries no direction"
+        },
+        {
+          "at_seq": "6",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested unparsed-shape-is-held-6: unparsed is true but needs_review is false: an unparsed message is a review item"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

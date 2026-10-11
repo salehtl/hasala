@@ -3,8 +3,8 @@
  * WHOLE suite against SQLite.
  *
  * ```
- * cd client && bun test                              # file / mem store
- * cd client && LEDGER_CLIENT_STORE=sqlite bun test   # the same suite, SQLite-backed
+ * cd reference/ledgerd-client && bun test                              # file / mem store
+ * cd reference/ledgerd-client && LEDGER_CLIENT_STORE=sqlite bun test   # the same suite, SQLite-backed
  * ```
  *
  * That second run is the exit condition Task 5 is really about. The phone's

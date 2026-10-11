@@ -315,3 +315,63 @@ func TestFenceServeHasNoConsole(t *testing.T) {
 		}
 	}
 }
+
+// Spec 01 §12.2's fences and AT-X4: no production file computes K_blob, K_1,
+// K_pv or a wrap key (the server holds no data key and cannot open the phrase
+// box), so the domain strings those derivations use appear in hasalad only as
+// keyproto's registry constants and are referenced from nowhere else; and no
+// retired ledgerd domain string appears at all.
+func TestFenceNoDataKeyDerivationAndNoRetiredDomain(t *testing.T) {
+	dataKey := map[string]bool{
+		"DomainRecoveryKey": true, "DomainWrapRecovery": true, "DomainWrapPRF": true, "DomainWrap": true,
+		"DomainPRFSaltUnlock": true, "DomainAMKCommitment": true, "DomainEpochKey": true, "DomainBlobKey": true,
+		"DomainBlob": true, "DomainKeyringKey": true, "DomainKeyring": true, "DomainPassword": true,
+		"DomainPhraseBoxKey": true, "DomainPhraseBox": true,
+	}
+	dataKeyLiterals := []string{
+		"hasala/v1/recovery-key", "hasala/v1/wrap", "hasala/v1/prf-salt/unlock", "hasala/v1/amk-commitment",
+		"hasala/v1/epoch-key", "hasala/v1/blob", "hasala/v1/keyring", "hasala/v1/password", "hasala/v1/phrase-box",
+	}
+	retired := []string{
+		"ledger-v2-writer-registration", "ledger-v2-writer-revocation", "ledger/v2 account-delete",
+		"ledger-v2-account-keys", "ledger-v2-prf-wrap-v1", "ledger-v2-prf-unlock-v1", "ledger-v2-ingest-key",
+		"ledger-v2-device-comparison", "ledger-phase2-encv2", "ledger/dict/key-epoch/v1", "hasala-stepup-v1",
+	}
+	// Tolerated by name until account deletion moves to step-up account.delete
+	// with spec 01's DeletionMessage (D16): purge still verifies ledgerd's
+	// deletion message, under ledgerd's domain, so that one domain never names
+	// two formats.
+	tolerated := map[string]string{"ledger/v2 account-delete": "internal/purge"}
+	for _, sf := range reachableSources(t) {
+		isRegistry := sf.pkg == "internal/keyproto" && filepath.Base(sf.path) == "domains.go"
+		ast.Inspect(sf.file, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.SelectorExpr:
+				if id, ok := x.X.(*ast.Ident); ok && sf.imports[id.Name] == module+"/internal/keyproto" && dataKey[x.Sel.Name] {
+					t.Errorf("%s references keyproto.%s: hasalad derives no data or wrap key (spec 01 §12.2)", sf.path, x.Sel.Name)
+				}
+			case *ast.BasicLit:
+				if x.Kind != token.STRING {
+					return true
+				}
+				s, err := strconv.Unquote(x.Value)
+				if err != nil {
+					s = x.Value
+				}
+				for _, r := range retired {
+					if strings.Contains(s, r) && tolerated[r] != sf.pkg {
+						t.Errorf("%s: retired domain string %q (spec 01 §3, AT-X4)", sf.path, r)
+					}
+				}
+				if !isRegistry {
+					for _, d := range dataKeyLiterals {
+						if strings.HasPrefix(s, d) {
+							t.Errorf("%s: data-key domain literal %q outside keyproto's registry", sf.path, s)
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+}

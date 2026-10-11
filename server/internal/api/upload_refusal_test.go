@@ -31,7 +31,7 @@ func TestUploadRefusesEveryFrameThePredicateRefuses(t *testing.T) {
 	h.h = h.srv.Handler()
 	u := h.user("u")
 	tok := h.session(u)
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 
 	tried := 0
 	for _, c := range blobtest.LooksSealedCases() {
@@ -39,7 +39,7 @@ func TestUploadRefusesEveryFrameThePredicateRefuses(t *testing.T) {
 			continue // a size the bucket check answers first, as bad_bucket
 		}
 		b, _ := wireBlob(1, blob.ZeroHash, c.Frame)
-		w := h.req("POST", "/api/v1/sync", tok, UploadRequest{WriterID: "dev-a", Blobs: []UploadBlob{b}})
+		w := h.req("POST", "/api/v1/sync", tok, UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: []UploadBlob{b}})
 		wantStatus(t, w, http.StatusBadRequest)
 		code, detail := errorDetail(t, w.Body.Bytes())
 		if c.Want == "" {
@@ -68,15 +68,15 @@ func TestUploadRefusesALedgerdV1PlaintextFrame(t *testing.T) {
 	// arithmetic, readable by anyone holding the database.
 	h := newHarness(t)
 	u := h.user("u")
-	h.writer(u, "dev-a")
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
 	s, err := blobtest.PlaintextSealer{}.Seal(blobtest.Envelope{
-		UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 1,
+		UserID: u, Stream: blob.StreamHot, WriterID: "ios-00000000-0000-4000-8000-00000000000a", WriterCounter: 1,
 	}, []byte(`{"merchant":"plaintext"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, _ := wireBlob(1, blob.ZeroHash, s.Bytes)
-	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{WriterID: "dev-a", Blobs: []UploadBlob{b}})
+	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: []UploadBlob{b}})
 	wantStatus(t, w, http.StatusBadRequest)
 	if code, detail := errorDetail(t, w.Body.Bytes()); code != "plaintext_refused" || detail != "blobs[0]: "+blob.CheckVersion {
 		t.Fatalf("a v1 frame answered %s %q, want plaintext_refused naming the version check", code, detail)
@@ -89,15 +89,15 @@ func TestUploadRefusesALedgerdV1PlaintextFrame(t *testing.T) {
 func TestARefusedFrameRefusesTheWholeBatch(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
-	h.writer(u, "dev-a")
-	good, prev := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 2)
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
+	good, prev := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 2)
 	f := blobtest.Honest(1024, 50, 1)
 	for i := 57; i < 69; i++ {
 		f[i] = 0 // zero nonce (AT-P2)
 	}
 	bad, _ := wireBlob(3, prev, f)
 	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
-		WriterID: "dev-a", Blobs: append(good, bad),
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: append(good, bad),
 	})
 	wantStatus(t, w, http.StatusBadRequest)
 	if code, detail := errorDetail(t, w.Body.Bytes()); code != "plaintext_refused" || detail != "blobs[2]: "+blob.CheckNonce {
@@ -111,10 +111,10 @@ func TestARefusedFrameRefusesTheWholeBatch(t *testing.T) {
 func TestUploadRefusesAFrameSealedForAnotherAccount(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
-	h.writer(a, "dev-a")
+	h.writer(a, "ios-00000000-0000-4000-8000-00000000000a")
 	// Sealed honestly for b's dev-a at counter 1 and replayed into a's log.
-	stolen, _ := sealUpload(t, b, "dev-a", 1, blob.ZeroHash, `{"op":1}`)
-	w := h.req("POST", "/api/v1/sync", h.session(a), UploadRequest{WriterID: "dev-a", Blobs: []UploadBlob{stolen}})
+	stolen, _ := sealUpload(t, b, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, `{"op":1}`)
+	w := h.req("POST", "/api/v1/sync", h.session(a), UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: []UploadBlob{stolen}})
 	wantStatus(t, w, http.StatusBadRequest)
 	wantError(t, w, "aad_mismatch")
 	if n := countRows(t, h.pool, a); n != 0 {
@@ -125,10 +125,10 @@ func TestUploadRefusesAFrameSealedForAnotherAccount(t *testing.T) {
 func TestUploadNamesABucketMismatch(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
-	h.writer(u, "dev-a")
-	good, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"op":1}`)
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
+	good, _ := sealUpload(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, `{"op":1}`)
 	good.SizeBucket *= 2
-	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{WriterID: "dev-a", Blobs: []UploadBlob{good}})
+	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{WriterID: "ios-00000000-0000-4000-8000-00000000000a", Blobs: []UploadBlob{good}})
 	wantStatus(t, w, http.StatusBadRequest)
 	wantError(t, w, "bad_bucket")
 }
