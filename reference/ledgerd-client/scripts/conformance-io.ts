@@ -46,36 +46,44 @@ export interface FixtureFile {
  * the suite. A vector that needs a BOM puts something before it.
  */
 export function asciiJSON(value: unknown): string {
-  assertNoLeadingBOM(value, "$");
+  assertWritableStrings(value, "$");
   const text = JSON.stringify(value, null, 2);
   let out = "";
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c >= 0xd800 && c <= 0xdbff) {
-      const d = text.charCodeAt(i + 1);
-      if (!(d >= 0xdc00 && d <= 0xdfff)) throw new Error(`lone high surrogate at ${i}`);
-    } else if (c >= 0xdc00 && c <= 0xdfff) {
-      const p = text.charCodeAt(i - 1);
-      if (!(p >= 0xd800 && p <= 0xdbff)) throw new Error(`lone low surrogate at ${i}`);
-    }
     out += c > 0x7e ? `\\u${c.toString(16).padStart(4, "0")}` : text[i];
   }
   return out + "\n";
 }
 
-function assertNoLeadingBOM(v: unknown, path: string): void {
+/**
+ * Walks every key and string value BEFORE stringifying: `JSON.stringify`
+ * already writes a lone surrogate as an ASCII `\udXXX` escape, so a check on
+ * its output could never see one.
+ */
+function assertWritableStrings(v: unknown, path: string): void {
   if (typeof v === "string") {
     if (v.startsWith("\ufeff")) throw new Error(`${path} starts with U+FEFF, which JSONSerialization drops; put something before it`);
+    for (let i = 0; i < v.length; i++) {
+      const c = v.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) {
+        const d = v.charCodeAt(i + 1);
+        if (!(d >= 0xdc00 && d <= 0xdfff)) throw new Error(`${path} has a lone high surrogate at UTF-16 index ${i}`);
+        i++;
+      } else if (c >= 0xdc00 && c <= 0xdfff) {
+        throw new Error(`${path} has a lone low surrogate at UTF-16 index ${i}`);
+      }
+    }
     return;
   }
   if (Array.isArray(v)) {
-    v.forEach((x, i) => assertNoLeadingBOM(x, `${path}[${i}]`));
+    v.forEach((x, i) => assertWritableStrings(x, `${path}[${i}]`));
     return;
   }
   if (v !== null && typeof v === "object") {
     for (const [k, x] of Object.entries(v)) {
-      assertNoLeadingBOM(k, `${path} key`);
-      assertNoLeadingBOM(x, `${path}.${k}`);
+      assertWritableStrings(k, `${path} key`);
+      assertWritableStrings(x, `${path}.${k}`);
     }
   }
 }
