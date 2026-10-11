@@ -117,6 +117,15 @@
             doCheck = false;
             meta.mainProgram = "hasalad";
           };
+          # 05 §4.2: the same PostgreSQL the devShell's test clusters use, so CI
+          # and the QA host run one major and minor.
+          postgresql = pkgs.postgresql_17;
+          # 05 §4.2, R-09: nixos-26.05's cloudflared source and version, compiled
+          # with the Go 1.27 above. It is the only internet-facing process on
+          # the QA host, and 26.05's Go has reachable standard-library advisories.
+          # The ingress lint (infra/qa/cloudflared/lint.sh) and the host run this
+          # same binary.
+          cloudflared = pkgs.cloudflared.override { buildGoModule = buildGoModuleFor system pkgs; };
           server = self.packages.${system}.hasalad;
           default = self.packages.${system}.hasalad;
         }
