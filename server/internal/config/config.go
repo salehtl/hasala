@@ -32,6 +32,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/salehtl/hasala/server/internal/headroom"
+	"github.com/salehtl/hasala/server/internal/mail"
 )
 
 // Config is the full configuration surface.
@@ -46,6 +47,8 @@ type Config struct {
 	APNs     APNsConfig     `toml:"apns"`
 	Gmail    GmailConfig    `toml:"gmail"`
 	Email    EmailConfig    `toml:"email"`
+	// Web is spec 07's website routes and mail limits (environment only).
+	Web WebConfig `toml:"-"`
 
 	// Console is the operator console's configuration (spec 07 §8, §14.1). It
 	// is environment-only and read only by the console mode; serve refuses to
@@ -187,25 +190,45 @@ func (g GmailConfig) Enabled() bool {
 }
 
 // EmailConfig is outbound mail through Cloudflare Email Service (spec 02
-// §14.4). The account id and the API token are all or nothing; none means the
-// fake sender (tests, local runs). Required behind Cloudflare.
+// §14.4). The account id and the API token are all or nothing; none means
+// every email fails (mail.Unconfigured) and the waitlist routes stay off.
+// Required behind Cloudflare.
 type EmailConfig struct {
 	CloudflareAccountID string `toml:"cloudflare_account_id"`
 	FromName            string `toml:"from_name"`
 	From                string `toml:"from"`
 	FreezeURL           string `toml:"freeze_url"`
-	// LogRetention (HASALA_EMAIL_LOG_RETENTION) is how long a mail_log row
-	// lives (spec 07 §6.6): 30 days, bounded 7 to 90.
-	LogRetention time.Duration `toml:"log_retention"`
 	// APITokenFile (HASALA_EMAIL_API_TOKEN_FILE). Never TOML.
 	APITokenFile string `toml:"-"`
 	// WebBaseURL (HASALA_WEB_BASE_URL) is the base of every link in spec 07's
 	// emails. Environment-only.
 	WebBaseURL string `toml:"-"`
+	// APIBaseURL (HASALA_EMAIL_API_BASE_URL) is the Email Service API root,
+	// DefaultEmailAPIBaseURL when empty. A local end-to-end run points it at
+	// a capture server; with trusted_proxy = cloudflare anything but the
+	// default is refused. Environment-only.
+	APIBaseURL string `toml:"-"`
 }
+
+// DefaultEmailAPIBaseURL is the Email Service API root the sender uses.
+const DefaultEmailAPIBaseURL = mail.DefaultBaseURL
 
 // Enabled reports whether either half of the sender is configured.
 func (e EmailConfig) Enabled() bool { return e.CloudflareAccountID != "" || e.APITokenFile != "" }
+
+// WebConfig is spec 07 §14.1's serve-side environment: the website routes,
+// CORS origins and form redirect, the waitlist ceilings and retention, and the
+// mail lanes' rates and the email log's retention.
+type WebConfig struct {
+	Origins            []string      // HASALA_WEB_ORIGINS; empty = CORS off
+	DoneURL            string        // HASALA_WEB_WAITLIST_DONE_URL
+	WaitlistMax        int64         // HASALA_WAITLIST_MAX
+	WaitlistPendingMax int64         // HASALA_WAITLIST_PENDING_MAX
+	WaitlistRetention  time.Duration // HASALA_WAITLIST_RETENTION
+	RateWaitlist       int64         // HASALA_EMAIL_RATE_WAITLIST, per hour
+	RateBulk           int64         // HASALA_EMAIL_RATE_BULK, per hour
+	LogRetention       time.Duration // HASALA_EMAIL_LOG_RETENTION
+}
 
 // ConsoleConfig is the operator console's environment (spec 07 §8.1, §14.1).
 // Only `hasalad console` reads it.
@@ -250,7 +273,7 @@ type MigrateArgs struct {
 // modeOrder is every mode cmd/hasalad dispatches (spec 02 §18.3, the subset
 // built so far). cmd/hasalad cross-checks its dispatch table against it on
 // every start (checkModeHandlers).
-var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "console", "version"}
+var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "waitlist", "email", "console", "version"}
 
 // Modes returns every mode cmd/hasalad dispatches.
 func Modes() []string {
@@ -283,12 +306,20 @@ func defaults() Config {
 			Topic:               "app.hasala.ios",
 			AllowedEnvironments: []string{"production", "sandbox"},
 		},
+		Web: WebConfig{
+			DoneURL:            "https://hasala.app/joined",
+			WaitlistMax:        10_000,
+			WaitlistPendingMax: 2_000,
+			WaitlistRetention:  4320 * time.Hour,
+			RateWaitlist:       60,
+			RateBulk:           120,
+			LogRetention:       720 * time.Hour,
+		},
 		Email: EmailConfig{
-			FromName:     "Hasala",
-			From:         "no-reply@hasala.app",
-			FreezeURL:    "https://hasala.app/freeze",
-			WebBaseURL:   "https://hasala.app",
-			LogRetention: 720 * time.Hour,
+			FromName:   "Hasala",
+			From:       "no-reply@hasala.app",
+			FreezeURL:  "https://hasala.app/freeze",
+			WebBaseURL: "https://hasala.app",
 		},
 	}
 }
@@ -422,7 +453,15 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_FREEZE_URL", &c.Email.FreezeURL)
 	str("HASALA_EMAIL_API_TOKEN_FILE", &c.Email.APITokenFile)
 	str("HASALA_WEB_BASE_URL", &c.Email.WebBaseURL)
-	dur("HASALA_EMAIL_LOG_RETENTION", &c.Email.LogRetention)
+	str("HASALA_EMAIL_API_BASE_URL", &c.Email.APIBaseURL)
+	list("HASALA_WEB_ORIGINS", &c.Web.Origins)
+	str("HASALA_WEB_WAITLIST_DONE_URL", &c.Web.DoneURL)
+	integer("HASALA_WAITLIST_MAX", &c.Web.WaitlistMax)
+	integer("HASALA_WAITLIST_PENDING_MAX", &c.Web.WaitlistPendingMax)
+	dur("HASALA_WAITLIST_RETENTION", &c.Web.WaitlistRetention)
+	integer("HASALA_EMAIL_RATE_WAITLIST", &c.Web.RateWaitlist)
+	integer("HASALA_EMAIL_RATE_BULK", &c.Web.RateBulk)
+	dur("HASALA_EMAIL_LOG_RETENTION", &c.Web.LogRetention)
 
 	str("HASALA_CONSOLE_LISTEN", &c.Console.Listen)
 	str("HASALA_CONSOLE_METRICS_LISTEN", &c.Console.MetricsListen)
@@ -474,6 +513,9 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 		return err
 	}
 	if err := c.validateAPNs(); err != nil {
+		return err
+	}
+	if err := c.validateWeb(); err != nil {
 		return err
 	}
 	if err := c.validateGmail(); err != nil {
@@ -623,6 +665,30 @@ func (c Config) validateGmail() error {
 	return nil
 }
 
+func (c Config) validateWeb() error {
+	w := c.Web
+	for _, o := range w.Origins {
+		u, err := url.Parse(o)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("HASALA_WEB_ORIGINS entry %q: want an https origin with no path", o)
+		}
+	}
+	if u, err := url.Parse(w.DoneURL); err != nil || u.Scheme != "https" || u.Host != "hasala.app" || u.RawQuery != "" {
+		return fmt.Errorf("HASALA_WEB_WAITLIST_DONE_URL is %q: it must be an https URL on hasala.app", w.DoneURL)
+	}
+	switch {
+	case w.WaitlistMax < 1 || w.WaitlistPendingMax < 1:
+		return errors.New("HASALA_WAITLIST_MAX and HASALA_WAITLIST_PENDING_MAX must be positive")
+	case w.WaitlistRetention < 24*time.Hour:
+		return errors.New("HASALA_WAITLIST_RETENTION must be at least 24h")
+	case w.RateWaitlist < 1 || w.RateBulk < 1:
+		return errors.New("HASALA_EMAIL_RATE_WAITLIST and HASALA_EMAIL_RATE_BULK must be positive")
+	case w.LogRetention < 168*time.Hour || w.LogRetention > 2160*time.Hour:
+		return errors.New("HASALA_EMAIL_LOG_RETENTION must be between 168h and 2160h")
+	}
+	return nil
+}
+
 var cfAccountID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func (c Config) validateEmail(prod bool) error {
@@ -640,8 +706,17 @@ func (c Config) validateEmail(prod bool) error {
 			return fmt.Errorf("%s is %q: it must be an https URL on hasala.app with no query or fragment", name, raw)
 		}
 	}
-	if e.LogRetention < 168*time.Hour || e.LogRetention > 2160*time.Hour {
-		return fmt.Errorf("email.log_retention is %s (HASALA_EMAIL_LOG_RETENTION): it must be 168h to 2160h", e.LogRetention)
+	if e.APIBaseURL != "" {
+		u, err := url.Parse(e.APIBaseURL)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil ||
+			u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("HASALA_EMAIL_API_BASE_URL is %q: it must be an http(s) URL with no query or fragment",
+				e.APIBaseURL)
+		}
+		if prod && e.APIBaseURL != DefaultEmailAPIBaseURL {
+			return fmt.Errorf("HASALA_EMAIL_API_BASE_URL is %q: with trusted_proxy = cloudflare email goes only to %s",
+				e.APIBaseURL, DefaultEmailAPIBaseURL)
+		}
 	}
 	if e.Enabled() {
 		if !cfAccountID.MatchString(e.CloudflareAccountID) {

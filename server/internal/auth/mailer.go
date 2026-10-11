@@ -119,9 +119,18 @@ func (m *Mailer) enqueueAlertTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 // Renderers are this package's renderers for queued rows: alerts and codes.
 func (m *Mailer) Renderers() map[string]mailq.Renderer {
 	return map[string]mailq.Renderer{
-		"alert": mailq.RendererFunc(m.renderAlert),
-		"code":  mailq.RendererFunc(m.renderQueuedCode),
+		"alert": mailq.RenderFunc(m.renderAlert),
+		"code":  mailq.RenderFunc(m.renderQueuedCode),
 	}
+}
+
+// Register installs this package's renderers and the bounce hook (spec 02
+// §14.7) on q, the server's one outbox.
+func (m *Mailer) Register(q *mailq.Queue) {
+	for kind, r := range m.Renderers() {
+		q.Register(kind, r)
+	}
+	q.Bounced = BounceHook
 }
 
 // renderAlert builds an alert at send time, greeting by name, and mints the

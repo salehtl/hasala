@@ -93,7 +93,7 @@ func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writer
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
 		return true
 	}
-	if !s.DevFreezeIP.Allow(s.clientKey(r)) {
+	if !s.DevFreezeIP.Allow(clientKey(r)) {
 		return refuse()
 	}
 	if !keyproto.ValidWriterID(writerID) {

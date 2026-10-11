@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// meta-ip (spec 02 §16.2): 1/s per client IP, burst 20. Behind Cloudflare it
-// is one key until clientip.go (WS-3) lands; see clientKey.
+// meta-ip (spec 02 §16.2): 1/s per client IP, burst 20; the client IP is
+// clientip.go's key.
 const (
 	metaRate    = 1.0
 	metaBurst   = 20
@@ -46,7 +46,7 @@ func (s *Server) mountMeta(mux *http.ServeMux) {
 }
 
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
-	if !s.MetaPerIP.Allow(s.clientKey(r)) {
+	if !s.MetaPerIP.Allow(clientKey(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many requests; try again shortly")
 		return
 	}

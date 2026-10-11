@@ -13,64 +13,70 @@ import (
 	"time"
 )
 
-func TestTheCloudflareClientSendsOneRecipientAndClassifiesResults(t *testing.T) {
-	var (
-		status int
-		reply  string
-		got    map[string]any
-		auth   string
-		path   string
-	)
+func TestCloudflareClassifiesAnswers(t *testing.T) {
+	var gotAuth, gotPath string
+	var gotBody map[string]any
+	status, answer := 200, `{"success":true,"errors":[],"messages":[],"result":{"delivered":["a@example.com"],"permanent_bounces":[],"queued":[]}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth, path = r.Header.Get("Authorization"), r.URL.Path
-		raw, _ := io.ReadAll(r.Body)
-		got = map[string]any{}
-		_ = json.Unmarshal(raw, &got)
+		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
 		w.WriteHeader(status)
-		_, _ = io.WriteString(w, reply)
+		_, _ = w.Write([]byte(answer))
 	}))
 	defer srv.Close()
-	c := &Cloudflare{AccountID: "acct", Token: "tok", From: "no-reply@hasala.app", BaseURL: srv.URL}
-	m := Message{To: "maya@example.com", Subject: "Your Hasala code", Text: "body"}
-
-	ok := `{"success":true,"errors":[],"messages":[],"result":{"delivered":["maya@example.com"],"permanent_bounces":[],"queued":[]}}`
+	c, err := NewCloudflare("0123456789abcdef0123456789abcdef", "tok", "no-reply@hasala.app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.BaseURL = srv.URL
+	ctx := context.Background()
+	if _, err := c.Send(ctx, Message{To: "a@example.com", Subject: "s", Text: "t"}); err != nil {
+		t.Fatalf("delivered: %v", err)
+	}
+	if gotAuth != "Bearer tok" || gotPath != "/accounts/0123456789abcdef0123456789abcdef/email/sending/send" {
+		t.Fatalf("auth %q path %q", gotAuth, gotPath)
+	}
+	if gotBody["to"] != "a@example.com" || gotBody["from"] != "no-reply@hasala.app" || gotBody["html"] != nil {
+		t.Fatalf("body %v", gotBody)
+	}
 	for _, tc := range []struct {
 		status int
-		reply  string
+		answer string
 		want   error
 	}{
-		{200, ok, nil},
-		{200, `{"success":true,"errors":[],"result":{"delivered":[],"permanent_bounces":["maya@example.com"],"queued":[]}}`, ErrBounced},
+		{200, `{"success":true,"errors":[],"result":{"delivered":[],"permanent_bounces":["a@example.com"],"queued":[]}}`, ErrBounced},
 		{400, `{"success":false,"errors":[{"code":10001,"message":"email.sending.error.x"}],"result":null}`, ErrPermanent},
 		{401, `{"success":false,"errors":[{"code":10101,"message":"x"}],"result":null}`, ErrAuth},
 		{403, `{"success":false,"errors":[{"code":10203,"message":"x"}],"result":null}`, ErrAuth},
-		{429, `{"success":false,"errors":[{"code":10004,"message":"x"}],"result":null}`, errTransient},
-		{502, `bad gateway`, errTransient},
 	} {
-		status, reply = tc.status, tc.reply
-		_, err := c.Send(context.Background(), m)
-		if tc.want == nil && err != nil || tc.want != nil && !errors.Is(err, tc.want) {
-			t.Errorf("HTTP %d: %v, want %v", tc.status, err, tc.want)
-		}
-		if err != nil && strings.Contains(err.Error(), "maya@") {
-			t.Errorf("an error carries the address: %v", err)
+		status, answer = tc.status, tc.answer
+		if _, err := c.Send(ctx, Message{To: "a@example.com"}); !errors.Is(err, tc.want) {
+			t.Errorf("%d: %v, want %v", tc.status, err, tc.want)
 		}
 	}
-	if auth != "Bearer tok" || path != "/accounts/acct/email/sending/send" {
-		t.Fatalf("request %q %q", auth, path)
+	for _, bad := range []Message{{To: "a@example.com, b@example.com"}, {To: "a@example.com\r\nBcc: c@example.com"},
+		{To: ""}, {To: "a@example.com", Subject: "two\nlines"}} {
+		if _, err := c.Send(ctx, bad); !errors.Is(err, ErrPermanent) {
+			t.Errorf("%q / %q was not refused: %v", bad.To, bad.Subject, err)
+		}
 	}
-	for k := range got {
+	for k := range gotBody {
 		switch k {
 		case "to", "from", "subject", "text":
 		default:
 			t.Errorf("the request carries %q (only to, from, subject, text, and html when set)", k)
 		}
 	}
-	if got["to"] != "maya@example.com" || got["from"] != "no-reply@hasala.app" {
-		t.Fatalf("request body %v", got)
+	status, answer = 429, `{"success":false,"errors":[{"code":10004,"message":"x"}],"result":null}`
+	if _, err := c.Send(ctx, Message{To: "a@example.com"}); err == nil || errors.Is(err, ErrPermanent) ||
+		errors.Is(err, ErrAuth) || strings.Contains(err.Error(), "a@example") {
+		t.Fatalf("a 429 is transient and names no address, got %v", err)
 	}
-	if _, err := c.Send(context.Background(), Message{To: "a@example.com, b@example.com", Subject: "x"}); !errors.Is(err, ErrPermanent) {
-		t.Fatal("two recipients were accepted")
+	status, answer = 503, `{}`
+	_, err = c.Send(ctx, Message{To: "a@example.com"})
+	if err == nil || errors.Is(err, ErrAuth) || errors.Is(err, ErrPermanent) || errors.Is(err, ErrBounced) {
+		t.Fatalf("a 503 is transient, got %v", err)
 	}
 }
 
@@ -116,7 +122,7 @@ func TestTheTemplatesAreContentFree(t *testing.T) {
 		}
 		all = append(all, m)
 	}
-	all = append(all, AddressInUse("maya@example.com"), Deleted("maya@example.com", at), Test("maya@example.com"))
+	all = append(all, AddressInUse("maya@example.com"), Deleted("maya@example.com", at))
 	for _, m := range all {
 		if m.HTML != "" || !strings.HasSuffix(m.Text, Footer+"\n") {
 			t.Errorf("%q: HTML or no footer", m.Subject)

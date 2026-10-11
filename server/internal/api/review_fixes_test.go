@@ -109,16 +109,16 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 
 	h := newHarness(t)
 	h.srv.Logf = sink.logf
-	h.srv.TrustedProxy = ProxyCloudflare
+	h.srv.TrustCloudflare = true
 	const clientIP = "203.0.113.77"
 	keys, err := authkeys.New(bytes.Repeat([]byte{1}, 32), map[int][]byte{1: bytes.Repeat([]byte{2}, 32)}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fake := &mail.Fake{}
-	q := &mailq.Queue{Pool: h.pool, Sender: fake, Tagger: keys.EmailTag, Logf: sink.logf}
+	q := mailq.New(h.pool, fake, keys)
 	m := &auth.Mailer{Queue: q, Keys: keys, Async: func(f func()) { f() }, Logf: sink.logf}
-	q.Renderers = m.Renderers()
+	m.Register(q)
 	h.srv.EnableAccounts(keys, nil, m)
 	inner := h.srv.Handler()
 	h.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +131,7 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 	a := h.passwordSignup(keys, fake, addr)
 	// From here, the provider refuses one send, so the worker logs a failure.
 	failOnce := true
-	fake.Err = func(mail.Message) error {
+	fake.ErrFor = func(mail.Message) error {
 		if failOnce {
 			failOnce = false
 			return fmt.Errorf("mail: the provider said no (HTTP 503)")
@@ -170,7 +170,7 @@ func TestNothingSecretReachesTheLog(t *testing.T) {
 	h.req("PUT", "/api/v1/account/display-name", a.token, map[string]string{"display_name": "Canary\u0000Name"})
 	// The worker: one transient failure, then the rest.
 	for i := 0; i < 3; i++ {
-		if _, err := q.RunOnce(bg); err != nil {
+		if _, err := q.Drain(bg); err != nil {
 			t.Fatal(err)
 		}
 	}

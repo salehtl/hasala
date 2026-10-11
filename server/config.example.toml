@@ -56,4 +56,13 @@ allowed_environments = ["production", "sandbox"]
 # from_name = "Hasala"
 # from = "no-reply@hasala.app"
 # freeze_url = "https://hasala.app/freeze"
-# log_retention = "720h"
+
+# Spec 07's website routes and the email log are configured by environment
+# only (no TOML keys): HASALA_WEB_ORIGINS (CORS, e.g. https://hasala.app;
+# empty = off), HASALA_WEB_WAITLIST_DONE_URL, HASALA_WAITLIST_MAX,
+# HASALA_WAITLIST_PENDING_MAX, HASALA_WAITLIST_RETENTION,
+# HASALA_EMAIL_RATE_WAITLIST, HASALA_EMAIL_RATE_BULK and
+# HASALA_EMAIL_LOG_RETENTION. The email worker runs only with
+# HASALA_AUTH_KEY_FILE (email_tag), and the waitlist routes only with both it
+# and [email]; without [email] every email fails (mail_log says `failed`) and
+# nothing is sent.

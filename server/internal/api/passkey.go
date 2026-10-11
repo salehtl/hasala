@@ -52,6 +52,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // Rate-limit budget. The shape of the legitimate traffic is a person signing in:
@@ -74,6 +75,9 @@ const (
 // AAK the device just generated) is bound into the ceremony's challenge:
 // C_reg = SHA256("hasala/v1/register" ‖ 00 ‖ nonce ‖ authority_pubkey) (spec
 // 01 §10.3, D01; spec 02 #3).
+//
+// signup_id names a signup that #43/#44 proved (spec 02 §10.7): the invite,
+// its address binding and its link key were checked there.
 type PasskeyRegisterBeginRequest struct {
 	SignupID        string `json:"signup_id"`
 	AuthorityPubkey string `json:"authority_pubkey"`
@@ -134,7 +138,7 @@ type PasskeyAddResponse struct {
 // other client at 429 indefinitely.
 func (s *Server) passkeyLimited(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.PasskeyPerIP.Allow(s.clientKey(r)) || !s.PasskeyGlobal.Allow("") {
+		if !s.PasskeyPerIP.Allow(clientKey(r)) || !s.PasskeyGlobal.Allow("") {
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many passkey attempts")
 			return
 		}
@@ -317,6 +321,7 @@ func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, 
 		s.writePasskeyAddErr(w, r, err)
 		return
 	}
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, PasskeyAddResponse{CredentialID: b64url(credID)})
 }
 

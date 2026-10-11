@@ -2,6 +2,7 @@
 import Icon from '../Icon.astro';
 import WaitlistForm from '../WaitlistForm.astro';
 import { SITE } from '../../data/site';
+import { WAITLIST_MODE } from '../../lib/env';
 ---
 
 <section id="invite" class="beta" aria-labelledby="beta-title">
@@ -11,8 +12,11 @@ import { SITE } from '../../data/site';
       <span class="beta__badge"><span class="dot" aria-hidden="true"></span>Private beta on TestFlight</span>
       <h2 id="beta-title" class="beta__title">Get an invite.</h2>
       <p class="beta__lead">
-        We’re letting people in a few at a time, so every bank alert gets read properly. Leave your email and your bank, and we’ll send a TestFlight invite
-        when there’s room.
+        {
+          WAITLIST_MODE === 'email'
+            ? 'We’re letting people in a few at a time, so every bank alert gets read properly. Fill in your email and your bank, send the email the form opens in your email app, and we’ll send a TestFlight invite when there’s room.'
+            : 'We’re letting people in a few at a time, so every bank alert gets read properly. Leave your email and your bank, and we’ll send a TestFlight invite when there’s room.'
+        }
       </p>
       <ul class="beta__reqs" role="list">
         {

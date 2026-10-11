@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // routes_writers.go: the writer challenge, AAK-only registration, revocation
@@ -124,6 +125,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request, userID u
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	// A new device is a security event for every other one (spec 02 §12.5).
+	s.wakeOthers(r.Context(), userID, req.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, RegisterResponse{WriterID: req.WriterID})
 }
 
@@ -161,12 +164,21 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request, userID uui
 	if !ok {
 		return
 	}
+	// The revoked writer's token goes with it (spec 02 §9.5), so it is read
+	// first: the revoked device is woken too (§12.5) and learns it is out.
+	revoked := s.writerTokens(r.Context(), userID, req.WriterID)
 	if err := s.Writers.Revoke(r.Context(), userID, info, auth.Revocation{
 		WriterID: req.WriterID, SignerWriterID: req.SignerWriterID, Nonce: nonce,
 		FinalCounter: counter, FinalHead: head, Sig: sig, StepUp: su,
 	}); err != nil {
 		s.writeKeyErr(w, r, err)
 		return
+	}
+	// Every other device hears of the revocation, and so does the revoked one
+	// through the token collected above.
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
+	if req.WriterID != info.WriterID {
+		s.wakeTokens(r.Context(), revoked, pushv2.ReasonSecurity)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -21,7 +21,7 @@ func (s *Server) mountEmail(mux *http.ServeMux) {
 // codeLimited is code-ip on a session route.
 func (s *Server) codeLimited(h authedHandler) authedHandler {
 	return func(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-		if !s.CodePerIP.Allow(s.clientKey(r)) {
+		if !s.CodePerIP.Allow(clientKey(r)) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
 			return

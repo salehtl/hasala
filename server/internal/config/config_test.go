@@ -156,13 +156,13 @@ func TestValuesAreValidated(t *testing.T) {
 	wantErr(t, env{"HASALA_RP_ID": "https://hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app"}, "bare domain")
 	wantErr(t, env{"HASALA_RP_ID": "hasala.app"}, "rp_origins is empty")
 	wantErr(t, env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "hasala.app"}, "absolute origin")
-	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "100h"}, "log_retention")
-	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "2161h"}, "log_retention")
-	if c := mustLoad(t, env{"HASALA_EMAIL_LOG_RETENTION": "168h"}); c.Email.LogRetention != 168*time.Hour {
-		t.Fatalf("HASALA_EMAIL_LOG_RETENTION not applied: %v", c.Email.LogRetention)
+	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "100h"}, "HASALA_EMAIL_LOG_RETENTION")
+	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "2161h"}, "HASALA_EMAIL_LOG_RETENTION")
+	if c := mustLoad(t, env{"HASALA_EMAIL_LOG_RETENTION": "168h"}); c.Web.LogRetention != 168*time.Hour {
+		t.Fatalf("HASALA_EMAIL_LOG_RETENTION not applied: %v", c.Web.LogRetention)
 	}
-	if c := mustLoad(t, env{}); c.Email.LogRetention != 720*time.Hour {
-		t.Fatalf("the email log's default retention is %v, want 720h", c.Email.LogRetention)
+	if c := mustLoad(t, env{}); c.Web.LogRetention != 720*time.Hour {
+		t.Fatalf("the email log's default retention is %v, want 720h", c.Web.LogRetention)
 	}
 }
 
@@ -243,6 +243,20 @@ func TestTheCloudflarePostureIsStricter(t *testing.T) {
 	wantErr(t, prod(env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "http://hasala.app"}), "https")
 	// The same raw value is tolerated off Cloudflare (local runs and tests).
 	mustLoad(t, env{"HASALA_SOMETHING_TOKEN": "raw"})
+	// HASALA_EMAIL_API_BASE_URL (a local run's mail capture): behind
+	// Cloudflare only the default is accepted; off it, any http(s) root.
+	capture := "http://127.0.0.1:18444/client/v4"
+	wantErr(t, prod(env{"HASALA_EMAIL_API_BASE_URL": capture}), "HASALA_EMAIL_API_BASE_URL")
+	wantErr(t, prod(env{"HASALA_EMAIL_API_BASE_URL": DefaultEmailAPIBaseURL + "/"}), "HASALA_EMAIL_API_BASE_URL")
+	if c := mustLoad(t, prod(env{"HASALA_EMAIL_API_BASE_URL": DefaultEmailAPIBaseURL})); c.Email.APIBaseURL != DefaultEmailAPIBaseURL {
+		t.Fatalf("the default base: %q", c.Email.APIBaseURL)
+	}
+	if c := mustLoad(t, env{"HASALA_EMAIL_API_BASE_URL": capture}); c.Email.APIBaseURL != capture {
+		t.Fatalf("a local capture base: %q", c.Email.APIBaseURL)
+	}
+	for _, bad := range []string{"ftp://127.0.0.1/x", "127.0.0.1:18444", "http://u:p@127.0.0.1/x", "http://127.0.0.1/x?y=1"} {
+		wantErr(t, env{"HASALA_EMAIL_API_BASE_URL": bad}, "HASALA_EMAIL_API_BASE_URL")
+	}
 }
 
 func TestModesHaveTheirOwnRequirements(t *testing.T) {

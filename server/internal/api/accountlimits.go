@@ -76,7 +76,7 @@ func (s *Server) EnableAccounts(keys *authkeys.Keys, gate *authkeys.Gate, mailer
 // limited runs the unauthenticated limiters in order, before any DB work.
 func (s *Server) limited(h http.HandlerFunc, ls ...*Limiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		key := s.clientKey(r)
+		key := clientKey(r)
 		for _, l := range ls {
 			k := key
 			if l == s.PasskeyGlobal || l == s.FreezeGlobal || l == s.DevFreezeGlobal {

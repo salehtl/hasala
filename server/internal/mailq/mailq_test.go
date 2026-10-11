@@ -1,15 +1,15 @@
 package mailq
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"os"
+	"regexp"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -22,276 +22,281 @@ func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
 var bg = context.Background()
 
-type clock struct {
-	mu sync.Mutex
-	t  time.Time
+type fixedTagger struct{}
+
+func (fixedTagger) EmailTag(s string) []byte {
+	b := bytes.Repeat([]byte{1}, 32)
+	copy(b, s)
+	return b
 }
 
-func (c *clock) now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
-func (c *clock) add(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.t = c.t.Add(d)
-}
-
-type fixture struct {
-	t     *testing.T
-	pool  *pgxpool.Pool
-	c     *clock
-	fake  *mail.Fake
-	q     *Queue
-	user  uuid.UUID
-	bounc int
-}
-
-func newFixture(t *testing.T) *fixture {
-	pool := pgtest.New(t)
-	// Postgres keeps microseconds; Linux clocks have nanoseconds.
-	f := &fixture{t: t, pool: pool, c: &clock{t: time.Now().UTC().Truncate(time.Microsecond)}, fake: &mail.Fake{}}
-	f.user = oplogtest.NewUserWithoutKeys(t, pool)
-	f.q = &Queue{Pool: pool, Sender: f.fake, Now: f.c.now, Logf: func(string, ...any) {},
-		Renderers: map[string]Renderer{
-			"alert": RendererFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
-				return mail.Message{Subject: "alert " + r.Subkind, Text: "text"}, nil
-			}),
-			"deleted": RendererFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
-				return mail.Deleted(r.Recipient, r.CreatedAt), nil
-			}),
-		},
-		Bounced: func(context.Context, pgx.Tx, Row) error { f.bounc++; return nil },
-	}
-	return f
-}
-
-func (f *fixture) enqueue(e Enqueue) int64 {
-	f.t.Helper()
-	tx, err := f.pool.Begin(bg)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	id, err := f.q.EnqueueTx(bg, tx, e)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	if err := tx.Commit(bg); err != nil {
-		f.t.Fatal(err)
-	}
-	return id
-}
-
-func (f *fixture) row(id int64) (status string, recipient *string, attempts int, next *time.Time) {
-	f.t.Helper()
-	if err := f.pool.QueryRow(bg, `SELECT status, recipient, attempts, next_attempt_at FROM mail_log WHERE id = $1`, id).
-		Scan(&status, &recipient, &attempts, &next); err != nil {
-		f.t.Fatal(err)
-	}
-	return
-}
-
-func tag() []byte { return make([]byte, 32) }
-
-func TestAQueuedAlertIsRenderedSentAndFinalized(t *testing.T) {
-	f := newFixture(t)
-	id := f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: "maya@example.com",
-		Tag: tag(), UserID: &f.user, Params: map[string]any{"event_at": "x"}})
-	if n, err := f.q.RunOnce(bg); err != nil || n != 1 {
-		t.Fatalf("RunOnce = %d, %v", n, err)
-	}
-	st, rcpt, attempts, _ := f.row(id)
-	if st != "sent" || rcpt == nil || attempts != 1 {
-		t.Fatalf("row %s %v %d", st, rcpt, attempts)
-	}
-	if got := f.fake.Sent(); len(got) != 1 || got[0].To != "maya@example.com" {
-		t.Fatalf("sent %+v", got)
-	}
-	var hint string
-	_ = f.pool.QueryRow(bg, `SELECT recipient_hint FROM mail_log WHERE id = $1`, id).Scan(&hint)
-	if hint != "m•••@example.com" {
-		t.Fatalf("hint %q", hint)
-	}
-}
-
-func TestParamsOutsideTheAllowListAreRefused(t *testing.T) {
-	f := newFixture(t)
-	tx, _ := f.pool.Begin(bg)
-	defer func() { _ = tx.Rollback(bg) }()
-	if _, err := f.q.EnqueueTx(bg, tx, Enqueue{Kind: "alert", Lane: LaneTransactional, To: "m@example.com",
-		Params: map[string]any{"name": "Maya"}}); err == nil {
-		t.Fatal("a name in params was accepted")
-	}
-	if _, err := f.q.EnqueueTx(bg, tx, Enqueue{Kind: "carrier_pigeon", Lane: LaneTransactional, To: "m@example.com"}); err == nil {
-		t.Fatal("an unknown kind was accepted")
-	}
-}
-
-func TestTransientFailuresBackOffInsideTheKindsWindow(t *testing.T) {
-	f := newFixture(t)
-	f.fake.Err = func(mail.Message) error { return errors.New("upstream 503") }
-	id := f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: "m@example.com", Tag: tag(), UserID: &f.user})
-	_, _ = f.q.RunOnce(bg)
-	st, _, attempts, next := f.row(id)
-	if st != "queued" || attempts != 1 || next == nil || !next.Equal(f.c.now().Add(time.Minute)) {
-		t.Fatalf("after one transient failure: %s %d %v", st, attempts, next)
-	}
-	// Not due yet.
-	if n, _ := f.q.RunOnce(bg); n != 0 {
-		t.Fatal("a row was retried before its backoff")
-	}
-	f.c.add(time.Minute)
-	f.fake.Err = nil
-	if n, _ := f.q.RunOnce(bg); n != 1 {
-		t.Fatal("the retry did not send")
-	}
-	// A code row's window is ten minutes: a failure past it is final.
-	f.fake.Err = func(mail.Message) error { return errors.New("upstream 503") }
-	f.q.Renderers["code"] = RendererFunc(func(context.Context, pgx.Tx, Row) (mail.Message, error) { return mail.Message{}, nil })
-	cid := f.enqueue(Enqueue{Kind: "code", Lane: LaneTransactional, To: "m@example.com", Tag: tag(), UserID: &f.user,
-		Params: map[string]any{"purpose": "email_verify"}})
-	for i := 0; i < 4; i++ {
-		_, _ = f.q.RunOnce(bg)
-		f.c.add(30 * time.Minute)
-	}
-	if st, _, _, _ := f.row(cid); st != "failed" {
-		t.Fatalf("a code past its window is %s", st)
-	}
-}
-
-func TestAnAuthFailurePausesEveryLane(t *testing.T) {
-	f := newFixture(t)
-	f.fake.Err = func(mail.Message) error { return &mail.SendError{Class: mail.ErrAuth, Status: 401} }
-	a := f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: "a@example.com", Tag: tag(), UserID: &f.user})
-	b := f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: "b@example.com", Tag: tag(), UserID: &f.user})
-	_, _ = f.q.RunOnce(bg)
-	if !f.q.Paused() {
-		t.Fatal("an auth failure did not pause the worker")
-	}
-	for _, id := range []int64{a, b} {
-		if st, _, _, _ := f.row(id); st != "queued" {
-			t.Fatalf("row %d is %s", id, st)
-		}
-	}
-	f.fake.Err = nil
-	if n, _ := f.q.RunOnce(bg); n != 0 || len(f.fake.Sent()) != 0 {
-		t.Fatal("a paused worker sent")
-	}
-}
-
-func TestADeletedRowLosesItsAddressWhenFinal(t *testing.T) {
-	f := newFixture(t)
-	id := f.enqueue(Enqueue{Kind: "deleted", Lane: LaneTransactional, To: "gone@example.com", Tag: tag(),
-		Params: map[string]any{"deleted_at": "x"}})
-	_, _ = f.q.RunOnce(bg)
-	st, rcpt, _, _ := f.row(id)
-	if st != "sent" || rcpt != nil {
-		t.Fatalf("a final deleted row: %s, recipient kept %v", st, rcpt != nil)
-	}
-}
-
-func TestSendNowLogsTheSendAndNeverTheSecret(t *testing.T) {
-	f := newFixture(t)
-	err := f.q.SendNow(bg, Enqueue{Kind: "code", Lane: LaneTransactional, To: "m@example.com", Tag: tag(), UserID: &f.user,
-		Params: map[string]any{"purpose": "signup"}}, func() (mail.Message, error) {
-		return mail.Code("m@example.com", "signup", "424242", "")
+func enqueue(t *testing.T, pool *pgxpool.Pool, q *Queue, e Enqueue) int64 {
+	t.Helper()
+	var id int64
+	err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
+		var err error
+		id, err = q.EnqueueTx(bg, tx, e)
+		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var (
-		status string
-		params string
-	)
-	if err := f.pool.QueryRow(bg, `SELECT status, params::text FROM mail_log`).Scan(&status, &params); err != nil {
+	return id
+}
+
+func row(t *testing.T, pool *pgxpool.Pool, id int64) (status string, attempts int, recipient *string, errText *string) {
+	t.Helper()
+	if err := pool.QueryRow(bg, `SELECT status, attempts, recipient, error FROM mail_log WHERE id = $1`, id).
+		Scan(&status, &attempts, &recipient, &errText); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestHint(t *testing.T) {
+	for in, want := range map[string]string{"maya@example.com": "m•••@example.com", "m@example.com": "•••@example.com"} {
+		if got := Hint(in); got != want {
+			t.Errorf("Hint(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if Greeting("Maya Rahman") != "Hi Maya," || Greeting("") != "Hi," || Greeting("Maya") != "Hi Maya," {
+		t.Fatal("Greeting")
+	}
+}
+
+// F7-6: no template carries a script, an inline style, an http:// link or a
+// remote image, and every href is on https://hasala.app/.
+func TestTemplatesAreContentFree(t *testing.T) {
+	href := regexp.MustCompile(`href="([^"]*)"`)
+	n := 0
+	err := fs.WalkDir(templateFS, "templates", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, _ := templateFS.ReadFile(path)
+		s := string(b)
+		n++
+		for _, bad := range []string{"<script", " style=", "http://", "<img"} {
+			if strings.Contains(strings.ToLower(s), bad) {
+				t.Errorf("%s contains %q", path, bad)
+			}
+		}
+		for _, m := range href.FindAllStringSubmatch(s, -1) {
+			if !strings.HasPrefix(m[1], "https://hasala.app/") && !strings.HasPrefix(m[1], "{{") {
+				t.Errorf("%s links to %q", path, m[1])
+			}
+		}
+		return nil
+	})
+	if err != nil || n < 10 {
+		t.Fatalf("walked %d templates: %v", n, err)
+	}
+	for _, kind := range []string{"waitlist", "waitlist_already", "waitlist_has_account", "invite", "bank_supported", "test"} {
+		r, err := RenderTemplate(kind, Content{Email: "a@example.com", BankName: "Emirates NBD",
+			ConfirmURL: "https://hasala.app/waitlist/confirm#x", LeaveURL: "https://hasala.app/waitlist/leave#y",
+			InviteURL: "https://hasala.app/i/X#y"})
+		if err != nil || r.Subject == "" || !strings.Contains(r.Text, "Hasala never asks for your recovery phrase") {
+			t.Errorf("%s: %+v %v", kind, r, err)
+		}
+		if strings.Contains(r.Subject, "\n") || strings.HasPrefix(r.Text, "\n") {
+			t.Errorf("%s: subject/body split", kind)
+		}
+	}
+}
+
+func TestWorkerOutcomes(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	q.Register("test", TestRenderer)
+
+	// Sent.
+	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "a@example.com"})
+	if n, err := q.Drain(bg); err != nil || n != 1 {
+		t.Fatalf("drain %d %v", n, err)
+	}
+	if st, att, _, _ := row(t, pool, id); st != "sent" || att != 1 || len(fake.Sent()) != 1 {
+		t.Fatalf("sent row %s %d", st, att)
+	}
+
+	// Transient: back to queued with a backoff.
+	fake.Err = errors.New("mail: upstream: http 503 code 0")
+	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "b@example.com"})
+	_, _ = q.Drain(bg)
+	if st, att, _, e := row(t, pool, id); st != "queued" || att != 1 || e == nil {
+		t.Fatalf("transient row %s %d", st, att)
+	}
+	var wait bool
+	_ = pool.QueryRow(bg, `SELECT next_attempt_at > now() + interval '50 seconds' FROM mail_log WHERE id = $1`, id).Scan(&wait)
+	if !wait {
+		t.Fatal("no backoff after a transient failure")
+	}
+	if _, err := pool.Exec(bg, `DELETE FROM mail_log WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+
+	// Permanent and bounced: final.
+	fake.Err = mail.ErrPermanent
+	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "c@example.com"})
+	_, _ = q.Drain(bg)
+	if st, _, _, _ := row(t, pool, id); st != "failed" {
+		t.Fatalf("permanent %s", st)
+	}
+	fake.Err = mail.ErrBounced
+	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "d@example.com"})
+	_, _ = q.Drain(bg)
+	if st, _, _, _ := row(t, pool, id); st != "bounced" {
+		t.Fatalf("bounced %s", st)
+	}
+
+	// A `deleted` email loses its address the moment it is final (O-17).
+	fake.Err = nil
+	q.Register("deleted", RenderFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
+		return mail.Message{To: r.Recipient, Subject: "s", Text: "t"}, nil
+	}))
+	id = enqueue(t, pool, q, Enqueue{Kind: "deleted", To: "gone@example.com", Params: map[string]any{"deleted_at": "x"}})
+	_, _ = q.Drain(bg)
+	if st, _, rcp, _ := row(t, pool, id); st != "sent" || rcp != nil {
+		t.Fatalf("deleted row %s keeps %v", st, rcp)
+	}
+
+	// Auth: the row goes back to queued and every lane stops.
+	fake.Err = mail.ErrAuth
+	id = enqueue(t, pool, q, Enqueue{Kind: "test", To: "e@example.com"})
+	_, _ = q.Drain(bg)
+	if st, _, _, _ := row(t, pool, id); st != "queued" || !q.Stopped() {
+		t.Fatalf("auth: %s stopped=%v", st, q.Stopped())
+	}
+	fake.Err = nil
+	if n, _ := q.Drain(bg); n != 0 {
+		t.Fatal("a stopped worker sent")
+	}
+
+	// Params outside the allow-list are a programming error.
+	err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
+		_, err := q.EnqueueTx(bg, tx, Enqueue{Kind: "test", To: "f@example.com", Params: map[string]any{"name": "Maya"}})
+		return err
+	})
+	if err == nil {
+		t.Fatal("a name in params was accepted")
+	}
+}
+
+func TestLaneRateHoldsRowsQueued(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	q.Rates = map[Lane]int{LaneBulk: 1}
+	q.Register("test", TestRenderer)
+	a := enqueue(t, pool, q, Enqueue{Kind: "test", Lane: LaneBulk, To: "a@example.com"})
+	b := enqueue(t, pool, q, Enqueue{Kind: "test", Lane: LaneBulk, To: "b@example.com"})
+	c := enqueue(t, pool, q, Enqueue{Kind: "test", Lane: LaneTransactional, To: "c@example.com"})
+	_, _ = q.Drain(bg)
+	sa, _, _, _ := row(t, pool, a)
+	sb, _, _, _ := row(t, pool, b)
+	sc, _, _, _ := row(t, pool, c)
+	if sa != "sent" || sb != "queued" || sc != "sent" {
+		t.Fatalf("a=%s b=%s c=%s: the bulk lane's rate did not hold b, or held the transactional lane", sa, sb, sc)
+	}
+}
+
+func TestSendNowAndSweep(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	err := q.SendNow(bg, Enqueue{Kind: "code", To: "a@example.com", Params: map[string]any{"purpose": "signup"}},
+		func() (mail.Message, error) { return mail.Message{Subject: "Your Hasala code", Text: "123456"}, nil })
+	if err != nil || len(fake.Sent()) != 1 || fake.Sent()[0].To != "a@example.com" {
+		t.Fatalf("SendNow: %v %+v", err, fake.Sent())
+	}
+	var st string
+	_ = pool.QueryRow(bg, `SELECT status FROM mail_log`).Scan(&st)
+	if st != "sent" {
+		t.Fatalf("SendNow row %s", st)
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET created_at = now() - interval '31 days'`); err != nil {
+		t.Fatal(err)
+	}
+	if msg, err := q.Sweep(bg); err != nil || msg == "" {
+		t.Fatalf("sweep %q %v", msg, err)
+	}
+	var n int
+	_ = pool.QueryRow(bg, `SELECT count(*) FROM mail_log`).Scan(&n)
+	if n != 0 {
+		t.Fatal("retention kept a 31-day-old row")
+	}
+}
+
+// serve without [email]: a send fails for good at once, so the log never says
+// `sent` for a message that went nowhere and the row is not retried.
+func TestUnconfiguredSenderFailsRowsAtOnce(t *testing.T) {
+	pool := pgtest.New(t)
+	q := New(pool, mail.Unconfigured{}, fixedTagger{})
+	q.Register("test", TestRenderer)
+	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "nowhere@example.com"})
+	if n, err := q.Drain(bg); err != nil || n != 1 {
+		t.Fatalf("drain %d %v", n, err)
+	}
+	st, att, _, e := row(t, pool, id)
+	if st != "failed" || att != 1 || e == nil || !strings.Contains(*e, "not configured") {
+		t.Fatalf("row %s attempts %d error %v", st, att, e)
+	}
+	if !errors.Is(mail.ErrNotConfigured, mail.ErrPermanent) || q.Stopped() {
+		t.Fatal("not configured must be permanent and must not stop the worker")
+	}
+}
+
+// Spec 02 §14.7: a bounce to an account's address runs the hook in the
+// finalizing transaction, for a queued row and for a SendNow code alike; a
+// bounce with no account runs nothing.
+func TestABounceRunsTheHook(t *testing.T) {
+	pool := pgtest.New(t)
+	user := oplogtest.NewUserWithoutKeys(t, pool)
+	fake := &mail.Fake{Err: mail.ErrBounced}
+	q := New(pool, fake, fixedTagger{})
+	q.Register("test", TestRenderer)
+	var hooked []Row
+	q.Bounced = func(_ context.Context, _ pgx.Tx, r Row) error { hooked = append(hooked, r); return nil }
+
+	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "a@example.com", UserID: &user})
+	_, _ = q.Drain(bg)
+	if st, _, _, _ := row(t, pool, id); st != "bounced" || len(hooked) != 1 || *hooked[0].UserID != user {
+		t.Fatalf("queued: status %s, hook %+v", st, hooked)
+	}
+	_ = q.SendNow(bg, Enqueue{Kind: "code", To: "a@example.com", UserID: &user, Params: map[string]any{"purpose": "email_verify"}},
+		func() (mail.Message, error) { return mail.Message{Subject: "s", Text: "t"}, nil })
+	if len(hooked) != 2 {
+		t.Fatalf("SendNow: the hook ran %d times", len(hooked))
+	}
+	_ = q.SendNow(bg, Enqueue{Kind: "code", To: "b@example.com", Params: map[string]any{"purpose": "signup"}},
+		func() (mail.Message, error) { return mail.Message{Subject: "s", Text: "t"}, nil })
+	if len(hooked) != 2 {
+		t.Fatal("a bounce with no account ran the hook")
+	}
+}
+
+// SendNow writes the row before the send, keeps no secret in it, and makes
+// one attempt: a transient failure is final.
+func TestSendNowLogsTheSendAndNeverTheSecret(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	if err := q.SendNow(bg, Enqueue{Kind: "code", To: "m@example.com", Params: map[string]any{"purpose": "signup"}},
+		func() (mail.Message, error) { return mail.Code("m@example.com", "signup", "424242", "") }); err != nil {
+		t.Fatal(err)
+	}
+	var status, params string
+	if err := pool.QueryRow(bg, `SELECT status, params::text FROM mail_log`).Scan(&status, &params); err != nil {
 		t.Fatal(err)
 	}
 	if status != "sent" || strings.Contains(params, "424242") {
 		t.Fatalf("row %s %s", status, params)
 	}
-	// One attempt: a transient failure is final.
-	f.fake.Err = func(mail.Message) error { return errors.New("upstream") }
-	_ = f.q.SendNow(bg, Enqueue{Kind: "code", Lane: LaneTransactional, To: "m@example.com", Tag: tag(),
-		Params: map[string]any{"purpose": "signup"}}, func() (mail.Message, error) { return mail.Message{}, nil })
-	if n := 0; f.pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE status = 'failed'`).Scan(&n) != nil || n != 1 {
-		t.Fatal("a failed SendNow is not final")
-	}
-}
-
-func TestABounceRunsTheHook(t *testing.T) {
-	f := newFixture(t)
-	f.fake.Err = func(mail.Message) error { return &mail.SendError{Class: mail.ErrBounced, Status: 200} }
-	id := f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: "m@example.com", Tag: tag(), UserID: &f.user})
-	_, _ = f.q.RunOnce(bg)
-	if st, _, _, _ := f.row(id); st != "bounced" || f.bounc != 1 {
-		t.Fatalf("status %s, hook ran %d", st, f.bounc)
-	}
-}
-
-func TestHint(t *testing.T) {
-	for in, want := range map[string]string{"maya@example.com": "m•••@example.com", "m@example.com": "•••@example.com"} {
-		if Hint(in) != want {
-			t.Errorf("Hint(%q) = %q", in, Hint(in))
-		}
-	}
-}
-
-// Spec 07 §2.11, §6.6: mail-redact drops a subject-less row's address seven
-// days after it became final; mail-log deletes rows past the retention, never
-// one being sent.
-func TestTheLogSweepsRedactAndExpireRows(t *testing.T) {
-	f := newFixture(t)
-	alert := func(to string, user *uuid.UUID) int64 {
-		return f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: to, Tag: tag(),
-			UserID: user, Params: map[string]any{"event_at": "x"}})
-	}
-	orphan := alert("nobody@example.com", nil)
-	owned := alert("maya@example.com", &f.user)
-	if n, err := f.q.RunOnce(bg); err != nil || n != 2 {
-		t.Fatalf("RunOnce = %d, %v", n, err)
-	}
-	queued := alert("later@example.com", nil)
-	if _, err := f.pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = $2 WHERE id = $1`, queued, f.c.now().Add(365*24*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	sending := alert("inflight@example.com", nil)
-	if _, err := f.pool.Exec(bg, `UPDATE mail_log SET status = 'sending', next_attempt_at = NULL, lease_until = $2 WHERE id = $1`,
-		sending, f.c.now().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-
-	f.c.add(6 * 24 * time.Hour)
-	if _, err := f.q.SweepLog(bg, 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, rcpt, _, _ := f.row(orphan); rcpt == nil {
-		t.Fatal("redacted before seven days")
-	}
-	f.c.add(2 * 24 * time.Hour)
-	if _, err := f.q.SweepLog(bg, 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, rcpt, _, _ := f.row(orphan); rcpt != nil {
-		t.Fatal("a final subject-less row kept its address past seven days")
-	}
-	if _, rcpt, _, _ := f.row(owned); rcpt == nil {
-		t.Fatal("a row with a subject lost its address to mail-redact")
-	}
-	if _, rcpt, _, _ := f.row(queued); rcpt == nil {
-		t.Fatal("a queued row lost its address")
-	}
-
-	f.c.add(23 * 24 * time.Hour) // 31 days
-	n, err := f.q.SweepLog(bg, DefaultLogRetention)
-	if err != nil || n != 3 {
-		t.Fatalf("SweepLog = %d, %v", n, err)
-	}
-	var left []int64
-	rows, _ := f.pool.Query(bg, `SELECT id FROM mail_log ORDER BY id`)
-	for rows.Next() {
-		var id int64
-		_ = rows.Scan(&id)
-		left = append(left, id)
-	}
-	rows.Close()
-	if len(left) != 1 || left[0] != sending {
-		t.Fatalf("rows left after the retention: %v (want only the one being sent, %d)", left, sending)
+	fake.Err = errors.New("upstream")
+	_ = q.SendNow(bg, Enqueue{Kind: "code", To: "m@example.com", Params: map[string]any{"purpose": "signup"}},
+		func() (mail.Message, error) { return mail.Message{}, nil })
+	var n int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE status = 'failed'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("a failed SendNow is not final: %d %v", n, err)
 	}
 }

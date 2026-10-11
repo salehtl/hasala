@@ -74,7 +74,10 @@ func isRead(method string) bool {
 // op it could not upload, which is what makes pausing writes survivable at all.
 func (s *Server) headroomGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.Headroom != nil && !isRead(r.Method) && s.Headroom.Tripped() {
+		// The Gmail hook is exempt (spec 02 §13.4): it writes at most one row
+		// per link per hour, skips even that while the fuse is tripped, and a
+		// 503 would only make Pub/Sub retry.
+		if s.Headroom != nil && !isRead(r.Method) && r.URL.Path != "/hooks/gmail/pubsub" && s.Headroom.Tripped() {
 			s.logf("api: %s: refused, the headroom fuse is tripped", route(r))
 			// A minute: long enough that a fleet of retrying clients does not
 			// become its own load, short enough that writes resume promptly

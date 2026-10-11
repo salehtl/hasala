@@ -109,6 +109,23 @@ var seeders = map[string]seeder{
 		               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', $2, $3, 'production', now(), now())`,
 			u, session, hex.EncodeToString(randBytes(t, 32)))
 	},
+	// The Gmail mailbox link and its challenge (spec 02 §13.2).
+	"public.mailbox_links": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		ensureWriter(t, pool, u)
+		exec(t, pool, `INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id, created_at, updated_at)
+		               VALUES ($1, 'gmail', $2, $3, 'ios-00000000-0000-4000-8000-000000000206', now(), now())`,
+			u, randBytes(t, 32), randBytes(t, 8))
+	},
+	"public.mailbox_link_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		session := ensureSession(t, pool, u)
+		exec(t, pool, `INSERT INTO mailbox_link_challenges (nonce_hash, user_id, session_hash, issued_at, expires_at)
+		               VALUES ($2, $1, $3, now(), now() + interval '15 minutes')`, u, randBytes(t, 32), session)
+	},
+	// Spec 07: an app bank request and an alert in the email log.
+	"public.bank_requests": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO bank_requests (other_key, other_text, source, user_id, created_at)
+		               VALUES ('some bank', 'Some Bank', 'app', $1, now())`, u)
+	},
 	"public.webauthn_credentials": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_credentials
 		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, attestation_sha256, created_at)

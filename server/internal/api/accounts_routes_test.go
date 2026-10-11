@@ -29,9 +29,9 @@ func (h *harness) accounts() (*authkeys.Keys, *mail.Fake, *mailq.Queue) {
 		h.t.Fatal(err)
 	}
 	fake := &mail.Fake{}
-	q := &mailq.Queue{Pool: h.pool, Sender: fake, Tagger: keys.EmailTag, Logf: func(string, ...any) {}}
+	q := mailq.New(h.pool, fake, keys)
 	m := &auth.Mailer{Queue: q, Keys: keys, Async: func(f func()) { f() }}
-	q.Renderers = m.Renderers()
+	m.Register(q)
 	h.srv.EnableAccounts(keys, nil, m)
 	// Tests make more device-freeze attempts per writer than the hourly burst.
 	h.srv.DevFreezeWriter = NewLimiter(100, 100, 16, nil)
@@ -165,7 +165,7 @@ func TestPasswordAccountOverHTTP(t *testing.T) {
 
 	// The new sign-in alert carries a freeze link; #64 takes it as text/plain
 	// and answers 204 whatever it is given.
-	if _, err := q.RunOnce(bg); err != nil {
+	if _, err := q.Drain(bg); err != nil {
 		t.Fatal(err)
 	}
 	link := regexp.MustCompile(`freeze#([A-Za-z0-9_-]{43})`).FindStringSubmatch(mailTexts(fake.To(a.addr)))
@@ -273,42 +273,6 @@ func TestDeviceFreezeOverHTTPIsUniform(t *testing.T) {
 	wantStatus(t, h.req("POST", "/api/v1/auth/device-freeze", "", DeviceFreezeRequest{WriterID: a.device.WriterID,
 		Nonce: b64(nonce), Sig: b64(a.device.SignDAK(t, msg))}), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", a.token, nil), http.StatusUnauthorized)
-}
-
-func TestClientKeyTrustsCloudflareOnlyFromLoopback(t *testing.T) {
-	s := &Server{TrustedProxy: ProxyCloudflare}
-	req := func(remote, cf string, extra map[string]string) *http.Request {
-		r := httptest.NewRequest("GET", "/", nil)
-		r.RemoteAddr = remote
-		if cf != "" {
-			r.Header.Set("Cf-Connecting-Ip", cf)
-		}
-		for k, v := range extra {
-			r.Header.Set(k, v)
-		}
-		return r
-	}
-	for _, c := range []struct {
-		remote, cf string
-		extra      map[string]string
-		want       string
-	}{
-		{"127.0.0.1:5000", "203.0.113.7", nil, "4:203.0.113.7"},
-		{"[::1]:5000", "2001:db8:1:2:3:4:5:6", nil, "6:20010db800010002"},
-		{"[::1]:5000", "2001:db8:1:2:ffff:4:5:6", nil, "6:20010db800010002"},
-		{"127.0.0.1:5000", "", nil, "local"},
-		{"127.0.0.1:5000", "not-an-ip", nil, "local"},
-		{"198.51.100.9:443", "203.0.113.7", nil, "peer:198.51.100.9"},
-		{"127.0.0.1:5000", "", map[string]string{"X-Forwarded-For": "203.0.113.7", "True-Client-IP": "203.0.113.7"}, "local"},
-	} {
-		if got := s.clientKey(req(c.remote, c.cf, c.extra)); got != c.want {
-			t.Errorf("%s with %q: %q, want %q", c.remote, c.cf, got, c.want)
-		}
-	}
-	none := &Server{TrustedProxy: ProxyNone}
-	if got := none.clientKey(req("127.0.0.1:5000", "203.0.113.7", nil)); got != "peer:127.0.0.1" {
-		t.Fatalf("trusted_proxy none trusted the header: %q", got)
-	}
 }
 
 func hexs(b []byte) string {

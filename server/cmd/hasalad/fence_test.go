@@ -52,10 +52,16 @@ type listedPackage struct {
 // binary, tests excluded.
 func deps(t *testing.T) []listedPackage {
 	t.Helper()
+	return depsOf(t, module+"/cmd/hasalad")
+}
+
+// depsOf is `go list -deps -json <target>`.
+func depsOf(t *testing.T, target string) []listedPackage {
+	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Fatalf("the fences need the go tool on PATH (run inside the devShell): %v", err)
 	}
-	cmd := exec.Command("go", "list", "-deps", "-json", module+"/cmd/hasalad")
+	cmd := exec.Command("go", "list", "-deps", "-json", target)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
@@ -98,13 +104,23 @@ func TestFenceTheBuildGraph(t *testing.T) {
 		module + "/internal/norm", module + "/internal/tmpl", module + "/internal/dict",
 		module + "/oracle",
 		module + "/internal/cryptoref",
-		module + "/internal/console", module + "/internal/testflight",
+		module + "/internal/testflight",
 		"github.com/emersion/",
 	}
 	for _, p := range pkgs {
 		for _, f := range forbidden {
 			if p.ImportPath == f || strings.HasPrefix(p.ImportPath, strings.TrimSuffix(f, "/")+"/") {
 				t.Errorf("hasalad links %s (spec 02 §4.4)", p.ImportPath)
+			}
+		}
+	}
+	// F7-1: the console is linked into hasalad for its own mode (spec 07
+	// §15.1: cmd/hasalad/console.go), but serve's handler can never reach it:
+	// internal/api depends on neither the console nor the TestFlight client.
+	for _, p := range depsOf(t, module+"/internal/api") {
+		for _, f := range []string{module + "/internal/console", module + "/internal/testflight"} {
+			if p.ImportPath == f || strings.HasPrefix(p.ImportPath, f+"/") {
+				t.Errorf("internal/api links %s (spec 07 F7-1)", p.ImportPath)
 			}
 		}
 	}
@@ -376,23 +392,35 @@ func TestFenceNoDataKeyDerivationAndNoRetiredDomain(t *testing.T) {
 	}
 }
 
-// AT-MAIL-9 (spec 07 §6.1): only internal/mailq calls a mail sender's Send, so
-// every email this server sends has a mail_log row. Any `.Send(` call outside
-// internal/mailq and internal/mail is refused.
-func TestFenceOnlyTheOutboxSendsMail(t *testing.T) {
+// F7-5: every email passes through the email log, so a file outside
+// internal/mail and internal/mailq that imports internal/mail never calls a
+// method named Send (the only Send in its API is Sender.Send).
+func TestFenceMailIsSentOnlyByTheQueue(t *testing.T) {
+	scanned := 0
 	for _, sf := range reachableSources(t) {
-		if sf.pkg == "internal/mailq" || sf.pkg == "internal/mail" {
+		if sf.pkg == "internal/mail" || sf.pkg == "internal/mailq" {
 			continue
 		}
-		ast.Inspect(sf.file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
+		usesMail := false
+		for _, ip := range sf.imports {
+			if ip == module+"/internal/mail" {
+				usesMail = true
 			}
-			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Send" {
-				t.Errorf("%s calls .Send outside internal/mailq (AT-MAIL-9)", sf.path)
+		}
+		if !usesMail {
+			continue
+		}
+		scanned++
+		ast.Inspect(sf.file, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Send" {
+					t.Errorf("%s calls .Send outside internal/mailq (spec 07 F7-5)", sf.path)
+				}
 			}
 			return true
 		})
+	}
+	if scanned == 0 {
+		t.Fatal("no file outside mailq imports internal/mail; the fence is vacuous")
 	}
 }

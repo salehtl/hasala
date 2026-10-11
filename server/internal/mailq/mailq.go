@@ -1,21 +1,10 @@
-// Package mailq is the email outbox and log (spec 07 §2.8, §3.5, §6): every
-// email hasalad sends has a mail_log row, written before the send, finalized
-// after it, and never holding a subject, a body, a code or a token.
+// Package mailq is the email outbox and the email log (spec 07 §2.8, §6): one
+// mail_log row per email, enqueued inside the transaction that causes it,
+// rendered at send time by a per-kind Renderer that mints whatever secret the
+// email carries (and stores only its hash), sent by a worker in `serve`, and
+// kept for 30 days without a subject, a body, a link or a secret.
 //
-// Two ways in:
-//   - EnqueueTx writes a queued row inside the caller's transaction (alerts,
-//     enqueued with the event that causes them, so a rollback sends nothing
-//     and a restart loses nothing). The worker (RunOnce, Run) leases it,
-//     renders it with the kind's Renderer in its own transaction (which may
-//     mint a secret and store only its hash), sends, and finalizes.
-//   - SendNow is for an email whose secret the caller already minted and must
-//     never reach the database (spec 02's code emails, D-12): it writes the
-//     row as sending, renders from memory, sends once and finalizes.
-//
-// This is the part of spec 07's mailq that spec 02's flows need: the
-// transactional lane, the per-kind params allow-list, retry windows and
-// backoff, the auth stop, the deleted-row redaction and the bounce hook. The
-// waitlist and bulk lanes' caps and hourly rates arrive with WS-19.
+// This is the only package that calls mail.Sender.Send (spec 07 F7-5).
 package mailq
 
 import (
@@ -23,7 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -33,34 +22,64 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/mail"
+	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// Lane is a mail_log lane.
+// Lane orders and rate-limits rows (spec 07 §6.5).
 type Lane string
 
-// Lanes.
+// The lanes.
 const (
 	LaneTransactional Lane = "transactional"
 	LaneWaitlist      Lane = "waitlist"
 	LaneBulk          Lane = "bulk"
 )
 
-// Lease is how long a worker holds a row it is sending.
-const Lease = 2 * time.Minute
+// Status is a row's state (spec 07 §3.5).
+type Status string
 
-// backoff is the retry schedule after a transient failure (spec 07 §3.5).
-var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 12 * time.Hour}
+// The statuses.
+const (
+	StatusQueued     Status = "queued"
+	StatusSending    Status = "sending"
+	StatusSent       Status = "sent"
+	StatusFailed     Status = "failed"
+	StatusBounced    Status = "bounced"
+	StatusSuppressed Status = "suppressed"
+)
 
-// allowedParams is spec 07 §6.3's per-kind params allow-list. A key outside it
-// is a programming error, refused at enqueue.
-var allowedParams = map[string][]string{
-	"waitlist": {}, "waitlist_already": {"variant"}, "waitlist_has_account": {}, "invite": {},
-	"bank_supported": {"audience"},
-	"code":           {"purpose"}, "reset_code": {"purpose"}, "recovery_code": {"purpose"},
-	"alert": {"event_at"}, "deleted": {"deleted_at"}, "test": {},
+// Tagger computes email_tag (spec 01 §4.11) under the server's auth key.
+type Tagger interface {
+	EmailTag(emailNorm string) []byte
 }
 
-// retryWindow is how long after created_at a row may still be retried.
+// paramsAllowed is spec 07 §6.3's per-kind allow-list. An unknown key is a
+// programming error and is refused at enqueue.
+var paramsAllowed = map[string][]string{
+	"waitlist":             nil,
+	"waitlist_already":     {"variant"},
+	"waitlist_has_account": nil,
+	"invite":               nil,
+	"bank_supported":       {"audience"},
+	"code":                 {"purpose"},
+	"reset_code":           {"purpose"},
+	"recovery_code":        {"purpose"},
+	"alert":                {"event_at"},
+	"deleted":              {"deleted_at"},
+	"test":                 nil,
+}
+
+// Kinds returns every kind mail_log admits.
+func Kinds() []string {
+	out := make([]string, 0, len(paramsAllowed))
+	for k := range paramsAllowed {
+		out = append(out, k)
+	}
+	return out
+}
+
+// retryWindow is how long a transient failure may keep retrying (spec 07
+// §6.2): a code is dead after 10 minutes, anything else gets a day.
 func retryWindow(kind string) time.Duration {
 	switch kind {
 	case "code", "reset_code", "recovery_code":
@@ -69,81 +88,106 @@ func retryWindow(kind string) time.Duration {
 	return 24 * time.Hour
 }
 
-// Enqueue is one email to log.
+var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 12 * time.Hour}
+
+// Lease and send bounds.
+const (
+	leaseFor     = 2 * time.Minute
+	sendTimeout  = 20 * time.Second
+	pollEvery    = 30 * time.Second
+	maxAttempts  = 10
+	notifyChan   = "hasala_mail"
+	errorMaxLen  = 200
+	workerCount  = 2
+	tagBatchSize = 50
+)
+
+// Enqueue describes one email to queue.
 type Enqueue struct {
 	Kind, Subkind string
 	Lane          Lane
 	To            string // email_norm
-	Tag           []byte // email_tag(To); nil only for rows the worker tags
+	Tag           []byte // email_tag(To); computed by the queue's Tagger when nil
 	UserID        *uuid.UUID
+	EntryID       *uuid.UUID
+	InviteID      *uuid.UUID
+	BankSlug      *string
 	Params        map[string]any
 }
 
-// Row is a leased mail_log row, as a Renderer sees it.
+// Row is a leased row, as a Renderer sees it.
 type Row struct {
-	ID        int64
-	Kind      string
-	Subkind   string
-	Lane      Lane
-	Recipient string
-	Tag       []byte
-	UserID    *uuid.UUID
-	Params    map[string]any
-	Attempts  int
-	CreatedAt time.Time
+	ID           int64
+	Kind         string
+	Subkind      string
+	Lane         Lane
+	Recipient    string
+	RecipientTag []byte
+	UserID       *uuid.UUID
+	EntryID      *uuid.UUID
+	InviteID     *uuid.UUID
+	BankSlug     *string
+	Params       map[string]any
+	Attempts     int
+	CreatedAt    time.Time
 }
 
-// Renderer builds a queued row's message at send time, inside tx. It may mint
-// a secret and store its hash there; tx commits before the send.
+// Renderer builds a row's message at send time, inside its own transaction,
+// minting any secret the kind carries and storing only its hash.
 type Renderer interface {
 	Render(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error)
 }
 
-// RendererFunc adapts a function.
-type RendererFunc func(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error)
+// RenderFunc adapts a function to Renderer.
+type RenderFunc func(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error)
 
 // Render calls f.
-func (f RendererFunc) Render(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error) {
+func (f RenderFunc) Render(ctx context.Context, tx pgx.Tx, row Row) (mail.Message, error) {
 	return f(ctx, tx, row)
 }
 
-// Queue owns mail_log.
+// ErrNoRenderer is a row whose kind has no registered renderer.
+var ErrNoRenderer = errors.New("mailq: no renderer for this kind")
+
+// Queue is the outbox. Build it with New.
 type Queue struct {
-	Pool      *pgxpool.Pool
-	Sender    mail.Sender
-	Renderers map[string]Renderer // by kind
-	// Bounced runs in the finalizing transaction of a bounced row that has a
-	// user_id (spec 02 §14.7). It makes no network call.
+	Pool   *pgxpool.Pool
+	Sender mail.Sender
+	Tagger Tagger
+	// Rates are rows per hour per lane; a missing or zero entry is uncapped
+	// (the transactional lane).
+	Rates     map[Lane]int
+	Retention time.Duration
+	// Bounced, when set, runs in the finalizing transaction of a bounced row
+	// that names an account (spec 02 §14.7: the account's address is marked
+	// undeliverable). It makes no network call.
 	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
-	// Tagger computes email_tag for rows enqueued without one (console, CLI).
-	Tagger func(emailNorm string) []byte
-	Now    func() time.Time
-	Logf   func(format string, args ...any)
 
-	kick   chan struct{}
-	paused atomic.Bool
+	renderers map[string]Renderer
+	stopped   atomic.Bool
+	wake      chan struct{}
 }
 
-func (q *Queue) now() time.Time {
-	if q.Now != nil {
-		return q.Now()
+// New builds a queue with spec 07 §14.1's default rates and retention.
+func New(pool *pgxpool.Pool, s mail.Sender, tagger Tagger) *Queue {
+	return &Queue{Pool: pool, Sender: s, Tagger: tagger,
+		Rates:     map[Lane]int{LaneWaitlist: 60, LaneBulk: 120},
+		Retention: 30 * 24 * time.Hour,
+		renderers: map[string]Renderer{}, wake: make(chan struct{}, 1)}
+}
+
+// Register installs kind's renderer.
+func (q *Queue) Register(kind string, r Renderer) {
+	if q.renderers == nil {
+		q.renderers = map[string]Renderer{}
 	}
-	return time.Now()
+	q.renderers[kind] = r
 }
 
-func (q *Queue) logf(format string, args ...any) {
-	if q.Logf != nil {
-		q.Logf(format, args...)
-		return
-	}
-	log.Printf(format, args...)
-}
+// Stopped reports whether an auth failure stopped the worker (until restart).
+func (q *Queue) Stopped() bool { return q.stopped.Load() }
 
-// Paused reports whether an auth failure stopped the worker on every lane.
-func (q *Queue) Paused() bool { return q.paused.Load() }
-
-// Hint is spec 07 §4.5's masked recipient: the first character of the local
-// part, "•••", "@" and the whole domain; a one-character local part loses it.
+// Hint is spec 07 §4.5's masked address: m•••@example.com.
 func Hint(addr string) string {
 	at := strings.LastIndexByte(addr, '@')
 	if at < 0 {
@@ -156,385 +200,503 @@ func Hint(addr string) string {
 	return local[:1] + "•••@" + domain
 }
 
-func (e Enqueue) check() error {
-	allowed, ok := allowedParams[e.Kind]
+func checkParams(kind string, p map[string]any) error {
+	allowed, ok := paramsAllowed[kind]
 	if !ok {
-		return fmt.Errorf("mailq: unknown kind %q", e.Kind)
+		return fmt.Errorf("mailq: unknown kind %q", kind)
 	}
-	for k := range e.Params {
+	for k := range p {
 		found := false
 		for _, a := range allowed {
-			found = found || a == k
+			if a == k {
+				found = true
+			}
 		}
 		if !found {
-			return fmt.Errorf("mailq: params key %q is not allowed for kind %s", k, e.Kind)
+			return fmt.Errorf("mailq: param %q is not allowed for kind %q", k, kind)
 		}
-	}
-	if e.To == "" {
-		return errors.New("mailq: no recipient")
-	}
-	if e.Lane == "" {
-		return errors.New("mailq: no lane")
 	}
 	return nil
 }
 
-func (e Enqueue) paramsJSON() ([]byte, error) {
-	if e.Params == nil {
-		return []byte("{}"), nil
+func encodeParams(p map[string]any) ([]byte, error) {
+	if p == nil {
+		p = map[string]any{}
 	}
-	return json.Marshal(e.Params)
+	return json.Marshal(p)
 }
 
-func nullable(s string) any {
+func nilIfEmpty(s string) any {
 	if s == "" {
 		return nil
 	}
 	return s
 }
 
-// EnqueueTx writes a queued row inside tx and returns its id. Callers Kick the
-// worker after their transaction commits.
+// EnqueueTx writes a queued row inside the caller's transaction and notifies
+// the worker at commit.
 func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, e Enqueue) (int64, error) {
-	if err := e.check(); err != nil {
+	if err := checkParams(e.Kind, e.Params); err != nil {
 		return 0, err
 	}
-	params, err := e.paramsJSON()
+	if e.Lane == "" {
+		e.Lane = LaneTransactional
+	}
+	tag := e.Tag
+	if tag == nil && q.Tagger != nil {
+		tag = q.Tagger.EmailTag(e.To)
+	}
+	params, err := encodeParams(e.Params)
 	if err != nil {
 		return 0, err
 	}
-	var tag any
-	if len(e.Tag) > 0 {
-		tag = e.Tag
-	}
-	now := q.now()
 	var id int64
 	err = tx.QueryRow(ctx,
-		`INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id, params,
-		   status, next_attempt_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, $9) RETURNING id`,
-		e.Kind, nullable(e.Subkind), string(e.Lane), e.To, tag, Hint(e.To), e.UserID, params, now).Scan(&id)
+		`INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id,
+		                       waitlist_entry_id, invite_id, bank_slug, params, status, next_attempt_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'queued', now(), now()) RETURNING id`,
+		e.Kind, nilIfEmpty(e.Subkind), string(e.Lane), e.To, tag, Hint(e.To), e.UserID, e.EntryID, e.InviteID,
+		e.BankSlug, params).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("mailq: enqueue %s: %w", e.Kind, err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_notify($1, '')`, notifyChan); err != nil {
+		return 0, fmt.Errorf("mailq: notify: %w", err)
 	}
 	return id, nil
 }
 
-// Kick wakes the worker (after the transaction that enqueued commits).
-func (q *Queue) Kick() {
-	if q.kick == nil {
-		return
-	}
-	select {
-	case q.kick <- struct{}{}:
-	default:
-	}
-}
-
-// SendNow logs and sends one email whose secret lives only in render's
-// closure: the row is written as sending, render runs, Send is called once,
-// and the row is finalized. A failure is final (one attempt: the person asks
-// for a new code).
+// SendNow sends an email whose secret the caller minted and which must never
+// touch the database (spec 02's codes): the row is written as sending, render
+// is called, the message is sent and the row finalized. One attempt.
 func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Message, error)) error {
-	if err := e.check(); err != nil {
+	if err := checkParams(e.Kind, e.Params); err != nil {
 		return err
 	}
-	if len(e.Tag) != 32 {
-		return errors.New("mailq: SendNow needs the recipient's tag")
+	if e.Lane == "" {
+		e.Lane = LaneTransactional
 	}
-	params, err := e.paramsJSON()
+	tag := e.Tag
+	if tag == nil && q.Tagger != nil {
+		tag = q.Tagger.EmailTag(e.To)
+	}
+	if len(tag) != 32 {
+		return errors.New("mailq: SendNow needs the recipient's email_tag")
+	}
+	params, err := encodeParams(e.Params)
 	if err != nil {
 		return err
 	}
-	now := q.now()
-	lease := now.Add(Lease)
-	var id int64
-	if err := q.Pool.QueryRow(ctx,
-		`INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id, params,
-		   status, attempts, lease_until, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'sending', 1, $9, $10) RETURNING id`,
-		e.Kind, nullable(e.Subkind), string(e.Lane), e.To, e.Tag, Hint(e.To), e.UserID, params, lease, now).Scan(&id); err != nil {
-		return fmt.Errorf("mailq: log %s: %w", e.Kind, err)
-	}
-	row := Row{ID: id, Kind: e.Kind, Subkind: e.Subkind, Lane: e.Lane, Recipient: e.To, Tag: e.Tag,
-		UserID: e.UserID, Params: e.Params, Attempts: 1, CreatedAt: now}
-	if q.paused.Load() {
-		return q.finalize(ctx, row, lease, "", &mail.SendError{Class: mail.ErrAuth}, true)
-	}
-	m, err := render()
+	var (
+		id    int64
+		lease time.Time
+	)
+	err = q.Pool.QueryRow(ctx,
+		`INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id,
+		                       waitlist_entry_id, invite_id, bank_slug, params, status, attempts, lease_until, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sending', 1, now() + interval '2 minutes', now())
+		 RETURNING id, lease_until`,
+		e.Kind, nilIfEmpty(e.Subkind), string(e.Lane), e.To, tag, Hint(e.To), e.UserID, e.EntryID, e.InviteID,
+		e.BankSlug, params).Scan(&id, &lease)
 	if err != nil {
-		_ = q.finalize(ctx, row, lease, "", fmt.Errorf("%w: render: %v", mail.ErrPermanent, err), true)
+		return fmt.Errorf("mailq: record %s: %w", e.Kind, err)
+	}
+	row := &Row{ID: id, Kind: e.Kind, Subkind: e.Subkind, Lane: e.Lane, Recipient: e.To, RecipientTag: tag,
+		UserID: e.UserID, EntryID: e.EntryID, InviteID: e.InviteID, BankSlug: e.BankSlug, Params: e.Params, Attempts: 1}
+	if q.Stopped() || q.Sender == nil {
+		q.finalize(ctx, id, lease, e.Kind, row, "", errors.New("mailq: sending is stopped"), true)
+		return errors.New("mailq: sending is stopped")
+	}
+	msg, err := render()
+	if err != nil {
+		q.finalize(ctx, id, lease, e.Kind, row, "", fmt.Errorf("%w: render", mail.ErrPermanent), true)
 		return err
 	}
-	m.To = e.To
-	pid, sendErr := q.Sender.Send(ctx, m)
-	return q.finalize(ctx, row, lease, pid, sendErr, true)
+	msg.To = e.To
+	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
+	pid, sendErr := q.Sender.Send(sctx, msg)
+	cancel()
+	msg = mail.Message{} // the rendered secret is never kept
+	q.finalize(ctx, id, lease, e.Kind, row, pid, sendErr, true)
+	return sendErr
 }
 
-// finalize records a send's outcome, conditional on the row still being ours
-// (a purge may have suppressed it meanwhile). once means no retry.
-func (q *Queue) finalize(ctx context.Context, row Row, lease time.Time, providerID string, sendErr error, once bool) error {
-	now := q.now()
-	tx, err := q.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("mailq: finalize: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	redact := row.Kind == "deleted"
-	var tag int64
-	switch {
-	case sendErr == nil:
-		tag, err = execTag(ctx, tx,
-			`UPDATE mail_log SET status = 'sent', sent_at = $3, final_at = $3, lease_until = NULL,
-			   provider_message_id = $4, recipient = CASE WHEN $5 THEN NULL ELSE recipient END
-			 WHERE id = $1 AND status = 'sending' AND lease_until = $2`,
-			row.ID, lease, now, nullable(truncate(providerID, 128)), redact)
-	case errors.Is(sendErr, mail.ErrBounced):
-		tag, err = execTag(ctx, tx,
-			`UPDATE mail_log SET status = 'bounced', final_at = $3, lease_until = NULL, error = $4,
-			   recipient = CASE WHEN $5 THEN NULL ELSE recipient END
-			 WHERE id = $1 AND status = 'sending' AND lease_until = $2`,
-			row.ID, lease, now, truncate(sendErr.Error(), 200), redact)
-		if err == nil && tag == 1 && row.UserID != nil && q.Bounced != nil {
-			err = q.Bounced(ctx, tx, row)
-		}
-	case errors.Is(sendErr, mail.ErrAuth) && !once:
-		q.paused.Store(true)
-		q.logf("mailq: the provider refused the credentials; every lane is paused until restart")
-		tag, err = execTag(ctx, tx,
-			`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = $3, attempts = greatest(attempts - 1, 0)
-			 WHERE id = $1 AND status = 'sending' AND lease_until = $2`, row.ID, lease, now)
+// Kick wakes an idle worker (EnqueueTx's NOTIFY does the same across
+// processes).
+func (q *Queue) Kick() {
+	select {
+	case q.wake <- struct{}{}:
 	default:
-		retryAt := now.Add(backoff[min(max(row.Attempts-1, 0), len(backoff)-1)])
-		permanent := errors.Is(sendErr, mail.ErrPermanent) || errors.Is(sendErr, mail.ErrAuth)
-		if once || permanent || row.Attempts >= 10 || retryAt.After(row.CreatedAt.Add(retryWindow(row.Kind))) {
-			tag, err = execTag(ctx, tx,
-				`UPDATE mail_log SET status = 'failed', final_at = $3, lease_until = NULL, error = $4,
-				   recipient = CASE WHEN $5 THEN NULL ELSE recipient END
-				 WHERE id = $1 AND status = 'sending' AND lease_until = $2`,
-				row.ID, lease, now, truncate(sendErr.Error(), 200), redact)
-			if errors.Is(sendErr, mail.ErrAuth) {
-				q.paused.Store(true)
+	}
+}
+
+// Run starts the listener and the workers until ctx is done.
+func (q *Queue) Run(ctx context.Context) <-chan struct{} {
+	done := make(chan struct{})
+	finished := make(chan struct{}, workerCount+1)
+	go func() {
+		defer func() { finished <- struct{}{} }()
+		q.listen(ctx)
+	}()
+	for range workerCount {
+		go func() {
+			defer func() { finished <- struct{}{} }()
+			tick := time.NewTicker(pollEvery)
+			defer tick.Stop()
+			for {
+				if _, err := q.Drain(context.WithoutCancel(ctx)); err != nil {
+					slog.Warn("mailq: worker", "err", err.Error())
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+				case <-q.wake:
+				}
 			}
-		} else {
-			tag, err = execTag(ctx, tx,
-				`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = $3, error = $4
-				 WHERE id = $1 AND status = 'sending' AND lease_until = $2`,
-				row.ID, lease, retryAt, truncate(sendErr.Error(), 200))
+		}()
+	}
+	go func() {
+		for range workerCount + 1 {
+			<-finished
 		}
-	}
-	if err != nil {
-		return fmt.Errorf("mailq: finalize %d: %w", row.ID, err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("mailq: finalize %d: commit: %w", row.ID, err)
-	}
-	if sendErr != nil {
-		q.logf("mailq: %s attempt %d: %v", row.Kind, row.Attempts, sendErr)
-		return sendErr
-	}
-	return nil
+		close(done)
+	}()
+	return done
 }
 
-func execTag(ctx context.Context, tx pgx.Tx, sql string, args ...any) (int64, error) {
-	t, err := tx.Exec(ctx, sql, args...)
-	if err != nil {
-		return 0, err
-	}
-	return t.RowsAffected(), nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
-}
-
-// RunOnce returns expired leases to the queue, tags untagged rows, then sends
-// every due row once. It answers how many rows it sent.
-func (q *Queue) RunOnce(ctx context.Context) (int, error) {
-	if q.paused.Load() {
-		return 0, nil
-	}
-	now := q.now()
-	if _, err := q.Pool.Exec(ctx,
-		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = $1
-		  WHERE status = 'sending' AND lease_until < $1`, now); err != nil {
-		return 0, fmt.Errorf("mailq: return expired leases: %w", err)
-	}
-	if q.Tagger != nil {
-		if err := q.tagRows(ctx, now); err != nil {
-			return 0, err
-		}
-	}
-	sent := 0
-	for ctx.Err() == nil && !q.paused.Load() {
-		row, lease, ok, err := q.lease(ctx)
+// listen holds one connection on LISTEN hasala_mail and kicks the workers on
+// every notification; it reconnects after a failure.
+func (q *Queue) listen(ctx context.Context) {
+	for ctx.Err() == nil {
+		conn, err := q.Pool.Acquire(ctx)
 		if err != nil {
-			return sent, err
+			sleep(ctx, 5*time.Second)
+			continue
 		}
-		if !ok {
-			break
+		if _, err := conn.Exec(ctx, "LISTEN "+notifyChan); err != nil {
+			conn.Release()
+			sleep(ctx, 5*time.Second)
+			continue
 		}
-		if err := q.sendLeased(ctx, row, lease); err == nil {
-			sent++
+		for ctx.Err() == nil {
+			if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
+				break
+			}
+			q.Kick()
+			q.Kick()
 		}
+		// The connection may be mid-wait; never hand it back to the pool.
+		_ = conn.Conn().Close(context.WithoutCancel(ctx))
+		conn.Release()
 	}
-	return sent, nil
 }
 
-func (q *Queue) tagRows(ctx context.Context, now time.Time) error {
-	rows, err := q.Pool.Query(ctx,
-		`SELECT id, recipient FROM mail_log WHERE status = 'queued' AND recipient_tag IS NULL
-		  AND next_attempt_at <= $1 LIMIT 100`, now)
+func sleep(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+
+// Drain sends due rows until none is left (or the worker is stopped). It
+// returns how many rows it processed.
+func (q *Queue) Drain(ctx context.Context) (int, error) {
+	n := 0
+	for !q.Stopped() {
+		did, err := q.ProcessOne(ctx)
+		if err != nil {
+			return n, err
+		}
+		if !did {
+			return n, nil
+		}
+		n++
+	}
+	return n, nil
+}
+
+// fillTags computes the missing recipient tags of due queued rows (rows the
+// console or the CLI wrote, which cannot compute one), and for a CLI invite
+// the invite's own tag (spec 07 §6.2 "Tags first").
+func (q *Queue) fillTags(ctx context.Context) error {
+	if q.Tagger == nil {
+		return nil
+	}
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
 	if err != nil {
-		return fmt.Errorf("mailq: untagged rows: %w", err)
+		return err
 	}
-	type pending struct {
-		id   int64
-		addr string
+	defer pgtx.Rollback(ctx, tx)
+	rows, err := tx.Query(ctx,
+		`SELECT id, recipient, invite_id FROM mail_log
+		  WHERE status = 'queued' AND recipient_tag IS NULL AND recipient IS NOT NULL
+		  ORDER BY id FOR UPDATE SKIP LOCKED LIMIT $1`, tagBatchSize)
+	if err != nil {
+		return err
 	}
-	var todo []pending
-	for rows.Next() {
-		var p pending
-		if err := rows.Scan(&p.id, &p.addr); err != nil {
-			rows.Close()
+	type untagged struct {
+		id     int64
+		to     string
+		invite *uuid.UUID
+	}
+	todo, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (untagged, error) {
+		var u untagged
+		return u, r.Scan(&u.id, &u.to, &u.invite)
+	})
+	if err != nil {
+		return err
+	}
+	for _, u := range todo {
+		tag := q.Tagger.EmailTag(u.to)
+		if _, err := tx.Exec(ctx, `UPDATE mail_log SET recipient_tag = $2 WHERE id = $1`, u.id, tag); err != nil {
 			return err
 		}
-		todo = append(todo, p)
-	}
-	rows.Close()
-	for _, p := range todo {
-		if _, err := q.Pool.Exec(ctx, `UPDATE mail_log SET recipient_tag = $2 WHERE id = $1 AND recipient_tag IS NULL`,
-			p.id, q.Tagger(p.addr)); err != nil {
-			return fmt.Errorf("mailq: tag row %d: %w", p.id, err)
+		if u.invite != nil {
+			if _, err := tx.Exec(ctx,
+				`UPDATE invite_codes SET email_tag = $2 WHERE id = $1 AND email_tag IS NULL AND origin = 'cli'
+				    AND closed_at IS NULL`, *u.invite, tag); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
-func (q *Queue) lease(ctx context.Context) (Row, time.Time, bool, error) {
-	now := q.now()
-	lease := now.Add(Lease)
+// lanesAtRate lists the lanes that have used their hourly rate.
+func (q *Queue) lanesAtRate(ctx context.Context) ([]string, error) {
+	var out []string
+	for lane, rate := range q.Rates {
+		if rate <= 0 {
+			continue
+		}
+		var n int
+		if err := q.Pool.QueryRow(ctx,
+			`SELECT count(*) FROM mail_log WHERE lane = $1
+			    AND ((status = 'sent' AND sent_at > now() - interval '1 hour') OR status = 'sending')`,
+			string(lane)).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n >= rate {
+			out = append(out, string(lane))
+		}
+	}
+	return out, nil
+}
+
+// ProcessOne leases, renders, sends and finalizes at most one due row.
+func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
+	if q.Stopped() {
+		return false, nil
+	}
+	if err := q.fillTags(ctx); err != nil {
+		return false, fmt.Errorf("mailq: tags: %w", err)
+	}
+	if _, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
+		  WHERE status = 'sending' AND lease_until < now()`); err != nil {
+		return false, fmt.Errorf("mailq: expired leases: %w", err)
+	}
+	full, err := q.lanesAtRate(ctx)
+	if err != nil {
+		return false, fmt.Errorf("mailq: lane rates: %w", err)
+	}
+	if full == nil {
+		full = []string{}
+	}
 	var (
-		r      Row
+		row    Row
 		params []byte
+		subk   *string
 		lane   string
-		sub    *string
+		lease  time.Time
 	)
-	err := q.Pool.QueryRow(ctx,
-		`UPDATE mail_log SET status = 'sending', lease_until = $2, attempts = attempts + 1, next_attempt_at = NULL
-		  WHERE id = (SELECT id FROM mail_log WHERE status = 'queued' AND next_attempt_at <= $1 AND recipient_tag IS NOT NULL
+	err = q.Pool.QueryRow(ctx,
+		`UPDATE mail_log SET status = 'sending', lease_until = now() + interval '2 minutes',
+		        attempts = attempts + 1, next_attempt_at = NULL
+		  WHERE id = (SELECT id FROM mail_log
+		               WHERE status = 'queued' AND next_attempt_at <= now() AND recipient_tag IS NOT NULL
+		                 AND lane <> ALL($1::text[])
 		               ORDER BY CASE lane WHEN 'transactional' THEN 0 WHEN 'waitlist' THEN 1 ELSE 2 END, next_attempt_at
 		               FOR UPDATE SKIP LOCKED LIMIT 1)
-		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, params, attempts, created_at`,
-		now, lease).Scan(&r.ID, &r.Kind, &sub, &lane, &r.Recipient, &r.Tag, &r.UserID, &params, &r.Attempts, &r.CreatedAt)
+		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, waitlist_entry_id, invite_id,
+		           bank_slug, params, attempts, created_at, lease_until`, full).
+		Scan(&row.ID, &row.Kind, &subk, &lane, &row.Recipient, &row.RecipientTag, &row.UserID, &row.EntryID,
+			&row.InviteID, &row.BankSlug, &params, &row.Attempts, &row.CreatedAt, &lease)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Row{}, time.Time{}, false, nil
+		return false, nil
 	}
 	if err != nil {
-		return Row{}, time.Time{}, false, fmt.Errorf("mailq: lease: %w", err)
+		return false, fmt.Errorf("mailq: lease: %w", err)
 	}
-	r.Lane = Lane(lane)
-	if sub != nil {
-		r.Subkind = *sub
+	row.Lane = Lane(lane)
+	if subk != nil {
+		row.Subkind = *subk
 	}
-	_ = json.Unmarshal(params, &r.Params)
-	return r, lease, true, nil
+	_ = json.Unmarshal(params, &row.Params)
+
+	msg, err := q.render(ctx, row)
+	if err != nil {
+		slog.Warn("mailq: render failed", "mail_kind", row.Kind, "mail_attempt", row.Attempts, "err", err.Error())
+		q.finalize(ctx, row.ID, lease, row.Kind, &row, "", fmt.Errorf("%w: render", mail.ErrPermanent), false)
+		return true, nil
+	}
+	msg.To = row.Recipient
+	if q.Sender == nil {
+		q.finalize(ctx, row.ID, lease, row.Kind, &row, "", errors.New("mailq: no sender"), false)
+		return true, nil
+	}
+	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
+	pid, sendErr := q.Sender.Send(sctx, msg)
+	cancel()
+	msg = mail.Message{} // the rendered message is never kept
+	q.finalize(ctx, row.ID, lease, row.Kind, &row, pid, sendErr, false)
+	return true, nil
 }
 
-func (q *Queue) sendLeased(ctx context.Context, row Row, lease time.Time) error {
-	rd, ok := q.Renderers[row.Kind]
+func (q *Queue) render(ctx context.Context, row Row) (mail.Message, error) {
+	r, ok := q.renderers[row.Kind]
 	if !ok {
-		return q.finalize(ctx, row, lease, "", fmt.Errorf("%w: no renderer for %s", mail.ErrPermanent, row.Kind), true)
+		return mail.Message{}, fmt.Errorf("%w %q", ErrNoRenderer, row.Kind)
 	}
-	tx, err := q.Pool.Begin(ctx)
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return mail.Message{}, err
+	}
+	defer pgtx.Rollback(ctx, tx)
+	msg, err := r.Render(ctx, tx, row)
+	if err != nil {
+		return mail.Message{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return mail.Message{}, err
+	}
+	return msg, nil
+}
+
+func clip(s string) string {
+	if len(s) > errorMaxLen {
+		return s[:errorMaxLen]
+	}
+	return s
+}
+
+// finalize records a send's outcome. The UPDATE is conditional on the row's
+// own lease, so a row a purge suppressed meanwhile stays suppressed. A row
+// that has become final loses its address at once when it is a `deleted`
+// email (O-17).
+func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind string, row *Row, pid string,
+	sendErr error, oneShot bool) {
+	ctx = context.WithoutCancel(ctx)
+	var (
+		sql  string
+		args = []any{id, lease}
+	)
+	redact := "recipient"
+	if kind == "deleted" {
+		redact = "NULL"
+	}
+	switch {
+	case sendErr == nil:
+		sql = `UPDATE mail_log SET status = 'sent', sent_at = now(), final_at = now(), lease_until = NULL,
+		        provider_message_id = $3, recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
+		args = append(args, nilIfEmpty(pid))
+	case errors.Is(sendErr, mail.ErrBounced):
+		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3,
+		        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
+		args = append(args, clip("bounced"))
+	case errors.Is(sendErr, mail.ErrAuth) && !oneShot:
+		q.stopped.Store(true)
+		slog.Error("mailq: the email provider refused the credentials; sending stopped on every lane until restart")
+		sql = `UPDATE mail_log SET status = 'queued', next_attempt_at = now(), lease_until = NULL, error = $3
+		        WHERE id = $1 AND status = 'sending' AND lease_until = $2`
+		args = append(args, clip("auth: "+sendErr.Error()))
+	default:
+		retry := !oneShot && !errors.Is(sendErr, mail.ErrPermanent) && !errors.Is(sendErr, mail.ErrAuth) &&
+			row != nil && row.Attempts < maxAttempts
+		if retry {
+			wait := backoff[min(row.Attempts, len(backoff))-1]
+			if time.Since(row.CreatedAt)+wait > retryWindow(kind) {
+				retry = false
+			} else {
+				sql = `UPDATE mail_log SET status = 'queued', next_attempt_at = now() + $3::interval, lease_until = NULL,
+				        error = $4 WHERE id = $1 AND status = 'sending' AND lease_until = $2`
+				args = append(args, fmt.Sprintf("%d seconds", int(wait/time.Second)), clip(sendErr.Error()))
+			}
+		}
+		if !retry {
+			sql = `UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, error = $3,
+			        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
+			args = append(args, clip(sendErr.Error()))
+		}
+		if errors.Is(sendErr, mail.ErrAuth) {
+			q.stopped.Store(true)
+		}
+	}
+	bounced := errors.Is(sendErr, mail.ErrBounced) && row != nil && row.UserID != nil && q.Bounced != nil
+	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) error {
+		if !bounced {
+			return nil
+		}
+		return q.Bounced(ctx, tx, *row)
+	}); err != nil {
+		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
+	}
+	if sendErr != nil {
+		slog.Warn("mailq: send failed", "mail_kind", kind, "err", clip(sendErr.Error()))
+	}
+}
+
+// finalizeTx runs the finalizing UPDATE and, when it changed the row, then.
+func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then func(pgx.Tx) error) error {
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
 	if err != nil {
 		return err
 	}
-	m, err := rd.Render(ctx, tx, row)
+	defer pgtx.Rollback(ctx, tx)
+	tag, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
-		_ = tx.Rollback(ctx)
-		return q.finalize(ctx, row, lease, "", fmt.Errorf("%w: render: %v", mail.ErrPermanent, err), true)
+		return err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return q.finalize(ctx, row, lease, "", fmt.Errorf("render commit: %v", err), false)
+	if tag.RowsAffected() == 1 {
+		if err := then(tx); err != nil {
+			return err
+		}
 	}
-	m.To = row.Recipient
-	pid, sendErr := q.Sender.Send(ctx, m)
-	return q.finalize(ctx, row, lease, pid, sendErr, false)
+	return tx.Commit(ctx)
 }
 
-// Run sends until ctx ends: on every Kick and at least every poll interval.
-func (q *Queue) Run(ctx context.Context, poll time.Duration) {
-	if q.kick == nil {
-		q.kick = make(chan struct{}, 1)
+// Sweep is spec 07 §2.11's mail rows: retention, redaction of subject-less
+// rows 7 days after they became final, and the 24-hour bound on `deleted`.
+func (q *Queue) Sweep(ctx context.Context) (string, error) {
+	ret := q.Retention
+	if ret <= 0 {
+		ret = 30 * 24 * time.Hour
 	}
-	if poll <= 0 {
-		poll = 30 * time.Second
-	}
-	t := time.NewTicker(poll)
-	defer t.Stop()
-	for {
-		if _, err := q.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			q.logf("mailq: %v", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		case <-q.kick:
-		}
-	}
-}
-
-// EnableKick makes Kick wake Run; call it before starting Run concurrently.
-func (q *Queue) EnableKick() {
-	if q.kick == nil {
-		q.kick = make(chan struct{}, 1)
-	}
-}
-
-// Log retention (spec 07 §6.6, §2.11; spec 01 §4.11).
-const (
-	// DefaultLogRetention is HASALA_EMAIL_LOG_RETENTION's default.
-	DefaultLogRetention = 30 * 24 * time.Hour
-	// RedactAfter is how long a final row with no subject keeps its address.
-	RedactAfter = 7 * 24 * time.Hour
-	sweepBatch  = 1000
-)
-
-// SweepLog is spec 07 §2.11's mail-log and mail-redact sweeps, run by serve:
-// rows older than retention go (never one being sent), and a final row with
-// no subject (user_id and waitlist_entry_id both NULL: a signup code, an
-// address-in-use notice, a test) loses its plaintext address seven days after
-// it became final. Deletes run in batches of 1,000.
-func (q *Queue) SweepLog(ctx context.Context, retention time.Duration) (int64, error) {
-	if retention <= 0 {
-		retention = DefaultLogRetention
-	}
-	now := q.now()
-	var total int64
-	for {
-		tag, err := q.Pool.Exec(ctx,
-			`DELETE FROM mail_log WHERE id IN (SELECT id FROM mail_log
-			   WHERE created_at < $1 AND status <> 'sending' ORDER BY id LIMIT $2)`,
-			now.Add(-retention), sweepBatch)
-		if err != nil {
-			return total, fmt.Errorf("mailq: mail-log sweep: %w", err)
-		}
-		total += tag.RowsAffected()
-		if tag.RowsAffected() < sweepBatch {
-			break
-		}
-	}
-	tag, err := q.Pool.Exec(ctx,
-		`UPDATE mail_log SET recipient = NULL
-		  WHERE recipient IS NOT NULL AND user_id IS NULL AND waitlist_entry_id IS NULL AND final_at < $1`,
-		now.Add(-RedactAfter))
+	del, err := q.Pool.Exec(ctx,
+		`DELETE FROM mail_log WHERE created_at < now() - $1::interval AND status <> 'sending'`,
+		fmt.Sprintf("%d seconds", int64(ret/time.Second)))
 	if err != nil {
-		return total, fmt.Errorf("mailq: mail-redact sweep: %w", err)
+		return "", fmt.Errorf("mailq: retention: %w", err)
 	}
-	return total + tag.RowsAffected(), nil
+	red, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET recipient = NULL WHERE recipient IS NOT NULL AND user_id IS NULL
+		    AND waitlist_entry_id IS NULL AND final_at < now() - interval '7 days'`)
+	if err != nil {
+		return "", fmt.Errorf("mailq: redact: %w", err)
+	}
+	bound, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET status = 'failed', next_attempt_at = NULL, final_at = now(), recipient = NULL,
+		        error = 'bound: 24 h (O-17)'
+		  WHERE kind = 'deleted' AND status = 'queued' AND created_at < now() - interval '24 hours'`)
+	if err != nil {
+		return "", fmt.Errorf("mailq: deleted bound: %w", err)
+	}
+	if del.RowsAffected()+red.RowsAffected()+bound.RowsAffected() == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("%d deleted, %d redacted, %d bounded", del.RowsAffected(), red.RowsAffected(),
+		bound.RowsAffected()), nil
 }

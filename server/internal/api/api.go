@@ -211,10 +211,6 @@ type Server struct {
 	// mounted: they need the server's key files (spec 01 §4.11).
 	Accounts *auth.Accounts
 
-	// TrustedProxy is server.trusted_proxy: "cloudflare" keys per-IP limiters
-	// by Cf-Connecting-Ip from a loopback peer only (clientip.go).
-	TrustedProxy string
-
 	// Passkeys is the WebAuthn relying party. Nil means the passkey routes are
 	// NOT MOUNTED: a deployment that has not been told its own domain
 	// (`auth.rp_id`) cannot run a ceremony, and a sign-in route that exists only
@@ -260,6 +256,15 @@ type Server struct {
 	// Meta is what GET /api/v1/meta reports (meta.go).
 	Meta Meta
 
+	// Push configures the APNs token routes and the wakes (routes_push.go).
+	Push PushOptions
+	// Gmail, when set, mounts the mailbox link and the Pub/Sub hook
+	// (routes_mailboxlink.go, routes_hooks.go).
+	Gmail *GmailOptions
+	// Web, when set, mounts spec 07's website routes: the waitlist and bank
+	// requests (routes_waitlist.go, routes_bankrequests.go).
+	Web *WebOptions
+
 	// Headroom is the box-level disk fuse (internal/headroom). When it is
 	// tripped every non-read request is refused with a temporary 503 while
 	// reads keep serving — see headroomGate. Nil is no fuse.
@@ -273,6 +278,10 @@ type Server struct {
 	// Logf receives operator-facing detail: the REASON a request was rejected,
 	// which the response deliberately does not carry. Defaults to log.Printf.
 	Logf func(format string, args ...any)
+
+	// TrustCloudflare is server.trusted_proxy = cloudflare: a loopback peer's
+	// Cf-Connecting-Ip keys the per-IP limiters (spec 02 §16.1, clientip.go).
+	TrustCloudflare bool
 
 	// Now defaults to time.Now and is used only by the default limiters.
 	Now func() time.Time
@@ -297,6 +306,8 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		Appender: &oplog.Appender{Pool: pool},
 		Deletion: &purge.Challenges{Pool: pool, Now: now},
 		Now:      now,
+
+		TrustCloudflare: cfg.Server.TrustedProxy == config.ProxyCloudflare,
 		Meta: Meta{
 			RPID:          cfg.Auth.RPID,
 			MinIOSBuild:   cfg.Server.MinIOSBuild,
@@ -316,7 +327,6 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	s.Writers.StepUp = s.StepUp
 	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
-	s.TrustedProxy = cfg.Server.TrustedProxy
 	s.Sessions.Max = cfg.Auth.SessionMax
 	return s, nil
 }
@@ -444,7 +454,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	// The box-level fuse wraps EVERYTHING, including the unauthenticated
 	// ceremonies, because a sign-in is a durable write too.
-	return securityHeaders(s.headroomGate(mux))
+	return securityHeaders(s.withClientKey(s.headroomGate(mux)))
 }
 
 // securityHeaders sets spec 02 §6.2's headers on every response. No HSTS

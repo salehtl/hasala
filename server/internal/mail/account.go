@@ -6,7 +6,12 @@ import (
 	"time"
 )
 
-// The account emails of spec 02 §14.6. Every one is plain text, English, to
+// account.go is spec 02 §14.6's account emails (codes, the address-in-use
+// notice, security alerts, the goodbye), rendered by internal/auth's renderers
+// and sent only through internal/mailq. Spec 07's kinds (waitlist, invite,
+// bank_supported, test) are mailq's templates.
+//
+// Every one is plain text, English, to
 // exactly one address; it starts with a greeting line and a blank line and ends
 // with the footer. The only substitutions are the code, the time, the freeze
 // link, the passkey/password word and the greeting's first name. No other URL,
@@ -188,9 +193,4 @@ func Deleted(to string, at time.Time) Message {
 	return Message{To: to, Subject: "Your Hasala account was deleted", Text: body("",
 		"Your Hasala account and its data were deleted from our server on "+When(at)+
 			". Encrypted backups expire within 30 days.")}
-}
-
-// Test is the operator's test email.
-func Test(to string) Message {
-	return Message{To: to, Subject: "Hasala test email", Text: body("", "This is a test email from the Hasala server.")}
 }

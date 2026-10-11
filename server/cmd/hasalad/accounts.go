@@ -5,27 +5,18 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/salehtl/hasala/server/internal/api"
-	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/config"
-	"github.com/salehtl/hasala/server/internal/mail"
-	"github.com/salehtl/hasala/server/internal/mailq"
 )
 
 // ceremonySweepInterval is spec 02 §9.7's five-minute sweep of the ceremonies
 // that hold a plaintext address.
 const ceremonySweepInterval = 5 * time.Minute
-
-// fakeSenderKeeps bounds what serve's fake sender holds in memory.
-const fakeSenderKeeps = 64
 
 // loadAuthKeys reads salt_key and auth_key (generation 1, spec 01 §4.11). Both
 // files or neither; behind Cloudflare both are required (config) and the two
@@ -81,75 +72,4 @@ func checkKeyIDs(ctx context.Context, pool *pgxpool.Pool, keys *authkeys.Keys) e
 		}
 	}
 	return nil
-}
-
-// enableAccounts wires the account ceremonies (keys, gate, mail) into srv and
-// starts the mail worker and the account sweeps. It answers the channels that
-// close when they stop. Without both key files the ceremonies stay unmounted.
-func enableAccounts(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv *api.Server) ([]<-chan struct{}, error) {
-	keys, err := loadAuthKeys(cfg)
-	if err != nil {
-		return nil, refusal{err}
-	}
-	if keys == nil {
-		slog.Warn("hasalad serve: HASALA_AUTH_KEY_FILE and HASALA_SALT_KEY_FILE are not both set: " +
-			"signup, password, recovery, reset, email-change and freeze routes are NOT mounted")
-		return nil, nil
-	}
-	if err := checkKeyIDs(ctx, pool, keys); err != nil {
-		return nil, refusal{err}
-	}
-	var sender mail.Sender
-	if cfg.Email.Enabled() {
-		raw, err := os.ReadFile(cfg.Email.APITokenFile)
-		if err != nil {
-			return nil, refusal{fmt.Errorf("HASALA_EMAIL_API_TOKEN_FILE: %w", err)}
-		}
-		from := cfg.Email.From
-		if from == "" {
-			from = "no-reply@hasala.app"
-		}
-		sender = &mail.Cloudflare{AccountID: cfg.Email.CloudflareAccountID, Token: strings.TrimSpace(string(raw)), From: from}
-	} else {
-		slog.Warn("hasalad serve: no [email] group: emails are recorded by a fake sender and never leave this process")
-		sender = &mail.Fake{Max: fakeSenderKeeps}
-	}
-	logf := func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) }
-	q := &mailq.Queue{Pool: pool, Sender: sender, Bounced: auth.BounceHook, Tagger: keys.EmailTag, Logf: logf}
-	mailer := &auth.Mailer{Queue: q, Keys: keys, FreezeURL: cfg.Email.FreezeURL, Logf: logf}
-	q.Renderers = mailer.Renderers()
-	q.EnableKick()
-	gate := authkeys.NewGate(cfg.Auth.PasswordHashConcurrency, authkeys.DefaultGateQueue, authkeys.DefaultGateWait)
-	srv.EnableAccounts(keys, gate, mailer)
-
-	worker := make(chan struct{})
-	go func() {
-		defer close(worker)
-		q.Run(ctx, 30*time.Second)
-	}()
-	a := srv.Accounts
-	return []<-chan struct{}{
-		worker,
-		startSweepEvery(ctx, "account ceremony sweep", ceremonySweepInterval, func(ctx context.Context) (string, error) {
-			n, err := a.SweepCeremonies(ctx)
-			if err != nil || n == 0 {
-				return "", err
-			}
-			return fmt.Sprintf("swept %d expired ceremony(s)", n), nil
-		}),
-		startSweep(ctx, "mail log sweep", func(ctx context.Context) (string, error) {
-			n, err := q.SweepLog(ctx, cfg.Email.LogRetention)
-			if err != nil || n == 0 {
-				return "", err
-			}
-			return fmt.Sprintf("deleted or redacted %d email log row(s)", n), nil
-		}),
-		startSweep(ctx, "account sweep", func(ctx context.Context) (string, error) {
-			n, err := a.SweepHourly(ctx)
-			if err != nil || n == 0 {
-				return "", err
-			}
-			return fmt.Sprintf("swept %d row(s)", n), nil
-		}),
-	}, nil
 }

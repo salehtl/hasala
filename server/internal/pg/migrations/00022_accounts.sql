@@ -1,7 +1,10 @@
 -- +goose Up
--- WS-3, accounts and auth (spec 02 §5.3; spec 01 §9). Pre-assigned number
--- 00011 of WS-3's range; squashed into 00001_baseline.sql before the first QA
--- deploy, like every migration in 00002–00029.
+-- WS-3, accounts and auth (spec 02 §5.3; spec 01 §9). Numbered 00022, after
+-- WS-4's 00020 and 00021, which create spec 07's banks, waitlist_entries,
+-- invite_codes (with the review flag this work reads) and mail_log; this file
+-- reuses those tables and creates none of them. Squashed into
+-- 00001_baseline.sql before the first QA deploy, like every migration in
+-- 00002–00029.
 --
 -- What changes:
 --   * users becomes the email-keyed account of spec 02 D-4: no IdP columns, a
@@ -17,18 +20,12 @@
 --   * new: signup, password-login, recovery, password-reset and email-change
 --     ceremonies; email codes, their pauses and the Postgres-backed counters;
 --     freeze tokens and the session-free device-freeze challenges; auth events;
---     server_meta (the key fingerprints of spec 02 §5.6 O9);
---   * spec 07's block, as far as this work needs it: banks (with its seed),
---     waitlist_entries, invite_codes (07 §2.5's state machine, replacing
---     ledgerd's table) and mail_log (07 §2.8). The rest of 07's block
---     (waitlist_tokens, bank_requests, TestFlight, admin_audit) and 07 §2.10's
---     per-column grants arrive with WS-19, together with the hasala_console role
---     those grants name.
+--     server_meta (the key fingerprints of spec 02 §5.6 O9).
 --
 -- Every ADD COLUMN ... NOT NULL without a default applies only to empty tables,
--- which holds because no database has been deployed with 00001 yet (see 00010's
--- header): against a database that already holds accounts this migration fails,
--- on purpose.
+-- which holds because no database has been deployed with accounts yet (see
+-- 00010's header): against a database that already holds accounts this
+-- migration fails, on purpose.
 
 -- +goose StatementBegin
 DO $$
@@ -357,201 +354,13 @@ CREATE TABLE server_meta (
   CONSTRAINT server_meta_key_is_closed CHECK (key IN ('auth_key_id','salt_key_id'))
 );
 
--- ── spec 07's block (07 §2.2, §2.3, §2.5, §2.8): the part this work reaches ──
-DROP TABLE invite_codes;
-DROP FUNCTION forget_invite_note();
-
-CREATE TABLE banks (
-  slug              text PRIMARY KEY,
-  name              text NOT NULL,
-  status            text NOT NULL DEFAULT 'new',
-  aliases           text[] NOT NULL DEFAULT '{}',
-  status_changed_at timestamptz NOT NULL DEFAULT now(),
-  created_at        timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT banks_slug_shape CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$' AND slug <> 'other'),
-  CONSTRAINT banks_name_is_bounded CHECK (char_length(name) BETWEEN 1 AND 64),
-  CONSTRAINT banks_status_is_closed CHECK (status IN ('new','planned','in_progress','supported','wont_do')),
-  CONSTRAINT banks_aliases_are_bounded CHECK (cardinality(aliases) <= 32)
-);
-INSERT INTO banks (slug, name, status, aliases) VALUES
-  ('enbd',             'Emirates NBD',         'supported', '{"emirates nbd","enbd"}'),
-  ('dib',              'Dubai Islamic Bank',   'supported', '{"dubai islamic bank","dubai islamic","dib"}'),
-  ('adcb',             'ADCB',                 'new', '{"adcb","abu dhabi commercial bank"}'),
-  ('fab',              'First Abu Dhabi Bank', 'new', '{"fab","first abu dhabi bank","first abu dhabi"}'),
-  ('mashreq',          'Mashreq',              'new', '{"mashreq","mashreq bank","mashreqbank","mashreq neo"}'),
-  ('rakbank',          'RAKBANK',              'new', '{"rakbank","rak bank","rak"}'),
-  ('emirates-islamic', 'Emirates Islamic',     'new', '{"emirates islamic","emirates islamic bank"}'),
-  ('wio',              'Wio',                  'new', '{"wio","wio bank"}'),
-  ('liv',              'Liv',                  'new', '{"liv","liv bank"}');
-
-CREATE TABLE waitlist_entries (
-  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_tag            bytea NOT NULL,
-  email_norm           text,
-  state                text NOT NULL,
-  bank_slug            text REFERENCES banks(slug) ON DELETE RESTRICT,
-  other_bank           text,
-  other_bank_key       text,
-  source               text NOT NULL,
-  created_at           timestamptz NOT NULL,
-  updated_at           timestamptz NOT NULL,
-  confirm_sent_count   smallint NOT NULL DEFAULT 0,
-  last_confirm_sent_at timestamptz,
-  confirmed_at         timestamptz,
-  invited_at           timestamptz,
-  joined_at            timestamptz,
-  CONSTRAINT waitlist_entries_tag_uniq UNIQUE (email_tag),
-  CONSTRAINT waitlist_entries_tag_is_256_bits CHECK (octet_length(email_tag) = 32),
-  CONSTRAINT waitlist_entries_email_shape CHECK (email_norm IS NULL OR (
-    email_norm ~ '^[!-?A-~]{1,64}@[!-?A-~]{1,253}$' AND email_norm ~ '@[^@.][^@]*[.][^@]*[^@.]$'
-    AND email_norm !~ '[A-Z]' AND octet_length(email_norm) <= 254)),
-  CONSTRAINT waitlist_entries_state_is_closed CHECK (state IN ('pending','confirmed','invited','joined')),
-  CONSTRAINT waitlist_entries_email_until_joined CHECK ((state = 'joined') = (email_norm IS NULL)),
-  CONSTRAINT waitlist_entries_source_is_closed CHECK (source IN ('web','app')),
-  CONSTRAINT waitlist_entries_one_bank CHECK (NOT (bank_slug IS NOT NULL AND other_bank IS NOT NULL)),
-  CONSTRAINT waitlist_entries_other_shape CHECK ((other_bank IS NULL) = (other_bank_key IS NULL)
-    AND (other_bank IS NULL OR char_length(other_bank) BETWEEN 1 AND 64)
-    AND (other_bank_key IS NULL OR char_length(other_bank_key) BETWEEN 1 AND 64)),
-  CONSTRAINT waitlist_entries_confirmed_shape CHECK ((state = 'pending') = (confirmed_at IS NULL)),
-  CONSTRAINT waitlist_entries_invited_shape CHECK (state NOT IN ('invited','joined') OR invited_at IS NOT NULL),
-  CONSTRAINT waitlist_entries_joined_shape CHECK ((state = 'joined') = (joined_at IS NOT NULL)),
-  CONSTRAINT waitlist_entries_confirm_sends_bounded CHECK (confirm_sent_count BETWEEN 0 AND 5)
-);
-CREATE INDEX waitlist_entries_state_idx ON waitlist_entries (state, created_at DESC);
-CREATE INDEX waitlist_entries_pending_expiry_idx
-  ON waitlist_entries ((coalesce(last_confirm_sent_at, created_at))) WHERE state = 'pending';
-CREATE INDEX waitlist_entries_bank_idx ON waitlist_entries (bank_slug) WHERE bank_slug IS NOT NULL;
-CREATE INDEX waitlist_entries_other_idx ON waitlist_entries (other_bank_key) WHERE other_bank_key IS NOT NULL;
-
-CREATE TABLE invite_codes (
-  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  code_hash         bytea,
-  link_key_hash     bytea,
-  email_tag         bytea,
-  waitlist_entry_id uuid REFERENCES waitlist_entries(id) ON DELETE SET NULL,
-  origin            text NOT NULL,
-  review            boolean NOT NULL DEFAULT false,
-  state             text NOT NULL,
-  note              text,
-  ttl               interval NOT NULL DEFAULT interval '14 days',
-  created_at        timestamptz NOT NULL,
-  minted_at         timestamptz,
-  expires_at        timestamptz,
-  mint_count        smallint NOT NULL DEFAULT 0,
-  redeemed_at       timestamptz,
-  redeemed_by       uuid REFERENCES users(id) ON DELETE SET NULL,
-  closed_at         timestamptz,
-  CONSTRAINT invite_codes_code_uniq UNIQUE (code_hash),
-  CONSTRAINT invite_codes_link_key_uniq UNIQUE (link_key_hash),
-  CONSTRAINT invite_codes_hashes_are_256_bits CHECK (
-    (code_hash IS NULL OR octet_length(code_hash) = 32)
-    AND (link_key_hash IS NULL OR octet_length(link_key_hash) = 32)
-    AND (email_tag IS NULL OR octet_length(email_tag) = 32)),
-  CONSTRAINT invite_codes_origin_is_closed CHECK (origin IN ('admin','cli')),
-  CONSTRAINT invite_codes_state_is_closed CHECK (state IN
-    ('awaiting_testflight','queued','active','redeemed','expired','revoked')),
-  CONSTRAINT invite_codes_unminted_shape CHECK (state NOT IN ('awaiting_testflight','queued')
-    OR (code_hash IS NULL AND link_key_hash IS NULL AND minted_at IS NULL)),
-  CONSTRAINT invite_codes_minted_shape CHECK (state NOT IN ('active','redeemed')
-    OR (code_hash IS NOT NULL AND minted_at IS NOT NULL AND expires_at IS NOT NULL)),
-  CONSTRAINT invite_codes_expiry_follows_mint CHECK (expires_at IS NULL OR expires_at > minted_at),
-  CONSTRAINT invite_codes_link_key_needs_address CHECK (link_key_hash IS NULL OR email_tag IS NOT NULL),
-  CONSTRAINT invite_codes_admin_invites_are_addressed CHECK (origin = 'cli' OR email_tag IS NOT NULL
-    OR closed_at IS NOT NULL),
-  CONSTRAINT invite_codes_review_shape CHECK (NOT review OR (origin = 'cli' AND email_tag IS NULL
-    AND link_key_hash IS NULL AND waitlist_entry_id IS NULL)),
-  CONSTRAINT invite_codes_redemption_shape CHECK ((state = 'redeemed') = (redeemed_at IS NOT NULL)
-    AND (redeemed_by IS NULL OR redeemed_at IS NOT NULL)),
-  CONSTRAINT invite_codes_closed_shape CHECK ((state IN ('redeemed','expired','revoked')) = (closed_at IS NOT NULL)),
-  CONSTRAINT invite_codes_note_is_bounded CHECK (note IS NULL OR char_length(note) <= 200),
-  CONSTRAINT invite_codes_ttl_is_bounded CHECK (ttl BETWEEN interval '1 day' AND interval '30 days'),
-  CONSTRAINT invite_codes_mint_count_bounded CHECK (mint_count BETWEEN 0 AND 20)
-);
-CREATE INDEX invite_codes_state_idx ON invite_codes (state, expires_at);
-CREATE INDEX invite_codes_entry_idx ON invite_codes (waitlist_entry_id) WHERE waitlist_entry_id IS NOT NULL;
-CREATE INDEX invite_codes_redeemer_idx ON invite_codes (redeemed_by) WHERE redeemed_by IS NOT NULL;
--- +goose StatementBegin
-CREATE FUNCTION forget_invite_details() RETURNS trigger AS $$
-BEGIN
-  NEW.note := NULL;
-  NEW.email_tag := NULL;
-  NEW.link_key_hash := NULL;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
--- +goose StatementEnd
-CREATE TRIGGER invite_details_die_with_the_account BEFORE UPDATE ON invite_codes
-  FOR EACH ROW WHEN (OLD.redeemed_by IS NOT NULL AND NEW.redeemed_by IS NULL)
-  EXECUTE FUNCTION forget_invite_details();
-
-CREATE TABLE mail_log (
-  id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  kind                text NOT NULL,
-  subkind             text,
-  lane                text NOT NULL,
-  recipient           text,
-  recipient_tag       bytea,
-  recipient_hint      text NOT NULL,
-  user_id             uuid REFERENCES users(id) ON DELETE CASCADE,
-  waitlist_entry_id   uuid REFERENCES waitlist_entries(id) ON DELETE CASCADE,
-  invite_id           uuid REFERENCES invite_codes(id) ON DELETE SET NULL,
-  bank_slug           text REFERENCES banks(slug) ON DELETE SET NULL,
-  params              jsonb NOT NULL DEFAULT '{}',
-  status              text NOT NULL,
-  attempts            smallint NOT NULL DEFAULT 0,
-  next_attempt_at     timestamptz,
-  lease_until         timestamptz,
-  provider_message_id text,
-  error               text,
-  created_at          timestamptz NOT NULL,
-  sent_at             timestamptz,
-  final_at            timestamptz,
-  CONSTRAINT mail_log_kind_is_closed CHECK (kind IN ('waitlist','waitlist_already',
-    'waitlist_has_account','invite','bank_supported','code','reset_code','recovery_code',
-    'alert','deleted','test')),
-  CONSTRAINT mail_log_lane_is_closed CHECK (lane IN ('transactional','waitlist','bulk')),
-  CONSTRAINT mail_log_status_is_closed CHECK (status IN ('queued','sending','sent','failed','bounced','suppressed')),
-  CONSTRAINT mail_log_recipient_shape CHECK (recipient IS NULL OR (
-    recipient ~ '^[!-?A-~]{1,64}@[!-?A-~]{1,253}$' AND recipient !~ '[A-Z]' AND octet_length(recipient) <= 254)),
-  CONSTRAINT mail_log_recipient_until_final CHECK (recipient IS NOT NULL OR final_at IS NOT NULL),
-  CONSTRAINT mail_log_tag_shape CHECK ((recipient_tag IS NULL AND status = 'queued')
-    OR octet_length(recipient_tag) = 32),
-  CONSTRAINT mail_log_hint_is_bounded CHECK (char_length(recipient_hint) BETWEEN 3 AND 80),
-  CONSTRAINT mail_log_one_subject CHECK (num_nonnulls(user_id, waitlist_entry_id) <= 1),
-  CONSTRAINT mail_log_params_bounded CHECK (octet_length(params::text) <= 1024),
-  CONSTRAINT mail_log_attempts_bounded CHECK (attempts BETWEEN 0 AND 10),
-  CONSTRAINT mail_log_texts_bounded CHECK ((provider_message_id IS NULL OR char_length(provider_message_id) <= 128)
-    AND (error IS NULL OR char_length(error) <= 200) AND (subkind IS NULL OR subkind ~ '^[a-z_]{1,32}$')),
-  CONSTRAINT mail_log_queued_shape CHECK ((status = 'queued') = (next_attempt_at IS NOT NULL)),
-  CONSTRAINT mail_log_sending_shape CHECK ((status = 'sending') = (lease_until IS NOT NULL)),
-  CONSTRAINT mail_log_sent_shape CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
-  CONSTRAINT mail_log_final_shape CHECK ((status IN ('sent','failed','bounced','suppressed')) = (final_at IS NOT NULL))
-);
-CREATE INDEX mail_log_due_idx ON mail_log (lane, next_attempt_at) WHERE status = 'queued';
-CREATE INDEX mail_log_lease_idx ON mail_log (lease_until) WHERE status = 'sending';
-CREATE INDEX mail_log_tag_idx ON mail_log (recipient_tag, created_at DESC);
-CREATE INDEX mail_log_created_idx ON mail_log (created_at DESC);
-CREATE INDEX mail_log_user_idx ON mail_log (user_id) WHERE user_id IS NOT NULL;
-CREATE INDEX mail_log_entry_idx ON mail_log (waitlist_entry_id) WHERE waitlist_entry_id IS NOT NULL;
-CREATE UNIQUE INDEX mail_log_bank_supported_once ON mail_log (recipient, bank_slug)
-  WHERE kind = 'bank_supported' AND status <> 'failed';
-
 -- The runtime role's DML on these tables comes from 00001's default privileges.
 
 -- +goose Down
--- pgtest only (MigrateDown): back to 00010's shape where 00010's and 00001's
--- Down statements need it.
-DROP TABLE mail_log, invite_codes, waitlist_entries, banks, auth_events, device_freeze_challenges,
-  freeze_tokens, email_change_ceremonies, password_reset_ceremonies, recovery_ceremonies,
-  password_login_ceremonies, rate_counters, email_code_pauses, email_codes, server_meta;
-DROP FUNCTION forget_invite_details();
+-- pgtest only (MigrateDown): back to 00021's shape where the earlier Down
+-- statements need it.
+DROP TABLE auth_events, device_freeze_challenges, freeze_tokens, email_change_ceremonies,
+  password_reset_ceremonies, recovery_ceremonies, password_login_ceremonies, rate_counters,
+  email_code_pauses, email_codes, server_meta;
 ALTER TABLE webauthn_ceremonies DROP COLUMN signup_id;
 DROP TABLE signup_ceremonies;
-CREATE TABLE invite_codes (code_hash bytea PRIMARY KEY);
--- +goose StatementBegin
-CREATE FUNCTION forget_invite_note() RETURNS trigger AS $$
-BEGIN
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
--- +goose StatementEnd

@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog"
 	"github.com/salehtl/hasala/server/internal/pgtx"
@@ -71,18 +72,15 @@ func (a *Accounts) SignupBegin(ctx context.Context, req SignupBeginRequest) (Sig
 	}
 	now := a.now()
 	codeHash := InviteCodeHash(req.InviteCode)
-	inv, err := redeemableInvite(ctx, a.Pool, codeHash, now)
+	tag := a.Keys.EmailTag(email)
+	// An addressed invite used with another address is the same
+	// ErrNotInvited as an unknown code: the answer says nothing about whom an
+	// invite was for. Only the link key proves the address.
+	inv, err := invites.Resolve(ctx, a.Pool, req.InviteCode, linkKey, tag, now)
 	if err != nil {
 		return SignupBegun{}, err
 	}
-	tag := a.Keys.EmailTag(email)
-	if inv.EmailTag != nil && subtle.ConstantTimeCompare(inv.EmailTag, tag) != 1 {
-		// The same bytes as an unknown code: the answer says nothing about
-		// whom an invite was for.
-		return SignupBegun{}, ErrNotInvited
-	}
-	proven := linkKey != nil && inv.LinkKeyHash != nil && inv.EmailTag != nil &&
-		keyproto.InviteLinkKeyMatches(linkKey, inv.LinkKeyHash)
+	proven := inv.Proven
 
 	id, err := newCeremonyIDN(16)
 	if err != nil {
@@ -298,7 +296,7 @@ func createAccountTx(ctx context.Context, tx pgx.Tx, s signupRow, handle []byte,
 		s.UserID); err != nil {
 		return fmt.Errorf("auth: create account: account_usage: %w", err)
 	}
-	return onInviteRedeemedTx(ctx, tx, inv.ID, s.Tag, now)
+	return onInviteRedeemedTx(ctx, tx, inv.InviteID, s.UserID, s.Tag)
 }
 
 // signupEmailHash is the email_hash a C1-P bootstrap must carry.

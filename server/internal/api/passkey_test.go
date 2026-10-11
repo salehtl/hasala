@@ -58,11 +58,12 @@ func (h *harness) beginAssert(path, token string) (string, *protocol.CredentialA
 	return out.CeremonyID, &opts
 }
 
-// register runs a whole sign-up over HTTP and returns the session it minted.
-func (h *harness) register(code string) (*authtest.Authenticator, SessionResponse) {
+// register runs a whole passkey sign-up over HTTP for a proven signup id and
+// returns the session it minted.
+func (h *harness) register(signupID string) (*authtest.Authenticator, SessionResponse) {
 	h.t.Helper()
 	id, opts := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{SignupID: code, AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
+		PasskeyRegisterBeginRequest{SignupID: signupID, AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	a := authtest.New(h.t)
 	w := h.req("POST", "/api/v1/auth/passkey/register/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: a.Create(h.t, opts),

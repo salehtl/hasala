@@ -58,10 +58,9 @@ func newAcctFixture(t *testing.T) *acctFixture {
 		t.Fatal(err)
 	}
 	f := &acctFixture{t: t, pool: pool, owner: owner, clock: c, keys: keys, fake: &mail.Fake{}}
-	f.queue = &mailq.Queue{Pool: pool, Sender: f.fake, Bounced: BounceHook, Tagger: keys.EmailTag, Now: c.now,
-		Logf: func(string, ...any) {}}
+	f.queue = mailq.New(pool, f.fake, keys)
 	f.mailer = &Mailer{Queue: f.queue, Keys: keys, Now: c.now, Async: func(fn func()) { fn() }}
-	f.queue.Renderers = f.mailer.Renderers()
+	f.mailer.Register(f.queue)
 	f.sessions = &Sessions{Pool: pool, TTL: 30 * 24 * time.Hour, Now: c.now}
 	f.passkeys = newPasskeys(t, pool)
 	f.passkeys.Now, f.passkeys.Mail = c.now, f.mailer
@@ -92,7 +91,7 @@ func (f *acctFixture) lastCode(addr string) string {
 // sendQueued runs the mail worker once.
 func (f *acctFixture) sendQueued() {
 	f.t.Helper()
-	if _, err := f.queue.RunOnce(bgctx); err != nil {
+	if _, err := f.queue.Drain(bgctx); err != nil {
 		f.t.Fatal(err)
 	}
 }

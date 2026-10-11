@@ -72,11 +72,12 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 	}
 	want := []string{
 		"account_deletion_challenges", "account_key_wraps", "account_keys", "account_limits", "account_refusals",
-		"account_usage", "apns_tokens", "auth_events", "banks", "deleted_account_sessions", "device_freeze_challenges",
-		"email_change_ceremonies", "email_code_pauses", "email_codes", "freeze_tokens", "goose_db_version",
-		"invite_codes", "key_history", "mail_log", "op_log", "oplog_seq", "password_login_ceremonies",
+		"account_usage", "admin_audit", "apns_tokens", "auth_events", "bank_requests", "banks",
+		"deleted_account_sessions", "device_freeze_challenges", "email_change_ceremonies", "email_code_pauses",
+		"email_codes", "freeze_tokens", "goose_db_version", "invite_codes", "key_history", "mail_log",
+		"mailbox_link_challenges", "mailbox_links", "op_log", "oplog_seq", "password_login_ceremonies",
 		"password_reset_ceremonies", "rate_counters", "recovery_ceremonies", "server_meta", "sessions",
-		"signup_ceremonies", "step_up_challenges", "users", "waitlist_entries",
+		"signup_ceremonies", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
 	if !slices.Equal(got, want) {
@@ -537,9 +538,10 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 		t.Fatalf("Pending = %d, %v; want 0", n, err)
 	}
 	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
-	// baseline before the first QA deploy): today 00010_keys and 00011_accounts.
+	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links,
+	// 00021_waitlist_invites_mail and 00022_accounts.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 11 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 11", latest, err)
+	if err != nil || latest != 22 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 22", latest, err)
 	}
 }
