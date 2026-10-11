@@ -96,6 +96,50 @@ struct MayaScenarioTests {
     #expect(e.spent(Maya.september, "dining") == 148_620)
   }
 
+  @Test("F6: auto-assign on the 10 October state allocates exactly 1,000.00")
+  func autoAssign() throws {
+    let (_, e) = try Self.projected()
+    let alloc = e.autoAssign(Maya.october)
+    #expect(alloc.map(\.category) == ["utilities", "savings", "groceries", "transport", "healthcare", "dining", "entertainment", "shopping", "travel"])
+    #expect(alloc.map(\.amount) == [1_705, 62_500, 3_132, 1_281, 428, 7_861, 2_948, 7_861, 12_284])
+    #expect(alloc.reduce(0) { $0 + $1.amount } == 100_000)
+    // Applied as one blob of moves, Ready to assign reaches 0.
+    var s = Self.maya.state
+    var a = OpAuthor(Self.maya.context())
+    a.autoAssign(month: Maya.october, alloc, batchID: "b1")
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: Maya.nowMs, into: db)
+    let after = try LedgerReader(db).planEngine(month: Maya.october, today: Maya.today, bills: Maya.bills())
+    #expect(after.readyToAssign(Maya.october) == 0)
+    #expect(after.assigned(Maya.october, "groceries") == 223_132)
+    #expect(after.assigned(Maya.november, "groceries") == 220_000)
+  }
+
+  @Test("03a §7.3-§7.4: change Dining's budget, move money, undo")
+  func changeAndMove() throws {
+    var s = Self.maya.state
+    var a = OpAuthor(Self.maya.context())
+    a.setBudget(category: "dining", month: Maya.october, amountMinor: 180_000)
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    var e = PlanEngine(plan: s.plan, taxonomy: TaxonomyView(state: s), lines: try Self.projected().1.lines, bills: Maya.bills(), today: Maya.today)
+    #expect(e.assigned(Maya.october, "dining") == 180_000 && e.assigned(Maya.november, "dining") == 180_000)
+    #expect(e.readyToAssign(Maya.october) == 80_000 && e.hero(Maya.october).left == 761_755)
+    var m = OpAuthor(Self.maya.context())
+    m.moveMoney(month: Maya.october, from: nil, to: "groceries", amountMinor: 31_800)
+    let moveOps = try m.build().ops
+    try Replay.foldOps(moveOps, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    e = PlanEngine(plan: s.plan, taxonomy: TaxonomyView(state: s), lines: e.lines, bills: Maya.bills(), today: Maya.today)
+    #expect(e.assigned(Maya.october, "groceries") == 251_800 && e.assigned(Maya.november, "groceries") == 220_000)
+    #expect(e.readyToAssign(Maya.october) == 48_200)
+    var u = OpAuthor(Self.maya.context())
+    u.moveMoney(month: Maya.october, from: "groceries", to: nil, amountMinor: 31_800, reason: "undo", undoes: moveOps[0].opID)
+    try Replay.foldOps(try u.build().ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    e = PlanEngine(plan: s.plan, taxonomy: TaxonomyView(state: s), lines: e.lines, bills: Maya.bills(), today: Maya.today)
+    #expect(e.assigned(Maya.october, "groceries") == 220_000 && e.readyToAssign(Maya.october) == 80_000)
+    #expect(s.anomalies.isEmpty)
+  }
+
   @Test("review: six to sort, AED 827.28 of debits; 26 rows this month")
   func review() throws {
     let (reader, _) = try Self.projected()

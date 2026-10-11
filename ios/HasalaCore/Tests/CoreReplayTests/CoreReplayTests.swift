@@ -64,6 +64,9 @@ struct CoreReplayV4Tests {
     let w = String(decoding: log.state.serialized(), as: UTF8.self)
     #expect(w.contains(#""category_source":{"kind":"user"}"#))
     #expect(!w.contains("annotations") && !w.contains("successor_id") && !w.contains("merchantNames"))
+    try log.blob(ingest(2, id: Ids.t2))
+    #expect(log.state.txns[Ids.t2]?.categorySource == CategorySource.none)
+    #expect(String(decoding: log.state.serialized(), as: UTF8.self).contains(#""category_source":{"kind":"none"}"#))
   }
 
   @Test("txn-02: verified_origin_domain is refused at v4")

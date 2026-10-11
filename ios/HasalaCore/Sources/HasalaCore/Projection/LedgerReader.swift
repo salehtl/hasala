@@ -362,9 +362,13 @@ public struct LedgerReader: Sendable {
   public func planEngine(month: CivilMonth, today: CivilDate, bills: [BillExpectation] = []) throws -> PlanEngine {
     let from = (month.adding(months: -2) ?? month).firstDay
     let to = (month.adding(months: 1) ?? month).lastDay
+    let goals = try goals()
+    // A category goal's progress reads every line from its `since`.
+    let since = goals.compactMap { $0.goal.source.since.flatMap(CivilDate.init(wire:)) }.min()
+    let start = since.map { min($0, from) } ?? from
     return PlanEngine(
-      plan: try planState(), taxonomy: try taxonomy(), lines: try moneyLines(from: from, to: to), bills: bills,
-      template: try budgetTemplate(), today: today)
+      plan: try planState(), taxonomy: try taxonomy(), lines: try moneyLines(from: start, to: to), bills: bills,
+      template: try budgetTemplate(), goals: goals, today: today)
   }
 
   /// A goal's lines need its whole window: a `PlanEngine` over all lines from `since`.

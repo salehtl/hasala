@@ -9,7 +9,7 @@ extension State {
     if let raw = p["category_source"], !raw.isNull {
       out.categorySource = try decodeCategorySource(raw, category: out.category)
     } else {
-      out.categorySource = out.category == nil ? .none : .user
+      out.categorySource = out.category == nil ? CategorySource.none : CategorySource.user
     }
     if let v = P.present(p["entry_method"]) { out.entryMethod = try P.oneOf(v, "entry_method", ["mailbox", "manual", "import"]) }
     if let v = P.present(p["location"]) { out.location = try P.label(v, "location") }

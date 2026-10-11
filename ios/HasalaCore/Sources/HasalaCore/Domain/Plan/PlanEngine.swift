@@ -164,17 +164,23 @@ public struct PlanEngine: Sendable {
   public let bills: [BillExpectation]
   public let template: BudgetSplit?
   public let today: CivilDate
+  /// Goals (id, record), for auto-assign's goal step.
+  public let goals: [(id: String, goal: Goal)]
 
   /// 03a §6.20 default roles.
   public static let defaultBills: [String] = ["rent", "utilities", "insurance", "subscriptions"]
   public static let paydayWindow = 4
 
-  public init(plan: PlanState, taxonomy: TaxonomyView, lines: [MoneyLine], bills: [BillExpectation] = [], template: BudgetSplit? = nil, today: CivilDate) {
+  public init(
+    plan: PlanState, taxonomy: TaxonomyView, lines: [MoneyLine], bills: [BillExpectation] = [], template: BudgetSplit? = nil,
+    goals: [(id: String, goal: Goal)] = [], today: CivilDate
+  ) {
     self.plan = plan
     self.taxonomy = taxonomy
     self.lines = lines
     self.bills = bills
     self.template = template
+    self.goals = goals
     self.today = today
   }
 
@@ -472,6 +478,105 @@ public struct PlanEngine: Sendable {
       $0.confirmed && $0.projectID.map { utf8Equal($0, projectID) } == true
         && ($0.flow == .spend || $0.flow == .refund || $0.flow == .uncategorizedOut)
     }.reduce(Int64(0)) { $0 &+ ($1.signedHome ?? 0) }
+  }
+
+  // MARK: Auto-assign (03a §6.11)
+
+  /// The allocations that bring Ready to assign to 0: bill shortfalls, goal
+  /// targets, template deficits, the remainder by the template, then within
+  /// each bucket by cumulative floor over the assigned amounts. Empty for a
+  /// past month or when Ready to assign is not positive.
+  public func autoAssign(_ m: CivilMonth) -> [(category: String, amount: Int64)] {
+    let ph = phase(m)
+    var r = readyToAssign(m)
+    guard ph != .past, r > 0 else { return [] }
+    var a: [String: Int64] = [:]
+    var touched: [String] = []
+    func give(_ c: String, _ v: Int64) {
+      guard v > 0 else { return }
+      if a[c] == nil { touched.append(c) }
+      a[c, default: 0] += v
+    }
+    let act = activity(m)
+    // 1. Bill shortfalls, by earliest unpaid expected day, then sortKey.
+    let monthBills = bills.filter { $0.expectedDay.yearMonth == m }
+    let unpaid: (BillExpectation) -> Bool = { [.upcoming, .due, .late].contains($0.status) }
+    let billCats = billsCategories().map { info -> (CategoryInfo, CivilDate?) in
+      (info, monthBills.filter { utf8Equal($0.categoryID, info.id) && unpaid($0) }.map(\.expectedDay).min())
+    }.sorted { x, y in
+      switch (x.1, y.1) {
+      case (let p?, let q?) where p != q: return p < q
+      case (.some, nil): return true
+      case (nil, .some): return false
+      default: return x.0.sortKey < y.0.sortKey
+      }
+    }
+    for (info, _) in billCats where r > 0 {
+      let claim = monthBills.filter { utf8Equal($0.categoryID, info.id) && unpaid($0) }.reduce(Int64(0)) { $0 + $1.amount }
+      let short = max(0, (act[info.id] ?? 0) + claim - assigned(m, info.id))
+      let g = min(r, short)
+      give(info.id, g)
+      r -= g
+    }
+    // 2. Goal targets, grouped by funding category, in (target_month, id) order.
+    var needByFund: [(String, Int64)] = []
+    let sortedGoals = goals.filter { $0.goal.status == "active" && $0.goal.source.kind == "category" }
+      .sorted { x, y in
+        let tx = x.goal.targetMonth ?? "9999-99", ty = y.goal.targetMonth ?? "9999-99"
+        return tx != ty ? compareUTF8(tx, ty) < 0 : compareUTF8(x.id, y.id) < 0
+      }
+    for g in sortedGoals {
+      guard let f = g.goal.source.categoryID, let req = goalProgress(id: g.id, g.goal, month: m).required else { continue }
+      if let i = needByFund.firstIndex(where: { $0.0 == f }) { needByFund[i].1 += req } else { needByFund.append((f, req)) }
+    }
+    for (f, req) in needByFund where r > 0 {
+      let need = max(0, req - assigned(m, f) - (a[f] ?? 0))
+      let g = min(r, need)
+      give(f, g)
+      r -= g
+    }
+    // 3. Template deficits; 4. the remainder by the template.
+    let t = template ?? BudgetSplit(need: 50, want: 30, saving: 20)
+    let pct: [Bucket: Int64] = [.need: t.need, .want: t.want, .saving: t.saving]
+    let inc = income(m).total
+    var giveB: [Bucket: Int64] = [:]
+    var defs: [Int64] = []
+    for b in Bucket.allCases {
+      let target = Int64(Int128(inc) * Int128(pct[b]!) / 100)
+      let cur = taxonomy.ordered.filter { $0.kind == .spending && $0.bucket == b }.reduce(Int64(0)) { $0 + assigned(m, $1.id) + (a[$1.id] ?? 0) }
+      defs.append(max(0, target - cur))
+    }
+    let sumDef = defs.reduce(0, +)
+    if sumDef > 0 {
+      let parts = sumDef <= r ? defs : Self.largestRemainder(total: r, weights: defs.map { Int128($0) * Int128(r) }, divisor: Int128(sumDef))
+      for (i, b) in Bucket.allCases.enumerated() { giveB[b, default: 0] += parts[i] }
+      r -= parts.reduce(0, +)
+    }
+    if r > 0 {
+      let parts = Self.largestRemainder(total: r, weights: Bucket.allCases.map { Int128(r) * Int128(pct[$0]!) }, divisor: 100)
+      for (i, b) in Bucket.allCases.enumerated() { giveB[b, default: 0] += parts[i] }
+      r = 0
+    }
+    // 5. Within each bucket, by cumulative floor over A(M,c) in sortKey order.
+    for b in Bucket.allCases {
+      let total = giveB[b] ?? 0
+      guard total > 0 else { continue }
+      let pool = taxonomy.ordered.filter {
+        $0.kind == .spending && $0.bucket == b && (b == .saving || role($0.id) == "everyday")
+      }
+      var recipients = pool.filter { assigned(m, $0.id) > 0 }.map { ($0.id, assigned(m, $0.id)) }
+      if recipients.isEmpty { recipients = pool.filter(\.active).map { ($0.id, Int64(1)) } }
+      let w = recipients.reduce(Int128(0)) { $0 + Int128($1.1) }
+      guard w > 0 else { continue }
+      var cum: Int128 = 0
+      for (c, wi) in recipients {
+        let before = Int128(total) * cum / w
+        cum += Int128(wi)
+        give(c, Int64(Int128(total) * cum / w - before))
+      }
+    }
+    // 6. In order of first touch.
+    return touched.map { ($0, a[$0]!) }
   }
 
   // MARK: Setup 2 seeding (03a §6.12)

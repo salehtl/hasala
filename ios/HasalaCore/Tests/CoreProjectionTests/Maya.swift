@@ -35,6 +35,7 @@ struct Maya {
   static let today = CivilDate(year: 2026, month: 10, day: 10)!
   static let october = CivilMonth(year: 2026, month: 10)!
   static let september = CivilMonth(year: 2026, month: 9)!
+  static let november = CivilMonth(year: 2026, month: 11)!
   /// `2026-10-10T09:40:00Z` (13:40 in Dubai).
   static let nowMs: Int64 = 1_791_625_200_000
 

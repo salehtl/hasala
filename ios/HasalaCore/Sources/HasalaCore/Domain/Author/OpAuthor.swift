@@ -323,6 +323,35 @@ public struct OpAuthor: Sendable {
       ])
   }
 
+  /// Auto-assign's allocations as one blob of moves from Ready to assign (03a §6.11, §3.3).
+  public mutating func autoAssign(month: CivilMonth, _ allocations: [(category: String, amount: Int64)], batchID: String) {
+    for (c, v) in allocations where v > 0 {
+      moveMoney(month: month, from: nil, to: c, amountMinor: v, reason: "auto_assign", batchID: batchID)
+    }
+  }
+
+  /// The sweep's re-filings and the model's suggestions as blobs of at most 500
+  /// `txn_categorized` ops (03c §8.4, §8.6.6). `version` is the row's projected
+  /// version (with the outbox's pending parents folded in by the caller).
+  public static func categorizations(
+    _ items: [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)], context: AuthorContext
+  ) throws(AuthorError) -> [AuthoredBlob] {
+    var out: [AuthoredBlob] = []
+    var ctx = context
+    var i = 0
+    while i < items.count {
+      var a = OpAuthor(ctx)
+      for it in items[i..<min(i + Sweep.maxOpsPerBlob, items.count)] {
+        a.categorize(txnID: it.txnID, parentVersion: it.version, category: it.category, needsReview: it.needsReview, source: it.source)
+      }
+      let blob = try a.build()
+      out.append(blob)
+      ctx.ownLastMs = blob.lastAuthoredMs
+      i += Sweep.maxOpsPerBlob
+    }
+    return out
+  }
+
   public mutating func setIncomeSource(id: String, name: String, category: String = "salary", amountMinor: Int64, payday: Int64, active: Bool = true) {
     add(
       .incomeSourceSet,
