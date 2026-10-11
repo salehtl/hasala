@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -33,6 +34,7 @@ type wakeRec struct {
 	user   uuid.UUID
 	writer string
 	others bool
+	tokens []string // WakeTokens only
 	r      pushv2.Reason
 }
 
@@ -48,7 +50,15 @@ func (w *recWaker) WakeOthers(_ context.Context, u uuid.UUID, except string, r p
 	w.wakes = append(w.wakes, wakeRec{user: u, writer: except, others: true, r: r})
 }
 
-func (w *recWaker) WakeTokens(context.Context, []pushv2.Target, pushv2.Reason) {}
+func (w *recWaker) WakeTokens(_ context.Context, ts []pushv2.Target, r pushv2.Reason) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	rec := wakeRec{r: r}
+	for _, t := range ts {
+		rec.tokens = append(rec.tokens, t.TokenHex)
+	}
+	w.wakes = append(w.wakes, rec)
+}
 
 func (w *recWaker) take() []wakeRec {
 	w.mu.Lock()
@@ -446,5 +456,72 @@ func TestNudgeSweep(t *testing.T) {
 	other, _ := gmailpush.NewRouteKey(bytes.Repeat([]byte{8}, 32))
 	if err := gmailpush.CheckKeyID(bg, h.pool, other); err == nil {
 		t.Fatal("CheckKeyID accepted links made under another key")
+	}
+}
+
+// putToken registers an APNs token for a bound session.
+func putToken(h *harness, tok string, b byte) string {
+	h.t.Helper()
+	wantStatus(h.t, h.req("PUT", "/api/v1/push/apns", tok, PutAPNsRequest{TokenHex: tokenHexFor(b), Environment: "production"}),
+		http.StatusNoContent)
+	return tokenHexFor(b)
+}
+
+// Spec 02 §12.5: a revoked writer and the devices a logout-all signs out are
+// woken through tokens collected before their rows went away.
+func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	putToken(h, k.token, 1)
+	t2 := putToken(h, tok2, 2)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionWriterRevoke, []byte(d2.WriterID))
+	n := k.nonce(k.token)
+	rm, _ := keyproto.RevocationMessage(n, d2.WriterID, 0, make([]byte, 32))
+	wantStatus(t, h.req("POST", "/api/v1/writers/revoke", k.token, RevokeRequest{WriterID: d2.WriterID,
+		SignerWriterID: k.device.WriterID, Nonce: b64(n), FinalCounter: "0", FinalHead: b64(make([]byte, 32)),
+		Sig: b64(ed25519.Sign(k.device.DWK, rm)), StepUp: su}), http.StatusNoContent)
+	if h.countAPNs(k.user) != 1 {
+		t.Fatal("the revoked writer's token survived")
+	}
+	ws := wk.take()
+	if len(ws) != 2 || !ws[0].others || ws[0].writer != k.device.WriterID || ws[0].r != pushv2.ReasonSecurity ||
+		len(ws[1].tokens) != 1 || ws[1].tokens[0] != t2 || ws[1].r != pushv2.ReasonSecurity {
+		t.Fatalf("revoke wakes %+v, want the others and the revoked writer's token", ws)
+	}
+
+	// logout-all: every other device's token, never the caller's.
+	d3 := authtest.NewDevice(t)
+	tok3 := k.enrol(d3)
+	t3 := putToken(h, tok3, 3)
+	wk.take()
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token, map[string]any{}), http.StatusNoContent)
+	if h.countAPNs(k.user) != 0 {
+		t.Fatal("logout-all left tokens")
+	}
+	ws = wk.take()
+	if len(ws) != 1 || len(ws[0].tokens) != 1 || ws[0].tokens[0] != t3 || ws[0].r != pushv2.ReasonSecurity {
+		t.Fatalf("logout-all wakes %+v, want only the other device's token", ws)
+	}
+}
+
+// Spec 02 §12.5: account deletion wakes every device, account-gone, through
+// tokens collected before the purge.
+func TestAccountDeletionWakesEveryDevice(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	acc := h.deletable(t, "wake")
+	h.bind(acc.tok, "ios-00000000-0000-4000-8000-000000000206")
+	tk := putToken(h, acc.tok, 5)
+	wk.take()
+	nonce := h.deleteChallenge(t, acc.tok)
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusNoContent)
+	ws := wk.take()
+	if len(ws) != 1 || len(ws[0].tokens) != 1 || ws[0].tokens[0] != tk || ws[0].r != pushv2.ReasonAccountGone {
+		t.Fatalf("deletion wakes %+v", ws)
 	}
 }

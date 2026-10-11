@@ -305,15 +305,35 @@ func (d *Dispatcher) send(ctx context.Context, t Target) {
 	}
 }
 
+// Querier is what the token readers need: a pool or a transaction.
+type Querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 // CollectTokens reads every token of userID (except exceptWriterID, "" = none
-// excepted) inside tx, for a caller about to delete the rows that hold them
+// excepted) through q, for a caller about to delete the rows that hold them
 // (logout-all, writer revoke, purge; spec 02 §12.5).
-func CollectTokens(ctx context.Context, tx pgx.Tx, userID uuid.UUID, exceptWriterID string) ([]Target, error) {
-	rows, err := tx.Query(ctx,
+func CollectTokens(ctx context.Context, q Querier, userID uuid.UUID, exceptWriterID string) ([]Target, error) {
+	rows, err := q.Query(ctx,
 		`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id <> $2`, userID, exceptWriterID)
 	if err != nil {
 		return nil, err
 	}
+	return collectTargets(rows)
+}
+
+// WriterTokens reads one writer's tokens, for a revoke: the revoked writer is
+// woken too (spec 02 §12.5, §9.5), and its token row goes with it.
+func WriterTokens(ctx context.Context, q Querier, userID uuid.UUID, writerID string) ([]Target, error) {
+	rows, err := q.Query(ctx,
+		`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, userID, writerID)
+	if err != nil {
+		return nil, err
+	}
+	return collectTargets(rows)
+}
+
+func collectTargets(rows pgx.Rows) ([]Target, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Target, error) {
 		var t Target
 		err := r.Scan(&t.TokenHex, &t.Environment)
