@@ -11,5 +11,13 @@
 //   MailboxServerClient.swift  hasalad routes 34-38 and meta (spec 02 §13)
 //   MailboxEngine.swift        connect, the cycle, first-connect scan, Add a sender, View the email
 //
-// Platform halves live in the app: Platform/GmailAuth (ASWebAuthenticationSession presenter,
-// Keychain refresh-token store) and Platform/Background (BGAppRefreshTask, BGProcessingTask).
+// The runtime's implementations of the ports (composed by the app's AccountRuntime):
+//
+//   RuntimeMailboxLedger.swift          MailboxLedger over SyncEngine, LedgerPageObserver, Outbox
+//   PipelineCategorizer.swift           IngestCategorizer: rules, then the bundled dictionary
+//   SessionHTTPExchange.swift           HTTPExchange for HTTPMailboxServer: the session Transport
+//   SecretsGmailRefreshTokenStore.swift GmailRefreshTokenStore in Secrets (.gmailRefresh)
+//   MailboxAuthoring.swift              MailboxOpAuthor: OpAuthor.ingest + Outbox.canonicalJSON
+//
+// Platform halves live in the app: Platform/GmailAuth (the ASWebAuthenticationSession presenter)
+// and Platform/Background (BGAppRefreshTask, BGProcessingTask).
