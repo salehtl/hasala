@@ -93,6 +93,17 @@ let day: Int64 = 86_400_000
     #expect(rig.listRequests.allSatisfy { r in r.query.contains { $0.0 == "q" && $0.1.hasPrefix("{from:") } })
   }
 
+  @Test func scanWaitsForATrustedSender() async {
+    let rig = Rig()
+    await rig.ledger.setTrust([:])
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - day))
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .scanning)
+    await rig.ledger.setTrust(["dib.ae": true])
+    let r = await rig.engine.runCycle(trigger: .launch)
+    #expect(r.staged == 1 && r.phase == .awaitingCards)
+  }
+
   @Test func stagingCapEndsTheListing() async {
     let rig = Rig { $0.stagingCap = 2 }
     for i in 0..<4 { rig.gmail.add(SyntheticMail.dibCard(id: "d\(i)", dateMs: Rig.t0 - Int64(i + 1) * day)) }
@@ -103,7 +114,6 @@ let day: Int64 = 86_400_000
     // The two staged rows, then the rest of the window, authored with the gate applied.
     #expect(done.ops == 4 && done.review == 0 && done.phase == .active)
     #expect(Set(await rig.store.enqueued.map(\.messageID)) == ["d0", "d1", "d2", "d3"])
-    #expect(await rig.store.state.scanRemainder == false)
   }
 }
 

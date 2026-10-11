@@ -32,6 +32,8 @@ public enum MailboxHaltCode: String, Sendable, Codable {
   case gmail
 }
 
+/// The `mailbox_state` row, column for column (§4.2; `list_page_token` is not kept: a listing
+/// never resumes across runs, the accounted set makes the re-list cheap).
 public struct MailboxState: Sendable, Equatable, Codable {
   public var phase: MailboxPhase = .unlinked
   /// The Gmail address from the id_token; shown on Bank alerts. Device-local only.
@@ -49,17 +51,6 @@ public struct MailboxState: Sendable, Equatable, Codable {
   public var lastCycleAtMs: Int64?
   public var lastSuccessAtMs: Int64?
   public var lastHolderCheckAtMs: Int64?
-  /// Consecutive cycles that ended on a 429 after narrowing (`quota` after 3).
-  public var quotaStrikes: Int = 0
-  /// The phase a halt interrupted; "Try again" resumes it.
-  public var phaseBeforeHalt: MailboxPhase?
-  /// The cards confirmed on "Are these your cards?" (§7.7 step 5), applied to the staged
-  /// backfill even before their `card_linked` ops have folded.
-  public var confirmedCards: [CardKey: CardState] = [:]
-  /// The scan hit the staging cap (§7.7 step 7): after confirmation the rest of the scan window
-  /// is listed again and authored directly, with the gate applied.
-  public var scanRemainder = false
-
   public init() {}
 }
 
@@ -67,8 +58,6 @@ public enum AccountedOutcome: String, Sendable, Codable {
   case op
   case setAside = "set_aside"
   case unreadable, dup, gone
-  /// Staged by the first-connect scan; becomes `op` when authored (stored as `op`).
-  case staged
 }
 
 public struct AccountedRecord: Sendable, Equatable, Codable {

@@ -143,6 +143,12 @@ public actor MailboxEngine {
   let sleep: @Sendable (Int64) async -> Void
 
   private var busy = false
+  /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
+  private var quotaStrikes = 0
+  /// Cards confirmed on "Are these your cards?" (§7.7 step 5), applied to the staged backfill
+  /// even before their `card_linked` ops fold (the ledger's knownCards includes pending ops
+  /// once they do; this covers the same run).
+  private var confirmedCards: [CardKey: CardState] = [:]
   private var waiters: [CheckedContinuation<Void, Never>] = []
   private var topic: String??
   /// Set when the last cycle saw the server's topic differ from the build's (diagnostics).
@@ -255,7 +261,6 @@ public actor MailboxEngine {
     s.address = claims.email
     s.haltedOn = nil
     s.haltedDetail = nil
-    s.phaseBeforeHalt = nil
     s.lastHolderCheckAtMs = clock.nowMs()
     s.watchExpiresAtMs = nil  // a new link starts with no watch (spec 02 §13.2 step 3)
     if s.watermarkMs != nil {
@@ -320,10 +325,11 @@ public actor MailboxEngine {
         report.haltedOn = state.haltedOn
         return report
       }
-      state.phase = state.phaseBeforeHalt ?? .active
+      // Resume where the halt interrupted: the normal cycle once a watermark exists, else the
+      // first-connect backfill (halts happen only where the outbox is flushed).
+      state.phase = state.watermarkMs != nil ? .active : .authoringBackfill
       state.haltedOn = nil
       state.haltedDetail = nil
-      state.phaseBeforeHalt = nil
     }
     switch state.phase {
     case .unlinked, .otherDevice, .awaitingCards:
@@ -414,7 +420,7 @@ public actor MailboxEngine {
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: (await ledger.knownCards()).merging(state.confirmedCards) { a, _ in a })
+    var run = Run(trusted: trusted, cards: (await ledger.knownCards()).merging(confirmedCards) { a, _ in a })
     let listed: [String]
     let exhausted: Bool
     do {
@@ -450,7 +456,7 @@ public actor MailboxEngine {
       state.watermarkMs = max(state.watermarkMs ?? 0, t0)
       state.profileHistoryID = h0
       state.lastSuccessAtMs = clock.nowMs()
-      state.quotaStrikes = 0
+      quotaStrikes = 0
       c.pruneAccountedBelowMs = (state.watermarkMs ?? 0) - BankDomains.overlapMs - 86_400_000
       report.completed = true
     }
@@ -466,6 +472,9 @@ public actor MailboxEngine {
     _ gmail: GmailClient, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, _ report: CycleReport
   ) async -> CycleReport {
     var report = report
+    // No trusted sender yet (the Setup bank step's sender_trust_set ops have not folded): list
+    // nothing and stay scanning, rather than finish an empty scan (03c §7.2: T empty lists nothing).
+    if trusted.isEmpty { return await finish(&state, report) }
     let started = state.scanStartedMs ?? clock.nowMs()
     if state.scanStartedMs == nil { state.scanStartedMs = started }
     if state.profileHistoryID == nil {
@@ -495,7 +504,6 @@ public actor MailboxEngine {
     }
     if run.stagingFull {
       report.haltedOn = .stagingFull
-      state.scanRemainder = true
       cut = false  // the cap ends the listing; the remainder is authored after confirmation
     }
     if !cut {
@@ -539,7 +547,7 @@ public actor MailboxEngine {
         report.haltedOn = .offline
         return report
       }
-      for d in decisions { state.confirmedCards[d.card] = d.state }
+      for d in decisions { confirmedCards[d.card] = d.state }
       state.phase = .authoringBackfill
       try? await store.commit(commitState(state))
       return await cycleLocked(trigger: .refresh, deadlineMs: deadlineMs)
@@ -550,8 +558,8 @@ public actor MailboxEngine {
     _ gmail: GmailClient, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, _ report: CycleReport
   ) async -> CycleReport {
     var report = report
-    let cards = (await ledger.knownCards()).merging(state.confirmedCards) { _, confirmed in confirmed }
-    while true {
+    let cards = (await ledger.knownCards()).merging(confirmedCards) { _, confirmed in confirmed }
+    while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
       guard let batch = try? await store.staged(limit: config.backfillBatch), !batch.isEmpty else { break }
       var c = MailboxCommit()
@@ -581,9 +589,11 @@ public actor MailboxEngine {
       return await finish(&state, report)
     case .flushed: break
     }
-    if ((try? await store.stagedCount()) ?? 1) == 0 && state.scanRemainder {
-      // §7.7 step 7: the scan stopped at the staging cap; list the rest of its window and author
-      // it directly with the now-known cards (the accounted set skips what is already done).
+    var remainderDone = false
+    if ((try? await store.stagedCount()) ?? 1) == 0 {
+      // §7.7 step 7: when the scan stopped at the staging cap, the rest of its window is listed
+      // again and authored directly with the now-known cards. Run unconditionally (no state
+      // column records the cap): ids only, and the accounted set skips everything already done.
       let days = Int64(state.backfillDays ?? 90)
       let since = max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
       var run = Run(trusted: trusted, cards: cards)
@@ -591,7 +601,7 @@ public actor MailboxEngine {
         let (ids, exhausted) = try await list(gmail, domains: trusted, sinceSec: since, maxPages: config.maxListPages)
         report.listed += ids.count
         let cut = try await process(gmail, ids: ids, mode: .author, run: &run, report: &report, deadlineMs: deadlineMs)
-        if exhausted && !cut { state.scanRemainder = false }
+        remainderDone = exhausted && !cut
       } catch let e as GmailAPIError {
         return await gmailFailure(e, &state, report)
       } catch {
@@ -606,7 +616,8 @@ public actor MailboxEngine {
       case .flushed: break
       }
     }
-    if ((try? await store.stagedCount()) ?? 1) == 0 && !state.scanRemainder {
+    let stagingEmpty = ((try? await store.stagedCount()) ?? 1) == 0
+    if remainderDone && stagingEmpty {
       // §7.7 step 6: the normal cycle's 2-day overlap catches up what arrived during the scan.
       state.watermarkMs = state.scanStartedMs ?? clock.nowMs()
       state.phase = .active
@@ -643,7 +654,7 @@ public actor MailboxEngine {
         if !trusted.contains(domain) { trusted.append(domain) }
         let days = Int64(state.backfillDays ?? 90)
         let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
-        var run = Run(trusted: trusted, cards: (await ledger.knownCards()).merging(state.confirmedCards) { a, _ in a })
+        var run = Run(trusted: trusted, cards: (await ledger.knownCards()).merging(confirmedCards) { a, _ in a })
         do {
           let (ids, _) = try await list(gmail, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
           report.listed = ids.count
@@ -779,6 +790,8 @@ public actor MailboxEngine {
     var i = 0
     run.width = config.downloadWidth
     while i < todo.count {
+      // A BGTask expiration cancels the task: stop at this boundary, everything so far committed.
+      if Task.isCancelled { return true }
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { return true }
       var width = run.width
       if mode == .stage {
@@ -970,8 +983,8 @@ public actor MailboxEngine {
     case 403?:
       return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
     case 429?:
-      state.quotaStrikes += 1
-      report.haltedOn = state.quotaStrikes >= 3 ? .quota : .gmail
+      quotaStrikes += 1
+      report.haltedOn = quotaStrikes >= 3 ? .quota : .gmail
     case nil:
       report.haltedOn = .offline
     default:
@@ -992,7 +1005,6 @@ public actor MailboxEngine {
 
   func halt(_ state: inout MailboxState, _ code: MailboxHaltCode, _ report: CycleReport) async -> CycleReport {
     var report = report
-    if state.phase != .halted { state.phaseBeforeHalt = state.phase }
     state.phase = .halted
     state.haltedOn = code
     report.haltedOn = code
