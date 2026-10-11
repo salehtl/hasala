@@ -84,6 +84,9 @@ public protocol LedgerStore: AnyObject, Observable {
   var state: LedgerState { get }
   /// "Now" in the fixed local clock (spec 04 §15.5).
   var now: LocalDateTime { get }
+  /// Changes whenever `state` or `now` does. Screens key their derived snapshots by it, so an
+  /// engine runs once per ledger change rather than once per read (spec 04 §18.3).
+  var revision: Int { get }
   /// Applies one edit; returns an undo token when the edit can be undone from a toast.
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken?

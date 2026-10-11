@@ -69,6 +69,9 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(reveal(app, split))
     split.tap()
     XCTAssertTrue(element(app, "split.verdict").waitForExistence(timeout: 5))
+    // The seed puts everything on line 1 and leaves line 2 empty: not savable yet.
+    XCTAssertTrue(element(app, "split.verdict").waitForLabel("Every line needs an amount"))
+    XCTAssertFalse(element(app, "split.save").isEnabled)
     let second = element(app, "split.amount.2")
     second.tap()
     second.typeText("45.15")
@@ -167,6 +170,12 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(save.waitForExistence(timeout: 5))
     XCTAssertEqual(save.label, "Move AED 318.00")
     XCTAssertTrue(element(app, "move.preview").exists)
+    // Paper's sources: Ready to assign, Travel, Shopping, Entertainment; Dining is over pace.
+    for id in ["rta", "travel", "shopping", "entertainment"] {
+      XCTAssertTrue(element(app, "move.from.\(id)").exists, "\(id) is not offered")
+    }
+    XCTAssertFalse(element(app, "move.from.dining").exists)
+    XCTAssertFalse(element(app, "move.from.transport").exists)
     attach(app, "Plan · Move money")
     try audit(app)
     save.tap()
@@ -189,6 +198,11 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertEqual(element(app, "budget.save").label, "Set Dining to AED 1,800")
     XCTAssertEqual(element(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
     attach(app, "Plan · Dining budget")
+    // Over-assigning shows the shortfall with its minus sign.
+    for _ in 0..<4 { app.buttons["+ 200"].tap() }
+    XCTAssertEqual(element(app, "budget.consequence").label, "Ready to assign becomes \u{2212}AED 318.00")
+    for _ in 0..<8 { app.buttons["Less"].tap() }
+    XCTAssertEqual(element(app, "budget.save").label, "Set Dining to AED 1,800")
     element(app, "budget.save").tap()
     XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: 5))
   }

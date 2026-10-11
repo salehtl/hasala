@@ -25,10 +25,15 @@ protocol BillsModel: AnyObject, Observable {
 final class BillsViewModel: BillsModel {
   private let app: AppModel
   private var range: BillsSnapshot.Range = .month
+  @ObservationIgnored private var memo = Memo<[AnyHashable], BillsSnapshot>()
 
   init(app: AppModel) { self.app = app }
 
-  var snapshot: BillsSnapshot { BillsEngine.snapshot(app.store.state, now: app.store.now, range: range) }
+  var snapshot: BillsSnapshot {
+    memo.value(for: [app.store.revision, range]) {
+      BillsEngine.snapshot(app.store.state, now: app.store.now, range: range)
+    }
+  }
   var hidden: Bool { app.amountsHidden }
 
   func setRange(_ range: BillsSnapshot.Range) { self.range = range }

@@ -86,6 +86,18 @@ struct MayaLedgerParityTests {
     #expect(a.days[2].rows[1].detail == "Subscriptions · monthly bill")
   }
 
+  /// Paper's Activity board draws "Bills 8", but its own data has six October payments
+  /// linked to a bill (rent, the standing order, Sarwa, du, Netflix, Spotify); 03b §12 #1
+  /// leaves that open and its §7 read counts linked payments, so the chip follows the
+  /// data until the board or the definition changes.
+  @Test func theBillsChipCountsPaymentsLinkedToABill() {
+    let a = ActivityEngine.snapshot(s, now: now, filter: .all)
+    #expect(a.chips.first { $0.kind == .bills }?.count == 6)
+    let bills = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .bills))
+    #expect(bills.rowCount == 6)
+    #expect(Set(bills.days.flatMap(\.rows).map(\.merchant)) == ["Al Habtoor", "Standing order", "Sarwa", "du", "Netflix", "Spotify"])
+  }
+
   @Test func filteringByDiningMatchesTheFilteredBoard() {
     let a = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "dining"))
     #expect(a.rowCount == 5)
@@ -250,11 +262,83 @@ struct InMemoryLedgerTests {
     #expect(BillsEngine.snapshot(ledger.state, now: ledger.now).needsALook.isEmpty)
   }
 
+  @Test func undoKeepsALaterEditToAnotherField() throws {
+    let ledger = InMemoryLedger()
+    let sorted = try #require(try ledger.apply(.categorize("lulu", "groceries", learnRule: true, project: nil)))
+    // A note shows no toast, so the categorise's Undo is still on screen.
+    #expect(try ledger.apply(.setNote("lulu", "Weekly shop")) == nil)
+    try ledger.apply(.setRuleEnabled("r-zuma", false))
+    ledger.undo(sorted)
+    let lulu = try #require(ledger.state.txn("lulu"))
+    #expect(lulu.needsReview)
+    #expect(lulu.note == "Weekly shop")
+    #expect(!ledger.state.rules.contains { $0.learnedToday })
+    #expect(ledger.state.rules.first { $0.id == "r-zuma" }?.enabled == false)
+  }
+
+  @Test func undoLeavesAFieldChangedAgainSince() throws {
+    let ledger = InMemoryLedger()
+    let first = try #require(try ledger.apply(.categorize("lulu", "groceries", learnRule: false, project: nil)))
+    try ledger.apply(.categorize("lulu", "shopping", learnRule: false, project: nil))
+    ledger.undo(first)
+    #expect(ledger.state.txn("lulu")?.categoryID == "shopping")
+  }
+
+  @Test func undoingADismissPutsTheCandidateBackInPlace() throws {
+    let ledger = InMemoryLedger()
+    let before = ledger.state.billCandidates
+    let token = try #require(try ledger.apply(.dismissCandidate("apple-bill")))
+    #expect(ledger.state.billCandidates.isEmpty)
+    ledger.undo(token)
+    #expect(ledger.state.billCandidates == before)
+    let tracked = try #require(try ledger.apply(.trackCandidate("apple-bill")))
+    ledger.undo(tracked)
+    #expect(ledger.state.billCandidates == before)
+    #expect(BillsEngine.snapshot(ledger.state, now: ledger.now).tracked == 9)
+  }
+
+  @Test func everyChangeMovesTheRevision() throws {
+    let ledger = InMemoryLedger()
+    let r0 = ledger.revision
+    let token = try #require(try ledger.apply(.archive("zuma", true)))
+    #expect(ledger.revision > r0)
+    let r1 = ledger.revision
+    ledger.undo(token)
+    #expect(ledger.revision > r1)
+    let r2 = ledger.revision
+    ledger.setNow(ledger.now)
+    #expect(ledger.revision > r2)
+  }
+
   @Test func archivingTakesATransactionOutOfThePlan() throws {
     let ledger = InMemoryLedger()
     try ledger.apply(.archive("zuma", true))
     #expect(ledger.state.spent("dining", in: MayaLedger.october) == .aed(230_75))
     let archived = ActivityEngine.snapshot(ledger.state, now: ledger.now, filter: TxnFilter(kind: .archived))
     #expect(archived.rowCount == 1)
+  }
+}
+
+@Suite("Split draft")
+struct SplitDraftTests {
+  let total = Money.aed(342_15)
+
+  @Test func anEmptyLineNeverAddsUp() {
+    // The editor's seed: the whole amount on line 1, line 2 not filled in yet.
+    #expect(TransactionEngine.splitDraftVerdict([342_15, nil], total: total) == .emptyLine)
+    #expect(TransactionEngine.splitDraftVerdict([342_15, 0], total: total) == .emptyLine)
+    #expect(TransactionEngine.splitDraftVerdict([342_15], total: total) == .emptyLine)
+  }
+
+  @Test func leftAndOver() {
+    #expect(TransactionEngine.splitDraftVerdict([300_00, nil], total: total) == .leftToPlace(.aed(42_15)))
+    #expect(TransactionEngine.splitDraftVerdict([300_00, 45_00], total: total) == .over(.aed(2_85)))
+  }
+
+  @Test func addsUpMeansItCanBeSaved() {
+    #expect(TransactionEngine.splitDraftVerdict([297_00, 45_15], total: total) == .addsUp)
+    let lines = [SplitLine(id: 1, categoryID: "groceries", amount: .aed(297_00)),
+                 SplitLine(id: 2, categoryID: "shopping", amount: .aed(45_15))]
+    #expect(TransactionEngine.splitAddsUp(lines, total: total))
   }
 }

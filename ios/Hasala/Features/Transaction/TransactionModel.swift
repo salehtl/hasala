@@ -33,13 +33,16 @@ protocol TransactionModel: AnyObject, Observable {
 final class TransactionViewModel: TransactionModel {
   private let app: AppModel
   let id: TxnID
+  @ObservationIgnored private var memo = Memo<Int, TransactionDetail?>()
 
   init(app: AppModel, id: TxnID) {
     self.app = app
     self.id = id
   }
 
-  var detail: TransactionDetail? { TransactionEngine.detail(id, app.store.state, now: app.store.now) }
+  var detail: TransactionDetail? {
+    memo.value(for: app.store.revision) { TransactionEngine.detail(id, app.store.state, now: app.store.now) }
+  }
   var hidden: Bool { app.amountsHidden }
   var merchantName: String { app.store.state.txn(id)?.merchant ?? "" }
 

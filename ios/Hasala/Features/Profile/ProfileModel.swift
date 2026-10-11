@@ -27,10 +27,15 @@ protocol ProfileModel: AnyObject, Observable {
 final class ProfileViewModel: ProfileModel {
   private let app: AppModel
 
+  @ObservationIgnored private var memo = Memo<Int, ProfileSnapshot>()
+  @ObservationIgnored private var rulesMemo = Memo<Int, [RuleRowModel]>()
+
   init(app: AppModel) { self.app = app }
 
-  var snapshot: ProfileSnapshot { ProfileEngine.snapshot(app.store.state, now: app.store.now) }
-  var rules: [RuleRowModel] { ProfileEngine.rules(app.store.state) }
+  var snapshot: ProfileSnapshot {
+    memo.value(for: app.store.revision) { ProfileEngine.snapshot(app.store.state, now: app.store.now) }
+  }
+  var rules: [RuleRowModel] { rulesMemo.value(for: app.store.revision) { ProfileEngine.rules(app.store.state) } }
   var hidden: Bool { app.amountsHidden }
   var today: LocalDate { app.store.now.date }
 

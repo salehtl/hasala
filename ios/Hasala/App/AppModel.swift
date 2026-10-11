@@ -60,14 +60,20 @@ final class AppModel {
   private(set) var snoozed: Set<String> = []
 
   private var toastTask: Task<Void, Never>?
+  @ObservationIgnored private var homeMemo = Memo<Int, HomeSnapshot>()
 
   init(store: any LedgerStore, amountsHidden: Bool = false) {
     self.store = store
     self.amountsHidden = amountsHidden
   }
 
-  /// What Home draws, recomputed from the ledger on every change.
-  var snapshot: HomeSnapshot { HomeEngine.snapshot(store.state, now: store.now) }
+  /// What Home draws, recomputed once per ledger change.
+  var snapshot: HomeSnapshot {
+    homeMemo.value(for: store.revision) { HomeEngine.snapshot(store.state, now: store.now) }
+  }
+
+  /// The header's avatar letter, without running the Home engine on every tab.
+  var avatarInitial: String { store.state.profile.initial }
 
   var showingProfile: Bool {
     get { sheet == .profile }

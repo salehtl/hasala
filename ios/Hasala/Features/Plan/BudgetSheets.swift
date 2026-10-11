@@ -56,7 +56,11 @@ struct BudgetEditSheet: View {
 
             if let amount {
               let rta = model.plan.readyToAssign.minor - (amount - row.budget.minor)
-              PhraseText(MoneyPhrase([.text("Ready to assign becomes AED "), .amount(.aed(rta))]), hidden: false)
+              // A shortfall leads with "−" (U+2212), as MoneyText draws debts; hidden, the
+              // figure and its sign both go (spec 04 §12: only inputs show real values).
+              let sign = rta < 0 && !model.hidden ? "\u{2212}" : ""
+              PhraseText(MoneyPhrase([.text("Ready to assign becomes \(sign)AED "), .amount(.aed(abs(rta)))]),
+                         hidden: model.hidden)
                 .hType(.subheadline)
                 .foregroundStyle(rta < 0 ? HColor.statusErrorForeground : HColor.textSecondary)
                 .accessibilityIdentifier("budget.consequence")
@@ -116,11 +120,15 @@ struct MoveMoneySheet: View {
   @State private var destination: CategoryID?
   @State private var source: CategoryID??
   @State private var draft = ""
+  @State private var showAllSources = false
   @Environment(\.dismiss) private var dismiss
 
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
+  /// Never the destination: choosing Shopping as "To" takes it off "Take from".
+  private var sources: [MoveSource] { model.sources(to: destination) }
   private var chosenSource: MoveSource? {
-    model.sources.first { $0.id == (source ?? nil) } ?? model.sources.first
+    let all = sources
+    return all.first { $0.id == (source ?? nil) } ?? all.first
   }
   private var toName: String? { model.destinations.first { $0.id == destination }?.name }
 
@@ -165,13 +173,15 @@ struct MoveMoneySheet: View {
           .frame(maxWidth: .infinity)
 
           Text("Take from").hType(.overline).foregroundStyle(HColor.textSecondary)
+          let sources = self.sources
+          let chosen = chosenSource
           ListCard {
-            ForEach(model.sources) { s in
+            ForEach(showAllSources ? sources : Array(sources.prefix(4))) { s in
               Button { source = .some(s.id) } label: {
                 HStack(spacing: 12) {
-                  Image(systemName: chosenSource?.id == s.id ? "largecircle.fill.circle" : "circle")
+                  Image(systemName: chosen?.id == s.id ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 20))
-                    .foregroundStyle(chosenSource?.id == s.id ? HColor.actionAccent : HColor.iconTertiary)
+                    .foregroundStyle(chosen?.id == s.id ? HColor.actionAccent : HColor.iconTertiary)
                     .accessibilityHidden(true)
                   VStack(alignment: .leading, spacing: 0) {
                     Text(s.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
@@ -184,12 +194,20 @@ struct MoveMoneySheet: View {
                 .contentShape(Rectangle())
               }
               .buttonStyle(.plain)
-              .accessibilityAddTraits(chosenSource?.id == s.id ? .isSelected : [])
+              .accessibilityAddTraits(chosen?.id == s.id ? .isSelected : [])
               .accessibilityIdentifier("move.from.\(s.id ?? "rta")")
             }
           }
+          if sources.count > 4, !showAllSources {
+            Button("Show all") { showAllSources = true }
+              .buttonStyle(.pill(.secondary, size: .small))
+              .accessibilityIdentifier("move.showAll")
+          }
+          if sources.isEmpty {
+            EmptyNote(systemImage: "tray", message: "Nothing has money to spare this month.")
+          }
 
-          if let amount, let to = destination, let from = chosenSource {
+          if let amount, let to = destination, let from = chosen {
             preview(amount: amount, to: to, from: from)
           }
         }
@@ -202,7 +220,7 @@ struct MoveMoneySheet: View {
             if let amount, let to = destination { _ = model.move(.aed(amount), from: chosenSource?.id, to: to) }
           }
           .buttonStyle(.pill(.primary, fill: true))
-          .disabled(amount == nil || amount == 0 || destination == nil)
+          .disabled(amount == nil || amount == 0 || destination == nil || chosenSource == nil)
           .accessibilityIdentifier("move.save")
           Text("You can undo this from the toast.").hType(.footnote).foregroundStyle(HColor.textSecondary)
         }

@@ -16,9 +16,13 @@ protocol PlanModel: AnyObject, Observable {
 final class PlanViewModel: PlanModel {
   private let app: AppModel
 
+  @ObservationIgnored private var memo = Memo<Int, PlanSnapshot>()
+
   init(app: AppModel) { self.app = app }
 
-  var snapshot: PlanSnapshot { PlanEngine.snapshot(app.store.state, now: app.store.now) }
+  var snapshot: PlanSnapshot {
+    memo.value(for: app.store.revision) { PlanEngine.snapshot(app.store.state, now: app.store.now) }
+  }
   var hidden: Bool { app.amountsHidden }
 
   func editBudget(_ category: CategoryID) { app.sheet = .budget(category) }
@@ -49,7 +53,9 @@ protocol BudgetSheetModel: AnyObject, Observable {
   var projected: Money? { get }
   /// Projected minus budget, in whole units, when the pace runs past the budget.
   var shortfall: Money? { get }
-  var sources: [MoveSource] { get }
+  /// Where money can come from for `destination`, in 03a §6.13's order; the sheet shows
+  /// the first four, then "Show all".
+  func sources(to destination: CategoryID?) -> [MoveSource]
   var destinations: [CategoryOption] { get }
   func setBudget(_ amount: Money) -> Bool
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool
@@ -61,6 +67,7 @@ protocol BudgetSheetModel: AnyObject, Observable {
 final class BudgetSheetViewModel: BudgetSheetModel {
   private let app: AppModel
   let category: CategoryID?
+  @ObservationIgnored private var memo = Memo<Int, PlanSnapshot>()
 
   init(app: AppModel, category: CategoryID?) {
     self.app = app
@@ -68,7 +75,9 @@ final class BudgetSheetViewModel: BudgetSheetModel {
   }
 
   var hidden: Bool { app.amountsHidden }
-  var plan: PlanSnapshot { PlanEngine.snapshot(app.store.state, now: app.store.now) }
+  var plan: PlanSnapshot {
+    memo.value(for: app.store.revision) { PlanEngine.snapshot(app.store.state, now: app.store.now) }
+  }
   var row: PlanRowModel? { category.flatMap { plan.row($0) } }
 
   var projected: Money? {
@@ -82,20 +91,35 @@ final class BudgetSheetViewModel: BudgetSheetModel {
     return .aed(projected.minor - row.budget.minor)
   }
 
-  var sources: [MoveSource] {
+  /// 03a §6.13: Ready to assign when it is above zero; then wants, then needs, each the
+  /// everyday categories on track with money left, most left first (ties keep the plan's
+  /// order); then savings with money left. Bills, categories over pace or over budget,
+  /// and the destination itself are never sources.
+  func sources(to destination: CategoryID?) -> [MoveSource] {
     let p = plan
-    var out = [MoveSource(id: nil, name: "Ready to assign", available: p.readyToAssign,
-                          detail: MoneyPhrase([.amount(p.readyToAssign), .text(" not in a budget yet")]))]
-    let rows = p.sections.filter { $0.bucket != .savings }.flatMap(\.rows)
-      .filter { $0.id != category && $0.paced }
-    for r in rows {
-      guard case .left(let left) = r.trailing, left.minor > 0 else { continue }
+    var out: [MoveSource] = []
+    if p.readyToAssign.minor > 0 {
+      out.append(MoveSource(id: nil, name: "Ready to assign", available: p.readyToAssign,
+                            detail: MoneyPhrase([.amount(p.readyToAssign), .text(" not in a budget yet")])))
+    }
+    func left(_ r: PlanRowModel) -> Int64 { r.budget.minor - r.spent.minor }
+    func rows(_ bucket: Bucket) -> [PlanRowModel] {
+      p.sections.first { $0.bucket == bucket }?.rows.filter { $0.id != destination && left($0) > 0 } ?? []
+    }
+    let everyday = [Bucket.wants, .needs].flatMap { bucket in
+      rows(bucket).enumerated()
+        .filter { $0.element.paced && $0.element.verdict == .onTrack }
+        .sorted { (left($0.element), -$0.offset) > (left($1.element), -$1.offset) }
+        .map(\.element)
+    }
+    for r in everyday + rows(.savings) {
+      let l = Money.aed(left(r))
       out.append(MoveSource(
-        id: r.id, name: r.name, available: left,
-        detail: MoneyPhrase([.amount(left), .text(r.spent.isZero ? " left · nothing spent yet" : " left")])
+        id: r.id, name: r.name, available: l,
+        detail: MoneyPhrase([.amount(l), .text(r.spent.isZero ? " left · nothing spent yet" : " left")])
       ))
     }
-    return Array(out.prefix(1)) + out.dropFirst().sorted { $0.available.minor > $1.available.minor }.prefix(4)
+    return out
   }
 
   var destinations: [CategoryOption] {
@@ -111,6 +135,7 @@ final class BudgetSheetViewModel: BudgetSheetModel {
   }
 
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool {
+    guard from != to else { return false }
     let ok = app.perform(.moveMoney(from: from, to: to, app.store.now.date.yearMonth, amount))
     if ok { close() }
     return ok

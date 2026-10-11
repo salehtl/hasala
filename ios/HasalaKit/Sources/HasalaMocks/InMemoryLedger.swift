@@ -12,14 +12,19 @@ import Observation
 public final class InMemoryLedger: LedgerStore {
   public private(set) var state: LedgerState
   public private(set) var now: LocalDateTime
+  public private(set) var revision = 0
 
-  /// What an undo puts back: the records an edit touched, as they were before it.
+  /// What an undo puts back: the records an edit touched, as they were before it and
+  /// right after it. Undo reverts only what is still as the edit left it, so a later
+  /// edit to another field (a note added after a categorise) survives (03c §3.8: the
+  /// inverse ops touch only the fields the edit set).
   private struct UndoRecord {
-    var txns: [Txn] = []
-    var plan: PlanState?
-    var bills: [Bill]?
-    var candidates: [BillCandidate]?
-    var rules: [Rule]?
+    var txnsBefore: [TxnID: Txn] = [:]
+    var txnsAfter: [TxnID: Txn] = [:]
+    var plan: (before: PlanState, after: PlanState)?
+    var bills: (before: [Bill], after: [Bill])?
+    var candidates: (before: [BillCandidate], after: [BillCandidate])?
+    var rules: (before: [Rule], after: [Rule])?
   }
 
   private var undoRecords: [Int: UndoRecord] = [:]
@@ -32,13 +37,15 @@ public final class InMemoryLedger: LedgerStore {
 
   @discardableResult
   public func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
+    let before = state
     var s = state
-    var record = UndoRecord()
+    var touched = Set<TxnID>()
+    var touchedPlan = false, touchedBills = false, touchedCandidates = false, touchedRules = false
     let title: String?
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
-      record.txns.append(s.txns[i])
+      touched.insert(id)
       change(&s.txns[i])
     }
 
@@ -56,7 +63,7 @@ public final class InMemoryLedger: LedgerStore {
         if let project { t.projectID = project }
       }
       if learnRule, let t = s.txn(id), !s.rules.contains(where: { $0.matches(t.merchant) }) {
-        record.rules = s.rules
+        touchedRules = true
         s.rules.append(Rule(id: "learned-\(id)", patterns: [t.merchant.lowercased()], categoryID: c,
                             learnedToday: true))
       }
@@ -82,7 +89,7 @@ public final class InMemoryLedger: LedgerStore {
       let name = name.trimmedSpaces
       guard !name.isEmpty, let old = s.txn(id)?.merchant else { throw .notFound }
       for i in s.txns.indices where s.txns[i].merchant == old {
-        record.txns.append(s.txns[i])
+        touched.insert(s.txns[i].id)
         s.txns[i].merchant = name
       }
       title = "Renamed to \(name)"
@@ -104,7 +111,7 @@ public final class InMemoryLedger: LedgerStore {
 
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
-      record.plan = s.plan
+      touchedPlan = true
       s.plan.budgets[PlanState.key(c, month)] = amount
       title = "\(categoryName(c)) budget changed"
     case .moveMoney(let from, let to, let month, let amount):
@@ -116,7 +123,7 @@ public final class InMemoryLedger: LedgerStore {
       } else {
         guard plan.readyToAssign.minor >= amount.minor else { throw .insufficientFunds }
       }
-      record.plan = s.plan
+      touchedPlan = true
       if let from {
         s.plan.budgets[PlanState.key(from, month)] = .aed(s.plan.budget(from, month).minor - amount.minor)
       }
@@ -125,8 +132,8 @@ public final class InMemoryLedger: LedgerStore {
 
     case .trackCandidate(let id):
       guard let c = s.billCandidates.first(where: { $0.id == id }) else { throw .notFound }
-      record.candidates = s.billCandidates
-      record.bills = s.bills
+      touchedCandidates = true
+      touchedBills = true
       s.billCandidates.removeAll { $0.id == id }
       let next = c.last.adding(days: c.everyDays)
       s.bills.append(Bill(id: "bill-\(id)", name: c.name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
@@ -134,12 +141,12 @@ public final class InMemoryLedger: LedgerStore {
       title = "Tracking \(c.name)"
     case .dismissCandidate(let id):
       guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
-      record.candidates = s.billCandidates
+      touchedCandidates = true
       s.billCandidates.removeAll { $0.id == id }
       title = "Dismissed"
     case .markBillPaid(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
-      record.bills = s.bills
+      touchedBills = true
       let due = s.bills[i].nextDue
       let next = due.yearMonth.next
       s.bills[i].history.insert(due, at: 0)
@@ -147,12 +154,12 @@ public final class InMemoryLedger: LedgerStore {
       title = "\(s.bills[i].name) marked paid"
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
-      record.bills = s.bills
+      touchedBills = true
       s.bills[i].priceChangeFrom = nil
       title = "New amount accepted"
     case .stopTrackingBill(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
-      record.bills = s.bills
+      touchedBills = true
       s.bills[i].state = .dismissed
       title = "Stopped tracking \(s.bills[i].name)"
 
@@ -169,7 +176,17 @@ public final class InMemoryLedger: LedgerStore {
     }
 
     state = s
+    revision += 1
     guard let title else { return nil }
+    var record = UndoRecord()
+    for id in touched {
+      record.txnsBefore[id] = before.txn(id)
+      record.txnsAfter[id] = s.txn(id)
+    }
+    if touchedPlan { record.plan = (before.plan, s.plan) }
+    if touchedBills { record.bills = (before.bills, s.bills) }
+    if touchedCandidates { record.candidates = (before.billCandidates, s.billCandidates) }
+    if touchedRules { record.rules = (before.rules, s.rules) }
     let token = UndoToken(id: nextToken, title: title)
     nextToken += 1
     undoRecords[token.id] = record
@@ -179,17 +196,62 @@ public final class InMemoryLedger: LedgerStore {
   public func undo(_ token: UndoToken) {
     guard let r = undoRecords.removeValue(forKey: token.id) else { return }
     var s = state
-    // Restore in reverse so a record that touched a row twice ends at its oldest value.
-    for old in r.txns.reversed() {
-      if let i = s.txns.firstIndex(where: { $0.id == old.id }) { s.txns[i] = old }
+    for (id, old) in r.txnsBefore {
+      guard let new = r.txnsAfter[id], let i = s.txns.firstIndex(where: { $0.id == id }) else { continue }
+      Self.revertFields(&s.txns[i], before: old, after: new)
     }
-    if let plan = r.plan { s.plan = plan }
-    if let bills = r.bills { s.bills = bills }
-    if let candidates = r.candidates { s.billCandidates = candidates }
-    if let rules = r.rules { s.rules = rules }
+    if let (old, new) = r.plan {
+      for key in Set(old.budgets.keys).union(new.budgets.keys) where s.plan.budgets[key] == new.budgets[key] {
+        s.plan.budgets[key] = old.budgets[key]
+      }
+    }
+    if let (old, new) = r.bills { Self.revertElements(&s.bills, before: old, after: new) }
+    if let (old, new) = r.candidates { Self.revertElements(&s.billCandidates, before: old, after: new) }
+    if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     state = s
+    revision += 1
   }
 
   /// Moves the clock (UI tests and previews of other days).
-  public func setNow(_ now: LocalDateTime) { self.now = now }
+  public func setNow(_ now: LocalDateTime) {
+    self.now = now
+    revision += 1
+  }
+
+  /// Puts back each field an edit changed, unless something since has changed it again.
+  private static func revertFields(_ t: inout Txn, before: Txn, after: Txn) {
+    func field<V: Equatable>(_ kp: WritableKeyPath<Txn, V>) {
+      if t[keyPath: kp] == after[keyPath: kp] { t[keyPath: kp] = before[keyPath: kp] }
+    }
+    field(\.merchant)
+    field(\.categoryID)
+    field(\.categorySource)
+    field(\.needsReview)
+    field(\.isTransfer)
+    field(\.isRefund)
+    field(\.direction)
+    field(\.splits)
+    field(\.projectID)
+    field(\.note)
+    field(\.archived)
+  }
+
+  /// Element by element: an element still as the edit left it goes back to how it was
+  /// (or away, if the edit added it; or back in at its old place, if the edit removed it).
+  private static func revertElements<E: Identifiable & Equatable>(_ list: inout [E], before: [E], after: [E]) {
+    let afterByID = Dictionary(after.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let beforeIDs = Set(before.map(\.id))
+    for (offset, old) in before.enumerated() {
+      let new = afterByID[old.id]
+      guard new != old else { continue }
+      if let new {
+        if let i = list.firstIndex(where: { $0.id == old.id }), list[i] == new { list[i] = old }
+      } else if !list.contains(where: { $0.id == old.id }) {
+        list.insert(old, at: min(offset, list.count))
+      }
+    }
+    for new in after where !beforeIDs.contains(new.id) {
+      list.removeAll { $0.id == new.id && $0 == new }
+    }
+  }
 }

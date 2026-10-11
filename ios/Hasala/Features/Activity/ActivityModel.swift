@@ -22,21 +22,29 @@ protocol ActivityModel: AnyObject, Observable {
 final class ActivityViewModel: ActivityModel {
   private let app: AppModel
   private(set) var filter: TxnFilter
+  @ObservationIgnored private var memo = Memo<[AnyHashable], ActivitySnapshot>()
+  @ObservationIgnored private var exportMemo = Memo<[AnyHashable], [ExportRow]>()
 
   init(app: AppModel, filter: TxnFilter = .all) {
     self.app = app
     self.filter = filter
   }
 
-  var snapshot: ActivitySnapshot { ActivityEngine.snapshot(app.store.state, now: app.store.now, filter: filter) }
+  var snapshot: ActivitySnapshot {
+    memo.value(for: [app.store.revision, filter]) {
+      ActivityEngine.snapshot(app.store.state, now: app.store.now, filter: filter)
+    }
+  }
   var hidden: Bool { app.amountsHidden }
   var searchText: String { filter.text }
 
   /// The rows "Export" shares: what the list shows.
   var exportRows: [ExportRow] {
-    let s = app.store.state
-    let ids = Set(snapshot.days.flatMap(\.rows).map(\.id))
-    return s.txns.filter { ids.contains($0.id) }.map { ExportRow($0, s) }
+    exportMemo.value(for: [app.store.revision, filter]) {
+      let s = app.store.state
+      let ids = Set(snapshot.days.flatMap(\.rows).map(\.id))
+      return s.txns.filter { ids.contains($0.id) }.map { ExportRow($0, s) }
+    }
   }
 
   func select(_ kind: TxnFilter.Kind) { filter.kind = kind }

@@ -29,13 +29,14 @@ final class ReviewViewModel: ReviewDeckModel {
   private var sortedIDs: [TxnID] = []
   private var learned: Set<TxnID> = []
   let total: Int
+  @ObservationIgnored private var memo = Memo<Int, [ReviewCardModel]>()
 
   init(app: AppModel) {
     self.app = app
     total = ReviewEngine.queue(app.store.state).count
   }
 
-  var cards: [ReviewCardModel] { ReviewEngine.cards(app.store.state) }
+  var cards: [ReviewCardModel] { memo.value(for: app.store.revision) { ReviewEngine.cards(app.store.state) } }
   var position: Int { min(total, max(1, total - cards.count + 1)) }
   var hidden: Bool { app.amountsHidden }
   var needOnRight: Bool { app.store.state.prefs.swipeNeedOnRight }

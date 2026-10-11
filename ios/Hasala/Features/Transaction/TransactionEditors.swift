@@ -192,7 +192,9 @@ struct SplitEditorView: View {
   @State private var lines: [Draft] = []
 
   private var total: Int64 { model.detail?.amount.minor ?? 0 }
-  private var placed: Int64 { lines.reduce(0) { $0 + (MoneyFormat.parseMinor($1.amount) ?? 0) } }
+  private var check: SplitDraftVerdict {
+    TransactionEngine.splitDraftVerdict(lines.map { MoneyFormat.parseMinor($0.amount) }, total: .aed(total))
+  }
   private var options: [CategoryOption] { model.categoryGroups.filter { $0.bucket != .other }.flatMap(\.options) }
 
   var body: some View {
@@ -202,7 +204,7 @@ struct SplitEditorView: View {
           VStack(alignment: .leading, spacing: 6) {
             Text("\(d.merchant) · \(d.meta.components(separatedBy: " · ").first ?? "")")
               .hType(.subheadline).foregroundStyle(HColor.textSecondary)
-            MoneyText(d.amount, figure: .large, unit: .unit, hidden: false, color: HColor.textPrimary, unitGap: 5)
+            MoneyText(d.amount, figure: .large, unit: .unit, hidden: model.hidden, color: HColor.textPrimary, unitGap: 5)
             verdict
           }
         }
@@ -284,7 +286,7 @@ struct SplitEditorView: View {
         if model.saveSplit(parsed) { done() }
       }
       .buttonStyle(.pill(.primary, fill: true))
-      .disabled(placed != total || lines.count < 2)
+      .disabled(check != .addsUp)
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.bottom, 8)
       .accessibilityIdentifier("split.save")
@@ -294,14 +296,15 @@ struct SplitEditorView: View {
     .onAppear(perform: seed)
   }
 
-  /// "● Adds up exactly", or what is left to place / over.
+  /// "● Adds up exactly", what is left to place or over, or that a line is empty.
   private var verdict: some View {
-    let diff = total - placed
-    let parts: [PlanDetailPart] = diff == 0
-      ? [.status("Adds up exactly", .success)]
-      : [.status(diff > 0 ? "Left to place" : "Over by", .warning),
-         .text(MoneyPhrase([.amount(.aed(abs(diff)))]))]
-    return DetailLine(parts: parts, hidden: false).accessibilityIdentifier("split.verdict")
+    let parts: [PlanDetailPart] = switch check {
+    case .addsUp: [.status("Adds up exactly", .success)]
+    case .leftToPlace(let m): [.status("Left to place", .warning), .text(MoneyPhrase([.amount(m)]))]
+    case .over(let m): [.status("Over by", .warning), .text(MoneyPhrase([.amount(m)]))]
+    case .emptyLine: [.status("Every line needs an amount", .warning)]
+    }
+    return DetailLine(parts: parts, hidden: model.hidden).accessibilityIdentifier("split.verdict")
   }
 
   private func seed() {

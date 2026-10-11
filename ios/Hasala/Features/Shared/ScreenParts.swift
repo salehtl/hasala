@@ -224,7 +224,7 @@ struct TabScreen<Content: View>: View {
       MainHeader(
         amountsHidden: app.amountsHidden,
         extra: extra,
-        avatarInitial: app.snapshot.header.avatarInitial,
+        avatarInitial: app.avatarInitial,
         onToggleAmounts: { app.toggleAmountsHidden() },
         onExtra: onExtra,
         onProfile: { app.showingProfile = true }

@@ -35,11 +35,18 @@ extension XCTestCase {
   ///   `.accessibility3` on purpose (spec 04 §14.4; marked `hasala.cappedFigure`), and
   ///   on text inside the navigation and tab bars, which keep their size and offer
   ///   the Large Content Viewer instead, as system bars do.
+  /// - An issue with no element while content is scrolled under the header. Labelled
+  ///   text there shows faintly through the bar's scroll-edge blur, and the audit reads
+  ///   those pixels as text it cannot match to an element ("Potentially inaccessible
+  ///   text: no element"), depending on which glyphs the blur lets through. Every screen
+  ///   is also audited at the top, where nothing sits under the header, so text drawn
+  ///   without an element is still caught there.
   @MainActor
   func audit(
     _ app: XCUIApplication, atLargeText: Bool = false, file: StaticString = #filePath, line: UInt = #line
   ) throws {
     let bars = [app.navigationBars.firstMatch, app.tabBars.firstMatch].filter(\.exists).map(\.frame)
+    let underHeader = contentUnderHeader(app)
     var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
     if !atLargeText { types.remove(.textClipped) }
     var issues: [String] = []
@@ -50,6 +57,7 @@ extension XCTestCase {
         if element.identifier == "hasala.cappedFigure" { return true }
         if bars.contains(where: { $0.intersects(element.frame) }) { return true }
       }
+      if issue.element == nil, underHeader { return true }
       let element = issue.element.map { "'\($0.label)' [\($0.identifier)] \($0.elementType.rawValue) \($0.frame)" }
       issues.append("\(issue.compactDescription): \(element ?? "no element") — \(issue.detailedDescription)")
       return true
@@ -57,6 +65,26 @@ extension XCTestCase {
     if !issues.isEmpty {
       XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
     }
+  }
+
+  /// Whether any labelled element outside the bars lies under the navigation bar (or
+  /// the blur just below it), from one snapshot of the hierarchy.
+  @MainActor
+  func contentUnderHeader(_ app: XCUIApplication) -> Bool {
+    let header = app.navigationBars.firstMatch
+    guard header.exists, let root = try? app.snapshot() else { return false }
+    let band = CGRect(x: 0, y: 0, width: app.frame.width, height: header.frame.maxY + 16)
+    var stack = [root]
+    while let node = stack.popLast() {
+      switch node.elementType {
+      case .navigationBar, .tabBar, .statusBar: continue
+      case .application, .window: break
+      default:
+        if !node.label.isEmpty, node.frame.intersects(band), node.frame.height < band.height * 2 { return true }
+      }
+      stack.append(contentsOf: node.children)
+    }
+    return false
   }
 
   @MainActor
