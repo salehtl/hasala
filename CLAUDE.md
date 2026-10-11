@@ -54,7 +54,7 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   top-level directory, `go.work`, `.gitattributes`), runs it. No job reads
   `LICENSES/`, `design/`, root `*.md`, `NOTICE` or `private-fixtures.lock`.
   `gate` and `vuln` also skip `docs/`, `web/` and `ios/` (except any `*.go`,
-  `*.nix`, `go.mod`, `go.sum`, `go.work`); `swift` reads only `ios/` and
+  `*.nix`, `go.mod`, `go.sum`, `go.work`, `go.work.sum`); `swift` reads only `ios/` and
   `conformance/`; `web` reads only `web/`, `docs/legal/` and the flake.
   `.github/` runs everything, and `secrets` always runs. Jobs are skipped by a
   job-level `if:` (a skipped required check counts as passing), never by a

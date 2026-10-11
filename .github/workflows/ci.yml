@@ -89,9 +89,12 @@ jobs:
           # path matches INERT (paths NAME does not read) and none matches
           # READS (paths under INERT that NAME does read); otherwise true. An
           # empty diff is false. grep -z matches each NUL-terminated path.
+          # grep exits 2 on an error (a malformed pattern): fail the step, so
+          # `changes` is not 'success' and every job runs.
+          match() { local rc=0; grep -zEq "$@" "$changed" || rc=$?; ((rc < 2)) || exit "$rc"; return "$rc"; }
           skip_unless() {
             local v=false
-            if grep -zEvq -- "$2" "$changed" || { [[ -n "${3:-}" ]] && grep -zEq -- "$3" "$changed"; }; then
+            if match -v -- "$2" || { [[ -n "${3:-}" ]] && match -- "$3"; }; then
               v=true
             fi
             echo "$1=$v" | tee -a "$GITHUB_OUTPUT"
@@ -255,7 +258,7 @@ jobs:
               -quiet build
           done
 
-      # The import allowlist, AT-C11 and the grep lints run in `gate` too; here
+      # The import allowlist, AT-C11 and the grep lints run in `gate` and `secrets` too; here
       # check-imports.sh also compares imports.allow with Package.swift.
       - name: Import rules and grep lints
         run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
