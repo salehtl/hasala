@@ -30,6 +30,10 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Warnings fail the build for this project's targets only: set on the command
+    # line it would also reach the linked packages (GRDB, swift-collections), whose
+    # own -suppress-warnings conflicts with it.
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
 targets:
   Hasala:
     type: application
@@ -54,6 +58,11 @@ targets:
       # name rules (spec 04 §6.1.2, §6.7, §6.8).
       - package: HasalaCore
         product: CoreCrypto
+      # The live account service over CoreSync's ceremonies, and the Keychain.
+      - package: HasalaCore
+        product: CoreSync
+      - package: HasalaCore
+        product: HasalaKeychain
   HasalaTests:
     type: bundle.unit-test
     platform: iOS

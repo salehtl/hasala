@@ -11,6 +11,8 @@
 		1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */ = {isa = PBXBuildFile; productRef = 34C3DF8F9E664D62F761D750 /* HasalaModels */; };
 		233C4F4AF054981975026771 /* HasalaDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */; };
 		40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */ = {isa = PBXBuildFile; productRef = D4E305223EA1101548600E38 /* HasalaMocks */; };
+		CCE98AD022B74F8DBAF80415 /* CoreSync in Frameworks */ = {isa = PBXBuildFile; productRef = BC929A60A8109BCB6AF125DC /* CoreSync */; };
+		E5911A14773A2AAA431100D1 /* HasalaKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = 50E928D93AED96B5E3CEC2DC /* HasalaKeychain */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +96,8 @@
 				233C4F4AF054981975026771 /* HasalaDesign in Frameworks */,
 				40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */,
 				151E619D211EDCF6599F04C5 /* CoreCrypto in Frameworks */,
+				CCE98AD022B74F8DBAF80415 /* CoreSync in Frameworks */,
+				E5911A14773A2AAA431100D1 /* HasalaKeychain in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -186,6 +190,8 @@
 				9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */,
 				D4E305223EA1101548600E38 /* HasalaMocks */,
 				39F59297A15B967DDD100B2C /* CoreCrypto */,
+				BC929A60A8109BCB6AF125DC /* CoreSync */,
+				50E928D93AED96B5E3CEC2DC /* HasalaKeychain */,
 			);
 			productName = Hasala;
 			productReference = 6B1A24344278E2914568DEF3 /* Hasala.app */;
@@ -453,6 +459,7 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
@@ -546,6 +553,7 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
@@ -611,9 +619,17 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = CoreCrypto;
 		};
+		50E928D93AED96B5E3CEC2DC /* HasalaKeychain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaKeychain;
+		};
 		9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HasalaDesign;
+		};
+		BC929A60A8109BCB6AF125DC /* CoreSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreSync;
 		};
 		D4E305223EA1101548600E38 /* HasalaMocks */ = {
 			isa = XCSwiftPackageProductDependency;
