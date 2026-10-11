@@ -1,0 +1,86 @@
+{
+  "name": "budget-zero-total-is-a-total",
+  "group": "config",
+  "note": "Zero is a total a user can state; null and absent both mean no total.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-zero-total-is-a-total-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 100,
+            "want": 0,
+            "saving": 0,
+            "monthly_total_minor": "0"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-zero-total-is-a-total-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 0,
+            "want": 0,
+            "saving": 100,
+            "monthly_total_minor": null
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": {
+        "need": 0,
+        "saving": 100,
+        "want": 0
+      },
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "2"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "5d6458b175f2bc227f8fe21c7ed9d4714364c190e35c972f083b90c87e46429e",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "5d6458b175f2bc227f8fe21c7ed9d4714364c190e35c972f083b90c87e46429e",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

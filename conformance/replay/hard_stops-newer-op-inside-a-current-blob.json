@@ -1,0 +1,21 @@
+{
+  "name": "newer-op-inside-a-current-blob",
+  "group": "hard_stops",
+  "note": "One op from a newer schema inside a v1 blob stops the fold, even though it is otherwise malformed.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":99,\"type\":\"txn_ingested\"}]}"
+    }
+  ],
+  "expect": {
+    "error": {
+      "kind": "newer_version",
+      "at_entry": 0
+    }
+  }
+}

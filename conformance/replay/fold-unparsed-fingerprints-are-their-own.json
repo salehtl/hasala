@@ -1,0 +1,287 @@
+{
+  "name": "unparsed-fingerprints-are-their-own",
+  "group": "fold",
+  "note": "Two unparsed rows on one day do not collide, and an unparsed row cannot collide with a parsed one.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-fingerprints-are-their-own-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": null,
+          "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-fingerprints-are-their-own-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u2"
+          },
+          "parent_version": null,
+          "ingest_id": "29c1b289e7522195b362e44f54e05470b69ad20540ab60a18a05e5bf6951f13d",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-fingerprints-are-their-own-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "1",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": ""
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "unparsed|29c1b289e7522195b362e44f54e05470b69ad20540ab60a18a05e5bf6951f13d",
+          [
+            "u2"
+          ]
+        ],
+        [
+          "unparsed|ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          [
+            "u1"
+          ]
+        ],
+        [
+          "|1|debit||2026-06-05",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "unparsed-fingerprints-are-their-own-3",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000u1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "u1",
+            "kind": "txn",
+            "op_id": "unparsed-fingerprints-are-their-own-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000u2",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "u2",
+            "kind": "txn",
+            "op_id": "unparsed-fingerprints-are-their-own-2",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "29c1b289e7522195b362e44f54e05470b69ad20540ab60a18a05e5bf6951f13d",
+          "u2"
+        ],
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ],
+        [
+          "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "u1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "1",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "u1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "u1",
+            "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "u2",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "u2",
+            "ingest_id": "29c1b289e7522195b362e44f54e05470b69ad20540ab60a18a05e5bf6951f13d",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "7ace3a72d8f8c7c0e9990f5c905a09ff336cfa455102563f80d53f657ef682ea",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "7ace3a72d8f8c7c0e9990f5c905a09ff336cfa455102563f80d53f657ef682ea",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}
