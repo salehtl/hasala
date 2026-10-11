@@ -5,27 +5,43 @@
 //
 // Additions beyond the owning specs, all derived and display-only:
 // `txn.review_lane` (03c §3.7, computed once here so every reader agrees), the
-// beta's 03b tables (`account`, `card`, `bill`, `bill_resolution`), and the
-// fold's notices (`fork_notice`, `anomaly`, `plan_overwrite`).
+// beta's 03b tables (`account`, `card`, `bill`, `bill_resolution`, `checkin`;
+// version 2 added `checkin`), and the fold's notices (`fork_notice`, `anomaly`,
+// `plan_overwrite`).
 import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 1
+  public static let version = 2
 
   static let tables = [
     "projection_meta", "txn", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
     "plan_cell", "plan_move", "income_source", "category_plan_role", "plan_overwrite", "budget_split", "rate", "account", "card",
-    "bill", "bill_resolution", "fork_notice", "anomaly",
+    "bill", "bill_resolution", "checkin", "fork_notice", "anomaly",
   ]
   static let views = ["money_line", "rule_stats"]
 
-  /// Creates every table (dropping what a different version left behind).
+  /// Creates every table, after dropping every view and table a different
+  /// version left behind, whatever their names and references. Foreign keys
+  /// are checked at commit (`defer_foreign_keys`, which works inside the
+  /// caller's transaction), and children go before parents anyway, so no
+  /// drop order of any older layout can fail on a reference.
   static func create(_ db: Database) throws {
-    for v in views { try db.execute(sql: "DROP VIEW IF EXISTS \(v)") }
-    for t in tables { try db.execute(sql: "DROP TABLE IF EXISTS \(t)") }
+    try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
+    let old = try String.fetchAll(
+      db, sql: "SELECT name FROM sqlite_master WHERE type = 'view' AND name NOT LIKE 'sqlite_%'")
+    for v in Set(views).union(old) { try db.execute(sql: "DROP VIEW IF EXISTS \(quoted(v))") }
+    let present = try String.fetchAll(
+      db, sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    let known = tables.reversed().filter { present.contains($0) }
+    for t in known + present.filter({ !tables.contains($0) }).sorted() {
+      try db.execute(sql: "DROP TABLE IF EXISTS \(quoted(t))")
+    }
     try db.execute(sql: ddl)
   }
+
+  /// An SQL identifier, double-quoted.
+  static func quoted(_ name: String) -> String { "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
 
   static let ddl = """
     CREATE TABLE projection_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -214,6 +230,11 @@ public enum ProjectionSchema {
       source TEXT NOT NULL, status TEXT NOT NULL, first_seq INTEGER NOT NULL, version INTEGER NOT NULL);
     CREATE TABLE bill_resolution (bill TEXT NOT NULL, due TEXT NOT NULL, resolution TEXT NOT NULL, txn TEXT, until TEXT,
       at_seq INTEGER NOT NULL, PRIMARY KEY (bill, due));
+    CREATE TABLE checkin (
+      id TEXT PRIMARY KEY, account TEXT NOT NULL, as_of TEXT NOT NULL, as_of_ms INTEGER NOT NULL,
+      balance_minor INTEGER NOT NULL, source TEXT NOT NULL, resolution TEXT, adjustment_minor INTEGER,
+      void INTEGER NOT NULL CHECK (void IN (0,1)), at_seq INTEGER NOT NULL);
+    CREATE INDEX checkin_account ON checkin (account, as_of_ms DESC);
 
     CREATE TABLE fork_notice (ord INTEGER PRIMARY KEY, entity_kind TEXT NOT NULL, entity_id TEXT NOT NULL,
       winner_op TEXT NOT NULL, loser_op TEXT NOT NULL, at_seq INTEGER NOT NULL);

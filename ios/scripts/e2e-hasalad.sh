@@ -69,7 +69,7 @@ curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null || {
 status=0
 HASALA_E2E_URL="http://127.0.0.1:$PORT" HASALA_E2E_PSQL="$(command -v psql)" \
 	HASALA_E2E_DSN="host=$TMP user=postgres dbname=hasala" \
-	PATH="/usr/bin:$PATH" swift test --package-path "$IOS/HasalaCore" --filter 'LiveHasaladTests' || status=$?
+	PATH="/usr/bin:$PATH" swift test --package-path "$IOS/HasalaCore" --filter 'LiveHasaladTests|LiveSampleSeedTests|LiveGmailToReplayTests' || status=$?
 if [[ "$status" != 0 ]]; then
 	echo "--- hasalad log ---" >&2
 	tail -40 "$TMP/serve.log" >&2

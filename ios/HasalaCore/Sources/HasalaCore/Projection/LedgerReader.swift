@@ -144,7 +144,7 @@ public struct LedgerReader: Sendable {
       guard let v = m["projection_version"].flatMap(Int.init) else { return nil }
       return ProjectionMeta(
         version: v, foldPrint: m["fold_print"] ?? "", cursorHot: m["cursor_hot"].flatMap { Int64($0) } ?? 0, complete: m["complete"] == "1",
-        projectedAtMs: m["projected_at"].flatMap { Int64($0) } ?? 0)
+        projectedAtMs: m["projected_at"].flatMap { Int64($0) } ?? 0, pendingOps: m["pending_ops"].flatMap { Int($0) } ?? 0)
     }
   }
 

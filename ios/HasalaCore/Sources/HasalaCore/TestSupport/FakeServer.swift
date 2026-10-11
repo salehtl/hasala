@@ -81,6 +81,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var log: [StoredRow] = []
     var frozen = false
     var deleted = false
+    /// `users.review_account` (02 #40; 07's reviewer invite).
+    var review = false
   }
 
   struct Session {
@@ -201,6 +203,9 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   public func freeze(user: UserID) { state.withLock { $0.users[user]?.frozen = true } }
 
+  /// Marks the account a review account (`account review <uuid> on`), or not.
+  public func setReviewAccount(user: UserID, _ on: Bool) { state.withLock { $0.users[user]?.review = on } }
+
   public func storedRowCount(user: UserID) -> Int { state.withLock { $0.users[user]?.log.count ?? 0 } }
 
   public var uploadCount: Int { state.withLock { $0.uploads } }
@@ -286,7 +291,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
           display_name: user.displayName, has_password: user.passwordHash != nil,
           password_salt: Base64.encode(sSrv(user.emailNorm)),
           has_passkey: state.withLock { s in s.credentials.values.contains { $0.userID == user.id } }, frozen: user.frozen,
-          restricted: user.frozen, review_account: false))
+          restricted: user.frozen, review_account: user.review))
     case "GET /api/v1/keys":
       guard let k = user.keys else { return Self.error(404, "no_keys") }
       return Self.ok(k)

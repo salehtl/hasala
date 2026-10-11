@@ -6,4 +6,5 @@
 //   LedgerStore.swift    the row store, client state, pending ops and the in-flight batch
 //   FileHygiene.swift    file protection and backup exclusion (§4.1)
 //
-// TODO(WS-10): fold_snapshot read/write (§5.3) once CoreReplay's StateSnapshot exists.
+//   LedgerStore+FoldSnapshot.swift  the fold snapshot row (§5.3): bound tip, load checks
+//   LedgerStore+Pending.swift       pending ingest ids and the newest pending stamp

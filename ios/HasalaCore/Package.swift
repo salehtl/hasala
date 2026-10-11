@@ -133,7 +133,10 @@ let package = Package(
       path: "Tests/HasalaCoreConformanceTests"),
     .testTarget(
       name: "HasalaCoreE2ETests",
-      dependencies: ["CoreSync", "CoreAuth", "CoreSoftAuth", "CoreTestSupport"],
+      dependencies: [
+        "CoreSync", "CoreAuth", "CoreSoftAuth", "CoreTestSupport", "CoreDomain", "CoreReplay", "CoreInvariants",
+        "CoreCategorize", "CoreProjection", "CoreOutbox", "CoreMailbox", "CoreTemplate",
+      ],
       path: "Tests/HasalaCoreE2ETests"),
   ]
     + unitTested.map { name in
