@@ -5,8 +5,9 @@
 #
 #   direnv exec . nice -n 10 scripts/check.sh
 #
-# CI (.github/workflows/ci.yml, job `gate`) runs the same script on every pull
-# request and every push to main, without the private fixtures (see "CI" below).
+# CI (.github/workflows/ci.yml, job `gate`) runs the same script on every push
+# to main and every pull request that touches what it reads, without the
+# private fixtures (see "CI" below).
 #
 # It is ledgerd's scripts/v2-check.sh carried over to the monorepo layout:
 # server/ (the Go module, and server/oracle/, the separate module that holds
@@ -63,7 +64,8 @@
 # printed instead of named, and the closing real-corpus count is also raised as
 # an annotation and written to the job summary, so a run without the private
 # fixtures says so on the pull request, not only at the end of a long log. CI
-# also runs `scripts/check.sh --fence-only` before it installs Nix, so the
+# also runs `scripts/check.sh --fence-only` before it installs Nix, and in job
+# `secrets` on every pull request (including those that skip `gate`), so the
 # real-mail fence holds on every push even when the rest cannot build.
 #
 # What this does NOT run is the full-corpus cross-executor diff and the corpus-
@@ -109,8 +111,8 @@ ci_report() {
 # runs. The synthetic families (edge-cases.json, synthetic-*.json, dns.json)
 # are what belongs here. This step needs no fixtures and no toolchain and takes
 # seconds, so it runs first, and `--fence-only` stops right after it: CI runs
-# that on every push and pull request before anything else, so the fence does
-# not depend on the rest of the gate building.
+# that on every push and pull request (job `secrets`, and first in `gate`), so
+# the fence does not depend on the rest of the gate building.
 step "real-mail fence"
 leaked="$(
 	cd "$ROOT"
