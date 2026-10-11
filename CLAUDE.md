@@ -16,7 +16,7 @@ beta; every deployment is **QA** until a production VPS exists.
 | `reference/ledgerd-pwa/` | ledgerd's React PWA. Reference for product logic (`src/lib/`) only. Not shipped. |
 | `web/` | The hasala.app website: Astro + Bun, static output. See "Website" below. |
 | `design/` | Logo and exported assets. Not in this tree yet. The UI source of truth is a private Paper design file. |
-| `infra/qa/` | (Planned) generic deployment notes for the QA host. Host names, addresses, accounts and credentials never go here. |
+| `infra/qa/` | The QA deployment as code: `nix/module.nix` is `nixosModules.hasala` (`services.hasala`: Hasala's own PostgreSQL 17 on a unix socket, migrations, `hasalad serve` and `hasalad console` on loopback, the tunnel, encrypted backups), `cloudflared/` the ingress golden file, lint and fixtures, `nix/tests/` the eval and VM checks, `HOST-PR.md` the host-side change (placeholders only). Host names, addresses, accounts and credentials never go here. |
 | `docs/` | `docs/legal/` holds the privacy policy, terms, security and support pages that the website renders (`status: "final"`; a page that still has an `[[OWNER: ...]]` note must go back to `status: "draft"`). Hasala's architecture and decisions will live in `docs/` too; not in this tree yet. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
 
 ## Build and test
@@ -38,11 +38,13 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
 - CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
   without the private fixtures. Jobs `gate` (`check.sh --fence-only` before
-  anything else, then `nix flake check` and `scripts/check.sh` in the
-  devShell), `vuln` (`govulncheck ./...` in `server/`, failing on anything
-  reachable) and `secrets` (gitleaks over the full history). Keep those job
-  names: required status checks match them by name. A fourth job, `web`,
-  checks the website (see "Website") and is not a required check. `.gitleaks.toml` allowlists
+  anything else, then `nix flake check --no-build`, a build of every check
+  except `hasala-vm`, and `scripts/check.sh` in the devShell), `vuln`
+  (`govulncheck ./...` in `server/`, failing on anything reachable) and
+  `secrets` (gitleaks over the full history). Keep those job names: required
+  status checks match them by name. A fourth job, `web`, checks the website
+  (see "Website"), and `nixos-vm` builds `checks.x86_64-linux.hasala-vm` with
+  KVM; neither is a required check. `.gitleaks.toml` allowlists
   known public test vectors only, each scoped to its rule, its files and its
   exact value; never widen it to pass a real secret.
 - Real bank mail is **not** in this repository. The real-mail conformance cases
@@ -60,7 +62,11 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   toolchain needed) on every push and pull request before anything else.
 - `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
-  which is byte-frozen).
+  which is byte-frozen). The infra checks: `ingress-lint` (both systems; the
+  module's rendered tunnel config against `infra/qa/cloudflared/config.golden.yml`
+  plus `lint.sh`), and on x86_64-linux `module-eval` (every module assertion
+  fires on its misuse) and `hasala-vm` (needs KVM). On a Mac,
+  `nix flake check --no-build --all-systems` evaluates the Linux ones.
 - `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
   `console` (a stub until the console is built) and `version`; configuration
   is `HASALA_*` environment variables over an optional TOML file
