@@ -19,4 +19,21 @@ if "$here/build_number.sh" 2026-10-11T15:30:00 >/dev/null 2>&1; then
 else
 	echo "ok   an instant without a zone is refused"
 fi
+
+# The monotonicity rule archive.sh and upload.sh share (code 21).
+# shellcheck source=../release-common.sh
+source "$here/release-common.sh"
+newer() {
+	local verdict=no
+	if hasala_build_newer "$1" "$2"; then verdict=yes; fi
+	if [[ "$verdict" == "$3" ]]; then echo "ok   $1 newer than $2: $verdict"; else echo "FAIL $1 newer than $2: $verdict (want $3)"; fail=1; fi
+}
+newer 261011.11531 261011.11530 yes
+newer 261011.11530 261011.11530 no
+newer 261011.11529 261011.11530 no
+newer 261012.10000 261011.12359 yes
+newer 261011.12359 261012.10000 no
+newer 270101.10000 261231.12359 yes
+newer 261011.11530 garbage no
+newer 0.1.0 261011.11530 no
 exit "$fail"

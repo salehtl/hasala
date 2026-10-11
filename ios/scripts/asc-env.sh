@@ -11,9 +11,18 @@
 # secrets; the .p8 is, and it never leaves its file.
 
 asc_resolve_key() {
-	if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" ]] && [[ -f "$HOME/.config/hasala/asc.env" ]]; then
-		# shellcheck disable=SC1091
-		source "$HOME/.config/hasala/asc.env"
+	local envfile="$HOME/.config/hasala/asc.env"
+	if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" ]] && [[ -f "$envfile" ]]; then
+		# It is sourced as shell, so it must be the owner's alone (spec 06 §9: 0600).
+		local envmode envowner
+		envmode="$(stat -f '%Lp' "$envfile")"
+		envowner="$(stat -f '%u' "$envfile")"
+		if [[ "$envmode" != "600" && "$envmode" != "400" ]] || [[ "$envowner" != "$(id -u)" ]]; then
+			echo "$envfile has mode $envmode (owner uid $envowner); it must be yours with mode 0600 (chmod 600)" >&2
+			return 14
+		fi
+		# shellcheck disable=SC1090
+		source "$envfile"
 	fi
 	if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" ]]; then
 		echo "set ASC_KEY_ID and ASC_ISSUER_ID (or create ~/.config/hasala/asc.env)" >&2

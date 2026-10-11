@@ -3,7 +3,10 @@
 # on this Mac, with automatic signing (spec 06 §9, §10.1–§10.2). It never uploads;
 # ios/scripts/upload.sh does that, separately and on purpose.
 #
-#   ASC_KEY_ID=… ASC_ISSUER_ID=… ios/scripts/archive.sh [--allow-dirty]
+#   ASC_KEY_ID=… ASC_ISSUER_ID=… ios/scripts/archive.sh [--allow-dirty] [--allow-branch]
+#
+# --allow-dirty and --allow-branch are for local trials only: the build is marked
+# with a TRIAL file beside summary.txt and upload.sh refuses it.
 #
 # The API key comes from the environment (see asc-env.sh); xcodebuild uses it with
 # -allowProvisioningUpdates to create or refresh the App ID's profiles and the
@@ -13,9 +16,10 @@
 #   ios/build/<BUILD>/export/Hasala.ipa
 #   ios/build/<BUILD>/archive.log, export.log, summary.txt
 #
-# Exit codes (spec 06 §10.4 numbering where it applies):
-#   10 dirty tree   14 key missing or unsafe   21 build number not newer than the last upload
-#   30 archive failed   31 export failed   32 the exported .ipa failed a check
+# Exit codes (spec 06 §10.4; PRECHECK reduced to 10, 11, 14, 16, 21 for Gate A0, §15.2):
+#   10 dirty tree   11 branch is not main   14 key or asc.env missing or unsafe
+#   16 Xcode is not 27.x   21 build number not newer than the last upload
+#   30 archive failed   31 export failed   40 the exported .ipa failed inspection (§10.3)
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,37 +27,56 @@ ios="$(cd "$here/.." && pwd)"
 repo="$(cd "$ios/.." && pwd)"
 # shellcheck source=asc-env.sh
 source "$here/asc-env.sh"
+# shellcheck source=release-common.sh
+source "$here/release-common.sh"
 
 allow_dirty=0
+allow_branch=0
 for a in "$@"; do
 	case "$a" in
 	--allow-dirty) allow_dirty=1 ;;
+	--allow-branch) allow_branch=1 ;;
 	*)
-		echo "usage: archive.sh [--allow-dirty]" >&2
+		echo "usage: archive.sh [--allow-dirty] [--allow-branch]" >&2
 		exit 2
 		;;
 	esac
 done
 
-# --- precheck ------------------------------------------------------------------
+# --- precheck (10, 11, 14, 16, 21) ---------------------------------------------------
+trial=()
 if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
 	if [[ "$allow_dirty" == 1 ]]; then
 		echo "archive: WARNING the tree is dirty; HasalaGitCommit names HEAD, not what was built" >&2
+		trial+=("dirty tree")
 	else
 		echo "archive: the working tree is dirty; commit first (or --allow-dirty for a local trial)" >&2
 		exit 10
 	fi
 fi
+branch="$(git -C "$repo" branch --show-current)"
+if [[ "$branch" != "main" ]]; then
+	if [[ "$allow_branch" == 1 ]]; then
+		echo "archive: WARNING on branch '${branch:-detached HEAD}', not main" >&2
+		trial+=("branch ${branch:-detached HEAD}")
+	else
+		echo "archive: on branch '${branch:-detached HEAD}'; releases are archived from main (or --allow-branch for a local trial)" >&2
+		exit 11
+	fi
+fi
 asc_resolve_key || exit 14
+xcode="$(xcodebuild -version 2>/dev/null | head -n1 || true)"
+if [[ ! "$xcode" =~ ^Xcode\ 27\. ]]; then
+	echo "archive: needs Xcode 27.x (xcodebuild -version says '${xcode:-nothing}')" >&2
+	exit 16
+fi
 
 BUILD="$("$here/build_number.sh" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
 SHA="$(git -C "$repo" rev-parse --short=12 HEAD)"
 last_file="$ios/build/last-build-number"
 if [[ -f "$last_file" ]]; then
 	last="$(cat "$last_file")"
-	# Component-wise integer comparison (both are YYMMDD.1HHMM).
-	if [[ "${BUILD%%.*}" -lt "${last%%.*}" ]] ||
-		{ [[ "${BUILD%%.*}" -eq "${last%%.*}" ]] && [[ "${BUILD##*.}" -le "${last##*.}" ]]; }; then
+	if ! hasala_build_newer "$BUILD" "$last"; then
 		echo "archive: build $BUILD is not newer than the last upload $last; wait a minute" >&2
 		exit 21
 	fi
@@ -61,6 +84,9 @@ fi
 
 OUT="$ios/build/$BUILD"
 mkdir -p "$OUT"
+if ((${#trial[@]})); then
+	printf 'local trial, not for upload: %s\n' "${trial[@]}" >"$OUT/$HASALA_TRIAL_MARKER"
+fi
 auth=(
 	-allowProvisioningUpdates
 	-authenticationKeyPath "$ASC_KEY_PATH"
@@ -115,7 +141,8 @@ IPA="$OUT/export/Hasala.ipa"
 	exit 31
 }
 
-# --- inspect (a subset of spec 06 §10.3; inspect-ipa.sh will own the full list) ----
+# --- inspect (spec 06 §10.3, the checks that apply to the A0 app; inspect-ipa.sh will
+# own the full list, with the widget and NSE, from A1) ---------------------------------
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 unzip -q "$IPA" -d "$work"
@@ -126,6 +153,23 @@ plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$app/Info.plist" 2>/dev/null; 
 ents="$work/ents.plist"
 codesign -d --entitlements - --xml "$app" >"$ents" 2>/dev/null || true
 ent() { /usr/libexec/PlistBuddy -c "Print :$1" "$ents" 2>/dev/null; }
+# I1: the entitlements equal the golden file exactly, except beta-reports-active
+# (Apple adds it) and the order inside arrays.
+ents_match_golden() {
+	/usr/bin/python3 -I - "$here/golden/app.release.entitlements.plist" "$ents" <<'PY'
+import plistlib, sys
+def norm(path):
+    with open(path, "rb") as f:
+        d = plistlib.load(f)
+    d.pop("beta-reports-active", None)
+    return {k: sorted(v) if isinstance(v, list) else v for k, v in d.items()}
+want, got = norm(sys.argv[1]), norm(sys.argv[2])
+for k in sorted(set(want) | set(got)):
+    if want.get(k) != got.get(k):
+        print(f"        {k}: want {want.get(k)!r}, got {got.get(k)!r}", file=sys.stderr)
+sys.exit(0 if want == got else 1)
+PY
+}
 
 {
 	echo "Hasala $BUILD ($SHA)"
@@ -137,8 +181,8 @@ ent() { /usr/libexec/PlistBuddy -c "Print :$1" "$ents" 2>/dev/null; }
 	check "I4 no NSAppTransportSecurity" '! plist NSAppTransportSecurity >/dev/null'
 	check "I1 aps-environment is production" '[[ "$(ent aps-environment)" == "production" ]]'
 	check "I1 get-task-allow is false" '[[ "$(ent get-task-allow)" == "false" ]]'
-	check "I1 application-identifier is 8CFG28JHP3.app.hasala.ios" '[[ "$(ent application-identifier)" == "8CFG28JHP3.app.hasala.ios" ]]'
 	check "I1 no ?mode=developer domain" '! grep -q "mode=developer" "$ents"'
+	check "I1 entitlements equal golden/app.release.entitlements.plist" 'ents_match_golden'
 	check "I5 PrivacyInfo.xcprivacy present and valid" 'plutil -lint -s "$app/PrivacyInfo.xcprivacy"'
 	check "I6 no mail, fixtures, databases or keys" '[[ -z "$(find "$work/Payload" \( -iname "*.eml" -o -iname "*.mbox" -o -path "*conformance*" -o -path "*fixtures*" -o -iname "*.sqlite" -o -iname "*.db" -o -iname "*.p8" -o -iname "*.env" \) -print)" ]]'
 	check "I7 no secrets" '! grep -rIlE "GOCSPX-|BEGIN (EC |RSA )?PRIVATE KEY|AuthKey_|HASALA_[A-Z_]*KEY=" "$work/Payload" >/dev/null'
@@ -147,10 +191,15 @@ ent() { /usr/libexec/PlistBuddy -c "Print :$1" "$ents" 2>/dev/null; }
 	check "I11 minos 26.0" 'xcrun vtool -show-build "$app/Hasala" | grep -q "minos 26.0"'
 	check "I12 no dev hosts" '! strings "$app/Hasala" | grep -qE "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"'
 	echo "ipa: $IPA ($(du -h "$IPA" | cut -f1))"
-} | tee "$OUT/summary.txt"
+	if [[ -f "$OUT/$HASALA_TRIAL_MARKER" ]]; then cat "$OUT/$HASALA_TRIAL_MARKER"; fi
+} 2>&1 | tee "$OUT/summary.txt"
 
-if grep -q "  FAIL" "$OUT/summary.txt"; then
+if grep -q "^  FAIL" "$OUT/summary.txt"; then
 	echo "archive: the exported .ipa failed a check; do not upload it" >&2
-	exit 32
+	exit 40
 fi
-echo "archive: done. To upload (not done here): ios/scripts/upload.sh $IPA"
+if [[ -f "$OUT/$HASALA_TRIAL_MARKER" ]]; then
+	echo "archive: done (local trial; upload.sh will refuse this build)"
+else
+	echo "archive: done. To upload (not done here): ios/scripts/upload.sh $IPA"
+fi
