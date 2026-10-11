@@ -131,6 +131,11 @@
         }
       );
 
+      # services.hasala, the QA backend (spec 05 §5): Hasala's own PostgreSQL,
+      # `hasalad serve` and `hasalad console` on loopback, the tunnel, backups.
+      nixosModules.hasala = import ./infra/qa/nix/module.nix self;
+      nixosModules.default = self.nixosModules.hasala;
+
       checks = forAllSystems (
         system: pkgs: {
           hasalad = self.packages.${system}.hasalad;
