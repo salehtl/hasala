@@ -112,6 +112,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.hasala.ios.tests
         TARGETED_DEVICE_FAMILY: "1"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Hasala.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hasala"
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "$(HASALA_WARNINGS_AS_ERRORS)"
         BUNDLE_LOADER: "$(TEST_HOST)"
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
       configs:
@@ -131,6 +132,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.hasala.ios.uitests
         TARGETED_DEVICE_FAMILY: "1"
         TEST_TARGET_NAME: Hasala
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "$(HASALA_WARNINGS_AS_ERRORS)"
 schemes:
   Hasala:
     build:

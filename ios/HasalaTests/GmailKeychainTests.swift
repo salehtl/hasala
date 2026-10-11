@@ -5,8 +5,19 @@ import Testing
 
 @testable import Hasala
 
+/// Whether this test host can reach the data-protection keychain at all. An unsigned build
+/// (CI's `CODE_SIGNING_ALLOWED=NO`) has no keychain-access-groups entitlement, and every call
+/// answers errSecMissingEntitlement; the suite is then skipped by name rather than failed.
+nonisolated let keychainUsable: Bool = {
+  let q: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.hasala.test-probe",
+    kSecAttrAccount as String: "probe", kSecUseDataProtectionKeychain as String: true,
+  ]
+  return SecItemCopyMatching(q as CFDictionary, nil) != errSecMissingEntitlement
+}()
+
 /// The `.gmailRefresh(user)` Keychain item against the simulator's real Keychain (spec 04 §4.4).
-@Suite("Gmail refresh token in the Keychain", .serialized)
+@Suite("Gmail refresh token in the Keychain", .serialized, .enabled(if: keychainUsable, "needs a signed test host"))
 struct GmailKeychainTests {
   let store = KeychainGmailRefreshTokenStore(userID: "00000000-0000-4000-8000-\(String(UInt64.random(in: 0..<1 << 40), radix: 16).leftPad())")
 
