@@ -1,0 +1,71 @@
+import HasalaDesign
+import HasalaModels
+import SwiftUI
+
+/// The main-screen header (Paper "kit Screen chrome", spec 04 §13.1): leading glass eye (Hide
+/// amounts), the Hasala mark centred, and on the trailing side the bell with its
+/// unread badge (Home only), "+" (Activity only) and the avatar. iOS 26 toolbar
+/// items get the system Liquid Glass; nothing custom is drawn for them.
+struct MainHeader: ToolbarContent {
+  /// Header icons are ink, not the accent (Paper `--color-apple-labels-vibrant-primary`).
+  static let iconColor = HColor.appleLabelsVibrantPrimary
+
+  enum Extra { case bell(unread: Int), add, none }
+
+  let amountsHidden: Bool
+  let extra: Extra
+  let avatarInitial: String
+  let onToggleAmounts: () -> Void
+  let onExtra: () -> Void
+  let onProfile: () -> Void
+
+  var body: some ToolbarContent {
+    ToolbarItem(placement: .topBarLeading) {
+      Button(action: onToggleAmounts) {
+        Image(systemName: amountsHidden ? "eye.slash" : "eye")
+          .foregroundStyle(Self.iconColor)
+      }
+      .accessibilityLabel(amountsHidden ? "Show amounts" : "Hide amounts")
+      .accessibilityIdentifier("header.hideAmounts")
+    }
+    ToolbarItem(placement: .principal) {
+      Image("HasalaMark")
+        .resizable()
+        .scaledToFit()
+        .frame(width: 54, height: 32)
+        .accessibilityLabel("Hasala")
+    }
+    switch extra {
+    case .bell(let unread):
+      ToolbarItem(placement: .topBarTrailing) {
+        Button(action: onExtra) {
+          Image(systemName: "bell")
+            .foregroundStyle(Self.iconColor)
+        }
+        .badge(unread)
+        .accessibilityLabel(unread > 0 ? "Notifications, \(unread) unread" : "Notifications")
+        .accessibilityIdentifier("header.notifications")
+      }
+      ToolbarSpacer(.fixed, placement: .topBarTrailing)
+    case .add:
+      ToolbarItem(placement: .topBarTrailing) {
+        Button(action: onExtra) {
+          Image(systemName: "plus")
+            .foregroundStyle(Self.iconColor)
+        }
+        .accessibilityLabel("Add a transaction")
+        .accessibilityIdentifier("header.add")
+      }
+      ToolbarSpacer(.fixed, placement: .topBarTrailing)
+    case .none:
+      ToolbarItem(placement: .topBarTrailing) { EmptyView() }
+    }
+    ToolbarItem(placement: .topBarTrailing) {
+      Button(action: onProfile) {
+        AvatarDisc(initial: avatarInitial)
+      }
+      .accessibilityLabel("Your profile")
+      .accessibilityIdentifier("header.profile")
+    }
+  }
+}

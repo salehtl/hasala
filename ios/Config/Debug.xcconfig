@@ -1,0 +1,6 @@
+#include "Shared.xcconfig"
+
+// Debug: developer-mode associated domains (spec 06 §3.3) and the mock scenarios
+// (spec 04 §1.4). HASALA_MOCKS gates every path into HasalaMocks.
+CODE_SIGN_ENTITLEMENTS = Hasala/Hasala-Debug.entitlements
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG HASALA_MOCKS
