@@ -64,6 +64,37 @@
           })
         ];
 
+      # XcodeGen 2.46.0 exactly (spec 06 §1; ios/scripts/generate-project.sh says
+      # why): 26.05 ships 2.44.1, whose projects build an app with no asset
+      # catalog and no privacy manifest. nixpkgs builds XcodeGen from source with
+      # its Swift 5.10 toolchain, and 2.46.0 needs XcodeProj 9.14.0, whose
+      # manifest requires swift-tools-version 6.0; so this is the release's own macOS
+      # binary (yonaskolb/XcodeGen, asset xcodegen.zip, upstream sha256
+      # 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806),
+      # pinned by hash. Darwin only; the ios CI job runs it with `nix build`.
+      xcodegenFor =
+        pkgs:
+        pkgs.stdenvNoCC.mkDerivation {
+          pname = "xcodegen";
+          version = "2.46.0";
+          src = pkgs.fetchzip {
+            url = "https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip";
+            hash = "sha256-7NjCsInBjkOL1RqWSaWKGDJxp/gn71rmhTWG2ErHDqA=";
+          };
+          dontConfigure = true;
+          dontBuild = true;
+          dontFixup = true;
+          installPhase = ''
+            mkdir -p $out
+            cp -R bin share $out/
+          '';
+          meta = {
+            mainProgram = "xcodegen";
+            platforms = lib.platforms.darwin;
+            sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+          };
+        };
+
       treefmtFor =
         system: pkgs:
         pkgs.treefmt.withConfig {
@@ -93,7 +124,8 @@
       formatter = forAllSystems treefmtFor;
 
       packages = forAllSystems (
-        system: pkgs: {
+        system: pkgs:
+        {
           # Spec 02 §3.1 names it packages.<system>.hasalad; `server` is kept as
           # an alias for anything that still says .#server.
           hasalad = buildGoModuleFor system pkgs {
@@ -143,6 +175,9 @@
           server = self.packages.${system}.hasalad;
           default = self.packages.${system}.hasalad;
         }
+        // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+          xcodegen = xcodegenFor pkgs;
+        }
       );
 
       # services.hasala, the QA backend (spec 05 §5): Hasala's own PostgreSQL,
@@ -191,19 +226,28 @@
             ++ [
               pkgs.postgresql_17 # initdb/pg_ctl/postgres for internal/pgtest
               pkgs.bun
+              # web/: wrangler (`bun run deploy`) is unreliable under Bun's
+              # runtime; `bun run` starts its `#!/usr/bin/env node` bin with this.
+              pkgs.nodejs_22
               pkgs.sops
               pkgs.gh
               pkgs.nixfmt
               (treefmtFor system pkgs)
             ]
             ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
-              pkgs.xcodegen
+              (xcodegenFor pkgs)
               pkgs.swiftlint
             ];
             env = {
               # Never let `go` fetch a different toolchain than the pinned one.
               GOTOOLCHAIN = "local";
               CGO_ENABLED = "0";
+            }
+            # web/'s `bun run build`: sharp's prebuilt libvips needs libstdc++,
+            # which NixOS (the QA host) has nowhere on the default search path.
+            # Linux only; the darwin shell is untouched.
+            // lib.optionalAttrs (system == "x86_64-linux") {
+              LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
             };
           };
         }

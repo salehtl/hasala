@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // routes_session.go: sign-out (spec 02 §9.3; security finding F4: a sign-out
@@ -68,9 +69,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleLogoutAll revokes every session of the account, the caller's included,
 // and deletes every APNs token, in one transaction. Writers are NOT revoked:
-// the devices keep their keys and can sign in again (spec 02 §9.3). The
-// security wake to the other devices and the sessions_revoked event arrive
-// with WS-4 and WS-3.
+// the devices keep their keys and can sign in again (spec 02 §9.3). Every
+// other device gets a security wake through its token, collected before the
+// deletion (§12.5), and then meets a 401. The sessions_revoked event arrives
+// with WS-3.
 func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	if !s.SessionPerUser.Allow(userID.String()) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many sign-outs; try again shortly")
@@ -79,11 +81,20 @@ func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request, userID 
 	if !decodeEmptyBody(w, r) {
 		return
 	}
+	// The caller's own device is not woken. A failed lookup costs the wakes,
+	// never the sign-out.
+	var tokens []pushv2.Target
+	if token, ok := bearerToken(r); ok {
+		if info, err := s.Sessions.Info(r.Context(), token); err == nil {
+			tokens = s.accountTokens(r.Context(), userID, info.WriterID)
+		}
+	}
 	if err := s.Sessions.RevokeAllForUser(r.Context(), userID); err != nil {
 		s.logf("api: logout-all for %s: %v", userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
+	s.wakeTokens(r.Context(), tokens, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }
 

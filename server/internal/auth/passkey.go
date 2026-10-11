@@ -67,6 +67,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
@@ -301,6 +302,24 @@ func passkeyIdentity(handle []byte, now time.Time) Identity {
 // limiter. The check is NOT the gate — the redemption at finish is, and it is the
 // one that is atomic.
 func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string, authorityPub []byte) (string, *protocol.CredentialCreation, []byte, error) {
+	return p.BeginRegistrationLinked(ctx, inviteCode, nil, authorityPub)
+}
+
+// BeginRegistrationLinked is BeginRegistration with the invite link's key (32
+// raw bytes from the link's fragment, or nil). This ceremony carries no
+// address, so it cannot apply spec 02 §14.1's binding by comparing tags; it
+// applies it by possession instead: an ADDRESSED invite (one with email_tag)
+// opens only with its link key, which only the email to that address carries
+// (invites.RedeemableWithoutAddress). The code alone sits in the link's path,
+// where link scanners and the CDN can see it, so it must not be enough.
+//
+// The gate is here, not at finish: a ceremony exists only for a code that
+// passed it, and the code_hash and link_key_hash of an invite are minted
+// together, so the invite finish redeems is the one whose key was shown. The
+// one gap is an unaddressed invite that gains a tag in the minutes between
+// begin and finish (mailq tags a queued CLI invite at send); its holder had
+// the code before it was addressed.
+func (p *Passkeys) BeginRegistrationLinked(ctx context.Context, inviteCode string, linkKey, authorityPub []byte) (string, *protocol.CredentialCreation, []byte, error) {
 	if p.Pool == nil || p.WA == nil {
 		return "", nil, nil, errors.New("auth: Passkeys is not configured")
 	}
@@ -314,14 +333,12 @@ func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string, aut
 	if len(hash) == 0 {
 		return "", nil, nil, ErrNotInvited
 	}
-	var spendable bool
-	if err := p.Pool.QueryRow(ctx,
-		`SELECT true FROM invite_codes WHERE code_hash = $1 AND redeemed_at IS NULL`, hash).
-		Scan(&spendable); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil, nil, ErrNotInvited
-		}
+	spendable, err := invites.RedeemableWithoutAddress(ctx, p.Pool, hash, linkKey, time.Now())
+	if err != nil {
 		return "", nil, nil, fmt.Errorf("auth: passkey: check invite: %w", err)
+	}
+	if !spendable {
+		return "", nil, nil, ErrNotInvited
 	}
 
 	handle := make([]byte, userHandleBytes)

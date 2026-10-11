@@ -1,0 +1,11 @@
+{{define "dashboard.html"}}{{template "head" .}}
+<h1>Waitlist</h1>
+<p>Pending {{index .Counts "pending"}} · Confirmed {{index .Counts "confirmed"}} · Invited {{index .Counts "invited"}} · Joined {{index .Counts "joined"}}</p>
+<p>Approving sends the invite email (TestFlight by hand: add the person to Hasala Beta in App Store Connect yourself).</p>
+<table>
+<tr><th>Email</th><th>State</th><th>Bank</th><th>Since</th><th></th></tr>
+{{range .Entries}}<tr><td>{{.Email}}</td><td>{{.State}}</td><td>{{.Bank}}</td><td>{{.Created}}</td>
+<td>{{if eq .State "confirmed"}}<form method="post" action="/waitlist/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{.ApproveTok}}"><button>Approve</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="5">Nobody is waiting.</td></tr>{{end}}
+</table>
+{{template "foot" .}}{{end}}

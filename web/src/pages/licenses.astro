@@ -63,7 +63,11 @@ const jsonLd = {
 
     <section aria-labelledby="third-title">
       <h2 id="third-title">Sent to your browser</h2>
-      <p class="lic-intro">Everything else this website runs or shows is Hasala’s own. It loads nothing from other websites, apart from Cloudflare’s bot check on forms when that is switched on.</p>
+      <p class="lic-intro">
+        Everything else this website runs or shows is Hasala’s own, apart from what it loads from Cloudflare: Cloudflare Web Analytics, which Cloudflare adds to our
+        pages to count visits (never on invite, freeze or waitlist links; see the <a href="/privacy#the-website">Privacy Policy</a>), and Cloudflare’s bot check
+        on forms when that is switched on.
+      </p>
       <ul role="list" class="lic-list">
         {
           THIRD_PARTY.map((p) => (

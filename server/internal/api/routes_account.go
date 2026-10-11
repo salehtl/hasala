@@ -97,6 +97,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/purge"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // reauthMaxAge is how recently an IdP ID token must have been minted to count
@@ -253,6 +254,9 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
+	// Every device hears that the account is gone (spec 02 §12.5); the tokens
+	// go with the purge, so they are read first.
+	tokens := s.accountTokens(r.Context(), userID, "")
 	rep, err := purge.Purge(r.Context(), s.Pool, userID)
 	if err != nil {
 		// LOUD. The purge is all-or-nothing, so this means the account is still
@@ -273,6 +277,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, use
 		s.logf("api: delete account %s: tables needed an explicit sweep (missing ON DELETE "+
 			"CASCADE): %v", userID, rep.SweptWithoutCascade)
 	}
+	s.wakeTokens(r.Context(), tokens, pushv2.ReasonAccountGone)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }

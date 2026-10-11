@@ -1,0 +1,6 @@
+#include "Shared.xcconfig"
+
+// Release: the entitlements the exported build carries (spec 06 §3.2). The
+// archive is signed for development and export re-signs it for distribution.
+CODE_SIGN_ENTITLEMENTS = Hasala/Hasala.entitlements
+SWIFT_ACTIVE_COMPILATION_CONDITIONS =

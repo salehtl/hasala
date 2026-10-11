@@ -284,3 +284,15 @@ test("KNOWN: Bun disagrees with Go, V8 and WebKit on case-insensitive class rang
   // mandatory in `compile` above.
   expect(new RegExp("k", "i").test("\u212A")).toBe(false);
 });
+
+test("KNOWN: Bun drops a match after an optional group that starts with ^", () => {
+  // Measured 2026-10-11 with Bun 1.3.13: `(?:^b)?A` against "c A" returns null.
+  // Go's regexp, V8 and ICU (the iOS executor) all match "A" at index 2: the
+  // optional group simply does not participate. The dialect accepts this shape;
+  // no shipping template uses it. As above, it is a JavaScriptCore bug pinned so
+  // a probe that ever leaned on it explains itself. When Bun fixes it, this test
+  // fails and the note gets updated.
+  expect(new RegExp("(?:^b)?A", "u").exec("c A")).toBeNull();
+  // Without the anchored optional group the same text matches where Go says.
+  expect(new RegExp("(?:b)?A", "u").exec("c A")?.index).toBe(2);
+});

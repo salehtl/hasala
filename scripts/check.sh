@@ -20,7 +20,8 @@
 #   0. The real-mail fence: no real bank mail has come back into this tree.
 #      It needs no toolchain; `scripts/check.sh --fence-only` runs it alone.
 #  0b. HasalaCore's source lints (ios/scripts/check-imports.sh and
-#      check-forbidden.sh): grep only, so they run on Linux too. The Swift
+#      check-forbidden.sh): grep only, so they run on Linux too. Then the
+#      bundled bank templates are byte-identical to the server seed. The Swift
 #      build and tests themselves run in CI's `swift` job on a Mac.
 #   1. The Go toolchain is at least server/go.mod's `toolchain` line.
 #   2. The hasalad fences (spec 02 §4.4, cmd/hasalad/fence_test.go): the
@@ -146,6 +147,25 @@ fi
 step "HasalaCore import and API lints"
 "$ROOT/ios/scripts/check-imports.sh" --no-manifest
 "$ROOT/ios/scripts/check-forbidden.sh"
+
+# Spec 04 §4.6: the app's bundled templates are the server seed, byte for byte,
+# and the same set of files. ios/tools/templates/sync.swift copies them and
+# writes the SHA-256 manifest; this needs no toolchain, so drift fails the gate
+# and not only the (non-required) swift job.
+step "bundled templates equal the server seed"
+bundled="$ROOT/ios/HasalaCore/Sources/HasalaCore/Resources/templates"
+seed="$ROOT/server/internal/tmpl/seed"
+if [ "$(cd "$bundled" && ls -1 ./*.json)" != "$(cd "$seed" && ls -1 ./*.json)" ]; then
+  echo "the bundled template set differs from server/internal/tmpl/seed; run swift ios/tools/templates/sync.swift" >&2
+  exit 1
+fi
+for f in "$seed"/*.json; do
+  if ! cmp -s "$f" "$bundled/${f##*/}"; then
+    echo "${f##*/} differs from the server seed; run swift ios/tools/templates/sync.swift" >&2
+    exit 1
+  fi
+done
+echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
 cd "$ROOT/server"
 

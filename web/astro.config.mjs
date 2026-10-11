@@ -14,8 +14,21 @@ import cspUnion from './src/lib/csp-union.mjs';
 const env = loadEnv(process.env.NODE_ENV ?? 'production', process.cwd(), 'PUBLIC_');
 const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
 const API_ORIGIN = new URL(API_BASE).origin;
-const TURNSTILE = Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
+// "email" (default) or "api"; see src/lib/env.ts. Turnstile loads only in "api" mode.
+const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'email';
+if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
+  throw new Error(`PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`);
+}
+const TURNSTILE = WAITLIST_MODE === 'api' && Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
+// Cloudflare Web Analytics: Cloudflare's edge injects its beacon script into
+// every HTML page (it is not in dist/), and the beacon reports to
+// cloudflareinsights.com. Cookieless, aggregate only; see the privacy policy.
+// Never on /i, /i/*, /freeze or /waitlist/*: their addresses carry codes and
+// tokens, and Web Analytics records paths. public/_headers gives those pages
+// a CSP header without these two origins (cspUnion below fills it in).
+const CF_ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com';
+const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 
 // Pages that are not for search engines (they only make sense from an email
 // or a form post) stay out of the sitemap; they also carry noindex.
@@ -56,7 +69,9 @@ export default defineConfig({
       filter: (page) => !NOT_IN_SITEMAP.some((p) => new URL(page).pathname.replace(/\/$/, '') === p),
     }),
     // After the build: every page gets the same CSP, which <ClientRouter /> needs.
-    cspUnion(),
+    // The pages whose address carries a code or a token also get a CSP header
+    // without Web Analytics (public/_headers): it would record their paths.
+    cspUnion({ withoutAnalytics: { token: '%CSP_WITHOUT_ANALYTICS%', drop: [CF_ANALYTICS_SCRIPT, CF_ANALYTICS_REPORT] } }),
   ],
   fonts: [
     {
@@ -85,8 +100,9 @@ export default defineConfig({
         "default-src 'self'",
         "img-src 'self' data:",
         "font-src 'self'",
-        `connect-src 'self' ${API_ORIGIN}${TURNSTILE ? ` ${TURNSTILE_ORIGIN}` : ''}`,
-        `form-action 'self' ${API_ORIGIN}`,
+        `connect-src 'self' ${API_ORIGIN} ${CF_ANALYTICS_REPORT}${TURNSTILE ? ` ${TURNSTILE_ORIGIN}` : ''}`,
+        // Only the "api" mode invite form posts to the API without JavaScript.
+        `form-action 'self'${WAITLIST_MODE === 'api' ? ` ${API_ORIGIN}` : ''}`,
         `frame-src ${TURNSTILE ? TURNSTILE_ORIGIN : "'none'"}`,
         "manifest-src 'self'",
         "worker-src 'none'",
@@ -95,7 +111,7 @@ export default defineConfig({
         'upgrade-insecure-requests',
       ],
       scriptDirective: {
-        resources: ["'self'", ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
+        resources: ["'self'", CF_ANALYTICS_SCRIPT, ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
         // The two <head> scripts in src/lib/inline-scripts.mjs; Astro hashes only bundled ones.
         hashes: INLINE_SCRIPTS.map((s) => /** @type {`sha256-${string}`} */ (`sha256-${createHash('sha256').update(s).digest('base64')}`)),
       },

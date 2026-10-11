@@ -18,13 +18,22 @@
  * document keeps enforcing the policy it loaded with. If a fetched page
  * brings a different one (a deploy since this tab loaded), it is loaded in
  * full instead of swapped in.
+ *
+ * The pages whose address carries a code or a token are always loaded in
+ * full: their CSP header, which keeps Cloudflare Web Analytics off them
+ * (public/_headers), applies only to a document the browser loads itself.
+ * Swapped into a page that already runs the beacon, they would be counted.
  */
 import { onPage } from './page';
 
 const root = document.documentElement;
 const CSP = 'meta[http-equiv="content-security-policy" i]';
+/** /i, /i/<code>, /freeze and /waitlist/*, as in public/_headers. */
+const FULL_LOAD = /^\/(?:i|freeze)(?:\/|$)|^\/waitlist\//;
 
 document.addEventListener('astro:before-preparation', (e) => {
+  // The router then sets location.href instead of swapping.
+  if (FULL_LOAD.test(e.to.pathname)) return e.preventDefault();
   const load = e.loader;
   e.loader = async () => {
     await load();
