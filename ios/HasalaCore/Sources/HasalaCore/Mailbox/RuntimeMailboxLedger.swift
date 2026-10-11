@@ -29,6 +29,8 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   /// Display names for accounts created from a card ("<Bank> ···<last4>", 03b §4.2 table).
   public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB"]
 
+  /// `authoring` must be the one given to `LedgerMailboxPersistence`, built
+  /// with `MailboxAuthoring(observer:)` so it shares the observer's stamps.
   public init(engine: SyncEngine, observer: LedgerPageObserver, outbox: Outbox, authoring: MailboxAuthoring) {
     self.engine = engine
     self.observer = observer
@@ -123,21 +125,15 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     return out
   }
 
-  /// Builds one blob with `body`, enqueues it and re-projects.
+  /// Builds one blob with `body` (under the account's shared stamps),
+  /// enqueues it and re-projects.
   private func author(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws(MailboxLedgerError) {
     let ctx: AuthorContext
     do { ctx = try await observer.authorContext() } catch { throw MailboxLedgerError("context_\(Self.code(error))") }
-    var a = OpAuthor(ctx)
-    let blob: AuthoredBlob
-    do {
-      try body(&a)
-      guard a.count > 0 else { return }
-      blob = try a.build()
-    } catch {
-      throw MailboxLedgerError(Self.code(error))
-    }
+    let built: AuthoredBlob?
+    do { built = try observer.stamps.build(ctx, body) } catch { throw MailboxLedgerError(Self.code(error)) }
+    guard let blob = built else { return }
     do { try await outbox.enqueue(blob.ops) } catch { throw MailboxLedgerError("enqueue") }
-    await observer.noteAuthored(blob)
     try? await observer.reproject()
   }
 

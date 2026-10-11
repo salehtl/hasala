@@ -68,6 +68,28 @@ struct ObserverSyncTests {
     #expect(try again.reader.activity().map(\.merchantRaw) == ["Talabat"])
   }
 
+  @Test("a stored row that no longer opens as it did (a changed epoch key) is the integrity alarm and a halt, not a smaller state")
+  func coldRefoldRowNoLongerOpens() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    try await a.author { x in _ = try Self.manual(&x, "Talabat", 6_450, at: w.clock.nowMs() + LocalClock.offsetMs) }
+    #expect(await a.run(.authored).stop == nil)
+    #expect(await b.run(.launch).stop == nil)
+    #expect(try b.reader.activity().count == 1)
+    let snapshot = try #require(try b.context.store.foldSnapshot())
+    // B's epoch-1 key is replaced (corrupted), and the snapshot is from older fold semantics.
+    try b.context.secrets.writeEpochKey(Data(repeating: 0x5A, count: 32), userID: b.context.userID, epoch: 1)
+    try await b.context.store.db.write { db in try db.execute(sql: "UPDATE fold_snapshot SET fold_print = 'older semantics'") }
+    let again = try Runtime(b.context, projection: b.projection)
+    await #expect(throws: SyncStop.halted(.inconsistent("cold_fold_disposition"))) { try await again.observer.open() }
+    let events = try b.context.store.foldEvents().map { "\($0.kind):\($0.detail)" }
+    #expect(events.contains("integrity_alarm:cold_fold_disposition"))
+    #expect(!events.contains { $0.hasPrefix("cold_fold:") })
+    // Nothing smaller replaced what B had: no new snapshot, the projection untouched.
+    #expect(try b.context.store.foldSnapshot() == nil && snapshot.cursorHot > 0)
+    #expect(try b.reader.activity().map(\.merchantRaw) == ["Talabat"])
+  }
+
   @Test("rows pulled before the observer existed are folded when it opens")
   func observerLessRows() async throws {
     let (w, a, b) = try await twoRuntimes()

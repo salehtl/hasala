@@ -113,14 +113,14 @@ extension LedgerStore {
       digest: row["digest"], payload: row["payload"], savedAt: row["saved_at"])
   }
 
-  /// The stored snapshot when every check this store can make passes (§5.3:
-  /// version, fold print, bound tip, digest, cursor); otherwise the row is
-  /// deleted, a `fold_events` entry is written, and the rejection is returned.
-  /// `.absent` is returned (and recorded) only when the store holds rows.
-  /// Decoding the payload is the caller's last check (`rejectFoldSnapshot`).
-  public func loadFoldSnapshot(foldPrint: String, at now: Int64) throws(StoreError) -> Result<
-    FoldSnapshotRecord, FoldSnapshotRejection
-  >? {
+  /// The stored snapshot when every check passes, in §5.3's order: version,
+  /// fold print, bound tip, digest, then `decode` (the caller owns the payload's
+  /// format; nil is `undecodable`), then the cursor. On the first failure the
+  /// row is deleted, a `fold_events` entry is written, and the rejection is
+  /// returned. `.absent` is returned (and recorded) only when the store holds rows.
+  public func loadFoldSnapshot<Decoded>(
+    foldPrint: String, at now: Int64, decode: (FoldSnapshotRecord) -> Decoded?
+  ) throws(StoreError) -> Result<(record: FoldSnapshotRecord, decoded: Decoded), FoldSnapshotRejection>? {
     let cursor = try syncState().cursorHot
     guard let r = try foldSnapshot() else {
       guard cursor > 0 else { return nil }
@@ -128,6 +128,7 @@ extension LedgerStore {
       return .failure(.absent)
     }
     var rejection: FoldSnapshotRejection?
+    var decoded: Decoded?
     if r.version != FoldSnapshotRecord.currentVersion {
       rejection = .version
     } else if r.foldPrint != foldPrint {
@@ -136,14 +137,25 @@ extension LedgerStore {
       rejection = .logDiverged
     } else if sha256(r.payload) != r.digest {
       rejection = .corrupt
-    } else if r.cursorHot != cursor {
-      rejection = .cursorDisagreement
+    } else if let d = decode(r) {
+      decoded = d
+      if r.cursorHot != cursor { rejection = .cursorDisagreement }
+    } else {
+      rejection = .undecodable
     }
     if let rejection {
       try rejectFoldSnapshot(rejection, at: now)
       return .failure(rejection)
     }
-    return .success(r)
+    guard let decoded else { return .failure(.undecodable) }
+    return .success((r, decoded))
+  }
+
+  /// `loadFoldSnapshot(foldPrint:at:decode:)` for a caller that decodes later.
+  public func loadFoldSnapshot(foldPrint: String, at now: Int64) throws(StoreError) -> Result<
+    FoldSnapshotRecord, FoldSnapshotRejection
+  >? {
+    try loadFoldSnapshot(foldPrint: foldPrint, at: now, decode: { _ in true }).map { r in r.map { $0.record } }
   }
 
   /// Deletes the snapshot row and records why.
@@ -180,6 +192,7 @@ extension LedgerStore {
         try db.execute(sql: "DELETE FROM fold_snapshot")
         try db.execute(
           sql: "INSERT INTO fold_events (at, kind, detail) VALUES (?, 'snapshot_skipped', 'over_budget')", arguments: [now])
+        try pruneFoldEvents(db)
         return false
       }
       let c: Int64

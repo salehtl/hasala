@@ -24,6 +24,13 @@
 //
 // The seed carries no `home_currency_set` and no rate: the account's open
 // authors those (04 §6.2), and a second home currency is an anomaly.
+//
+// The gate (04 §6.13; 06 R-REV-3, AT-34): the server cannot refuse sealed ops,
+// so the app's check is the only one. `batches` takes a `Permit`, and the only
+// way to get one is `permit(...)` with the three facts: a live `GET /account`
+// that says `review_account: true`, no transaction in the projection (outbox
+// included), and no sample row. CoreSync's `LedgerPageObserver.sampleBatches`
+// gathers the facts itself; that is the app's way in.
 import CoreJSON
 import CorePrimitives
 import CoreResources
@@ -38,6 +45,18 @@ public enum SampleSeedError: Error, Sendable, Equatable {
   /// The document is not this format (detail is content-free).
   case malformed(String)
   case author(AuthorError)
+  /// The gate refused; nothing was authored.
+  case refused(SampleSeedRefusal)
+}
+
+/// Why "Use sample data" is refused (04 §6.13; 06 AT-34).
+public enum SampleSeedRefusal: String, Error, Sendable, Equatable, CaseIterable {
+  /// `GET /account` did not say `review_account: true` for this account.
+  case notReviewAccount = "not_review_account"
+  /// A sample row is already in the ledger (or the outbox): the load is one-shot.
+  case alreadyLoaded = "already_loaded"
+  /// The ledger holds a transaction, folded or still in the outbox.
+  case hasTransactions = "has_transactions"
 }
 
 public enum SampleSeed {
@@ -145,6 +164,32 @@ public enum SampleSeed {
     return data
   }
 
+  // MARK: The gate
+
+  /// Proof that the gate passed; minted only by `permit(...)`.
+  public struct Permit: Sendable {
+    fileprivate init() {}
+  }
+
+  /// The gate (04 §6.13): `reviewAccount` is `review_account` from a live
+  /// `GET /account` of this account's session (nil, the field missing, refuses);
+  /// `holdsTransactions` and `sampleLoaded` are read from the projected ledger
+  /// with the outbox overlaid. The refusal order is the one the screens show.
+  public static func permit(reviewAccount: Bool?, holdsTransactions: Bool, sampleLoaded: Bool) throws(SampleSeedError)
+    -> Permit
+  {
+    guard reviewAccount == true else { throw .refused(.notReviewAccount) }
+    if sampleLoaded { throw .refused(.alreadyLoaded) }
+    if holdsTransactions { throw .refused(.hasTransactions) }
+    return Permit()
+  }
+
+  /// Whether `messageID` marks a sample row (it starts with `sample-`, as
+  /// every `sample-<n>` does; Gmail ids are hex, so no real row matches).
+  public static func isSampleMessageID(_ messageID: String?) -> Bool {
+    messageID?.hasPrefix("sample-") == true
+  }
+
   // MARK: Loading
 
   /// Where the document lands: whole months to shift, and the target instant
@@ -163,7 +208,9 @@ public enum SampleSeed {
   }
 
   /// The document as blobs of authored ops, ready for `Outbox.enqueue` in order.
-  public static func batches(_ data: Data, nowMs: Int64, context: AuthorContext) throws(SampleSeedError) -> [AuthoredBlob] {
+  public static func batches(_ data: Data, nowMs: Int64, context: AuthorContext, permit: Permit) throws(SampleSeedError)
+    -> [AuthoredBlob]
+  {
     let doc = try Document(json: data)
     guard let anchorMs = try? parseInstantMs(doc.anchor), let (months, targetMs) = target(anchorMs: anchorMs, nowMs: nowMs)
     else { throw .malformed("anchor") }

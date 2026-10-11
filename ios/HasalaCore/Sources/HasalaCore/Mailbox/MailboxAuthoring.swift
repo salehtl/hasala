@@ -7,12 +7,16 @@
 //
 // The author rule's inputs (03c §1.8.2) are kept here, synchronously, because
 // the persistence's closure cannot await: this writer's newest stamp is the
-// largest of the newest pending op, the last blob authored here and the fold's
-// `maxAuthored` that `RuntimeMailboxLedger` refreshes after every pull.
+// largest of the newest pending op, the fold's `maxAuthored` that
+// `RuntimeMailboxLedger` refreshes after every pull, and the device's shared
+// `AuthorStamps` (the observer's), inside whose lock the blob is built. So a
+// Gmail blob and a blob authored on a screen never share a stamp, and the
+// observer sees a Gmail stamp before the self-pull folds it.
 import CoreDomain
 import CoreOutbox
 import CorePrimitives
 import CoreStore
+import CoreSync
 import CoreTime
 import Foundation
 import Synchronization
@@ -21,25 +25,39 @@ public final class MailboxAuthoring: Sendable {
   let store: LedgerStore
   let writerID: String
   let random: any RandomSource
-  private let stamps: Mutex<(seen: [String: Int64], last: Int64?)>
+  /// The device's stamp memory, shared with every other author of the account.
+  public let stamps: AuthorStamps
+  private let seen: Mutex<[String: Int64]>
 
-  public init(store: LedgerStore, writerID: String, random: any RandomSource, seen: [String: Int64] = [:]) {
+  /// `stamps` must be the account's shared instance (`LedgerPageObserver.stamps`);
+  /// `init(observer:)` wires it.
+  public init(
+    store: LedgerStore, writerID: String, random: any RandomSource, stamps: AuthorStamps, seen: [String: Int64] = [:]
+  ) {
     self.store = store
     self.writerID = writerID
     self.random = random
-    stamps = Mutex((seen, nil))
+    self.stamps = stamps
+    self.seen = Mutex(seen)
+  }
+
+  /// The production wiring: the observer's store, writer, randomness and stamps.
+  public convenience init(observer: LedgerPageObserver) {
+    let c = observer.context
+    self.init(store: c.store, writerID: c.writerID.string, random: c.random, stamps: observer.stamps)
   }
 
   /// The fold's `maxAuthored` after a pull (`LedgerPageObserver.seenStamps()`).
   public func updateSeen(_ seen: [String: Int64]) {
-    stamps.withLock { $0.seen = seen }
+    self.seen.withLock { $0 = seen }
   }
 
-  /// The author context at `nowMs`.
+  /// The author context at `nowMs` from the outbox and the fold (the shared
+  /// stamps raise it when the blob is built).
   public func context(nowMs: Int64) throws -> AuthorContext {
     let pending = try store.latestPendingAuthoredAt().flatMap { try? parseInstantMs($0) }
-    let (seen, last) = stamps.withLock { ($0.seen, $0.last) }
-    let own = [seen[writerID], pending, last].compactMap { $0 }.max()
+    let seen = self.seen.withLock { $0 }
+    let own = [seen[writerID], pending].compactMap { $0 }.max()
     return AuthorContext(writerID: writerID, nowMs: nowMs, ownLastMs: own, maxAuthored: seen, random: random)
   }
 
@@ -47,9 +65,10 @@ public final class MailboxAuthoring: Sendable {
   /// Throws (and nothing is committed) when any op fails its checks.
   public func author(_ drafts: [MailboxIngestDraft], atMs: Int64) throws -> [MailboxPendingOpRow] {
     guard !drafts.isEmpty else { return [] }
-    var a = OpAuthor(try context(nowMs: atMs))
-    for d in drafts { try a.ingest(payload: d.payload, ingestID: d.ingestID) }
-    let blob = try a.build()
+    let built = try stamps.build(try context(nowMs: atMs)) { a throws(AuthorError) in
+      for d in drafts { try a.ingest(payload: d.payload, ingestID: d.ingestID) }
+    }
+    guard let blob = built else { return [] }
     var rows: [MailboxPendingOpRow] = []
     for op in blob.ops {
       rows.append(
@@ -57,7 +76,6 @@ public final class MailboxAuthoring: Sendable {
           opID: op.opID, opJSON: try Outbox.canonicalJSON(op), opType: op.type.rawValue, entityKind: op.entity?.kind,
           entityID: op.entity?.id, enqueuedAt: atMs))
     }
-    stamps.withLock { $0.last = max($0.last ?? blob.lastAuthoredMs, blob.lastAuthoredMs) }
     return rows
   }
 

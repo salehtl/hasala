@@ -1,6 +1,6 @@
 // The fold snapshot row (spec 04 §5.3): written with its page, bound to the
 // row at the cursor, and every load check in order (version, fold print,
-// bound tip, digest, cursor), each rejection deleting the row and leaving a
+// bound tip, digest, decode, cursor), each rejection deleting the row and leaving a
 // content-free fold event. Also the pending-op reads the authors use.
 import CorePrimitives
 import CoreWire
@@ -100,6 +100,36 @@ struct FoldSnapshotStoreTests {
     #expect(try s.foldSnapshot() == nil && Self.events(s) == ["snapshot_rejected:undecodable"])
   }
 
+  @Test("decode comes before the cursor (§5.3 order), and a decoded payload comes back with its row")
+  func decodeBeforeCursor() throws {
+    // Undecodable and behind the cursor: the decode failure is the one recorded.
+    let s = try Self.stored()
+    try s.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8)
+    let r = try s.loadFoldSnapshot(foldPrint: Self.print, at: 9) { (_: FoldSnapshotRecord) -> String? in nil }
+    guard case .failure(.undecodable)? = r else {
+      Issue.record("want undecodable, got \(String(describing: r))")
+      return
+    }
+    #expect(try s.foldSnapshot() == nil && Self.events(s) == ["snapshot_rejected:undecodable"])
+    // Decodable and behind the cursor: cursor_disagreement.
+    let t = try Self.stored()
+    try t.persistPage(rows: [Self.row(3, 3, prev: h(2))], heads: [:], cursor: 3, at: 8)
+    guard case .failure(.cursorDisagreement)? = try t.loadFoldSnapshot(foldPrint: Self.print, at: 9, decode: { $0.cursorHot })
+    else {
+      Issue.record("want cursor_disagreement")
+      return
+    }
+    // Every check passes: the row and what `decode` made of it.
+    let u = try Self.stored()
+    guard case .success(let ok)? = try u.loadFoldSnapshot(foldPrint: Self.print, at: 9, decode: { String(decoding: $0.payload, as: UTF8.self) })
+    else {
+      Issue.record("the snapshot did not load")
+      return
+    }
+    #expect(ok.decoded == "state" && ok.record.cursorHot == 2)
+    #expect(try Self.events(u).isEmpty)
+  }
+
   @Test("a payload over the 6 MB budget is not kept; a cold fold saves at the store's own cursor")
   func budgetAndStandalone() throws {
     let s = try Self.stored(payload: Data(count: FoldSnapshotRecord.byteBudget + 1))
@@ -108,6 +138,14 @@ struct FoldSnapshotStoreTests {
     #expect(try s.saveFoldSnapshot(foldPrint: Self.print, payload: Data("cold".utf8), at: 3))
     #expect(try s.foldSnapshot()?.cursorHot == 2 && s.foldSnapshot()?.boundTip == s.boundTip(at: 2))
     #expect(try !created().saveFoldSnapshot(foldPrint: Self.print, payload: Data("x".utf8), at: 1))  // no row at cursor 0
+    // Every page over budget records it; the log stays at its newest 64.
+    let big = Data(count: FoldSnapshotRecord.byteBudget + 1)
+    for i in Int64(3)...Int64(80) {
+      try s.persistPage(
+        rows: [Self.row(i, i, prev: h(UInt8(i - 1)))], heads: [:], cursor: i, at: i,
+        snapshot: .save(foldPrint: Self.print, payload: big))
+    }
+    #expect(try s.foldEvents().count == 64)
   }
 
   @Test("pending reads: ingest ids by exact member, the newest stamp as canonical text")

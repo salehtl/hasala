@@ -26,9 +26,11 @@ public final class ProjectionStore: Sendable {
     reader = LedgerReader(queue)
   }
 
-  /// Opens (or creates) `<directory>/projection.sqlite`. The directory is the
-  /// account's store directory, already prepared by `FileHygiene` (CoreStore);
-  /// the caller excludes the database files from backup after the first write.
+  /// Opens (or creates) `<directory>/projection.sqlite`, rebuilding it when it
+  /// is from another projection version. The directory is the account's store
+  /// directory; `LedgerPageObserver.open()` (CoreSync) re-asserts its file
+  /// protection and backup exclusion and marks the database file, so open the
+  /// observer before the first projection is read.
   public static func open(directory: URL) throws -> ProjectionStore {
     let url = directory.appendingPathComponent("projection.sqlite")
     return ProjectionStore(queue: try Projector.open(path: url.path), url: url)

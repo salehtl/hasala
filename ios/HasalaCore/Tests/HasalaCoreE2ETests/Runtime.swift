@@ -3,6 +3,7 @@
 // enrolled phone, a projection, the LedgerPageObserver, the SyncEngine that
 // folds through it, and the Outbox. Runs are triggered by the tests (the
 // outbox's debounce is effectively off).
+import CoreAuth
 import CoreCategorize
 import CoreDomain
 import CoreOutbox
@@ -11,6 +12,7 @@ import CoreReplay
 import CoreSync
 import CoreTestSupport
 import Foundation
+import Testing
 
 let bundledDictionary = (try? MerchantDictionary.bundled().get()) ?? .empty
 
@@ -31,14 +33,18 @@ final class Runtime: Sendable {
 
   var reader: LedgerReader { projection.reader }
 
-  /// Builds one blob with the observer's author context, enqueues it and re-projects.
+  /// Builds one blob with the observer's author context under the shared
+  /// stamps, enqueues it and re-projects.
   @discardableResult
   func author(_ body: (inout OpAuthor) throws -> Void) async throws -> AuthoredBlob {
-    var a = OpAuthor(try await observer.authorContext())
-    try body(&a)
-    let blob = try a.build()
+    let ctx = try await observer.authorContext()
+    let blob = try observer.stamps.authoring { (floor: Int64?) throws -> (value: AuthoredBlob, lastMs: Int64?) in
+      var a = OpAuthor(ctx.raised(to: floor))
+      try body(&a)
+      let b = try a.build()
+      return (b, b.lastAuthoredMs)
+    }
     try await outbox.enqueue(blob.ops)
-    await observer.noteAuthored(blob)
     try await observer.reproject()
     return blob
   }
@@ -51,14 +57,17 @@ final class Runtime: Sendable {
     }
   }
 
-  /// "Use sample data": the bundled seed, blob by blob, through the outbox.
-  func loadSample() async throws -> Int {
-    let ctx = try await observer.authorContext()
-    let blobs = try SampleSeed.batches(try SampleSeed.bundled(), nowMs: ctx.nowMs, context: ctx)
-    for b in blobs {
-      try await outbox.enqueue(b.ops)
-      await observer.noteAuthored(b)
+  /// "Use sample data" as the app runs it: a live `GET /account` for the gate,
+  /// the observer's gated batches, then the outbox, blob by blob.
+  func loadSample(account: AccountInfo? = nil) async throws -> Int {
+    let info: AccountInfo
+    if let account {
+      info = account
+    } else {
+      info = try await context.client.account(bearer: try #require(try context.secrets.session()).token)
     }
+    let blobs = try await observer.sampleBatches(account: info)
+    for b in blobs { try await outbox.enqueue(b.ops) }
     try await observer.reproject()
     return blobs.reduce(0) { $0 + $1.ops.count }
   }

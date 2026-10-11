@@ -93,6 +93,25 @@ struct RuntimeGlueTests {
     await #expect(throws: MailboxServerError.notHolder) { try await server.putWatch(expiresAtMs: Self.now) }
   }
 
+  @Test("a path the transport would resolve to another host is refused before any bearer is read")
+  func sessionExchangeOriginOnly() async throws {
+    let t = Recorder()
+    let (s, store) = try Self.secrets()
+    let x = SessionHTTPExchange(transport: t, secrets: s)
+    for url in ["https://api.hasala.app//api/v1/mailbox/link", "https://api.hasala.app//evil.example/x"] {
+      store.locked = true  // a read of the session would throw: the refusal comes first
+      await #expect(throws: HTTPExchangeError.offline) { try await x.send(HTTPRequest(method: .put, url: URL(string: url)!)) }
+      store.locked = false
+    }
+    #expect(t.requests.withLock { $0.isEmpty })
+    #expect(SessionHTTPExchange.isOriginPath("/") && SessionHTTPExchange.isOriginPath("/api/v1/x"))
+    #expect(!SessionHTTPExchange.isOriginPath("//x") && !SessionHTTPExchange.isOriginPath("x") && !SessionHTTPExchange.isOriginPath(""))
+    // A trailing-slash base still builds single-slash paths.
+    let server = HTTPMailboxServer(http: x, base: "https://api.hasala.app/")
+    #expect(try await server.linkChallenge() == "bm9uY2U")
+    #expect(t.last?.path == "/api/v1/mailbox/link/challenge" && t.last?.bearer == "session-token")
+  }
+
   // MARK: SecretsGmailRefreshTokenStore
 
   @Test("the refresh token lives in .gmailRefresh(user): read nil, write, read back, locked throws, wiped with the account")
@@ -112,6 +131,12 @@ struct RuntimeGlueTests {
     try t.write("again")
     try t.delete()
     #expect(try t.read() == nil)
+    // An item that holds no token reads as absent (and is removed), never "not now" forever.
+    for junk in [Data(), Data([0xFF, 0xFE])] {
+      try store.write(.gmailRefresh(userID: Self.user), junk)
+      #expect(try t.read() == nil)
+      #expect(try store.read(.gmailRefresh(userID: Self.user)) == nil)
+    }
   }
 
   // MARK: MailboxAuthoring
@@ -142,7 +167,7 @@ struct RuntimeGlueTests {
   @Test("each draft becomes one validated txn_ingested row, committed with the message's accounting")
   func authoring() async throws {
     let store = try Self.ledger()
-    let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom())
+    let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom(), stamps: AuthorStamps())
     let persistence = LedgerMailboxPersistence(
       tables: MailboxTableStore(writer: store.db), author: authoring.opAuthor, nowMs: { Self.now })
     var c = MailboxCommit()
@@ -170,10 +195,34 @@ struct RuntimeGlueTests {
     #expect(try authoring.context(nowMs: Self.now).baseMs == Self.now + 3_600_001)
   }
 
+  @Test("Gmail blobs and screen blobs share one stamp memory: none repeats, the outbox not yet involved")
+  func sharedStamps() throws {
+    let store = try Self.ledger()
+    let stamps = AuthorStamps()
+    let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom(), stamps: stamps)
+    // A screen context minted first, its blob built after a Gmail blob: neither enqueued.
+    let screen = AuthorContext(writerID: Self.writer.string, nowMs: Self.now, ownLastMs: nil, maxAuthored: [:], random: SeededRandom(seed: "s"))
+    let gmail = try authoring.author([Self.draft(1), Self.draft(2)], atMs: Self.now)
+    let gmailLast = try parseInstantMs(
+      try OpCodec.decodeBlobOps(Data(#"{"v":4,"kind":"ops","ops":["#.utf8) + gmail[1].opJSON + Data("]}".utf8))[0].authoredAt)
+    #expect(stamps.lastMs == gmailLast)
+    let blob = try #require(try stamps.build(screen) { a in a.setHomeCurrency("AED") })
+    #expect(try parseInstantMs(blob.ops[0].authoredAt) == gmailLast + 1)
+    #expect(stamps.lastMs == blob.lastAuthoredMs)
+    // And the next Gmail blob stamps after the screen's.
+    let next = try authoring.author([Self.draft(3)], atMs: Self.now)
+    let nextAt = try parseInstantMs(
+      try OpCodec.decodeBlobOps(Data(#"{"v":4,"kind":"ops","ops":["#.utf8) + next[0].opJSON + Data("]}".utf8))[0].authoredAt)
+    #expect(nextAt == blob.lastAuthoredMs + 1)
+    // A body that adds nothing builds nothing and records nothing.
+    #expect(try stamps.build(screen) { _ in } == nil)
+    #expect(stamps.lastMs == nextAt)
+  }
+
   @Test("a draft outside the payload grammar throws and commits nothing")
   func authoringRefuses() async throws {
     let store = try Self.ledger()
-    let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom())
+    let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom(), stamps: AuthorStamps())
     let persistence = LedgerMailboxPersistence(
       tables: MailboxTableStore(writer: store.db), author: authoring.opAuthor, nowMs: { Self.now })
     var c = MailboxCommit()

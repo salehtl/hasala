@@ -25,6 +25,9 @@ struct SampleSeedTests {
 
   static func ms(_ s: String) -> Int64 { try! parseInstantMs(s) }
 
+  /// The gate passed (a review account with an empty ledger).
+  static let permit = try! SampleSeed.permit(reviewAccount: true, holdsTransactions: false, sampleLoaded: false)
+
   /// The account's open (04 §6.2): home currency and the USD rate, then the seed.
   static func folded(_ blobs: [AuthoredBlob]) throws -> State {
     var s = State()
@@ -46,6 +49,30 @@ struct SampleSeedTests {
     #expect(!doc.ops.contains { $0.type == .homeCurrencySet || $0.type == .rateSet })
   }
 
+  @Test("the gate (AT-34): only a review account with no transaction and no sample gets a permit")
+  func gate() throws {
+    func refusal(_ review: Bool?, _ txns: Bool, _ sample: Bool) -> SampleSeedRefusal? {
+      do {
+        _ = try SampleSeed.permit(reviewAccount: review, holdsTransactions: txns, sampleLoaded: sample)
+        return nil
+      } catch {
+        guard case .refused(let r) = error else { return nil }
+        return r
+      }
+    }
+    #expect(refusal(true, false, false) == nil)
+    for review in [false, nil] as [Bool?] {
+      for txns in [false, true] {
+        for sample in [false, true] { #expect(refusal(review, txns, sample) == .notReviewAccount) }
+      }
+    }
+    #expect(refusal(true, true, false) == .hasTransactions)
+    #expect(refusal(true, true, true) == .alreadyLoaded)
+    #expect(refusal(true, false, true) == .alreadyLoaded)
+    #expect(SampleSeed.isSampleMessageID("sample-12") && SampleSeed.isSampleMessageID("sample-"))
+    #expect(!SampleSeed.isSampleMessageID("18f2a3b4c5d6e7f8") && !SampleSeed.isSampleMessageID(nil) && !SampleSeed.isSampleMessageID("Sample-1"))
+  }
+
   @Test("the target: the latest 10th at 13:40 (Dubai) at or before now, in whole months")
   func target() {
     let t = { (now: String) in SampleSeed.target(anchorMs: Self.anchor, nowMs: Self.ms(now)) }
@@ -63,7 +90,7 @@ struct SampleSeedTests {
   func atAnchor() throws {
     let data = try SampleSeed.bundled()
     let doc = try SampleSeed.Document(json: data)
-    let blobs = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor))
+    let blobs = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor), permit: Self.permit)
     let ops = blobs.flatMap(\.ops)
     #expect(ops.count == doc.ops.count)
     #expect(blobs.allSatisfy { $0.ops.count <= SampleSeed.maxOpsPerBatch })
@@ -79,7 +106,7 @@ struct SampleSeedTests {
     #expect(zip(stamps, stamps.dropFirst()).allSatisfy { $0 < $1 })
 
     // A second load (another device, another day) never collides.
-    let again = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor, seed: "other"))
+    let again = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor, seed: "other"), permit: Self.permit)
     let ids = Set(ops.compactMap(\.entity?.id) + ops.compactMap(\.ingestID))
     let ids2 = Set(again.flatMap(\.ops).compactMap(\.entity?.id) + again.flatMap(\.ops).compactMap(\.ingestID))
     let literal = Set(ops.filter { $0.type == .billSet }.compactMap(\.entity?.id))  // bd_ ids are derived, by design
@@ -89,7 +116,7 @@ struct SampleSeedTests {
   @Test("loaded on 15 November: everything moves one month; loaded before 13:40 on the 10th: one month back")
   func shifted() throws {
     let data = try SampleSeed.bundled()
-    let nov = try SampleSeed.batches(data, nowMs: Self.ms("2026-11-15T12:00:00.000Z"), context: Self.context(at: Self.ms("2026-11-15T12:00:00.000Z")))
+    let nov = try SampleSeed.batches(data, nowMs: Self.ms("2026-11-15T12:00:00.000Z"), context: Self.context(at: Self.ms("2026-11-15T12:00:00.000Z")), permit: Self.permit)
       .flatMap(\.ops)
     let posted = nov.filter { $0.type == .txnIngested }.compactMap { $0.payload["posted_at"]?.stringValue }
     #expect(posted.contains("2026-11-10T09:20:00.000Z"))  // Talabat, 13:20 on the 10th
@@ -102,7 +129,7 @@ struct SampleSeedTests {
     #expect(goal.payload["source"]?["since"]?.stringValue == "2026-11-01")
 
     let early = Self.ms("2026-10-10T09:00:00.000Z")  // 13:00 local: the target is 10 September
-    let sep = try SampleSeed.batches(data, nowMs: early, context: Self.context(at: early)).flatMap(\.ops)
+    let sep = try SampleSeed.batches(data, nowMs: early, context: Self.context(at: early), permit: Self.permit).flatMap(\.ops)
     let sepPosted = sep.filter { $0.type == .txnIngested }.compactMap { $0.payload["posted_at"]?.stringValue }
     #expect(sepPosted.contains("2026-09-10T09:20:00.000Z"))
     #expect(sep.count == nov.count)  // nothing in the seed is after its anchor
@@ -131,7 +158,7 @@ struct SampleSeedTests {
       return out
     }
     let data = doc(txn("a", "2026-10-10T09:00:00.000Z", note: "@not a placeholder") + txn("future", "2026-10-10T10:00:00.000Z"))
-    let ops = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor)).flatMap(\.ops)
+    let ops = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor), permit: Self.permit).flatMap(\.ops)
     #expect(ops.count == 2)
     #expect(ops[0].payload["merchant_raw"]?.stringValue == "@home store")
     #expect(ops[1].payload["txn_id"]?.stringValue == ops[0].entity?.id)
@@ -140,7 +167,7 @@ struct SampleSeedTests {
     var bad = txn("b", "2026-10-01T09:00:00.000Z")
     bad[0].payload["merchant_raw"] = .string("@vendor:acme")
     #expect(throws: SampleSeedError.malformed("placeholder")) {
-      try SampleSeed.batches(doc(bad), nowMs: Self.anchor, context: Self.context(at: Self.anchor))
+      try SampleSeed.batches(doc(bad), nowMs: Self.anchor, context: Self.context(at: Self.anchor), permit: Self.permit)
     }
     let extra = Data(String(decoding: doc(txn("c", "2026-10-01T09:00:00.000Z")), as: UTF8.self)
       .replacingOccurrences(of: "{\"at\":", with: "{\"x\":1,\"at\":").utf8)
@@ -151,7 +178,7 @@ struct SampleSeedTests {
       SampleSeed.Draft(type: .budgetSet, payload: JSONObject([("category_id", .string("rent")), ("month", .string("2000-01")), ("amount_minor", .string("1")), ("scope", .string("only"))]), at: "2000-01-05T09:00:00.000Z")
     ])
     #expect(throws: SampleSeedError.self) {
-      try SampleSeed.batches(old, nowMs: Self.ms("2000-01-05T09:00:00.000Z"), context: Self.context(at: Self.anchor))
+      try SampleSeed.batches(old, nowMs: Self.ms("2000-01-05T09:00:00.000Z"), context: Self.context(at: Self.anchor), permit: Self.permit)
     }
   }
 
@@ -165,7 +192,7 @@ struct SampleSeedTests {
           at: "2026-10-01T09:00:00.000Z"))
     }
     let data = SampleSeed.Document(name: "t", anchor: "2026-10-10T09:40:00.000Z", ops: drafts).encoded()
-    let blobs = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor))
+    let blobs = try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor), permit: Self.permit)
     #expect(blobs.map(\.ops.count) == [200, 200, 50])
     #expect(blobs.flatMap(\.ops).map { $0.payload["merchant_key"]?.stringValue } == (0..<450).map { "m\($0)" })
     #expect(Self.ms(blobs[1].ops[0].authoredAt) > blobs[0].lastAuthoredMs)
@@ -174,7 +201,7 @@ struct SampleSeedTests {
   @Test("the whole seed folds clean: Maya's month, bills, accounts and plan")
   func folds() throws {
     let data = try SampleSeed.bundled()
-    let s = try Self.folded(try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor)))
+    let s = try Self.folded(try SampleSeed.batches(data, nowMs: Self.anchor, context: Self.context(at: Self.anchor), permit: Self.permit))
     #expect(s.anomalies.isEmpty, "\(s.anomalies)")
     #expect(s.unreadable.isEmpty)
     let live = s.txns.values.filter(\.isLive)

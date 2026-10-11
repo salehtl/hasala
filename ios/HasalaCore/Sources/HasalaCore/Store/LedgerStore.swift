@@ -511,9 +511,14 @@ public final class LedgerStore: Sendable {
     try write { db in
       try db.execute(
         sql: "INSERT INTO fold_events (at, kind, detail) VALUES (?, ?, ?)", arguments: [at, kind, detail])
-      try db.execute(
-        sql: "DELETE FROM fold_events WHERE id NOT IN (SELECT id FROM fold_events ORDER BY id DESC LIMIT 64)")
+      try Self.pruneFoldEvents(db)
     }
+  }
+
+  /// `fold_events` keeps its newest 64 entries.
+  static func pruneFoldEvents(_ db: Database) throws {
+    try db.execute(
+      sql: "DELETE FROM fold_events WHERE id NOT IN (SELECT id FROM fold_events ORDER BY id DESC LIMIT 64)")
   }
 
   public func foldEvents() throws(StoreError) -> [(kind: String, detail: String)] {

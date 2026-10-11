@@ -185,13 +185,11 @@ enum Puller {
           let ph = Hash32(r.prevHash)
         else { throw .halted(.tampered(.rowShape)) }
         decided.append(PulledRow(seq: seqs[i], writerID: w, counter: c, outcome: outcome))
-        let disposition: WireRowRecord.Disposition
+        let disposition = WireRowRecord.Disposition(outcome)
         switch outcome {
         case .opened(_, let ops):
-          disposition = .folded
           summary.opsOpened += ops.count
         case .setAside(_, let alarm):
-          disposition = alarm ? .alarm : .setAside
           summary.setAside += 1
           if alarm { summary.alarms += 1 }
         }

@@ -29,6 +29,8 @@ public struct ProjectionMeta: Sendable, Equatable {
   public var cursorHot: Int64
   public var complete: Bool
   public var projectedAtMs: Int64
+  /// Outbox ops overlaid on this projection (0: it shows only folded rows).
+  public var pendingOps: Int = 0
 }
 
 public enum Projector {
@@ -92,7 +94,8 @@ public enum Projector {
       try writeNotices(db, state)
       let meta: [(String, String)] = [
         ("projection_version", String(ProjectionSchema.version)), ("fold_print", FoldCanary.foldPrint),
-        ("cursor_hot", String(confirmed.cursors.hot)), ("projected_at", String(projectedAtMs)), ("complete", "1"),
+        ("cursor_hot", String(confirmed.cursors.hot)), ("projected_at", String(projectedAtMs)),
+        ("pending_ops", String(pending.reduce(0) { $0 + $1.count })), ("complete", "1"),
       ]
       for (k, v) in meta {
         try db.execute(sql: "INSERT OR REPLACE INTO projection_meta (key, value) VALUES (?, ?)", arguments: [k, v])

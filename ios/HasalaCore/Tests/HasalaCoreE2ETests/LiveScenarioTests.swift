@@ -66,7 +66,21 @@ struct LiveSampleSeedTests {
   @Test("sample data loaded on A reaches B through hasalad")
   func sample() async throws {
     let (a, b) = try await Live.twoRuntimes(clock: FakeClock(ms: Scenarios.anchor))
-    try await Scenarios.sampleOnSecondDevice(a, b)
+    try await Scenarios.sampleOnSecondDevice(a, b) {
+      let bearer = try #require(try a.context.secrets.session()).token
+      let live = try await a.context.client.account(bearer: bearer)
+      guard live.review_account != nil else {
+        // This base's hasalad predates the review flag (server #22, `users.review_account`):
+        // its #40 omits the field, which the gate refuses (checked above). Stand in for
+        // `account review <uuid> on` with the live answer plus the flag.
+        return AccountInfo(
+          user_id: live.user_id, status: live.status, has_keys: live.has_keys, email: live.email,
+          display_name: live.display_name, has_password: live.has_password, password_salt: live.password_salt,
+          has_passkey: live.has_passkey, frozen: live.frozen, restricted: live.restricted, review_account: true)
+      }
+      _ = try Live.sql("UPDATE users SET review_account = true WHERE id = '\(a.context.userID.string)'")
+      return try await a.context.client.account(bearer: bearer)
+    }
   }
 }
 

@@ -138,6 +138,13 @@ struct OpAuthorBillsAccountsTests {
 
   @Test("author-side refusals: closing dates, statement days, bill dates and amounts, resolutions, labels")
   func refusals() throws {
+    // 03b §4.2: in_plan defaults by kind; an explicit value wins.
+    for kind in OpAuthor.AccountKind.allCases {
+      let everyday = [.current, .savings, .creditCard, .cash].contains(kind)
+      #expect(OpAuthor.AccountDraft(name: "x", kind: kind).inPlan == everyday, "\(kind)")
+      #expect(OpAuthor.AccountDraft(name: "x", kind: kind, inPlan: !everyday).inPlan == !everyday)
+    }
+
     func refused(_ f: (inout OpAuthor) throws(AuthorError) -> Void) -> Bool {
       var a = OpAuthor(ctx())
       do {

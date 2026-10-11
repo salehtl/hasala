@@ -12,6 +12,7 @@ import CoreTestSupport
 import CoreTime
 import CoreWire
 import Foundation
+import GRDB
 import Testing
 
 @testable import CoreProjection
@@ -31,7 +32,8 @@ struct SampleSeedProjectionTests {
     let first = try boot.build()
     try Replay.foldOps(first.ops, seq: 1, writerID: writer, into: &s)
     let ctx = AuthorContext(writerID: writer, nowMs: anchor, ownLastMs: first.lastAuthoredMs, maxAuthored: [:], random: SeededRandom(seed: "seed"))
-    for (i, b) in try SampleSeed.batches(try SampleSeed.bundled(), nowMs: anchor, context: ctx).enumerated() {
+    let permit = try SampleSeed.permit(reviewAccount: true, holdsTransactions: false, sampleLoaded: false)
+    for (i, b) in try SampleSeed.batches(try SampleSeed.bundled(), nowMs: anchor, context: ctx, permit: permit).enumerated() {
       try Replay.foldOps(b.ops, seq: Int64(i + 2), writerID: writer, into: &s)
     }
     let p = try ProjectionStore.inMemory()
@@ -61,6 +63,36 @@ struct SampleSeedProjectionTests {
     #expect(try p.reader.rules().count == 6)
     #expect(try p.reader.parts(txn.id).map(\.amountMinor) == [30_000, 11_200])
     #expect(try p.reader.meta()?.projectedAtMs == Self.anchor + 2)
+  }
+
+  @Test("a projection from another version is rebuilt on open, whatever its rows and references")
+  func rebuildOtherVersion() throws {
+    var (s, _) = try Self.loaded()
+    let txn = try #require(s.txns.values.first { $0.merchantRaw == "ZUMA DIFC" })
+    var a = OpAuthor(AuthorContext(writerID: Self.writer, nowMs: Self.anchor + 60_000, ownLastMs: Self.anchor + 1_000, maxAuthored: [:], random: SeededRandom(seed: "split")))
+    a.split(txnID: txn.id, parentVersion: txn.version, parts: [(category: "dining", amountMinor: 30_000, note: nil), (category: "entertainment", amountMinor: 11_200, note: "Birthday")])
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Self.writer, into: &s)
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-projection-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let dictionary = try MerchantDictionary.bundled().get()
+    let first = try ProjectionStore.open(directory: dir)
+    try first.project(s, pending: [], writerID: Self.writer, dictionary: dictionary, projectedAtMs: Self.anchor)
+    #expect(try first.reader.rules().count == 6 && first.reader.parts(txn.id).count == 2)
+    // An older layout: another version number, plus a table this build no longer
+    // has that references `rule` and holds a row (it must go too, in any order).
+    try first.queue.write { db in
+      try db.execute(sql: "UPDATE projection_meta SET value = '1' WHERE key = 'projection_version'")
+      try db.execute(sql: "CREATE TABLE legacy_rule_note (rule_id TEXT NOT NULL REFERENCES rule(id), note TEXT)")
+      try db.execute(sql: "INSERT INTO legacy_rule_note SELECT id, 'n' FROM rule LIMIT 1")
+    }
+    let reopened = try ProjectionStore.open(directory: dir)
+    #expect(try reopened.reader.meta()?.version == ProjectionSchema.version)
+    #expect(try reopened.reader.isUsable() == false)  // rebuilt empty, waiting for the observer's projection
+    #expect(try reopened.queue.read { db in try db.tableExists("legacy_rule_note") } == false)
+    try reopened.project(s, pending: [], writerID: Self.writer, dictionary: dictionary, projectedAtMs: Self.anchor + 1)
+    #expect(try reopened.reader.rules().count == 6 && reopened.reader.parts(txn.id).count == 2)
+    #expect(try reopened.queue.read { db in try Int.fetchOne(db, sql: "PRAGMA foreign_key_check") } == nil)
   }
 
   @Test("Activity, Review and the sample rows: 26 in October, 6 to review, sample-<n> message ids")

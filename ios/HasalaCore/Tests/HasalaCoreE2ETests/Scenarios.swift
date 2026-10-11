@@ -8,6 +8,7 @@
 //   gmail    FakeGmail's synthetic alerts → the real MailboxEngine (stub link
 //            server, stub step-up) on A → RuntimeMailboxLedger → the real Outbox
 //            and SyncEngine → the server → B pulls, folds and projects
+import CoreAuth
 import CoreCategorize
 import CoreDomain
 import CoreJSON
@@ -30,10 +31,23 @@ enum Scenarios {
   // MARK: Sample
 
   /// A bootstraps and loads the sample at the anchor; both upload and pull.
-  static func sampleOnSecondDevice(_ a: Runtime, _ b: Runtime) async throws {
+  /// `review` makes A's account a review account on the server the test runs
+  /// against and returns A's live `GET /account`.
+  static func sampleOnSecondDevice(_ a: Runtime, _ b: Runtime, review: () async throws -> AccountInfo) async throws {
     try await a.bootstrap()
-    let ops = try await a.loadSample()
+    // AT-34: not a review account (the server's own answer): refused, nothing authored.
+    let before = try a.context.store.pendingCount()
+    await #expect(throws: SampleLoadError.seed(.refused(.notReviewAccount))) { _ = try await a.loadSample() }
+    #expect(try a.context.store.pendingCount() == before)
+    let account = try await review()
+    #expect(account.review_account == true && account.user_id == a.context.userID.string)
+    // Another account's answer never opens this one's gate.
+    let other = AccountInfo(user_id: "00000000-0000-4000-8000-000000000000", review_account: true)
+    await #expect(throws: SampleLoadError.seed(.refused(.notReviewAccount))) { _ = try await a.loadSample(account: other) }
+    let ops = try await a.loadSample(account: account)
     #expect(ops > 100)
+    // One-shot: a second tap on A, before or after the upload, is refused.
+    await #expect(throws: SampleLoadError.seed(.refused(.alreadyLoaded))) { _ = try await a.loadSample(account: account) }
     #expect(try a.reader.activity(month: october, limit: 500).allSatisfy(\.pending))
     let out = await a.run(.authored)
     #expect(out.stop == nil, "\(String(describing: out.stop))")
@@ -43,6 +57,9 @@ enum Scenarios {
     #expect(pulled.stop == nil, "\(String(describing: pulled.stop))")
     try expectMayaSample(b.reader, month: october)
     #expect(try await a.state().serialized() == b.state().serialized())
+    // B, on the same review account, sees the sample: refused, nothing authored.
+    await #expect(throws: SampleLoadError.seed(.refused(.alreadyLoaded))) { _ = try await b.loadSample(account: account) }
+    #expect(try b.context.store.pendingCount() == 0)
   }
 
   /// The reviewer's figures on a device that pulled the sample.
@@ -95,7 +112,7 @@ enum Scenarios {
       http: gmail)
     let tokens = RefreshingGmailTokenProvider(
       oauth: oauth, store: SecretsGmailRefreshTokenStore(secrets: a.context.secrets, userID: a.context.userID), clock: clock)
-    let authoring = MailboxAuthoring(store: a.context.store, writerID: a.context.writerID.string, random: a.context.random)
+    let authoring = MailboxAuthoring(observer: a.observer)
     let persistence = LedgerMailboxPersistence(store: a.context.store, authoring: authoring, nowMs: { clock.nowMs() })
     let ledger = RuntimeMailboxLedger(engine: a.engine, observer: a.observer, outbox: a.outbox, authoring: authoring)
     let engine = MailboxEngine(

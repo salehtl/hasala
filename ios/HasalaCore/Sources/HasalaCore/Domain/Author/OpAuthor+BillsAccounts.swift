@@ -66,10 +66,20 @@ extension OpAuthor {
 
   public enum AccountKind: String, Sendable, Equatable, CaseIterable {
     case current, savings, creditCard = "credit_card", cash, loan, investment, property, other
+
+    /// 03b §4.2's default for `in_plan`: everyday money (current, savings,
+    /// credit card, cash) counts in the plan; the rest is tracked only.
+    public var inPlanByDefault: Bool {
+      switch self {
+      case .current, .savings, .creditCard, .cash: true
+      case .loan, .investment, .property, .other: false
+      }
+    }
   }
 
   /// A money account as the editor holds it. `closedOn` is required exactly
   /// when the account is inactive; `statementDueDay` only on a credit card.
+  /// `inPlan` left nil takes the kind's default (`AccountKind.inPlanByDefault`).
   public struct AccountDraft: Sendable, Equatable {
     public var name: String
     public var institution: String?
@@ -82,13 +92,13 @@ extension OpAuthor {
     public var color: String?
 
     public init(
-      name: String, institution: String? = nil, kind: AccountKind, inPlan: Bool = true, currency: String = "AED",
+      name: String, institution: String? = nil, kind: AccountKind, inPlan: Bool? = nil, currency: String = "AED",
       statementDueDay: Int64? = nil, active: Bool = true, closedOn: CivilDate? = nil, color: String? = nil
     ) {
       self.name = name
       self.institution = institution
       self.kind = kind
-      self.inPlan = inPlan
+      self.inPlan = inPlan ?? kind.inPlanByDefault
       self.currency = currency
       self.statementDueDay = statementDueDay
       self.active = active

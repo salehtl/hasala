@@ -75,7 +75,9 @@ struct SampleSeedExportTests {
     let ctx = AuthorContext(
       writerID: "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", nowMs: try parseInstantMs(doc.anchor), ownLastMs: nil,
       maxAuthored: [:], random: CountingRandom())
-    let blobs = try SampleSeed.batches(doc.encoded(), nowMs: ctx.nowMs, context: ctx)
+    // The generator stands in for a review account with an empty ledger.
+    let permit = try SampleSeed.permit(reviewAccount: true, holdsTransactions: false, sampleLoaded: false)
+    let blobs = try SampleSeed.batches(doc.encoded(), nowMs: ctx.nowMs, context: ctx, permit: permit)
     #expect(blobs.flatMap(\.ops).count == doc.ops.count)
   }
 }

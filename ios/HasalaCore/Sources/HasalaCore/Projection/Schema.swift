@@ -21,12 +21,27 @@ public enum ProjectionSchema {
   ]
   static let views = ["money_line", "rule_stats"]
 
-  /// Creates every table (dropping what a different version left behind).
+  /// Creates every table, after dropping every view and table a different
+  /// version left behind, whatever their names and references. Foreign keys
+  /// are checked at commit (`defer_foreign_keys`, which works inside the
+  /// caller's transaction), and children go before parents anyway, so no
+  /// drop order of any older layout can fail on a reference.
   static func create(_ db: Database) throws {
-    for v in views { try db.execute(sql: "DROP VIEW IF EXISTS \(v)") }
-    for t in tables { try db.execute(sql: "DROP TABLE IF EXISTS \(t)") }
+    try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
+    let old = try String.fetchAll(
+      db, sql: "SELECT name FROM sqlite_master WHERE type = 'view' AND name NOT LIKE 'sqlite_%'")
+    for v in Set(views).union(old) { try db.execute(sql: "DROP VIEW IF EXISTS \(quoted(v))") }
+    let present = try String.fetchAll(
+      db, sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    let known = tables.reversed().filter { present.contains($0) }
+    for t in known + present.filter({ !tables.contains($0) }).sorted() {
+      try db.execute(sql: "DROP TABLE IF EXISTS \(quoted(t))")
+    }
     try db.execute(sql: ddl)
   }
+
+  /// An SQL identifier, double-quoted.
+  static func quoted(_ name: String) -> String { "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
 
   static let ddl = """
     CREATE TABLE projection_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
