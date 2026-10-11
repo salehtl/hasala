@@ -66,9 +66,22 @@ const (
 	passkeyGlobalBurst = 100
 )
 
-// PasskeyRegisterBeginRequest starts a sign-up.
+// PasskeyRegisterBeginRequest starts a sign-up. authority_pubkey (b64, the
+// AAK the device just generated) is bound into the ceremony's challenge:
+// C_reg = SHA256("hasala/v1/register" ‖ 00 ‖ nonce ‖ authority_pubkey) (spec
+// 01 §10.3, D01; spec 02 #3).
 type PasskeyRegisterBeginRequest struct {
-	InviteCode string `json:"invite_code"`
+	InviteCode      string `json:"invite_code"`
+	AuthorityPubkey string `json:"authority_pubkey"`
+}
+
+// PasskeyRegisterBeginResponse adds the register nonce, so the client can
+// recompute C_reg and refuse options whose challenge differs (spec 01 §10.3
+// step 6).
+type PasskeyRegisterBeginResponse struct {
+	CeremonyID string          `json:"ceremony_id"`
+	Nonce      string          `json:"nonce"` // b64
+	Options    json.RawMessage `json:"options"`
 }
 
 // PasskeyBeginResponse is what all three begin steps answer with. Options is
@@ -123,12 +136,27 @@ func (s *Server) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Reque
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
-	id, opts, err := s.Passkeys.BeginRegistration(r.Context(), req.InviteCode)
+	authority, err := base64.StdEncoding.DecodeString(req.AuthorityPubkey)
 	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not base64")
+		return
+	}
+	id, opts, nonce, err := s.Passkeys.BeginRegistration(r.Context(), req.InviteCode, authority)
+	if err != nil {
+		if errors.Is(err, auth.ErrBadAuthorityKey) {
+			writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not a usable Ed25519 public key")
+			return
+		}
 		s.writePasskeyError(w, r, "register/begin", err)
 		return
 	}
-	s.writeBegin(w, r, id, opts)
+	raw, err := json.Marshal(opts)
+	if err != nil {
+		s.logf("api: passkey register/begin: marshal options: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
+	}
+	writeJSON(w, http.StatusOK, PasskeyRegisterBeginResponse{CeremonyID: id, Nonce: b64(nonce), Options: raw})
 }
 
 func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {

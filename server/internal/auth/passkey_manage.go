@@ -27,8 +27,8 @@ package auth
 //
 // # Removing a credential takes its PRF key wrap with it
 //
-// user_key_wraps.credential_id references webauthn_credentials(credential_id)
-// ON DELETE CASCADE (00028), so the DELETE below removes the wrap as well. That
+// account_key_wraps (user_id, credential_id) references webauthn_credentials
+// ON DELETE CASCADE (00010_keys), so the DELETE below removes the wrap as well. That
 // is the intended lifecycle — a wrap that outlived the only authenticator that
 // could open it is a row nothing can ever use — and losing it costs nothing,
 // because the recovery phrase still opens the account. It is asserted in a test

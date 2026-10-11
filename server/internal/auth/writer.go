@@ -1,273 +1,118 @@
 package auth
 
-// Writers, the key-history log, and challenge-based registration.
+// Writers: registration, revocation, the roster and the key-history log
+// (spec 01 §4.8, §10.5, §10.6, §10.13; spec 02 §9.4, §9.5, §10.2).
 //
-// # What this file is defending
+// # Who may enrol a writer
 //
-// Spec §3.4's capability rule: "registering a new writer requires proof of key
-// possession (a challenge sealed to an enrolled key) and is recorded in the
-// key-history log — a stolen session token cannot inject a writer whose ops
-// other devices would replay." A writer is an identity that appears in every
-// op_log row and in every blob's AAD; a writer the attacker controls is ops the
-// victim's own devices will fold into their state. A session token is
-// deliberately weaker than that (see the package doc), so this package's job is
-// to make the session token NOT the thing that authorizes an enrollment.
+// Only the account's authority key (AAK). A RegistrationMessage
 //
-// The authorization is a signature by an ALREADY-ENROLLED, non-revoked device
-// key over a server-issued single-use challenge — and, crucially, over the
-// enrollment being requested. See RegistrationMessage.
+//	"hasala/v1/writer-registration" ‖ 00 ‖ nonce32 ‖ 00 ‖ writer_id ‖ 00 ‖ dwk_pub32 ‖ dak_pub65
 //
-// # Residual trust, stated plainly
+// signed by the AAK over a server-issued, single-use nonce certifies both
+// device keys: the DWK (Ed25519, signs batch heads, revocations and bindings)
+// and the DAK (Secure Enclave P-256, approves step-ups). The AAK exists only in
+// memory after account creation, a PRF unlock or the phrase, so a stolen
+// session cannot produce one, and there is no step-up, no device authorizer,
+// no trust-on-first-use and no recovery-key branch (spec 01 DEV-3; ledgerd's
+// TOFU bootstrap and recovery authorizer are gone). The first writer is
+// registered by the bootstrap (accountkeys.go) with the same message.
 //
-// The very first writer of an account has nothing to sign under: there is no
-// enrolled key yet. That registration is a self-signature — trust on first use.
-// Spec §3.4 accepts this ("a fresh device's first bootstrap trusts the server
-// unless a prior device verifies it") and bounds it three ways:
+// # Who may revoke one
 //
-//   - It is available exactly ONCE per account, keyed on whether a device
-//     writer has EVER existed, not on whether one is currently live. Revoking
-//     the last device does not reopen it (TestBootstrapIsAvailableOnlyOnce).
-//     Otherwise a stolen session would only need to provoke a revocation.
-//   - It is recorded in key_history like every other enrollment, so a second
-//     device comparing key-history heads (§3.4's cross-device comparison code)
-//     sees a bootstrap it did not perform.
-//   - Nothing here bootstraps silently: an account whose bootstrap was spent by
-//     an attacker cannot enroll the real device at all, which is a loud failure
-//     rather than a shared account.
+// Any live writer of the account (the target included), by a DWK signature
+// over a RevocationMessage that pins the target's final head
 //
-// # The recovery authorizer, which is the third way an enrollment is authorized
+//	"hasala/v1/writer-revocation" ‖ 00 ‖ nonce32 ‖ 00 ‖ writer_id ‖ 00 ‖ u64be(final_counter) ‖ final_head32
 //
-// Phase 3 publishes an Ed25519 RECOVERY key with the account's key set, derived
-// from the user's twelve-word recovery phrase and stored on the server as a
-// public key only (00027_recovery_authorizer.sql). Register accepts its
-// signature as an alternative to a signature by an enrolled device.
+// plus step-up writer.revoke. The server requires the pinned head to be the
+// target's current head, under the target's row lock that uploads share, so no
+// row can land between the check and the revocation (R-02); readers then accept
+// none of the revoked writer's rows past that head.
 //
-// This paragraph used to say the opposite — "recovery of WRITE capability after
-// total device loss needs an out-of-band operator action ... that path is not
-// built here" — and on a browser that sentence had a sharper edge than it reads
-// like. Clearing site data destroys the device writer's identity key, so a
-// one-device web user who cleared their browser recovered their DATA from the
-// phrase and was then permanently READ-ONLY, holding the very secret that was
-// supposed to make them whole.
+// # key_history
 //
-// What it does NOT change, because that is the whole question:
-//
-//   - It is a signature, not a session. The server holds the public half and
-//     cannot produce one; a stolen session token is exactly as useless as
-//     before (TestRecoveryKeyDoesNotReopenTheBootstrapOrHelpAStolenSession).
-//   - hadDevice is untouched. The TOFU bootstrap is still available exactly
-//     once per account and revoking every device still does not reopen it. This
-//     is an ADDITIONAL authorised signer, not a second chance at the first one.
-//   - The signature binds THIS enrollment, like every other one here: a
-//     captured recovery signature authorizes the (writer id, key) pair it was
-//     made for and nothing else.
-//   - It cannot REVOKE. Revocation has no bootstrap path and gains none, so a
-//     phrase cannot be used to retire every device a user owns.
-//   - Its use is recorded as EventRecoveryRegistered, so a peer device auditing
-//     key_history can see that a recovery happened rather than an approval.
-//
-// The residual trust it adds is stated plainly: anyone who holds the recovery
-// phrase can enroll a writer. That is the same authority the phrase already had
-// over the DATA — it decrypts everything — so it grants no new class of access,
-// only the ability to write as well as read. A phrase in the wrong hands was
-// always a total compromise of the account.
-//
-// The old wall stood one tap closer than device loss, and this removes that too:
-// a user who revokes their LAST live device — a legitimate thing to want before
-// selling a phone — used to lose write capability permanently WHILE STILL
-// HOLDING THE KEY, because re-enrolling it returns ErrWriterExists (the id is
-// taken) and enrolling it under a new id returns ErrKeyAlreadyEnrolled (the key
-// is taken). Neither is a bug: a revoked key must not reinstate itself, or
-// revocation would mean nothing. The recovery phrase is now the way out of it.
-//
-// key_history is also server-attested, not self-authenticating: it records what
-// happened, not a proof of it. A compromised server can append a fabricated
-// entry, which §3.4 already concedes ("cannot make key substitution impossible,
-// only detectable"). Storing the authorizing signature alongside each entry
-// would upgrade peer audit from "compare heads" to "verify locally"; it is not
-// in the Phase 1 schema and is recorded as a follow-up.
-//
-// # What the append-only guard on key_history actually binds
-//
-// The baseline's append-only trigger refuses UPDATE, TRUNCATE, and
-// DELETE-while-the-user-exists for EVERY role, superusers included — triggers
-// cannot be skipped. What it cannot stop is the table's OWNER, who needs no
-// more than `ALTER TABLE ... DISABLE TRIGGER` to switch it off first and then
-// rewrite the log freely.
-//
-// That is why hasalad never serves as the owner: `hasalad migrate` runs as
-// hasala_migrate, which owns the schema, and every other mode connects as
-// hasala_runtime and refuses to start as the owner (spec 02 §5.6, O2).
-// TestKeyHistoryGuardBindsANonOwnerRuntimeRole pins both halves.
+// Every row carries the signature that authorized it and the nonce it was
+// over, so a device verifies the log itself instead of trusting the server's
+// account of it (spec 01 §10.13): registrations under the AAK, revocations
+// under a writer that was live at that point. The table is append-only by
+// trigger, and the runtime role holds no UPDATE or DELETE on it; the owner
+// (hasala_migrate) could disable the trigger, which is why hasalad never
+// serves as the owner (spec 02 §5.6).
 
 import (
+	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"time"
 
-	"filippo.io/edwards25519"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// KindDevice is the only writer kind (the writers_kind_is_device CHECK): a
-// client writer holding an Ed25519 identity key. ledgerd's keyless server
-// "ingest" writer went with the ingest path (spec 02 §2.3).
-const KindDevice = "device"
+// AlgEd25519 is the only writers.alg (spec 01 §4.8: 0x01; 0x02 is reserved).
+const AlgEd25519 = "ed25519"
 
-// key_history event vocabulary, matching that table's CHECK constraint.
+// key_history vocabulary, matching its CHECKs.
 const (
-	EventRegistered = "registered"
-	EventRevoked    = "revoked"
-	// EventRecoveryRegistered is an enrollment authorized by the account's
-	// RECOVERY key rather than by an enrolled device (see Register). It is a
-	// distinct event on purpose: a peer auditing this log must be able to tell
-	// "another of my devices approved this" from "somebody used the recovery
-	// phrase", and the cross-device comparison code hashes the event string, so
-	// a server that relabelled one as the other would produce codes that do not
-	// match across devices.
-	EventRecoveryRegistered = "recovery_registered"
+	EventRegistered     = "registered"
+	EventRevoked        = "revoked"
+	AuthorizedAuthority = "authority"
+	AuthorizedDevice    = "device"
 )
 
 const (
-	// ChallengeNonceBytes is 32 (256 bits) from crypto/rand. The requirement is
-	// "not guessable and not replayable"; 128 bits is the floor and this is
-	// double it, at a cost of 16 bytes per registration attempt.
-	ChallengeNonceBytes = 32
-	// ChallengeTTL bounds how long a captured challenge is worth anything. It
-	// is short because the legitimate flow — a device signs the challenge it
-	// just asked for — takes milliseconds, and every second beyond that is only
-	// useful to someone who intercepted it.
+	// ChallengeNonceBytes is the writer-challenge nonce (32 bytes).
+	ChallengeNonceBytes = keyproto.NonceSize
+	// ChallengeTTL bounds how long a captured challenge is worth anything.
 	ChallengeTTL = 5 * time.Minute
-	// maxWriterIDLen matches the CHECK constraint on writers.writer_id.
-	maxWriterIDLen = 64
-	// challengeRetention is how long a spent or expired challenge is kept
-	// before the opportunistic sweep in Challenge removes it. Well beyond the
-	// TTL on purpose: while the row exists, a replay is refused as "already
-	// used", which is a far more useful log line than "unknown nonce".
+	// MaxLiveWriters is spec 01 §10.5's cap.
+	MaxLiveWriters = 20
+	// challengeRetention is how long a spent challenge is kept before the
+	// opportunistic sweep removes it; what refuses a replay is used_at.
 	challengeRetention = 24 * time.Hour
 )
 
-// Domain separation prefixes. A device identity key signs more than one kind of
-// statement, and without distinct prefixes a signature collected in one context
-// is a valid signature in the other — a "retire this device" signature would
-// double as an enrollment. Both end in a NUL that cannot appear in the ASCII
-// domain label itself, so the prefix can never be confused with the start of
-// the payload.
-//
-// These are ledgerd's domains, on purpose. The messages under them are still
-// ledgerd's byte formats (nonce, writer id, Ed25519 key), which the reference
-// client speaks. Spec 01 gives hasala/v1/writer-registration and
-// hasala/v1/writer-revocation to the NEW formats (D13, D14: the AAK certifies
-// the DWK and the DAK; revocation pins the final head) that WS-3 builds, and
-// one domain must never name two formats, or a signature over the old one
-// could be presented as the new one. WS-3 switches the domain and the format
-// together.
-const (
-	registrationDomain = "ledger-v2-writer-registration\x00"
-	revocationDomain   = "ledger-v2-writer-revocation\x00"
-)
-
-// Registration rejection reasons. All of them wrap ErrRegistrationRejected, so
-// a caller can ask the single question it cares about, and the HTTP layer must
-// return the SAME status for all of them: which one it was tells an attacker
-// whether a nonce exists, whether a writer id is taken, and whether a key is
-// enrolled — none of which it is entitled to learn.
+// Writer errors. The HTTP layer maps each to spec 02 §6.3's code; the reason
+// inside is for the operator log.
 var (
-	ErrRegistrationRejected = errors.New("auth: writer registration rejected")
-	ErrChallengeUnknown     = fmt.Errorf("%w: no such challenge for this user", ErrRegistrationRejected)
-	ErrChallengeUsed        = fmt.Errorf("%w: challenge already used", ErrRegistrationRejected)
-	ErrChallengeExpired     = fmt.Errorf("%w: challenge expired", ErrRegistrationRejected)
-	// ErrNotAuthorized is the one that carries the whole capability rule: the
-	// signature did not verify under a key that is allowed to authorize this.
-	ErrNotAuthorized      = fmt.Errorf("%w: no enrolled key authorized this", ErrRegistrationRejected)
-	ErrWriterIDReserved   = fmt.Errorf("%w: writer id is reserved for the server", ErrRegistrationRejected)
-	ErrWriterIDInvalid    = fmt.Errorf("%w: writer id is not well formed", ErrRegistrationRejected)
-	ErrWriterExists       = fmt.Errorf("%w: writer id is already registered", ErrRegistrationRejected)
-	ErrKeyAlreadyEnrolled = fmt.Errorf("%w: public key is already enrolled as another writer", ErrRegistrationRejected)
-	ErrNoSuchWriter       = fmt.Errorf("%w: no such writer", ErrRegistrationRejected)
-	// ErrKeyUnusable is a public key that is not a usable Ed25519 identity —
-	// see checkPublicKey, which explains why length alone is not enough.
-	ErrKeyUnusable = fmt.Errorf("%w: public key is not a usable Ed25519 identity", ErrRegistrationRejected)
+	ErrKeysRequired    = errors.New("auth: the account has no keys yet")                 // 403 keys_required
+	ErrBadWriterID     = errors.New("auth: writer id does not match the §4.8 grammar")   // 400 bad_writer_id
+	ErrWriterMalformed = errors.New("auth: writer request is malformed")                 // 400 bad_request
+	ErrBadSignature    = errors.New("auth: signature or nonce did not verify")           // 400 bad_signature
+	ErrTooManyDevices  = errors.New("auth: the account has the maximum of live writers") // 409 too_many_devices
+	ErrHeadMoved       = errors.New("auth: the target's head is not the pinned one")     // 409 head_moved
+	ErrNoSuchWriter    = errors.New("auth: no such writer")                              // 404 not_found
+	ErrWriterRevoked   = errors.New("auth: the writer is revoked")                       // 403 writer_revoked
 )
 
-// checkPublicKey rejects a public key that cannot carry the property this
-// package depends on: that a valid signature under it proves possession of a
-// private key.
-//
-// A 32-byte length check is NOT enough. The Ed25519 identity point (0x01
-// followed by 31 zero bytes) is a valid encoding of a valid curve point, and
-// crypto/ed25519 — like most implementations — accepts the signature
-// `identity || 32 zero bytes` under it for EVERY message. Nobody needs a
-// private key to write those 64 bytes down. A writer enrolled with such a key
-// is therefore a writer that ANY holder of a session for that account can sign
-// for, forever: the forgery is message-independent, so it satisfies every later
-// registration and revocation too. That is a total collapse of the capability
-// rule this package exists to enforce, so the check runs before any signature
-// is verified and again for every key read back out of the roster.
-//
-// The test is the standard one: decode the point, multiply by the cofactor (8),
-// and reject if the result is the identity — which is true for exactly the
-// points of small order, in any encoding. edwards25519.Point.SetBytes accepts
-// non-canonical encodings, matching what crypto/ed25519 itself will accept, so
-// there is no encoding a caller can pick that slips past here and is still
-// honoured by Verify.
-func checkPublicKey(pub ed25519.PublicKey) error {
-	if len(pub) != ed25519.PublicKeySize {
-		return fmt.Errorf("%w: %d bytes, want %d", ErrKeyUnusable, len(pub), ed25519.PublicKeySize)
-	}
-	p, err := new(edwards25519.Point).SetBytes(pub)
-	if err != nil {
-		return fmt.Errorf("%w: not a curve point", ErrKeyUnusable)
-	}
-	if new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) == 1 {
-		return fmt.Errorf("%w: small-order point (signatures under it are forgeable by anyone)", ErrKeyUnusable)
-	}
-	return nil
-}
-
-// CheckPublicKey is checkPublicKey, exported for the ONE caller outside this
-// package that must apply it before this package would: api.handlePublishKeys,
-// which stores the recovery authorizer.
-//
-// A small-order authorizer is not merely useless, it is the total collapse
-// described above — so it has to be refused at WRITE time, with a message the
-// client can act on, and not only screened at read time. Screening it only on
-// read would store an authorizer that authorizes nothing, on a table that is
-// write-once, and the user would discover it at the one moment they needed it.
-func CheckPublicKey(pub ed25519.PublicKey) error { return checkPublicKey(pub) }
-
-// Writer is one row of a user's writer roster.
+// Writer is one row of a user's roster.
 type Writer struct {
-	UserID   uuid.UUID
-	WriterID string
-	Kind     string
-	// PubKey is the writer's Ed25519 key (writers.pubkey is NOT NULL).
-	PubKey       ed25519.PublicKey
+	UserID       uuid.UUID
+	WriterID     string
+	Alg          string
+	PubKey       []byte // Ed25519 DWK, 32 bytes
+	DAKPubkey    []byte // P-256 X9.63, 65 bytes
 	RegisteredAt time.Time
-	// RevokedAt is the zero time while the writer is live.
-	RevokedAt time.Time
+	RevokedAt    time.Time // zero while live
 }
 
-// Live reports whether this writer may still authorize anything.
+// Live reports whether the writer may still sign anything.
 func (w Writer) Live() bool { return w.RevokedAt.IsZero() }
 
 // Writers owns writer registration, revocation and the key-history log.
-//
-// It holds no state beyond its dependencies — no cache, no per-process
-// singleton, nothing that must be shared — so constructing one per request is
-// correct and free. (Contrast NewOIDCVerifier, whose JWKS cache means one
-// verifier per process.)
 type Writers struct {
 	Pool *pgxpool.Pool
-	// Now defaults to time.Now. Challenge expiry is evaluated against THIS
-	// clock and never against Postgres's now(), so one clock decides both when
-	// a challenge was minted and when it dies — and a test can advance it.
+	// StepUp verifies the writer.revoke step-up.
+	StepUp *StepUp
+	// Now defaults to time.Now; one clock decides minting and expiry.
 	Now func() time.Time
 }
 
@@ -278,275 +123,155 @@ func (w *Writers) now() time.Time {
 	return time.Now()
 }
 
-// RegistrationMessage returns the exact bytes a device signs to enroll itself
-// or another writer. The client (Task 14) reimplements this; it is exported so
-// the two cannot drift silently, and TestRegistrationMessageEncodingIsPinned...
-// pins the bytes.
-//
-//	"ledger-v2-writer-registration\x00" || nonce || 0x00 || writerID || 0x00 || pubkey
-//
-// # Why the message is not just the nonce
-//
-// The first draft of this mechanism verified ed25519.Verify(enrolledKey, nonce,
-// sig). That proves possession of an enrolled key, but it authorizes "some
-// enrollment" rather than THIS enrollment: anyone who observes such a signature
-// can present it again with a different writer id and a different public key,
-// and enroll a writer of their choosing. Binding all three fields means a
-// captured signature authorizes exactly the enrollment it was produced for, and
-// nothing else.
-//
-// # Why this encoding is unambiguous
-//
-// Naive concatenation with a separator is ambiguous whenever a field can
-// contain the separator. Here it cannot matter: nonce is always exactly
-// ChallengeNonceBytes and pubkey always ed25519.PublicKeySize — Register
-// enforces both before it verifies anything — so writerID is the only
-// variable-length field, pinned between two fixed-length ones. Its extent is
-// determined by the total length regardless of its contents, so no two distinct
-// (nonce, writerID, pubkey) triples encode to the same bytes. (writerID is
-// additionally constrained to [A-Za-z0-9._-]{1,64} at both this layer and the
-// database, so in practice it contains no separator either.)
-func RegistrationMessage(nonce []byte, writerID string, pub ed25519.PublicKey) []byte {
-	return signingMessage(registrationDomain, nonce, writerID, pub)
-}
-
-// RevocationMessage returns the bytes a device signs to retire a writer. The
-// target writer id is the last field and the only variable-length one, so the
-// same unambiguity argument as RegistrationMessage applies.
-func RevocationMessage(nonce []byte, writerID string) []byte {
-	return signingMessage(revocationDomain, nonce, writerID, nil)
-}
-
-func signingMessage(domain string, nonce []byte, writerID string, pub ed25519.PublicKey) []byte {
-	msg := make([]byte, 0, len(domain)+len(nonce)+1+len(writerID)+1+len(pub))
-	msg = append(msg, domain...)
-	msg = append(msg, nonce...)
-	msg = append(msg, 0x00)
-	msg = append(msg, writerID...)
-	if pub != nil {
-		msg = append(msg, 0x00)
-		msg = append(msg, pub...)
-	}
-	return msg
-}
-
-// validWriterID mirrors the writers_writer_id_charset CHECK constraint. It runs
-// in Go as well as in the database because a writer id ends up inside signed
-// messages and blob AAD, where an encoding surprise is a security question and
-// not a data-quality one.
-func validWriterID(id string) bool {
-	if id == "" || len(id) > maxWriterIDLen {
-		return false
-	}
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '.', c == '_', c == '-':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-// Challenge mints a single-use registration challenge for userID.
-//
-// Obtaining a challenge is exactly what a session token authorizes, and nothing
-// more: the challenge is worthless without a signature from an enrolled key.
-func (w *Writers) Challenge(ctx context.Context, userID uuid.UUID) ([]byte, error) {
+// Challenge mints a single-use writer-challenge nonce (#23). It serves
+// registration, revocation and the bootstrap.
+func (w *Writers) Challenge(ctx context.Context, userID uuid.UUID) ([]byte, time.Time, error) {
 	if w.Pool == nil {
-		return nil, errors.New("auth: Writers.Pool is nil")
+		return nil, time.Time{}, errors.New("auth: Writers.Pool is nil")
 	}
 	if userID == uuid.Nil {
-		return nil, errors.New("auth: writer challenge: user id is zero")
+		return nil, time.Time{}, errors.New("auth: writer challenge: user id is zero")
 	}
 	nonce := make([]byte, ChallengeNonceBytes)
 	if _, err := rand.Read(nonce); err != nil {
-		// Unreachable on Go 1.25 (crypto/rand panics rather than failing), but
-		// a short or zero nonce would be a replayable challenge, so this is
-		// checked rather than assumed.
-		return nil, fmt.Errorf("auth: writer challenge: read random: %w", err)
+		return nil, time.Time{}, fmt.Errorf("auth: writer challenge: read random: %w", err)
 	}
 	now := w.now()
-	_, err := w.Pool.Exec(ctx,
+	exp := now.Add(ChallengeTTL)
+	if _, err := w.Pool.Exec(ctx,
 		`INSERT INTO writer_challenges (nonce, user_id, issued_at, expires_at) VALUES ($1,$2,$3,$4)`,
-		nonce, userID, now, now.Add(ChallengeTTL))
-	if err != nil {
-		return nil, fmt.Errorf("auth: writer challenge for user %s: %w", userID, err)
+		nonce, userID, now, exp); err != nil {
+		return nil, time.Time{}, fmt.Errorf("auth: writer challenge for user %s: %w", userID, err)
 	}
-	// Opportunistic sweep. Anyone holding a session can mint challenges, so
-	// without this the table grows without bound. The cutoff is a full
-	// retention period PAST expiry, so this can only ever remove a row that is
-	// already worthless — a live, unspent challenge is never in range — and a
-	// failed sweep is a housekeeping miss rather than a security event, because
-	// the property that refuses a replay is used_at on the row, not the row's
-	// absence.
-	_, _ = w.Pool.Exec(ctx,
-		`DELETE FROM writer_challenges WHERE expires_at < $1`, now.Add(-challengeRetention))
-	return nonce, nil
+	_, _ = w.Pool.Exec(ctx, `DELETE FROM writer_challenges WHERE expires_at < $1`, now.Add(-challengeRetention))
+	return nonce, exp, nil
 }
 
-// consumeChallenge spends a challenge, atomically and exactly once.
-//
-// The single UPDATE below is the whole concurrency argument. It is a
-// test-and-set on one row identified by primary key: two concurrent attempts on
-// the same nonce serialize on that row's lock, and under READ COMMITTED the
-// loser re-evaluates `used_at IS NULL` against the version the winner committed
-// (EvalPlanQual), finds it no longer matches, and returns zero rows. There is
-// no window between the read and the write for a second caller to slip into,
-// because there is no separate read.
-//
-// It runs OUTSIDE the registration transaction on purpose: a challenge is spent
-// by the attempt, not by the success. If it were rolled back along with a
-// failed registration, one challenge would buy unlimited attempts.
-//
-// Expiry is checked in Go afterwards rather than in the WHERE clause, so an
-// expired challenge is still consumed (and so that one injectable clock decides
-// both minting and expiry, as in Sessions).
-func (w *Writers) consumeChallenge(ctx context.Context, userID uuid.UUID, nonce []byte) error {
+// consumeChallenge spends a writer challenge exactly once, OUTSIDE any
+// transaction the caller opens: it is spent by the attempt, not the success,
+// so one nonce buys one attempt. Unknown, foreign, used and expired nonces are
+// all ErrBadSignature (spec 02 §6.3).
+func consumeChallenge(ctx context.Context, pool *pgxpool.Pool, now time.Time, userID uuid.UUID, nonce []byte) error {
+	if len(nonce) != ChallengeNonceBytes {
+		return fmt.Errorf("%w: nonce is %d bytes", ErrBadSignature, len(nonce))
+	}
 	var expires time.Time
-	err := w.Pool.QueryRow(ctx,
+	err := pool.QueryRow(ctx,
 		`UPDATE writer_challenges SET used_at = $3
 		  WHERE nonce = $1 AND user_id = $2 AND used_at IS NULL
-		 RETURNING expires_at`,
-		nonce, userID, w.now()).Scan(&expires)
+		 RETURNING expires_at`, nonce, userID, now).Scan(&expires)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// Separate "already spent" from "never existed, or belongs to another
-		// user" for the operator's log. Both are the same rejection to the
-		// caller, and the second query is scoped to userID so it cannot be used
-		// to probe another account's challenges.
-		var used *time.Time
-		if e := w.Pool.QueryRow(ctx,
-			`SELECT used_at FROM writer_challenges WHERE nonce = $1 AND user_id = $2`,
-			nonce, userID).Scan(&used); e == nil && used != nil {
-			return ErrChallengeUsed
-		}
-		return ErrChallengeUnknown
+		return fmt.Errorf("%w: unknown, foreign or used writer challenge", ErrBadSignature)
 	}
 	if err != nil {
 		return fmt.Errorf("auth: consume writer challenge: %w", err)
 	}
-	if !expires.After(w.now()) {
-		return ErrChallengeExpired
+	if !expires.After(now) {
+		return fmt.Errorf("%w: writer challenge expired", ErrBadSignature)
 	}
 	return nil
 }
 
-// Register enrolls a writer for userID.
-//
-// sig must be an Ed25519 signature over RegistrationMessage(nonce, writerID,
-// pub), produced by:
-//
-//   - pub itself, if and only if this user has never had a device writer (the
-//     TOFU bootstrap — see the residual-trust note at the top of this file); or
-//   - any already-enrolled, non-revoked device key of this user.
-//
-// A live session token is a precondition for obtaining the nonce and is not an
-// input here: by construction, holding one cannot enroll anything.
-//
-// writerID must match [A-Za-z0-9._-]{1,64}.
-func (w *Writers) Register(ctx context.Context, userID uuid.UUID, writerID string, pub ed25519.PublicKey, nonce, sig []byte) error {
-	if err := w.checkArgs(userID, writerID, nonce, sig); err != nil {
-		return err
-	}
-	// Screened here, before a challenge is spent: a small-order key is a
-	// malformed request, not a failed authorization.
-	if err := checkPublicKey(pub); err != nil {
-		return err
-	}
+// Registration is POST /api/v1/writers/register's request (spec 02 §10.2),
+// decoded.
+type Registration struct {
+	WriterID  string
+	Alg       string
+	PubKey    []byte
+	DAKPubkey []byte
+	Nonce     []byte
+	Sig       []byte
+}
 
-	// Spent before anything else can fail, so one challenge buys one attempt.
-	if err := w.consumeChallenge(ctx, userID, nonce); err != nil {
-		return err
+// checkShape is the stateless half of the registration checks.
+func (r Registration) checkShape() error {
+	if !keyproto.ValidWriterID(r.WriterID) {
+		return ErrBadWriterID
 	}
-	msg := RegistrationMessage(nonce, writerID, pub)
+	if r.Alg != AlgEd25519 {
+		return fmt.Errorf("%w: alg %q", ErrWriterMalformed, r.Alg)
+	}
+	if err := keyproto.CheckEd25519PublicKey(r.PubKey); err != nil {
+		return fmt.Errorf("%w: pubkey: %v", ErrWriterMalformed, err)
+	}
+	if _, err := keyproto.ParseDAK(r.DAKPubkey); err != nil {
+		return fmt.Errorf("%w: dak_pubkey: %v", ErrWriterMalformed, err)
+	}
+	if len(r.Sig) != keyproto.Ed25519SigSize {
+		return fmt.Errorf("%w: sig is %d bytes", ErrBadSignature, len(r.Sig))
+	}
+	return nil
+}
 
-	tx, err := w.begin(ctx)
+// authorityKey reads account_keys.authority_pubkey; ErrKeysRequired when the
+// account has not bootstrapped.
+func authorityKey(ctx context.Context, q querier, userID uuid.UUID) ([]byte, error) {
+	var k []byte
+	err := q.QueryRow(ctx, `SELECT authority_pubkey FROM account_keys WHERE user_id = $1`, userID).Scan(&k)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrKeysRequired
+	}
+	if err != nil {
+		return nil, fmt.Errorf("auth: read authority key: %w", err)
+	}
+	return k, nil
+}
+
+// Register enrols a writer under the AAK (#24, spec 02 §10.2's order) and binds
+// the calling, unbound session to it.
+func (w *Writers) Register(ctx context.Context, userID uuid.UUID, sessionHash []byte, r Registration) error {
+	if w.Pool == nil {
+		return errors.New("auth: Writers.Pool is nil")
+	}
+	aak, err := authorityKey(ctx, w.Pool, userID)
 	if err != nil {
 		return err
 	}
-	defer w.rollback(ctx, tx)
-
-	// Lock the user row for the duration. Registration is rare and this is the
-	// cheapest way to make the bootstrap decision safe: without it, two
-	// concurrent first registrations both observe an empty roster and both
-	// self-sign their way in, which is the one thing "TOFU happens once" must
-	// not permit.
-	roster, err := w.lockAndLoad(ctx, tx, userID)
-	if err != nil {
+	if err := r.checkShape(); err != nil {
 		return err
 	}
-
-	// hadDevice tracks whether this user has EVER enrolled a device, revoked
-	// ones included; enrolled holds only the keys that may authorize today.
-	// Nothing returns from this loop: the duplicate findings are recorded and
-	// reported only AFTER authorization, so a caller that cannot prove key
-	// possession learns nothing about which writer ids and keys exist.
-	var enrolled []ed25519.PublicKey
-	var hadDevice, idTaken, keyTaken bool
-	for _, r := range roster {
-		if r.WriterID == writerID {
-			idTaken = true
-		}
-		if r.Kind != KindDevice {
-			continue
-		}
-		hadDevice = true
-		if r.PubKey.Equal(pub) {
-			keyTaken = true
-		}
-		if r.Live() {
-			enrolled = append(enrolled, r.PubKey)
-		}
+	// Already enrolled (key, DAK or id): a malformed request, refused before
+	// the nonce is spent. The caller holds this account's session and can read
+	// the roster anyway, so this discloses nothing.
+	var taken bool
+	if err := w.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM writers WHERE user_id = $1 AND (writer_id = $2 OR pubkey = $3 OR dak_pubkey = $4))`,
+		userID, r.WriterID, r.PubKey, r.DAKPubkey).Scan(&taken); err != nil {
+		return fmt.Errorf("auth: register writer: %w", err)
 	}
-
-	// The account's recovery authorizer, read under the same lock so it cannot
-	// change between the decision and the insert. Absent for every account that
-	// has not published a key set, and absence is simply "no such authorizer" —
-	// those accounts keep exactly the rules they had.
-	recovery, err := recoveryAuthorizer(ctx, tx, userID)
-	if err != nil {
+	if taken {
+		return fmt.Errorf("%w: the writer id, key or DAK is already enrolled", ErrWriterMalformed)
+	}
+	if err := consumeChallenge(ctx, w.Pool, w.now(), userID, r.Nonce); err != nil {
 		return err
 	}
-
-	// The authorization decision, in full.
-	//
-	// hadDevice, not len(enrolled) == 0: the bootstrap window closes the first
-	// time a device is enrolled and never reopens, so revoking the last device
-	// cannot hand a stolen session a self-signed enrollment. The recovery key
-	// does NOT touch that rule — it is a third authorised signer sitting beside
-	// the two that were already here, and the `authorizedByRecovery` flag is
-	// what makes its use visible in key_history rather than silent.
-	authorizedByRecovery := recovery != nil && verifiedBy(recovery, msg, sig)
-	if !authorizedByRecovery {
-		if !hadDevice {
-			if !verifiedBy(pub, msg, sig) {
-				return fmt.Errorf("%w (first writer: the key being enrolled must sign for itself)", ErrNotAuthorized)
-			}
-		} else if !verifiedByAny(enrolled, msg, sig) {
-			return ErrNotAuthorized
-		}
+	msg, err := keyproto.RegistrationMessage(r.Nonce, r.WriterID, r.PubKey, r.DAKPubkey)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrWriterMalformed, err)
 	}
-	if idTaken {
-		return ErrWriterExists
-	}
-	if keyTaken {
-		return ErrKeyAlreadyEnrolled
+	if !keyproto.VerifyEd25519(aak, msg, r.Sig) {
+		return fmt.Errorf("%w: the RegistrationMessage does not verify under the authority key", ErrBadSignature)
 	}
 
-	now := w.now()
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
-		 VALUES ($1,$2,$3,$4,$5)`,
-		userID, writerID, KindDevice, []byte(pub), now); err != nil {
-		return fmt.Errorf("auth: register writer %s for user %s: %w", writerID, userID, err)
+	tx, err := pgtx.BeginReadCommitted(ctx, w.Pool)
+	if err != nil {
+		return fmt.Errorf("auth: register writer: begin: %w", err)
 	}
-	event := EventRegistered
-	if authorizedByRecovery {
-		event = EventRecoveryRegistered
+	defer pgtx.Rollback(ctx, tx)
+	if err := lockUser(ctx, tx, userID); err != nil {
+		return err
 	}
-	if err := appendKeyHistory(ctx, tx, userID, writerID, pub, event, now); err != nil {
+	var live int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM writers WHERE user_id = $1 AND revoked_at IS NULL`, userID).Scan(&live); err != nil {
+		return fmt.Errorf("auth: register writer: count: %w", err)
+	}
+	if live >= MaxLiveWriters {
+		return ErrTooManyDevices
+	}
+	if err := insertWriterTx(ctx, tx, userID, r, w.now()); err != nil {
+		return err
+	}
+	if err := bindSessionTx(ctx, tx, sessionHash, userID, r.WriterID); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -555,258 +280,181 @@ func (w *Writers) Register(ctx context.Context, userID uuid.UUID, writerID strin
 	return nil
 }
 
-// recoveryAuthorizer returns the account's published recovery key, or nil when
-// it has not published a key set.
-//
-// It reads inside the caller's transaction, under the user row lock the
-// registration already holds, so the key cannot change between the
-// authorization decision and the insert.
-//
-// A key that fails checkPublicKey is returned as nil rather than as an error:
-// the only such key is one that cannot prove possession of anything (the API
-// refuses to store one, so this is a row planted past it), and the correct
-// treatment of an authorizer that authorizes nothing is that there is no
-// authorizer — not a 500 that stops the account from enrolling by any other
-// means. verifiedBy screens it again regardless; this is belt and braces.
-func recoveryAuthorizer(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (ed25519.PublicKey, error) {
-	var pub []byte
-	err := tx.QueryRow(ctx, `SELECT recovery_pubkey FROM user_keys WHERE user_id = $1`, userID).Scan(&pub)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("auth: read recovery authorizer for user %s: %w", userID, err)
-	}
-	key := ed25519.PublicKey(pub)
-	if checkPublicKey(key) != nil {
-		return nil, nil
-	}
-	return key, nil
-}
-
-// Revoke retires a writer. sig must be an Ed25519 signature over
-// RevocationMessage(nonce, writerID) by an already-enrolled, non-revoked device
-// key of this user — including the target's own key, which is the ordinary
-// "retire this device" flow.
-//
-// There is deliberately no bootstrap path here. If an unenrolled key could
-// revoke, a stolen session could retire every device the user owns; that is
-// both a denial of service and, under any scheme where an empty roster reopens
-// TOFU, a complete bypass.
-//
-// It is idempotent: revoking an already-revoked writer succeeds without
-// appending a second key_history entry.
-func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, writerID string, nonce, sig []byte) error {
-	if err := w.checkArgs(userID, writerID, nonce, sig); err != nil {
-		return err
-	}
-	if err := w.consumeChallenge(ctx, userID, nonce); err != nil {
-		return err
-	}
-	msg := RevocationMessage(nonce, writerID)
-
-	tx, err := w.begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer w.rollback(ctx, tx)
-
-	roster, err := w.lockAndLoad(ctx, tx, userID)
-	if err != nil {
-		return err
-	}
-	var (
-		enrolled []ed25519.PublicKey
-		target   *Writer
-	)
-	for i, r := range roster {
-		if r.WriterID == writerID {
-			target = &roster[i]
+// insertWriterTx inserts the writer and its key_history registration (with
+// the AAK's RegistrationMessage signature over its own nonce, spec 01 §9 (a)).
+func insertWriterTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, r Registration, now time.Time) error {
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		userID, r.WriterID, r.Alg, r.PubKey, r.DAKPubkey, now); err != nil {
+		var pg *pgconn.PgError
+		if errors.As(err, &pg) && pg.Code == "23505" {
+			return fmt.Errorf("%w: the writer id, key or DAK is already enrolled", ErrWriterMalformed)
 		}
-		if r.Kind == KindDevice && r.Live() {
-			enrolled = append(enrolled, r.PubKey)
-		}
+		return fmt.Errorf("auth: insert writer %s: %w", r.WriterID, err)
 	}
-	// Authorization first, existence second: otherwise the error text tells a
-	// caller that cannot prove key possession which writer ids exist.
-	if !verifiedByAny(enrolled, msg, sig) {
-		return ErrNotAuthorized
-	}
-	if target == nil {
-		return ErrNoSuchWriter
-	}
-	if !target.Live() {
-		return nil // already revoked; do not append a second entry
-	}
-
-	now := w.now()
-	tag, err := tx.Exec(ctx,
-		`UPDATE writers SET revoked_at = $3
-		  WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
-		userID, writerID, now)
-	if err != nil {
-		return fmt.Errorf("auth: revoke writer %s for user %s: %w", writerID, userID, err)
-	}
-	if tag.RowsAffected() == 0 {
-		return nil
-	}
-	if err := appendKeyHistory(ctx, tx, userID, writerID, target.PubKey, EventRevoked, now); err != nil {
-		return err
-	}
-	// Retiring a device key and ending that device's notifications are one act.
-	// They were two before 00019, and the gap was the whole of it: a stolen
-	// phone whose key had been revoked went on receiving a real-time "New
-	// transaction" on its lock screen forever, because nothing in any
-	// revocation path touched push_tokens and no route existed that would even
-	// tell the user what to delete. Same transaction, so a crash between the
-	// two cannot leave the notifications running against a retired key.
-	if err := forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, writerID); err != nil {
-		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("auth: revoke writer: commit: %w", err)
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO key_history (user_id, writer_id, alg, pubkey, dak_pubkey, event, authorized_by, nonce, signature, at)
+		 VALUES ($1,$2,$3,$4,$5,'registered','authority',$6,$7,$8)`,
+		userID, r.WriterID, r.Alg, r.PubKey, r.DAKPubkey, r.Nonce, r.Sig, now); err != nil {
+		return fmt.Errorf("auth: append key history (registered %s): %w", r.WriterID, err)
 	}
 	return nil
 }
 
-// Roster returns every writer of a user, revoked ones included. A peer device
-// needs the revoked entries: "this writer was retired" and "this writer was
-// never here" are different facts when auditing a chain.
+func lockUser(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: no such user", ErrWriterMalformed)
+	}
+	if err != nil {
+		return fmt.Errorf("auth: lock user %s: %w", userID, err)
+	}
+	return nil
+}
+
+// Revocation is POST /api/v1/writers/revoke's request (spec 02 §9.5), decoded.
+type Revocation struct {
+	WriterID       string
+	SignerWriterID string
+	Nonce          []byte
+	FinalCounter   int64
+	FinalHead      []byte
+	Sig            []byte
+	StepUp         *StepUpObject
+}
+
+// Revoke retires a writer (#25): the writer challenge is spent first; then,
+// in one transaction under step-up writer.revoke: the target's row locked FOR
+// UPDATE, its current head compared with the pinned one, the RevocationMessage
+// verified under a live signer's DWK, the writer revoked, key_history appended,
+// its sessions revoked and its APNs token deleted.
+func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionInfo, r Revocation) error {
+	if w.Pool == nil || w.StepUp == nil {
+		return errors.New("auth: Writers is not configured")
+	}
+	if !keyproto.ValidWriterID(r.WriterID) || !keyproto.ValidWriterID(r.SignerWriterID) {
+		return ErrBadWriterID
+	}
+	if r.FinalCounter < 0 || len(r.FinalHead) != keyproto.HashSize || len(r.Sig) != keyproto.Ed25519SigSize {
+		return fmt.Errorf("%w: final_counter, final_head or sig is malformed", ErrWriterMalformed)
+	}
+	if r.StepUp == nil {
+		return ErrStepUpRequired
+	}
+	if err := consumeChallenge(ctx, w.Pool, w.now(), userID, r.Nonce); err != nil {
+		return err
+	}
+	msg, err := keyproto.RevocationMessage(r.Nonce, r.WriterID, uint64(r.FinalCounter), r.FinalHead)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrWriterMalformed, err)
+	}
+	ph, err := keyproto.ParamsHash(keyproto.ActionWriterRevoke, []byte(r.WriterID))
+	if err != nil {
+		return err
+	}
+	g := Guarded{UserID: userID, SessionHash: session.Hash, BoundWriter: session.WriterID,
+		Action: keyproto.ActionWriterRevoke, ParamsHash: ph, StepUp: r.StepUp}
+	return w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
+		var revoked *time.Time
+		err := tx.QueryRow(ctx,
+			`SELECT revoked_at FROM writers WHERE user_id = $1 AND writer_id = $2 FOR UPDATE`,
+			userID, r.WriterID).Scan(&revoked)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNoSuchWriter
+		}
+		if err != nil {
+			return fmt.Errorf("auth: revoke: lock target: %w", err)
+		}
+		if revoked != nil {
+			return ErrWriterRevoked
+		}
+		counter, head, err := writerHead(ctx, tx, userID, r.WriterID)
+		if err != nil {
+			return err
+		}
+		if counter != r.FinalCounter || !bytes.Equal(head, r.FinalHead) {
+			return fmt.Errorf("%w: the head is (%d, %x)", ErrHeadMoved, counter, head)
+		}
+		var (
+			signerKey  []byte
+			signerLive bool
+		)
+		err = tx.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+			userID, r.SignerWriterID).Scan(&signerKey, &signerLive)
+		if err != nil || !signerLive || !keyproto.VerifyEd25519(signerKey, msg, r.Sig) {
+			return fmt.Errorf("%w: the RevocationMessage does not verify under a live signer", ErrBadSignature)
+		}
+		now := w.now()
+		if _, err := tx.Exec(ctx,
+			`UPDATE writers SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
+			userID, r.WriterID, now); err != nil {
+			return fmt.Errorf("auth: revoke writer %s: %w", r.WriterID, err)
+		}
+		var pub []byte
+		if err := tx.QueryRow(ctx, `SELECT pubkey FROM writers WHERE user_id = $1 AND writer_id = $2`, userID, r.WriterID).Scan(&pub); err != nil {
+			return fmt.Errorf("auth: revoke: read key: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO key_history (user_id, writer_id, alg, pubkey, event, authorized_by, authorizer_writer_id,
+			   final_counter, final_head, nonce, signature, at)
+			 VALUES ($1,$2,'ed25519',$3,'revoked','device',$4,$5,$6,$7,$8,$9)`,
+			userID, r.WriterID, pub, r.SignerWriterID, r.FinalCounter, r.FinalHead, r.Nonce, r.Sig, now); err != nil {
+			return fmt.Errorf("auth: append key history (revoked %s): %w", r.WriterID, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE sessions SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
+			userID, r.WriterID, now); err != nil {
+			return fmt.Errorf("auth: revoke the writer's sessions: %w", err)
+		}
+		return forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, r.WriterID)
+	})
+}
+
+// writerHead is the target's current (counter, blob_hash), or (0, 0^32).
+func writerHead(ctx context.Context, tx pgx.Tx, userID uuid.UUID, writerID string) (int64, []byte, error) {
+	var (
+		c int64
+		h []byte
+	)
+	err := tx.QueryRow(ctx,
+		`SELECT writer_counter, blob_hash FROM op_log
+		  WHERE user_id = $1 AND writer_id = $2 AND stream = 'hot'
+		  ORDER BY writer_counter DESC LIMIT 1`, userID, writerID).Scan(&c, &h)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, make([]byte, 32), nil
+	}
+	if err != nil {
+		return 0, nil, fmt.Errorf("auth: read the writer's head: %w", err)
+	}
+	return c, h, nil
+}
+
+// Roster returns every writer of a user, revoked ones included.
 func (w *Writers) Roster(ctx context.Context, userID uuid.UUID) ([]Writer, error) {
 	if w.Pool == nil {
 		return nil, errors.New("auth: Writers.Pool is nil")
 	}
 	rows, err := w.Pool.Query(ctx,
-		`SELECT user_id, writer_id, kind, pubkey, registered_at, revoked_at
+		`SELECT user_id, writer_id, alg, pubkey, dak_pubkey, registered_at, revoked_at
 		   FROM writers WHERE user_id = $1 ORDER BY registered_at, writer_id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("auth: roster for user %s: %w", userID, err)
 	}
 	defer rows.Close()
-	return scanWriters(rows)
-}
-
-// lockAndLoad takes the user's row lock and reads the whole roster inside the
-// caller's transaction. Every authorization decision in this file is made
-// against what it returns, so it must be read under the lock and not before it.
-func (w *Writers) lockAndLoad(ctx context.Context, tx pgx.Tx, userID uuid.UUID) ([]Writer, error) {
-	var locked uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&locked)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("%w: no such user", ErrRegistrationRejected)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("auth: lock user %s: %w", userID, err)
-	}
-	rows, err := tx.Query(ctx,
-		`SELECT user_id, writer_id, kind, pubkey, registered_at, revoked_at
-		   FROM writers WHERE user_id = $1 ORDER BY registered_at, writer_id`, userID)
-	if err != nil {
-		return nil, fmt.Errorf("auth: read roster for user %s: %w", userID, err)
-	}
-	defer rows.Close()
-	return scanWriters(rows)
-}
-
-func scanWriters(rows pgx.Rows) ([]Writer, error) {
 	var out []Writer
 	for rows.Next() {
 		var (
 			wr      Writer
-			pub     []byte
 			revoked *time.Time
 		)
-		if err := rows.Scan(&wr.UserID, &wr.WriterID, &wr.Kind, &pub, &wr.RegisteredAt, &revoked); err != nil {
+		if err := rows.Scan(&wr.UserID, &wr.WriterID, &wr.Alg, &wr.PubKey, &wr.DAKPubkey, &wr.RegisteredAt, &revoked); err != nil {
 			return nil, fmt.Errorf("auth: scan writer: %w", err)
-		}
-		if pub != nil {
-			wr.PubKey = ed25519.PublicKey(pub)
 		}
 		if revoked != nil {
 			wr.RevokedAt = *revoked
 		}
 		out = append(out, wr)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("auth: read writers: %w", err)
-	}
-	return out, nil
-}
-
-// appendKeyHistory is the ONLY write to key_history in this package, and it is
-// an INSERT. There is deliberately no UPDATE or DELETE path anywhere in the
-// codebase; the table additionally refuses both at the database (see the
-// key_history_no_rewrite trigger in 00003_writers.sql), because "no code does
-// it" stops being true the moment someone writes a repair script.
-func appendKeyHistory(ctx context.Context, tx pgx.Tx, userID uuid.UUID, writerID string, pub ed25519.PublicKey, event string, at time.Time) error {
-	var key []byte
-	if pub != nil {
-		key = []byte(pub)
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO key_history (user_id, writer_id, pubkey, event, at) VALUES ($1,$2,$3,$4,$5)`,
-		userID, writerID, key, event, at); err != nil {
-		return fmt.Errorf("auth: append key history (%s %s): %w", event, writerID, err)
-	}
-	return nil
-}
-
-// verifiedBy is the ONLY place a signature is ever checked. Every path goes
-// through the small-order screen first, including keys read back from the
-// roster: a row planted by a repair script, or enrolled before checkPublicKey
-// existed, must not be able to authorize anything either.
-func verifiedBy(key ed25519.PublicKey, msg, sig []byte) bool {
-	if checkPublicKey(key) != nil {
-		return false
-	}
-	return ed25519.Verify(key, msg, sig)
-}
-
-// verifiedByAny reports whether the signature verifies under any of the keys.
-// ed25519.Verify is constant time in the key material; the loop leaks only how
-// many keys a user has enrolled, which the roster endpoint returns anyway.
-func verifiedByAny(keys []ed25519.PublicKey, msg, sig []byte) bool {
-	for _, k := range keys {
-		if verifiedBy(k, msg, sig) {
-			return true
-		}
-	}
-	return false
-}
-
-// checkArgs rejects everything that cannot possibly be a valid request, BEFORE
-// a challenge is spent. A malformed call must not burn the user's challenge —
-// that would turn a client bug into a registration that can never complete.
-func (w *Writers) checkArgs(userID uuid.UUID, writerID string, nonce, sig []byte) error {
-	switch {
-	case w.Pool == nil:
-		return errors.New("auth: Writers.Pool is nil")
-	case userID == uuid.Nil:
-		return fmt.Errorf("%w: user id is zero", ErrRegistrationRejected)
-	case !validWriterID(writerID):
-		return ErrWriterIDInvalid
-	case len(nonce) != ChallengeNonceBytes:
-		// Also what makes RegistrationMessage's encoding unambiguous: the
-		// nonce's length is fixed here, before any message is built.
-		return fmt.Errorf("%w: nonce is %d bytes, want %d", ErrRegistrationRejected, len(nonce), ChallengeNonceBytes)
-	case len(sig) != ed25519.SignatureSize:
-		return fmt.Errorf("%w: signature is %d bytes, want %d", ErrRegistrationRejected, len(sig), ed25519.SignatureSize)
-	}
-	return nil
-}
-
-// begin pins READ COMMITTED; see pgtx.BeginReadCommitted for why (the
-// `SELECT ... FOR UPDATE` that serializes concurrent registrations is this
-// package's stake in that rationale).
-func (w *Writers) begin(ctx context.Context) (pgx.Tx, error) {
-	tx, err := pgtx.BeginReadCommitted(ctx, w.Pool)
-	if err != nil {
-		return nil, fmt.Errorf("auth: writers: begin: %w", err)
-	}
-	return tx, nil
-}
-
-// rollback delegates to pgtx.Rollback.
-func (w *Writers) rollback(ctx context.Context, tx pgx.Tx) {
-	pgtx.Rollback(ctx, tx)
+	return out, rows.Err()
 }

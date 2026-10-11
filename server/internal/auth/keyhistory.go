@@ -1,29 +1,15 @@
 package auth
 
-// keyhistory.go is the READ side of the append-only key-history log.
-//
-// It exists because for the whole of Phase 1 there was no read side. The log
-// was written on every registration and every revocation (appendKeyHistory
-// in writer.go), guarded by two triggers against
-// rewrite and truncation, and then never selected by a single line of
-// production code. Spec §3.4 and §2:176 both tell the user that peer devices
-// detect key substitution by comparing this log across devices, and §2 is the
-// text the alpha privacy page is drawn from — so the log being unreachable was
-// not a missing feature, it was a promise the system could not keep.
-//
-// # What the server may and may not do here
-//
-// It may serve the log. It may NOT compute the comparison code. The whole
-// premise of §3.4's detection is that the operator's own server is the thing
-// being audited, so a code the server calculated would be a code the server
-// could choose; only a digest each device computes over material it fetched
-// itself, and that two users compare out of band, detects anything. This file
-// therefore returns entries and no digest, and the ordering below is part of
-// the contract precisely so that two honest devices hash the same bytes.
+// keyhistory.go is the read side of the append-only key-history log (spec 02
+// #27). Every entry carries the signature that authorized it and the nonce it
+// was made over, so a device verifies the log itself (spec 01 §10.13) instead
+// of trusting the server's account of it: registrations verify under the
+// authority key the device derived from its own unwrapped seed, revocations
+// under a writer that was live at that point of the log. The server returns
+// the log and computes nothing over it.
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"time"
@@ -32,60 +18,48 @@ import (
 )
 
 // KeyHistoryEntry is one append-only log row.
-//
-// PubKey may be nil only for an entry that names no key. None is written
-// today (ledgerd's keyless ingest writer is retired, spec 02 §2), but the
-// distinction stays a fact a peer needs: "a writer with no key was added" and
-// "a writer with THIS key was added" are different events, and collapsing
-// them would let a substitution hide behind a missing field.
 type KeyHistoryEntry struct {
-	// ID is the log position. It is monotonic per user and is what makes "the
-	// head" a well-defined thing to hash.
-	ID       int64
-	WriterID string
-	PubKey   ed25519.PublicKey
-	// Event is [EventRegistered] or [EventRevoked].
-	Event string
-	At    time.Time
+	ID                 int64
+	WriterID           string
+	Alg                string
+	PubKey             []byte
+	DAKPubkey          []byte // registered rows only
+	Event              string // EventRegistered | EventRevoked
+	AuthorizedBy       string // AuthorizedAuthority | AuthorizedDevice
+	AuthorizerWriterID string // revoked rows: the signing writer
+	FinalCounter       *int64 // revoked rows: the pinned final head
+	FinalHead          []byte
+	Nonce              []byte
+	Signature          []byte
+	At                 time.Time
 }
 
-// KeyHistory returns a user's whole key-history log, OLDEST FIRST.
-//
-// Oldest first, and complete, both deliberately:
-//
-//   - A peer audits the log by replaying it, so it needs every entry, not the
-//     current roster (which [Writers.Roster] already serves) and not a page.
-//     The log is bounded by how many devices a person has ever enrolled or
-//     retired — tens over an account's life — so there is nothing to paginate.
-//
-//   - Ascending id means the LAST element is the head. A descending order would
-//     put the head first and read more naturally, and would also mean that a
-//     server omitting the tail of the log produced a prefix that still hashed
-//     to something a client might accept as a valid earlier state. Ascending
-//     makes a truncation change the head, which is the value being compared.
+// KeyHistory returns a user's whole log, oldest first: ascending id makes the
+// last element the head, so a truncated log changes the head a device compares.
 func (w *Writers) KeyHistory(ctx context.Context, userID uuid.UUID) ([]KeyHistoryEntry, error) {
 	if w == nil || w.Pool == nil {
 		return nil, errors.New("auth: Writers.Pool is nil")
 	}
 	rows, err := w.Pool.Query(ctx,
-		`SELECT id, writer_id, pubkey, event, at
+		`SELECT id, writer_id, alg, pubkey, dak_pubkey, event, authorized_by, authorizer_writer_id,
+		        final_counter, final_head, nonce, signature, at
 		   FROM key_history WHERE user_id = $1 ORDER BY id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("auth: key history for user %s: %w", userID, err)
 	}
 	defer rows.Close()
-
 	var out []KeyHistoryEntry
 	for rows.Next() {
 		var (
-			e   KeyHistoryEntry
-			key []byte
+			e     KeyHistoryEntry
+			authz *string
 		)
-		if err := rows.Scan(&e.ID, &e.WriterID, &key, &e.Event, &e.At); err != nil {
+		if err := rows.Scan(&e.ID, &e.WriterID, &e.Alg, &e.PubKey, &e.DAKPubkey, &e.Event, &e.AuthorizedBy, &authz,
+			&e.FinalCounter, &e.FinalHead, &e.Nonce, &e.Signature, &e.At); err != nil {
 			return nil, fmt.Errorf("auth: scan key history entry: %w", err)
 		}
-		if key != nil {
-			e.PubKey = ed25519.PublicKey(key)
+		if authz != nil {
+			e.AuthorizerWriterID = *authz
 		}
 		out = append(out, e)
 	}

@@ -31,7 +31,7 @@ func newPasskeys(t *testing.T, pool *pgxpool.Pool) *Passkeys {
 // enroll runs a whole registration and returns the account it created.
 func enroll(t *testing.T, p *Passkeys, code string) (uuid.UUID, *authtest.Authenticator) {
 	t.Helper()
-	id, opts, err := p.BeginRegistration(bgctx, code)
+	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		t.Fatalf("BeginRegistration: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestPasskeyRegistrationWithASpentCodeIsRefusedAndCreatesNothing(t *testing.
 
 	// The gate is at finish, in the transaction that creates the account, so
 	// begin is allowed to hand out a ceremony for a code that is about to fail.
-	id, opts, err := p.BeginRegistration(bgctx, code)
+	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		// A begin-time pre-check is permitted, and if it fires it must fire as
 		// exactly this error.
@@ -173,11 +173,11 @@ func TestTwoRegistrationsBegunAgainstOneLiveCodeYieldOneAccount(t *testing.T) {
 	p := newPasskeys(t, pool)
 	code := mustMint(t, pool, "one code, two tabs")
 
-	idA, optsA, err := p.BeginRegistration(bgctx, code)
+	idA, optsA, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	idB, optsB, err := p.BeginRegistration(bgctx, code)
+	idB, optsB, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) 
 	_, first := enroll(t, p, mustMint(t, pool, "the first account"))
 
 	code := mustMint(t, pool, "sameera's code")
-	id, opts, err := p.BeginRegistration(bgctx, code)
+	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestARegistrationThatFailsAfterTheUpsertDoesNotBurnTheInvite(t *testing.T) 
 // enrollErr is enroll without the t.Fatal, for the one test that retries.
 func enrollErr(t *testing.T, p *Passkeys, code string) (uuid.UUID, *authtest.Authenticator, error) {
 	t.Helper()
-	id, opts, err := p.BeginRegistration(bgctx, code)
+	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
@@ -524,7 +524,7 @@ func TestAPermanentZeroCounterSignsInRepeatedlyAndStillRecordsLastUsed(t *testin
 	p := newPasskeys(t, pool)
 
 	code := mustMint(t, pool, "icloud keychain")
-	id, opts, err := p.BeginRegistration(bgctx, code)
+	id, opts, _, err := p.BeginRegistration(bgctx, code, authtest.AuthorityPub(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,7 +672,7 @@ func TestExpiredCeremoniesAreSwept(t *testing.T) {
 func TestPasskeyCeremonyOptionsRequireADiscoverableCredential(t *testing.T) {
 	pool := pgtest.New(t)
 	p := newPasskeys(t, pool)
-	_, opts, err := p.BeginRegistration(bgctx, mustMint(t, pool, "opts"))
+	_, opts, _, err := p.BeginRegistration(bgctx, mustMint(t, pool, "opts"), authtest.AuthorityPub(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,8 +681,9 @@ func TestPasskeyCeremonyOptionsRequireADiscoverableCredential(t *testing.T) {
 		t.Fatalf("residentKey = %q, want %q — username-less login needs a discoverable credential",
 			sel.ResidentKey, protocol.ResidentKeyRequirementRequired)
 	}
-	if sel.UserVerification != protocol.VerificationPreferred {
-		t.Fatalf("userVerification = %q, want %q", sel.UserVerification, protocol.VerificationPreferred)
+	// UV is required in every ceremony (spec 01 §10.2, spec 02 §8.1).
+	if sel.UserVerification != protocol.VerificationRequired {
+		t.Fatalf("userVerification = %q, want %q", sel.UserVerification, protocol.VerificationRequired)
 	}
 	if opts.Response.RelyingParty.ID != authtest.RPID {
 		t.Fatalf("rp.id = %q, want %q", opts.Response.RelyingParty.ID, authtest.RPID)

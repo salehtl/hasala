@@ -1,12 +1,15 @@
-// Package oplogtest builds op-log fixtures for tests: an account, a device
-// writer, and sealed frame v3 rows appended through the real appender. TEST
-// ONLY: it seals with internal/blob/blobtest, which cmd/hasalad's build graph
-// must never reach (spec 02 §4.4 fences 1 and 3).
+// Package oplogtest builds op-log fixtures for tests: an account with keys,
+// device writers, and sealed frame v3 rows appended through the real
+// appender with a signed head. TEST ONLY: it seals with internal/blob/blobtest,
+// which cmd/hasalad's build graph must never reach (spec 02 §4.4 fences 1 and
+// 3).
 package oplogtest
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
@@ -17,14 +20,58 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/blob/blobtest"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog"
 )
 
 var bg = context.Background()
 
-// NewUser creates an account row and its oplog_seq row in one transaction, as
-// account creation does.
+// WID is a writer id of spec 01 §4.8's grammar for test writer n:
+// ios-00000000-0000-4000-8000-<n as 12 hex digits>.
+func WID(n int) string { return fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", n) }
+
+// DWK is the deterministic Ed25519 key a test writer signs heads with:
+// seed = SHA256("oplogtest-dwk|" ‖ writer_id). Every package's tests use the
+// same derivation, so a head can be signed knowing only the writer id.
+func DWK(writerID string) ed25519.PrivateKey {
+	seed := sha256.Sum256([]byte("oplogtest-dwk|" + writerID))
+	return ed25519.NewKeyFromSeed(seed[:])
+}
+
+// DAK is a fresh P-256 public key, X9.63 uncompressed: a writer needs one, and
+// tests that do not exercise device step-ups never sign with it.
+func DAK(t testing.TB) []byte {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []byte{4}
+	out = append(out, k.X.FillBytes(make([]byte, 32))...)
+	return append(out, k.Y.FillBytes(make([]byte, 32))...)
+}
+
+// HeadSig is the batch head signature over rows' last row, by writer's DWK.
+func HeadSig(userID uuid.UUID, writerID string, rows []oplog.Row) []byte {
+	last := rows[len(rows)-1]
+	m, err := keyproto.HeadMessage(userID, uint64(last.WriterCounter), last.BlobHash, writerID)
+	if err != nil {
+		panic(err)
+	}
+	return ed25519.Sign(DWK(writerID), m)
+}
+
+// NewUser creates an account row, its oplog_seq row and synthetic account
+// keys (current_epoch 1), as account creation and bootstrap do.
 func NewUser(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
+	t.Helper()
+	id := NewUserWithoutKeys(t, pool)
+	AddKeys(t, pool, id)
+	return id
+}
+
+// NewUserWithoutKeys creates an account that has not bootstrapped.
+func NewUserWithoutKeys(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	tx, err := pool.Begin(bg)
 	if err != nil {
@@ -50,18 +97,39 @@ func NewUser(t testing.TB, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-// NewWriter enrols a live device writer for the account with a fresh Ed25519
-// key, directly in the roster (the registration ceremony is auth's to test),
-// and returns the private key.
+// AddKeys inserts a synthetic account_keys row (random keys, well-formed wrap
+// and phrase box headers) so the account can upload; an account that has keys
+// keeps them.
+func AddKeys(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID) {
+	t.Helper()
+	rnd := func(n int) []byte {
+		b := make([]byte, n)
+		if _, err := rand.Read(b); err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	wrap := append([]byte{1, 1}, rnd(125)...)
+	box := append([]byte{1}, rnd(44)...)
+	if _, err := pool.Exec(bg,
+		`INSERT INTO account_keys (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey,
+		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at)
+		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, now(), now())
+		 ON CONFLICT (user_id) DO NOTHING`,
+		userID, rnd(32), rnd(32), rnd(32), wrap, box); err != nil {
+		t.Fatalf("oplogtest: account keys: %v", err)
+	}
+}
+
+// NewWriter enrols a live device writer for the account directly in the
+// roster (the registration ceremony is auth's to test), with the
+// deterministic DWK of writerID and a fresh DAK, and returns the DWK.
 func NewWriter(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID string) ed25519.PrivateKey {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	priv := DWK(writerID)
 	if _, err := pool.Exec(bg,
-		`INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at) VALUES ($1, $2, 'device', $3, now())`,
-		userID, writerID, []byte(pub)); err != nil {
+		`INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at) VALUES ($1, $2, 'ed25519', $3, $4, now())`,
+		userID, writerID, []byte(priv.Public().(ed25519.PublicKey)), DAK(t)); err != nil {
 		t.Fatalf("oplogtest: enrol writer %s: %v", writerID, err)
 	}
 	return priv
@@ -93,7 +161,8 @@ func Rows(t testing.TB, userID uuid.UUID, writerID string, counter int64, prev [
 }
 
 // Append appends n sealed rows to the writer's chain through the real
-// appender, continuing from its committed head, and returns their seqs.
+// appender, continuing from its committed head, with the head signed by the
+// writer's DWK, and returns their seqs.
 func Append(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID string, n int) []int64 {
 	t.Helper()
 	ap := &oplog.Appender{Pool: pool}
@@ -101,7 +170,8 @@ func Append(t testing.TB, pool *pgxpool.Pool, userID uuid.UUID, writerID string,
 	if err != nil {
 		t.Fatal(err)
 	}
-	seqs, err := ap.AppendClient(bg, userID, writerID, blob.StreamHot, Rows(t, userID, writerID, counter, head, n))
+	rows := Rows(t, userID, writerID, counter, head, n)
+	seqs, err := ap.AppendClient(bg, userID, writerID, blob.StreamHot, rows, HeadSig(userID, writerID, rows))
 	if err != nil {
 		t.Fatalf("oplogtest: append %d rows for %s: %v", n, writerID, err)
 	}

@@ -71,6 +71,13 @@ type Authenticator struct {
 	// takes the counter as a parameter rather than incrementing this, so a test
 	// can replay an old one.
 	Counter uint32
+	// NoUV clears the user-verified flag in every response it makes: the
+	// "UV flag cleared" switch of spec 01 §15.3, which every ceremony must
+	// refuse.
+	NoUV bool
+	// LastAttestationObject is the raw attestationObject of the last Create,
+	// whose SHA-256 bootstrap's auth_hash names (spec 01 §10.3.1).
+	LastAttestationObject []byte
 }
 
 // New returns an authenticator with a fresh key and credential id.
@@ -125,6 +132,9 @@ func (a *Authenticator) authData(t *testing.T, rpID string, counter uint32, atte
 	h := sha256.Sum256([]byte(rpID))
 	out := append([]byte{}, h[:]...)
 	flags := byte(flagUserPresent | flagUserVerified | flagBackupEligible | flagBackupState)
+	if a.NoUV {
+		flags &^= flagUserVerified
+	}
 	if attested {
 		flags |= flagAttestedData
 	}
@@ -188,6 +198,7 @@ func (a *Authenticator) Create(t *testing.T, opts *protocol.CredentialCreation) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	a.LastAttestationObject = obj
 	resp := protocol.CredentialCreationResponse{
 		PublicKeyCredential: a.publicKeyCredential(),
 		AttestationResponse: protocol.AuthenticatorAttestationResponse{
@@ -223,6 +234,17 @@ func (a *Authenticator) Assert(t *testing.T, opts *protocol.CredentialAssertion,
 		},
 	}
 	return mustJSON(t, resp)
+}
+
+// AssertChallenge answers an assertion over raw challenge bytes for rpID —
+// what a step-up proof is: the WebAuthn challenge is the 32 bytes C (spec 01
+// §10.2), not anything a begin endpoint wrapped in options.
+func (a *Authenticator) AssertChallenge(t *testing.T, rpID string, challenge []byte, counter uint32) []byte {
+	t.Helper()
+	opts := &protocol.CredentialAssertion{Response: protocol.PublicKeyCredentialRequestOptions{
+		Challenge: protocol.URLEncodedBase64(challenge), RelyingPartyID: rpID,
+	}}
+	return a.Assert(t, opts, counter)
 }
 
 func (a *Authenticator) publicKeyCredential() protocol.PublicKeyCredential {

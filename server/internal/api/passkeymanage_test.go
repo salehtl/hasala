@@ -294,20 +294,22 @@ func TestDeletingAPasskeyRemovesItAndThenRefusesTheRemainingOne(t *testing.T) {
 	wantStatus(t, h.req("DELETE", passkeyPath(first.CredID), session.SessionToken, nil), http.StatusConflict)
 }
 
-// TestDeletingAPasskeyTakesItsKeyWrapWithIt goes through the real
-// POST /api/v1/keys/wraps so the row under test is the one production writes.
-// The cascade is 00028's, which is why it is measured over HTTP as well as in
-// auth: nothing in the handler would notice if the schema lost it.
+// TestDeletingAPasskeyTakesItsKeyWrapWithIt: the cascade is the schema's
+// (account_key_wraps → webauthn_credentials), which is why it is measured over
+// HTTP as well as in auth: nothing in the handler would notice if it were lost.
 func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 	h := newHarness(t).passkeys()
 	first, session := h.register(h.invite("prf"))
 	second := h.addCredential(session.SessionToken)
 	userID := mustUUID(t, session.UserID)
 
+	// Planted directly: a wrap put is a WB step-up route (keys_test.go), and
+	// this test is about the cascade, not the put.
 	for _, cred := range [][]byte{first.CredID, second.CredID} {
-		wantStatus(t, h.req("POST", "/api/v1/keys/wraps", session.SessionToken, map[string]any{
-			"credential_id": b64(cred), "wrapped": b64(prfWrap(3)), "wrap_version": 1,
-		}), http.StatusNoContent)
+		if _, err := h.pool.Exec(bg, `INSERT INTO account_key_wraps (user_id, credential_id, wrap, wrap_version, created_at)
+			VALUES ($1, $2, $3, 1, now())`, userID, cred, prfWrap(3)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if n := h.countWraps(userID); n != 2 {
 		t.Fatalf("%d wraps before the removal, want 2", n)
@@ -321,7 +323,7 @@ func TestDeletingAPasskeyTakesItsKeyWrapWithIt(t *testing.T) {
 		t.Fatalf("%d wraps after the removal, want 1 — the ON DELETE CASCADE did not fire", n)
 	}
 	wraps := decodeJSON[KeyWrapsResponse](t, h.req("GET", "/api/v1/keys/wraps", session.SessionToken, nil))
-	if len(wraps.Wraps) != 1 || wraps.Wraps[0].CredentialID != b64(first.CredID) {
+	if len(wraps.Wraps) != 1 || wraps.Wraps[0].CredentialID != b64url(first.CredID) {
 		t.Fatalf("the surviving wrap is %+v", wraps.Wraps)
 	}
 }

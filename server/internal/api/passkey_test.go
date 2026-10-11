@@ -60,7 +60,7 @@ func (h *harness) beginAssert(path, token string) (string, *protocol.CredentialA
 func (h *harness) register(code string) (*authtest.Authenticator, SessionResponse) {
 	h.t.Helper()
 	id, opts := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: code})
+		PasskeyRegisterBeginRequest{InviteCode: code, AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	a := authtest.New(h.t)
 	w := h.req("POST", "/api/v1/auth/passkey/register/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: a.Create(h.t, opts),
@@ -116,7 +116,7 @@ func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
 func TestPasskeyRegistrationWithoutAnInviteIsNotInvited(t *testing.T) {
 	h := newHarness(t).passkeys()
 	w := h.req("POST", "/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: "NOTACODE"})
+		PasskeyRegisterBeginRequest{InviteCode: "NOTACODE", AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	wantStatus(t, w, http.StatusForbidden)
 	if got := w.Body.String(); got != `{"error":"not_invited"}` {
 		t.Fatalf("body = %s, want the byte-identical not_invited answer", got)
@@ -131,9 +131,9 @@ func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T)
 	// Two ceremonies begun against two codes; the credential built for one is
 	// presented against the other's id.
 	idA, optsA := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: h.invite("a")})
+		PasskeyRegisterBeginRequest{InviteCode: h.invite("a"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	idB, _ := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: h.invite("b")})
+		PasskeyRegisterBeginRequest{InviteCode: h.invite("b"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	if idA == idB {
 		t.Fatal("two ceremonies share an id")
 	}
