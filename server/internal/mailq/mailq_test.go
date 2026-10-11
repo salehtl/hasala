@@ -46,7 +46,8 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	pool := pgtest.New(t)
-	f := &fixture{t: t, pool: pool, c: &clock{t: time.Now().UTC()}, fake: &mail.Fake{}}
+	// Postgres keeps microseconds; Linux clocks have nanoseconds.
+	f := &fixture{t: t, pool: pool, c: &clock{t: time.Now().UTC().Truncate(time.Microsecond)}, fake: &mail.Fake{}}
 	f.user = oplogtest.NewUserWithoutKeys(t, pool)
 	f.q = &Queue{Pool: pool, Sender: f.fake, Now: f.c.now, Logf: func(string, ...any) {},
 		Renderers: map[string]Renderer{
