@@ -98,6 +98,10 @@ same devShell. From `web/`:
   runs `scripts/check-dist.ts`, which fails the build if any inline script or
   style is not covered by the one CSP every page shares, if any element has a
   `style=""` attribute, or if `/` loads more than 15 KB of JavaScript (gzip).
+  The CSP (`astro.config.mjs`) also admits Cloudflare Web Analytics, whose
+  beacon Cloudflare injects at the edge (it is not in `dist/`); the privacy
+  policy describes it. Nothing else third-party, except Turnstile in "api"
+  mode.
 - `bun run preview` (Astro's preview server) or `bun scripts/serve-dist.ts`,
   which serves `dist/` on 127.0.0.1:4321 with the `_headers`, `_redirects`
   and trailing-slash handling of production, and gzip.

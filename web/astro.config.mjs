@@ -16,6 +16,11 @@ const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/
 const API_ORIGIN = new URL(API_BASE).origin;
 const TURNSTILE = Boolean(env.PUBLIC_TURNSTILE_SITEKEY);
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
+// Cloudflare Web Analytics: Cloudflare's edge injects its beacon script into
+// every HTML page (it is not in dist/), and the beacon reports to
+// cloudflareinsights.com. Cookieless, aggregate only; see the privacy policy.
+const CF_ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com';
+const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 
 // Pages that are not for search engines (they only make sense from an email
 // or a form post) stay out of the sitemap; they also carry noindex.
@@ -85,7 +90,7 @@ export default defineConfig({
         "default-src 'self'",
         "img-src 'self' data:",
         "font-src 'self'",
-        `connect-src 'self' ${API_ORIGIN}${TURNSTILE ? ` ${TURNSTILE_ORIGIN}` : ''}`,
+        `connect-src 'self' ${API_ORIGIN} ${CF_ANALYTICS_REPORT}${TURNSTILE ? ` ${TURNSTILE_ORIGIN}` : ''}`,
         `form-action 'self' ${API_ORIGIN}`,
         `frame-src ${TURNSTILE ? TURNSTILE_ORIGIN : "'none'"}`,
         "manifest-src 'self'",
@@ -95,7 +100,7 @@ export default defineConfig({
         'upgrade-insecure-requests',
       ],
       scriptDirective: {
-        resources: ["'self'", ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
+        resources: ["'self'", CF_ANALYTICS_SCRIPT, ...(TURNSTILE ? [TURNSTILE_ORIGIN] : [])],
         // The two <head> scripts in src/lib/inline-scripts.mjs; Astro hashes only bundled ones.
         hashes: INLINE_SCRIPTS.map((s) => /** @type {`sha256-${string}`} */ (`sha256-${createHash('sha256').update(s).digest('base64')}`)),
       },
