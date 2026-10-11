@@ -8,15 +8,17 @@
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
 # client core on a Mac) and `web` (the website) are not required checks.
 #
-# Path-aware on pull requests: the first job, `changes`, lists the files the
-# pull request changes and says which areas they touch; `gate`, `vuln`, `swift`
-# and `web` run only when theirs is touched, and `secrets` always runs. Jobs are
-# skipped with a job-level `if:`, never a workflow-level `paths:` filter: a
-# skipped job still reports its check, as "skipped", which a required check
-# counts as passing, whereas a workflow that never starts leaves its required
-# checks pending forever. If `changes` fails, every job runs. A push to main
-# and a manual run (workflow_dispatch) run every job; the weekly schedule runs
-# `vuln` alone. When a job starts reading a new path, add it to `changes`.
+# Path-aware on pull requests, failing closed: the first job, `changes`, lists
+# the files the pull request changes, and `gate`, `vuln`, `swift` and `web` are
+# skipped only when every one of them is on that job's list of paths it does
+# not read. Any other path runs the job, a path nobody anticipated included.
+# `secrets` always runs. Jobs are skipped with a job-level `if:`, never a
+# workflow-level `paths:` filter: a skipped job still reports its check, as
+# "skipped", which a required check counts as passing, whereas a workflow that
+# never starts leaves its required checks pending forever. If `changes` does not
+# succeed, every job runs. A push to main and a manual run (workflow_dispatch)
+# run every job. The weekly govulncheck of main is a separate workflow,
+# vuln-weekly.yml, so that its run never records checks on main's head.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 name: CI
@@ -26,18 +28,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # `vuln` only, on main (a schedule always runs the default branch): new Go
-  # advisories land without a commit. Mondays 05:23 UTC. GitHub turns a public
-  # repository's schedules off after 60 days without activity.
-  schedule:
-    - cron: "23 5 * * 1"
 
 permissions:
   contents: read
 
 # One run per pull request (a new push cancels the superseded run); every other
-# run (a push to main, a manual run, the schedule) is its own group, so none is
-# cancelled or dropped.
+# run (a push to main, a manual run) is its own group, so none is cancelled or
+# dropped.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -47,13 +44,15 @@ defaults:
     shell: bash
 
 jobs:
-  # Which areas the pull request touches, as outputs `gate` (read by gate and
+  # Which jobs the pull request needs, as outputs `gate` (read by gate and
   # vuln), `swift` and `web`, each "true" or "false"; any other event sets all
   # three to "true". The checkout of a pull request is its merge commit
   # (refs/pull/N/merge) and depth 2 fetches both parents, so `git diff HEAD^1
   # HEAD` is exactly what merging would change on the base as it is now.
   # --no-renames lists both ends of a move, so moving a file out of an area
-  # still counts for that area.
+  # still counts for that area. -z prints every path verbatim, NUL-terminated:
+  # without it git C-quotes non-ASCII and special characters
+  # ("server/caf\303\251.go") and no anchored pattern matches the line.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -76,31 +75,46 @@ jobs:
             printf '%s=true\n' gate swift web | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
-          files="$(git diff --no-renames --name-only HEAD^1 HEAD)"
-          echo "::group::$(grep -c . <<<"$files" || true) changed path(s)"
-          echo "$files"
+          changed="$RUNNER_TEMP/changed-paths"
+          git diff -z --no-renames --name-only HEAD^1 HEAD >"$changed"
+          echo "::group::$(tr -cd '\0' <"$changed" | wc -c) changed path(s)"
+          # The paths come from the pull request: between these two lines, a
+          # line that starts with "::" is printed, not run as a command.
+          token="$(cat /proc/sys/kernel/random/uuid)"
+          echo "::stop-commands::$token"
+          tr '\0' '\n' <"$changed"
+          echo "::$token::"
           echo "::endgroup::"
-          # area NAME ERE: NAME=true if any changed path matches ERE.
-          area() {
-            if grep -Eq -- "$2" <<<"$files"; then v=true; else v=false; fi
+          # skip_unless NAME INERT [READS]: NAME=false only when every changed
+          # path matches INERT (paths NAME does not read) and none matches
+          # READS (paths under INERT that NAME does read); otherwise true. An
+          # empty diff is false. grep -z matches each NUL-terminated path.
+          skip_unless() {
+            local v=false
+            if grep -zEvq -- "$2" "$changed" || { [[ -n "${3:-}" ]] && grep -zEq -- "$3" "$changed"; }; then
+              v=true
+            fi
             echo "$1=$v" | tee -a "$GITHUB_OUTPUT"
           }
-          # gate and vuln: the Go modules and everything scripts/check.sh and
-          # `nix flake check` read. The flake's formatting check covers every
-          # *.go and *.nix file wherever it is, and its checks will read infra/.
-          # check.sh's HasalaCore grep lints read ios/ as well, but `swift`
-          # runs the same lints, so ios/ alone does not start gate.
-          area gate '^(server|conformance|reference|scripts|infra|\.github)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$|(^|/)go\.(mod|sum)$|\.(go|nix)$'
-          area swift '^(ios|conformance|\.github)/'
-          # The site's toolchain (Bun) comes from the flake's devShell.
-          area web '^(web|docs/legal|\.github)/|^flake\.(nix|lock)$'
+          # Read by no job: the licence texts, NOTICE, root Markdown, design
+          # assets and the private-fixtures pin (read only when
+          # HASALA_PRIVATE_FIXTURES is set, which CI never does).
+          none='^(LICENSES|design)/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$'
+          # gate and vuln: docs/, web/ and ios/ are not read, except any *.go
+          # or *.nix (the flake's formatting check covers them wherever they
+          # are) and any go.mod, go.sum, go.work or go.work.sum. check.sh also
+          # runs the HasalaCore lints over ios/, but `secrets` runs them too.
+          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
+          # swift reads ios/ and conformance/ only.
+          skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
+          # web reads web/ and docs/legal/, and its Bun comes from the flake.
+          skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
 
-  # A skipped required job reports "skipped", which passes. It is skipped only
-  # when `changes` succeeded and said "false"; if `changes` failed, its outputs
-  # are empty and the job runs.
+  # A skipped required job reports "skipped", which passes. Each job below is
+  # skipped only when `changes` succeeded and said "false".
   gate:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.changes.outputs.gate != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -136,10 +150,10 @@ jobs:
       - name: scripts/check.sh
         run: nix develop --command scripts/check.sh
 
-  # Also the one job of the weekly schedule.
+  # vuln-weekly.yml runs the same scan on main every week.
   vuln:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.gate != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gate != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -169,7 +183,6 @@ jobs:
   # Runs on every pull request and push, whatever changed: it does not wait
   # for `changes`.
   secrets:
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -180,10 +193,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # `gate` runs the fence first too, but `gate` is skipped when nothing it
-      # reads changed; here it runs on every pull request. No toolchain needed.
+      # `gate` runs the fence and the HasalaCore lints too, but `gate` is
+      # skipped when nothing it reads changed (an ios/-only pull request, for
+      # one), and `swift` is not a required check; here they run on every pull
+      # request. Bash, grep and awk only: no toolchain, a few seconds.
       - name: Real-mail fence
         run: scripts/check.sh --fence-only
+
+      - name: HasalaCore import and API lints
+        run: |
+          ios/scripts/check-imports.sh --no-manifest
+          ios/scripts/check-forbidden.sh
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
@@ -206,7 +226,7 @@ jobs:
   # manifest that disagrees with it fails instead of resolving afresh.
   swift:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.changes.outputs.swift != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
     runs-on: macos-26
     timeout-minutes: 45
     env:
@@ -246,7 +266,7 @@ jobs:
   # temporary-public-storage). Nothing here deploys.
   web:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.changes.outputs.web != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

@@ -1,0 +1,55 @@
+# The weekly govulncheck of main: new Go advisories land without a commit, so
+# a scan that only runs on changes would miss them. It is ci.yml's `vuln` job
+# under another name, in its own workflow, so a scheduled run never records a
+# `gate`, `vuln` or `secrets` check (skipped or otherwise) on main's head.
+# Keep the steps in step with `vuln` in ci.yml.
+#
+# A schedule always runs the default branch's copy of this file. GitHub turns a
+# public repository's schedules off after 60 days without activity. It is not a
+# required check, so the `paths:` filter below (which runs it on a pull request
+# that edits this file, to prove the edit) cannot leave anything pending.
+#
+# Every action is pinned to a full commit SHA, with its release in a comment.
+name: Weekly vulnerability scan
+
+on:
+  schedule:
+    # Mondays 05:23 UTC.
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/vuln-weekly.yml
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  vuln-weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
+          diagnostic-endpoint: ""
+
+      # Non-zero when any vulnerability is reachable (symbol-level, the
+      # default); imported-but-unreachable ones are reported without failing.
+      - name: govulncheck ./... (server)
+        run: nix develop --command bash -c 'cd server && govulncheck ./...'
+
+      # server/oracle is a separate Go module that the scan above never reaches.
+      - name: govulncheck ./... (server/oracle)
+        run: nix develop --command bash -c 'cd server/oracle && govulncheck ./...'

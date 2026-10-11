@@ -141,7 +141,8 @@ fi
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
 # scan and the R2/R3/R7/R8 grep lints. The half of check-imports.sh that
 # compares imports.allow with Package.swift needs `swift`; CI's `swift` job
-# runs it.
+# runs it. CI's `secrets` job also runs these two on every pull request, since
+# `gate` is skipped on one that changes only ios/.
 step "HasalaCore import and API lints"
 "$ROOT/ios/scripts/check-imports.sh" --no-manifest
 "$ROOT/ios/scripts/check-forbidden.sh"
