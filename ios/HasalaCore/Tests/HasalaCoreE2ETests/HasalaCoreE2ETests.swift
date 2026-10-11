@@ -67,6 +67,37 @@ struct AccountTests {
     #expect(try a.binding?.writer_id == account.writerID.string)
   }
 
+  @Test("C1 interrupted: a new phrase bootstraps behind step-up keys.bootstrap, auth_kind 0, with the PRF wrap")
+  func interruptedPasskeyCreation() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let signup = try await AccountCreation.beginSignup(
+      a.env, inviteCode: invite, email: "maya@example.com", displayName: "Maya", inviteLinkKey: nil)
+    try await AccountCreation.verifySignup(a.env, signup, code: try #require(w.server.lastCode))
+    let lost = try NewAccountKeys.generate(random: a.env.random)
+    _ = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: lost)
+    lost.wipe()  // the app was killed while the words were on screen
+    #expect(Boot.decide(Boot.gather(a.env)) == .onboardingKeys)
+    let token = try #require(try a.env.secrets.session()).token
+    #expect(try await a.env.client.account(bearer: token).has_keys == false)
+
+    let fresh = try NewAccountKeys.generate(random: a.env.random)
+    let words = try fresh.words()
+    let account = try await AccountCreation.bootstrapInterrupted(a.env, keys: fresh)
+    #expect(try a.binding?.writer_id == account.writerID.string)
+    #expect(try a.binding?.display_name == "Maya")
+    #expect(try await a.env.client.account(bearer: token).has_keys == true)
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == 1)
+    // Bound now (in-memory stores read as "restoring"; never the keys step again).
+    #expect(Boot.decide(Boot.gather(a.env)) == .restoring)
+
+    // The NEW words open the account on another iPhone.
+    let b = w.phone("b", passkeys: a.passkeys)
+    let r = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: false)
+    let body = try await Enrolment.unlockWithPhrase(b.env, userID: try #require(r.userID), typed: words.joined(separator: " "))
+    body.wipe()
+  }
+
   @Test("C2b: a bound iPhone signs in with its writer; C2: a new iPhone unlocks with the passkey's PRF")
   func passkeySignIn() async throws {
     let w = World()
