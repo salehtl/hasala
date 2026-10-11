@@ -37,9 +37,11 @@ func (s *Server) handleFreezeLink(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	if len(raw) <= freezeLinkMax && json.Unmarshal(raw, &body) == nil && body.Token != "" {
-		if err := s.Accounts.FreezeByLink(r.Context(), body.Token); err != nil {
+		wake, err := s.Accounts.FreezeByLink(r.Context(), body.Token)
+		if err != nil {
 			s.logf("api: freeze link: %v", err)
 		}
+		s.securityWake(r.Context(), wake)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
@@ -58,10 +60,12 @@ func (s *Server) handleFreezeNow(w http.ResponseWriter, r *http.Request, _ uuid.
 	if !ok {
 		return
 	}
-	if err := s.Accounts.FreezeNow(r.Context(), info, su); err != nil {
+	wake, err := s.Accounts.FreezeNow(r.Context(), info, su)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -78,10 +82,12 @@ func (s *Server) handleUnfreeze(w http.ResponseWriter, r *http.Request, _ uuid.U
 	if !ok {
 		return
 	}
-	if err := s.Accounts.Unfreeze(r.Context(), info, su); err != nil {
+	wake, err := s.Accounts.Unfreeze(r.Context(), info, su)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -150,9 +156,11 @@ func (s *Server) handleDeviceFreeze(w http.ResponseWriter, r *http.Request) {
 	}
 	nonce, _ := b64std(req.Nonce)
 	sig, _ := b64std(req.Sig)
-	if err := s.Accounts.DeviceFreeze(r.Context(), req.WriterID, nonce, sig); err != nil {
+	wake, err := s.Accounts.DeviceFreeze(r.Context(), req.WriterID, nonce, sig)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }

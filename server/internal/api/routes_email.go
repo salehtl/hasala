@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // routes_email.go: email change and re-verification (spec 02 §10.12, routes
@@ -105,6 +107,8 @@ func (s *Server) handleEmailChangeFinish(w http.ResponseWriter, r *http.Request,
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	// Every other device hears of the new address (spec 02 §12.5).
+	s.wakeOthers(r.Context(), info.UserID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -187,7 +187,7 @@ func TestDeviceStepUpChangesThePassword(t *testing.T) {
 	wrong := append([]byte(nil), m.s...)
 	wrong[0] ^= 1
 	su := m.deviceStepUp(keyproto.ActionPasswordChange, wrong, vh)
-	if err := f.acct.ChangePassword(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a wrong current password: %v", err)
 	}
 	if n := f.count(`SELECT password_failures FROM users WHERE id = $1`, m.user.UserID); n != 1 {
@@ -200,7 +200,7 @@ func TestDeviceStepUpChangesThePassword(t *testing.T) {
 		t.Fatal("the failed proof did not burn its nonce")
 	}
 	f.fake.Reset()
-	if err := f.acct.ChangePassword(bgctx, m.info(), newS, m.deviceStepUp(keyproto.ActionPasswordChange, m.s, vh)); err != nil {
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, m.deviceStepUp(keyproto.ActionPasswordChange, m.s, vh)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.sessions.Resolve(bgctx, other.Session.Token); !errors.Is(err, ErrSessionRevoked) {
@@ -218,7 +218,7 @@ func TestDeviceStepUpChangesThePassword(t *testing.T) {
 	}
 	// A step-up for another params hash (another S_new) fails.
 	su = m.deviceStepUp(keyproto.ActionPasswordChange, newS, vh)
-	if err := f.acct.ChangePassword(bgctx, m.info(), m.s, su); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), m.s, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a step-up for another verifier: %v", err)
 	}
 }
@@ -232,7 +232,7 @@ func TestADeviceStepUpWithoutTheDAKNeverReachesThePassword(t *testing.T) {
 	su := m.deviceStepUp(keyproto.ActionPasswordChange, m.s, sumBytes(newS))
 	su.Proof.Sig = authtest.NewDevice(t).SignDAK(t, []byte("anything"))
 	before := f.keys.HashCount()
-	if err := f.acct.ChangePassword(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatal(err)
 	}
 	// ChangePassword hashes S_new once before the proof; the proof ran none.
@@ -281,12 +281,12 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	// step-up.
 	for i, guess := range []string{"12345", wrong, wrong, wrong} {
 		su.Proof.Code = guess
-		if err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
+		if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
 			t.Fatalf("guess %d: %v", i, err)
 		}
 	}
 	su.Proof.Code = code
-	if err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); err != nil {
+	if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); err != nil {
 		t.Fatalf("the right code after four wrong ones: %v", err)
 	}
 	if _, err := m.loginPassword(newS, nil); err != nil {
@@ -297,10 +297,10 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	su = begin()
 	su.Proof.Code = wrong
 	for i := 0; i < 5; i++ {
-		_ = f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su)
+		_, _ = f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su)
 	}
 	su.Proof.Code = f.lastCode(m.addr)
-	if err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("the nonce survived five wrong codes: %v", err)
 	}
 	i := m.info()
@@ -336,16 +336,16 @@ func TestSetAndRemoveAPasswordNeedAPasskey(t *testing.T) {
 			Assertion: a.AssertChallenge(t, authtest.RPID, b.Challenge[:], counter)}}
 	}
 	s := f.stretch(addr, "my first password here")
-	if err := f.acct.RemovePassword(bgctx, info, stepUp(keyproto.ActionPasswordRemove)); !errors.Is(err, ErrBadRequest) {
+	if _, err := f.acct.RemovePassword(bgctx, info, stepUp(keyproto.ActionPasswordRemove)); !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("removing an absent password: %v", err)
 	}
-	if err := f.acct.SetPassword(bgctx, info, s, stepUp(keyproto.ActionPasswordSet, sumBytes(s))); err != nil {
+	if _, err := f.acct.SetPassword(bgctx, info, s, stepUp(keyproto.ActionPasswordSet, sumBytes(s))); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.acct.SetPassword(bgctx, info, s, stepUp(keyproto.ActionPasswordSet, sumBytes(s))); !errors.Is(err, ErrConflict) {
+	if _, err := f.acct.SetPassword(bgctx, info, s, stepUp(keyproto.ActionPasswordSet, sumBytes(s))); !errors.Is(err, ErrConflict) {
 		t.Fatalf("a second set: %v", err)
 	}
-	if err := f.acct.RemovePassword(bgctx, info, stepUp(keyproto.ActionPasswordRemove)); err != nil {
+	if _, err := f.acct.RemovePassword(bgctx, info, stepUp(keyproto.ActionPasswordRemove)); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_hash IS NULL`, info.UserID); n != 1 {

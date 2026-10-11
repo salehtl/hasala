@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // AccountUsage is #40's usage object.
@@ -120,5 +122,7 @@ func (s *Server) handlePhraseView(w http.ResponseWriter, r *http.Request, _ uuid
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	// Every other device hears that the phrase was shown (spec 02 §12.5).
+	s.wakeOthers(r.Context(), info.UserID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusOK, PhraseViewResponse{PhraseBox: b64(box)})
 }

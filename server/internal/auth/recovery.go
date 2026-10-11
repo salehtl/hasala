@@ -193,6 +193,9 @@ type RecoverFinished struct {
 	Session  Minted
 	UserID   uuid.UUID
 	WriterID string
+	// Wake is every other device and every signed-out session (spec 02
+	// §12.5), sent once the recovery has committed.
+	Wake Wake
 }
 
 // RecoverFinish is #8. Every failure is ErrRecoveryRefused, except the
@@ -360,7 +363,8 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err := insertWriterTx(ctx, tx, userID, w, now); err != nil {
 		return RecoverFinished{}, refuse("%v", err)
 	}
-	if _, err := RevokeOtherSessionsTx(ctx, tx, userID, nil, now); err != nil {
+	revoked, err := RevokeOtherSessionsTx(ctx, tx, userID, nil, now)
+	if err != nil {
 		return release(err)
 	}
 	m, err := a.Sessions.IssueTx(ctx, tx, Mint{UserID: userID, MintedBy: MintedRecover, CredentialID: cred, WriterID: w.WriterID})
@@ -378,5 +382,6 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		return RecoverFinished{}, err
 	}
 	a.Mail.Kick()
-	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID}, nil
+	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID,
+		Wake: wakeFor(userID, w.WriterID, revoked)}, nil
 }

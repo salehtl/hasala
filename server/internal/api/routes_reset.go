@@ -80,10 +80,12 @@ func (s *Server) handleResetRequest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Accounts.ResetRequest(r.Context(), req.ResetID, ek); err != nil {
+	wake, err := s.Accounts.ResetRequest(r.Context(), req.ResetID, ek)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -170,6 +172,7 @@ func (s *Server) handleResetFinish(w http.ResponseWriter, r *http.Request) {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), out.Wake)
 	writeJSON(w, http.StatusCreated, SessionMintResponse{SessionToken: out.Session.Token, UserID: out.UserID.String(),
 		ExpiresAt: out.Session.ExpiresAt.UTC()})
 }

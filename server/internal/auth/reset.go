@@ -128,22 +128,26 @@ func (a *Accounts) ResetVerify(ctx context.Context, resetID, code string) (Reset
 }
 
 // ResetRequest is #51: the new iPhone's ephemeral key, stored once on a
-// verified, unexpired ceremony. Every failure is ErrResetRefused.
-func (a *Accounts) ResetRequest(ctx context.Context, resetID string, ekPub []byte) error {
+// verified, unexpired ceremony. Every failure is ErrResetRefused. The answer
+// wakes every live writer of the account, so one of them can approve (spec 02
+// §12.5).
+func (a *Accounts) ResetRequest(ctx context.Context, resetID string, ekPub []byte) (Wake, error) {
 	if keyproto.CheckEd25519PublicKey(ekPub) != nil {
-		return fmt.Errorf("%w: ek_pub", ErrResetRefused)
+		return Wake{}, fmt.Errorf("%w: ek_pub", ErrResetRefused)
 	}
-	tag, err := a.Pool.Exec(ctx,
+	var userID uuid.UUID
+	err := a.Pool.QueryRow(ctx,
 		`UPDATE password_reset_ceremonies SET ek_pubkey = $2
-		  WHERE id = $1 AND verified_at IS NOT NULL AND expires_at > $3 AND ek_pubkey IS NULL AND user_id IS NOT NULL`,
-		resetID, ekPub, a.now())
+		  WHERE id = $1 AND verified_at IS NOT NULL AND expires_at > $3 AND ek_pubkey IS NULL AND user_id IS NOT NULL
+		 RETURNING user_id`,
+		resetID, ekPub, a.now()).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Wake{}, fmt.Errorf("%w: not a waiting ceremony", ErrResetRefused)
+	}
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
-	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("%w: not a waiting ceremony", ErrResetRefused)
-	}
-	return nil
+	return wakeFor(userID, "", nil), nil
 }
 
 // PendingReset is one row of #52.
@@ -285,7 +289,8 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	}
 	// Keep the session the approval came from (spec 02 §10.9), and only it.
 	keep := [][]byte{approvedSession}
-	if _, err := RevokeOtherSessionsTx(ctx, tx, st.ID, keep, now); err != nil {
+	revoked, err := RevokeOtherSessionsTx(ctx, tx, st.ID, keep, now)
+	if err != nil {
 		return SignedIn{}, err
 	}
 	if err := recordEventTx(ctx, tx, a.Mail, st.ID, AuthEvent{Kind: EventPasswordReset}, now); err != nil {
@@ -299,5 +304,8 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 		return SignedIn{}, err
 	}
 	a.Mail.Kick()
+	// The new iPhone has no writer yet: every device of the account hears of
+	// the reset, the approver included (spec 02 §12.5).
+	out.Wake = wakeFor(st.ID, "", revoked)
 	return out, nil
 }

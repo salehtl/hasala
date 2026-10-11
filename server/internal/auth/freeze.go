@@ -26,6 +26,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // DeviceFreezeTTL is a device-freeze nonce's lifetime.
@@ -44,8 +45,9 @@ const (
 // freeze's time, freeze_trigger_at the earliest trigger; a holder's freeze on
 // an operator-frozen account is remembered in holder_also_froze and changes
 // nothing else about who may lift it. Every session except keep is revoked
-// and account_frozen recorded (with its alert).
-func freezeTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, by string, trigger, now time.Time, keep [][]byte, writer string) error {
+// and account_frozen recorded (with its alert). It answers the revoked
+// sessions' APNs tokens, to be woken after the commit.
+func freezeTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, by string, trigger, now time.Time, keep [][]byte, writer string) ([]pushv2.Target, error) {
 	var q string
 	if by == FrozenByOperator {
 		q = `UPDATE users SET frozen_at = coalesce(frozen_at, $2),
@@ -65,29 +67,31 @@ func freezeTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, by st
 	}
 	tag, err := tx.Exec(ctx, q, userID, now, trigger)
 	if err != nil {
-		return fmt.Errorf("auth: freeze: %w", err)
+		return nil, fmt.Errorf("auth: freeze: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
-		return ErrNoSuchAccount
+		return nil, ErrNoSuchAccount
 	}
-	if _, err := RevokeOtherSessionsTx(ctx, tx, userID, keep, now); err != nil {
-		return err
+	revoked, err := RevokeOtherSessionsTx(ctx, tx, userID, keep, now)
+	if err != nil {
+		return nil, err
 	}
-	return recordEventTx(ctx, tx, m, userID, AuthEvent{Kind: EventAccountFrozen, WriterID: writer}, now)
+	return revoked, recordEventTx(ctx, tx, m, userID, AuthEvent{Kind: EventAccountFrozen, WriterID: writer}, now)
 }
 
-// FreezeByLink is #64. It answers nothing: the route always answers 204, and
-// an invalid, used or expired token changes nothing.
-func (a *Accounts) FreezeByLink(ctx context.Context, token string) error {
+// FreezeByLink is #64. The route always answers 204, and an invalid, used or
+// expired token changes nothing (and wakes nobody); a freeze wakes every
+// device of the account (spec 02 §12.5).
+func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil || len(raw) != 32 || len(token) != 43 {
-		return nil
+		return Wake{}, nil
 	}
 	h := sha256.Sum256(raw)
 	now := a.now()
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	defer pgtx.Rollback(ctx, tx)
 	var (
@@ -98,30 +102,33 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) error {
 		`UPDATE freeze_tokens SET used_at = $2 WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2
 		 RETURNING user_id, trigger_at`, h[:], now).Scan(&userID, &trigger)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return Wake{}, nil
 	}
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
-	if err := freezeTx(ctx, tx, a.Mail, userID, FrozenByHolder, trigger, now, nil, ""); err != nil {
-		return err
+	revoked, err := freezeTx(ctx, tx, a.Mail, userID, FrozenByHolder, trigger, now, nil, "")
+	if err != nil {
+		return Wake{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return Wake{}, err
 	}
 	a.Mail.Kick()
-	return nil
+	return wakeFor(userID, "", revoked), nil
 }
 
 // FreezeNow is #65: step-up account.freeze, dated now, revoking every session
-// including this one.
-func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepUpObject) error {
+// including this one. The caller's own session is revoked like the others
+// ('others'), but its device is not woken: it asked.
+func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepUpObject) (Wake, error) {
 	ph, err := keyproto.ParamsHash(keyproto.ActionAccountFreeze)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionAccountFreeze, ParamsHash: ph, StepUp: su}
+	var revoked []pushv2.Target
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
@@ -131,12 +138,21 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 			return ErrAccountFrozen
 		}
 		now := a.now()
-		return freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, nil, p.WriterID)
+		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, p.WriterID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE sessions SET revoked_at = $2, revoked_reason = 'others' WHERE token_hash = $1 AND revoked_at IS NULL`,
+			session.Hash, now); err != nil {
+			return fmt.Errorf("auth: freeze: revoke this session: %w", err)
+		}
+		return forgetPushTokens(ctx, tx, `session_hash = $1`, session.Hash)
 	})
-	if err == nil {
-		a.Mail.Kick()
+	if err != nil {
+		return Wake{}, err
 	}
-	return err
+	a.Mail.Kick()
+	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
 
 // Unfreeze is #66: refused while frozen_by = 'operator' (nothing consumed),
@@ -144,26 +160,27 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 // asserting passkey's created_at, or (device) the writer's registered_at and
 // the password's password_set_at. The session stops being restricted and every
 // other session is revoked.
-func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUpObject) error {
+func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUpObject) (Wake, error) {
 	st, err := readAccount(ctx, a.Pool, session.UserID, false)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	if !st.frozen() {
-		return fmt.Errorf("%w: the account is not frozen", ErrBadRequest)
+		return Wake{}, fmt.Errorf("%w: the account is not frozen", ErrBadRequest)
 	}
 	if st.FrozenBy != nil && *st.FrozenBy == FrozenByOperator {
-		return fmt.Errorf("%w: only the operator lifts an operator freeze", ErrAccountFrozen)
+		return Wake{}, fmt.Errorf("%w: only the operator lifts an operator freeze", ErrAccountFrozen)
 	}
 	if su == nil {
-		return ErrStepUpRequired
+		return Wake{}, ErrStepUpRequired
 	}
 	ph, err := keyproto.ParamsHash(keyproto.ActionAccountUnfreeze)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionAccountUnfreeze, ParamsHash: ph, StepUp: su}
+	var revoked []pushv2.Target
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
@@ -202,16 +219,17 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		if _, err := tx.Exec(ctx, `UPDATE sessions SET restricted = false WHERE token_hash = $1`, session.Hash); err != nil {
 			return err
 		}
-		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
+		if revoked, err = RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
 			return err
 		}
 		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventAccountUnfrozen,
 			WriterID: p.WriterID, CredentialID: p.CredentialID}, now)
 	})
-	if err == nil {
-		a.Mail.Kick()
+	if err != nil {
+		return Wake{}, err
 	}
-	return err
+	a.Mail.Kick()
+	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
 
 // DeviceFreezeChallenge is #77: a nonce for any well-formed writer id, with no
@@ -239,23 +257,23 @@ func (a *Accounts) DeviceFreezeChallenge(ctx context.Context, writerID string) (
 // with its DAK. The freeze is dated back to the writer's latest session
 // revocation caused by something else, when that is within seven days. Every
 // failure is ErrFreezeRefused.
-func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig []byte) error {
+func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig []byte) (Wake, error) {
 	if !keyproto.ValidWriterID(writerID) || len(nonce) != keyproto.NonceSize {
-		return fmt.Errorf("%w: malformed", ErrFreezeRefused)
+		return Wake{}, fmt.Errorf("%w: malformed", ErrFreezeRefused)
 	}
 	now := a.now()
 	tag, err := a.Pool.Exec(ctx,
 		`UPDATE device_freeze_challenges SET used_at = $3
 		  WHERE nonce = $1 AND writer_id = $2 AND used_at IS NULL AND expires_at > $3`, nonce, writerID, now)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("%w: unknown, used, expired or another writer's nonce", ErrFreezeRefused)
+		return Wake{}, fmt.Errorf("%w: unknown, used, expired or another writer's nonce", ErrFreezeRefused)
 	}
 	rows, err := a.Pool.Query(ctx, `SELECT user_id, dak_pubkey FROM writers WHERE writer_id = $1 AND revoked_at IS NULL`, writerID)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	type cand struct {
 		user uuid.UUID
@@ -266,45 +284,46 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 		var c cand
 		if err := rows.Scan(&c.user, &c.dak); err != nil {
 			rows.Close()
-			return err
+			return Wake{}, err
 		}
 		cands = append(cands, c)
 	}
 	rows.Close()
 	if len(cands) != 1 {
-		return fmt.Errorf("%w: no single live writer", ErrFreezeRefused)
+		return Wake{}, fmt.Errorf("%w: no single live writer", ErrFreezeRefused)
 	}
 	c := cands[0]
 	msg, err := keyproto.DeviceFreezeMessage(nonce, c.user, writerID)
 	if err != nil || !keyproto.VerifyDAKBytes(c.dak, msg, sig) {
-		return fmt.Errorf("%w: the DAK signature", ErrFreezeRefused)
+		return Wake{}, fmt.Errorf("%w: the DAK signature", ErrFreezeRefused)
 	}
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	defer pgtx.Rollback(ctx, tx)
 	if err := lockUser(ctx, tx, c.user); err != nil {
-		return fmt.Errorf("%w: %v", ErrFreezeRefused, err)
+		return Wake{}, fmt.Errorf("%w: %v", ErrFreezeRefused, err)
 	}
 	trigger := now
 	var signedOut *time.Time
 	if err := tx.QueryRow(ctx,
 		`SELECT max(revoked_at) FROM sessions WHERE user_id = $1 AND writer_id = $2 AND revoked_reason = 'others'`,
 		c.user, writerID).Scan(&signedOut); err != nil {
-		return err
+		return Wake{}, err
 	}
 	if signedOut != nil && signedOut.After(now.Add(-deviceFreezeBackdate)) {
 		trigger = *signedOut
 	}
-	if err := freezeTx(ctx, tx, a.Mail, c.user, FrozenByHolder, trigger, now, nil, writerID); err != nil {
-		return err
+	revoked, err := freezeTx(ctx, tx, a.Mail, c.user, FrozenByHolder, trigger, now, nil, writerID)
+	if err != nil {
+		return Wake{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return Wake{}, err
 	}
 	a.Mail.Kick()
-	return nil
+	return wakeFor(c.user, writerID, revoked), nil
 }
 
 // OperatorFreeze is the console's freeze (C36, O-18): spec 01 §10.18's freeze
@@ -315,7 +334,10 @@ func OperatorFreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.T
 	if err := lockUser(ctx, tx, userID); err != nil {
 		return err
 	}
-	return freezeTx(ctx, tx, m, userID, FrozenByOperator, now, now, nil, "")
+	// The console and the CLI hold no APNs key: the devices learn of the
+	// freeze at their next request (401), and the alert email goes out.
+	_, err := freezeTx(ctx, tx, m, userID, FrozenByOperator, now, now, nil, "")
+	return err
 }
 
 // UnfreezeScope is who an operator unfreeze may lift.

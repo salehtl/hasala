@@ -162,6 +162,7 @@ func (s *Server) handleRecoverFinish(w http.ResponseWriter, r *http.Request) {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), out.Wake)
 	writeJSON(w, http.StatusCreated, WriterSessionResponse{SessionToken: out.Session.Token, UserID: out.UserID.String(),
 		ExpiresAt: out.Session.ExpiresAt.UTC(), WriterID: out.WriterID})
 }

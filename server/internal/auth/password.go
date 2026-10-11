@@ -19,6 +19,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // PasswordLoginTTL is a password-login ceremony's lifetime.
@@ -42,6 +43,9 @@ type SignedIn struct {
 	WriterID   string // "" when unbound
 	HasKeys    bool
 	Restricted bool
+	// Wake is set by C9 finish (#54), which signs other sessions out; a
+	// sign-in wakes nobody.
+	Wake Wake
 }
 
 // PasswordLoginBegun is #46's answer, identical in shape for every valid
@@ -435,15 +439,18 @@ func (a *Accounts) PasswordSalt(email string) ([]byte, error) {
 	return a.Keys.PasswordSalt(addr), nil
 }
 
-// passwordAction runs one of #55–#58 under its step-up.
+// passwordAction runs one of #55–#58 under its step-up. Every other session
+// is signed out, and the answer is who to wake once it has committed: the
+// account's other devices and the signed-out sessions' tokens (spec 02 §12.5).
 func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, action keyproto.Action, fields [][]byte,
-	su *StepUpObject, do func(ctx context.Context, tx pgx.Tx, st accountState, p Proven, now time.Time) (string, error)) error {
+	su *StepUpObject, do func(ctx context.Context, tx pgx.Tx, st accountState, p Proven, now time.Time) (string, error)) (Wake, error) {
 	ph, err := keyproto.ParamsHash(action, fields...)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: action, ParamsHash: ph, StepUp: su}
+	var revoked []pushv2.Target
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
 		st, err := readAccount(ctx, tx, session.UserID, true)
@@ -457,15 +464,16 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 		if err != nil {
 			return err
 		}
-		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
+		if revoked, err = RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
 			return err
 		}
 		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: event, WriterID: p.WriterID, CredentialID: p.CredentialID}, now)
 	})
-	if err == nil {
-		a.Mail.Kick()
+	if err != nil {
+		return Wake{}, err
 	}
-	return err
+	a.Mail.Kick()
+	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
 
 func verifierHash(v []byte) ([]byte, error) {
@@ -478,17 +486,17 @@ func verifierHash(v []byte) ([]byte, error) {
 
 // SetPassword is #56: step-up password.set (passkey), P = (SHA256(S_new)); the
 // account has no password yet (ErrConflict).
-func (a *Accounts) SetPassword(ctx context.Context, session SessionInfo, verifier []byte, su *StepUpObject) error {
+func (a *Accounts) SetPassword(ctx context.Context, session SessionInfo, verifier []byte, su *StepUpObject) (Wake, error) {
 	vh, err := verifierHash(verifier)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	if su == nil {
-		return ErrStepUpRequired
+		return Wake{}, ErrStepUpRequired
 	}
 	hash, salt, err := newPasswordHash(ctx, a.Keys, a.Gate, verifier)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	return a.passwordAction(ctx, session, keyproto.ActionPasswordSet, [][]byte{vh}, su,
 		func(ctx context.Context, tx pgx.Tx, st accountState, _ Proven, now time.Time) (string, error) {
@@ -501,17 +509,17 @@ func (a *Accounts) SetPassword(ctx context.Context, session SessionInfo, verifie
 
 // ChangePassword is #57: step-up password.change (passkey, or device with the
 // current S), P = (SHA256(S_new)); the account has a password.
-func (a *Accounts) ChangePassword(ctx context.Context, session SessionInfo, verifier []byte, su *StepUpObject) error {
+func (a *Accounts) ChangePassword(ctx context.Context, session SessionInfo, verifier []byte, su *StepUpObject) (Wake, error) {
 	vh, err := verifierHash(verifier)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	if su == nil {
-		return ErrStepUpRequired
+		return Wake{}, ErrStepUpRequired
 	}
 	hash, salt, err := newPasswordHash(ctx, a.Keys, a.Gate, verifier)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	return a.passwordAction(ctx, session, keyproto.ActionPasswordChange, [][]byte{vh}, su,
 		func(ctx context.Context, tx pgx.Tx, st accountState, _ Proven, now time.Time) (string, error) {
@@ -524,7 +532,7 @@ func (a *Accounts) ChangePassword(ctx context.Context, session SessionInfo, veri
 
 // RemovePassword is #58: step-up password.remove (passkey), P = (); the
 // account keeps at least one passkey (ErrLastAuthenticator).
-func (a *Accounts) RemovePassword(ctx context.Context, session SessionInfo, su *StepUpObject) error {
+func (a *Accounts) RemovePassword(ctx context.Context, session SessionInfo, su *StepUpObject) (Wake, error) {
 	return a.passwordAction(ctx, session, keyproto.ActionPasswordRemove, nil, su,
 		func(ctx context.Context, tx pgx.Tx, st accountState, _ Proven, now time.Time) (string, error) {
 			if !st.hasPassword() {
@@ -549,17 +557,17 @@ func (a *Accounts) RemovePassword(ctx context.Context, session SessionInfo, su *
 // ResetPasswordWithCode is #55, C8 on a signed-in iPhone: step-up
 // password.reset (device_code: the DAK plus the emailed code), P =
 // (SHA256(S_new)); the account has a password.
-func (a *Accounts) ResetPasswordWithCode(ctx context.Context, session SessionInfo, verifier []byte, su *StepUpObject) error {
+func (a *Accounts) ResetPasswordWithCode(ctx context.Context, session SessionInfo, verifier []byte, su *StepUpObject) (Wake, error) {
 	vh, err := verifierHash(verifier)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	if su == nil {
-		return ErrStepUpRequired
+		return Wake{}, ErrStepUpRequired
 	}
 	hash, salt, err := newPasswordHash(ctx, a.Keys, a.Gate, verifier)
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	return a.passwordAction(ctx, session, keyproto.ActionPasswordReset, [][]byte{vh}, su,
 		func(ctx context.Context, tx pgx.Tx, st accountState, _ Proven, now time.Time) (string, error) {

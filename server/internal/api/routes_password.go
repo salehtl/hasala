@@ -88,8 +88,10 @@ type StepUpOnlyRequest struct {
 	StepUp *StepUpWire `json:"step_up"`
 }
 
+// verifierRoute runs one of #55–#57 and, once it has committed, wakes the
+// account's other devices and the sessions it signed out (spec 02 §12.5).
 func (s *Server) verifierRoute(w http.ResponseWriter, r *http.Request,
-	do func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) error) {
+	do func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) (auth.Wake, error)) {
 	var req VerifierStepUpRequest
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
@@ -106,10 +108,12 @@ func (s *Server) verifierRoute(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	if err := do(info, v, su); err != nil {
+	wake, err := do(info, v, su)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -118,19 +122,19 @@ func (s *Server) handlePasswordResetC8(w http.ResponseWriter, r *http.Request, _
 	if !ok || !s.requireBound(w, r, info) {
 		return
 	}
-	s.verifierRoute(w, r, func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) error {
+	s.verifierRoute(w, r, func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) (auth.Wake, error) {
 		return s.Accounts.ResetPasswordWithCode(r.Context(), info, v, su)
 	})
 }
 
 func (s *Server) handlePasswordSet(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
-	s.verifierRoute(w, r, func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) error {
+	s.verifierRoute(w, r, func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) (auth.Wake, error) {
 		return s.Accounts.SetPassword(r.Context(), info, v, su)
 	})
 }
 
 func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
-	s.verifierRoute(w, r, func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) error {
+	s.verifierRoute(w, r, func(info auth.SessionInfo, v []byte, su *auth.StepUpObject) (auth.Wake, error) {
 		return s.Accounts.ChangePassword(r.Context(), info, v, su)
 	})
 }
@@ -148,10 +152,12 @@ func (s *Server) handlePasswordRemove(w http.ResponseWriter, r *http.Request, _ 
 	if !ok {
 		return
 	}
-	if err := s.Accounts.RemovePassword(r.Context(), info, su); err != nil {
+	wake, err := s.Accounts.RemovePassword(r.Context(), info, su)
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }
 

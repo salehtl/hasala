@@ -49,10 +49,12 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 	ekPub, ek, _ := ed25519.GenerateKey(rand.Reader)
-	if err := f.acct.ResetRequest(bgctx, id, ekPub); err != nil {
-		t.Fatal(err)
+	// The request wakes every live writer of the account, so one can approve
+	// (spec 02 §12.5).
+	if wake, err := f.acct.ResetRequest(bgctx, id, ekPub); err != nil || wake.UserID != m.user.UserID || wake.Except != "" {
+		t.Fatalf("reset request: %+v %v", wake, err)
 	}
-	if err := f.acct.ResetRequest(bgctx, id, ekPub); !errors.Is(err, ErrResetRefused) {
+	if _, err := f.acct.ResetRequest(bgctx, id, ekPub); !errors.Is(err, ErrResetRefused) {
 		t.Fatalf("a second ek_pub: %v", err)
 	}
 	newS := f.stretch(m.addr, "a brand new password")
@@ -91,6 +93,9 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 	in, err := f.acct.ResetFinish(bgctx, id, newS, finishSig(newS))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if in.Wake.UserID != m.user.UserID || in.Wake.Except != "" {
+		t.Fatalf("the reset wakes %+v, want every device of the account", in.Wake)
 	}
 	i, err := f.sessions.Info(bgctx, in.Session.Token)
 	if err != nil || i.MintedBy != MintedPasswordReset || i.WriterID != "" {
@@ -401,7 +406,7 @@ func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
 	}
 	tok := f.freezeToken(m.addr)
 	f.clock.advance(time.Minute)
-	if err := f.acct.FreezeByLink(bgctx, tok); err != nil {
+	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
 		t.Fatal(err)
 	}
 	for _, s := range []string{m.token, intruder.Session.Token} {
@@ -409,7 +414,7 @@ func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
 			t.Fatal("a session survived the freeze")
 		}
 	}
-	if err := f.acct.FreezeByLink(bgctx, tok); err != nil {
+	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
 		t.Fatal("a used token is still a silent success")
 	}
 	// Sign-ins are restricted now.
@@ -420,7 +425,7 @@ func TestTheFreezeLinkFreezesAndOnlyAnOlderFactorUnfreezes(t *testing.T) {
 	m.token = in.Session.Token
 	// The device (registered before the trigger) and the password (set before
 	// it) are older than the event: the unfreeze works.
-	if err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	if m.info().Restricted {
@@ -435,7 +440,7 @@ func TestANewPasswordCannotUnfreeze(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
-	if err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.sessions.Resolve(bgctx, m.token); !errors.Is(err, ErrSessionRevoked) {
@@ -449,7 +454,7 @@ func TestANewPasswordCannotUnfreeze(t *testing.T) {
 	if _, err := f.pool.Exec(bgctx, `UPDATE users SET password_set_at = $2 WHERE id = $1`, m.user.UserID, f.clock.now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); !errors.Is(err, ErrStepUpFailed) {
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("a factor newer than the freeze: %v", err)
 	}
 }
@@ -471,7 +476,7 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 	if _, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionAccountUnfreeze, ph[:], keyproto.ProofDevice); !errors.Is(err, ErrAccountFrozen) {
 		t.Fatalf("an unfreeze step-up on an operator freeze: %v", err)
 	}
-	if err := f.acct.Unfreeze(bgctx, i, &StepUpObject{Nonce: make([]byte, 32)}); !errors.Is(err, ErrAccountFrozen) {
+	if _, err := f.acct.Unfreeze(bgctx, i, &StepUpObject{Nonce: make([]byte, 32)}); !errors.Is(err, ErrAccountFrozen) {
 		t.Fatalf("the holder's unfreeze of an operator freeze: %v", err)
 	}
 	// A holder freeze laid on it (the device freeze) keeps the operator's.
@@ -480,7 +485,7 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg, _ := keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
-	if err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); err != nil {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); err != nil {
 		t.Fatal(err)
 	}
 	var (
@@ -540,15 +545,15 @@ func TestADeviceFreezeIsDatedBackToTheSignOut(t *testing.T) {
 	msg, _ := keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
 	bad := m.device.SignDAK(t, msg)
 	bad[40] ^= 1
-	if err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, bad); !errors.Is(err, ErrFreezeRefused) {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, bad); !errors.Is(err, ErrFreezeRefused) {
 		t.Fatal(err)
 	}
-	if err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); !errors.Is(err, ErrFreezeRefused) {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); !errors.Is(err, ErrFreezeRefused) {
 		t.Fatal("a nonce served twice")
 	}
 	nonce, _, _ = f.acct.DeviceFreezeChallenge(bgctx, m.device.WriterID)
 	msg, _ = keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
-	if err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); err != nil {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); err != nil {
 		t.Fatal(err)
 	}
 	var trigger time.Time

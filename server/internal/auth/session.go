@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // sessionTokenBytes is the entropy in a session token, before encoding.
@@ -366,23 +367,35 @@ func (s *Sessions) RevokeAllForUser(ctx context.Context, userID uuid.UUID) error
 // RevokeOtherSessionsTx is spec 02 §9.3's RevokeOtherSessions: every live
 // session of the account except keep is revoked with reason 'others', and
 // their APNs tokens deleted, inside the action's transaction. Writers, keys
-// and wraps are untouched. It answers how many sessions it revoked.
-func RevokeOtherSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keep [][]byte, now time.Time) (int64, error) {
+// and wraps are untouched. It answers the deleted tokens, so the caller can
+// wake those devices once its transaction commits (§12.5: "for every revoked
+// session, its token collected before deletion").
+func RevokeOtherSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keep [][]byte, now time.Time) ([]pushv2.Target, error) {
 	if keep == nil {
 		keep = [][]byte{}
 	}
-	if err := forgetPushTokens(ctx, tx,
-		`user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
-		   WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[])))`, userID, keep); err != nil {
-		return 0, err
-	}
-	tag, err := tx.Exec(ctx,
-		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
-		  WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[]))`, userID, keep, now)
+	rows, err := tx.Query(ctx,
+		`DELETE FROM apns_tokens
+		  WHERE user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
+		    WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[])))
+		 RETURNING token_hex, environment`, userID, keep)
 	if err != nil {
-		return 0, fmt.Errorf("auth: revoke other sessions of %s: %w", userID, err)
+		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
 	}
-	return tag.RowsAffected(), nil
+	revoked, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (pushv2.Target, error) {
+		var t pushv2.Target
+		err := r.Scan(&t.TokenHex, &t.Environment)
+		return t, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
+		  WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[]))`, userID, keep, now); err != nil {
+		return nil, fmt.Errorf("auth: revoke other sessions: %w", err)
+	}
+	return revoked, nil
 }
 
 // ErrSessionBound means a bind was asked of a session that is already bound
