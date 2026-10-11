@@ -362,7 +362,7 @@ jobs:
             -project ios/Hasala.xcodeproj -scheme Hasala \
             -destination "id=$udid" \
             -resultBundlePath "$RUNNER_TEMP/Hasala.xcresult" \
-            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+            CODE_SIGNING_ALLOWED=NO HASALA_WARNINGS_AS_ERRORS=YES
 
       - name: Keep the test report
         if: always()
