@@ -343,7 +343,7 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 #           Listed so the gap stays on screen.
 #   structure  TypeScript only since WS-1: its Go executor was ledgerd's
 #           diagnostics telemetry (internal/diag), retired with it (spec 02 §2).
-#   authres, norm-dates
+#   authres, categorize, norm-dates
 #           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
 #           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
 #           executor joins CI's `swift` job with the port (WS-8, WS-10). The
@@ -356,6 +356,7 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 CONFORMANCE=(
 	"authres||src/mail/authres-conformance.test.ts"
 	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
+	"categorize||src/categorize/oracle-conformance.test.ts"
 	"crypto||"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"

@@ -1,0 +1,866 @@
+{
+  "note": "Written by reference/ledgerd-client/scripts/gen-categorize-conformance.ts from the TypeScript oracle (src/categorize); do not hand-edit. See README.md. `entries`: validateDictEntry(entry), the canonical entry or the defect. `lookups`: prepare([], dictionary) \u2014 the prepared order and the defects \u2014 and categorize(merchant) for each merchant.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "name": "plain-contains",
+      "entry": {
+        "pattern": "CARREFOUR",
+        "match": "contains",
+        "category": "Groceries"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "groceries"
+        }
+      }
+    },
+    {
+      "name": "plain-exact",
+      "entry": {
+        "pattern": "Noon.com",
+        "match": "exact",
+        "category": "shopping"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "noon.com",
+          "match": "exact",
+          "category": "shopping"
+        }
+      }
+    },
+    {
+      "name": "canonicalized",
+      "entry": {
+        "pattern": "  Dubai \u00a0 Mall ",
+        "match": "contains",
+        "category": "  shopping  "
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "dubai mall",
+          "match": "contains",
+          "category": "shopping"
+        }
+      }
+    },
+    {
+      "name": "regex-not-allowed",
+      "entry": {
+        "pattern": "^carrefour",
+        "match": "regex",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "regex ^carrefour -> groceries",
+          "code": "regex_not_allowed"
+        }
+      }
+    },
+    {
+      "name": "unknown-match",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "starts_with",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "starts_with carrefour -> groceries",
+          "code": "unknown_match"
+        }
+      }
+    },
+    {
+      "name": "multiline-pattern",
+      "entry": {
+        "pattern": "carre\nfour",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carre\nfour -> groceries",
+          "code": "multiline"
+        }
+      }
+    },
+    {
+      "name": "multiline-category",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "groc\reries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carrefour -> groc\reries",
+          "code": "multiline"
+        }
+      }
+    },
+    {
+      "name": "paragraph-separator",
+      "entry": {
+        "pattern": "carre\u2029four",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carre\u2029four -> groceries",
+          "code": "multiline"
+        }
+      }
+    },
+    {
+      "name": "empty-pattern",
+      "entry": {
+        "pattern": "   ",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains     -> groceries",
+          "code": "empty_pattern"
+        }
+      }
+    },
+    {
+      "name": "no-letter-or-digit",
+      "entry": {
+        "pattern": "----",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains ---- -> groceries",
+          "code": "pattern_not_alnum"
+        }
+      }
+    },
+    {
+      "name": "arabic-letters-are-alnum",
+      "entry": {
+        "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+          "match": "contains",
+          "category": "groceries"
+        }
+      }
+    },
+    {
+      "name": "arabic-indic-digits-are-alnum",
+      "entry": {
+        "pattern": "\u0661\u0662\u0663\u0664",
+        "match": "contains",
+        "category": "other"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "\u0661\u0662\u0663\u0664",
+          "match": "contains",
+          "category": "other"
+        }
+      }
+    },
+    {
+      "name": "unprintable-format-char",
+      "entry": {
+        "pattern": "car\u200bfour",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains car\u200bfour -> groceries",
+          "code": "pattern_unprintable"
+        }
+      }
+    },
+    {
+      "name": "unprintable-control",
+      "entry": {
+        "pattern": "car\u0007four",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains car\u0007four -> groceries",
+          "code": "pattern_unprintable"
+        }
+      }
+    },
+    {
+      "name": "unprintable-private-use",
+      "entry": {
+        "pattern": "car\ue000four",
+        "match": "contains",
+        "category": "groceries"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains car\ue000four -> groceries",
+          "code": "pattern_unprintable"
+        }
+      }
+    },
+    {
+      "name": "empty-category",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": " "
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carrefour ->  ",
+          "code": "empty_category"
+        }
+      }
+    },
+    {
+      "name": "category-one-rune",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "g"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carrefour -> g",
+          "code": "category_too_short"
+        }
+      }
+    },
+    {
+      "name": "category-two-runes",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "gx"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "gx"
+        }
+      }
+    },
+    {
+      "name": "category-32-runes",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "cccccccccccccccccccccccccccccccc"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "cccccccccccccccccccccccccccccccc"
+        }
+      }
+    },
+    {
+      "name": "category-33-runes",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "ccccccccccccccccccccccccccccccccc"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carrefour -> ccccccccccccccccccccccccccccccccc",
+          "code": "category_too_long"
+        }
+      }
+    },
+    {
+      "name": "category-label-charset",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "food & drink/takeaway_1-2"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "food & drink/takeaway_1-2"
+        }
+      }
+    },
+    {
+      "name": "category-leading-symbol",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "&food"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carrefour -> &food",
+          "code": "category_not_a_label"
+        }
+      }
+    },
+    {
+      "name": "category-non-ascii",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "\u0628\u0642\u0627\u0644\u0629"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains carrefour -> \u0628\u0642\u0627\u0644\u0629",
+          "code": "category_not_a_label"
+        }
+      }
+    },
+    {
+      "name": "category-upper-folds",
+      "entry": {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "GROCERIES"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "groceries"
+        }
+      }
+    },
+    {
+      "name": "pattern-64-runes",
+      "entry": {
+        "pattern": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+        "match": "contains",
+        "category": "other"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "match": "contains",
+          "category": "other"
+        }
+      }
+    },
+    {
+      "name": "pattern-65-runes",
+      "entry": {
+        "pattern": "ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+        "match": "contains",
+        "category": "other"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp -> other",
+          "code": "pattern_too_long"
+        }
+      }
+    },
+    {
+      "name": "contains-3-runes",
+      "entry": {
+        "pattern": "abc",
+        "match": "contains",
+        "category": "other"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "contains abc -> other",
+          "code": "contains_too_short"
+        }
+      }
+    },
+    {
+      "name": "contains-4-runes",
+      "entry": {
+        "pattern": "abcd",
+        "match": "contains",
+        "category": "other"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "abcd",
+          "match": "contains",
+          "category": "other"
+        }
+      }
+    },
+    {
+      "name": "exact-1-rune",
+      "entry": {
+        "pattern": "a",
+        "match": "exact",
+        "category": "other"
+      },
+      "expect": {
+        "ok": false,
+        "defect": {
+          "id": "exact a -> other",
+          "code": "exact_too_short"
+        }
+      }
+    },
+    {
+      "name": "exact-2-runes",
+      "entry": {
+        "pattern": "ab",
+        "match": "exact",
+        "category": "other"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "ab",
+          "match": "exact",
+          "category": "other"
+        }
+      }
+    },
+    {
+      "name": "astral-pattern-runes",
+      "entry": {
+        "pattern": "\ud83d\ude00\ud83d\ude00\ud83d\ude00a",
+        "match": "contains",
+        "category": "other"
+      },
+      "expect": {
+        "ok": true,
+        "entry": {
+          "pattern": "\ud83d\ude00\ud83d\ude00\ud83d\ude00a",
+          "match": "contains",
+          "category": "other"
+        }
+      }
+    }
+  ],
+  "lookups": {
+    "dictionary": [
+      {
+        "pattern": "carrefour",
+        "match": "contains",
+        "category": "groceries"
+      },
+      {
+        "pattern": "carrefour market",
+        "match": "contains",
+        "category": "groceries market"
+      },
+      {
+        "pattern": "spinneys",
+        "match": "contains",
+        "category": "groceries"
+      },
+      {
+        "pattern": "talabat",
+        "match": "contains",
+        "category": "dining"
+      },
+      {
+        "pattern": "talabat mart",
+        "match": "contains",
+        "category": "groceries"
+      },
+      {
+        "pattern": "careem",
+        "match": "contains",
+        "category": "transport"
+      },
+      {
+        "pattern": "careem food",
+        "match": "contains",
+        "category": "dining"
+      },
+      {
+        "pattern": "noon.com",
+        "match": "exact",
+        "category": "shopping"
+      },
+      {
+        "pattern": "noon",
+        "match": "exact",
+        "category": "shopping"
+      },
+      {
+        "pattern": "enoc",
+        "match": "contains",
+        "category": "fuel"
+      },
+      {
+        "pattern": "adnoc",
+        "match": "contains",
+        "category": "fuel"
+      },
+      {
+        "pattern": "dewa",
+        "match": "exact",
+        "category": "utilities"
+      },
+      {
+        "pattern": "netflix.com",
+        "match": "exact",
+        "category": "subscriptions"
+      },
+      {
+        "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+        "match": "contains",
+        "category": "groceries"
+      },
+      {
+        "pattern": "\u0637\u0644\u0628\u0627\u062a",
+        "match": "contains",
+        "category": "dining"
+      },
+      {
+        "pattern": "on",
+        "match": "contains",
+        "category": "charity"
+      },
+      {
+        "pattern": "^regex",
+        "match": "regex",
+        "category": "never"
+      }
+    ],
+    "expect": {
+      "entries": [
+        {
+          "id": "exact netflix.com",
+          "pattern": "netflix.com",
+          "match": "exact",
+          "category": "subscriptions",
+          "priority": 0
+        },
+        {
+          "id": "exact noon.com",
+          "pattern": "noon.com",
+          "match": "exact",
+          "category": "shopping",
+          "priority": 0
+        },
+        {
+          "id": "exact dewa",
+          "pattern": "dewa",
+          "match": "exact",
+          "category": "utilities",
+          "priority": 0
+        },
+        {
+          "id": "exact noon",
+          "pattern": "noon",
+          "match": "exact",
+          "category": "shopping",
+          "priority": 0
+        },
+        {
+          "id": "contains carrefour market",
+          "pattern": "carrefour market",
+          "match": "contains",
+          "category": "groceries market",
+          "priority": 0
+        },
+        {
+          "id": "contains talabat mart",
+          "pattern": "talabat mart",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 0
+        },
+        {
+          "id": "contains careem food",
+          "pattern": "careem food",
+          "match": "contains",
+          "category": "dining",
+          "priority": 0
+        },
+        {
+          "id": "contains carrefour",
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 0
+        },
+        {
+          "id": "contains spinneys",
+          "pattern": "spinneys",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 0
+        },
+        {
+          "id": "contains talabat",
+          "pattern": "talabat",
+          "match": "contains",
+          "category": "dining",
+          "priority": 0
+        },
+        {
+          "id": "contains careem",
+          "pattern": "careem",
+          "match": "contains",
+          "category": "transport",
+          "priority": 0
+        },
+        {
+          "id": "contains \u0643\u0627\u0631\u0641\u0648\u0631",
+          "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 0
+        },
+        {
+          "id": "contains adnoc",
+          "pattern": "adnoc",
+          "match": "contains",
+          "category": "fuel",
+          "priority": 0
+        },
+        {
+          "id": "contains \u0637\u0644\u0628\u0627\u062a",
+          "pattern": "\u0637\u0644\u0628\u0627\u062a",
+          "match": "contains",
+          "category": "dining",
+          "priority": 0
+        },
+        {
+          "id": "contains enoc",
+          "pattern": "enoc",
+          "match": "contains",
+          "category": "fuel",
+          "priority": 0
+        }
+      ],
+      "defects": [
+        {
+          "id": "contains on -> charity",
+          "code": "contains_too_short"
+        },
+        {
+          "id": "regex ^regex -> never",
+          "code": "regex_not_allowed"
+        }
+      ],
+      "decisions": [
+        {
+          "merchant": "CARREFOUR",
+          "decision": {
+            "category": "groceries",
+            "source": "dictionary",
+            "pattern": "carrefour",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "CARREFOUR MARKET JLT",
+          "decision": {
+            "category": "groceries market",
+            "source": "dictionary",
+            "pattern": "carrefour market",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "MAF CARREFOUR MARKET",
+          "decision": {
+            "category": "groceries market",
+            "source": "dictionary",
+            "pattern": "carrefour market",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "TALABAT",
+          "decision": {
+            "category": "dining",
+            "source": "dictionary",
+            "pattern": "talabat",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "TALABAT MART",
+          "decision": {
+            "category": "groceries",
+            "source": "dictionary",
+            "pattern": "talabat mart",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "CAREEM FOOD",
+          "decision": {
+            "category": "dining",
+            "source": "dictionary",
+            "pattern": "careem food",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "CAREEM RIDE",
+          "decision": {
+            "category": "transport",
+            "source": "dictionary",
+            "pattern": "careem",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "NOON",
+          "decision": {
+            "category": "shopping",
+            "source": "dictionary",
+            "pattern": "noon",
+            "match": "exact"
+          }
+        },
+        {
+          "merchant": "NOON.COM",
+          "decision": {
+            "category": "shopping",
+            "source": "dictionary",
+            "pattern": "noon.com",
+            "match": "exact"
+          }
+        },
+        {
+          "merchant": "NOON MINUTES",
+          "decision": {
+            "category": null,
+            "source": "none"
+          }
+        },
+        {
+          "merchant": "ENOC 1043",
+          "decision": {
+            "category": "fuel",
+            "source": "dictionary",
+            "pattern": "enoc",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "ADNOC 556",
+          "decision": {
+            "category": "fuel",
+            "source": "dictionary",
+            "pattern": "adnoc",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "DEWA",
+          "decision": {
+            "category": "utilities",
+            "source": "dictionary",
+            "pattern": "dewa",
+            "match": "exact"
+          }
+        },
+        {
+          "merchant": "DEWA BILL",
+          "decision": {
+            "category": null,
+            "source": "none"
+          }
+        },
+        {
+          "merchant": "NETFLIX.COM",
+          "decision": {
+            "category": "subscriptions",
+            "source": "dictionary",
+            "pattern": "netflix.com",
+            "match": "exact"
+          }
+        },
+        {
+          "merchant": "AMAZON",
+          "decision": {
+            "category": null,
+            "source": "none"
+          }
+        },
+        {
+          "merchant": "\u0643\u0627\u0631\u0641\u0648\u0631 \u0627\u0644\u0628\u0631\u0634\u0627\u0621",
+          "decision": {
+            "category": "groceries",
+            "source": "dictionary",
+            "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "\u0637\u0644\u0628\u0627\u062a",
+          "decision": {
+            "category": "dining",
+            "source": "dictionary",
+            "pattern": "\u0637\u0644\u0628\u0627\u062a",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "TALABATMART",
+          "decision": {
+            "category": "dining",
+            "source": "dictionary",
+            "pattern": "talabat",
+            "match": "contains"
+          }
+        },
+        {
+          "merchant": "",
+          "decision": {
+            "category": null,
+            "source": "none"
+          }
+        }
+      ]
+    }
+  }
+}

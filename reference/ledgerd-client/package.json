@@ -9,6 +9,7 @@
     "cli": "bun run src/cli/main.ts",
     "gen-fx-conformance": "bun run scripts/gen-fx-conformance.ts",
     "gen-authres-conformance": "bun run scripts/gen-authres-conformance.ts",
+    "gen-categorize-conformance": "bun run scripts/gen-categorize-conformance.ts",
     "gen-norm-dates-conformance": "bun run scripts/gen-norm-dates-conformance.ts"
   },
   "devDependencies": {
