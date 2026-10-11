@@ -139,21 +139,14 @@ func TestValidCodeCreatesExactlyOneAccountAndIsMarkedRedeemed(t *testing.T) {
 		t.Fatalf("redeemed_by = %v, want %v", redeemedBy, u)
 	}
 
-	// The counter row and the ingest writer are still created — the invite gate
-	// wraps UpsertUser's transaction rather than replacing it.
-	var seqs, writers int
+	// The counter row is still created — the invite gate wraps UpsertUser's
+	// transaction rather than replacing it.
+	var seqs int
 	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM oplog_seq WHERE user_id = $1`, u).Scan(&seqs); err != nil {
 		t.Fatal(err)
 	}
 	if seqs != 1 {
 		t.Fatalf("oplog_seq rows = %d, want 1", seqs)
-	}
-	if err := pool.QueryRow(bgctx,
-		`SELECT count(*) FROM writers WHERE user_id = $1 AND writer_id = 'ingest'`, u).Scan(&writers); err != nil {
-		t.Fatal(err)
-	}
-	if writers != 1 {
-		t.Fatalf("ingest writer rows = %d, want 1", writers)
 	}
 }
 

@@ -88,33 +88,15 @@ func tokenHash(token string) []byte {
 // log or a backup names a session without being usable as one.
 func SessionHash(token string) []byte { return tokenHash(token) }
 
-// forgetPushTokens is the sweep both revocation paths in this file share.
-//
-// # Why auth writes a table that belongs to pushv2
-//
-// It is deliberate and it is not layering sloppiness: a revocation that stops a
-// device from WRITING but leaves it receiving a real-time "New transaction" on
-// its lock screen is not a revocation. Before 00019 that was exactly the
-// behaviour — a stolen phone kept the notification feed for the life of the
-// account and neither the user nor the operator had any way to stop it.
-//
-// It runs inside the caller's transaction so that the two facts commit
-// together. A sweep issued afterwards, as a second statement, would leave a
-// window where the key is retired and the notifications are not, and — worse —
-// a process that died in that window would leave it open permanently, with
-// nothing in the system that would ever notice.
-// It sweeps BOTH notification tables. push_subscriptions (00029) is the PWA's
-// Web Push half, and it carries the identical user_id / writer_id / session_hash
-// columns for exactly this reason: every `where` clause the three call sites
-// pass is valid against both, so there is no shape in which one table is swept
-// and the other is not. Adding a notification channel that this function does
-// not know about would silently re-open the hole 00019 was written to close.
+// forgetPushTokens is the sweep every revocation path shares: it deletes the
+// APNs tokens a revocation must silence (spec 02 §9.3, F4), inside the
+// caller's transaction so the revocation and the silence commit together. A
+// revocation that stops a device from WRITING but leaves it receiving wakes is
+// not a revocation. `where` names columns of apns_tokens (user_id, writer_id,
+// session_hash).
 func forgetPushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM push_tokens WHERE `+where, args...); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM apns_tokens WHERE `+where, args...); err != nil {
 		return fmt.Errorf("auth: forget push tokens: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM push_subscriptions WHERE `+where, args...); err != nil {
-		return fmt.Errorf("auth: forget push subscriptions: %w", err)
 	}
 	return nil
 }
@@ -325,7 +307,7 @@ const tombstoneGrace = 30 * 24 * time.Hour
 //
 // deletedOrUnknown runs on every unrecognized bearer token, so reaping there
 // would let anyone holding a socket make this server write. This is called from
-// cmd/ledgerd's hourly sweep loop instead: not attacker-triggerable, and it
+// cmd/hasalad's hourly sweep loop instead: not attacker-triggerable, and it
 // still runs on a deployment where nobody deletes an account for a year.
 func (s *Sessions) ReapDeletedAccountTombstones(ctx context.Context) (int64, error) {
 	if s.Pool == nil {
@@ -547,30 +529,6 @@ func upsertUser(ctx context.Context, pool *pgxpool.Pool, id Identity, invite *[]
 	// Idempotent (ON CONFLICT DO NOTHING inside), so running it for a
 	// returning user is a no-op and never resets next_seq.
 	if err := oplog.EnsureSeqRow(ctx, tx, userID); err != nil {
-		return uuid.Nil, fmt.Errorf("auth: UpsertUser: %w", err)
-	}
-	// The server's own writer, in the SAME transaction and for the same reason
-	// the counter row is: a roster that is missing a writer whose chain exists
-	// is a roster nothing can be checked against.
-	//
-	// Specifically — and this is the defect it fixes rather than a nicety — a
-	// device's `writer_checkpoint` names one head per ROSTER writer, so while
-	// `ingest` was absent from the roster no checkpoint said anything about the
-	// chain the user's MAIL lands on. That is the one chain a user cannot
-	// re-derive from any device they hold and the one written by the party the
-	// threat model declines to trust, and a server that dropped the last N
-	// emails left a chain still dense from 1: row contiguity and the hash chain
-	// both verify, and nothing contradicted it. With the writer on the roster,
-	// I11 covers `ingest` like any other and a truncation behind a signed
-	// checkpoint is a `chain_withheld` hard stop on the next device to sync.
-	//
-	// Here rather than on the ingest path because the EMPTY chain is the common
-	// case: an account exists long before its first email, and its first
-	// checkpoint has to be able to name `ingest` at counter 0 with the genesis
-	// hash. Creating it on first delivery instead would make every account's
-	// first email an I11 coverage hard stop until some device checkpointed
-	// again. Idempotent, so a returning user's sign-in writes nothing.
-	if err := ensureIngestWriterTx(ctx, tx, userID, time.Now().UTC()); err != nil {
 		return uuid.Nil, fmt.Errorf("auth: UpsertUser: %w", err)
 	}
 	// Last, so that everything this function guarantees is already in place when

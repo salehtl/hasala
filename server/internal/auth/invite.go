@@ -142,9 +142,8 @@ type InviteSummary struct {
 	RedeemedBy *uuid.UUID
 }
 
-// ListInvites reports every code, newest first, for `ledgerd mint-invite
-// --show`. It exists for the same reason api's push-subscription listing does:
-// a capability an operator cannot enumerate is one they cannot manage.
+// ListInvites reports every code, newest first, for `hasalad invite list`. A
+// capability an operator cannot enumerate is one they cannot manage.
 func ListInvites(ctx context.Context, pool *pgxpool.Pool) ([]InviteSummary, error) {
 	if pool == nil {
 		return nil, errors.New("auth: ListInvites: pool is nil")

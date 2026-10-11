@@ -112,7 +112,7 @@ func (p *Passkeys) claimCeremony(ctx context.Context, id string, kind ceremonyKi
 // ReapExpiredCeremonies deletes ceremonies past their expiry and reports how
 // many it removed.
 //
-// It is called from cmd/ledgerd's sweep loop and NOT from the finish path, on
+// It is called from cmd/hasalad's sweep loop and NOT from the finish path, on
 // the same reasoning as Sessions.ReapDeletedAccountTombstones: a sweep on a path
 // an unauthenticated caller can reach is a way to make this server write. The
 // bound is p.now(), the clock claimCeremony compares against.
