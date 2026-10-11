@@ -50,6 +50,22 @@ Go modules
   licence text (and, where it has one, its NOTICE), which a binary
   distribution must carry. `go-licenses report ./...` in server/ lists them.
 
+Swift packages
+  ios/HasalaCore/ depends on exactly two packages, pinned `exact:` in
+  ios/HasalaCore/Package.swift and recorded in ios/HasalaCore/Package.resolved.
+  They are fetched at build time and are not vendored here; each ships its own
+  licence text, which a binary distribution must carry.
+
+  GRDB.swift 7.11.1
+    Copyright (C) 2015-2025 Gwendal Roué
+    https://github.com/groue/GRDB.swift
+    MIT License (LICENSES/MIT.txt)
+
+  Swift Collections 1.7.2
+    Copyright (c) Apple Inc. and the Swift project authors
+    https://github.com/apple/swift-collections
+    Apache License 2.0 (LICENSES/Apache-2.0.txt)
+
 npm packages
   reference/ledgerd-client/ and reference/ledgerd-pwa/ declare their
   dependencies in their package.json and bun.lock files. They are installed at

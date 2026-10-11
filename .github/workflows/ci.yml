@@ -5,8 +5,8 @@
 #
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
-# so renaming a job silently drops it from the requirement. `web` (the
-# website) is not required.
+# so renaming a job silently drops it from the requirement. `swift` (the Swift
+# client core on a Mac) and `web` (the website) are not required checks.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 name: CI
@@ -113,6 +113,48 @@ jobs:
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
+
+  # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
+  # `swift test` passes (unit tests and the conformance suite, reading
+  # conformance/ in place). No private fixtures here either: the real-corpus
+  # test skips by name. The package's platforms are iOS 26 / macOS 26 and its
+  # tools version is 6.2, so the image is pinned to macOS 26 and the Xcode is
+  # chosen by path, never by whatever the image's default is that week.
+  # --disable-automatic-resolution: Package.resolved is the pin, and a
+  # manifest that disagrees with it fails instead of resolving afresh.
+  swift:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: sw_vers && xcodebuild -version && swift --version
+
+      - name: swift test
+        working-directory: ios/HasalaCore
+        run: swift test --disable-automatic-resolution
+
+      # `swift test` builds for macOS only. The iOS build is what catches a
+      # module that shadows an Apple framework (the reason `CoreText` is
+      # `HasalaText`) or code that only compiles on the Mac.
+      - name: Build for iOS (simulator and device)
+        working-directory: ios/HasalaCore
+        run: |
+          for dest in 'generic/platform=iOS Simulator' 'generic/platform=iOS'; do
+            xcodebuild -scheme HasalaCore-Package -destination "$dest" \
+              -derivedDataPath "$RUNNER_TEMP/dd" -disableAutomaticPackageResolution \
+              -quiet build
+          done
+
+      # The import allowlist, AT-C11 and the grep lints run in `gate` too; here
+      # check-imports.sh also compares imports.allow with Package.swift.
+      - name: Import rules and grep lints
+        run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
 
   # The hasala.app website in web/ (Astro + Bun). Not a required check: the
   # ruleset is the owner's. Lighthouse uses the Node and Chrome that come with
