@@ -159,9 +159,10 @@ same devShell. From `web/`:
   post nothing and load no Turnstile; without JavaScript the invite form lands
   on `/joined`, which says to email us) or `api` (they post to the API, as
   designed). Switching to `api` is that one setting, plus dropping the
-  sentences in `docs/legal/privacy.md` that say sign-ups and bank requests
-  are handled by email ("while ... handled by email", "once ... our
-  server").
+  sentences in `docs/legal/privacy.md` and `docs/legal/support.md` that say
+  sign-ups and bank requests are handled by email ("while ... handled by
+  email", "once ... our server"), and restoring support.md's **Confirm my
+  email** / **Leave the list** steps.
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before

@@ -20,6 +20,7 @@
 # beacon into every HTML page, and Web Analytics records page paths, so on
 # these pages it would record invite codes. Their Content-Security-Policy is
 # the site-wide one plus script-src and connect-src without
+# (no-transform also asks Cloudflare not to inject the beacon at all)
 # static.cloudflareinsights.com and cloudflareinsights.com, so the beacon
 # can neither load nor report. The browser enforces it together with the
 # page's CSP <meta> (which does admit Web Analytics), so it only narrows
@@ -34,25 +35,25 @@
   Referrer-Policy: no-referrer
   ! Content-Security-Policy
   Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
-  Cache-Control: no-store
+  Cache-Control: no-store, no-transform
 /i/*
   ! Referrer-Policy
   Referrer-Policy: no-referrer
   ! Content-Security-Policy
   Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
-  Cache-Control: no-store
+  Cache-Control: no-store, no-transform
 /freeze
   ! Referrer-Policy
   Referrer-Policy: no-referrer
   ! Content-Security-Policy
   Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
-  Cache-Control: no-store
+  Cache-Control: no-store, no-transform
 /waitlist/*
   ! Referrer-Policy
   Referrer-Policy: no-referrer
   ! Content-Security-Policy
   Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
-  Cache-Control: no-store
+  Cache-Control: no-store, no-transform
 
 # Fingerprinted build output: cache for a year.
 /_astro/*
