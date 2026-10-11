@@ -6,29 +6,33 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Pushed destinations from Home that are not built yet (spec 04 §13.2).
-enum HomeRoute: Hashable {
-  case insights, needsYou, notifications, widget(String), editWidgets
-}
-
 /// Home · Default (Paper board): one question first, "am I okay this month?" The
 /// hero shows what is left for everyday spending with its pace, then Needs you,
 /// then the widgets Maya arranges.
 struct HomeView: View {
   @Bindable var app: AppModel
+  let model: any HomeModel
   @State private var path: [HomeRoute] = []
   @State private var topInset: CGFloat = 0
 
-  private var snapshot: HomeSnapshot { app.snapshot }
-  private var hidden: Bool { app.amountsHidden }
+  private var snapshot: HomeSnapshot { model.snapshot }
+  private var hidden: Bool { model.hidden }
 
   var body: some View {
     NavigationStack(path: $path) {
       ScrollView {
         VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
           HeroSection(hero: snapshot.hero, hidden: hidden) { path.append(.insights) }
-          NeedsYouSection(rail: snapshot.needsYou, hidden: hidden) { path.append(.needsYou) }
-          WidgetCanvas(widgets: snapshot.widgets, hidden: hidden) { path.append($0) }
+          NeedsYouSection(rail: snapshot.needsYou, hidden: hidden, seeAll: { path.append(.needsYou) }) { card, primary in
+            if let route = model.needsYou(card, primary: primary) { path.append(route) }
+          }
+          WidgetCanvas(widgets: snapshot.widgets, hidden: hidden) { route in
+            if case .widget(let id) = route {
+              if let next = model.openWidget(id) { path.append(next) }
+            } else {
+              path.append(route)
+            }
+          }
         }
         .padding(.top, 24)
         .padding(.bottom, 32)
@@ -55,7 +59,11 @@ struct HomeView: View {
       }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
       .navigationDestination(for: HomeRoute.self) { route in
-        HomeRouteView(route: route)
+        if route == .bills {
+          BillsScreen(app: app)
+        } else {
+          HomeRouteView(route: route)
+        }
       }
     }
   }
@@ -174,6 +182,7 @@ private struct NeedsYouSection: View {
   let rail: NeedsYouRail
   let hidden: Bool
   let seeAll: () -> Void
+  let act: (String, Bool) -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
@@ -182,13 +191,13 @@ private struct NeedsYouSection: View {
         .padding(.horizontal, HSpacing.insetPage)
       if typeSize.isAccessibilitySize {
         VStack(spacing: 12) {
-          ForEach(rail.cards) { BriefCard($0, hidden: hidden) }
+          ForEach(rail.cards) { card(for: $0) }
         }
         .padding(.horizontal, HSpacing.insetPage)
       } else {
         ScrollView(.horizontal) {
           HStack(alignment: .top, spacing: 12) {
-            ForEach(rail.cards) { BriefCard($0, hidden: hidden) }
+            ForEach(rail.cards) { card(for: $0) }
           }
           .padding(.horizontal, HSpacing.insetPage)
           .padding(.bottom, 8)
@@ -197,6 +206,10 @@ private struct NeedsYouSection: View {
         .scrollClipDisabled()
       }
     }
+  }
+
+  private func card(for c: NeedsYouCard) -> some View {
+    BriefCard(c, hidden: hidden, onPrimary: { act(c.id, true) }, onSecondary: { act(c.id, false) })
   }
 }
 
@@ -238,7 +251,24 @@ private struct WidgetCanvas: View {
   }
 }
 
+/// Bills with its view model kept for as long as it is pushed.
+struct BillsScreen: View {
+  @Bindable var app: AppModel
+  var showsToast = true
+  @State private var model: BillsViewModel
+
+  init(app: AppModel, showsToast: Bool = true) {
+    self.app = app
+    self.showsToast = showsToast
+    _model = State(initialValue: BillsViewModel(app: app))
+  }
+
+  var body: some View { BillsView(app: app, model: model, showsToast: showsToast) }
+}
+
 /// Placeholder destinations until those screens are built.
+// TODO(spec 04 §16.1 "Insights", §16.2 H1 Needs you list, H2 widget gallery, H3
+// notifications list; "Accounts", "Project detail", P4 Goal).
 private struct HomeRouteView: View {
   let route: HomeRoute
 
@@ -250,6 +280,7 @@ private struct HomeRouteView: View {
       case .notifications: ("Notifications", "bell")
       case .widget: ("Details", "square.grid.2x2")
       case .editWidgets: ("Your widgets", "square.grid.2x2")
+      case .bills: ("Bills", "doc.text")
       }
     ScrollView {
       PlaceholderCard(systemImage: image, title: title, message: "This screen comes in a later build.")
@@ -279,10 +310,10 @@ struct ToastHost: View {
 
 #if HASALA_MOCKS
   #Preview("Home · Default") {
-    MainView(app: AppModel(snapshot: Maya.home))
+    MainView(app: AppModel(store: InMemoryLedger()))
   }
 
   #Preview("Home · Amounts hidden") {
-    MainView(app: AppModel(snapshot: Maya.home, amountsHidden: true))
+    MainView(app: AppModel(store: InMemoryLedger(), amountsHidden: true))
   }
 #endif

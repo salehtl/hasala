@@ -43,6 +43,9 @@ public enum Verdict: String, Sendable, Hashable, Codable {
 public enum Glyph: String, Sendable, Hashable, Codable {
   case review, insurance, utilities, travel, savingsJar, dining, budgetPie, trendUp, add
   case rent, groceries, transport, shopping, salary, transfer, flag
+  // The rest of taxonomy v1 (03c §4.1) and the profile rows.
+  case healthcare, entertainment, subscriptions, investments, debt, freelance, refunds
+  case bank, tag, bill, wallet, envelope, rule
 }
 
 /// The tone of a small status pill ("2 new today", "3 days late", "In 4 days").
@@ -270,10 +273,14 @@ public struct MiniTxnRow: Sendable, Hashable, Identifiable {
   public var detail: String
   public var amount: Money
   public var isIncome: Bool
+  /// A merchant's first letter, drawn instead of the glyph for a merchant not sorted yet.
+  public var monogram: String?
+  /// The to-review variant: an accent dot before the title (Paper "kit Lists and cards").
+  public var toReview: Bool
 
   public init(
     id: String, merchant: String, glyph: Glyph, hue: Hue, detail: String, amount: Money,
-    isIncome: Bool = false
+    isIncome: Bool = false, monogram: String? = nil, toReview: Bool = false
   ) {
     self.id = id
     self.merchant = merchant
@@ -282,6 +289,8 @@ public struct MiniTxnRow: Sendable, Hashable, Identifiable {
     self.detail = detail
     self.amount = amount
     self.isIncome = isIncome
+    self.monogram = monogram
+    self.toReview = toReview
   }
 }
 
