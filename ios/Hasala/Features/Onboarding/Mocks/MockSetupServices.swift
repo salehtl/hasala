@@ -49,11 +49,11 @@
       ]
     }
 
-    func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> ScanSummary {
+    func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> SortSummary {
       try? await Task.sleep(for: .milliseconds(200))
       confirmed = cards
       let kept = cards.filter(\.keep).reduce(0) { $0 + $1.alertCount }
-      return ScanSummary(total: kept, byRules: 0, byDictionary: Int(Double(kept) * 0.65), byModel: Int(Double(kept) * 0.21),
+      return SortSummary(total: kept, byRules: 0, byDictionary: Int(Double(kept) * 0.65), byModel: Int(Double(kept) * 0.21),
                          toReview: kept - Int(Double(kept) * 0.65) - Int(Double(kept) * 0.21))
     }
 

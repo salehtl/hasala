@@ -538,7 +538,7 @@ struct ScanResultView: View {
   var model: SetupModel
 
   var body: some View {
-    let s = model.summary ?? ScanSummary(total: 0, byRules: 0, byDictionary: 0, byModel: 0, toReview: 0)
+    let s = model.summary ?? SortSummary(total: 0, byRules: 0, byDictionary: 0, byModel: 0, toReview: 0)
     AccountScreen(
       title: "\(s.total) transactions, sorted.",
       subtitle: "All on this iPhone. \(s.sortedThemselves) sorted themselves; \(s.toReview) wait for a quick swipe.",

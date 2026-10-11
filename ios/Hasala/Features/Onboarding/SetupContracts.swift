@@ -74,7 +74,7 @@ struct DiscoveredCard: Identifiable, Equatable, Sendable {
 }
 
 /// How the scan sorted the transactions (Paper "264 transactions, sorted.").
-struct ScanSummary: Equatable, Sendable {
+struct SortSummary: Equatable, Sendable {
   var total: Int
   var byRules: Int
   var byDictionary: Int
@@ -96,7 +96,7 @@ protocol MailboxConnecting: AnyObject {
   /// The cards found so far (complete once the scan is `.awaitingCards`).
   func discoveredCards() async -> [DiscoveredCard]
   /// Authors `account_set` / `card_linked` for the kept cards and starts the backfill.
-  func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> ScanSummary
+  func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> SortSummary
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of Gmail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)

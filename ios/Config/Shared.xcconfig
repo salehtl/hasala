@@ -13,6 +13,11 @@ SWIFT_STRICT_CONCURRENCY = complete
 SWIFT_APPROACHABLE_CONCURRENCY = YES
 SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
 ENABLE_USER_SCRIPT_SANDBOXING = YES
+// Warnings are errors for this target when CI passes HASALA_WARNINGS_AS_ERRORS=YES (spec 04
+// §1.3). Not SWIFT_TREAT_WARNINGS_AS_ERRORS on the command line: that reaches the package
+// dependencies too (GRDB, swift-collections), which SwiftPM builds with -suppress-warnings, and
+// the two flags conflict.
+SWIFT_TREAT_WARNINGS_AS_ERRORS = $(HASALA_WARNINGS_AS_ERRORS)
 DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO

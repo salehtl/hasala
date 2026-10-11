@@ -39,7 +39,7 @@ final class SetupModel {
 
   // Cards and result
   var cards: [DiscoveredCard] = []
-  private(set) var summary: ScanSummary?
+  private(set) var summary: SortSummary?
 
   // Notifications
   var showDetails = false

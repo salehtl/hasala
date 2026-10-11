@@ -30,10 +30,6 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    # Warnings fail the build for this project's targets only: set on the command
-    # line it would also reach the linked packages (GRDB, swift-collections), whose
-    # own -suppress-warnings conflicts with it.
-    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
 targets:
   Hasala:
     type: application
@@ -54,13 +50,55 @@ targets:
         product: HasalaDesign
       - package: HasalaKit
         product: HasalaMocks
-      # Onboarding and Sign-in & security (WS-14): phrase, password, address and
-      # name rules (spec 04 §6.1.2, §6.7, §6.8).
+      # Every HasalaCore L0-L4 product and HasalaModel (spec 04 §1.3), never
+      # CoreTestSupport or CoreSoftAuth.
+      - package: HasalaCore
+        product: CorePrimitives
+      - package: HasalaCore
+        product: HasalaText
+      - package: HasalaCore
+        product: CoreJSON
+      - package: HasalaCore
+        product: CoreTime
+      - package: HasalaCore
+        product: CoreMoney
+      - package: HasalaCore
+        product: CoreResources
+      - package: HasalaCore
+        product: CoreWire
       - package: HasalaCore
         product: CoreCrypto
-      # The live account service over CoreSync's ceremonies, and the Keychain.
+      - package: HasalaCore
+        product: CoreAuth
+      - package: HasalaCore
+        product: CoreNorm
+      - package: HasalaCore
+        product: CoreTemplate
+      - package: HasalaCore
+        product: CoreMail
+      - package: HasalaCore
+        product: CoreReplay
+      - package: HasalaCore
+        product: CoreInvariants
+      - package: HasalaCore
+        product: CoreCategorize
+      - package: HasalaCore
+        product: CoreDomain
+      - package: HasalaCore
+        product: CoreStore
+      - package: HasalaCore
+        product: CoreProjection
       - package: HasalaCore
         product: CoreSync
+      - package: HasalaCore
+        product: CoreOutbox
+      - package: HasalaCore
+        product: CoreMailbox
+      - package: HasalaCore
+        product: CoreSignals
+      - package: HasalaCore
+        product: HasalaModel
+      # The Keychain adapter for the live account service (WS-14).
       - package: HasalaCore
         product: HasalaKeychain
   HasalaTests:
@@ -77,6 +115,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.hasala.ios.tests
         TARGETED_DEVICE_FAMILY: "1"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Hasala.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hasala"
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "$(HASALA_WARNINGS_AS_ERRORS)"
         BUNDLE_LOADER: "$(TEST_HOST)"
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
       configs:
@@ -96,6 +135,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.hasala.ios.uitests
         TARGETED_DEVICE_FAMILY: "1"
         TEST_TARGET_NAME: Hasala
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "$(HASALA_WARNINGS_AS_ERRORS)"
 schemes:
   Hasala:
     build:
