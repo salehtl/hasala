@@ -1,0 +1,78 @@
+// `Transport` over URLSession (spec 04 §2.3: CoreAuth and CoreSync may use
+// URLSession through Foundation; §5.5 headers).
+//
+// Every request carries `Hasala-Client: ios/<version>/<build>` (`02` §6.1) and,
+// when the call has a session, `Authorization: Bearer <token>`. The session is
+// ephemeral: no cookies, no URL cache, no credential storage, so nothing about
+// a call is written to disk by Foundation.
+import Foundation
+
+public final class URLSessionTransport: Transport, @unchecked Sendable {
+  public let baseURL: URL
+  public let clientHeader: String
+  private let session: URLSession
+
+  /// `baseURL` is the API origin (`https://api.hasala.app`); `clientHeader` is
+  /// `ios/<CFBundleShortVersionString>/<CFBundleVersion>`.
+  public init(baseURL: URL, clientHeader: String, timeout: TimeInterval = 30) {
+    self.baseURL = baseURL
+    self.clientHeader = clientHeader
+    let c = URLSessionConfiguration.ephemeral
+    c.httpCookieAcceptPolicy = .never
+    c.httpShouldSetCookies = false
+    c.urlCache = nil
+    c.urlCredentialStorage = nil
+    c.requestCachePolicy = .reloadIgnoringLocalCacheData
+    c.timeoutIntervalForRequest = timeout
+    c.waitsForConnectivity = false
+    session = URLSession(configuration: c)
+  }
+
+  deinit { session.invalidateAndCancel() }
+
+  public func urlRequest(for r: APIRequest) -> URLRequest? {
+    guard let url = URL(string: r.path, relativeTo: baseURL) else { return nil }
+    var u = URLRequest(url: url)
+    u.httpMethod = r.method.rawValue
+    u.setValue(clientHeader, forHTTPHeaderField: "Hasala-Client")
+    u.setValue("application/json", forHTTPHeaderField: "Accept")
+    if let b = r.bearer { u.setValue("Bearer \(b)", forHTTPHeaderField: "Authorization") }
+    if let body = r.body {
+      u.httpBody = body
+      u.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    return u
+  }
+
+  public func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    guard let u = urlRequest(for: request) else { throw .offline(.badURL) }
+    do {
+      let (data, response) = try await session.data(for: u)
+      guard let http = response as? HTTPURLResponse else { throw TransportError.offline(.badServerResponse) }
+      var headers: [String: String] = [:]
+      for (k, v) in http.allHeaderFields {
+        if let k = k as? String, let v = v as? String { headers[k] = v }
+      }
+      return APIResponse(status: http.statusCode, headers: headers, body: data)
+    } catch let e as TransportError {
+      throw e
+    } catch let e as URLError {
+      throw Self.classify(e.code)
+    } catch is CancellationError {
+      throw .cancelled
+    } catch {
+      throw .offline(.unknown)
+    }
+  }
+
+  static func classify(_ code: URLError.Code) -> TransportError {
+    switch code {
+    case .cancelled: .cancelled
+    case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+      .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .clientCertificateRejected,
+      .clientCertificateRequired:
+      .tls
+    default: .offline(code)
+    }
+  }
+}

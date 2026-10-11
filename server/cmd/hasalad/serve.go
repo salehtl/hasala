@@ -76,6 +76,10 @@ func runServe(env *runEnv, args []string) error {
 	fuse := startHeadroom(cfg, srvAPI)
 	defer fuse.Stop()
 	logGroups(cfg)
+	ex, err := wireExtras(ctx, cfg, pool, srvAPI)
+	if err != nil {
+		return err
+	}
 
 	sweeps := []<-chan struct{}{
 		startSweep(ctx, "deleted-account tombstone sweep", tombstoneSweep(srvAPI.Sessions)),
@@ -119,6 +123,7 @@ func runServe(env *runEnv, args []string) error {
 	for _, done := range sweeps {
 		<-done
 	}
+	ex.wait()
 	return serveErr
 }
 
@@ -132,17 +137,6 @@ func newHTTPServer(h http.Handler) *http.Server {
 		MaxHeaderBytes:    maxHeaderBytes,
 	}
 }
-
-// proxyNotHonoured is said at startup with trusted_proxy = cloudflare. That
-// setting is validated (it tightens the configuration rules) but the API does
-// not act on it yet: behind cloudflared every request arrives from loopback,
-// so api.clientKey gives every caller one key and each per-IP limiter (sign-in
-// included) is a single global budget that one client can spend for everyone.
-// Spec 02 §16.1's clientip.go (WS-3) keys by Cf-Connecting-Ip; until it lands
-// the operator is told rather than left to find out.
-const proxyNotHonoured = "hasalad serve: trusted_proxy = cloudflare is not honoured by this build: " +
-	"every request arrives from loopback, so each per-IP rate limit is ONE global limit " +
-	"(spec 02 §16.1, clientip.go, WS-3)"
 
 // logGroups logs which optional configuration groups are enabled, names only
 // (spec 02 §18.2), and says out loud what is configured but not built yet.
@@ -162,14 +156,9 @@ func logGroups(cfg config.Config) {
 	}
 	slog.Info("hasalad serve: optional groups", "enabled", strings.Join(on, ","),
 		"trusted_proxy", cfg.Server.TrustedProxy)
-	if cfg.Server.TrustedProxy == config.ProxyCloudflare {
-		slog.Warn(proxyNotHonoured)
-	}
-	if len(on) > 0 {
-		// The configuration is validated so deployments can be prepared; the
-		// senders, the hook and the metrics listener are WS-4's and WS-5's.
-		slog.Warn("hasalad serve: these groups are configured but not served by this build yet",
-			"groups", strings.Join(on, ","))
+	if cfg.Server.MetricsListen != "" {
+		// The metrics listener is WS-5's.
+		slog.Warn("hasalad serve: metrics_listen is configured but not served by this build yet")
 	}
 }
 

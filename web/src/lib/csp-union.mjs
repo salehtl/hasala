@@ -17,6 +17,13 @@
  * fetched page ever carries a different policy (a deploy mid-visit).
  *
  * The build fails if two pages disagree on any other directive.
+ *
+ * With `withoutAnalytics`, it also fills in dist/_headers: every
+ * `token` there becomes the final script-src and connect-src minus the
+ * sources in `drop` (Cloudflare Web Analytics). public/_headers puts that
+ * on the pages whose address carries a code or a token, so the edge-injected
+ * beacon cannot run there; see the comment in that file. The build fails if
+ * _headers has no such token.
  */
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -51,8 +58,12 @@ const parse = (csp) =>
     .filter((d) => d[0])
     .map(([name, ...values]) => /** @type {[string, string[]]} */ ([name, values]));
 
-/** @returns {import('astro').AstroIntegration} */
-export default function cspUnion() {
+/**
+ * @typedef {{ token: string, drop: string[] }} WithoutAnalytics
+ * @param {{ withoutAnalytics?: WithoutAnalytics }} [options]
+ * @returns {import('astro').AstroIntegration}
+ */
+export default function cspUnion(options = {}) {
   return {
     name: 'hasala:csp-union',
     hooks: {
@@ -91,6 +102,23 @@ export default function cspUnion() {
         logger.info(
           `one CSP for ${pages.length} pages: ${merged['script-src'].size} script-src and ${merged['style-src'].size} style-src entries`,
         );
+
+        const wa = options.withoutAnalytics;
+        if (wa) {
+          const file = join(root, '_headers');
+          const headers = await readFile(file, 'utf8');
+          if (!headers.includes(wa.token)) throw new Error(`${file} has no ${wa.token}; the pages that carry codes would load Web Analytics.`);
+          const kept = (/** @type {string} */ v) => !wa.drop.some((d) => v === d || v.startsWith(`${d}/`));
+          const directives = template
+            .filter(([name]) => name === 'script-src' || name === 'connect-src')
+            .map(([name, v]) => {
+              const left = (name in merged ? values(merged[name]) : v).filter(kept);
+              return [name, ...(left.length ? left : ["'none'"])].join(' ');
+            })
+            .join('; ');
+          await writeFile(file, headers.replaceAll(wa.token, () => directives));
+          logger.info(`_headers: ${wa.token} is now script-src and connect-src without ${wa.drop.join(', ')}`);
+        }
       },
     },
   };

@@ -1,45 +1,79 @@
 ---
 /**
- * Where the waitlist form lands without JavaScript: the API answers a
- * script-free form post with a 303 to HASALA_WEB_WAITLIST_DONE_URL, which
- * must be https://hasala.app/joined. Success shows "Check
- * your email" (the list is double opt-in). A validation error comes back as
- * ?error=<code>; a few lines of script then show what went wrong instead.
+ * Where the waitlist form lands without JavaScript.
+ *
+ * "api" mode: the API answers a script-free form post with a 303 to
+ * HASALA_WEB_WAITLIST_DONE_URL, which must be https://hasala.app/joined.
+ * Success shows "Check your email" (the list is double opt-in). A validation
+ * error comes back as ?error=<code>; a few lines of script then show what
+ * went wrong instead.
+ *
+ * "email" mode (src/lib/env.ts): the form sends nothing and lands here; the
+ * page says to email SITE.supportEmail with the address and bank.
  */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import WaitlistCoin from '../components/brand/WaitlistCoin.astro';
 import { SITE } from '../data/site';
+import { WAITLIST_MODE } from '../lib/env';
+
+const byEmail = WAITLIST_MODE === 'email';
+const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Hasala invite request')}`;
 ---
 
 <Base
-  title="Check your email"
-  description="Confirm your email to join the Hasala waitlist. We'll email you when your TestFlight invite is ready."
+  title={byEmail ? 'Email us to join' : 'Check your email'}
+  description={
+    byEmail
+      ? `To join the Hasala waitlist, email ${SITE.supportEmail} with your email address and your bank. We'll email you when your TestFlight invite is ready.`
+      : "Confirm your email to join the Hasala waitlist. We'll email you when your TestFlight invite is ready."
+  }
   path="/joined"
   noindex
 >
   <section class="joined">
-    <div class="joined__panel" data-state="success">
-      <WaitlistCoin id="joined-coin" />
-      <div class="joined__card" data-joined-ok>
-        <h1>Check your email.</h1>
-        <p>
-          We’ve sent you a link. Tap <b>Confirm my email</b> in it to put your address on the list; it works for 7 days. Invites go out in small batches, usually
-          within a few weeks.
-        </p>
-        <p class="joined__from">
-          <Icon name="mail" size={16} stroke={1.6} />Our emails come from {SITE.mailFrom}. Nothing after a few minutes? Check your spam folder, and add the address to
-          your contacts so the invite doesn’t land there.
-        </p>
-        <a class="btn btn--subtle" href="/">Back to the home page</a>
-        <p class="joined__fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
-      </div>
-      <div class="joined__card" data-joined-error hidden>
-        <h1>That didn’t go through.</h1>
-        <p data-joined-error-text>We couldn’t add you to the list.</p>
-        <a class="btn btn--primary" href="/#invite">Try again</a>
-      </div>
-    </div>
+    {
+      byEmail ? (
+        <div class="joined__panel" data-state="email">
+          <WaitlistCoin id="joined-coin" />
+          <div class="joined__card">
+            <h1>Email us to join.</h1>
+            <p>
+              For now, we add people to the list by email. Write to <a class="link" href={inviteMail}>{SITE.supportEmail}</a> from the address you want your invite
+              at, and tell us which bank you use. We’ll add you to the list. Invites go out in small batches, usually within a few weeks.
+            </p>
+            <p class="joined__from">
+              <Icon name="mail" size={16} stroke={1.6} />
+              Only want to tell us your bank? Email the same address.
+            </p>
+            <a class="btn btn--primary" href={inviteMail}>Write the email</a>
+            <a class="btn btn--subtle" href="/">Back to the home page</a>
+          </div>
+        </div>
+      ) : (
+        <div class="joined__panel" data-state="success">
+          <WaitlistCoin id="joined-coin" />
+          <div class="joined__card" data-joined-ok>
+            <h1>Check your email.</h1>
+            <p>
+              We’ve sent you a link. Tap <b>Confirm my email</b> in it to put your address on the list; it works for 7 days. Invites go out in small batches, usually
+              within a few weeks.
+            </p>
+            <p class="joined__from">
+              <Icon name="mail" size={16} stroke={1.6} />Our emails come from {SITE.mailFrom}. Nothing after a few minutes? Check your spam folder, and add the address to
+              your contacts so the invite doesn’t land there.
+            </p>
+            <a class="btn btn--subtle" href="/">Back to the home page</a>
+            <p class="joined__fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
+          </div>
+          <div class="joined__card" data-joined-error hidden>
+            <h1>That didn’t go through.</h1>
+            <p data-joined-error-text>We couldn’t add you to the list.</p>
+            <a class="btn btn--primary" href="/#invite">Try again</a>
+          </div>
+        </div>
+      )
+    }
   </section>
 </Base>
 
@@ -95,8 +129,14 @@ import { SITE } from '../data/site';
     display: none;
   }
   .joined__panel[data-state='error'] :global(.wl-check),
-  .joined__panel[data-state='error'] :global(.wl-lip) {
+  .joined__panel[data-state='error'] :global(.wl-lip),
+  .joined__panel[data-state='email'] :global(.wl-check),
+  .joined__panel[data-state='email'] :global(.wl-lip) {
     display: none;
+  }
+  /* "email" mode: the coin still waits in the slot, as on the form. */
+  .joined__panel[data-state='email'] :global(.wl-coin-body) {
+    display: inline;
   }
   .joined__card[hidden] {
     display: none;

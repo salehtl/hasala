@@ -111,8 +111,10 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   plus `lint.sh`), and on x86_64-linux `module-eval` (every module assertion
   fires on its misuse) and `qa-vm` (needs KVM). On a Mac,
   `nix flake check --no-build --all-systems` evaluates the Linux ones.
-- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
-  `console` (a stub until the console is built) and `version`; configuration
+- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`
+  (`mint [--review | --email]`, `list`, `revoke`), `waitlist`, `email test`,
+  `console` (spec 07's operator console, minimal: waitlist approve, invites,
+  email log) and `version`; configuration
   is `HASALA_*` environment variables over an optional TOML file
   (`server/config.example.toml`). Two Postgres roles: `hasala_migrate` owns the
   schema and is the only role `hasalad migrate` runs as; `hasala_runtime`
@@ -131,7 +133,20 @@ same devShell. From `web/`:
 - `bun run check` is `astro check`. `bun run build` writes `dist/` and then
   runs `scripts/check-dist.ts`, which fails the build if any inline script or
   style is not covered by the one CSP every page shares, if any element has a
-  `style=""` attribute, or if `/` loads more than 15 KB of JavaScript (gzip).
+  `style=""` attribute, if `/` loads more than 15 KB of JavaScript (gzip), or
+  if a page whose address carries a code or a token could run Web Analytics
+  (below).
+  The CSP (`astro.config.mjs`) also admits Cloudflare Web Analytics, whose
+  beacon Cloudflare injects at the edge (it is not in `dist/`); the privacy
+  policy describes it. Nothing else third-party, except Turnstile in "api"
+  mode. Web Analytics records paths, so it must never run on `/i`, `/i/*`,
+  `/freeze` or `/waitlist/*`: `public/_headers` gives them a CSP header
+  whose script-src and connect-src are the page's without Web Analytics
+  (the build fills them in, `src/lib/csp-union.mjs`), `src/scripts/router.ts`
+  always loads them in full, and the pages take their code or token out of
+  the address bar. A new page that carries one needs the same: send no
+  referrer (`referrer="no-referrer"` on `Base`) and add it to `_headers` and
+  the router.
 - `bun run preview` (Astro's preview server) or `bun scripts/serve-dist.ts`,
   which serves `dist/` on 127.0.0.1:4321 with the `_headers`, `_redirects`
   and trailing-slash handling of production, and gzip.
@@ -139,16 +154,53 @@ same devShell. From `web/`:
   against that server. It needs Node and Chrome, so it runs in CI (job `web`),
   which keeps the reports as a workflow artifact; it asserts performance
   >= 0.9 and accessibility, best practices and SEO >= 0.95.
-- PUBLIC_* settings (API base, Turnstile site key) are in `web/.env.example`;
-  they are public and baked into the build.
+- PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
+  `web/.env.example`; they are public and baked into the build.
+  `PUBLIC_WAITLIST_MODE` is `email` (the default, until the API is live: the
+  invite and "Tell us" forms open a pre-filled email to support@hasala.app,
+  post nothing and load no Turnstile; without JavaScript the invite form lands
+  on `/joined`, which says to email us) or `api` (they post to the API, as
+  designed). Switching to `api` is that one setting, plus dropping the
+  sentences in `docs/legal/privacy.md` and `docs/legal/support.md` that say
+  sign-ups and bank requests are handled by email ("while ... handled by
+  email", "once ... our server"), and restoring support.md's **Confirm my
+  email** / **Leave the list** steps.
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
 changing that. `/licenses` lists the third-party code and font the built
 site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
-dependency reaches `dist/`. Deploying (`bunx wrangler deploy` from `web/`, Workers Static
-Assets, see `web/wrangler.jsonc`) is done only with the owner's approval;
-neither CI nor an agent deploys.
+dependency reaches `dist/`.
+
+Deploying is done only with the owner's approval, for that deploy; CI never
+deploys, and an agent deploys only when the owner has approved it. The site
+is Workers Static Assets on the `hasala-aasa` Worker, on the zone route
+`hasala.app/*` (`web/wrangler.jsonc`). To deploy:
+
+1. On the QA host, in its checkout of this repository, check out the commit
+   to ship (normally `main`) and enter the devShell.
+2. In `web/`: `bun install --frozen-lockfile`, then `bun run deploy`. It runs
+   `bun run build` (so the CSP and JS-budget checks gate it), then the
+   wrangler pinned in `package.json`, under the devShell's Node.
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` come from the
+   environment, never from a file in this repository.
+3. Verify the live site:
+   - `curl -sI https://hasala.app/`: 200, with `strict-transport-security`,
+     `permissions-policy` and one `content-security-policy` header
+     (`frame-ancestors 'none'`);
+   - `curl -s https://hasala.app/ | grep -c 'http-equiv="content-security-policy"'`: 1;
+   - `curl -sI https://hasala.app/privacy`: 200, and `/privacy/`: a redirect
+     to `/privacy`;
+   - `curl -sI https://hasala.app/i/test`: 200, `cache-control: no-store` and
+     one `referrer-policy: no-referrer`;
+   - `curl -s -D- -o /dev/null https://hasala.app/i/test | grep -i '^content-security-policy'`:
+     one line, with `script-src`, `connect-src` and `frame-ancestors 'none'`,
+     and no `cloudflareinsights` (the page's `<meta>` still names it; the
+     browser enforces both, so Web Analytics cannot run). The same for
+     `/freeze` and `/waitlist/confirm`;
+   - `curl -sI https://hasala.app/.well-known/apple-app-site-association`: 200
+     (no redirect), `content-type: application/json`;
+   - `curl -sI https://hasala.app/no-such-page`: 404.
 
 ## Decisions (2026-10-11)
 
