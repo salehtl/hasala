@@ -37,34 +37,58 @@ const (
 
 // ceremony is one row of webauthn_ceremonies, as read back by claimCeremony.
 type ceremony struct {
-	ID          string
-	Kind        ceremonyKind
-	UserID      *uuid.UUID
-	UserHandle  []byte
-	Session     webauthn.SessionData
-	InviteHash  []byte
+	ID         string
+	Kind       ceremonyKind
+	UserID     *uuid.UUID
+	UserHandle []byte
+	Session    webauthn.SessionData
+	InviteHash []byte
+	// AuthorityPubkey and RegisterNonce bind a registration ceremony to the
+	// account's authority key: its challenge is C_reg = SHA256(
+	// "hasala/v1/register" ‖ 00 ‖ register_nonce ‖ authority_pubkey) (spec 01
+	// §10.3, D01). Set for kind register only (the CHECK enforces it).
+	AuthorityPubkey []byte
+	RegisterNonce   []byte
+	// AddNonce binds an add ceremony to the passkey.add step-up that opened
+	// it: PasskeyAddMessage at add/finish signs this nonce (spec 01 §10.7,
+	// D33). Set for kind add only (the CHECK enforces it).
+	AddNonce    []byte
 	ExpiresAt   time.Time
 	sessionJSON []byte
 }
 
-// putCeremony records a ceremony that has just begun.
+// putCeremony records a ceremony that has just begun, on the pool.
 func (p *Passkeys) putCeremony(ctx context.Context, c ceremony) error {
+	return p.putCeremonyOn(ctx, p.Pool, c)
+}
+
+// putCeremonyOn records a ceremony through q: add/begin writes it inside the
+// passkey.add step-up's transaction, so the nonce is spent exactly when the
+// ceremony exists.
+func (p *Passkeys) putCeremonyOn(ctx context.Context, q execer, c ceremony) error {
 	raw, err := json.Marshal(c.Session)
 	if err != nil {
 		return fmt.Errorf("auth: passkey: marshal session data: %w", err)
 	}
 	now := p.now()
-	var handle, invite any
+	var handle, invite, authority, regNonce, addNonce any
 	if len(c.UserHandle) > 0 {
 		handle = c.UserHandle
 	}
 	if len(c.InviteHash) > 0 {
 		invite = c.InviteHash
 	}
-	if _, err := p.Pool.Exec(ctx,
-		`INSERT INTO webauthn_ceremonies (id, kind, user_id, user_handle, session_data, invite_code_hash, created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		c.ID, string(c.Kind), c.UserID, handle, raw, invite, now, now.Add(CeremonyTTL)); err != nil {
+	if len(c.AuthorityPubkey) > 0 {
+		authority, regNonce = c.AuthorityPubkey, c.RegisterNonce
+	}
+	if len(c.AddNonce) > 0 {
+		addNonce = c.AddNonce
+	}
+	if _, err := q.Exec(ctx,
+		`INSERT INTO webauthn_ceremonies (id, kind, user_id, user_handle, session_data, invite_code_hash,
+		   authority_pubkey, register_nonce, add_nonce, created_at, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		c.ID, string(c.Kind), c.UserID, handle, raw, invite, authority, regNonce, addNonce, now, now.Add(CeremonyTTL)); err != nil {
 		return fmt.Errorf("auth: passkey: record ceremony: %w", err)
 	}
 	return nil
@@ -89,8 +113,10 @@ func (p *Passkeys) claimCeremony(ctx context.Context, id string, kind ceremonyKi
 	var c ceremony
 	err := p.Pool.QueryRow(ctx,
 		`DELETE FROM webauthn_ceremonies WHERE id = $1 AND kind = $2
-		 RETURNING id, kind, user_id, user_handle, session_data, invite_code_hash, expires_at`,
-		id, string(kind)).Scan(&c.ID, &c.Kind, &c.UserID, &c.UserHandle, &c.sessionJSON, &c.InviteHash, &c.ExpiresAt)
+		 RETURNING id, kind, user_id, user_handle, session_data, invite_code_hash, authority_pubkey, register_nonce,
+		           add_nonce, expires_at`,
+		id, string(kind)).Scan(&c.ID, &c.Kind, &c.UserID, &c.UserHandle, &c.sessionJSON, &c.InviteHash,
+		&c.AuthorityPubkey, &c.RegisterNonce, &c.AddNonce, &c.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Unknown, already spent, or begun as a different kind. All one answer:
 		// which of the three it was is an oracle in a response and is in the
@@ -134,6 +160,10 @@ type storedCredential struct {
 	UserID     uuid.UUID
 	UserHandle []byte
 	Credential webauthn.Credential
+	// AttestationSHA256 is SHA-256 of the raw attestationObject posted when the
+	// credential was registered (spec 01 §9, R-01): bootstrap's auth_kind 0x01
+	// compares it, so a credential a TLS terminator swapped in is visible.
+	AttestationSHA256 []byte
 }
 
 // credentialByID looks a credential up by the rawId an assertion carried. It is
@@ -235,11 +265,11 @@ func insertCredential(ctx context.Context, q execer, sc storedCredential, now ti
 	_, err := q.Exec(ctx,
 		`INSERT INTO webauthn_credentials
 		   (credential_id, user_id, user_handle, public_key, sign_count, aaguid, transports,
-		    backup_eligible, backup_state, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		    backup_eligible, backup_state, attestation_sha256, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		sc.Credential.ID, sc.UserID, sc.UserHandle, sc.Credential.PublicKey,
 		int64(sc.Credential.Authenticator.SignCount), aaguid, transports,
-		sc.Credential.Flags.BackupEligible, sc.Credential.Flags.BackupState, now)
+		sc.Credential.Flags.BackupEligible, sc.Credential.Flags.BackupState, sc.AttestationSHA256, now)
 	if err != nil {
 		return fmt.Errorf("auth: passkey: store credential: %w", err)
 	}

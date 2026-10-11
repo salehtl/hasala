@@ -1,0 +1,494 @@
+{
+  "name": "money-shapes",
+  "group": "fold",
+  "note": "Money is a positive decimal-integer string; a JSON number, zero, a sign, a fraction or a bad direction is refused.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "9223372036854775807",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": null,
+          "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "payload": {
+            "amount_minor": 25000,
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t3"
+          },
+          "parent_version": null,
+          "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t4"
+          },
+          "parent_version": null,
+          "ingest_id": "6ed5045938d710d075142228a0a53aeda721a451b46d04894f98e747211a1d38",
+          "payload": {
+            "amount_minor": "-5",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t5"
+          },
+          "parent_version": null,
+          "ingest_id": "0016cf5ed68e5a5349722594ae8f592653c761881562607a2337678a70d22260",
+          "payload": {
+            "amount_minor": "+5",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t6"
+          },
+          "parent_version": null,
+          "ingest_id": "396ee89382efc154e95d7875976cce373a797fe93687ca8a27589116644c4bcd",
+          "payload": {
+            "amount_minor": "1.50",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-7",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t7"
+          },
+          "parent_version": null,
+          "ingest_id": "5a39f9a9c7598d32872c704ba30a672f2c3ebbfd6acc9c7e1d00c58b719bbad2",
+          "payload": {
+            "amount_minor": "",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-8",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t8"
+          },
+          "parent_version": null,
+          "ingest_id": "4c1dc1f491eb4e4e3e5e34a36df4fd84932bb09a01b248edbcb1581d16ce4dba",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "refund",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "9",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-9",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t9"
+          },
+          "parent_version": null,
+          "ingest_id": "b8fa730e0f65ce7934c7424579ca827fe31982c5ce15d64d714b80368b5f37ed",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AE",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "10",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-shapes-10",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t10"
+          },
+          "parent_version": null,
+          "ingest_id": "73f6128db300f3751f2e509545be996d162d20f9e030864632f85e34fd0324ce",
+          "payload": {
+            "amount_minor": "007",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "LEADING ZEROS",
+            "last4": "8642"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "7",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "8",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "9",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|7|debit|LEADING ZEROS|2026-06-05",
+          [
+            "t10"
+          ]
+        ],
+        [
+          "8642|9223372036854775807|debit|CARREFOUR|2026-06-05",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "10"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "money-shapes-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t10",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t10",
+            "kind": "txn",
+            "op_id": "money-shapes-10",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ],
+        [
+          "73f6128db300f3751f2e509545be996d162d20f9e030864632f85e34fd0324ce",
+          "t10"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1",
+            "t10"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "9223372036854775807",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t10",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "7",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t10",
+            "ingest_id": "73f6128db300f3751f2e509545be996d162d20f9e030864632f85e34fd0324ce",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "LEADING ZEROS",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "f24eb973b6cb33bb2362c158665ea4989df024ab72bb362bc503a290cb7ac242",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "b20bfd2e169951c056960416cdc30c3e53087f27c27af7792ddb5ec8e967e832",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-2: amount_minor must be a decimal-integer string, got 25000"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-3: amount_minor is 0, and amounts are always positive"
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-4: amount_minor: want a decimal-integer string, got \"-5\""
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-5: amount_minor: want a decimal-integer string, got \"+5\""
+        },
+        {
+          "at_seq": "6",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-6: amount_minor: want a decimal-integer string, got \"1.50\""
+        },
+        {
+          "at_seq": "7",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-7: amount_minor: want a decimal-integer string, got \"\""
+        },
+        {
+          "at_seq": "8",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-8: direction must be debit or credit, got \"refund\""
+        },
+        {
+          "at_seq": "9",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested money-shapes-9: currency must be a three-letter currency code, got \"AE\""
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

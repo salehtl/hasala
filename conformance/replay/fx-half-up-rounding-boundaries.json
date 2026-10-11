@@ -1,0 +1,268 @@
+{
+  "name": "half-up-rounding-boundaries",
+  "group": "fx",
+  "note": "conformance/fx: Half-up at the boundary, in both directions, through the real fold: 1 x 1.500000 rounds to 2 and 1 x 1.499999 rounds to 1. Truncating division is half-up here only because amounts are positive by invariant (direction carries the sign), which convert() asserts rather than assumes.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "half-up-rounding-boundaries-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "half-up-rounding-boundaries-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD",
+            "rate_micro": "1500000"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "half-up-rounding-boundaries-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "EUR",
+            "rate_micro": "1499999"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "half-up-rounding-boundaries-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "1",
+            "currency": "USD",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "M-t1",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "half-up-rounding-boundaries-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": null,
+          "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "payload": {
+            "amount_minor": "1",
+            "currency": "EUR",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "M-t2",
+            "last4": "8642"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|1|debit|M-t1|2026-06-05",
+          [
+            "t1"
+          ]
+        ],
+        [
+          "8642|1|debit|M-t2|2026-06-05",
+          [
+            "t2"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "5"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "half-up-rounding-boundaries-4",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t2",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t2",
+            "kind": "txn",
+            "op_id": "half-up-rounding-boundaries-5",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": "AED",
+      "liveByIngestID": [
+        [
+          "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "t2"
+        ],
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ]
+      ],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [
+        [
+          "EUR",
+          "2026-06-05T10:00:00.000Z"
+        ],
+        [
+          "USD",
+          "2026-06-05T10:00:00.000Z"
+        ]
+      ],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ],
+        [
+          "EUR",
+          "1499999"
+        ],
+        [
+          "USD",
+          "1500000"
+        ]
+      ],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": "2",
+            "amount_minor": "1",
+            "category": null,
+            "currency": "USD",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "M-t1",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t2",
+          {
+            "amount_home_minor": "1",
+            "amount_minor": "1",
+            "category": null,
+            "currency": "EUR",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t2",
+            "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "M-t2",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "06a47008b0292b38a710c7d3bf458c64d1f6e129df1366b2aedc038e236c7941",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "06a47008b0292b38a710c7d3bf458c64d1f6e129df1366b2aedc038e236c7941",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

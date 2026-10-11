@@ -1,0 +1,103 @@
+{
+  "name": "budget-split-replaces",
+  "group": "config",
+  "note": "Each budget_split_set replaces the whole plan, monthly total included.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-replaces-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 50,
+            "want": 30,
+            "saving": 20
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-replaces-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 60,
+            "want": 20,
+            "saving": 20,
+            "monthly_total_minor": "1500000"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "budget_split_set",
+          "op_id": "budget-split-replaces-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "need": 70,
+            "want": 20,
+            "saving": 10
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": {
+        "need": 70,
+        "saving": 10,
+        "want": 20
+      },
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "6c160a0154c93246c58d33e28ecbd39fb8e55140beade68ed06f9487c5d5e575",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "6c160a0154c93246c58d33e28ecbd39fb8e55140beade68ed06f9487c5d5e575",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

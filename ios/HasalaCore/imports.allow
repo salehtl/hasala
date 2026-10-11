@@ -25,13 +25,12 @@ Time
 Money         HasalaText
 Resources
 
-# L1. Template's ICU module map over libicucore is added here (and in
-# Package.swift) by its owner when it lands.
+# L1. HasalaICU is Template's module map over libicucore (Sources/HasalaICU).
 Wire          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 Crypto        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CryptoKit Security zlib
 Auth          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 Norm          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
-Template      CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
+Template      CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources HasalaICU
 Mail          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 
 # L2
@@ -55,4 +54,4 @@ Model         CoreCategorize FoundationModels
 
 # T: test support, never linked by the app.
 TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals
-SoftAuth      CorePrimitives CoreAuth
+SoftAuth      CorePrimitives CoreAuth CryptoKit

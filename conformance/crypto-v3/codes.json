@@ -1,0 +1,202 @@
+{
+  "note": "spec 01 §10.14: email_tag = HMAC(K_tag, email_norm); code_mac = HMAC(K_code, purpose ‖ 00 ‖ uuid_raw(code_id) ‖ email_tag ‖ code). Keys are password.json's server_keys (A19, A19-K).",
+  "purposes": [
+    "signup",
+    "email_verify",
+    "email_change_old",
+    "email_change_new",
+    "password_reset",
+    "recovery",
+    "waitlist"
+  ],
+  "cases": [
+    {
+      "keys": "A19",
+      "purpose": "signup",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "d52440a5bae9123a8b8343f16d8519ecade06b859ad249c8bbf028135fadae8b"
+    },
+    {
+      "keys": "A19",
+      "purpose": "email_verify",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "d82fb5ebf9d5b0c34fb14fe111c53c59a0314a85f2970abf432097862aa8a7ad"
+    },
+    {
+      "keys": "A19",
+      "purpose": "email_change_old",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "5f1eace3c0f87364243953ab686c1c2a86cc1531c61918fb86f74a58637f3aa8"
+    },
+    {
+      "keys": "A19",
+      "purpose": "email_change_new",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "6beb1a5c418d45349144d1f68b72dd3de62c24f49e13c0f5d3c37256db85e747"
+    },
+    {
+      "keys": "A19",
+      "purpose": "password_reset",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721"
+    },
+    {
+      "keys": "A19",
+      "purpose": "recovery",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "29ae8a648367a14de903b199926552140ea626717d1336af81ab1bf94667901b"
+    },
+    {
+      "keys": "A19",
+      "purpose": "waitlist",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "code_mac": "f6eb70d77cec04b1120930b41f4c311e855d7ea1cf2b9c0c34f368adcd1c80eb"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "signup",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "54294d2955133474f7602159fad49bb1d704f1c1d2beff85757a3435c0c49d74"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "email_verify",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "c683af5e3dbc17867d2b6dba16b6a07164a4dc03e9bb0a493a6c358581377a74"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "email_change_old",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "35945cf56367894fbb2c8337512f077e1f8872a0076cad3743e206fcf66c22c3"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "email_change_new",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "39f63b05557d587c86d37536a9329c4d5a9cbaaa13aaeaaa4848a7daf497d3e2"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "password_reset",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "7f40507fd64bd6eefa92d6767dfaa93f29f0e33013bdbcee3f784663bb1b2779"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "recovery",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "a367eb0fe06fc3db78e6c50950309440186249e18374a8d49d3dbb225cdc443a"
+    },
+    {
+      "keys": "A19-K",
+      "purpose": "waitlist",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_norm": "maya.rahman+hasala@gmail.com",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "code_mac": "2aba891dd9c3474980f9215ab880f787b993aebde9e05c5848d5e5e26946e78f"
+    }
+  ],
+  "verification": [
+    {
+      "name": "the A19 code itself",
+      "stored_code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721",
+      "keys": "A19",
+      "purpose": "password_reset",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "verifies": true
+    },
+    {
+      "name": "another purpose",
+      "stored_code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721",
+      "keys": "A19",
+      "purpose": "recovery",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "verifies": false
+    },
+    {
+      "name": "another code id",
+      "stored_code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721",
+      "keys": "A19",
+      "purpose": "password_reset",
+      "code_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042817",
+      "verifies": false
+    },
+    {
+      "name": "another address",
+      "stored_code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721",
+      "keys": "A19",
+      "purpose": "password_reset",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_tag": "0526abdced4e7ad6890df4ea444a39e4d183716b2818124515c32fb701b9453b",
+      "code": "042817",
+      "verifies": false
+    },
+    {
+      "name": "another key generation (A19-K)",
+      "stored_code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721",
+      "keys": "A19-K",
+      "purpose": "password_reset",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_tag": "c77bed03efbe7558c40f4ac9d312abd7cd871f1db5becec7bcd8dbb85584b652",
+      "code": "042817",
+      "verifies": false
+    },
+    {
+      "name": "other digits",
+      "stored_code_mac": "1d600ed6f4e79f3e7706bc4f4274af7a8dfab898620fc780f83554d89b02b721",
+      "keys": "A19",
+      "purpose": "password_reset",
+      "code_id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "email_tag": "c213f4c1a7877e8ae1d5b83f69a59c28363d320dbb149eb3c9487737bca17b8a",
+      "code": "042818",
+      "verifies": false
+    }
+  ]
+}

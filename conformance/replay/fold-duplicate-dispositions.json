@@ -1,0 +1,305 @@
+{
+  "name": "duplicate-dispositions",
+  "group": "fold",
+  "note": "Schema-v2 answers: same, different, undo; a disposition naming another row is a mismatch.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "duplicate-dispositions-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "duplicate-dispositions-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": null,
+          "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 2,
+          "type": "txn_duplicate_disposition",
+          "op_id": "duplicate-dispositions-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": 1,
+          "payload": {
+            "other_txn_id": "t1",
+            "disposition": "same"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 2,
+          "type": "txn_duplicate_disposition",
+          "op_id": "duplicate-dispositions-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": 2,
+          "payload": {
+            "other_txn_id": "t1",
+            "disposition": "different"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 2,
+          "type": "txn_duplicate_disposition",
+          "op_id": "duplicate-dispositions-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": 3,
+          "payload": {
+            "other_txn_id": "t1",
+            "disposition": null
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 2,
+          "type": "txn_duplicate_disposition",
+          "op_id": "duplicate-dispositions-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": 4,
+          "payload": {
+            "other_txn_id": "t9",
+            "disposition": "same"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "possible_duplicate"
+        },
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "duplicate_disposition_mismatch"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "t1",
+            "t2"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "duplicate-dispositions-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t2",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t2",
+            "kind": "txn",
+            "op_id": "duplicate-dispositions-6",
+            "version": 5,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "t2"
+        ],
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1",
+            "t2"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t2",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t2",
+            "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": "t1",
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 5
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "9abfa145c4794b905d79313a08ab5ae1a54d8c4fea4cd7d3d7c78144e68332c9",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "bce07f7073486260cce9cd9ff0d6f6f80cdd8126d441b90d8f13275ab493fb57",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "possible_duplicate",
+          "detail": "t2 matches t1 on 8642|25000|debit|CARREFOUR|2026-06-05"
+        },
+        {
+          "at_seq": "6",
+          "kind": "duplicate_disposition_mismatch",
+          "detail": "t2: disposition names t9, notice names t1"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

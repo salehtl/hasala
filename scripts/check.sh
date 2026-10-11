@@ -20,7 +20,8 @@
 #   0. The real-mail fence: no real bank mail has come back into this tree.
 #      It needs no toolchain; `scripts/check.sh --fence-only` runs it alone.
 #  0b. HasalaCore's source lints (ios/scripts/check-imports.sh and
-#      check-forbidden.sh): grep only, so they run on Linux too. The Swift
+#      check-forbidden.sh): grep only, so they run on Linux too. Then the
+#      bundled bank templates are byte-identical to the server seed. The Swift
 #      build and tests themselves run in CI's `swift` job on a Mac.
 #   1. The Go toolchain is at least server/go.mod's `toolchain` line.
 #   2. The hasalad fences (spec 02 §4.4, cmd/hasalad/fence_test.go): the
@@ -141,10 +142,30 @@ fi
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
 # scan and the R2/R3/R7/R8 grep lints. The half of check-imports.sh that
 # compares imports.allow with Package.swift needs `swift`; CI's `swift` job
-# runs it.
+# runs it. CI's `secrets` job also runs these two on every pull request, since
+# `gate` is skipped on one that changes only ios/.
 step "HasalaCore import and API lints"
 "$ROOT/ios/scripts/check-imports.sh" --no-manifest
 "$ROOT/ios/scripts/check-forbidden.sh"
+
+# Spec 04 §4.6: the app's bundled templates are the server seed, byte for byte,
+# and the same set of files. ios/tools/templates/sync.swift copies them and
+# writes the SHA-256 manifest; this needs no toolchain, so drift fails the gate
+# and not only the (non-required) swift job.
+step "bundled templates equal the server seed"
+bundled="$ROOT/ios/HasalaCore/Sources/HasalaCore/Resources/templates"
+seed="$ROOT/server/internal/tmpl/seed"
+if [ "$(cd "$bundled" && ls -1 ./*.json)" != "$(cd "$seed" && ls -1 ./*.json)" ]; then
+  echo "the bundled template set differs from server/internal/tmpl/seed; run swift ios/tools/templates/sync.swift" >&2
+  exit 1
+fi
+for f in "$seed"/*.json; do
+  if ! cmp -s "$f" "$bundled/${f##*/}"; then
+    echo "${f##*/} differs from the server seed; run swift ios/tools/templates/sync.swift" >&2
+    exit 1
+  fi
+done
+echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
 cd "$ROOT/server"
 
@@ -336,25 +357,45 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 # directory under conformance/ must appear here: a new fixture set cannot land
 # without saying what checks it.
 #
-# Two sets have fewer than two executors, on purpose and visibly:
+# Some sets have fewer than two executors here, on purpose and visibly:
 #   fx      TypeScript only. The FX fold exists only client-side; Go has no reader.
-#   crypto  No reader at all. Its consumer (ledgerd's retired app/ bench) was
-#           deleted (see the ledgerd repo-migration inventory, archived).
-#           Listed so the gap stays on screen.
-#   structure  TypeScript only since WS-1: its Go executor was ledgerd's
-#           diagnostics telemetry (internal/diag), retired with it (spec 02 §2).
+#   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests, CI's
+#           swift job, which also re-checks it); Go opens and verifies it once
+#           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
+#           runner on main yet: listed so the gap stays on screen.
+#   authres, categorize, norm-dates, replay
+#           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
+#           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
+#           executor joins CI's `swift` job with the port (WS-8, WS-10). The
+#           TypeScript entry is the freshness check (the committed files are
+#           byte-identical to what the generator writes now, computed in
+#           memory, no network) plus the oracle reading its own files back.
+#           Go has no reader: the server never reads mail or folds ops.
+#   crypto-v3, api-v1  Go only here. Go writes them (cmd/gen-crypto-vectors,
+#           spec 01 §15.1, spec 02 §22) and checks them: the committed files
+#           must regenerate byte for byte, the anchors A01–A26 reproduce, the
+#           predicate cases agree with Postgres, and every tamper upload gets
+#           its verdict from the real handler. Their other executor is Swift
+#           (HasalaCore's GoCryptoV3Tests, CI's swift job), which reads them
+#           and never writes them. ledgerd's encv2 set (conformance/crypto/,
+#           with a committed private key) is deleted (spec 01 §15.1).
 #
 # A Go package under ./oracle/ is run from the oracle module.
 CONFORMANCE=(
+	"api-v1|./cmd/gen-crypto-vectors ./internal/cryptoref|"
+	"authres||src/mail/authres-conformance.test.ts"
 	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
-	"crypto||"
+	"categorize||src/categorize/oracle-conformance.test.ts"
+	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api|"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"
 	"fx||src/replay/fx.test.ts"
 	"import|./oracle/v1ref/importer|src/importer/importer.test.ts"
+	"norm-dates||src/norm/dates-conformance.test.ts"
 	"normalizer|./internal/norm|src/norm/conformance.test.ts"
 	"op|./internal/oplog/opref|src/wire/op.test.ts"
-	"structure||src/diag/structure.test.ts"
+	"swift||"
+	"replay||src/replay/replay-conformance.test.ts"
 	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"
 	"ts|./internal/oplog/opref|src/wire/blob.test.ts"
 )

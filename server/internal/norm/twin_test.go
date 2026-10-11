@@ -118,6 +118,32 @@ var charsetLabels = []string{
 	"utf-32", "utf-32le", "utf-32be",
 	"gb2312", "gbk", "gb18030", "big5", "big5-hkscs", "euc-jp", "euc-kr",
 	"shift_jis", "sjis", "ms_kanji", "iso-2022-jp", "iso-2022-kr", "iso-2022-cn",
+	// every other label golang.org/x/text/encoding/htmlindex resolves (the WHATWG label
+	// set), so no label Go decodes is left to the passthrough default by omission
+	"unicode11utf8", "unicode20utf8", "x-unicode20utf8", "866", "csibm866", "csisolatin2",
+	"iso-ir-101", "iso8859-2", "iso88592", "iso_8859-2", "iso_8859-2:1987", "l2",
+	"csisolatin3", "iso-ir-109", "iso8859-3", "iso88593", "iso_8859-3", "iso_8859-3:1988",
+	"l3", "csisolatin4", "iso-ir-110", "iso8859-4", "iso88594", "iso_8859-4",
+	"iso_8859-4:1988", "l4", "csisolatincyrillic", "cyrillic", "iso-ir-144", "iso8859-5",
+	"iso88595", "iso_8859-5", "iso_8859-5:1988", "csiso88596e", "csiso88596i",
+	"iso-8859-6-e", "iso-8859-6-i", "iso8859-6", "iso88596", "iso_8859-6:1987",
+	"csisolatingreek", "ecma-118", "elot_928", "greek", "greek8", "iso-ir-126",
+	"iso8859-7", "iso88597", "iso_8859-7", "iso_8859-7:1987", "sun_eu_greek",
+	"csiso88598e", "csisolatinhebrew", "hebrew", "iso-8859-8-e", "iso-ir-138",
+	"iso8859-8", "iso88598", "iso_8859-8", "iso_8859-8:1988", "visual", "csiso88598i",
+	"iso-8859-8-i", "logical", "csisolatin6", "iso-ir-157", "iso8859-10", "iso885910",
+	"l6", "iso8859-13", "iso885913", "iso8859-14", "iso885914", "csisolatin9",
+	"iso8859-15", "iso885915", "iso_8859-15", "l9", "cskoi8r", "koi", "koi8", "koi8_r",
+	"koi8-ru", "x-mac-roman", "dos-874", "iso-8859-11", "iso8859-11", "iso885911",
+	"x-cp1250", "x-cp1251", "iso88591", "iso_8859-1:1987", "x-cp1253", "csisolatin5",
+	"iso-ir-148", "iso8859-9", "iso88599", "iso_8859-9", "iso_8859-9:1989", "l5",
+	"x-cp1254", "x-cp1255", "x-cp1257", "x-cp1258", "x-mac-ukrainian", "chinese",
+	"csgb2312", "csiso58gb231280", "gb_2312", "gb_2312-80", "iso-ir-58", "x-gbk",
+	"cn-big5", "csbig5", "x-x-big5", "cseucpkdfmtjapanese", "x-euc-jp", "csiso2022jp",
+	"csshiftjis", "ms932", "shift-jis", "windows-31j", "x-sjis", "cseuckr",
+	"csksc56011987", "iso-ir-149", "korean", "ks_c_5601-1987", "ks_c_5601-1989",
+	"ksc5601", "ksc_5601", "windows-949", "csiso2022kr", "hz-gb-2312", "iso-2022-cn-ext",
+	"replacement", "ucs-2", "unicode", "unicodefeff", "x-user-defined",
 	// deliberately unresolvable, to pin the passthrough default
 	"x-nope", "unknown-8bit",
 }
@@ -628,6 +654,10 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"fwd-date-zone-token-is-stripped", "forward", "MUTATION GUARD: without the retry that drops the final space-delimited token, this trailing zone name makes the whole value unparseable and the transaction silently dates to its arrival time", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\n---------- Forwarded message ---------\r\nFrom: Bank <alerts@bank.example>\r\nDate: 3 March 2026 at 14:07:02 GST\r\nSubject: Inner\r\n\r\nBODY\r\n"},
 		{"fwd-date-iso8601-is-not-a-layout", "forward", "MUTATION GUARD: Date.parse accepts this and the four closed layouts do not. A twin that reached for Date.parse would date the transaction from the body where Go dates it from arrival", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\n---------- Forwarded message ---------\r\nFrom: Bank <alerts@bank.example>\r\nDate: 2026-03-03T14:07:00Z\r\nSubject: Inner\r\n\r\nBODY\r\n"},
 		{"fwd-date-no-at-keyword-is-not-a-layout", "forward", "MUTATION GUARD: Date.parse accepts \"Mar 3, 2026 2:07 PM\" in the LOCAL zone; every layout here requires the literal \" at \"", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\n---------- Forwarded message ---------\r\nFrom: Bank <alerts@bank.example>\r\nDate: Mar 3, 2026 2:07 PM\r\nSubject: Inner\r\n\r\nBODY\r\n"},
+		{"html-script-long-s-folds", "stages", "Go's (?i) folds U+017F (long s) onto s, so <\u017fcript> opens and </\u017fcript> closes a script element. A twin that folds only ASCII keeps the script text", hdr + "Content-Type: text/html; charset=utf-8\r\n\r\n<div>keep<\u017fcript>drop me</\u017fcript>after</div>\r\n"},
+		{"html-style-long-s-close-only", "stages", "only the close tag carries U+017F; it still closes the element", hdr + "Content-Type: text/html; charset=utf-8\r\n\r\nA<STYLE>p{}</\u017fTYLE>B\r\n"},
+		{"fwd-marker-long-s", "forward", "the forward marker folds U+017F onto s, so this is a forward and its inner headers are recovered", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\nBegin forwarded me\u017f\u017fage:\r\n\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Inner subject\r\n\r\nBODY LINE\r\n"},
+		{"fwd-header-label-long-s-sets-nothing", "forward", "\u017fubject: MATCHES the header-line pattern but lower-cases to itself, not to subject, so it sets no field; the outer subject is kept and the line still ends the preamble", hdr + "Content-Type: text/plain; charset=utf-8\r\n\r\n---------- Forwarded message ---------\r\nFrom: Bank <alerts@bank.example>\r\n\u017fubject: Inner subject\r\n\r\nBODY LINE\r\n"},
 		{"html-block-tag-pass-precedes-generic-rule", "stages", "MUTATION GUARD: on well-formed HTML the five block tags are inert, because the generic tag rule yields the same newline. They are only observable on MALFORMED markup, where the generic rule swallows the block tag as part of a longer pseudo-tag", hdr + "Content-Type: text/html; charset=utf-8\r\n\r\nA<p</div>B\r\n"},
 	}
 }

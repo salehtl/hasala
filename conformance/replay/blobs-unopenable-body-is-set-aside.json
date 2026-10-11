@@ -1,0 +1,224 @@
+{
+  "name": "unopenable-body-is-set-aside",
+  "group": "blobs",
+  "note": "A body that is not JSON is set aside with its position, and the rest of the log folds.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unopenable-body-is-set-aside-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "stream": "hot",
+      "writer_counter": "2",
+      "body": "{not json"
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unopenable-body-is-set-aside-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t3"
+          },
+          "parent_version": null,
+          "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "C",
+            "last4": "8642"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "t1"
+          ]
+        ],
+        [
+          "8642|25000|debit|C|2026-06-05",
+          [
+            "t3"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "unopenable-body-is-set-aside-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t3",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t3",
+            "kind": "txn",
+            "op_id": "unopenable-body-is-set-aside-2",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ],
+        [
+          "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+          "t3"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1",
+            "t3"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t3",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t3",
+            "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "C",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "2",
+          "stream": "hot",
+          "writer_counter": "2",
+          "writer_id": "ingest"
+        }
+      ]
+    },
+    "state_sha256": "c03ad22286afa0976d5d64e594e53aee37ccc9fa601ec781775c372fa22d608e",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "5bc18a0591a6ae5b3c72150f1f00dc8d9c18a98b68382151c2e3b73a1513b75b",
+      "anomalies": [],
+      "unreadable": [
+        {
+          "seq": "2",
+          "reason": "op blob: body is not valid JSON (9 bytes)"
+        }
+      ]
+    }
+  }
+}

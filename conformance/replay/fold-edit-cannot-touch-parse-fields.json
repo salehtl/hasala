@@ -1,0 +1,273 @@
+{
+  "name": "edit-cannot-touch-parse-fields",
+  "group": "fold",
+  "note": "unparsed, tier and parse_error are refused on an edit; the rest of the edit applies.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "edit-cannot-touch-parse-fields-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": null,
+          "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "edit-cannot-touch-parse-fields-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "unparsed": false,
+            "tier": "template",
+            "merchant_raw": "NOTE"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "edit-cannot-touch-parse-fields-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "edit-cannot-touch-parse-fields-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "parse_error": "x",
+            "last4": "1111"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "unsupported_edit_field"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "unsupported_edit_field"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "1111|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "t1"
+          ]
+        ],
+        [
+          "unparsed|ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          [
+            "u1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "4"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "edit-cannot-touch-parse-fields-4",
+            "version": 2,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000u1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "u1",
+            "kind": "txn",
+            "op_id": "edit-cannot-touch-parse-fields-2",
+            "version": 2,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ],
+        [
+          "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "u1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "1111",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 2
+          }
+        ],
+        [
+          "u1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "u1",
+            "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "NOTE",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 2
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "82cb9bd41caed67e567150ba5373cd6c0de29d989f4dc4bb59c1bf0a28f643b2",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "933f252bcdb247c253f184ba715347440dc20ffda71d25a63338b336fb626d86",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "unsupported_edit_field",
+          "detail": "u1: unparsed, tier may only change via txn_superseded"
+        },
+        {
+          "at_seq": "4",
+          "kind": "unsupported_edit_field",
+          "detail": "t1: parse_error may only change via txn_superseded"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

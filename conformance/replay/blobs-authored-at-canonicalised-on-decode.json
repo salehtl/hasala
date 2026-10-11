@@ -1,0 +1,61 @@
+{
+  "name": "authored-at-canonicalised-on-decode",
+  "group": "blobs",
+  "note": "A sub-millisecond authored_at is truncated on decode; the rate's updated-at is the canonical form.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":1,\"type\":\"rate_set\",\"op_id\":\"r1\",\"authored_at\":\"2026-06-05T14:00:00.0015+04:00\",\"parent_version\":null,\"payload\":{\"currency\":\"USD\",\"rate_micro\":\"3672500\"}}]}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "1"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [
+        [
+          "USD",
+          "2026-06-05T10:00:00.001Z"
+        ]
+      ],
+      "rates": [
+        [
+          "USD",
+          "3672500"
+        ]
+      ],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "daced4787dd07d1bf894cdfab097abb066d70776d66624cce9604e7fcf3f20b6",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "daced4787dd07d1bf894cdfab097abb066d70776d66624cce9604e7fcf3f20b6",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

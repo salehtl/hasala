@@ -8,8 +8,12 @@ package api
 //	POST /api/v1/auth/passkey/register/finish  {ceremony_id, credential} -> {session_token, user_id}
 //	POST /api/v1/auth/passkey/login/begin      {}                       -> {ceremony_id, options}
 //	POST /api/v1/auth/passkey/login/finish     {ceremony_id, credential} -> {session_token, user_id}
-//	POST /api/v1/auth/passkey/add/begin        {}    (authenticated)    -> {ceremony_id, options}
-//	POST /api/v1/auth/passkey/add/finish       {ceremony_id, credential} (authenticated) -> {credential_id}
+//	POST /api/v1/auth/passkey/add/begin        {step_up}   (S + WB)      -> {ceremony_id, options}
+//	POST /api/v1/auth/passkey/add/finish       {ceremony_id, credential, prf_wrap, dwk_sig} (S + WB) -> 201 {credential_id}
+//
+// Adding a passkey is spec 02 #10/#11 (§10.5): add/begin consumes step-up
+// passkey.add and the ceremony keeps its nonce; add/finish needs the session
+// writer's DWK over PasskeyAddMessage (R-01). See auth/passkey_guarded.go.
 //
 // `options` is go-webauthn's own protocol.CredentialCreation /
 // CredentialAssertion, marshalled as-is and passed to the browser untouched.
@@ -66,9 +70,22 @@ const (
 	passkeyGlobalBurst = 100
 )
 
-// PasskeyRegisterBeginRequest starts a sign-up.
+// PasskeyRegisterBeginRequest starts a sign-up. authority_pubkey (b64, the
+// AAK the device just generated) is bound into the ceremony's challenge:
+// C_reg = SHA256("hasala/v1/register" ‖ 00 ‖ nonce ‖ authority_pubkey) (spec
+// 01 §10.3, D01; spec 02 #3).
 type PasskeyRegisterBeginRequest struct {
-	InviteCode string `json:"invite_code"`
+	InviteCode      string `json:"invite_code"`
+	AuthorityPubkey string `json:"authority_pubkey"`
+}
+
+// PasskeyRegisterBeginResponse adds the register nonce, so the client can
+// recompute C_reg and refuse options whose challenge differs (spec 01 §10.3
+// step 6).
+type PasskeyRegisterBeginResponse struct {
+	CeremonyID string          `json:"ceremony_id"`
+	Nonce      string          `json:"nonce"` // b64
+	Options    json.RawMessage `json:"options"`
 }
 
 // PasskeyBeginResponse is what all three begin steps answer with. Options is
@@ -89,8 +106,23 @@ type PasskeyFinishRequest struct {
 	Credential json.RawMessage `json:"credential"`
 }
 
-// PasskeyAddResponse names the credential that was enrolled. Standard base64,
-// matching every other binary field in this API.
+// PasskeyAddBeginRequest is #10: the passkey.add step-up (T = ()).
+type PasskeyAddBeginRequest struct {
+	StepUp *StepUpWire `json:"step_up"`
+}
+
+// PasskeyAddFinishRequest is #11. PRFWrap is null when the device had no
+// account body to wrap (spec 01 §10.7 step 1); DWKSig is the session writer's
+// DWK over PasskeyAddMessage.
+type PasskeyAddFinishRequest struct {
+	CeremonyID string            `json:"ceremony_id"`
+	Credential json.RawMessage   `json:"credential"`
+	PRFWrap    *BootstrapPRFWrap `json:"prf_wrap"`
+	DWKSig     string            `json:"dwk_sig"` // b64
+}
+
+// PasskeyAddResponse names the credential that was enrolled, b64url (spec 02
+// #11).
 type PasskeyAddResponse struct {
 	CredentialID string `json:"credential_id"`
 }
@@ -123,12 +155,27 @@ func (s *Server) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Reque
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
-	id, opts, err := s.Passkeys.BeginRegistration(r.Context(), req.InviteCode)
+	authority, err := base64.StdEncoding.DecodeString(req.AuthorityPubkey)
 	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not base64")
+		return
+	}
+	id, opts, nonce, err := s.Passkeys.BeginRegistration(r.Context(), req.InviteCode, authority)
+	if err != nil {
+		if errors.Is(err, auth.ErrBadAuthorityKey) {
+			writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not a usable Ed25519 public key")
+			return
+		}
 		s.writePasskeyError(w, r, "register/begin", err)
 		return
 	}
-	s.writeBegin(w, r, id, opts)
+	raw, err := json.Marshal(opts)
+	if err != nil {
+		s.logf("api: passkey register/begin: marshal options: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
+	}
+	writeJSON(w, http.StatusOK, PasskeyRegisterBeginResponse{CeremonyID: id, Nonce: b64(nonce), Options: raw})
 }
 
 func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
@@ -170,27 +217,80 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handlePasskeyAddBegin(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	id, opts, err := s.Passkeys.BeginAdd(r.Context(), userID)
+	if !s.AccountPerUser.Allow(userID.String()) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+		return
+	}
+	var req PasskeyAddBeginRequest
+	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
+		return
+	}
+	su, ok := decodeStepUp(w, req.StepUp)
+	if !ok {
+		return
+	}
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireBound(w, r, info) {
+		return
+	}
+	id, opts, err := s.Passkeys.AddBegin(r.Context(), info, su)
 	if err != nil {
-		s.writePasskeyError(w, r, "add/begin", err)
+		s.writePasskeyAddErr(w, r, "add/begin", err)
 		return
 	}
 	s.writeBegin(w, r, id, opts)
 }
 
 func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	var req PasskeyFinishRequest
+	if !s.AccountPerUser.Allow(userID.String()) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+		return
+	}
+	var req PasskeyAddFinishRequest
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
-	credID, err := s.Passkeys.FinishAdd(r.Context(), req.CeremonyID, userID, req.Credential)
-	if err != nil {
-		s.writePasskeyError(w, r, "add/finish", err)
+	sig, ok := b64Field(w, req.DWKSig, "dwk_sig")
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, PasskeyAddResponse{
-		CredentialID: base64.StdEncoding.EncodeToString(credID),
-	})
+	add := auth.PasskeyAdd{CeremonyID: req.CeremonyID, Credential: req.Credential, DWKSig: sig}
+	if req.PRFWrap != nil {
+		if add.PRFCredentialID, ok = b64urlField(w, req.PRFWrap.CredentialID, "prf_wrap.credential_id"); !ok {
+			return
+		}
+		if add.PRFWrap, ok = b64Field(w, req.PRFWrap.Wrap, "prf_wrap.wrap"); !ok {
+			return
+		}
+		add.PRFWrapVersion = req.PRFWrap.WrapVersion
+	}
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireBound(w, r, info) {
+		return
+	}
+	credID, err := s.Passkeys.AddFinish(r.Context(), info, add)
+	if err != nil {
+		s.writePasskeyAddErr(w, r, "add/finish", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, PasskeyAddResponse{CredentialID: b64url(credID)})
+}
+
+// writePasskeyAddErr answers the add routes: a ceremony rejection is the
+// package's one 401 (writePasskeyError), and everything else (step-up, writer
+// binding, a bad signature, a malformed wrap) is spec 02 §6.3's code.
+func (s *Server) writePasskeyAddErr(w http.ResponseWriter, r *http.Request, step string, err error) {
+	if errors.Is(err, auth.ErrPasskeyRejected) {
+		s.writePasskeyError(w, r, step, err)
+		return
+	}
+	s.writeKeyErr(w, r, err)
 }
 
 // writeBegin marshals go-webauthn's options into the envelope. The options are
