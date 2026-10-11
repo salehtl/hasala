@@ -1,0 +1,76 @@
+{
+  "name": "unknown-entity",
+  "group": "fold",
+  "note": "An edit of an entity no create introduced.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_categorized",
+          "op_id": "unknown-entity-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "ghost"
+          },
+          "parent_version": 1,
+          "payload": {
+            "category": "groceries"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "1",
+          "detail": "",
+          "kind": "unknown_entity"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "1"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "740d8ee5b40a490467aa59072de71e64d8768505a79281ac4e6df361f084ee84",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "36472444745a41b3eebe021fd93dd0bb9933d7d5bb696011f4481b3c679ac433",
+      "anomalies": [
+        {
+          "at_seq": "1",
+          "kind": "unknown_entity",
+          "detail": "unknown-entity-1 edits txn ghost, which no create introduced"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

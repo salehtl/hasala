@@ -1,0 +1,722 @@
+{
+  "note": "Written by reference/ledgerd-client/scripts/gen-norm-dates-conformance.ts from the TypeScript oracle; do not hand-edit. forward_dates: parseForwardDate(input) rendered as RFC 3339 UTC without a fraction, or null. email_dates: the normalizer's emailDate and dateSource for a recovered inner Date (\"\" when none) and an arrival time. instants: the wire timestamp grammar (posted_at, authored_at): epoch milliseconds as a decimal string, the canonical form, and the UTC day, or ok:false. See README.md.",
+  "schema_version": 1,
+  "forward_dates": [
+    {
+      "name": "layout-1",
+      "input": "Feb 8, 2026 at 12:52 PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "layout-2-weekday",
+      "input": "Sun, Feb 8, 2026 at 12:52 PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "layout-3-seconds",
+      "input": "8 February 2026 at 15:36:02",
+      "expect": "2026-02-08T15:36:02Z"
+    },
+    {
+      "name": "layout-4",
+      "input": "8 February 2026 at 15:36",
+      "expect": "2026-02-08T15:36:00Z"
+    },
+    {
+      "name": "midnight-12-am",
+      "input": "Feb 8, 2026 at 12:05 AM",
+      "expect": "2026-02-08T00:05:00Z"
+    },
+    {
+      "name": "noon-12-pm",
+      "input": "Feb 8, 2026 at 12:05 PM",
+      "expect": "2026-02-08T12:05:00Z"
+    },
+    {
+      "name": "zero-hour-am",
+      "input": "Feb 8, 2026 at 0:05 AM",
+      "expect": "2026-02-08T00:05:00Z"
+    },
+    {
+      "name": "zero-hour-pm",
+      "input": "Feb 8, 2026 at 0:05 PM",
+      "expect": "2026-02-08T12:05:00Z"
+    },
+    {
+      "name": "hour-13-pm-refused",
+      "input": "Feb 8, 2026 at 13:05 PM",
+      "expect": null
+    },
+    {
+      "name": "lowercase-pm-refused",
+      "input": "Feb 8, 2026 at 12:52 pm",
+      "expect": null
+    },
+    {
+      "name": "mixed-case-pm-refused",
+      "input": "Feb 8, 2026 at 12:52 Pm",
+      "expect": null
+    },
+    {
+      "name": "leading-zero-hour-and-day",
+      "input": "Feb 08, 2026 at 01:05 PM",
+      "expect": "2026-02-08T13:05:00Z"
+    },
+    {
+      "name": "upper-case-month",
+      "input": "FEB 8, 2026 at 1:05 PM",
+      "expect": "2026-02-08T13:05:00Z"
+    },
+    {
+      "name": "lower-case-long-month",
+      "input": "8 february 2026 at 15:36",
+      "expect": "2026-02-08T15:36:00Z"
+    },
+    {
+      "name": "long-month-in-short-layout-refused",
+      "input": "February 8, 2026 at 1:05 PM",
+      "expect": null
+    },
+    {
+      "name": "short-month-in-long-layout-refused",
+      "input": "8 Feb 2026 at 15:36",
+      "expect": null
+    },
+    {
+      "name": "sept-refused",
+      "input": "8 Sept 2026 at 9:00",
+      "expect": null
+    },
+    {
+      "name": "unknown-month-refused",
+      "input": "Xyz 8, 2026 at 12:52 PM",
+      "expect": null
+    },
+    {
+      "name": "weekday-not-checked-against-date",
+      "input": "Thu, Feb 8, 2026 at 12:52 PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "unknown-weekday-refused",
+      "input": "Xyz, Feb 8, 2026 at 12:52 PM",
+      "expect": null
+    },
+    {
+      "name": "long-weekday-refused",
+      "input": "Sunday, Feb 8, 2026 at 12:52 PM",
+      "expect": null
+    },
+    {
+      "name": "weekday-without-space-refused",
+      "input": "Sun,Feb 8, 2026 at 1:05 PM",
+      "expect": null
+    },
+    {
+      "name": "feb-29-leap-year",
+      "input": "29 February 2028 at 10:00",
+      "expect": "2028-02-29T10:00:00Z"
+    },
+    {
+      "name": "feb-29-common-year-refused",
+      "input": "29 February 2026 at 10:00",
+      "expect": null
+    },
+    {
+      "name": "feb-29-century-refused",
+      "input": "29 February 2100 at 10:00",
+      "expect": null
+    },
+    {
+      "name": "feb-29-400-year",
+      "input": "29 February 2000 at 10:00",
+      "expect": "2000-02-29T10:00:00Z"
+    },
+    {
+      "name": "feb-30-refused",
+      "input": "Feb 30, 2026 at 1:00 PM",
+      "expect": null
+    },
+    {
+      "name": "day-31-in-30-day-month-refused",
+      "input": "31 April 2026 at 10:00",
+      "expect": null
+    },
+    {
+      "name": "day-zero-refused",
+      "input": "0 April 2026 at 10:00",
+      "expect": null
+    },
+    {
+      "name": "hour-23",
+      "input": "8 February 2026 at 23:59:59",
+      "expect": "2026-02-08T23:59:59Z"
+    },
+    {
+      "name": "hour-24-refused",
+      "input": "8 February 2026 at 24:00",
+      "expect": null
+    },
+    {
+      "name": "minute-60-refused",
+      "input": "8 February 2026 at 15:60",
+      "expect": null
+    },
+    {
+      "name": "second-60-refused",
+      "input": "8 February 2026 at 15:36:60",
+      "expect": null
+    },
+    {
+      "name": "one-digit-minute-refused",
+      "input": "8 february 2026 at 7:5",
+      "expect": null
+    },
+    {
+      "name": "one-digit-second-refused",
+      "input": "8 February 2026 at 07:05:5",
+      "expect": null
+    },
+    {
+      "name": "three-digit-hour-refused",
+      "input": "8 February 2026 at 123:00",
+      "expect": null
+    },
+    {
+      "name": "five-digit-year-refused",
+      "input": "8 February 20260 at 12:00",
+      "expect": null
+    },
+    {
+      "name": "three-digit-year-refused",
+      "input": "8 February 202 at 12:00",
+      "expect": null
+    },
+    {
+      "name": "year-below-100",
+      "input": "8 February 0050 at 15:36",
+      "expect": "0050-02-08T15:36:00Z"
+    },
+    {
+      "name": "year-zero-leap-day",
+      "input": "29 February 0000 at 15:36",
+      "expect": "0000-02-29T15:36:00Z"
+    },
+    {
+      "name": "year-9999",
+      "input": "31 December 9999 at 23:59:59",
+      "expect": "9999-12-31T23:59:59Z"
+    },
+    {
+      "name": "double-space-after-month",
+      "input": "Feb  8, 2026 at 12:52 PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "double-space-after-comma",
+      "input": "Feb 8,  2026 at 12:52 PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "double-space-around-at",
+      "input": "8 February 2026  at   15:36",
+      "expect": "2026-02-08T15:36:00Z"
+    },
+    {
+      "name": "double-space-before-pm",
+      "input": "Feb 8, 2026 at 12:52  PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "space-before-comma-refused",
+      "input": "Feb 8 , 2026 at 12:52 PM",
+      "expect": null
+    },
+    {
+      "name": "tab-between-fields-refused",
+      "input": "8\tFebruary 2026 at 9:00",
+      "expect": null
+    },
+    {
+      "name": "no-at-refused",
+      "input": "Mar 3, 2026 2:07 PM",
+      "expect": null
+    },
+    {
+      "name": "leading-and-trailing-spaces",
+      "input": "  Feb 8, 2026 at 12:52 PM  ",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "trailing-tab",
+      "input": "8 February 2026 at 9:00\t",
+      "expect": "2026-02-08T09:00:00Z"
+    },
+    {
+      "name": "surrounding-crlf",
+      "input": "\r\n8 February 2026 at 9:00\r\n",
+      "expect": "2026-02-08T09:00:00Z"
+    },
+    {
+      "name": "surrounding-nbsp-and-bom",
+      "input": "\u00a0\ufeff8 February 2026 at 9:00\ufeff\u00a0",
+      "expect": "2026-02-08T09:00:00Z"
+    },
+    {
+      "name": "narrow-nbsp-before-pm",
+      "input": "Feb 8, 2026 at 12:52\u202fPM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "nbsp-before-pm",
+      "input": "Feb 8, 2026 at 12:52\u00a0PM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "nbsp-everywhere",
+      "input": "Feb\u00a08,\u00a02026\u00a0at\u00a012:52\u202fPM",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "em-space-is-not-a-space",
+      "input": "Feb 8, 2026 at 12:52\u2003PM",
+      "expect": null
+    },
+    {
+      "name": "fullwidth-digit-refused",
+      "input": "Feb \uff18, 2026 at 12:52 PM",
+      "expect": null
+    },
+    {
+      "name": "arabic-indic-digit-refused",
+      "input": "\u0668 February 2026 at 9:00",
+      "expect": null
+    },
+    {
+      "name": "trailing-zone-gst",
+      "input": "8 February 2026 at 15:36:02 GST",
+      "expect": "2026-02-08T15:36:02Z"
+    },
+    {
+      "name": "trailing-zone-gmt-offset",
+      "input": "Feb 8, 2026 at 12:52 PM GMT+4",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "trailing-zone-after-narrow-nbsp",
+      "input": "Feb 8, 2026 at 12:52\u202fPM\u202fGST",
+      "expect": "2026-02-08T12:52:00Z"
+    },
+    {
+      "name": "two-trailing-tokens-refused",
+      "input": "Feb 8, 2026 at 12:52 PM GMT +4",
+      "expect": null
+    },
+    {
+      "name": "trailing-junk-glued-refused",
+      "input": "Feb 8, 2026 at 12:52 PMX",
+      "expect": null
+    },
+    {
+      "name": "iso-instant-refused",
+      "input": "2026-03-03T14:07:00Z",
+      "expect": null
+    },
+    {
+      "name": "date-only-refused",
+      "input": "March 3, 2026",
+      "expect": null
+    },
+    {
+      "name": "ios-12-hour-with-seconds-refused",
+      "input": "14 February 2026 at 6:12:38 PM GST",
+      "expect": null
+    },
+    {
+      "name": "rfc-5322-date-refused",
+      "input": "Sun, 8 Feb 2026 12:52:00 +0400",
+      "expect": null
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "expect": null
+    },
+    {
+      "name": "only-spaces",
+      "input": "   ",
+      "expect": null
+    }
+  ],
+  "email_dates": [
+    {
+      "name": "no-forward-date",
+      "forward_date": "",
+      "received_at": "2026-08-01T12:00:00Z",
+      "expect": {
+        "email_date": "2026-08-01T12:00:00Z",
+        "date_source": "received"
+      }
+    },
+    {
+      "name": "forward-date-wins",
+      "forward_date": "Feb 8, 2026 at 12:52 PM",
+      "received_at": "2026-08-01T12:00:00Z",
+      "expect": {
+        "email_date": "2026-02-08T12:52:00Z",
+        "date_source": "forward_header"
+      }
+    },
+    {
+      "name": "forward-date-unreadable-falls-back",
+      "forward_date": "14 February 2026 at 6:12:38 PM GST",
+      "received_at": "2026-08-01T12:00:00Z",
+      "expect": {
+        "email_date": "2026-08-01T12:00:00Z",
+        "date_source": "received"
+      }
+    },
+    {
+      "name": "received-offset-converted-to-utc",
+      "forward_date": "",
+      "received_at": "2026-08-01T16:00:00+04:00",
+      "expect": {
+        "email_date": "2026-08-01T12:00:00Z",
+        "date_source": "received"
+      }
+    },
+    {
+      "name": "received-offset-crosses-the-year",
+      "forward_date": "",
+      "received_at": "2027-01-01T02:00:00+04:00",
+      "expect": {
+        "email_date": "2026-12-31T22:00:00Z",
+        "date_source": "received"
+      }
+    },
+    {
+      "name": "received-negative-offset",
+      "forward_date": "",
+      "received_at": "2026-12-31T22:30:00-02:00",
+      "expect": {
+        "email_date": "2027-01-01T00:30:00Z",
+        "date_source": "received"
+      }
+    },
+    {
+      "name": "received-fraction-truncated",
+      "forward_date": "",
+      "received_at": "2026-08-01T12:00:00.999Z",
+      "expect": {
+        "email_date": "2026-08-01T12:00:00Z",
+        "date_source": "received"
+      }
+    },
+    {
+      "name": "forward-date-is-naive-not-shifted",
+      "forward_date": "8 February 2026 at 23:30",
+      "received_at": "2026-02-09T03:00:00+04:00",
+      "expect": {
+        "email_date": "2026-02-08T23:30:00Z",
+        "date_source": "forward_header"
+      }
+    },
+    {
+      "name": "forward-date-may-postdate-arrival",
+      "forward_date": "31 December 2026 at 23:59:59",
+      "received_at": "2026-08-01T12:00:00Z",
+      "expect": {
+        "email_date": "2026-12-31T23:59:59Z",
+        "date_source": "forward_header"
+      }
+    }
+  ],
+  "instants": [
+    {
+      "name": "utc-seconds",
+      "input": "2026-06-05T09:00:00Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000000",
+        "canonical": "2026-06-05T09:00:00.000Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "utc-millis",
+      "input": "2026-06-05T09:00:00.123Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000123",
+        "canonical": "2026-06-05T09:00:00.123Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "fraction-one-digit",
+      "input": "2026-06-05T09:00:00.5Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000500",
+        "canonical": "2026-06-05T09:00:00.500Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "fraction-truncated-not-rounded",
+      "input": "2026-06-05T09:00:00.9999999Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000999",
+        "canonical": "2026-06-05T09:00:00.999Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "fraction-sub-millisecond",
+      "input": "2026-06-05T09:00:00.0015Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000001",
+        "canonical": "2026-06-05T09:00:00.001Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "positive-offset",
+      "input": "2026-06-05T13:00:00+04:00",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000000",
+        "canonical": "2026-06-05T09:00:00.000Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "negative-offset",
+      "input": "2026-06-05T04:30:00-04:30",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780650000000",
+        "canonical": "2026-06-05T09:00:00.000Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "offset-crosses-the-day",
+      "input": "2026-06-06T02:00:00+04:00",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780696800000",
+        "canonical": "2026-06-05T22:00:00.000Z",
+        "utc_day": "2026-06-05"
+      }
+    },
+    {
+      "name": "offset-crosses-back-a-day",
+      "input": "2026-06-05T22:00:00-04:00",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780711200000",
+        "canonical": "2026-06-06T02:00:00.000Z",
+        "utc_day": "2026-06-06"
+      }
+    },
+    {
+      "name": "max-offset",
+      "input": "2026-06-05T09:00:00+23:59",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1780563660000",
+        "canonical": "2026-06-04T09:01:00.000Z",
+        "utc_day": "2026-06-04"
+      }
+    },
+    {
+      "name": "leap-day",
+      "input": "2028-02-29T12:00:00Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "1835438400000",
+        "canonical": "2028-02-29T12:00:00.000Z",
+        "utc_day": "2028-02-29"
+      }
+    },
+    {
+      "name": "epoch",
+      "input": "1970-01-01T00:00:00Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "0",
+        "canonical": "1970-01-01T00:00:00.000Z",
+        "utc_day": "1970-01-01"
+      }
+    },
+    {
+      "name": "before-epoch",
+      "input": "1969-12-31T23:59:59.999Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "-1",
+        "canonical": "1969-12-31T23:59:59.999Z",
+        "utc_day": "1969-12-31"
+      }
+    },
+    {
+      "name": "year-below-100",
+      "input": "0050-02-08T15:36:00Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "-60585956640000",
+        "canonical": "0050-02-08T15:36:00.000Z",
+        "utc_day": "0050-02-08"
+      }
+    },
+    {
+      "name": "year-one",
+      "input": "0001-01-01T00:00:00.001Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "-62135596799999",
+        "canonical": "0001-01-01T00:00:00.001Z",
+        "utc_day": "0001-01-01"
+      }
+    },
+    {
+      "name": "year-9999",
+      "input": "9999-12-31T23:59:59.999Z",
+      "expect": {
+        "ok": true,
+        "epoch_ms": "253402300799999",
+        "canonical": "9999-12-31T23:59:59.999Z",
+        "utc_day": "9999-12-31"
+      }
+    },
+    {
+      "name": "go-zero-time-refused",
+      "input": "0001-01-01T00:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "canonical-year-10000-refused",
+      "input": "9999-12-31T23:59:59-23:59",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "canonical-year-minus-1-refused",
+      "input": "0000-01-01T00:00:00+00:01",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "lowercase-t-refused",
+      "input": "2026-06-05t09:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "lowercase-z-refused",
+      "input": "2026-06-05T09:00:00z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "hour-24-refused",
+      "input": "2026-06-05T24:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "second-60-refused",
+      "input": "2026-06-05T23:59:60Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "feb-30-refused",
+      "input": "2026-02-30T10:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "feb-29-common-year-refused",
+      "input": "2026-02-29T10:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "offset-hour-24-refused",
+      "input": "2026-06-05T10:00:00+24:00",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "offset-minute-60-refused",
+      "input": "2026-06-05T10:00:00+04:60",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "no-zone-refused",
+      "input": "2026-06-05T09:00:00",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "space-separator-refused",
+      "input": "2026-06-05 09:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "empty-fraction-refused",
+      "input": "2026-06-05T09:00:00.Z",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "compact-offset-refused",
+      "input": "2026-06-05T09:00:00+0400",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "date-only-refused",
+      "input": "2026-06-05",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "trailing-space-refused",
+      "input": "2026-06-05T09:00:00Z ",
+      "expect": {
+        "ok": false
+      }
+    },
+    {
+      "name": "expanded-year-refused",
+      "input": "+002026-06-05T09:00:00Z",
+      "expect": {
+        "ok": false
+      }
+    }
+  ]
+}

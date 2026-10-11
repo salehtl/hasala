@@ -1,0 +1,47 @@
+{
+  "name": "newer-blob-version",
+  "group": "hard_stops",
+  "note": "A blob from a newer schema stops the fold: it is never set aside.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "newer-blob-version-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":99,\"kind\":\"ops\",\"ops\":[]}"
+    }
+  ],
+  "expect": {
+    "error": {
+      "kind": "newer_version",
+      "at_entry": 1
+    }
+  }
+}

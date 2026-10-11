@@ -1,0 +1,258 @@
+{
+  "name": "rule-payloads",
+  "group": "fold",
+  "note": "rule_added creates and edits; its match type is a closed set and its priority an integer.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-payloads-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r1"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 10
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-payloads-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "pattern": "^carrefour",
+            "match": "regex",
+            "category": "groceries",
+            "priority": -3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-payloads-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r2"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "x",
+            "match": "starts_with",
+            "category": "y",
+            "priority": 1
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-payloads-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r3"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "x",
+            "match": "exact",
+            "category": "y",
+            "priority": 1.5
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-payloads-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r4"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "",
+            "match": "exact",
+            "category": "y",
+            "priority": 1
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rule_added",
+          "op_id": "rule-payloads-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "rule",
+            "id": "r5"
+          },
+          "parent_version": null,
+          "payload": {
+            "pattern": "abcd",
+            "match": "exact",
+            "category": "y",
+            "priority": 9007199254740991
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "rule\u0000r1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "r1",
+            "kind": "rule",
+            "op_id": "rule-payloads-2",
+            "version": 2,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "rule\u0000r5",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "r5",
+            "kind": "rule",
+            "op_id": "rule-payloads-6",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [
+        [
+          "r1",
+          {
+            "category": "groceries",
+            "match": "regex",
+            "pattern": "^carrefour",
+            "priority": -3,
+            "version": 2
+          }
+        ],
+        [
+          "r5",
+          {
+            "category": "y",
+            "match": "exact",
+            "pattern": "abcd",
+            "priority": 9007199254740991,
+            "version": 1
+          }
+        ]
+      ],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "472ea31dc3b4d09c8311fbe10711db9f0cb59e8e04b0ae150238b8645efcc041",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "9967727de0b5fcea0f2893d40e14776e43980ea8b206a43dd4c0d7e98201b497",
+      "anomalies": [
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "rule_added rule-payloads-3: match must be contains|exact|regex, got \"starts_with\""
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "rule_added rule-payloads-4: priority must be an integer, got 1.5"
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "rule_added rule-payloads-5: pattern is \"\""
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

@@ -266,7 +266,7 @@ export function build(): Built {
     JSON.stringify(
       {
         note:
-          "Sealed by client/scripts/gen-fixtures.ts. Regenerate with `cd client && bun run gen-fixtures`; " +
+          "Sealed by reference/ledgerd-client/scripts/gen-fixtures.ts. Regenerate with `cd reference/ledgerd-client && bun run gen-fixtures`; " +
           "do not hand-edit. Go opens these bytes in oplog.TestTypeScriptSealedBlobsOpenInGo.",
         buckets: BUCKETS,
         nonce_size: NONCE_SIZE,
@@ -295,7 +295,7 @@ export function build(): Built {
 export async function assertFixturesAreFresh(): Promise<void> {
   const { manifest, files } = build();
   const onDisk = await Bun.file(`${TS_FIXTURE_DIR}/manifest.json`).text();
-  const fix = "regenerate with `cd client && bun run gen-fixtures`";
+  const fix = "regenerate with `cd reference/ledgerd-client && bun run gen-fixtures`";
   if (onDisk !== manifest) {
     throw new Error(`conformance/ts/manifest.json is stale: ${fix}`);
   }

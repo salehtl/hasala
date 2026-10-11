@@ -1,0 +1,154 @@
+{
+  "name": "checkpoint-must-be-sorted",
+  "group": "fold",
+  "note": "An unsorted or duplicated roster is refused and the previous checkpoint stands.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "writer_checkpoint",
+          "op_id": "checkpoint-must-be-sorted-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "heads": [
+              {
+                "writer_id": "dev-a",
+                "stream": "hot",
+                "counter": "1",
+                "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "writer_checkpoint",
+          "op_id": "checkpoint-must-be-sorted-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "heads": [
+              {
+                "writer_id": "ingest",
+                "stream": "hot",
+                "counter": "4",
+                "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              {
+                "writer_id": "dev-b",
+                "stream": "hot",
+                "counter": "2",
+                "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "writer_checkpoint",
+          "op_id": "checkpoint-must-be-sorted-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "heads": [
+              {
+                "writer_id": "dev-b",
+                "stream": "hot",
+                "counter": "2",
+                "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              {
+                "writer_id": "dev-b",
+                "stream": "hot",
+                "counter": "3",
+                "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [
+        {
+          "counter": "1",
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stream": "hot",
+          "writer_id": "dev-a"
+        }
+      ],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "0da74d7aff2122e6ce2968067081f96c14f33cc7152a3b17b0dd3a9927b2b668",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "b5f60d668552fc4257b9b3c85cea4da87be9f1b2404372e302a2ba40f0e55a13",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "writer_checkpoint checkpoint-must-be-sorted-2: checkpoint heads are not sorted by (writer_id, stream)"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "writer_checkpoint checkpoint-must-be-sorted-3: duplicate checkpoint head for (dev-b, hot)"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

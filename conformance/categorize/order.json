@@ -1,0 +1,1763 @@
+{
+  "note": "Written by reference/ledgerd-client/scripts/gen-categorize-conformance.ts from the TypeScript oracle (src/categorize); do not hand-edit. See README.md. Each case: prepare(rules, entries) gives the prepared rules and entries in match order and the load-time defects in input order (rules first); categorize(merchant) gives each decision.",
+  "schema_version": 1,
+  "match_order": {
+    "exact": 0,
+    "contains": 1,
+    "regex": 2
+  },
+  "cases": [
+    {
+      "name": "priority-lower-number-wins",
+      "note": "Two rules match; the lower priority number decides, whatever the kinds.",
+      "rules": [
+        {
+          "id": "r-high",
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "shopping",
+          "priority": 50
+        },
+        {
+          "id": "r-low",
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 10
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "r-low",
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 10
+          },
+          {
+            "id": "r-high",
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "shopping",
+            "priority": 50
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "CARREFOUR CITY",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "r-low",
+              "pattern": "carrefour",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "SPINNEYS",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "input-order-does-not-matter-a",
+      "note": "The same rule set as case b, listed in the opposite order: the prepared order and every decision are identical.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "r1",
+          "pattern": "noon",
+          "match": "exact",
+          "category": "shopping",
+          "priority": 5
+        },
+        {
+          "id": "r2",
+          "pattern": "noon minutes",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 5
+        },
+        {
+          "id": "r3",
+          "pattern": "^noon",
+          "match": "regex",
+          "category": "other",
+          "priority": 5
+        },
+        {
+          "id": "r4",
+          "pattern": "minutes",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 1
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "r4",
+            "pattern": "minutes",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 1
+          },
+          {
+            "id": "r1",
+            "pattern": "noon",
+            "match": "exact",
+            "category": "shopping",
+            "priority": 5
+          },
+          {
+            "id": "r2",
+            "pattern": "noon minutes",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 5
+          },
+          {
+            "id": "r3",
+            "pattern": "^noon",
+            "match": "regex",
+            "category": "other",
+            "priority": 5
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "NOON",
+            "decision": {
+              "category": "shopping",
+              "source": "rule",
+              "id": "r1",
+              "pattern": "noon",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "NOON MINUTES",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "r4",
+              "pattern": "minutes",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "NOON FOOD",
+            "decision": {
+              "category": "other",
+              "source": "rule",
+              "id": "r3",
+              "pattern": "^noon",
+              "match": "regex"
+            }
+          },
+          {
+            "merchant": "MINUTES",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "r4",
+              "pattern": "minutes",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "input-order-does-not-matter-b",
+      "note": "Case a's rules, reversed.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "r4",
+          "pattern": "minutes",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 1
+        },
+        {
+          "id": "r3",
+          "pattern": "^noon",
+          "match": "regex",
+          "category": "other",
+          "priority": 5
+        },
+        {
+          "id": "r2",
+          "pattern": "noon minutes",
+          "match": "contains",
+          "category": "groceries",
+          "priority": 5
+        },
+        {
+          "id": "r1",
+          "pattern": "noon",
+          "match": "exact",
+          "category": "shopping",
+          "priority": 5
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "r4",
+            "pattern": "minutes",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 1
+          },
+          {
+            "id": "r1",
+            "pattern": "noon",
+            "match": "exact",
+            "category": "shopping",
+            "priority": 5
+          },
+          {
+            "id": "r2",
+            "pattern": "noon minutes",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 5
+          },
+          {
+            "id": "r3",
+            "pattern": "^noon",
+            "match": "regex",
+            "category": "other",
+            "priority": 5
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "NOON",
+            "decision": {
+              "category": "shopping",
+              "source": "rule",
+              "id": "r1",
+              "pattern": "noon",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "NOON MINUTES",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "r4",
+              "pattern": "minutes",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "NOON FOOD",
+            "decision": {
+              "category": "other",
+              "source": "rule",
+              "id": "r3",
+              "pattern": "^noon",
+              "match": "regex"
+            }
+          },
+          {
+            "merchant": "MINUTES",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "r4",
+              "pattern": "minutes",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "kind-order-at-equal-priority",
+      "note": "exact before contains before regex at one priority; each later rule is live, as the merchants that only it matches show.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "rx",
+          "pattern": "^talabat",
+          "match": "regex",
+          "category": "regex-cat",
+          "priority": 100
+        },
+        {
+          "id": "rc",
+          "pattern": "talabat",
+          "match": "contains",
+          "category": "contains-cat",
+          "priority": 100
+        },
+        {
+          "id": "re",
+          "pattern": "talabat",
+          "match": "exact",
+          "category": "exact-cat",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "re",
+            "pattern": "talabat",
+            "match": "exact",
+            "category": "exact-cat",
+            "priority": 100
+          },
+          {
+            "id": "rc",
+            "pattern": "talabat",
+            "match": "contains",
+            "category": "contains-cat",
+            "priority": 100
+          },
+          {
+            "id": "rx",
+            "pattern": "^talabat",
+            "match": "regex",
+            "category": "regex-cat",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "TALABAT",
+            "decision": {
+              "category": "exact-cat",
+              "source": "rule",
+              "id": "re",
+              "pattern": "talabat",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "TALABAT MART",
+            "decision": {
+              "category": "contains-cat",
+              "source": "rule",
+              "id": "rc",
+              "pattern": "talabat",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "TALABATMART",
+            "decision": {
+              "category": "contains-cat",
+              "source": "rule",
+              "id": "rc",
+              "pattern": "talabat",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "MY TALABAT",
+            "decision": {
+              "category": "contains-cat",
+              "source": "rule",
+              "id": "rc",
+              "pattern": "talabat",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "priority-outranks-kind",
+      "note": "A priority-1 contains rule beats a priority-2 exact rule.",
+      "rules": [
+        {
+          "id": "exact-2",
+          "pattern": "careem",
+          "match": "exact",
+          "category": "transport",
+          "priority": 2
+        },
+        {
+          "id": "contains-1",
+          "pattern": "careem",
+          "match": "contains",
+          "category": "food",
+          "priority": 1
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "contains-1",
+            "pattern": "careem",
+            "match": "contains",
+            "category": "food",
+            "priority": 1
+          },
+          {
+            "id": "exact-2",
+            "pattern": "careem",
+            "match": "exact",
+            "category": "transport",
+            "priority": 2
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "CAREEM",
+            "decision": {
+              "category": "food",
+              "source": "rule",
+              "id": "contains-1",
+              "pattern": "careem",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "longer-pattern-first-in-runes",
+      "note": "At equal priority and kind the longer pattern (in code points, not UTF-16 units) comes first.",
+      "rules": [
+        {
+          "id": "short",
+          "pattern": "mall",
+          "match": "contains",
+          "category": "short",
+          "priority": 100
+        },
+        {
+          "id": "long",
+          "pattern": "dubai mall",
+          "match": "contains",
+          "category": "long",
+          "priority": 100
+        },
+        {
+          "id": "astral",
+          "pattern": "\ud83d\uded2\ud83d\uded2\ud83d\uded2\ud83d\uded2",
+          "match": "contains",
+          "category": "astral",
+          "priority": 100
+        },
+        {
+          "id": "five",
+          "pattern": "malls",
+          "match": "contains",
+          "category": "five",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "long",
+            "pattern": "dubai mall",
+            "match": "contains",
+            "category": "long",
+            "priority": 100
+          },
+          {
+            "id": "five",
+            "pattern": "malls",
+            "match": "contains",
+            "category": "five",
+            "priority": 100
+          },
+          {
+            "id": "short",
+            "pattern": "mall",
+            "match": "contains",
+            "category": "short",
+            "priority": 100
+          },
+          {
+            "id": "astral",
+            "pattern": "\ud83d\uded2\ud83d\uded2\ud83d\uded2\ud83d\uded2",
+            "match": "contains",
+            "category": "astral",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "DUBAI MALL",
+            "decision": {
+              "category": "long",
+              "source": "rule",
+              "id": "long",
+              "pattern": "dubai mall",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "MALLS OF X",
+            "decision": {
+              "category": "five",
+              "source": "rule",
+              "id": "five",
+              "pattern": "malls",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "MALL \ud83d\uded2\ud83d\uded2\ud83d\uded2\ud83d\uded2",
+            "decision": {
+              "category": "short",
+              "source": "rule",
+              "id": "short",
+              "pattern": "mall",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-tie-broken-by-code-points",
+      "note": "Same priority, kind and rune length: pattern by code point, then category, then id. U+FF5E sorts before U+1F600 by code point although its UTF-16 unit is larger than the high surrogate.",
+      "rules": [
+        {
+          "id": "id-b",
+          "pattern": "shop",
+          "match": "contains",
+          "category": "zeta",
+          "priority": 100
+        },
+        {
+          "id": "id-a",
+          "pattern": "shop",
+          "match": "contains",
+          "category": "zeta",
+          "priority": 100
+        },
+        {
+          "id": "id-c",
+          "pattern": "shop",
+          "match": "contains",
+          "category": "alpha",
+          "priority": 100
+        },
+        {
+          "id": "wave",
+          "pattern": "ab\uff5ex",
+          "match": "contains",
+          "category": "wave",
+          "priority": 100
+        },
+        {
+          "id": "smile",
+          "pattern": "ab\ud83d\ude00x",
+          "match": "contains",
+          "category": "smile",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "wave",
+            "pattern": "ab\uff5ex",
+            "match": "contains",
+            "category": "wave",
+            "priority": 100
+          },
+          {
+            "id": "smile",
+            "pattern": "ab\ud83d\ude00x",
+            "match": "contains",
+            "category": "smile",
+            "priority": 100
+          },
+          {
+            "id": "id-c",
+            "pattern": "shop",
+            "match": "contains",
+            "category": "alpha",
+            "priority": 100
+          },
+          {
+            "id": "id-a",
+            "pattern": "shop",
+            "match": "contains",
+            "category": "zeta",
+            "priority": 100
+          },
+          {
+            "id": "id-b",
+            "pattern": "shop",
+            "match": "contains",
+            "category": "zeta",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "SHOP",
+            "decision": {
+              "category": "alpha",
+              "source": "rule",
+              "id": "id-c",
+              "pattern": "shop",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "AB\uff5eX AB\ud83d\ude00X",
+            "decision": {
+              "category": "wave",
+              "source": "rule",
+              "id": "wave",
+              "pattern": "ab\uff5ex",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "user-rule-beats-dictionary",
+      "note": "Tier 1 always before tier 2, even at the worst priority; the dictionary entry is live for a merchant no rule matches.",
+      "rules": [
+        {
+          "id": "worst",
+          "pattern": "spinneys",
+          "match": "contains",
+          "category": "dining",
+          "priority": 9007199254740991
+        }
+      ],
+      "entries": [
+        {
+          "pattern": "spinneys",
+          "match": "contains",
+          "category": "groceries"
+        },
+        {
+          "pattern": "waitrose",
+          "match": "contains",
+          "category": "groceries"
+        }
+      ],
+      "expect": {
+        "rules": [
+          {
+            "id": "worst",
+            "pattern": "spinneys",
+            "match": "contains",
+            "category": "dining",
+            "priority": 9007199254740991
+          }
+        ],
+        "entries": [
+          {
+            "id": "contains spinneys",
+            "pattern": "spinneys",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 0
+          },
+          {
+            "id": "contains waitrose",
+            "pattern": "waitrose",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 0
+          }
+        ],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "SPINNEYS JBR",
+            "decision": {
+              "category": "dining",
+              "source": "rule",
+              "id": "worst",
+              "pattern": "spinneys",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "WAITROSE DUBAI MALL",
+            "decision": {
+              "category": "groceries",
+              "source": "dictionary",
+              "pattern": "waitrose",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative-and-zero-priorities",
+      "note": "Priorities are plain integers; negative ones sort first.",
+      "rules": [
+        {
+          "id": "zero",
+          "pattern": "enoc",
+          "match": "contains",
+          "category": "zero",
+          "priority": 0
+        },
+        {
+          "id": "neg",
+          "pattern": "enoc",
+          "match": "contains",
+          "category": "neg",
+          "priority": -5
+        },
+        {
+          "id": "pos",
+          "pattern": "enoc",
+          "match": "contains",
+          "category": "pos",
+          "priority": 5
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "neg",
+            "pattern": "enoc",
+            "match": "contains",
+            "category": "neg",
+            "priority": -5
+          },
+          {
+            "id": "zero",
+            "pattern": "enoc",
+            "match": "contains",
+            "category": "zero",
+            "priority": 0
+          },
+          {
+            "id": "pos",
+            "pattern": "enoc",
+            "match": "contains",
+            "category": "pos",
+            "priority": 5
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "ENOC STATION 12",
+            "decision": {
+              "category": "neg",
+              "source": "rule",
+              "id": "neg",
+              "pattern": "enoc",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "dictionary-entries-ordered-like-rules",
+      "note": "Two matching dictionary entries: exact before contains, then the longer pattern.",
+      "rules": [],
+      "entries": [
+        {
+          "pattern": "amazon",
+          "match": "contains",
+          "category": "shopping"
+        },
+        {
+          "pattern": "amazon prime",
+          "match": "contains",
+          "category": "subscriptions"
+        },
+        {
+          "pattern": "amazon prime",
+          "match": "exact",
+          "category": "entertainment"
+        }
+      ],
+      "expect": {
+        "rules": [],
+        "entries": [
+          {
+            "id": "exact amazon prime",
+            "pattern": "amazon prime",
+            "match": "exact",
+            "category": "entertainment",
+            "priority": 0
+          },
+          {
+            "id": "contains amazon prime",
+            "pattern": "amazon prime",
+            "match": "contains",
+            "category": "subscriptions",
+            "priority": 0
+          },
+          {
+            "id": "contains amazon",
+            "pattern": "amazon",
+            "match": "contains",
+            "category": "shopping",
+            "priority": 0
+          }
+        ],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "AMAZON PRIME",
+            "decision": {
+              "category": "entertainment",
+              "source": "dictionary",
+              "pattern": "amazon prime",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "AMAZON PRIME VIDEO",
+            "decision": {
+              "category": "subscriptions",
+              "source": "dictionary",
+              "pattern": "amazon prime",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "AMAZON.AE",
+            "decision": {
+              "category": "shopping",
+              "source": "dictionary",
+              "pattern": "amazon",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "no-match-and-empty-merchants",
+      "note": "Nothing matching is a decision, and an empty or whitespace-only merchant never matches anything.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "any",
+          "pattern": "^",
+          "match": "regex",
+          "category": "everything",
+          "priority": 100
+        },
+        {
+          "id": "aaaa",
+          "pattern": "aaaa",
+          "match": "contains",
+          "category": "a",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "aaaa",
+            "pattern": "aaaa",
+            "match": "contains",
+            "category": "a",
+            "priority": 100
+          },
+          {
+            "id": "any",
+            "pattern": "^",
+            "match": "regex",
+            "category": "everything",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "   ",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "\u00a0\u3000",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "B",
+            "decision": {
+              "category": "everything",
+              "source": "rule",
+              "id": "any",
+              "pattern": "^",
+              "match": "regex"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pattern-and-category-canonicalized",
+      "note": "User exact/contains patterns and every category are canonicalized.",
+      "rules": [
+        {
+          "id": "padded",
+          "pattern": "  CARREFOUR   Hyper ",
+          "match": "contains",
+          "category": "  Groceries  ",
+          "priority": 100
+        },
+        {
+          "id": "padded-exact",
+          "pattern": " LULU\u00a0 HYPER ",
+          "match": "exact",
+          "category": "GROCERIES",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "padded-exact",
+            "pattern": "lulu hyper",
+            "match": "exact",
+            "category": "groceries",
+            "priority": 100
+          },
+          {
+            "id": "padded",
+            "pattern": "carrefour hyper",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "carrefour HYPER deira",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "padded",
+              "pattern": "carrefour hyper",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "LULU HYPER",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "padded-exact",
+              "pattern": "lulu hyper",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "LULU HYPERMARKET",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "regex-pattern-not-canonicalized",
+      "note": "A regex pattern is not canonicalized (its double space can never match a canonical subject); its category is, and it runs case-insensitively against the canonical subject.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "regex-mixed-case",
+          "pattern": "^Lulu hyper",
+          "match": "regex",
+          "category": "GROCERIES",
+          "priority": 100
+        },
+        {
+          "id": "regex-double-space",
+          "pattern": "^spinneys  market",
+          "match": "regex",
+          "category": "groceries",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "regex-double-space",
+            "pattern": "^spinneys  market",
+            "match": "regex",
+            "category": "groceries",
+            "priority": 100
+          },
+          {
+            "id": "regex-mixed-case",
+            "pattern": "^Lulu hyper",
+            "match": "regex",
+            "category": "groceries",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "LULU HYPERMARKET",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "regex-mixed-case",
+              "pattern": "^Lulu hyper",
+              "match": "regex"
+            }
+          },
+          {
+            "merchant": "LULUHYPER",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "SPINNEYS  MARKET",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "floors-on-user-rules",
+      "note": "contains needs 4 runes and exact 2, counted in code points after canonicalization.",
+      "rules": [
+        {
+          "id": "contains-3",
+          "pattern": "abc",
+          "match": "contains",
+          "category": "x",
+          "priority": 100
+        },
+        {
+          "id": "contains-4",
+          "pattern": "abcd",
+          "match": "contains",
+          "category": "x",
+          "priority": 100
+        },
+        {
+          "id": "exact-1",
+          "pattern": "a",
+          "match": "exact",
+          "category": "x",
+          "priority": 100
+        },
+        {
+          "id": "exact-2",
+          "pattern": "ab",
+          "match": "exact",
+          "category": "x",
+          "priority": 100
+        },
+        {
+          "id": "contains-3-astral",
+          "pattern": "\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+          "match": "contains",
+          "category": "x",
+          "priority": 100
+        },
+        {
+          "id": "contains-4-astral",
+          "pattern": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+          "match": "contains",
+          "category": "x",
+          "priority": 100
+        },
+        {
+          "id": "contains-collapses-to-3",
+          "pattern": "  a  b ",
+          "match": "contains",
+          "category": "x",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "exact-2",
+            "pattern": "ab",
+            "match": "exact",
+            "category": "x",
+            "priority": 100
+          },
+          {
+            "id": "contains-4",
+            "pattern": "abcd",
+            "match": "contains",
+            "category": "x",
+            "priority": 100
+          },
+          {
+            "id": "contains-4-astral",
+            "pattern": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+            "match": "contains",
+            "category": "x",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [
+          {
+            "id": "contains-3",
+            "code": "contains_too_short"
+          },
+          {
+            "id": "exact-1",
+            "code": "exact_too_short"
+          },
+          {
+            "id": "contains-3-astral",
+            "code": "contains_too_short"
+          },
+          {
+            "id": "contains-collapses-to-3",
+            "code": "contains_too_short"
+          }
+        ],
+        "decisions": [
+          {
+            "merchant": "AB",
+            "decision": {
+              "category": "x",
+              "source": "rule",
+              "id": "exact-2",
+              "pattern": "ab",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "XABCDX",
+            "decision": {
+              "category": "x",
+              "source": "rule",
+              "id": "contains-4",
+              "pattern": "abcd",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "user-rule-defects",
+      "note": "Each refused rule is reported with its code, never silently dropped; the valid one still applies.",
+      "rules": [
+        {
+          "id": "ok",
+          "pattern": "valid",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "unknown-match",
+          "pattern": "valid",
+          "match": "fuzzy",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "empty-category",
+          "pattern": "valid",
+          "match": "contains",
+          "category": "  ",
+          "priority": 100
+        },
+        {
+          "id": "multiline-contains",
+          "pattern": "val\nid",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "multiline-exact-ls",
+          "pattern": "val\u2028id",
+          "match": "exact",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "empty-pattern",
+          "pattern": " \t ",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "too-long",
+          "pattern": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "at-max",
+          "pattern": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "at-max",
+            "pattern": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "match": "contains",
+            "category": "fine",
+            "priority": 100
+          },
+          {
+            "id": "ok",
+            "pattern": "valid",
+            "match": "contains",
+            "category": "fine",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [
+          {
+            "id": "unknown-match",
+            "code": "unknown_match"
+          },
+          {
+            "id": "empty-category",
+            "code": "empty_category"
+          },
+          {
+            "id": "multiline-contains",
+            "code": "multiline"
+          },
+          {
+            "id": "multiline-exact-ls",
+            "code": "multiline"
+          },
+          {
+            "id": "empty-pattern",
+            "code": "empty_pattern"
+          },
+          {
+            "id": "too-long",
+            "code": "pattern_too_long"
+          }
+        ],
+        "decisions": [
+          {
+            "merchant": "VALID",
+            "decision": {
+              "category": "fine",
+              "source": "rule",
+              "id": "ok",
+              "pattern": "valid",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "regex-rule-defects",
+      "note": "Regex rules the dialect or the cost limits refuse, each reported with its code and reasons; the valid contains rule still applies.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "ok",
+          "pattern": "valid",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-lookahead",
+          "pattern": "(?=carrefour)x",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-backreference",
+          "pattern": "(carre)\\1",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-two-unbounded",
+          "pattern": "[0-9]+[0-9]+z",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-nested-repetition",
+          "pattern": "^(?:[a-z0-9 ]{1,8}){8}z$",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-too-wide",
+          "pattern": "[a-z]{1,8}[a-z]{1,8}[a-z]{1,8}[a-z]{1,8}[a-z]{1,8}[a-z]{1,8}[a-z]{1,8}[a-z]{1,8}z",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-malformed-repetition",
+          "pattern": "^a{,3}$",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        },
+        {
+          "id": "regex-multiline-allowed",
+          "pattern": "^a\nb",
+          "match": "regex",
+          "category": "fine",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "ok",
+            "pattern": "valid",
+            "match": "contains",
+            "category": "fine",
+            "priority": 100
+          },
+          {
+            "id": "regex-multiline-allowed",
+            "pattern": "^a\nb",
+            "match": "regex",
+            "category": "fine",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [
+          {
+            "id": "regex-lookahead",
+            "code": "regex_rejected",
+            "reasons": [
+              "lookaround"
+            ]
+          },
+          {
+            "id": "regex-backreference",
+            "code": "regex_rejected",
+            "reasons": [
+              "escape_backreference"
+            ]
+          },
+          {
+            "id": "regex-two-unbounded",
+            "code": "regex_rejected",
+            "reasons": [
+              "multiple_unbounded_quantifiers"
+            ]
+          },
+          {
+            "id": "regex-nested-repetition",
+            "code": "regex_nested_variable_repetition",
+            "reasons": [
+              "nested_variable_repetition",
+              "repetition_width_too_large"
+            ]
+          },
+          {
+            "id": "regex-too-wide",
+            "code": "regex_nested_variable_repetition",
+            "reasons": [
+              "repetition_width_too_large"
+            ]
+          },
+          {
+            "id": "regex-malformed-repetition",
+            "code": "regex_rejected",
+            "reasons": [
+              "malformed_repetition"
+            ]
+          }
+        ],
+        "decisions": [
+          {
+            "merchant": "VALID",
+            "decision": {
+              "category": "fine",
+              "source": "rule",
+              "id": "ok",
+              "pattern": "valid",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "homoglyphs-do-not-match",
+      "note": "Fullwidth, Cyrillic and Latin spellings stay different strings; the Kelvin sign folds to k.",
+      "rules": [
+        {
+          "id": "latin",
+          "pattern": "carrefour",
+          "match": "contains",
+          "category": "latin",
+          "priority": 100
+        },
+        {
+          "id": "kelvin",
+          "pattern": "kfc",
+          "match": "exact",
+          "category": "kfc",
+          "priority": 100
+        }
+      ],
+      "entries": [
+        {
+          "pattern": "\uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52",
+          "match": "contains",
+          "category": "shopping"
+        }
+      ],
+      "expect": {
+        "rules": [
+          {
+            "id": "kelvin",
+            "pattern": "kfc",
+            "match": "exact",
+            "category": "kfc",
+            "priority": 100
+          },
+          {
+            "id": "latin",
+            "pattern": "carrefour",
+            "match": "contains",
+            "category": "latin",
+            "priority": 100
+          }
+        ],
+        "entries": [
+          {
+            "id": "contains \uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52",
+            "pattern": "\uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52",
+            "match": "contains",
+            "category": "shopping",
+            "priority": 0
+          }
+        ],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "CARREFOUR",
+            "decision": {
+              "category": "latin",
+              "source": "rule",
+              "id": "latin",
+              "pattern": "carrefour",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "\uff23\uff21\uff32\uff32\uff25\uff26\uff2f\uff35\uff32",
+            "decision": {
+              "category": "shopping",
+              "source": "dictionary",
+              "pattern": "\uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "\u0421ARREFOUR",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "\u212aFC",
+            "decision": {
+              "category": "kfc",
+              "source": "rule",
+              "id": "kelvin",
+              "pattern": "kfc",
+              "match": "exact"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "arabic-merchants",
+      "note": "Arabic patterns match by code points; harakat make a different string.",
+      "rules": [
+        {
+          "id": "ar-exact",
+          "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+          "match": "exact",
+          "category": "groceries",
+          "priority": 100
+        },
+        {
+          "id": "ar-contains",
+          "pattern": "\u0627\u0644\u0645\u0631\u0643\u0632",
+          "match": "contains",
+          "category": "shopping",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "ar-exact",
+            "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+            "match": "exact",
+            "category": "groceries",
+            "priority": 100
+          },
+          {
+            "id": "ar-contains",
+            "pattern": "\u0627\u0644\u0645\u0631\u0643\u0632",
+            "match": "contains",
+            "category": "shopping",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "\u0643\u0627\u0631\u0641\u0648\u0631",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "ar-exact",
+              "pattern": "\u0643\u0627\u0631\u0641\u0648\u0631",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "\u0643\u064e\u0627\u0631\u0650\u0641\u0648\u0631",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "\u0645\u0648\u0644 \u0627\u0644\u0645\u0631\u0643\u0632",
+            "decision": {
+              "category": "shopping",
+              "source": "rule",
+              "id": "ar-contains",
+              "pattern": "\u0627\u0644\u0645\u0631\u0643\u0632",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "subject-bounded-to-512-runes",
+      "note": "A needle past the 512th rune of the canonical merchant never matches; one inside it does.",
+      "rules": [
+        {
+          "id": "needle",
+          "pattern": "needle",
+          "match": "contains",
+          "category": "found",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "needle",
+            "pattern": "needle",
+            "match": "contains",
+            "category": "found",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa needle",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa needle",
+            "decision": {
+              "category": "found",
+              "source": "rule",
+              "id": "needle",
+              "pattern": "needle",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "nfc-and-nfd-differ",
+      "note": "No normalization: a precomposed rule does not match a decomposed merchant.",
+      "rules": [
+        {
+          "id": "nfc",
+          "pattern": "caf\u00e9 one",
+          "match": "contains",
+          "category": "nfc",
+          "priority": 100
+        }
+      ],
+      "entries": [
+        {
+          "pattern": "cafe\u0301 two",
+          "match": "contains",
+          "category": "dining"
+        }
+      ],
+      "expect": {
+        "rules": [
+          {
+            "id": "nfc",
+            "pattern": "caf\u00e9 one",
+            "match": "contains",
+            "category": "nfc",
+            "priority": 100
+          }
+        ],
+        "entries": [
+          {
+            "id": "contains cafe\u0301 two",
+            "pattern": "cafe\u0301 two",
+            "match": "contains",
+            "category": "dining",
+            "priority": 0
+          }
+        ],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "CAF\u00c9 ONE",
+            "decision": {
+              "category": "nfc",
+              "source": "rule",
+              "id": "nfc",
+              "pattern": "caf\u00e9 one",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "CAFE\u0301 ONE",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          },
+          {
+            "merchant": "CAFE\u0301 TWO",
+            "decision": {
+              "category": "dining",
+              "source": "dictionary",
+              "pattern": "cafe\u0301 two",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "CAF\u00c9 TWO",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

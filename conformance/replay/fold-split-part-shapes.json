@@ -1,0 +1,278 @@
+{
+  "name": "split-part-shapes",
+  "group": "fold",
+  "note": "Parts are positive decimal strings with a category.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "split-part-shapes-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "1000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_split",
+          "op_id": "split-part-shapes-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "parts": [
+              {
+                "category": "food",
+                "amount_minor": 600
+              },
+              {
+                "category": "home",
+                "amount_minor": "400"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_split",
+          "op_id": "split-part-shapes-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "parts": [
+              {
+                "category": "food",
+                "amount_minor": "0"
+              },
+              {
+                "category": "home",
+                "amount_minor": "1000"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_split",
+          "op_id": "split-part-shapes-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "parts": [
+              {
+                "category": "",
+                "amount_minor": "500"
+              },
+              {
+                "category": "home",
+                "amount_minor": "500"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_split",
+          "op_id": "split-part-shapes-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "parts": "all"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "5",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|1000|debit|CARREFOUR|2026-06-05",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "5"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "split-part-shapes-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "1000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "c22d07e5b3eaf76afc075ea95e9abd57c29668213e7695f31a6c16bee8d6b555",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "259c73ae32e4defbb8df0e4562d7ed6900cebcbc4f2cfdf886a835a556397319",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "txn_split split-part-shapes-2: part 0 amount_minor must be a decimal-integer string, got 600"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "txn_split split-part-shapes-3: part 0 amount_minor is 0, and amounts are always positive"
+        },
+        {
+          "at_seq": "4",
+          "kind": "invalid_payload",
+          "detail": "txn_split split-part-shapes-4: part 0 category is \"\""
+        },
+        {
+          "at_seq": "5",
+          "kind": "invalid_payload",
+          "detail": "txn_split split-part-shapes-5: parts is not an array"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

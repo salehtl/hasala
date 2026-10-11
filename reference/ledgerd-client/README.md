@@ -295,8 +295,8 @@ only read path; a caller needing a full pass writes the loop (`eachRowChunk`),
 so the memory ceiling is a property of the loop rather than of the callee.
 
 ```bash
-cd client && bun test                              # file / mem store
-cd client && LEDGER_CLIENT_STORE=sqlite bun test   # the same suite, SQLite-backed
+cd reference/ledgerd-client && bun test                              # file / mem store
+cd reference/ledgerd-client && LEDGER_CLIENT_STORE=sqlite bun test   # the same suite, SQLite-backed
 ```
 
 Both must be green. That second run is why the device's persistence layer is not
