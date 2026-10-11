@@ -26,6 +26,8 @@
     case setupBank
     /// Setup at the bank step on a review account ("Use sample data").
     case reviewAccount
+    /// Signed out on an iPhone without a passcode (S-24).
+    case noPasscode
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -38,7 +40,7 @@
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount)
       func services(_ account: MockAccountService) -> AccountServices {
         AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
-                        notifications: MockNotificationPermission())
+                        notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })
       }
       switch scenario {
       case nil, .passkeyUser:
@@ -46,7 +48,7 @@
       case .passwordOnly:
         return AccountSession(services: services(MockAccountService(existing: .passwordOnly, signedIn: true)),
                               phase: .ready)
-      case .newUser:
+      case .newUser, .noPasscode:
         return AccountSession(services: services(MockAccountService(existing: .none)), phase: .signedOut)
       case .signInPassword:
         return AccountSession(services: services(MockAccountService(existing: .passwordOnly)), phase: .signedOut)

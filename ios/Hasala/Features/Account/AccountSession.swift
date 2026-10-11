@@ -95,4 +95,6 @@ struct AccountServices {
   var mailbox: MailboxConnecting
   var setup: SetupAuthoring
   var notifications: NotificationPermissionAsking
+  /// Onboarding step 0 (spec 04 §6.6): whether this iPhone has a passcode.
+  var hasPasscode: @MainActor () -> Bool = { DevicePasscode.isSet() }
 }
