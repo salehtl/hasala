@@ -17,7 +17,7 @@ beta; every deployment is **QA** until a production VPS exists.
 | `web/` | The hasala.app website: Astro + Bun, static output. See "Website" below. |
 | `design/` | Logo and exported assets. Not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | (Planned) generic deployment notes for the QA host. Host names, addresses, accounts and credentials never go here. |
-| `docs/` | `docs/legal/` holds the privacy policy, terms, security and support pages (drafts, with `[[OWNER: ...]]` notes) that the website renders. Hasala's architecture and decisions will live in `docs/` too; not in this tree yet. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
+| `docs/` | `docs/legal/` holds the privacy policy, terms, security and support pages that the website renders (`status: "final"`; a page that still has an `[[OWNER: ...]]` note must go back to `status: "draft"`). Hasala's architecture and decisions will live in `docs/` too; not in this tree yet. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
 
 ## Build and test
 
@@ -94,7 +94,9 @@ same devShell. From `web/`:
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
-changing that. Deploying (`bunx wrangler deploy` from `web/`, Workers Static
+changing that. `/licenses` lists the third-party code and font the built
+site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
+dependency reaches `dist/`. Deploying (`bunx wrangler deploy` from `web/`, Workers Static
 Assets, see `web/wrangler.jsonc`) is done only with the owner's approval;
 neither CI nor an agent deploys.
 

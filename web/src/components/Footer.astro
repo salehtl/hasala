@@ -38,9 +38,14 @@ const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
         <span class="footer__sep footer__sep--domain" aria-hidden="true"></span>
         <span class="footer__domain">hasala.app</span>
       </p>
-      <p class="footer__legal">
-        iPhone and TestFlight are trademarks of Apple Inc. Gmail is a trademark of Google LLC. Hasala is not affiliated with any bank.
-      </p>
+      <div class="footer__legal">
+        <p>
+          Hasala’s code is <a href={SITE.repoUrl}>source-available</a> under the <a href={SITE.licenseUrl}>Functional Source License (FSL-1.1-ALv2)</a>; each
+          version becomes Apache-2.0 two years after release. The name Hasala and the Slot mark are trademarks not covered by the licence.
+          <a href="/licenses">Third-party licences</a>.
+        </p>
+        <p>iPhone and TestFlight are trademarks of Apple Inc. Gmail is a trademark of Google LLC. Hasala is not affiliated with any bank.</p>
+      </div>
     </div>
   </div>
 </footer>
@@ -140,9 +145,23 @@ const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
     display: none;
   }
   .footer__legal {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     color: var(--neutral-500);
     font-size: 12px;
     line-height: 18px;
+  }
+  .footer__legal a {
+    color: var(--neutral-600);
+    text-decoration: underline;
+    text-decoration-color: rgb(0 0 0 / 20%);
+    text-underline-offset: 2px;
+    transition: color var(--t-hover-out);
+  }
+  .footer__legal a:hover {
+    color: var(--accent);
+    text-decoration-color: currentColor;
   }
   @media (min-width: 1024px) {
     .site-footer {
@@ -176,6 +195,7 @@ const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
       gap: 24px;
     }
     .footer__meta {
+      flex: none;
       gap: 16px;
     }
     .footer__sep--domain,
@@ -183,7 +203,7 @@ const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
       display: inline-block;
     }
     .footer__legal {
-      max-width: 520px;
+      max-width: 560px;
       text-align: right;
     }
   }
