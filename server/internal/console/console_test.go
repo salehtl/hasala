@@ -48,7 +48,7 @@ func TestIdentifyRefusesAnythingButTheProxiedOwner(t *testing.T) {
 		t.Fatalf("owner: %d", w.Code)
 	}
 	for name, m := range map[string]func(*http.Request){
-		"peer":      func(r *http.Request) { r.RemoteAddr = "10.0.0.5:1" },
+		"peer":      func(r *http.Request) { r.RemoteAddr = "192.0.2.5:1" },
 		"cf":        func(r *http.Request) { r.Header.Set("Cf-Connecting-Ip", "1.2.3.4") },
 		"host":      func(r *http.Request) { r.Host = "other.example" },
 		"proto":     func(r *http.Request) { r.Header.Set("X-Forwarded-Proto", "http") },
