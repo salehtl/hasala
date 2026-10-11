@@ -3,8 +3,9 @@
 // The inner Subject, Date and From of an inline forward become the effective ones. All three
 // are read out of body text anyone can author: CONTENT, never trust (trust is CoreMail's
 // Authentication-Results verdict). Every pattern the twin writes as a regex is hand-coded here
-// as a scanner over scalars, with the same ASCII-only case folding (the twin's regexes carry
-// `/i` without `u`, which never folds a non-ASCII character onto an ASCII one).
+// as a scanner over scalars, with Go's `(?i)` case folding: ASCII letters fold, and so do the
+// two non-ASCII scalars whose simple-fold orbit reaches an ASCII letter, U+017F (long s) onto
+// `s` and U+212A (Kelvin sign) onto `k`. The twin gets the same folds from its `/iu` regexes.
 import CoreTime
 
 struct Forward {
@@ -24,11 +25,23 @@ enum Unwrap {
     c.value >= 0x41 && c.value <= 0x5a ? Unicode.Scalar(UInt8(c.value + 0x20)) : c
   }
 
-  /// Whether `s` at `i` starts with the lower-case ASCII `word`, ASCII case-insensitively.
+  /// The scalar a Go `(?i)` pattern built from lower-case ASCII compares `c` as: ASCII upper
+  /// case lowered, and U+017F / U+212A, the only non-ASCII members of an ASCII letter's
+  /// `unicode.SimpleFold` orbit, mapped onto `s` / `k`.
+  static func foldCI(_ c: Unicode.Scalar) -> Unicode.Scalar {
+    switch c.value {
+    case 0x17f: "s"
+    case 0x212a: "k"
+    default: asciiLower(c)
+    }
+  }
+
+  /// Whether `s` at `i` starts with the lower-case ASCII `word`, case-insensitively as a Go
+  /// `(?i)` pattern compares it (see `foldCI`).
   static func hasWordCI(_ s: Line, _ i: Int, _ word: String) -> Bool {
     var k = i
     for w in word.unicodeScalars {
-      guard k < s.endIndex, asciiLower(s[k]) == w else { return false }
+      guard k < s.endIndex, foldCI(s[k]) == w else { return false }
       k += 1
     }
     return true
@@ -64,7 +77,7 @@ enum Unwrap {
     var i = skip(s, 0, " ")
     guard hasWordCI(s, i, "fw") else { return subject }
     i += 2
-    if i < s.endIndex, asciiLower(s[i]) == "d" { i += 1 }
+    if i < s.endIndex, foldCI(s[i]) == "d" { i += 1 }
     i = skip(s, i, " ")
     guard i < s.endIndex, s[i] == ":" else { return subject }
     i = skip(s, i + 1, " ")
@@ -73,8 +86,10 @@ enum Unwrap {
 
   static let headerLabels = ["from", "to", "subject", "date", "reply-to", "cc", "sent"]
 
-  /// `/^ *(from|to|subject|date|reply-to|cc|sent) *: *(.*)$/i`: the lower-cased label and the
-  /// value after the colon and its spaces. `.` excludes the four JavaScript line terminators,
+  /// `/^ *(from|to|subject|date|reply-to|cc|sent) *: *(.*)$/iu`: the lower-cased label and the
+  /// value after the colon and its spaces. The label is the MATCHED text lower-cased as Go's
+  /// strings.ToLower does it, not the canonical spelling: `ſubject` matches but lowers to
+  /// itself, so it is a header line that sets no field. `.` excludes the four JavaScript line terminators,
   /// and `$` (no `m`) is the end of the line, so a value holding CR, U+2028 or U+2029 is no
   /// match at all.
   static func headerLine(_ s: Line) -> (label: String, value: Line)? {
@@ -85,7 +100,10 @@ enum Unwrap {
       k = skip(s, k + 1, " ")
       let value = s[k...]
       if value.contains(where: { $0 == "\n" || $0 == "\r" || $0 == "\u{2028}" || $0 == "\u{2029}" }) { return nil }
-      return (label, value)
+      let matched = s[i..<(i + label.unicodeScalars.count)]
+      // ToLower: ASCII lowered, U+212A to `k`; U+017F is already lower case and stays.
+      let lowered = matched.map { $0.value == 0x212a ? "k" : asciiLower($0) }
+      return (NormText.string(lowered), value)
     }
     return nil
   }

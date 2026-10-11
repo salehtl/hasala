@@ -248,12 +248,11 @@ public enum Normalizer {
 
   typealias Scalars = [Unicode.Scalar]
 
-  static func asciiLower(_ c: Unicode.Scalar) -> Unicode.Scalar { Unwrap.asciiLower(c) }
-
-  /// Whether `s[i...]` starts with the ASCII `word` (lower case), ASCII case-insensitively.
+  /// Whether `s[i...]` starts with the ASCII `word` (lower case), case-insensitively as Go's
+  /// `(?i)` compares it (`Unwrap.foldCI`: ASCII, plus U+017F as `s` and U+212A as `k`).
   static func hasCI(_ s: Scalars, _ i: Int, _ word: Scalars) -> Bool {
     guard i + word.count <= s.count else { return false }
-    for k in 0..<word.count where asciiLower(s[i + k]) != word[k] { return false }
+    for k in 0..<word.count where Unwrap.foldCI(s[i + k]) != word[k] { return false }
     return true
   }
 
@@ -276,8 +275,8 @@ public enum Normalizer {
     }
   }
 
-  /// `s.replace(/<tag[^>]*>.*?<\/tag>/gis, " ")`: at each position, `<tag` (ASCII
-  /// case-insensitive), then everything up to the first `>`, then the shortest run up to the
+  /// `s.replace(/<tag[^>]*>.*?<\/tag>/gisu, " ")`: at each position, `<tag` (case-insensitive
+  /// as in `hasCI`), then everything up to the first `>`, then the shortest run up to the
   /// first `</tag>`.
   static func removeElement(_ s: Scalars, _ tag: String) -> Scalars {
     let open = Array(("<" + tag).unicodeScalars)

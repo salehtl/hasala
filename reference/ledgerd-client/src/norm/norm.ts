@@ -244,8 +244,9 @@ function scanRawHeaders(raw: Uint8Array): { subject: string; from: string } {
 // Stages 5-9: HTML strip, entities, whitespace, trim, join
 // ---------------------------------------------------------------------------
 
-const scriptRe = /<script[^>]*>.*?<\/script>/gis;
-const styleRe = /<style[^>]*>.*?<\/style>/gis;
+// `u` so `i` folds as Go's `(?i)` does (U+017F matches `s`; see unwrap.ts).
+const scriptRe = /<script[^>]*>.*?<\/script>/gisu;
+const styleRe = /<style[^>]*>.*?<\/style>/gisu;
 const tagRe = /<[^>]+>/gs;
 const wsRe = /[\u0020\u0009\u00a0]+/g;
 
