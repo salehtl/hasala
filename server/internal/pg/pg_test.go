@@ -71,9 +71,10 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 		got = append(got, n)
 	}
 	want := []string{
-		"account_deletion_challenges", "account_limits", "account_refusals", "account_usage",
-		"apns_tokens", "deleted_account_sessions", "goose_db_version", "invite_codes", "key_history",
-		"op_log", "oplog_seq", "sessions", "user_key_wraps", "user_keys", "users",
+		"account_deletion_challenges", "account_key_wraps", "account_keys", "account_limits", "account_refusals",
+		"account_usage", "admin_audit", "apns_tokens", "bank_requests", "banks", "deleted_account_sessions",
+		"goose_db_version", "invite_codes", "key_history", "mail_log", "mailbox_link_challenges", "mailbox_links",
+		"op_log", "oplog_seq", "sessions", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
 	if !slices.Equal(got, want) {
@@ -194,14 +195,14 @@ func TestTheSQLPredicateAgreesWithLooksSealed(t *testing.T) {
 func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 	pool := pgtest.New(t)
 	u := oplogtest.NewUser(t, pool)
-	oplogtest.NewWriter(t, pool, u, "dev-a")
+	oplogtest.NewWriter(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a")
 	insert := func(frame []byte, size int) error {
 		_, err := pool.Exec(bg, `INSERT INTO op_log (user_id, seq, stream, writer_id, writer_counter, type_flag,
-			blob, size_bucket, blob_hash, prev_hash) VALUES ($1, 1, 'hot', 'dev-a', 1, 'edit', $2, $3, $4, $4)`,
+			blob, size_bucket, blob_hash, prev_hash) VALUES ($1, 1, 'hot', 'ios-00000000-0000-4000-8000-00000000000a', 1, 'edit', $2, $3, $4, $4)`,
 			u, frame, size, make([]byte, 32))
 		return err
 	}
-	here := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 1}
+	here := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "ios-00000000-0000-4000-8000-00000000000a", WriterCounter: 1}
 	aad := here.AAD()
 	l := len(aad)
 	positioned := func(mutate func(f []byte)) []byte {
@@ -271,7 +272,7 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 		}
 	}
 	// A frame that passes the predicate but names another position.
-	other := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 2}
+	other := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "ios-00000000-0000-4000-8000-00000000000a", WriterCounter: 2}
 	s := blobtest.MustSeal3(other, blob.ZeroHash, []byte(`{}`))
 	err := insert(s.Bytes, s.SizeBucket)
 	if _, name := sqlState(err); name != "op_log_aad_matches_position" {
@@ -291,10 +292,11 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 func TestTheLogIsAppendOnlyForEveryRoleButTheCascade(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
 	u := oplogtest.NewUser(t, pool)
-	oplogtest.NewWriter(t, pool, u, "dev-a")
-	oplogtest.Append(t, pool, u, "dev-a", 3)
-	mustExec(t, pool, `INSERT INTO key_history (user_id, writer_id, pubkey, event, at)
-		SELECT user_id, writer_id, pubkey, 'registered', now() FROM writers WHERE user_id = $1`, u)
+	oplogtest.NewWriter(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a")
+	oplogtest.Append(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a", 3)
+	mustExec(t, pool, `INSERT INTO key_history (user_id, writer_id, alg, pubkey, dak_pubkey, event, authorized_by, nonce, signature, at)
+		SELECT user_id, writer_id, alg, pubkey, dak_pubkey, 'registered', 'authority', $2, $3, now() FROM writers WHERE user_id = $1`,
+		u, make([]byte, 32), make([]byte, 64))
 
 	for _, sql := range []string{
 		`UPDATE op_log SET created_at = now() WHERE user_id = $1`,
@@ -502,7 +504,11 @@ func TestServingRefusesAMemberOfTheOwnerRole(t *testing.T) {
 
 func TestADatabaseAheadOfTheBinaryOnlyWarns(t *testing.T) {
 	pool, owner := pgtest.NewWithOwner(t)
-	mustExec(t, owner, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (2, true)`)
+	latest, err := pg.LatestEmbedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, owner, `INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true)`, latest+1)
 	var warned []string
 	if err := pg.CheckServing(bg, pool, func(s string) { warned = append(warned, s) }); err != nil {
 		t.Fatalf("a database ahead of the binary refused: %v", err)
@@ -527,8 +533,11 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	if err != nil || n != 0 {
 		t.Fatalf("Pending = %d, %v; want 0", n, err)
 	}
+	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
+	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links
+	// and 00021_waitlist_invites_mail.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 1 {
-		t.Fatalf("LatestEmbedded = %d, %v; want the baseline, 1", latest, err)
+	if err != nil || latest != 21 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 21", latest, err)
 	}
 }

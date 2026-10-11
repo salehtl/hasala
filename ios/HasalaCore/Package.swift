@@ -73,18 +73,19 @@ let package = Package(
     core("CoreJSON", "JSON", ["HasalaText"]),
     core("CoreTime", "Time"),
     core("CoreMoney", "Money", ["HasalaText"]),
-    // Resource-only. The two single-file resources are added by their owners,
-    // one line each, when the file lands (SwiftPM refuses a missing resource):
-    //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5)
+    // Resource-only. The single-file resources are added by their owners, one
+    // line each, when the file lands (SwiftPM refuses a missing resource):
+    //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5), landed
     //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2)
-    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample")]),
+    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample"), .copy("merchant-dictionary.json")]),
 
     // L1
     core("CoreWire", "Wire", l0),
     core("CoreCrypto", "Crypto", l0 + ["CoreWire"]),
     core("CoreAuth", "Auth", l0),  // §2.2: L0, CoreJSON (in L0)
     core("CoreNorm", "Norm", l0),
-    core("CoreTemplate", "Template", l0),
+    // §2.3: ICU's C API (uregex_*) through a module map over libicucore.
+    core("CoreTemplate", "Template", l0 + ["HasalaICU"]),
     core("CoreMail", "Mail", l0),
 
     // L2
@@ -95,7 +96,9 @@ let package = Package(
 
     // L3: the only GRDB users (R6).
     core("CoreStore", "Store", l0 + l1 + l2 + [grdb, ordered]),
-    core("CoreProjection", "Projection", ["CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
+    // L0 and CoreWire too (lower layers): the projector computes local dates
+    // (CoreTime), writes gates JSON (CoreJSON) and folds the pending overlay (CoreWire ops).
+    core("CoreProjection", "Projection", l0 + ["CoreWire", "CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
 
     // L4
     core("CoreSync", "Sync", l0 + l1 + l2 + l3),
@@ -111,6 +114,10 @@ let package = Package(
     // out of L0-L4, and lives here so its query logic runs under `swift test`.
     // Linked by the app only (its Platform layer); nothing in L0-L4 depends on it.
     core("HasalaKeychain", "Keychain", ["CorePrimitives", "CoreStore"]),
+
+    // The system-library module CoreTemplate reaches ICU through (Sources/HasalaICU: a module
+    // map and the declarations of the few uregex_* functions used; no code).
+    .systemLibrary(name: "HasalaICU", path: "Sources/HasalaICU"),
 
     // T: test support, never linked by the app target.
     core("CoreTestSupport", "TestSupport", l0 + l1 + l2 + l3 + l4),

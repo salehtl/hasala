@@ -1,0 +1,9 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Hasala console</title>
+<link rel="stylesheet" href="/static/console.css"></head>
+<body>
+<header><strong>Hasala console</strong> · <a href="/">Waitlist</a> · <a href="/invites">Invites</a> · <a href="/mail">Email log</a> <span class="who">{{.Login}}</span></header>
+{{if .Flash}}<p class="flash">Done: {{.Flash}}</p>{{end}}
+<main>{{end}}
+{{define "foot"}}</main></body></html>{{end}}

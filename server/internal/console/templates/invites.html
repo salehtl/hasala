@@ -1,0 +1,18 @@
+{{define "invites.html"}}{{template "head" .}}
+<h1>Invites</h1>
+<form method="post" action="/invites/mint" class="mint">
+<input type="hidden" name="csrf" value="{{.MintTok}}">
+<label>Email (optional: sends the invite) <input type="email" name="email" autocomplete="off"></label>
+<label>Note <input type="text" name="note" maxlength="200"></label>
+<label><input type="checkbox" name="review"> Beta App Review (printed, no email)</label>
+<button>Mint</button>
+</form>
+<table>
+<tr><th>Id</th><th>State</th><th>Origin</th><th>Review</th><th>Expires</th><th>Note</th><th></th></tr>
+{{range .Invites}}<tr><td>{{.Short}}</td><td>{{.State}}</td><td>{{.Origin}}</td><td>{{if .Review}}yes{{end}}</td><td>{{.Expires}}</td><td>{{.Note}}</td>
+<td>{{if or (eq .State "active") (eq .State "queued")}}
+<form method="post" action="/invites/{{.ID}}/resend"><input type="hidden" name="csrf" value="{{.ResendTok}}"><button>Resend</button></form>
+<form method="post" action="/invites/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{.RevokeTok}}"><button>Revoke</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="7">No invites yet.</td></tr>{{end}}
+</table>
+{{template "foot" .}}{{end}}

@@ -6,12 +6,12 @@
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac), `web` (the website) and `nixos-vm` (the QA module
-# booted in a NixOS VM) are not required checks.
+# client core on a Mac), `ios` (the app on a Mac), `web` (the website) and
+# `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
 #
 # Path-aware on pull requests, failing closed: the first job, `changes`, lists
-# the files the pull request changes, and `gate`, `vuln`, `swift`, `web` and
-# `nixos-vm` are skipped only when every one of them is on that job's list of
+# the files the pull request changes, and `gate`, `vuln`, `swift`, `ios`, `web`
+# and `nixos-vm` are skipped only when every one of them is on that job's list of
 # paths it does not read. Any other path runs the job, a path nobody
 # anticipated included. `secrets` always runs. Jobs are skipped with a
 # job-level `if:`, never a workflow-level `paths:` filter: a skipped job still
@@ -47,8 +47,8 @@ defaults:
 
 jobs:
   # Which jobs the pull request needs, as outputs `gate` (read by gate and
-  # vuln), `swift`, `web` and `nixos_vm`, each "true" or "false"; any other
-  # event sets all four to "true". The checkout of a pull request is its merge
+  # vuln), `swift`, `ios`, `web` and `nixos_vm`, each "true" or "false"; any
+  # other event sets all of them to "true". The checkout of a pull request is its merge
   # commit (refs/pull/N/merge) and depth 2 fetches both parents, so
   # `git diff HEAD^1 HEAD` is exactly what merging would change on the base as
   # it is now. --no-renames lists both ends of a move, so moving a file out of
@@ -61,6 +61,7 @@ jobs:
     outputs:
       gate: ${{ steps.areas.outputs.gate }}
       swift: ${{ steps.areas.outputs.swift }}
+      ios: ${{ steps.areas.outputs.ios }}
       web: ${{ steps.areas.outputs.web }}
       nixos_vm: ${{ steps.areas.outputs.nixos_vm }}
     steps:
@@ -75,7 +76,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if [[ "$EVENT" != pull_request ]]; then
-            printf '%s=true\n' gate swift web nixos_vm | tee -a "$GITHUB_OUTPUT"
+            printf '%s=true\n' gate swift ios web nixos_vm | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
           changed="$RUNNER_TEMP/changed-paths"
@@ -114,6 +115,9 @@ jobs:
           skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
           # swift reads ios/ and conformance/ only.
           skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
+          # ios (the app) reads ios/, design/ (the Paper tokens it is generated
+          # from) and the flake (which pins its XcodeGen).
+          skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$'
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
           skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
           # nixos-vm reads infra/ (the module and the VM test), server/ (the
@@ -266,10 +270,108 @@ jobs:
 
       # gitleaks from the flake's pinned nixpkgs (flake.lock), so its version
       # moves only with the lock. --redact: this log is public.
+      # --log-opts=HEAD: every commit reachable from the checked-out commit (on
+      # a pull request, the merge of the branch into main; on a push, main),
+      # judged by that commit's .gitleaks.toml. Without it gitleaks runs
+      # `git log --all`, and fetch-depth 0 fetches every branch, so one open
+      # branch's allowlisted test vectors failed every other run against a
+      # .gitleaks.toml that had not seen them yet. Every branch with a pull
+      # request is still scanned in full by that pull request's run; a branch
+      # with none is not scanned here (GitHub secret scanning still covers
+      # provider patterns). Keep the revision one that cannot fail to resolve:
+      # gitleaks 8.30.1 exits 0 with "0 commits scanned" when git log fails.
       - name: gitleaks
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
-          gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
+          gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
+
+  # The iOS app (ios/): token generator freshness, the HasalaKit package tests on
+  # macOS, then a simulator build with the unit and UI smoke tests. Nothing is
+  # signed here (CODE_SIGNING_ALLOWED=NO) and no Apple credential exists in CI;
+  # archives, signing and uploads happen only on the owner's Mac
+  # (ios/scripts/archive.sh, ios/scripts/upload.sh). Not a required check.
+  # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
+  ios:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
+
+      - name: Design tokens are generated from design/tokens/paper-tokens.json
+        run: swift ios/tools/tokens/generate.swift --check
+
+      - name: No Swift file references in the project (synchronized folders only)
+        run: |
+          if grep -q 'lastKnownFileType = sourcecode.swift' ios/Hasala.xcodeproj/project.pbxproj; then
+            echo "::error::ios/Hasala.xcodeproj lists Swift files; every target root must be a synchronized folder"
+            exit 1
+          fi
+
+      # XcodeGen 2.46.0 from the flake (packages.aarch64-darwin.xcodegen, pinned
+      # by hash): only that one package is built, not the devShell. A missing
+      # or different XcodeGen fails the step (generate-project.sh exits 2).
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+
+      - name: Project matches ios/project.yml (XcodeGen 2.46.0, AT-01)
+        run: |
+          xcodegen="$(nix build .#xcodegen --no-link --print-out-paths)/bin/xcodegen"
+          XCODEGEN="$xcodegen" ios/scripts/generate-project.sh --check
+
+      - name: Release script tests (build numbers, upload prechecks; offline)
+        run: |
+          ios/scripts/tests/build_number_test.sh
+          ios/scripts/tests/upload_precheck_test.sh
+
+      - name: HasalaKit tests (macOS)
+        run: swift test --package-path ios/HasalaKit
+
+      - name: Build and test in the simulator (unsigned)
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          rts = json.load(sys.stdin)["devices"]
+          best = None
+          for rt, devs in rts.items():
+              if ".iOS-" not in rt:
+                  continue
+              ver = tuple(int(x) for x in rt.rsplit(".iOS-", 1)[1].split("-"))
+              if ver < (26,):
+                  continue
+              for d in devs:
+                  if d["name"].startswith("iPhone") and (best is None or ver > best[0]):
+                      best = (ver, d["udid"], d["name"])
+          if best is None:
+              sys.exit("no iPhone simulator with iOS 26 or later")
+          print(best[1])
+          ')"
+          xcrun simctl list devices | grep "$udid"
+          xcodebuild test \
+            -project ios/Hasala.xcodeproj -scheme Hasala \
+            -destination "id=$udid" \
+            -resultBundlePath "$RUNNER_TEMP/Hasala.xcresult" \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-xcresult
+          path: ${{ runner.temp }}/Hasala.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
 
   # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
   # `swift test` passes (unit tests and the conformance suite, reading
@@ -316,9 +418,9 @@ jobs:
         run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
 
   # The hasala.app website in web/ (Astro + Bun). Not a required check: the
-  # ruleset is the owner's. Lighthouse uses the Node and Chrome that come with
-  # the runner image and keeps its reports in a workflow artifact only (never
-  # temporary-public-storage). Nothing here deploys.
+  # ruleset is the owner's. Lighthouse uses the devShell's Node and the Chrome
+  # that comes with the runner image, and keeps its reports in a workflow
+  # artifact only (never temporary-public-storage). Nothing here deploys.
   web:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web != 'false') }}

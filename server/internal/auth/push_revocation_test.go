@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -44,82 +45,21 @@ func pushTokenCount(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) int {
 	return countRows(t, pool, `SELECT count(*) FROM apns_tokens WHERE user_id = $1`, u)
 }
 
-// TestRevokingAWriterStopsThatDevicesNotifications is the stolen-phone case.
-// The user signs in on a replacement and revokes the stolen device's key, which
-// is the gesture the whole design offers for "that phone is not mine any more".
-func TestRevokingAWriterStopsThatDevicesNotifications(t *testing.T) {
-	pool := pgtest.New(t)
-	c := newClock()
-	w := newWriters(pool, c)
-	sessions := newSessions(pool, time.Hour, c)
-	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-writer"))
+// Revoking a writer deletes its APNs token in the revocation's transaction:
+// TestRevocationPinsTheFinalHeadAndEndsTheDevice (writer_test.go) asserts it
+// alongside the rest of what a revocation ends.
 
-	stolen, replacement := newDevice(t, "stolen-phone"), newDevice(t, "replacement")
-	mustEnroll(t, w, u, stolen, stolen)
-	mustEnroll(t, w, u, stolen, replacement)
-
-	sess, err := sessions.Issue(bgctx, u)
-	if err != nil {
+// plantWriter enrols a writer directly (these tests are about sessions, not
+// enrolment) with fresh keys.
+func plantWriter(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) string {
+	t.Helper()
+	d := authtest.NewDevice(t)
+	if _, err := pool.Exec(bgctx,
+		`INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at) VALUES ($1, $2, 'ed25519', $3, $4, now())`,
+		u, d.WriterID, d.DWKPub(), d.DAKPub()); err != nil {
 		t.Fatal(err)
 	}
-	registerPushToken(t, pool, u, stolen.id, sess, "ExponentPushToken[stolen00000000000000]")
-	registerPushToken(t, pool, u, replacement.id, sess, "ExponentPushToken[replacement000000000]")
-
-	n := mustChallenge(t, w, u)
-	if err := w.Revoke(bgctx, u, stolen.id, n, replacement.signRevocation(n, stolen.id)); err != nil {
-		t.Fatalf("revoke: %v", err)
-	}
-
-	if got := countRows(t, pool,
-		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, stolen.id); got != 0 {
-		t.Fatalf("the revoked device still has %d push token(s): it keeps receiving every transaction", got)
-	}
-	// And only that device. Revocation is not sign-out-everywhere; a user who
-	// retires one phone must not lose notifications on the one in their hand.
-	if got := countRows(t, pool,
-		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, replacement.id); got != 1 {
-		t.Fatalf("revoking one device removed the other's push token (%d left)", got)
-	}
-}
-
-// TestRevokingAWriterLeavesOtherAccountsAlone. The sweep is scoped by user_id
-// as well as writer_id, because a writer id is only unique WITHIN a user and
-// two accounts naming their phone the same thing is ordinary.
-func TestRevokingAWriterLeavesOtherAccountsAlone(t *testing.T) {
-	pool := pgtest.New(t)
-	c := newClock()
-	w := newWriters(pool, c)
-	sessions := newSessions(pool, time.Hour, c)
-
-	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-a"))
-	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-b"))
-	const shared = "iphone"
-
-	da, db := newDevice(t, shared), newDevice(t, shared)
-	mustEnroll(t, w, a, da, da)
-	mustEnroll(t, w, b, db, db)
-
-	sa, err := sessions.Issue(bgctx, a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sb, err := sessions.Issue(bgctx, b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerPushToken(t, pool, a, shared, sa, "ExponentPushToken[aaaa0000aaaa0000aaaa]")
-	registerPushToken(t, pool, b, shared, sb, "ExponentPushToken[bbbb0000bbbb0000bbbb]")
-
-	n := mustChallenge(t, w, a)
-	if err := w.Revoke(bgctx, a, shared, n, da.signRevocation(n, shared)); err != nil {
-		t.Fatalf("revoke: %v", err)
-	}
-	if got := pushTokenCount(t, pool, a); got != 0 {
-		t.Fatalf("user a kept %d push token(s) after revoking their only device", got)
-	}
-	if got := pushTokenCount(t, pool, b); got != 1 {
-		t.Fatalf("user a's revocation removed user b's push token (%d left)", got)
-	}
+	return d.WriterID
 }
 
 // TestRevokingASessionStopsThatDevicesNotifications is the sign-out case, and
@@ -130,13 +70,10 @@ func TestRevokingAWriterLeavesOtherAccountsAlone(t *testing.T) {
 func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 	pool := pgtest.New(t)
 	c := newClock()
-	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
 	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-session"))
 
-	phone, tablet := newDevice(t, "phone"), newDevice(t, "tablet")
-	mustEnroll(t, w, u, phone, phone)
-	mustEnroll(t, w, u, phone, tablet)
+	phone, tablet := plantWriter(t, pool, u), plantWriter(t, pool, u)
 
 	phoneSess, err := sessions.Issue(bgctx, u)
 	if err != nil {
@@ -146,18 +83,18 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registerPushToken(t, pool, u, phone.id, phoneSess, "ExponentPushToken[phone000phone000phon]")
-	registerPushToken(t, pool, u, tablet.id, tabletSess, "ExponentPushToken[tablet00tablet00tabl]")
+	registerPushToken(t, pool, u, phone, phoneSess, "ExponentPushToken[phone000phone000phon]")
+	registerPushToken(t, pool, u, tablet, tabletSess, "ExponentPushToken[tablet00tablet00tabl]")
 
 	if err := sessions.Revoke(bgctx, phoneSess); err != nil {
 		t.Fatal(err)
 	}
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, phone.id); got != 0 {
+		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, phone); got != 0 {
 		t.Fatalf("the signed-out device still has %d push token(s)", got)
 	}
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, tablet.id); got != 1 {
+		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, tablet); got != 1 {
 		t.Fatalf("signing out one device stopped another's notifications (%d left)", got)
 	}
 	// Idempotent, and the sweep is not gated on the UPDATE having done work:
@@ -176,20 +113,18 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 	pool := pgtest.New(t)
 	c := newClock()
-	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
 
 	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-a"))
 	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-b"))
 
 	for _, u := range []uuid.UUID{a, b} {
-		d := newDevice(t, "only-device")
-		mustEnroll(t, w, u, d, d)
+		d := plantWriter(t, pool, u)
 		sess, err := sessions.Issue(bgctx, u)
 		if err != nil {
 			t.Fatal(err)
 		}
-		registerPushToken(t, pool, u, d.id, sess, "ExponentPushToken["+u.String()[:20]+"]")
+		registerPushToken(t, pool, u, d, sess, "ExponentPushToken["+u.String()[:20]+"]")
 	}
 
 	if err := sessions.RevokeAllForUser(bgctx, a); err != nil {

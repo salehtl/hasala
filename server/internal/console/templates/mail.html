@@ -1,0 +1,8 @@
+{{define "mail.html"}}{{template "head" .}}
+<h1>Email log</h1>
+<table>
+<tr><th>#</th><th>Kind</th><th>To</th><th>Status</th><th>Attempts</th><th>Created</th><th>Error</th></tr>
+{{range .Mail}}<tr><td>{{.ID}}</td><td>{{.Kind}}</td><td>{{.Hint}}</td><td>{{.Status}}</td><td>{{.Attempts}}</td><td>{{.Created}}</td><td>{{.Error}}</td></tr>
+{{else}}<tr><td colspan="7">No email yet.</td></tr>{{end}}
+</table>
+{{template "foot" .}}{{end}}
