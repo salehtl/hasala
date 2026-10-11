@@ -14,6 +14,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/api"
 	"github.com/salehtl/hasala/server/internal/config"
+	"github.com/salehtl/hasala/server/internal/googlejwt"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
@@ -44,19 +45,26 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 		"HASALA_MAILBOX_ROUTE_KEY_FILE=" + write("route", strings.Repeat("ab", 32)+"\n"),
 		"HASALA_AUTH_KEY_FILE=" + write("auth", strings.Repeat("cd", 32)+"\n"),
 		"HASALA_WEB_ORIGINS=https://hasala.app",
+		"HASALA_EMAIL_CF_ACCOUNT_ID=" + strings.Repeat("0a", 16),
+		"HASALA_EMAIL_API_TOKEN_FILE=" + write("cftoken", "test-token\n"),
 	}
-	lookup := func(name string) (string, bool) {
-		for _, kv := range env {
-			if k, v, ok := strings.Cut(kv, "="); ok && k == name {
-				return v, true
+	load := func(env []string) config.Config {
+		t.Helper()
+		lookup := func(name string) (string, bool) {
+			for _, kv := range env {
+				if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+					return v, true
+				}
 			}
+			return "", false
 		}
-		return "", false
+		cfg, err := config.LoadEnv("", lookup, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
 	}
-	cfg, err := config.LoadEnv("", lookup, env)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := load(env)
 	srv := &api.Server{Pool: pool}
 	ctx, cancel := context.WithCancel(context.Background())
 	ex, err := wireExtras(ctx, cfg, pool, srv)
@@ -68,6 +76,35 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	}
 	if srv.Gmail == nil || srv.Meta.GmailWatchTopic != "projects/p/topics/t" || srv.Web == nil {
 		t.Fatalf("gmail %v topic %q web %v", srv.Gmail != nil, srv.Meta.GmailWatchTopic, srv.Web != nil)
+	}
+	// Each verifier has its own audience: the app's ID token is for the iOS
+	// client, Pub/Sub's is for the push URL. Swapped, every fake-verifier API
+	// test would still pass.
+	link, okLink := srv.Gmail.Link.(*googlejwt.Verifier)
+	hook, okHook := srv.Gmail.Hook.(*googlejwt.Verifier)
+	if !okLink || !okHook || link.Audience != "1-x.apps.googleusercontent.com" ||
+		hook.Audience != "https://api.hasala.app/hooks/gmail/pubsub" || srv.Gmail.IOSClientID != link.Audience {
+		t.Fatalf("verifiers: link %T %+v, hook %T %+v", srv.Gmail.Link, link, srv.Gmail.Hook, hook)
+	}
+	cancel()
+	ex.wait()
+
+	// The auth key without [email]: the worker runs (every send fails as
+	// not configured) but the website routes are not mounted.
+	var noEmail []string
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "HASALA_EMAIL_") {
+			noEmail = append(noEmail, kv)
+		}
+	}
+	srv = &api.Server{Pool: pool}
+	ctx, cancel = context.WithCancel(context.Background())
+	ex, err = wireExtras(ctx, load(noEmail), pool, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Web != nil {
+		t.Fatal("the waitlist routes are mounted without [email]")
 	}
 	cancel()
 	ex.wait()

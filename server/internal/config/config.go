@@ -187,8 +187,9 @@ func (g GmailConfig) Enabled() bool {
 }
 
 // EmailConfig is outbound mail through Cloudflare Email Service (spec 02
-// §14.4). The account id and the API token are all or nothing; none means the
-// fake sender (tests, local runs). Required behind Cloudflare.
+// §14.4). The account id and the API token are all or nothing; none means
+// every email fails (mail.Unconfigured) and the waitlist routes stay off.
+// Required behind Cloudflare.
 type EmailConfig struct {
 	CloudflareAccountID string `toml:"cloudflare_account_id"`
 	FromName            string `toml:"from_name"`

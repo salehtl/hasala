@@ -225,3 +225,22 @@ func TestSendNowAndSweep(t *testing.T) {
 		t.Fatal("retention kept a 31-day-old row")
 	}
 }
+
+// serve without [email]: a send fails for good at once, so the log never says
+// `sent` for a message that went nowhere and the row is not retried.
+func TestUnconfiguredSenderFailsRowsAtOnce(t *testing.T) {
+	pool := pgtest.New(t)
+	q := New(pool, mail.Unconfigured{}, fixedTagger{})
+	q.Register("test", TestRenderer)
+	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "nowhere@example.com"})
+	if n, err := q.Drain(bg); err != nil || n != 1 {
+		t.Fatalf("drain %d %v", n, err)
+	}
+	st, att, _, e := row(t, pool, id)
+	if st != "failed" || att != 1 || e == nil || !strings.Contains(*e, "not configured") {
+		t.Fatalf("row %s attempts %d error %v", st, att, e)
+	}
+	if !errors.Is(mail.ErrNotConfigured, mail.ErrPermanent) || q.Stopped() {
+		t.Fatal("not configured must be permanent and must not stop the worker")
+	}
+}

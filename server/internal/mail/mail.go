@@ -1,6 +1,7 @@
 // Package mail is the outbound email abstraction (spec 02 §14.4, spec 07
 // §6.1): a Message, the Sender interface, the error classes the queue acts
-// on, the Cloudflare Email Service client, and a Fake for tests and local runs.
+// on, the Cloudflare Email Service client, Unconfigured for a server without
+// email, and a Fake for tests.
 //
 // Only internal/mailq calls Sender.Send (spec 07 F7-5), so every email passes
 // through the email log. Nothing here logs a recipient, subject or body.
@@ -9,6 +10,7 @@ package mail
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -32,8 +34,22 @@ var (
 	ErrAuth      = errors.New("mail: the provider refused the credentials")
 )
 
-// Fake records every message instead of sending it. Tests read codes and
-// links from it; `serve` without an [email] group uses it and logs a WARN.
+// ErrNotConfigured is Unconfigured's refusal. It is ErrPermanent, so the
+// queue marks the row failed at once and never retries it.
+var ErrNotConfigured = fmt.Errorf("%w: not configured", ErrPermanent)
+
+// Unconfigured is `serve`'s Sender without an [email] group: every send fails
+// permanently and nothing is kept, so the email log says `failed` (never
+// `sent` for a message that went nowhere) and no rendered code, link key or
+// token stays in memory. An invite whose email failed can be resent once
+// email is configured; the resend re-mints its code.
+type Unconfigured struct{}
+
+// Send refuses m.
+func (Unconfigured) Send(context.Context, Message) (string, error) { return "", ErrNotConfigured }
+
+// Fake records every message instead of sending it, for tests only: it keeps
+// every rendered message (codes and links included) in memory.
 type Fake struct {
 	mu   sync.Mutex
 	sent []Message

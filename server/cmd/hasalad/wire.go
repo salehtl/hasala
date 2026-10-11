@@ -105,8 +105,11 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		slog.Warn("hasalad serve: the [gmail] group is not configured: the mailbox link and the Pub/Sub hook are not mounted")
 	}
 
-	// Email (spec 02 §14.4, spec 07 §6): Cloudflare when configured, else the
-	// fake (nothing leaves the box).
+	// Email (spec 02 §14.4, spec 07 §6): Cloudflare when configured. Without
+	// it every send fails permanently (mail.Unconfigured), so a queued email
+	// ends `failed` in the log rather than `sent`, and the website routes are
+	// not mounted: a sign-up whose confirmation can never arrive is worse than
+	// no form.
 	var sender mail.Sender
 	if cfg.Email.Enabled() {
 		tok, err := readSecret("HASALA_EMAIL_API_TOKEN_FILE", cfg.Email.APITokenFile)
@@ -119,8 +122,8 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		}
 		sender = cf
 	} else {
-		sender = &mail.Fake{}
-		slog.Warn("hasalad serve: the [email] group is not configured: emails are recorded in the log, not sent")
+		sender = mail.Unconfigured{}
+		slog.Warn("hasalad serve: the [email] group is not configured: every email fails and the waitlist routes are not mounted")
 	}
 
 	// The auth key's email_tag is what the waitlist and the queue key on.
@@ -151,7 +154,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
 	wl.Register(q)
 	if tagger != nil {
-		srv.Web = &api.WebOptions{Waitlist: wl, Origins: cfg.Web.Origins, DoneURL: cfg.Web.DoneURL}
+		if cfg.Email.Enabled() {
+			srv.Web = &api.WebOptions{Waitlist: wl, Origins: cfg.Web.Origins, DoneURL: cfg.Web.DoneURL}
+		}
 		ex.done = append(ex.done, q.Run(ctx))
 	} else {
 		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted and the email worker does not run")

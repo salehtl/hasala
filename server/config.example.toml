@@ -62,6 +62,7 @@ allowed_environments = ["production", "sandbox"]
 # empty = off), HASALA_WEB_WAITLIST_DONE_URL, HASALA_WAITLIST_MAX,
 # HASALA_WAITLIST_PENDING_MAX, HASALA_WAITLIST_RETENTION,
 # HASALA_EMAIL_RATE_WAITLIST, HASALA_EMAIL_RATE_BULK and
-# HASALA_EMAIL_LOG_RETENTION. The waitlist routes and the email worker run
-# only with HASALA_AUTH_KEY_FILE (email_tag); without [email] the worker
-# records every email in mail_log and sends nothing.
+# HASALA_EMAIL_LOG_RETENTION. The email worker runs only with
+# HASALA_AUTH_KEY_FILE (email_tag), and the waitlist routes only with both it
+# and [email]; without [email] every email fails (mail_log says `failed`) and
+# nothing is sent.
