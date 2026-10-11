@@ -13,8 +13,8 @@
  * runs on every build; this is the evidence that the net is in the right place.
  *
  *   S=/scratch
- *   LEDGER_CORPUS_DB=$S/corpus.db LEDGER_CROSSEXEC_OUT=$S/go-templates.jsonl \
- *     go test ./internal/tmpl/ -run TestWriteCrossExecutorTemplates -timeout 20m
+ *   HASALA_CORPUS_DB=$S/corpus.db HASALA_CROSSEXEC_OUT=$S/go-templates.jsonl \
+ *     go test ./gates/tmpl/ -run TestWriteCrossExecutorTemplates -timeout 20m   # in server/oracle
  *   (cd client && bun run scripts/crossexec-tmpl.ts $S/go-templates.jsonl)
  *
  * Exits non-zero on any disagreement.
