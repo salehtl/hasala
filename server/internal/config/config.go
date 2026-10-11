@@ -18,6 +18,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -84,6 +85,36 @@ type ServerConfig struct {
 	// LogLevel is debug, info, warn or error; debug is refused behind
 	// Cloudflare.
 	LogLevel string `toml:"log_level"`
+	// LogGenerationFile (HASALA_LOG_GENERATION_FILE, env only) holds spec 02
+	// §15.5's log generation: one decimal integer ≥ 1, written only by the
+	// operator's restore and wipe runbooks. Absent means 1.
+	LogGenerationFile string `toml:"-"`
+	// LogGeneration is the file's value, read once by serve at start
+	// (ReadLogGeneration) and reported by GET /api/v1/meta.
+	LogGeneration int `toml:"-"`
+}
+
+// ReadLogGeneration reads spec 02 §15.5's log generation file. An empty path
+// or a missing file is generation 1; anything but one decimal integer ≥ 1
+// (surrounding whitespace allowed) is an error, because a device compares it
+// to decide whether the server was restored under it.
+func ReadLogGeneration(path string) (int, error) {
+	if path == "" {
+		return 1, nil
+	}
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 1, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("HASALA_LOG_GENERATION_FILE: %w", err)
+	}
+	text := strings.TrimSpace(string(raw))
+	n, err := strconv.Atoi(text)
+	if err != nil || n < 1 || strings.HasPrefix(text, "+") {
+		return 0, fmt.Errorf("HASALA_LOG_GENERATION_FILE %s holds %q: want one decimal integer >= 1", path, text)
+	}
+	return n, nil
 }
 
 // TrustedProxy values.
@@ -346,6 +377,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	integer("HASALA_MIN_IOS_BUILD", &minBuild)
 	c.Server.MinIOSBuild = int(minBuild)
 	str("HASALA_LOG_LEVEL", &c.Server.LogLevel)
+	str("HASALA_LOG_GENERATION_FILE", &c.Server.LogGenerationFile)
 
 	str("HASALA_RP_ID", &c.Auth.RPID)
 	str("HASALA_RP_DISPLAY_NAME", &c.Auth.RPDisplayName)

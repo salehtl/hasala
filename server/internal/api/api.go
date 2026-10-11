@@ -28,7 +28,7 @@
 //
 // # The contract
 //
-// Every endpoint except healthz and the passkey register/login ceremonies
+// Every endpoint except healthz, meta and the passkey register/login ceremonies
 // requires `Authorization: Bearer <session token>`. Every query is scoped by
 // the user id RESOLVED from that token and never by a user id taken from the
 // request — there is no user field anywhere in the request shapes,
@@ -210,6 +210,11 @@ type Server struct {
 	// SyncPerUser and SyncUploadBytes are POST /api/v1/sync's pair.
 	SyncPerUser     *Limiter
 	SyncUploadBytes *Limiter
+	// MetaPerIP is GET /api/v1/meta's meta-ip.
+	MetaPerIP *Limiter
+
+	// Meta is what GET /api/v1/meta reports (meta.go).
+	Meta Meta
 
 	// Headroom is the box-level disk fuse (internal/headroom). When it is
 	// tripped every non-read request is refused with a temporary 503 while
@@ -248,6 +253,11 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		Appender: &oplog.Appender{Pool: pool},
 		Deletion: &purge.Challenges{Pool: pool, Now: now},
 		Now:      now,
+		Meta: Meta{
+			RPID:          cfg.Auth.RPID,
+			MinIOSBuild:   cfg.Server.MinIOSBuild,
+			LogGeneration: cfg.Server.LogGeneration,
+		},
 	}
 	if cfg.Auth.RPID != "" {
 		pk, err := auth.NewPasskeys(pool, cfg.Auth.RPID, cfg.Auth.RPDisplayName, cfg.Auth.RPOrigins)
@@ -301,6 +311,9 @@ func (s *Server) Handler() http.Handler {
 	if s.PasskeyGlobal == nil {
 		s.PasskeyGlobal = NewLimiter(passkeyGlobalRate, passkeyGlobalBurst, 1, s.now)
 	}
+	if s.MetaPerIP == nil {
+		s.MetaPerIP = NewLimiter(metaRate, metaBurst, metaMaxKeys, s.now)
+	}
 	if s.Deletion == nil {
 		s.Deletion = &purge.Challenges{Pool: s.Pool, Now: s.now}
 	}
@@ -312,6 +325,7 @@ func (s *Server) Handler() http.Handler {
 	// Unauthenticated and unconditional. See health.go for why it pings the
 	// pool and why its body is two words.
 	mux.HandleFunc("GET /api/v1/healthz", s.handleHealthz)
+	s.mountMeta(mux)
 	s.mountPasskeys(mux)
 	s.mountKeys(mux)
 	s.mountSync(mux)

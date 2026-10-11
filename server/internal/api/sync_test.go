@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1073,28 +1074,79 @@ func TestUnknownPathOutsideTheAPIIs404JSON(t *testing.T) {
 	}
 }
 
+// TestRetiredLedgerdRoutesAreGone is AT-HTTP-1's second half: every route of
+// spec 02 §2.4, method and path as the table lists them, answers exactly what
+// an unknown path answers, 404 with {"error":"not_found"}, with and without a
+// session. Deleted, not disabled: not a 405, not a 401, not a 403.
+//
+// Two §2.4 rows are NOT here because this build still serves them: PUT
+// /api/v1/keys and POST /api/v1/account/challenge are ledgerd's key
+// publication and deletion-nonce paths, kept until WS-3's bootstrap and
+// step-up replace them (the PR's declared deviations).
 func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
-	// Spec 02 §2: the IdP exchange, the mail address, quarantine, samples,
-	// dictionary submissions, templates, Web Push and the mailbox broker are
-	// deleted, not disabled. Each answers what any unknown path answers.
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
-	for _, c := range []struct{ method, path string }{
-		{"POST", "/api/v1/auth/exchange"},
-		{"GET", "/api/v1/address"},
-		{"POST", "/api/v1/address/rotate"},
-		{"GET", "/api/v1/quarantine"},
-		{"POST", "/api/v1/samples"},
-		{"POST", "/api/v1/dictionary/submissions"},
-		{"GET", "/api/v1/templates"},
-		{"GET", "/api/v1/push/vapid"},
-		{"POST", "/api/v1/push/subscriptions"},
-		{"GET", "/api/v1/mailbox"},
-		{"POST", "/api/v1/relay"},
-	} {
-		w := h.req(c.method, c.path, tok, nil)
-		if w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("%s %s answered %d; a retired route must not be served", c.method, c.path, w.Code)
+	retired := []string{
+		"POST /api/v1/auth/exchange",
+		"GET /api/v1/address",
+		"POST /api/v1/address/challenge",
+		"POST /api/v1/address/rotate",
+		"GET /api/v1/quarantine",
+		"POST /api/v1/quarantine/confirm",
+		"GET /api/v1/quarantine/allowlist",
+		"DELETE /api/v1/quarantine/allowlist",
+		"GET /api/v1/push/vapid",
+		"POST /api/v1/push/subscriptions",
+		"GET /api/v1/push/subscriptions",
+		"DELETE /api/v1/push/subscriptions",
+		"DELETE /api/v1/push/subscriptions/some-handle",
+		"GET /api/v1/dictionary",
+		"POST /api/v1/dictionary/submissions",
+		"GET /api/v1/templates",
+		"POST /api/v1/samples/report",
+		"POST /api/v1/samples/donate",
+		"POST /api/v1/mailbox/oauth/begin",
+		"GET /api/v1/mailbox/oauth/callback",
+		"POST /api/v1/mailbox/oauth/claim",
+		"POST /api/v1/mailbox/token",
+		"POST /api/v1/mailbox/revoke",
+		"GET /api/v1/mailbox/grant",
+		"DELETE /api/v1/mailbox/grant",
+		"GET /api/v1/mailbox/senders",
+		"POST /api/v1/mailbox/senders",
+		"DELETE /api/v1/mailbox/senders",
+		"GET /api/v1/relay/addresses",
+		"POST /api/v1/relay/deliver",
+		// `/` (the SPA fallback) and every /admin/* route, ledgerd's admin
+		// listener among them: a sample of what that console served.
+		"GET /",
+		"GET /index.html",
+		"GET /admin",
+		"GET /admin/",
+		"GET /admin/status",
+		"GET /admin/dictionary",
+		"POST /admin/dictionary/approve-seed",
+		"POST /admin/templates",
+		"GET /admin/accounts",
+		"POST /admin/accounts/some-id/suspend",
+		"POST /admin/waitlist",
+		"POST /admin/invites",
+		"DELETE /admin/samples/1",
+	}
+	for _, route := range retired {
+		method, path, _ := strings.Cut(route, " ")
+		for _, bearer := range []string{"", tok} {
+			w := h.req(method, path, bearer, nil)
+			if w.Code != http.StatusNotFound {
+				t.Errorf("%s (session %v) answered %d, want 404", route, bearer != "", w.Code)
+				continue
+			}
+			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("%s: content-type %q, want application/json", route, ct)
+			}
+			if got := decodeJSON[errorBody](t, w).Error; got != "not_found" {
+				t.Errorf("%s: error %q, want not_found", route, got)
+			}
 		}
 	}
 }

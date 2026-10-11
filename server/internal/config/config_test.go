@@ -132,7 +132,7 @@ func TestATOMLFileIsReadAndUnknownKeysAreRefused(t *testing.T) {
 // There is no TLS code in hasalad (F3): the listener is plain HTTP and must be
 // loopback, whatever else is configured.
 func TestTheListenerIsLoopbackOnly(t *testing.T) {
-	for _, addr := range []string{":8443", "0.0.0.0:8443", "[::]:8443", "100.64.0.1:8443", "example.test:8443", "nonsense"} {
+	for _, addr := range []string{":8443", "0.0.0.0:8443", "[::]:8443", "192.0.2.1:8443", "example.test:8443", "nonsense"} {
 		wantErr(t, env{"HASALA_HTTP_LISTEN": addr}, "loopback")
 	}
 	for _, addr := range []string{"127.0.0.1:8471", "[::1]:8471", "localhost:8471"} {
@@ -326,5 +326,44 @@ func TestTheExampleConfigLoads(t *testing.T) {
 		cfg.Auth.SessionMax != d.Auth.SessionMax || cfg.Headroom.Interval != d.Headroom.Interval ||
 		cfg.Headroom.FloorBytes != d.Headroom.FloorBytes {
 		t.Fatalf("config.example.toml disagrees with the defaults it claims to show:\n%+v\n%+v", cfg, d)
+	}
+}
+
+// Spec 02 §15.5: absent is 1; anything but one decimal integer >= 1 refuses.
+func TestReadLogGeneration(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for _, c := range []struct {
+		path string
+		want int
+	}{
+		{"", 1},
+		{filepath.Join(dir, "absent"), 1},
+		{write("one", "1\n"), 1},
+		{write("seven", "  7 \n"), 7},
+	} {
+		got, err := ReadLogGeneration(c.path)
+		if err != nil || got != c.want {
+			t.Errorf("ReadLogGeneration(%q) = %d, %v; want %d", c.path, got, err, c.want)
+		}
+	}
+	for _, body := range []string{"", "0", "-1", "+2", "two", "1.5", "1 2", "0x10"} {
+		p := write("bad", body)
+		if n, err := ReadLogGeneration(p); err == nil {
+			t.Errorf("ReadLogGeneration(%q) = %d, want an error", body, n)
+		}
+	}
+	if _, err := ReadLogGeneration(dir); err == nil {
+		t.Error("a directory was read as a generation")
+	}
+	c := mustLoad(t, env{"HASALA_LOG_GENERATION_FILE": "/srv/generation"})
+	if c.Server.LogGenerationFile != "/srv/generation" {
+		t.Fatalf("HASALA_LOG_GENERATION_FILE was not applied: %q", c.Server.LogGenerationFile)
 	}
 }
