@@ -14,8 +14,8 @@ struct ScenarioTests {
     let w = World()
     w.clock.advance(ms: Scenarios.anchor - w.clock.nowMs())
     let (_, a, b) = try await twoRuntimes(w)
-    try await Scenarios.sampleOnSecondDevice(a, b) {
-      w.server.setReviewAccount(user: a.context.userID, true)  // `account review <uuid> on`
+    try await Scenarios.sampleOnSecondDevice(a, b) { review in
+      w.server.setReviewAccount(user: a.context.userID, review)  // `account review <uuid> on|off`
       return try await a.context.client.account(bearer: try #require(try a.context.secrets.session()).token)
     }
   }

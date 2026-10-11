@@ -31,15 +31,19 @@ enum Scenarios {
   // MARK: Sample
 
   /// A bootstraps and loads the sample at the anchor; both upload and pull.
-  /// `review` makes A's account a review account on the server the test runs
-  /// against and returns A's live `GET /account`.
-  static func sampleOnSecondDevice(_ a: Runtime, _ b: Runtime, review: () async throws -> AccountInfo) async throws {
+  /// `account(review)` sets A's review flag on the server the test runs
+  /// against and returns A's `GET /account`.
+  static func sampleOnSecondDevice(_ a: Runtime, _ b: Runtime, account: (_ review: Bool) async throws -> AccountInfo)
+    async throws
+  {
     try await a.bootstrap()
     // AT-34: not a review account (the server's own answer): refused, nothing authored.
     let before = try a.context.store.pendingCount()
-    await #expect(throws: SampleLoadError.seed(.refused(.notReviewAccount))) { _ = try await a.loadSample() }
+    let plain = try await account(false)
+    #expect(plain.review_account != true)
+    await #expect(throws: SampleLoadError.seed(.refused(.notReviewAccount))) { _ = try await a.loadSample(account: plain) }
     #expect(try a.context.store.pendingCount() == before)
-    let account = try await review()
+    let account = try await account(true)
     #expect(account.review_account == true && account.user_id == a.context.userID.string)
     // Another account's answer never opens this one's gate.
     let other = AccountInfo(user_id: "00000000-0000-4000-8000-000000000000", review_account: true)

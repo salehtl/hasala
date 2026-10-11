@@ -66,21 +66,27 @@ struct LiveSampleSeedTests {
   @Test("sample data loaded on A reaches B through hasalad")
   func sample() async throws {
     let (a, b) = try await Live.twoRuntimes(clock: FakeClock(ms: Scenarios.anchor))
-    try await Scenarios.sampleOnSecondDevice(a, b) {
+    try await Scenarios.sampleOnSecondDevice(a, b) { review in
       let bearer = try #require(try a.context.secrets.session()).token
-      let live = try await a.context.client.account(bearer: bearer)
-      guard live.review_account != nil else {
-        // This base's hasalad predates the review flag (server #22, `users.review_account`):
-        // its #40 omits the field, which the gate refuses (checked above). Stand in for
-        // `account review <uuid> on` with the live answer plus the flag.
-        return AccountInfo(
-          user_id: live.user_id, status: live.status, has_keys: live.has_keys, email: live.email,
-          display_name: live.display_name, has_password: live.has_password, password_salt: live.password_salt,
-          has_passkey: live.has_passkey, frozen: live.frozen, restricted: live.restricted, review_account: true)
+      do {
+        if review { _ = try Live.sql("UPDATE users SET review_account = true WHERE id = '\(a.context.userID.string)'") }
+        return try await a.context.client.account(bearer: bearer)
+      } catch {
+        // This base's hasalad has neither `users.review_account` nor GET /account
+        // (#40; both land with server #22): stand in for its answer, the flag
+        // absent (which the gate refuses) or on.
+        guard (error as? Live.LiveError) != nil || (error as? APIError).map(Self.notMounted) == true else { throw error }
+        return AccountInfo(user_id: a.context.userID.string, review_account: review ? true : nil)
       }
-      _ = try Live.sql("UPDATE users SET review_account = true WHERE id = '\(a.context.userID.string)'")
-      return try await a.context.client.account(bearer: bearer)
     }
+  }
+}
+
+extension LiveSampleSeedTests {
+  /// A 404 for a route this server does not mount.
+  static func notMounted(_ e: APIError) -> Bool {
+    if case .refused(let f) = e { return f.status == 404 }
+    return false
   }
 }
 
