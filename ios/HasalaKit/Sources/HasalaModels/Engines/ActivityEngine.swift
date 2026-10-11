@@ -129,7 +129,8 @@ public enum ActivityEngine {
   }
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime) -> ReviewSummary {
-    let queue = ReviewEngine.queue(s)
+    // Skipped cards leave the deck until tomorrow, but they are still unsorted.
+    let queue = s.txns.filter { $0.needsReview && !$0.archived }
     let unplanned = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + $1.amount.minor }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
@@ -256,7 +257,9 @@ public enum ActivityEngine {
     return FilterSummary(
       title: cat.name, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
       today: Pace.monthGone(day: now.date.day, days: month.days), verdict: verdict,
-      caption: MoneyPhrase([.text("\(pct)% of \(cat.name)'s "), .amount(.aed(budget), .compact)])
+      caption: MoneyPhrase([
+        .text("\(pct)% of \(cat.name)\(cat.name.hasSuffix("s") ? "'" : "'s") "), .amount(.aed(budget), .compact),
+      ])
     )
   }
 }

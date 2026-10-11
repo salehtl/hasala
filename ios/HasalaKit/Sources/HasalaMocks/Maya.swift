@@ -12,6 +12,8 @@ public enum Scenario: String, Sendable, CaseIterable {
   case maya
   /// Home · Amounts hidden ("Home · Amounts hidden"): the same data with Hide amounts on.
   case mayaHidden
+  /// Review · All caught up: the same ledger with the review queue already sorted.
+  case mayaCaughtUp
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -22,6 +24,20 @@ public enum Scenario: String, Sendable, CaseIterable {
   }
 
   public var startsWithAmountsHidden: Bool { self == .mayaHidden }
+
+  /// The ledger the scenario starts from.
+  public var state: LedgerState {
+    var s = MayaLedger.state
+    if self == .mayaCaughtUp {
+      for i in s.txns.indices where s.txns[i].needsReview {
+        s.txns[i].needsReview = false
+        s.txns[i].categoryID = s.txns[i].suggestion ?? (s.txns[i].direction == .in ? "freelance" : "transfer")
+        s.txns[i].categorySource = .user
+        s.txns[i].isTransfer = s.txns[i].categoryID == "transfer"
+      }
+    }
+    return s
+  }
 }
 
 public enum Maya {

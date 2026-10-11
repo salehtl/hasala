@@ -93,6 +93,8 @@ struct MayaLedgerParityTests {
     #expect(a.summary?.caption.rendered(hidden: false) == "40% of Dining's 1,600")
     #expect(a.summary?.verdict == .overPace)
     #expect(a.review == nil)
+    let groceries = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries"))
+    #expect(groceries.summary?.caption.rendered(hidden: false) == "36% of Groceries' 2,200")
   }
 
   @Test func searchingFindsAcrossMonthsAndRawMerchants() {

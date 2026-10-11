@@ -69,6 +69,8 @@ public struct PlanSnapshot: Sendable, Hashable {
   public var incomeLine: MoneyPhrase
   /// "Started from 50 / 30 / 20".
   public var startedFrom: String
+  /// "50/30/20".
+  public var splitName: String
   public var split: [SplitShare]
   public var sections: [PlanSection]
   public var projects: [PlanProjectModel]
@@ -120,6 +122,7 @@ public enum PlanEngine {
     return PlanSnapshot(
       month: month, readyToAssign: .aed(rta), incomeLine: incomeLine,
       startedFrom: "Started from " + s.plan.startingSplit.map(String.init).joined(separator: " / "),
+      splitName: s.plan.startingSplit.map(String.init).joined(separator: "/"),
       split: split, sections: sections, projects: projects
     )
   }

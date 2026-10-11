@@ -141,12 +141,16 @@ public struct GlassToast: View {
           .buttonStyle(.plain)
           .hType(.rowTitle)
           .foregroundStyle(HColor.textLink)
+          // A 44 pt target inside the 56 pt toast (spec 04 §17).
+          .frame(minWidth: 44, minHeight: 44)
+          .contentShape(Rectangle())
       }
     }
     .padding(.leading, 10)
     .padding(.trailing, 18)
     .frame(minHeight: HSpacing.toastHeight)
     .glassEffect(.regular, in: .capsule)
-    .accessibilityElement(children: .combine)
+    // Contain, not combine: the action ("Undo", "Show") stays its own button.
+    .accessibilityElement(children: .contain)
   }
 }
