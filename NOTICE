@@ -32,13 +32,20 @@ BIP-39 English wordlist
 
 Inter
   Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
-  SIL Open Font License, Version 1.1 (LICENSES/OFL-1.1.txt; also next to the
-  font as web/src/assets/fonts/Inter-OFL.txt)
+  SIL Open Font License, Version 1.1 (LICENSES/OFL-1.1.txt; also next to each
+  copy of the font, as web/src/assets/fonts/Inter-OFL.txt and
+  ios/HasalaKit/Sources/HasalaDesign/Fonts/OFL.txt)
 
   web/src/assets/fonts/inter-latin-opsz-wght.woff2 is the Latin subset of the
   Inter variable font (opsz and wght axes), vendored from
   @fontsource-variable/inter 5.3.0. The website (web/) serves it as its only
-  font. "Inter" is not a Reserved Font Name.
+  font.
+
+  ios/HasalaKit/Sources/HasalaDesign/Fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf
+  are the four static faces of Inter 4.1 (font version 4.001), each written out
+  of the release's Inter.ttc as a single-face file with fontTools; glyphs, names
+  and metadata are unchanged. They are bundled into the iOS app together with the
+  release's licence file (Fonts/OFL.txt). "Inter" is not a Reserved Font Name.
 
 Dependencies that are not copied into this repository
 =====================================================

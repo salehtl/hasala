@@ -1,0 +1,611 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */ = {isa = PBXBuildFile; productRef = 34C3DF8F9E664D62F761D750 /* HasalaModels */; };
+		233C4F4AF054981975026771 /* HasalaDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */; };
+		40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */ = {isa = PBXBuildFile; productRef = D4E305223EA1101548600E38 /* HasalaMocks */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		886AD08976B20A3E17A9E9ED /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 08A55098ED94B148444DD79E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8136A80514F3082C70AE3FB9;
+			remoteInfo = Hasala;
+		};
+		99FBFC391AC7807DE44625B4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 08A55098ED94B148444DD79E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8136A80514F3082C70AE3FB9;
+			remoteInfo = Hasala;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0187135A8AD204B6D05A454D /* HasalaUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HasalaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2558017F5B5D3271CE609AB7 /* HasalaKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HasalaKit; path = HasalaKit; sourceTree = SOURCE_ROOT; };
+		6B1A24344278E2914568DEF3 /* Hasala.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hasala.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		80EB6346B66A9649F68EF67D /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		985A440AE226C368D57A3AD3 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		D03C6200CD72EAF3CA02AA6B /* HasalaTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HasalaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3F966243DE8C10D928FC7865 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Hasala-Debug.entitlements",
+				Hasala.entitlements,
+				Info.plist,
+			);
+			target = 8136A80514F3082C70AE3FB9 /* Hasala */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		089E689CFF8163EA961AFE48 /* HasalaTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = HasalaTests;
+			sourceTree = "<group>";
+		};
+		865C4C5224EBD64F4792F574 /* HasalaUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = HasalaUITests;
+			sourceTree = "<group>";
+		};
+		DA38F186FF056A1E0065B273 /* Hasala */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3F966243DE8C10D928FC7865 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = Hasala;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CAFB833B311145AE738DEB34 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */,
+				233C4F4AF054981975026771 /* HasalaDesign in Frameworks */,
+				40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3F434A001FBD45974A4DF414 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				2558017F5B5D3271CE609AB7 /* HasalaKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		427BBC5704272EE1DC22D3C6 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				985A440AE226C368D57A3AD3 /* Debug.xcconfig */,
+				80EB6346B66A9649F68EF67D /* Release.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		93F1151094F96D4E069FC23B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6B1A24344278E2914568DEF3 /* Hasala.app */,
+				D03C6200CD72EAF3CA02AA6B /* HasalaTests.xctest */,
+				0187135A8AD204B6D05A454D /* HasalaUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D21BE40AB0D056F511C7E382 = {
+			isa = PBXGroup;
+			children = (
+				427BBC5704272EE1DC22D3C6 /* Config */,
+				DA38F186FF056A1E0065B273 /* Hasala */,
+				089E689CFF8163EA961AFE48 /* HasalaTests */,
+				865C4C5224EBD64F4792F574 /* HasalaUITests */,
+				3F434A001FBD45974A4DF414 /* Packages */,
+				93F1151094F96D4E069FC23B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		678E44C3482EBE9C6CBE3418 /* HasalaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E94C43E70E8F9FF64923DDD /* Build configuration list for PBXNativeTarget "HasalaTests" */;
+			buildPhases = (
+				F0AB45A04BB45137285439B4 /* Sources */,
+				A29C1B5070BD2D262C8F2777 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9C6C6AFCCC81696B224F9700 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				089E689CFF8163EA961AFE48 /* HasalaTests */,
+			);
+			name = HasalaTests;
+			packageProductDependencies = (
+			);
+			productName = HasalaTests;
+			productReference = D03C6200CD72EAF3CA02AA6B /* HasalaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8136A80514F3082C70AE3FB9 /* Hasala */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 168436D5A5F0CB9286B440DE /* Build configuration list for PBXNativeTarget "Hasala" */;
+			buildPhases = (
+				FAE054845C4C02CF0715EEC0 /* Sources */,
+				FBE35C60B34A1A2EE9738327 /* Resources */,
+				CAFB833B311145AE738DEB34 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DA38F186FF056A1E0065B273 /* Hasala */,
+			);
+			name = Hasala;
+			packageProductDependencies = (
+				34C3DF8F9E664D62F761D750 /* HasalaModels */,
+				9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */,
+				D4E305223EA1101548600E38 /* HasalaMocks */,
+			);
+			productName = Hasala;
+			productReference = 6B1A24344278E2914568DEF3 /* Hasala.app */;
+			productType = "com.apple.product-type.application";
+		};
+		95ED69CDE32CC299F504550A /* HasalaUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A0930635B52F00FCBDE2B1D3 /* Build configuration list for PBXNativeTarget "HasalaUITests" */;
+			buildPhases = (
+				09C4488EF83FE8DBDD5E84D8 /* Sources */,
+				333818A447464DA57BF2E4AB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BFAC8CC9DAD2F3C313595057 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				865C4C5224EBD64F4792F574 /* HasalaUITests */,
+			);
+			name = HasalaUITests;
+			packageProductDependencies = (
+			);
+			productName = HasalaUITests;
+			productReference = 0187135A8AD204B6D05A454D /* HasalaUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		08A55098ED94B148444DD79E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					678E44C3482EBE9C6CBE3418 = {
+						DevelopmentTeam = 8CFG28JHP3;
+						ProvisioningStyle = Automatic;
+					};
+					8136A80514F3082C70AE3FB9 = {
+						DevelopmentTeam = 8CFG28JHP3;
+						ProvisioningStyle = Automatic;
+					};
+					95ED69CDE32CC299F504550A = {
+						DevelopmentTeam = 8CFG28JHP3;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 8136A80514F3082C70AE3FB9;
+					};
+				};
+			};
+			buildConfigurationList = 8C4E06AE663F283C0385E445 /* Build configuration list for PBXProject "Hasala" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D21BE40AB0D056F511C7E382;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				6919C4AA69B33810CF4D78D5 /* XCLocalSwiftPackageReference "HasalaKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 93F1151094F96D4E069FC23B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8136A80514F3082C70AE3FB9 /* Hasala */,
+				678E44C3482EBE9C6CBE3418 /* HasalaTests */,
+				95ED69CDE32CC299F504550A /* HasalaUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		333818A447464DA57BF2E4AB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A29C1B5070BD2D262C8F2777 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FBE35C60B34A1A2EE9738327 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		09C4488EF83FE8DBDD5E84D8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0AB45A04BB45137285439B4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAE054845C4C02CF0715EEC0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9C6C6AFCCC81696B224F9700 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8136A80514F3082C70AE3FB9 /* Hasala */;
+			targetProxy = 99FBFC391AC7807DE44625B4 /* PBXContainerItemProxy */;
+		};
+		BFAC8CC9DAD2F3C313595057 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8136A80514F3082C70AE3FB9 /* Hasala */;
+			targetProxy = 886AD08976B20A3E17A9E9ED /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1F283461A0BE51E0890352D7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 80EB6346B66A9649F68EF67D /* Release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Hasala/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+		465552F3761C1E1DB9AE2271 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.hasala.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Hasala;
+			};
+			name = Release;
+		};
+		578CF1F8FF7F1D3DFD892060 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.hasala.ios.tests;
+				SDKROOT = iphoneos;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hasala.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hasala";
+			};
+			name = Release;
+		};
+		812A5BB86D8C659B7807B9A1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.hasala.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Hasala;
+			};
+			name = Debug;
+		};
+		ADCC5F53D33253E2E51D2E81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 8CFG28JHP3;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		DE16005F4F802B4A48FBE73B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 985A440AE226C368D57A3AD3 /* Debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Hasala/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		DFA171892271027A68BF4528 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.hasala.ios.tests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG HASALA_MOCKS";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hasala.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hasala";
+			};
+			name = Debug;
+		};
+		E0226A8E51B18B3E3B62AB4D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 8CFG28JHP3;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		168436D5A5F0CB9286B440DE /* Build configuration list for PBXNativeTarget "Hasala" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DE16005F4F802B4A48FBE73B /* Debug */,
+				1F283461A0BE51E0890352D7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7E94C43E70E8F9FF64923DDD /* Build configuration list for PBXNativeTarget "HasalaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DFA171892271027A68BF4528 /* Debug */,
+				578CF1F8FF7F1D3DFD892060 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8C4E06AE663F283C0385E445 /* Build configuration list for PBXProject "Hasala" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ADCC5F53D33253E2E51D2E81 /* Debug */,
+				E0226A8E51B18B3E3B62AB4D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A0930635B52F00FCBDE2B1D3 /* Build configuration list for PBXNativeTarget "HasalaUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				812A5BB86D8C659B7807B9A1 /* Debug */,
+				465552F3761C1E1DB9AE2271 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		6919C4AA69B33810CF4D78D5 /* XCLocalSwiftPackageReference "HasalaKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = HasalaKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		34C3DF8F9E664D62F761D750 /* HasalaModels */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaModels;
+		};
+		9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaDesign;
+		};
+		D4E305223EA1101548600E38 /* HasalaMocks */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaMocks;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 08A55098ED94B148444DD79E /* Project object */;
+}

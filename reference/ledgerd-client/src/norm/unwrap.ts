@@ -43,12 +43,16 @@ export function trimExplicit(s: string): string {
   return s.slice(i, n);
 }
 
+// The `u` flag is what makes `i` fold like Go's `(?i)`: with it, U+017F (long s) matches `s`
+// and U+212A (Kelvin sign) matches `k`, as they do in Go; without it JavaScript folds through
+// toUpperCase and refuses any non-ASCII-to-ASCII fold.
+
 /** Apple Mail's and Gmail's forward markers. */
-const forwardMarkerRe = /^ *(begin forwarded message:|-+ *forwarded message *-+) *$/i;
+const forwardMarkerRe = /^ *(begin forwarded message:|-+ *forwarded message *-+) *$/iu;
 /** A leading Fwd:/FW:/Fw: on a subject. */
-const fwdSubjectRe = /^ *(fwd?|fw) *: */i;
+const fwdSubjectRe = /^ *(fwd?|fw) *: */iu;
 /** A forwarded-header line, capturing the label and any same-line value. */
-const fwdHeaderLineRe = /^ *(from|to|subject|date|reply-to|cc|sent) *: *(.*)$/i;
+const fwdHeaderLineRe = /^ *(from|to|subject|date|reply-to|cc|sent) *: *(.*)$/iu;
 
 export interface Forward {
   /** Inner From when recovered, else the message's own. Content, never trust. */
