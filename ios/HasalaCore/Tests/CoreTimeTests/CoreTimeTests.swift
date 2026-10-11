@@ -114,6 +114,24 @@ struct LocalTests {
     #expect(CivilMonth(index: -1) == nil)
   }
 
+  @Test("extreme inputs are nil, never a trap (R9)")
+  func extremes() {
+    #expect(LocalClock.localDate(.max) == nil && LocalClock.localDate(.min) == nil)
+    #expect(LocalClock.localMonth(.max) == nil)
+    let d = CivilDate(wire: "2026-10-11")!
+    #expect(d.adding(days: .max) == nil && d.adding(days: .min) == nil)
+    #expect(CivilDate(daysSinceEpoch: .max) == nil && CivilDate(daysSinceEpoch: .min) == nil)
+    #expect(CivilDate(daysSinceEpoch: CivilDate.daysRange.lowerBound)?.wire == "0000-01-01")
+    #expect(CivilDate(daysSinceEpoch: CivilDate.daysRange.upperBound)?.wire == "9999-12-31")
+    #expect(CivilDate(daysSinceEpoch: CivilDate.daysRange.upperBound + 1) == nil)
+    let m = CivilMonth(wire: "2026-10")!
+    #expect(m.adding(months: .max) == nil && m.adding(months: .min) == nil)
+    #expect(CivilMonth(index: .max) == nil && CivilMonth(index: .min) == nil && CivilMonth(index: -1) == nil)
+    #expect(CivilMonth(index: 0)?.wire == "0000-01" && CivilMonth(index: 9999 * 12 + 11)?.wire == "9999-12")
+    #expect(Instant.iso(.max) == nil && Instant.iso(.min) == nil)
+    #expect(utcDay(.max).hasPrefix("+") && utcDay(.min).hasPrefix("-"))
+  }
+
   @Test("ISO weekdays, Monday first")
   func weekdays() {
     #expect(CivilDate(year: 1970, month: 1, day: 1)!.isoWeekday == 4)  // Thursday

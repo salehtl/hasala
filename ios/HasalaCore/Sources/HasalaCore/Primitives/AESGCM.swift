@@ -4,7 +4,7 @@
 //
 // The 32-byte key and 12-byte nonce are checked explicitly: CryptoKit accepts
 // 16- and 24-byte keys and other nonce sizes, and a frame that sealed with one
-// would not open anywhere else (client-core-a §1).
+// would not open anywhere else (spec 01 §1).
 import CryptoKit
 import Foundation
 
@@ -25,8 +25,8 @@ public enum AESGCM {
       let box = try AES.GCM.seal(plaintext, using: symmetric, nonce: gcmNonce, authenticating: aad)
       return box.ciphertext + box.tag
     } catch {
-      // Unreachable with checked lengths; reported as a length fault, not a crash.
-      throw .invalidLength(what: "aes-gcm seal", expected: "valid inputs", got: 0)
+      // Unreachable with checked lengths; reported, not a crash.
+      throw .sealFailed
     }
   }
 

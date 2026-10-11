@@ -41,7 +41,10 @@ public enum MoneyMath {
   /// (spec 03c §1.3; v3 `projection.ts:writeSplits`): with native total
   /// `N = Σ parts` and cumulative `c_i`, `home_i = floor(H·c_i / N) -
   /// floor(H·c_{i-1} / N)`. The shares sum to `home` exactly, the last part
-  /// absorbing the remainder. `nil` when `home` is `nil` or `N ≤ 0`.
+  /// absorbing the remainder. `nil` when `home` is `nil` or `N ≤ 0`, and also
+  /// when an intermediate leaves Int128 or a share leaves Int64 (only possible
+  /// when the parts are not a split of anything Int64 can hold; the caller
+  /// treats it as `money_overflow`, spec 03c §1.3).
   public static func apportion(home: Int64?, parts: [Int64]) -> [Int64]? {
     guard let home else { return nil }
     let n = wideSum(parts)
@@ -53,7 +56,9 @@ public enum MoneyMath {
     out.reserveCapacity(parts.count)
     for p in parts {
       cumulative += Int128(p)
-      let here = floorDiv(h * cumulative, n)
+      let (product, overflow) = h.multipliedReportingOverflow(by: cumulative)
+      if overflow { return nil }
+      let here = floorDiv(product, n)
       // |share| ≤ |H·p/N| + 1 and |p| ≤ N·k for sane inputs; a share that does
       // not fit Int64 means the parts were not a split of N.
       guard let share = Int64(exactly: here - previous) else { return nil }
@@ -63,20 +68,28 @@ public enum MoneyMath {
     return out
   }
 
-  /// Percent change from `b` to `a`, rounded half away from zero (spec 03c
-  /// §1.3 `pctChange`): `nil` when `b == 0`; otherwise with `d = a - b`,
-  /// `q = (|d|·200 + |b|) / (2·|b|)` and the result `sign(d)·q`.
+  /// Percent change from `b` to `a`, `100·(a − b)/b` rounded half away from
+  /// zero (spec 03c §1.3 `pctChange`): `nil` when `b == 0`; otherwise with
+  /// `d = a − b`, `q = (|d|·200 + |b|) / (2·|b|)` and the result
+  /// `sign(d)·sign(b)·q`.
   ///
-  /// The spec writes the formula for a positive base; `|b|` makes a negative
-  /// base give the magnitude of the change relative to that base (an
-  /// assumption recorded for the owner of 03c). `nil` also when the result
-  /// does not fit Int64 (impossible for |b| ≥ 1 and Int64 inputs).
+  /// For `b > 0` this is the spec's formula exactly. The spec writes it for a
+  /// positive base only; for `b < 0` (signed spend totals) its literal text
+  /// gives the sign of `d/b` with truncating rather than half-up rounding
+  /// (`pctChange(-5, -10)` = −49.5 → −49). This keeps the sign of `d/b` and
+  /// rounds the same way as for a positive base: `pctChange(-5, -10) == -50`,
+  /// `pctChange(-15, -10) == 50`. PENDING the 03c owner's confirmation.
+  ///
+  /// `nil` also when the result does not fit Int64 (e.g. `pctChange(.max, 1)`,
+  /// about 9.2e20 percent). The Int128 intermediates cannot overflow:
+  /// `|d| < 2^64`, so `|d|·200 + |b| < 2^73`.
   public static func pctChange(_ a: Int64, _ b: Int64) -> Int64? {
     guard b != 0 else { return nil }
     let d = Int128(a) - Int128(b)
     let base = Int128(b).magnitude
     let q = (d.magnitude * 200 + base) / (2 * base)
-    guard let qq = Int128(exactly: q), let r = Int64(exactly: d < 0 ? -qq : qq) else { return nil }
-    return r
+    guard let qq = Int128(exactly: q) else { return nil }
+    let negative = (d < 0) != (b < 0)
+    return Int64(exactly: negative ? -qq : qq)
   }
 }

@@ -3,7 +3,7 @@
 // Z_DEFAULT_STRATEGY)`, `inflateInit2(31)`).
 //
 // Not Compression.framework: its COMPRESSION_ZLIB is raw DEFLATE at a fixed
-// level with no gzip header, CRC or level control (client-core-a §1).
+// level with no gzip header, CRC or level control (spec 01 §6.7).
 //
 // The gzip header zlib writes is deterministic (mtime 0, no name) but its OS
 // byte is the build's OS_CODE: 19 on Apple, 3 on the Linux builds that sealed

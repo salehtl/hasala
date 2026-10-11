@@ -41,6 +41,9 @@ public enum PrimitivesError: Error, Equatable, Sendable {
   /// AES-GCM open failed. Every way of being wrong (key, nonce, AAD, tag,
   /// ciphertext) is this one indistinguishable error.
   case authenticationFailed
+  /// CryptoKit refused an AES-GCM seal after the key and nonce lengths were
+  /// checked. Not expected to happen; never retried.
+  case sealFailed
   /// A public key or signature could not be parsed.
   case invalidKey(what: String)
   /// `SecRandomCopyBytes` did not succeed. Fatal for the operation; never

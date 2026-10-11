@@ -7,11 +7,17 @@
 // pins two minor digits; `exponent` (spec 03c §1.4 `MinorExponent.v1`)
 // generalizes it and defaults to 2. Refusal reasons are codes, not sentences:
 // the copy belongs to the app's string catalogue.
-import CoreText
+import HasalaText
 
 public enum MoneyFormat {
   /// U+2212 MINUS SIGN, the reference's negative glyph.
   public static let minus = "\u{2212}"
+
+  /// The exponents every helper here accepts. `MinorExponent.v1` uses 0, 2 and
+  /// 3; 18 keeps `10^exponent` inside UInt64 and the draft parser's Int128.
+  /// Anything else is a caller bug and stops at a precondition (its message
+  /// carries no amount, spec 01 §11.6), never a silent wrap.
+  public static let exponentRange = 0...18
 
   /// Grouped magnitude with a fixed fraction: `1,234.56`, `0.05`, `−1,234.56`.
   /// Zero is `0.00` however it was reached (there is no negative zero).
@@ -88,6 +94,7 @@ public enum MoneyFormat {
   /// `12.` reads as `12.00` (a real mid-keystroke state); a leading zero is
   /// honoured (`007` is 7.00).
   public static func parseMinorDraft(_ text: String, exponent: Int = 2) -> Draft {
+    precondition(exponentRange.contains(exponent), "minor exponent out of range")
     let t = Array(text.trimming(.jsTrim).utf8)
     if t.isEmpty { return .empty }
     if t.first == 0x2d || t.starts(with: Array(minus.utf8)) { return .refused(.negative) }
@@ -119,6 +126,7 @@ public enum MoneyFormat {
   // MARK: - Helpers
 
   private static func split(_ magnitude: UInt64, exponent: Int) -> (whole: String, fraction: String) {
+    precondition(exponentRange.contains(exponent), "minor exponent out of range")
     guard exponent > 0 else { return (String(magnitude), "") }
     var scale: UInt64 = 1
     for _ in 0..<exponent { scale *= 10 }

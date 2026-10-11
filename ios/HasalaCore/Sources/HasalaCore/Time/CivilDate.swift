@@ -34,8 +34,15 @@ public struct CivilDate: Sendable, Hashable, Comparable, CustomStringConvertible
     self.init(year: y, month: m, day: d)
   }
 
+  /// Days since 1970-01-01 of 0000-01-01 and of 9999-12-31: the range
+  /// ``init(daysSinceEpoch:)`` accepts.
+  static let daysRange: ClosedRange<Int64> =
+    Civil.daysFromCivil(year: 0, month: 1, day: 1)...Civil.daysFromCivil(year: 9999, month: 12, day: 31)
+
   /// The civil date `days` after 1970-01-01, when it lies in years 0...9999.
+  /// Bounded before any arithmetic, so no `days` traps.
   public init?(daysSinceEpoch days: Int64) {
+    guard CivilDate.daysRange.contains(days) else { return nil }
     let (y, m, d) = Civil.civilFromDays(days)
     guard (0...9999).contains(y) else { return nil }
     self.init(year: Int(y), month: m, day: d)
@@ -59,7 +66,10 @@ public struct CivilDate: Sendable, Hashable, Comparable, CustomStringConvertible
 
   /// The date `n` days later (earlier for negative `n`); `nil` past year 9999 or
   /// before year 0.
-  public func adding(days n: Int) -> CivilDate? { CivilDate(daysSinceEpoch: daysSinceEpoch + Int64(n)) }
+  public func adding(days n: Int) -> CivilDate? {
+    let (r, o) = daysSinceEpoch.addingReportingOverflow(Int64(n))
+    return o ? nil : CivilDate(daysSinceEpoch: r)
+  }
 
   public static func < (a: CivilDate, b: CivilDate) -> Bool { a.daysSinceEpoch < b.daysSinceEpoch }
 
@@ -100,8 +110,8 @@ public struct CivilMonth: Sendable, Hashable, Comparable, CustomStringConvertibl
 
   /// The month `index` (`year * 12 + month - 1`) names, in years 0...9999.
   public init?(index: Int) {
-    let y = index >= 0 ? index / 12 : (index - 11) / 12
-    self.init(year: y, month: index - y * 12 + 1)
+    guard (0...(9999 * 12 + 11)).contains(index) else { return nil }
+    self.init(validYear: index / 12, month: index % 12 + 1)
   }
 
   /// `year * 12 + (month - 1)` (spec 03a `YearMonth.index`).
@@ -115,7 +125,10 @@ public struct CivilMonth: Sendable, Hashable, Comparable, CustomStringConvertibl
   public var wire: String { "\(Civil.pad(year, 4))-\(Civil.pad2(month))" }
   public var description: String { wire }
 
-  public func adding(months n: Int) -> CivilMonth? { CivilMonth(index: index + n) }
+  public func adding(months n: Int) -> CivilMonth? {
+    let (r, o) = index.addingReportingOverflow(n)
+    return o ? nil : CivilMonth(index: r)
+  }
 
   public static func < (a: CivilMonth, b: CivilMonth) -> Bool { a.index < b.index }
 }
@@ -129,9 +142,10 @@ public enum LocalClock {
   public static let offsetMs: Int64 = offsetMinutes * 60_000
 
   /// The local civil date of an instant: `civilFromDays(floor((ms + 4 h) / 1 day))`.
-  /// `nil` only outside years 0...9999.
+  /// `nil` only outside years 0...9999 (so never a trap, whatever `epochMs`).
   public static func localDate(_ epochMs: Int64) -> CivilDate? {
-    CivilDate(daysSinceEpoch: Civil.floorDiv(epochMs + offsetMs, Civil.msPerDay))
+    let (local, o) = epochMs.addingReportingOverflow(offsetMs)
+    return o ? nil : CivilDate(daysSinceEpoch: Civil.floorDiv(local, Civil.msPerDay))
   }
 
   /// The local month of an instant.

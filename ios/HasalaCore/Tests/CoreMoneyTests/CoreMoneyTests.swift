@@ -64,6 +64,13 @@ struct GrammarTests {
     #expect(MinorExponent.v1(CurrencyCode("KWD")!) == 3)
     #expect(MinorExponent.v1(CurrencyCode("JPY")!) == 0)
     #expect(MinorExponent.v1(CurrencyCode("XYZ")!) == 2)
+    for code in ["AED", "KWD", "JPY"] {
+      #expect(MoneyFormat.exponentRange.contains(MinorExponent.v1(CurrencyCode(code)!)))
+    }
+    // The top of MoneyFormat's exponent range is still exact at Int64.max.
+    #expect(MoneyFormat.formatMinor(.max, exponent: 18) == "9.223372036854775807")
+    #expect(MoneyFormat.parseMinorDraft("9.223372036854775807", exponent: 18) == .amount(.max))
+    #expect(MoneyFormat.parseMinorDraft("9.223372036854775808", exponent: 18) == .refused(.tooLarge))
   }
 }
 
@@ -92,6 +99,9 @@ struct MathTests {
     #expect(MoneyMath.apportion(home: 5, parts: [0, 0]) == nil)
     let big = MoneyMath.apportion(home: .max, parts: [.max, 1])!
     #expect(big.reduce(Int128(0)) { $0 + Int128($1) } == Int128(Int64.max))
+    // H·c_i leaves Int128 (2^63 · 3·2^63): nil, never a trap (R9).
+    #expect(MoneyMath.apportion(home: .max, parts: [.max, .max, .max]) == nil)
+    #expect(MoneyMath.apportion(home: .min, parts: [.max, .max, .max]) == nil)
   }
 
   @Test("base-08: percent change, half-up, nil on a zero base")
@@ -103,7 +113,16 @@ struct MathTests {
     #expect(MoneyMath.pctChange(199, 200) == -1)  // and away from zero
     #expect(MoneyMath.pctChange(200, 200) == 0)
     #expect(MoneyMath.pctChange(.max, 1) == nil)  // ~9.2e20 percent does not fit
-    #expect(MoneyMath.pctChange(-50, -100) == 50)
+    // A negative base keeps the sign of d/b, rounded like a positive base
+    // (pending the 03c §1.3 owner's confirmation; see MoneyMath.pctChange).
+    #expect(MoneyMath.pctChange(-50, -100) == -50)
+    #expect(MoneyMath.pctChange(-5, -10) == -50)
+    #expect(MoneyMath.pctChange(-15, -10) == 50)
+    #expect(MoneyMath.pctChange(-199, -200) == -1)  // -0.5% rounds away from zero
+    #expect(MoneyMath.pctChange(5, -10) == -150)
+    #expect(MoneyMath.pctChange(.min, .max) == -200)
+    #expect(MoneyMath.pctChange(.max, .min) == -200)
+    #expect(MoneyMath.pctChange(.min, -1) == nil)
   }
 }
 

@@ -22,7 +22,9 @@ public enum Civil {
     }
   }
 
-  /// Days since 1970-01-01 of the civil date `y-m-d` (any year, month 1-12).
+  /// Days since 1970-01-01 of the civil date `y-m-d` (month 1-12). The raw
+  /// algorithm: defined for |year| < 2^53, which every caller in the core
+  /// bounds first (`CivilDate` holds 0...9999, the wire parser four digits).
   public static func daysFromCivil(year: Int64, month: Int, day: Int) -> Int64 {
     let y = month <= 2 ? year - 1 : year
     let era = (y >= 0 ? y : y - 399) / 400
@@ -33,7 +35,9 @@ public enum Civil {
     return era * 146_097 + doe - 719_468
   }
 
-  /// The civil date `days` after 1970-01-01.
+  /// The civil date `days` after 1970-01-01. The raw algorithm: defined for
+  /// |days| < 2^62 (every `floorDiv(ms, msPerDay)` of an Int64 instant is far
+  /// inside); `CivilDate(daysSinceEpoch:)` bounds its input before calling it.
   public static func civilFromDays(_ days: Int64) -> (year: Int64, month: Int, day: Int) {
     let z = days + 719_468
     let era = (z >= 0 ? z : z - 146_096) / 146_097
