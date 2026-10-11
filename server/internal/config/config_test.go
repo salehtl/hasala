@@ -354,7 +354,7 @@ func TestTheConsoleConfigurationIsChecked(t *testing.T) {
 
 func TestModesAreAdvertised(t *testing.T) {
 	got := strings.Join(Modes(), ",")
-	for _, m := range []string{"serve", "migrate", "verify", "purge-user", "invite", "console", "version"} {
+	for _, m := range []string{"serve", "migrate", "verify", "purge-user", "invite", "account", "console", "version"} {
 		if !strings.Contains(","+got+",", ","+m+",") {
 			t.Errorf("Modes() = %s lacks %s", got, m)
 		}
