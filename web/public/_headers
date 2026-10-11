@@ -14,23 +14,46 @@
 # Pages whose address carries a code or a token (in the path for /i/<code>,
 # in the fragment for the rest): no referrer, ever, and never cached. Each
 # page also carries <meta name="referrer" content="no-referrer">. The "!"
-# lines drop the site-wide value first so only one Referrer-Policy is sent.
+# lines drop the site-wide value first, so only one of each header is sent.
+#
+# No Cloudflare Web Analytics here either. Cloudflare's edge injects its
+# beacon into every HTML page, and Web Analytics records page paths, so on
+# these pages it would record invite codes. Their Content-Security-Policy is
+# the site-wide one plus script-src and connect-src without
+# (no-transform also asks Cloudflare not to inject the beacon at all)
+# static.cloudflareinsights.com and cloudflareinsights.com, so the beacon
+# can neither load nor report. The browser enforces it together with the
+# page's CSP <meta> (which does admit Web Analytics), so it only narrows
+# what the page allows. The build writes those two directives in place of
+# the CSP_WITHOUT_ANALYTICS placeholder (src/lib/csp-union.mjs): the
+# <meta>'s script-src and connect-src, same hashes and 'self', minus Web
+# Analytics. scripts/check-dist.ts checks the result for every page that
+# sends no referrer. src/scripts/router.ts always loads these pages in
+# full, as a header applies only to a document the browser loads itself.
 /i
   ! Referrer-Policy
   Referrer-Policy: no-referrer
-  Cache-Control: no-store
+  ! Content-Security-Policy
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
+  Cache-Control: no-store, no-transform
 /i/*
   ! Referrer-Policy
   Referrer-Policy: no-referrer
-  Cache-Control: no-store
+  ! Content-Security-Policy
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
+  Cache-Control: no-store, no-transform
 /freeze
   ! Referrer-Policy
   Referrer-Policy: no-referrer
-  Cache-Control: no-store
+  ! Content-Security-Policy
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
+  Cache-Control: no-store, no-transform
 /waitlist/*
   ! Referrer-Policy
   Referrer-Policy: no-referrer
-  Cache-Control: no-store
+  ! Content-Security-Policy
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests; %CSP_WITHOUT_ANALYTICS%
+  Cache-Control: no-store, no-transform
 
 # Fingerprinted build output: cache for a year.
 /_astro/*

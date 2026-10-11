@@ -6,7 +6,9 @@
 //	migrate [--status | --pending] [--to N] apply the embedded migrations (schema owner)
 //	verify structural|usage [--user U] [--repair] [--json]
 //	purge-user <uuid> --confirm <uuid> [--dry-run]
-//	invite mint [--note TEXT] | invite list
+//	invite mint [--note T] [--ttl D] [--review | --email A] | list | revoke <id>
+//	waitlist                                counts by state and bank
+//	email test <address>                    queue one test email
 //	console                                 the operator console (spec 07 §8; not built yet)
 //	version                                 hasalad <version> <go version>
 //
@@ -49,6 +51,8 @@ var modeHandlers = map[string]func(env *runEnv, args []string) error{
 	"verify":     runVerify,
 	"purge-user": runPurgeUser,
 	"invite":     runInvite,
+	"waitlist":   runWaitlist,
+	"email":      runEmail,
 	"console":    runConsole,
 	"version":    runVersion,
 }

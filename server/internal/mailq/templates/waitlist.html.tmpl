@@ -1,0 +1,7 @@
+{{define "content"}}<h1>Confirm it's you.</h1>
+<p>Tap the button to put {{.Email}} on the Hasala list. We'll email you when your invite is ready. Invites go out in small batches, usually within a few weeks.</p>
+<table><tr><td>Email</td><td>{{.Email}}</td></tr><tr><td>Bank</td><td>{{.BankName}}</td></tr></table>
+<p><a href="{{.ConfirmURL}}">Confirm my email</a></p>
+<p>This link works for 7 days. Didn't ask for this? Ignore this email and we'll forget your address within 7 days.</p>
+<p>So the invite doesn't land in spam, add no-reply@hasala.app to your contacts.</p>
+<p>Changed your mind? <a href="{{.LeaveURL}}">Leave the list</a></p>{{end}}

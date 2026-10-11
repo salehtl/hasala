@@ -9,7 +9,8 @@
     "check:dist": "bun scripts/check-dist.ts",
     "preview": "astro preview --host 127.0.0.1",
     "check": "astro check",
-    "icons": "bun scripts/icons.ts"
+    "icons": "bun scripts/icons.ts",
+    "deploy": "bun run build && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.0",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "sharp": "^0.35.5",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "wrangler": "4.141.0"
   }
 }

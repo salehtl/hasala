@@ -1,0 +1,6 @@
+{{define "code.html"}}{{template "head" .}}
+<h1>Invite code</h1>
+<p>Shown once. It is stored only as a hash; hand it over out of band.</p>
+<p class="code">{{.Code}}</p>
+<p><a href="/invites">Back to invites</a></p>
+{{template "foot" .}}{{end}}

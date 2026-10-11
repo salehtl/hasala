@@ -1,9 +1,110 @@
 package api
 
-import "net/http"
+// routes_bankrequests.go: spec 07's P4, POST /api/v1/bank-requests (spec 02
+// §7 #74): "Bank with someone else? Tell us" from the website (anonymous,
+// source web) and "Another bank? Tell us" from the app (signed in, source app,
+// once per bank per account).
 
-// routes_bankrequests.go is a pre-assigned seam (spec 02 §4.2): POST
-// /api/v1/bank-requests (spec 07 §5.6, route #74). Owner: WS-19 (spec 07).
-// Handler calls mountBankRequests on every start; it registers nothing until
-// that workstream fills it in, so adding these routes never touches api.go.
-func (s *Server) mountBankRequests(mux *http.ServeMux) {}
+import (
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/salehtl/hasala/server/internal/banks"
+)
+
+func (s *Server) mountBankRequests(mux *http.ServeMux) {
+	if s.Web == nil {
+		return
+	}
+	mux.HandleFunc("/api/v1/bank-requests", s.publicRoute(s.handleBankRequest))
+}
+
+type bankRequestJSON struct {
+	Bank           string `json:"bank"`
+	OtherBank      string `json:"otherBank"`
+	Source         string `json:"source"`
+	Website        string `json:"website"`
+	TurnstileToken string `json:"turnstileToken"`
+}
+
+func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
+	if _, signedIn := bearerToken(r); signedIn {
+		s.requireSession(s.handleBankRequestSignedIn)(w, r)
+		return
+	}
+	o := s.Web
+	if !o.BankIP.Allow(clientKey(r)) || !o.BankGlobal.Allow("") {
+		w.Header().Set("Retry-After", "600")
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+		return
+	}
+	var (
+		js   bankRequestJSON
+		form publicBody
+	)
+	isForm, ok := decodePublic(w, r, true, &js, &form)
+	if !ok {
+		return
+	}
+	if !isForm {
+		form = publicBody{Bank: js.Bank, OtherBank: js.OtherBank, Source: js.Source, Website: js.Website,
+			TurnstileToken: js.TurnstileToken}
+	}
+	counted := StatusResponse{Status: "counted"}
+	if form.Website != "" {
+		o.Honeypot.Add(1)
+		s.answerPublic(w, r, isForm, http.StatusAccepted, counted, "", "bank")
+		return
+	}
+	if form.Source != "web" || form.Email != "" {
+		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_request", "bank")
+		return
+	}
+	s.recordBankRequest(w, r, isForm, form.Bank, form.OtherBank, nil)
+}
+
+func (s *Server) handleBankRequestSignedIn(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	if !s.Web.BankUser.Allow(userID.String()) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+		return
+	}
+	var js bankRequestJSON
+	if _, ok := decodePublic(w, r, false, &js, nil); !ok {
+		return
+	}
+	if js.Source != "app" || js.Website != "" || js.TurnstileToken != "" {
+		writeErr(w, http.StatusBadRequest, "bad_request", "a signed-in request has source app and nothing else")
+		return
+	}
+	s.recordBankRequest(w, r, false, js.Bank, js.OtherBank, &userID)
+}
+
+func (s *Server) recordBankRequest(w http.ResponseWriter, r *http.Request, isForm bool, bank, other string, userID *uuid.UUID) {
+	other = strings.TrimSpace(other)
+	if bank == "" || (bank == "other" && other == "") {
+		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_bank", "bank")
+		return
+	}
+	choice, err := banks.Resolve(r.Context(), s.Pool, bank, other)
+	if errors.Is(err, banks.ErrBadBank) {
+		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_bank", "bank")
+		return
+	}
+	if err == nil {
+		err = banks.Record(r.Context(), s.Pool, choice, userID, s.now())
+	}
+	switch {
+	case errors.Is(err, banks.ErrListFull):
+		s.answerPublic(w, r, isForm, http.StatusTooManyRequests, nil, "bank_list_full", "bank")
+	case errors.Is(err, banks.ErrBadBank):
+		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_bank", "bank")
+	case err != nil:
+		s.logf("api: bank request: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+	default:
+		s.answerPublic(w, r, isForm, http.StatusAccepted, StatusResponse{Status: "counted"}, "", "bank")
+	}
+}

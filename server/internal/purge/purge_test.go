@@ -109,6 +109,29 @@ var seeders = map[string]seeder{
 		               VALUES ($1, 'ios-00000000-0000-4000-8000-000000000206', $2, $3, 'production', now(), now())`,
 			u, session, hex.EncodeToString(randBytes(t, 32)))
 	},
+	// The Gmail mailbox link and its challenge (spec 02 §13.2).
+	"public.mailbox_links": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		ensureWriter(t, pool, u)
+		exec(t, pool, `INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id, created_at, updated_at)
+		               VALUES ($1, 'gmail', $2, $3, 'ios-00000000-0000-4000-8000-000000000206', now(), now())`,
+			u, randBytes(t, 32), randBytes(t, 8))
+	},
+	"public.mailbox_link_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		session := ensureSession(t, pool, u)
+		exec(t, pool, `INSERT INTO mailbox_link_challenges (nonce_hash, user_id, session_hash, issued_at, expires_at)
+		               VALUES ($2, $1, $3, now(), now() + interval '15 minutes')`, u, randBytes(t, 32), session)
+	},
+	// Spec 07: an app bank request and an alert in the email log.
+	"public.bank_requests": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO bank_requests (other_key, other_text, source, user_id, created_at)
+		               VALUES ('some bank', 'Some Bank', 'app', $1, now())`, u)
+	},
+	"public.mail_log": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id,
+		                                     params, status, next_attempt_at, created_at)
+		               VALUES ('alert', 'new_passkey', 'transactional', 'someone@example.com', $2, 's•••@example.com', $1,
+		                       '{}', 'queued', now(), now())`, u, randBytes(t, 32))
+	},
 	"public.webauthn_credentials": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_credentials
 		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, attestation_sha256, created_at)
@@ -786,5 +809,38 @@ func TestDeletionMessageIsDomainSeparated(t *testing.T) {
 	other := DeletionMessage(nonce, uuid.New())
 	if string(msg) == string(other) {
 		t.Fatal("DeletionMessage does not bind the user id")
+	}
+}
+
+// Spec 07 §6.6: the purge erases the account's address from email-log rows
+// that never carried its user_id, and its joined waitlist entry.
+func TestPurgeErasesTheAddressFromTheEmailLog(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "erase-address")
+	exec(t, pool, `UPDATE users SET email_norm = 'gone@example.com' WHERE id = $1`, u)
+	tag := randBytes(t, 32)
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, next_attempt_at, created_at)
+	               VALUES ('test', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'queued', now(), now())`, tag)
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, sent_at, final_at, created_at)
+	               VALUES ('test', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'sent', now(), now(), now())`, tag)
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, sent_at, final_at, created_at)
+	               VALUES ('test', 'transactional', 'stays@example.com', $1, 's•••@example.com', '{}', 'sent', now(), now(), now())`, randBytes(t, 32))
+	var entry uuid.UUID
+	if err := pool.QueryRow(bg, `INSERT INTO waitlist_entries (email_tag, state, source, created_at, updated_at, confirmed_at,
+	    invited_at, joined_at) VALUES ($1, 'joined', 'web', now(), now(), now(), now(), now()) RETURNING id`, tag).Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, pool, `INSERT INTO invite_codes (code_hash, waitlist_entry_id, origin, state, created_at, minted_at, expires_at,
+	               mint_count, redeemed_at, redeemed_by, closed_at)
+	               VALUES ($1, $2, 'cli', 'redeemed', now(), now(), now() + interval '1 day', 1, now(), $3, now())`,
+		randBytes(t, 32), entry, u)
+	if _, err := Purge(bg, pool, u); err != nil {
+		t.Fatal(err)
+	}
+	var withAddr, rows, entries int
+	_ = pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE recipient = 'gone@example.com'), count(*) FROM mail_log`).Scan(&withAddr, &rows)
+	_ = pool.QueryRow(bg, `SELECT count(*) FROM waitlist_entries`).Scan(&entries)
+	if withAddr != 0 || rows != 2 || entries != 0 {
+		t.Fatalf("after the purge: %d rows with the address, %d rows, %d entries", withAddr, rows, entries)
 	}
 }

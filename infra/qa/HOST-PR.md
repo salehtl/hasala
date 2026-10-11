@@ -29,10 +29,11 @@ stops. The owner merges.
   validated but nothing listens, so the `hasala` Prometheus job will show the
   target down until WS-5's metrics land in the server. `hasala-health` does not
   probe it (P6 is left out for that reason).
-- **`trusted_proxy = cloudflare` is not honoured yet** (the server says so at
-  start): every request arrives from loopback through the tunnel, so each
-  per-IP limit is one global limit until spec 02 §16.1's client-IP code (WS-3)
-  lands. Do not open the tunnel to testers before that release.
+- **`trusted_proxy = cloudflare` needs a release with spec 02 §16.1's
+  client-IP code** (`internal/api/clientip.go`). Before it, every request
+  arrives from loopback through the tunnel and each per-IP limit is one global
+  limit; older builds say so at start. Do not open the tunnel to testers on a
+  build that still warns.
 
 ## PR B: "hasala: QA backend at api.hasala.app (own Postgres, own tunnel)"
 

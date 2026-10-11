@@ -1,0 +1,7 @@
+You're already on the Hasala list
+{{.Greeting}}
+
+{{if .Invited}}Someone asked to add {{.Email}} to the Hasala list again. Your invite went out on {{.InvitedOn}} and is saved until {{.Until}}. Look for "Your Hasala invite" from no-reply@hasala.app.{{else}}Someone asked to add {{.Email}} to the Hasala list again. It's already on it, confirmed on {{.ConfirmedOn}}. You don't need to do anything; we'll email you when your invite is ready.{{end}}
+
+Changed your mind? Leave the list: {{.LeaveURL}}
+{{template "footer" .}}
