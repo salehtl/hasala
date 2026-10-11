@@ -1,6 +1,7 @@
 // Test doubles for the engine's ports. FakeGmail (CoreTestSupport) stands in for Google.
 import CoreJSON
 import CoreMailbox
+import CoreStore
 import CorePrimitives
 import CoreTemplate
 import CoreTestSupport
@@ -129,11 +130,26 @@ struct GroceryCategorizer: IngestCategorizer {
   }
 }
 
-/// A whole engine over fakes.
+/// The ops the persistence authored (the tests' view of `pending_ops`).
+final class AuthoredDrafts: @unchecked Sendable {
+  private let lock = NSLock()
+  private var drafts: [MailboxIngestDraft] = []
+  func append(_ d: [MailboxIngestDraft]) { lock.withLock { drafts += d } }
+  var all: [MailboxIngestDraft] { lock.withLock { drafts } }
+}
+
+enum Backend { case sqlite, memory }
+
+/// A whole engine over fakes. The persistence is the production one (ledger.sqlite tables in an
+/// in-memory SQLite database) unless a test asks for the in-memory reference.
 struct Rig {
   static let t0: Int64 = 1_780_000_000_000  // 2026-05-28, synthetic
   let gmail = FakeGmail()
-  let store = InMemoryMailboxPersistence()
+  let memory = InMemoryMailboxPersistence()
+  let tables = try! MailboxTableStore.inMemory()
+  let authored = AuthoredDrafts()
+  let store: any MailboxPersistence
+  let backend: Backend
   let ledger = FakeLedger()
   let server = FakeServer()
   let clock = ManualClock(Rig.t0)
@@ -141,7 +157,26 @@ struct Rig {
   let engine: MailboxEngine
   let tokens: RefreshingGmailTokenProvider
 
-  init(categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false, config: ((inout MailboxEngineConfig) -> Void)? = nil) {
+  init(
+    backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
+    config: ((inout MailboxEngineConfig) -> Void)? = nil
+  ) {
+    self.backend = backend
+    let authored = self.authored
+    let clockForStore = clock
+    store =
+      backend == .memory
+      ? memory
+      : LedgerMailboxPersistence(
+        tables: tables,
+        author: { drafts, at in
+          authored.append(drafts)
+          return drafts.map {
+            MailboxPendingOpRow(
+              opID: "op-\($0.messageID)", opJSON: Data(JSONWriter().bytes(.object($0.payload))), opType: "txn_ingested",
+              entityKind: "txn", entityID: "e-\($0.messageID)", enqueuedAt: at)
+          }
+        }, nowMs: { clockForStore.nowMs() })
     let oauth = GoogleOAuthClient(
       config: GmailOAuthConfig(clientID: "synthetic-client.apps.googleusercontent.com", redirectScheme: "com.googleusercontent.apps.synthetic-client"),
       http: gmail)
@@ -162,6 +197,20 @@ struct Rig {
     _ = await engine.runCycle(trigger: .launch)
     let summary = await engine.scanSummary()
     _ = await engine.confirmCards(summary.cards.map { CardDecision(card: $0.card, state: .mine) })
+  }
+
+  func enqueued() async -> [MailboxIngestDraft] { backend == .memory ? await memory.enqueued : authored.all }
+  func state() async -> MailboxState { (try? await store.loadState()) ?? MailboxState() }
+  func stagedCount() async -> Int { (try? await store.stagedCount()) ?? -1 }
+  func accounted(_ id: String) async -> AccountedOutcome? {
+    if backend == .memory { return await memory.accountedRows[id]?.outcome }
+    return (try? tables.accountedRowsForTests()[id]).flatMap { AccountedOutcome(rawValue: $0) }
+  }
+  func accountedCount() async -> Int {
+    backend == .memory ? await memory.accountedRows.count : ((try? tables.accountedRowsForTests().count) ?? -1)
+  }
+  func unreadableReasons() async -> [UnreadableReason] {
+    ((try? await store.unreadableRecords()) ?? []).map(\.reason)
   }
 
   var listRequests: [FakeGmail.Recorded] { gmail.requests.filter { $0.path.hasSuffix("/messages") } }

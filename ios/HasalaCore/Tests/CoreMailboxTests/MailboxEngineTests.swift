@@ -20,7 +20,7 @@ let day: Int64 = 86_400_000
     // Step-up over P = SHA-256(id_token).
     #expect(puts[0].1["p"] == .string(Hex.encode(sha256(Data(puts[0].0.utf8)))))
     #expect(puts[0].1["kind"] == .string("mailbox.link"))
-    let s = await rig.store.state
+    let s = await rig.state()
     #expect(s.phase == .scanning && s.backfillDays == 90 && s.scanStartedMs == Rig.t0)
     #expect(s.address == "synthetic.user@example.com")
     #expect(s.profileHistoryID == "1000")
@@ -31,7 +31,7 @@ let day: Int64 = 86_400_000
     var p = FakePresenter(gmail: rig.gmail)
     p.cancel = true
     #expect(await rig.engine.connect(presenter: p, backfillDays: 90) == .cancelled)
-    #expect(await rig.store.state.phase == .unlinked)
+    #expect(await rig.state().phase == .unlinked)
     #expect(await rig.server.puts.isEmpty)
   }
 
@@ -64,7 +64,7 @@ let day: Int64 = 86_400_000
     let scan = await rig.engine.runCycle(trigger: .launch)
     #expect(scan.staged == 5 && scan.ops == 0)
     #expect(scan.phase == .awaitingCards)
-    #expect(await rig.store.enqueued.isEmpty)  // the scan never authors (§7.7 step 7)
+    #expect(await rig.enqueued().isEmpty)  // the scan never authors (§7.7 step 7)
 
     let summary = await rig.engine.scanSummary()
     #expect(summary.cards.map(\.card) == [CardKey(bank: "dib", last4: "1234"), CardKey(bank: "dib", last4: "9999"), CardKey(bank: "enbd", last4: "8642")])
@@ -79,18 +79,30 @@ let day: Int64 = 86_400_000
     #expect(done.ops == 5 && done.review == 2)
     #expect(done.phase == .active && done.completed)
     #expect(await rig.ledger.authoredCards.count == 3)
-    let drafts = await rig.store.enqueued
+    let drafts = await rig.enqueued()
     let byID = Dictionary(uniqueKeysWithValues: drafts.map { ($0.messageID, $0) })
     #expect(byID["d1"]?.needsReview == false && byID["d1"]?.payload["category"] == .string("groceries"))
     #expect(byID["d3"]?.needsReview == true && byID["d3"]?.payload["gates"]?["card"] == .string("not_mine"))
     #expect(byID["n1"]?.payload["unparsed"] == .bool(true))
     #expect(byID["e1"]?.needsReview == false)
-    let s = await rig.store.state
+    let s = await rig.state()
     #expect(s.watermarkMs == Rig.t0 && s.profileHistoryID == "1000")
-    #expect(await rig.store.staging.isEmpty)
+    #expect(await rig.stagedCount() == 0)
     // No history.list and never an unfiltered listing (PO G).
     #expect(!rig.gmail.requests.contains { $0.path.contains("/history") })
     #expect(rig.listRequests.allSatisfy { r in r.query.contains { $0.0 == "q" && $0.1.hasPrefix("{from:") } })
+  }
+
+  @Test func inMemoryReferenceBehavesTheSame() async {
+    let rig = Rig(backend: .memory)
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - day))
+    rig.gmail.add(SyntheticMail.bankNotice(id: "n1", dateMs: Rig.t0 - day))
+    await rig.connectAndActivate()
+    #expect(await rig.state().phase == .active)
+    #expect(Set(await rig.enqueued().map(\.messageID)) == ["d1", "n1"])
+    rig.gmail.add(SyntheticMail.dibCard(id: "d2", amount: "2.00", dateMs: rig.clock.nowMs() - 1000))
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.ops == 1 && r.review == 0 && r.completed)
   }
 
   @Test func scanWaitsForATrustedSender() async {
@@ -113,7 +125,7 @@ let day: Int64 = 86_400_000
     let done = await rig.engine.confirmCards([CardDecision(card: CardKey(bank: "dib", last4: "1234"), state: .mine)])
     // The two staged rows, then the rest of the window, authored with the gate applied.
     #expect(done.ops == 4 && done.review == 0 && done.phase == .active)
-    #expect(Set(await rig.store.enqueued.map(\.messageID)) == ["d0", "d1", "d2", "d3"])
+    #expect(Set(await rig.enqueued().map(\.messageID)) == ["d0", "d1", "d2", "d3"])
   }
 }
 
@@ -127,7 +139,7 @@ let day: Int64 = 86_400_000
     let r = await rig.engine.runCycle(trigger: .silentPush)
     #expect(r.ops == 1 && r.review == 1 && r.completed)  // card 1234 not confirmed (no scan mail)
     #expect(await rig.ledger.flushes >= 1)
-    let s = await rig.store.state
+    let s = await rig.state()
     #expect(s.watermarkMs == rig.clock.nowMs() && s.profileHistoryID == "1001")
 
     rig.gmail.clearRequests()
@@ -135,7 +147,7 @@ let day: Int64 = 86_400_000
     let again = await rig.engine.runCycle(trigger: .silentPush)
     #expect(again.ops == 0 && again.listed == 1)
     #expect(rig.rawRequests.isEmpty)  // accounted: never re-downloaded
-    #expect(await rig.store.enqueued.count == 1)
+    #expect(await rig.enqueued().count == 1)
   }
 
   @Test func unchangedHistoryIdSkipsTheListing() async {
@@ -169,7 +181,7 @@ let day: Int64 = 86_400_000
     await rig.ledger.setIngested([Hex.encode(sha256(Data(m.raw)))])
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.ops == 0 && r.dup == 1 && r.completed)
-    #expect(await rig.store.accountedRows["dup"]?.outcome == .dup)
+    #expect(await rig.accounted("dup") == .dup)
   }
 
   @Test func lookAlikeIsSetAsideWithoutItsBody() async {
@@ -194,7 +206,7 @@ let day: Int64 = 86_400_000
     rig.gmail.fail("/messages/deleted", with: [404])
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.unreadable == 1 && r.ops == 1 && r.completed)
-    #expect(await rig.store.unreadable.map(\.reason) == [.gone])
+    #expect(await rig.unreadableReasons() == [.gone])
   }
 
   @Test func rateLimitRetriesThenSucceeds() async {
@@ -209,13 +221,13 @@ let day: Int64 = 86_400_000
   @Test func persistentFailureKeepsTheWatermark() async {
     let rig = Rig()
     await rig.connectAndActivate()
-    let before = await rig.store.state.watermarkMs
+    let before = await rig.state().watermarkMs
     rig.clock.advance(3_600_000)
     rig.gmail.add(SyntheticMail.dibCard(id: "flaky", dateMs: rig.clock.nowMs() - 1000))
     rig.gmail.fail("/messages/flaky", with: [500, 500, 500])
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.haltedOn == .gmail && !r.completed)
-    #expect(await rig.store.state.watermarkMs == before)
+    #expect(await rig.state().watermarkMs == before)
     // The next run reads it.
     let r2 = await rig.engine.runCycle(trigger: .refresh)
     #expect(r2.ops == 1 && r2.completed)
@@ -224,30 +236,30 @@ let day: Int64 = 86_400_000
   @Test func accountFullHaltsWithTheWatermarkIntactAndRetryResumes() async {
     let rig = Rig()
     await rig.connectAndActivate()
-    let before = await rig.store.state.watermarkMs
+    let before = await rig.state().watermarkMs
     rig.clock.advance(3_600_000)
     rig.gmail.add(SyntheticMail.dibCard(id: "big", dateMs: rig.clock.nowMs() - 1000))
     await rig.ledger.setFlush(.accountFull)
     let r = await rig.engine.runCycle(trigger: .refresh)
     #expect(r.haltedOn == .accountFull && r.phase == .halted)
-    #expect(await rig.store.state.watermarkMs == before)
+    #expect(await rig.state().watermarkMs == before)
     #expect(await rig.engine.runCycle(trigger: .silentPush).haltedOn == .accountFull)  // stays halted
     await rig.ledger.setFlush(.flushed)
     let retry = await rig.engine.runCycle(trigger: .retry)
     #expect(retry.phase == .active && retry.completed && retry.ops == 0)  // the op was already queued
-    #expect(await rig.store.enqueued.filter { $0.messageID == "big" }.count == 1)
+    #expect(await rig.enqueued().filter { $0.messageID == "big" }.count == 1)
   }
 
   @Test func deadlineCutKeepsTheWatermarkAndResumesWithoutRedownloading() async {
     let rig = Rig { $0.downloadWidth = 1 }
     await rig.connectAndActivate()
-    let before = await rig.store.state.watermarkMs
+    let before = await rig.state().watermarkMs
     for i in 0..<3 { rig.gmail.add(SyntheticMail.dibCard(id: "c\(i)", amount: "\(i + 1).00", dateMs: rig.clock.nowMs() - Int64(i + 1) * 1000)) }
     rig.gmail.historyID = "2000"  // new mail moves the mailbox's historyId
     rig.gmail.fail("/messages/c1", with: [503])  // costs 400 ms of (fake) backoff, pushing past the deadline
     let r = await rig.engine.runCycle(trigger: .appRefresh, deadlineMs: rig.clock.nowMs() + 5_200)
     #expect(!r.completed && r.ops >= 1 && r.ops < 3)
-    #expect(await rig.store.state.watermarkMs == before)
+    #expect(await rig.state().watermarkMs == before)
     rig.gmail.clearRequests()
     let r2 = await rig.engine.runCycle(trigger: .appRefresh)
     #expect(r2.completed && r.ops + r2.ops == 3)
@@ -299,7 +311,7 @@ let day: Int64 = 86_400_000
     await rig.connectAndActivate()
     #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
     #expect(await rig.server.watches == [Rig.t0 + 7 * day])
-    #expect(await rig.store.state.watchExpiresAtMs == Rig.t0 + 7 * day)
+    #expect(await rig.state().watchExpiresAtMs == Rig.t0 + 7 * day)
 
     let quiet = Rig()
     await quiet.server.setTopic(nil)
@@ -319,7 +331,7 @@ let day: Int64 = 86_400_000
   @Test func addASenderTrustsAndImportsWithoutMovingTheWatermark() async throws {
     let rig = Rig()
     await rig.connectAndActivate()
-    let before = await rig.store.state.watermarkMs
+    let before = await rig.state().watermarkMs
     let raw = SyntheticMail.rfc822(
       from: "Alerts <alerts@newbank.example>", subject: "Notice", body: "Hello", dateMs: Rig.t0 - 3 * day,
       authDomain: "newbank.example")
@@ -327,7 +339,7 @@ let day: Int64 = 86_400_000
     let r = try await rig.engine.importSender("alerts@NewBank.example").get()
     #expect(r.ops == 1 && r.review == 1)
     #expect(await rig.ledger.authoredTrust.map(\.0) == ["newbank.example"])
-    #expect(await rig.store.state.watermarkMs == before)
+    #expect(await rig.state().watermarkMs == before)
     if case .failure(let e) = await rig.engine.importSender("x@gmail.com") { #expect(e == .forwarder) } else { Issue.record("forwarder accepted") }
   }
 
@@ -352,8 +364,8 @@ let day: Int64 = 86_400_000
     #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
     #expect(try rig.keychain.read() == nil)
     #expect(await rig.server.deletes == 1)
-    #expect(await rig.store.state.phase == .unlinked)
-    #expect(await rig.store.accountedRows.isEmpty)
+    #expect(await rig.state().phase == .unlinked)
+    #expect(await rig.accountedCount() == 0)
   }
 
   @Test func concurrentTriggersAreSingleFlight() async {
@@ -364,6 +376,6 @@ let day: Int64 = 86_400_000
     async let b = rig.engine.runCycle(trigger: .refresh)
     let (ra, rb) = await (a, b)
     #expect(ra.ops + rb.ops == 1)
-    #expect(await rig.store.enqueued.filter { $0.messageID == "x" }.count == 1)
+    #expect(await rig.enqueued().filter { $0.messageID == "x" }.count == 1)
   }
 }
