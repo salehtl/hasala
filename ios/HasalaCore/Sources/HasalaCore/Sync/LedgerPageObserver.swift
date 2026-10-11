@@ -103,7 +103,7 @@ public actor LedgerPageObserver: PageObserver {
     return s
   }
 
-  /// Folds every stored row from genesis (§5.3 "a rejection means a cold fold").
+  /// Folds every stored row from genesis: what any snapshot rejection falls back to (§5.3).
   func coldFold(cursor: Int64) throws(SyncStop) -> State {
     let store = context.store
     let sync = try context.storeCall { () throws(StoreError) in try store.syncState() }
