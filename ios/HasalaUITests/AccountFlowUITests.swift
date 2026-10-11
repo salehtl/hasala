@@ -65,10 +65,10 @@ final class AccountFlowUITests: XCTestCase {
     let app = launch("newUser")
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     attach(app, "Stories")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "stories.getStarted")
     attach(app, "Welcome")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "welcome.join")
 
     type(app, "invite.field", Self.invite.lowercased())
@@ -79,7 +79,7 @@ final class AccountFlowUITests: XCTestCase {
     type(app, "about.name", "Maya Rahman")
     type(app, "about.email", "maya@example.com")
     attach(app, "About you")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "about.continue")
 
     // A wrong code first: "That code didn't work. 4 tries left."
@@ -90,7 +90,7 @@ final class AccountFlowUITests: XCTestCase {
 
     XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: 10))
     attach(app, "How do you want to sign in")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "method.continue")
 
     tap(app, "phrase.start")
@@ -107,21 +107,21 @@ final class AccountFlowUITests: XCTestCase {
     tap(app, "phrase.slot.0")
     for w in ["scissors", "category", "army", "camera"] { tap(app, "chip.\(w)") }
     attach(app, "Check 4 words · done")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "phrase.confirm")
 
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     attach(app, "Account ready")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "ready.continue")
 
     // Setup (row 10).
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10))
     attach(app, "Bank")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "bank.continue")
     attach(app, "Gmail")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "gmail.connect")
     XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10))
     attach(app, "First scan")
@@ -131,7 +131,7 @@ final class AccountFlowUITests: XCTestCase {
     tap(app, "income.continue")
     XCTAssertTrue(app.staticTexts["12,500"].waitForExistence(timeout: 5))
     attach(app, "Starting plan")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "plan.use")
 
     let cards = el(app, "cards.continue")
@@ -140,17 +140,17 @@ final class AccountFlowUITests: XCTestCase {
     expectation(for: enabled, evaluatedWith: cards)
     waitForExpectations(timeout: 20)
     attach(app, "Your cards")
-    try audit(app)
+    try auditFlow(app)
     cards.tap()
     XCTAssertTrue(app.staticTexts["264 transactions, sorted."].waitForExistence(timeout: 10))
     attach(app, "Sorted")
     tap(app, "result.continue")
     attach(app, "Notifications")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "notifications.notNow")
     XCTAssertTrue(app.staticTexts["You're set, Maya."].waitForExistence(timeout: 10))
     attach(app, "Done")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "done.home")
 
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
@@ -184,7 +184,7 @@ final class AccountFlowUITests: XCTestCase {
     type(app, "password.confirm", "copper lantern quietly 42")
     XCTAssertTrue(app.staticTexts["Passwords match."].waitForExistence(timeout: 5))
     attach(app, "Password · strong, confirmed")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "password.create")
     XCTAssertTrue(el(app, "phrase.start").waitForExistence(timeout: 10))
   }
@@ -204,7 +204,7 @@ final class AccountFlowUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["We couldn't find that invite. Check the code, or ask for a new one."]
       .waitForExistence(timeout: 10))
     attach(app, "Invite · not found")
-    try audit(app)
+    try auditFlow(app)
   }
 
   // MARK: - Sign in with a password, wrong then right
@@ -220,7 +220,7 @@ final class AccountFlowUITests: XCTestCase {
     app.keyboards.buttons["return"].firstMatch.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     attach(app, "Sign in · wrong password")
-    try audit(app)
+    try auditFlow(app)
     type(app, "signIn.password", "copper lantern quietly 42")
     tap(app, "signIn.withPassword")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
@@ -233,7 +233,7 @@ final class AccountFlowUITests: XCTestCase {
     let app = launch("unlockPasswordOnly")
     XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: 15))
     attach(app, "Unlock · 12 words")
-    try audit(app)
+    try auditFlow(app)
     type(app, "phraseEntry.field", Self.phrase.joined(separator: " "))
     tap(app, "unlock.submit")
     tap(app, "unlock.open")
@@ -252,7 +252,7 @@ final class AccountFlowUITests: XCTestCase {
     // Password-only accounts never see "View your 12 words" (S-41).
     XCTAssertFalse(el(app, "security.viewPhrase").exists)
     attach(app, "Sign-in & security · password only")
-    try audit(app)
+    try auditFlow(app)
 
     // Adding a passkey asks for the password first.
     tap(app, "security.addPasskey")
@@ -270,7 +270,7 @@ final class AccountFlowUITests: XCTestCase {
     tap(app, "profile.security")
     XCTAssertTrue(app.staticTexts["Protected"].waitForExistence(timeout: 10))
     attach(app, "Sign-in & security · passkey")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "security.viewPhrase")
     tap(app, "phrase.reveal")
     XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
@@ -280,7 +280,7 @@ final class AccountFlowUITests: XCTestCase {
     app.alerts.buttons["Freeze my account"].tap()
     XCTAssertTrue(app.staticTexts["Your account is frozen"].waitForExistence(timeout: 10))
     attach(app, "Frozen")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "frozen.unfreeze")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
@@ -291,7 +291,7 @@ final class AccountFlowUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["We froze your account to protect it. Talk to us to unfreeze it."]
       .waitForExistence(timeout: 15))
     XCTAssertFalse(el(app, "frozen.unfreeze").exists)
-    try audit(app)
+    try auditFlow(app)
     tap(app, "frozen.leave")
     // The banner keeps the operator's freeze: no Unfreeze there either.
     XCTAssertTrue(el(app, "frozenBanner.details").waitForExistence(timeout: 10))
@@ -307,7 +307,7 @@ final class AccountFlowUITests: XCTestCase {
     let app = launch("resetApproval")
     XCTAssertTrue(app.staticTexts["Is this you on a new iPhone?"].waitForExistence(timeout: 15))
     attach(app, "Approve a password reset")
-    try audit(app)
+    try auditFlow(app)
     type(app, "approval.code", "ABCD EFGH IJKL MNOP")
     tap(app, "approval.approve")
     XCTAssertTrue(app.staticTexts["That code doesn't match a request. Nothing was approved."].waitForExistence(timeout: 10))
@@ -327,7 +327,7 @@ final class AccountFlowUITests: XCTestCase {
     tap(app, "approval.notMe")
     XCTAssertTrue(app.staticTexts["Let's lock it down"].waitForExistence(timeout: 10))
     attach(app, "Let's lock it down")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "lockdown.close")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
@@ -340,7 +340,7 @@ final class AccountFlowUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["This is a new recovery phrase. Throw away any words you wrote down before."]
       .waitForExistence(timeout: 15))
     attach(app, "Interrupted setup · new phrase")
-    try audit(app)
+    try auditFlow(app)
     tap(app, "resume.start")
     tap(app, "phrase.reveal")
     XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
@@ -365,7 +365,7 @@ final class AccountFlowUITests: XCTestCase {
     let app = launch("noPasscode")
     XCTAssertTrue(app.staticTexts["Set a passcode first"].waitForExistence(timeout: 15))
     XCTAssertFalse(el(app, "stories.getStarted").exists)
-    try audit(app)
+    try auditFlow(app)
   }
 
   /// The signed-out screens and Sign-in & security at `.accessibility3` reflow instead of
@@ -379,15 +379,15 @@ final class AccountFlowUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     attach(app, "AX3 · Stories")
-    try audit(app, atLargeText: true)
+    try auditFlow(app, atLargeText: true)
     tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: 10))
     attach(app, "AX3 · Welcome")
-    try audit(app, atLargeText: true)
+    try auditFlow(app, atLargeText: true)
     tap(app, "welcome.join")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
     attach(app, "AX3 · Invite")
-    try audit(app, atLargeText: true)
+    try auditFlow(app, atLargeText: true)
 
     let signedIn = XCUIApplication()
     signedIn.launchArguments = [
@@ -400,15 +400,17 @@ final class AccountFlowUITests: XCTestCase {
     tap(signedIn, "profile.security")
     XCTAssertTrue(signedIn.staticTexts["Password only"].waitForExistence(timeout: 10))
     attach(signedIn, "AX3 · Sign-in & security")
-    try audit(signedIn, atLargeText: true)
+    try auditFlow(signedIn, atLargeText: true)
   }
 
   // MARK: - Helpers
 
-  /// The system accessibility audit (see SmokeTests for why contrast is not counted
-  /// and clipping is checked only at the large sizes).
+  /// The system accessibility audit for the account flows (see SmokeTests for why
+  /// contrast is not counted and clipping is checked only at the large sizes). Unlike the
+  /// shared `audit` in UITestSupport it also skips the keyboard, which these flows raise;
+  /// screenshots use the shared `attach`.
   @MainActor
-  private func audit(
+  private func auditFlow(
     _ app: XCUIApplication, atLargeText: Bool = false, file: StaticString = #filePath, line: UInt = #line
   ) throws {
     var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
@@ -425,13 +427,5 @@ final class AccountFlowUITests: XCTestCase {
     if !issues.isEmpty {
       XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
     }
-  }
-
-  @MainActor
-  private func attach(_ app: XCUIApplication, _ name: String) {
-    let shot = XCTAttachment(screenshot: app.screenshot())
-    shot.name = name
-    shot.lifetime = .keepAlways
-    add(shot)
   }
 }
