@@ -65,6 +65,13 @@ Blobs in the order they reach the fold. Each item is one of:
   These exercise the decoder: a body that will not decode is set aside into
   `unreadable` with this position.
 
+An `ops` item's blob position is its `seq`, its `writer_id` and the stream
+`hot`. Its `writer_counter` is not witnessed by the state, so any value works:
+only an `unreadable` entry records a blob's counter, and an `ops` item always
+decodes. (The generator happens to number each writer's blobs 1, 2, … and the
+TypeScript reader uses 0.) A raw item's `writer_counter` is given because a
+set-aside blob's `unreadable` entry does record it.
+
 Fold each item at its `seq` the way sync does: decode the body (an unknown
 newer schema version anywhere in it stops the fold, any other decode failure
 sets the blob aside and still advances the cursor), then apply its ops in
@@ -117,4 +124,10 @@ order. A blob's seq must be greater than the folded cursor, or the fold stops.
   reads the committed files and folds them through `foldBlobs`.
 - Swift: the HasalaCore conformance tests (spec 04 §19.7), once CoreReplay
   lands. v4 fold additions must leave every case here byte-identical (spec 03c
-  acceptance test 2).
+  acceptance test 2), with diagnostic text blanked as above.
+
+The `hard_stops` cases that need "a newer schema version" stamp it `99`, not
+the oracle's `SCHEMA_VERSION + 1` (4): spec 03c makes 4 the current version, so
+a v4 fold would read a `"v":4` blob instead of stopping. The oracle's check is
+`v > SCHEMA_VERSION`, so its expectations are the same either way, and 99 stays
+newer than any fold this suite is meant for.

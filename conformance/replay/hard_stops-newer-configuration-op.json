@@ -1,7 +1,7 @@
 {
   "name": "newer-configuration-op",
   "group": "hard_stops",
-  "note": "A v4 op of a known type still stops the fold.",
+  "note": "An op of a known type stamped with a newer schema still stops the fold.",
   "schema_version": 1,
   "log": [
     {
@@ -26,7 +26,7 @@
       "writer_id": "dev-a",
       "stream": "hot",
       "writer_counter": "2",
-      "body": "{\"v\":4,\"kind\":\"ops\",\"ops\":[{\"v\":4,\"type\":\"bank_declared\",\"op_id\":\"b4\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"bank\":\"dib\",\"active\":true}}]}"
+      "body": "{\"v\":99,\"kind\":\"ops\",\"ops\":[{\"v\":99,\"type\":\"bank_declared\",\"op_id\":\"b4\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"bank\":\"dib\",\"active\":true}}]}"
     }
   ],
   "expect": {

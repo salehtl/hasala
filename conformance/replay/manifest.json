@@ -640,7 +640,7 @@
       "file": "hard_stops-newer-configuration-op.json",
       "name": "newer-configuration-op",
       "group": "hard_stops",
-      "note": "A v4 op of a known type still stops the fold."
+      "note": "An op of a known type stamped with a newer schema still stops the fold."
     },
     {
       "file": "hard_stops-seq-goes-backwards.json",

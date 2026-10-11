@@ -810,17 +810,22 @@ function blobSpecs(): Spec[] {
   ];
 }
 
+// "Newer" is stamped far in the future rather than SCHEMA_VERSION + 1, so a
+// port that has moved on to v4 (or later) still meets an unknown version here
+// and stops; the oracle's check is v > SCHEMA_VERSION either way.
+const FAR_FUTURE_V = 99;
+
 function hardStopSpecs(): Spec[] {
   const g = "hard_stops";
   return [
     spec(g, "newer-blob-version", "A blob from a newer schema stops the fold: it is never set aside.", (c) =>
-      c.blob("ingest", c.ingest("t1", "i1")).raw("dev-a", opsBody("", 4)),
+      c.blob("ingest", c.ingest("t1", "i1")).raw("dev-a", opsBody("", FAR_FUTURE_V)),
     ),
     spec(g, "newer-op-inside-a-current-blob", "One op from a newer schema inside a v1 blob stops the fold, even though it is otherwise malformed.", (c) =>
-      c.raw("dev-a", opsBody(`{"v":4,"type":"txn_ingested"}`)),
+      c.raw("dev-a", opsBody(`{"v":${FAR_FUTURE_V},"type":"txn_ingested"}`)),
     ),
-    spec(g, "newer-configuration-op", "A v4 op of a known type still stops the fold.", (c) =>
-      c.blob("dev-a", c.bank({ bank: "enbd", active: true })).raw("dev-a", opsBody(`{"v":4,"type":"bank_declared","op_id":"b4","authored_at":"2026-06-05T10:00:00.000Z","parent_version":null,"payload":{"bank":"dib","active":true}}`, 4)),
+    spec(g, "newer-configuration-op", "An op of a known type stamped with a newer schema still stops the fold.", (c) =>
+      c.blob("dev-a", c.bank({ bank: "enbd", active: true })).raw("dev-a", opsBody(`{"v":${FAR_FUTURE_V},"type":"bank_declared","op_id":"b4","authored_at":"2026-06-05T10:00:00.000Z","parent_version":null,"payload":{"bank":"dib","active":true}}`, FAR_FUTURE_V)),
     ),
     spec(g, "seq-goes-backwards", "A blob behind the folded prefix is a caller error that stops the fold.", (c) =>
       c.blobAt(5n, "ingest", c.ingest("t1", "i1")).blobAt(4n, "ingest", c.ingest("t2", "i2", { merchant_raw: "B" })),
