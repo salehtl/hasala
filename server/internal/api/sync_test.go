@@ -1213,3 +1213,29 @@ func wireToRow(t *testing.T, r Row) oplog.Row {
 		PrevHash:      ph,
 	}
 }
+
+func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("u")
+	tok := h.session(u)
+	// Two slots held: the third concurrent pull is refused.
+	if !h.srv.pulls.acquire(u) || !h.srv.pulls.acquire(u) {
+		t.Fatal("two slots were not available")
+	}
+	w := h.req("GET", "/api/v1/sync?stream=hot", tok, nil)
+	wantStatus(t, w, http.StatusTooManyRequests)
+	wantError(t, w, "rate_limited")
+	h.srv.pulls.release(u)
+	wantStatus(t, h.req("GET", "/api/v1/sync/hashes?stream=hot", tok, nil), http.StatusOK)
+	h.srv.pulls.release(u)
+	if n := len(h.srv.pulls.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold slots", n)
+	}
+	// pull-user's own budget.
+	h.srv.PullPerUser = NewLimiter(0, 2, 16, time.Now)
+	h.h = h.srv.Handler()
+	for i := 0; i < 2; i++ {
+		wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusOK)
+	}
+	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusTooManyRequests)
+}

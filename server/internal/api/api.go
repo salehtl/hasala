@@ -155,10 +155,18 @@ const (
 	sessionBurst   = 20
 	sessionMaxKeys = 4096
 
-	// Step-up begin: one per guarded action a person takes, each a row.
-	stepUpRate    = 6.0 / 60.0 // 6/minute sustained
+	// Step-up begin (spec 02 §16.2 stepup-user): one per guarded action a
+	// person takes, each a row.
+	stepUpRate    = 10.0 / 60.0 // 10/minute sustained
 	stepUpBurst   = 20
 	stepUpMaxKeys = 4096
+
+	// Pulls and hash lists (spec 02 §16.2 pull-user), plus at most
+	// maxConcurrentPulls in flight per account (§11.3).
+	pullRate           = 10.0
+	pullBurst          = 50
+	pullMaxKeys        = 4096
+	maxConcurrentPulls = 2
 
 	// POST /api/v1/sync gets two budgets: a request rate for POOL fairness
 	// (one account cannot occupy the 16-connection pool with back-to-back
@@ -215,6 +223,10 @@ type Server struct {
 	SessionPerUser *Limiter
 	// StepUpPerUser is spec 02's stepup-user: every begin writes a row.
 	StepUpPerUser *Limiter
+	// PullPerUser is spec 02's pull-user; pulls also hold one of
+	// maxConcurrentPulls slots per account while they run.
+	PullPerUser *Limiter
+	pulls       pullSlots
 	// PasskeyPerIP and PasskeyGlobal bound all the passkey routes, including
 	// the ones that require a session — the limiter runs before the session is
 	// resolved, so omitting the credential is not a way around it.
@@ -335,6 +347,9 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.StepUpPerUser == nil {
 		s.StepUpPerUser = NewLimiter(stepUpRate, stepUpBurst, stepUpMaxKeys, s.now)
+	}
+	if s.PullPerUser == nil {
+		s.PullPerUser = NewLimiter(pullRate, pullBurst, pullMaxKeys, s.now)
 	}
 	if s.StepUp == nil {
 		s.StepUp = &auth.StepUp{Pool: s.Pool, Passkeys: s.Passkeys}

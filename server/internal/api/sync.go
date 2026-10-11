@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -105,7 +106,50 @@ type UploadResponse struct {
 // Pull
 // ---------------------------------------------------------------------------
 
+// pullSlots bounds the pulls in flight per account (spec 02 §11.3: at most 2;
+// the third gets 429). The map holds one counter per account only while a
+// pull runs.
+type pullSlots struct {
+	mu    sync.Mutex
+	inUse map[uuid.UUID]int
+}
+
+func (p *pullSlots) acquire(u uuid.UUID) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.inUse == nil {
+		p.inUse = map[uuid.UUID]int{}
+	}
+	if p.inUse[u] >= maxConcurrentPulls {
+		return false
+	}
+	p.inUse[u]++
+	return true
+}
+
+func (p *pullSlots) release(u uuid.UUID) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.inUse[u]--; p.inUse[u] <= 0 {
+		delete(p.inUse, u)
+	}
+}
+
+// pullAdmitted applies pull-user and the concurrency bound; the caller
+// releases the slot when it returns true.
+func (s *Server) pullAdmitted(w http.ResponseWriter, userID uuid.UUID) bool {
+	if !s.PullPerUser.Allow(userID.String()) || !s.pulls.acquire(userID) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
+		return false
+	}
+	return true
+}
+
 func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	if !s.pullAdmitted(w, userID) {
+		return
+	}
+	defer s.pulls.release(userID)
 	stream, ok := requireStream(w, r)
 	if !ok {
 		return
@@ -168,6 +212,10 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 }
 
 func (s *Server) handleHashes(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	if !s.pullAdmitted(w, userID) {
+		return
+	}
+	defer s.pulls.release(userID)
 	stream, ok := requireStream(w, r)
 	if !ok {
 		return
