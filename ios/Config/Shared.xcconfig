@@ -23,7 +23,19 @@ ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO
 ENABLE_PREVIEWS = YES
 
-MARKETING_VERSION = 0.1.0
+// HasalaMocks (the Maya scenario) is linked in Debug only (spec 04 §1.4, AT-REV-4).
+// Neither XcodeGen nor Xcode can link a package product per configuration, so
+// project.yml links it and this leaves it out: Xcode links a static package product
+// as one object file, HasalaMocks.o, and drops a Frameworks-phase file whose name
+// matches EXCLUDED_SOURCE_FILE_NAMES. Debug.xcconfig clears this; every other
+// configuration, Release included, links no mock data. archive.sh's inspection
+// (AT-REV-4) refuses an .ipa whose binary names HasalaMocks, should this ever stop
+// matching.
+EXCLUDED_SOURCE_FILE_NAMES = HasalaMocks.o
+
+// The version testers see; spec 06 §8: 0.2.0 is the first external build.
+// archive.sh reads it from here for inspection I3.
+MARKETING_VERSION = 0.2.0
 // Overridden on the archive command line by ios/scripts/archive.sh (spec 06 §8).
 CURRENT_PROJECT_VERSION = 1
 

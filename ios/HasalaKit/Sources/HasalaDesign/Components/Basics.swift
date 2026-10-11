@@ -25,6 +25,19 @@ public extension Glyph {
     case .salary: "briefcase"
     case .transfer: "arrow.left.arrow.right"
     case .flag: "flag"
+    case .healthcare: "cross.case"
+    case .entertainment: "ticket"
+    case .subscriptions: "repeat"
+    case .investments: "chart.line.uptrend.xyaxis"
+    case .debt: "creditcard"
+    case .freelance: "laptopcomputer"
+    case .refunds: "receipt"
+    case .bank: "building.columns"
+    case .tag: "tag"
+    case .bill: "doc.text"
+    case .wallet: "wallet.bifold"
+    case .envelope: "envelope"
+    case .rule: "arrow.triangle.branch"
     }
   }
 }

@@ -28,6 +28,7 @@
 		AD087BBDE38B821FB8714365 /* CoreCategorize in Frameworks */ = {isa = PBXBuildFile; productRef = 9BD78A8F0471A2E889E92765 /* CoreCategorize */; };
 		B08BB10F61A6E5B2A5EF33A5 /* CoreStore in Frameworks */ = {isa = PBXBuildFile; productRef = 23F8A9B69DCB7E373A86DBD7 /* CoreStore */; };
 		B325B9632C552538DBCF736E /* HasalaModel in Frameworks */ = {isa = PBXBuildFile; productRef = 0EF73753E3DB56E3DCD93D57 /* HasalaModel */; };
+		B358B9E85A2EB0EAFFBBB4EF /* HasalaKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = 50E928D93AED96B5E3CEC2DC /* HasalaKeychain */; };
 		CCE98AD022B74F8DBAF80415 /* HasalaText in Frameworks */ = {isa = PBXBuildFile; productRef = BA9C1C8857F509FBACB86EEA /* HasalaText */; };
 		E2B53B5A5B48AE4D90CC9643 /* CoreTemplate in Frameworks */ = {isa = PBXBuildFile; productRef = 8F2600A9A70788619D5B584F /* CoreTemplate */; };
 		E38715310C6FF1837BC06B62 /* CoreInvariants in Frameworks */ = {isa = PBXBuildFile; productRef = 032952CF5F61D4CFFE18294F /* CoreInvariants */; };
@@ -138,6 +139,7 @@
 				96D71AD369BD2ECBCBA15D3D /* CoreMailbox in Frameworks */,
 				AB63E7AB4C79DA8457316560 /* CoreSignals in Frameworks */,
 				B325B9632C552538DBCF736E /* HasalaModel in Frameworks */,
+				B358B9E85A2EB0EAFFBBB4EF /* HasalaKeychain in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -252,6 +254,7 @@
 				5FFFFB8563C6C1FB0D12283D /* CoreMailbox */,
 				798F6F830FD04FCB8597E231 /* CoreSignals */,
 				0EF73753E3DB56E3DCD93D57 /* HasalaModel */,
+				50E928D93AED96B5E3CEC2DC /* HasalaKeychain */,
 			);
 			productName = Hasala;
 			productReference = 6B1A24344278E2914568DEF3 /* Hasala.app */;
@@ -704,6 +707,10 @@
 		4BE956E3E549FCEE1846BBAA /* CoreWire */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CoreWire;
+		};
+		50E928D93AED96B5E3CEC2DC /* HasalaKeychain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaKeychain;
 		};
 		5D20E694BCA96316109A440F /* CorePrimitives */ = {
 			isa = XCSwiftPackageProductDependency;

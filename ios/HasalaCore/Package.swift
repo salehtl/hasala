@@ -76,8 +76,12 @@ let package = Package(
     // Resource-only. The single-file resources are added by their owners, one
     // line each, when the file lands (SwiftPM refuses a missing resource):
     //   .copy("merchant-dictionary.json")   WS-16 (03c §8.5), landed
-    //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2)
-    core("CoreResources", "Resources", resources: [.copy("templates"), .copy("sample"), .copy("merchant-dictionary.json")]),
+    //   .copy("common-passwords-v1.txt")    WS-14 (04 §6.1.2), landed
+    core(
+      "CoreResources", "Resources",
+      resources: [
+        .copy("templates"), .copy("sample"), .copy("merchant-dictionary.json"), .copy("common-passwords-v1.txt"),
+      ]),
 
     // L1
     core("CoreWire", "Wire", l0),

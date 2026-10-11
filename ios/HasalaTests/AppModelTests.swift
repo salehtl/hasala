@@ -8,7 +8,7 @@ import Testing
 @Suite("App shell")
 struct AppModelTests {
   @Test func hidingAmountsShowsTheToastAndShowingClearsIt() {
-    let app = AppModel(snapshot: Maya.home)
+    let app = AppModel(store: InMemoryLedger())
     #expect(!app.amountsHidden)
     app.toggleAmountsHidden()
     #expect(app.amountsHidden)
