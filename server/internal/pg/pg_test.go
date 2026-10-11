@@ -180,10 +180,17 @@ func TestTheSQLPredicateAgreesWithLooksSealed(t *testing.T) {
 	}
 }
 
-// TestADirectInsertOfARefusedFrameFailsTheCheck is AT-P3: no write path, the
-// application's or a hand-written INSERT, stores a frame the predicate
-// refuses. A 1-byte and an empty blob fail with a CHECK violation, not a
-// get_byte range error.
+// TestADirectInsertOfARefusedFrameFailsTheCheck is AT-P3 and AT-DB-1: no
+// write path, the application's or a hand-written INSERT, stores a frame the
+// predicate refuses, and the constraint that refuses it is
+// op_log_blob_is_sealed by name.
+//
+// PostgreSQL evaluates CHECK constraints in name order, so
+// op_log_aad_matches_position runs first: a refused frame carrying someone
+// else's AAD would be caught there and prove nothing about the sealed CHECK.
+// Every named-constraint case below is therefore a real frame sealed for the
+// very row it is inserted as, with exactly one predicate check broken and the
+// AAD bytes left untouched.
 func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 	pool := pgtest.New(t)
 	u := oplogtest.NewUser(t, pool)
@@ -194,6 +201,61 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 			u, frame, size, make([]byte, 32))
 		return err
 	}
+	here := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 1}
+	aad := here.AAD()
+	l := len(aad)
+	positioned := func(mutate func(f []byte)) []byte {
+		f := blobtest.MustSeal3(here, blob.ZeroHash, []byte(`{}`)).Bytes
+		mutate(f)
+		return f
+	}
+	zero := func(from, to int) func(f []byte) {
+		return func(f []byte) {
+			for i := from; i < to; i++ {
+				f[i] = 0
+			}
+		}
+	}
+	type sealedCase struct {
+		name, check string
+		mutate      func(f []byte)
+	}
+	var cases []sealedCase
+	for _, v := range []byte{0x00, 0x01, 0x02, 0x04, 0xff} {
+		cases = append(cases, sealedCase{fmt.Sprintf("version %#02x", v), blob.CheckVersion, func(f []byte) { f[0] = v }})
+	}
+	for _, e := range []uint32{0, 0x80000000, 0x80000001, 0xffffffff} {
+		cases = append(cases, sealedCase{fmt.Sprintf("epoch %08x", e), blob.CheckEpoch, func(f []byte) {
+			f[1], f[2], f[3], f[4] = byte(e>>24), byte(e>>16), byte(e>>8), byte(e)
+		}})
+	}
+	cases = append(cases,
+		sealedCase{"zero nonce", blob.CheckNonce, func(f []byte) { zero(7+l, 19+l)(f) }},
+		sealedCase{"zero tag", blob.CheckTag, func(f []byte) { zero(len(f)-16, len(f))(f) }},
+		sealedCase{"zero tail", blob.CheckTail, func(f []byte) { zero(len(f)-48, len(f)-16)(f) }},
+		sealedCase{"gzip magic in the window", blob.CheckGzip, func(f []byte) { copy(f[23+l:], []byte{0x1f, 0x8b, 0x08}) }},
+	)
+	for _, c := range cases {
+		f := positioned(c.mutate)
+		// Premises: the predicate refuses it on exactly this check, and the
+		// AAD the position CHECK compares is still this row's.
+		var refusal *blob.RefusalError
+		if err := blob.LooksSealed(f); !errors.As(err, &refusal) || refusal.Check != c.check {
+			t.Fatalf("%s: premise broken: LooksSealed = %v, want check %q", c.name, err, c.check)
+		}
+		if got := f[7 : 7+l]; string(got) != string(aad) || int(f[5])<<8|int(f[6]) != l {
+			t.Fatalf("%s: premise broken: the frame no longer carries this row's AAD", c.name)
+		}
+		err := insert(f, len(f))
+		if code, name := sqlState(err); code != "23514" || name != "op_log_blob_is_sealed" {
+			t.Errorf("%s: insert answered %v (constraint %q), want op_log_blob_is_sealed", c.name, err, name)
+		}
+	}
+	// The rest of spec 01's V-F refusals (empty, 1 byte, off-ladder sizes,
+	// aad_len past the end, a ledgerd v1 frame) cannot carry this row's AAD in
+	// a frame the bucket CHECKs accept, so some other CHECK may name itself
+	// first; what AT-P3 requires of them is a CHECK violation, never a stored
+	// row and never a get_byte range error.
 	for _, c := range blobtest.LooksSealedCases() {
 		if c.Want == "" {
 			continue
@@ -216,7 +278,6 @@ func TestADirectInsertOfARefusedFrameFailsTheCheck(t *testing.T) {
 		t.Fatalf("a frame sealed for counter 2 stored at counter 1: %v", err)
 	}
 	// And the honest one goes in.
-	here := blob.Envelope{UserID: u, Stream: blob.StreamHot, WriterID: "dev-a", WriterCounter: 1}
 	s = blobtest.MustSeal3(here, blob.ZeroHash, []byte(`{}`))
 	if err := insert(s.Bytes, s.SizeBucket); err != nil {
 		t.Fatalf("an honest frame was refused: %v", err)
