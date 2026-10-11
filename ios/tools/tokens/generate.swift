@@ -3,6 +3,7 @@
 //
 //   swift ios/tools/tokens/generate.swift            # rewrite Tokens.swift
 //   swift ios/tools/tokens/generate.swift --check    # exit 1 if Tokens.swift is stale
+//   swift ios/tools/tokens/generate.swift --accept-hash  # take a new Paper token set
 //
 // Run from the repository root. The input is design/tokens/paper-tokens.json, a
 // verbatim `get_tokens` export of the private Paper design file (name -> value,
@@ -19,6 +20,7 @@ struct TokenFile: Decodable { let hash: String; let count: Int; let tokens: [Tok
 let inputPath = "design/tokens/paper-tokens.json"
 let outputPath = "ios/HasalaKit/Sources/HasalaDesign/Generated/Tokens.swift"
 let checkOnly = CommandLine.arguments.contains("--check")
+let acceptHash = CommandLine.arguments.contains("--accept-hash")
 
 func fail(_ message: String) -> Never {
   FileHandle.standardError.write(Data(("generate.swift: " + message + "\n").utf8))
@@ -197,6 +199,18 @@ for e in enums {
 out.removeLast()
 
 let existing = (try? String(contentsOfFile: outputPath, encoding: .utf8)) ?? ""
+// A new Paper token set is a design change, not a regeneration: it is taken only
+// on purpose, with --accept-hash (spec 04 §14.1).
+let hashMarker = "public static let paperHash = \""
+let recordedHash = existing.range(of: hashMarker).map { start in
+  String(existing[start.upperBound...].prefix { $0 != "\"" })
+}
+if let recordedHash, recordedHash != file.hash, !acceptHash {
+  fail("""
+    \(inputPath) is token set \(file.hash) but Tokens.swift was generated from \(recordedHash); \
+    re-run with --accept-hash to take the new set
+    """)
+}
 if checkOnly {
   if existing != out {
     fail("\(outputPath) is stale; run `swift ios/tools/tokens/generate.swift` and commit the result")
