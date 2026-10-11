@@ -93,6 +93,18 @@ if ! xcodebuild -exportArchive \
 	>"$OUT/export.log" 2>&1; then
 	echo "archive: xcodebuild -exportArchive failed; the signing errors are:" >&2
 	grep -E 'error:|No profiles|No signing|Provisioning|certificate|Cloud|distribution' "$OUT/export.log" | sort -u | head -40 >&2 || true
+	if grep -q "cloud-managed distribution certificates" "$OUT/export.log"; then
+		cat >&2 <<'HINT'
+archive: the API key may not use cloud-managed distribution certificates. Either
+  - use a team API key with the Admin role (App Store Connect > Users and Access >
+    Integrations > Team Keys; a key's role cannot be raised, so generate a new one), or
+  - give the key's access to cloud-managed distribution certificates, or
+  - once, in Xcode signed in as the Account Holder: Organizer > this archive >
+    Distribute App > App Store Connect > Export, which creates the distribution
+    certificate (spec 06 §9); later exports then need only the key.
+The development archive above is fine; only the distribution re-sign failed.
+HINT
+	fi
 	echo "archive: full log: $OUT/export.log" >&2
 	exit 31
 fi
