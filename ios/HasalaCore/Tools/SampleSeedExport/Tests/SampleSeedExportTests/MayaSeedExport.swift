@@ -1,0 +1,457 @@
+// Builds the sample seed from HasalaMocks' MayaLedger (owner decision 5 of the
+// TestFlight plan: the seed comes from MayaLedger, so the screens' figures and
+// the sample agree), then writes it (HASALA_WRITE_SAMPLE=1) or checks that the
+// committed seed and manifest are exactly this output.
+//
+// How MayaLedger's read model becomes ops (CoreDomain's SampleSeed documents
+// the loader; this is the other half of the contract):
+//
+//   categories   a built-in that MayaLedger keeps as is gets no op; an archived
+//                built-in is redefined inactive; any other category is a user
+//                category (`@category:` placeholder, icon from its glyph); a
+//                `bill` role is `category_plan_role_set bills`
+//   plan         the starting split (`budget_split_set`), each budget as an
+//                onward `budget_set`, the income bill (or plan income) as the
+//                one income source
+//   accounts     card accounts (MayaLedger's convention: an account with a
+//                last4 is named by its bank id) take 03b's derived id and a
+//                `card_linked mine`; cash is `ac_cash`; others a random id. Each
+//                gets one balance `update` check-in at the scenario clock
+//   rules        v4 rules, priority 10
+//   projects, goals  as they are; a category goal counts from the anchor month
+//   bills        Pass A detected ids; the amount is the usual one (the price
+//                before a change), fixed with 200 bp, or variable when
+//                approximate; anchored on the next due date. Every payment
+//                (history, and every transaction tied to the bill) is a paid
+//                `bill_occurrence_set` on its scheduled due date, linked to the
+//                transaction when there is one
+//   transactions with provenance: a mailbox row (raw merchant, the account's
+//                bank and card, a `sample-<n>` message id); without: a manual
+//                row; review rows are uncategorized; notes, projects and the
+//                accounts of rows with no card become annotations; a display
+//                name the projection would not derive becomes `merchant_named`
+//
+// Not carried (no op family holds them; the screens derive them): bill
+// candidates, "new merchant" flags, review suggestions, row detail overrides.
+import CoreCategorize
+import CoreDomain
+import CoreJSON
+import CorePrimitives
+import CoreResources
+import CoreTime
+import CoreWire
+import Foundation
+import HasalaMocks
+import HasalaModels
+import Testing
+
+@Suite("Sample seed export (MayaLedger → maya-v1.json)")
+struct SampleSeedExportTests {
+  static let sources = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources/HasalaCore/Resources")
+  static var seedURL: URL { sources.appendingPathComponent("sample/\(SampleManifest.name).json") }
+  static var manifestURL: URL { sources.appendingPathComponent("SampleManifest.swift") }
+
+  @Test("the committed seed and manifest are the generator's output (HASALA_WRITE_SAMPLE=1 writes them)")
+  func export() throws {
+    let bytes = try MayaSeed.document().encoded()
+    let digest = Hex.encode(sha256(bytes))
+    let manifest = MayaSeed.manifest(sha256: digest)
+    if ProcessInfo.processInfo.environment["HASALA_WRITE_SAMPLE"] == "1" {
+      try bytes.write(to: Self.seedURL, options: .atomic)
+      try Data(manifest.utf8).write(to: Self.manifestURL, options: .atomic)
+      return
+    }
+    let committed = try Data(contentsOf: Self.seedURL)
+    #expect(committed == bytes, "maya-v1.json differs from MayaLedger's export; run with HASALA_WRITE_SAMPLE=1")
+    #expect(String(decoding: try Data(contentsOf: Self.manifestURL), as: UTF8.self) == manifest)
+    #expect(SampleManifest.sha256 == digest)
+  }
+
+  @Test("the export authors cleanly at the scenario clock")
+  func authors() throws {
+    let doc = try MayaSeed.document()
+    let ctx = AuthorContext(
+      writerID: "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", nowMs: try parseInstantMs(doc.anchor), ownLastMs: nil,
+      maxAuthored: [:], random: CountingRandom())
+    let blobs = try SampleSeed.batches(doc.encoded(), nowMs: ctx.nowMs, context: ctx)
+    #expect(blobs.flatMap(\.ops).count == doc.ops.count)
+  }
+}
+
+final class CountingRandom: RandomSource, @unchecked Sendable {
+  private let lock = NSLock()
+  private var n: UInt64 = 0
+  func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) {
+    lock.withLock {
+      for i in 0..<buffer.count {
+        n &+= 1
+        buffer[i] = UInt8(truncatingIfNeeded: n &* 2_654_435_761 >> 7)
+      }
+    }
+  }
+}
+
+enum ExportError: Error { case unsupported(String) }
+
+enum MayaSeed {
+  typealias Draft = SampleSeed.Draft
+
+  static func manifest(sha256: String) -> String {
+    """
+    // Generated by Tools/SampleSeedExport (HASALA_WRITE_SAMPLE=1); do not edit.
+    //
+    // The bundled sample seed (spec 04 §4.6): sample/<name>.json, built from HasalaMocks'
+    // MayaLedger. CoreDomain's SampleSeed.bundled() loads it only when its SHA-256 is this one;
+    // the release gate checks the same digest (ios/scripts/archive.sh I6b).
+    public enum SampleManifest {
+      /// The resource name inside `sample/` (without `.json`).
+      public static let name = "maya-v1"
+      /// Lower-case hex SHA-256 of the file's bytes.
+      public static let sha256 = "\(sha256)"
+    }
+
+    """
+  }
+
+  // MARK: Time
+
+  /// A ledger wall time (+04:00) as a canonical UTC instant.
+  static func instant(_ t: LocalDateTime) -> String {
+    let days = Int64(t.date.ordinal)
+    let ms = days * 86_400_000 + Int64(t.hour) * 3_600_000 + Int64(t.minute) * 60_000 - LocalClock.offsetMs
+    return Instant.iso(ms)!
+  }
+
+  static func wire(_ d: LocalDate) -> String { CivilDate(year: d.year, month: d.month, day: d.day)!.wire }
+  static func wire(_ m: YearMonth) -> String { CivilMonth(year: m.year, month: m.month)!.wire }
+  static func noon(_ d: LocalDate) -> LocalDateTime { LocalDateTime(date: d, hour: 12, minute: 0) }
+
+  // MARK: Vocabulary
+
+  /// Icon ids (03c §1.7 tokens) for HasalaModels' glyphs: the built-in categories' icons.
+  static let icons: [Glyph: String] = [
+    .rent: "house", .utilities: "bolt", .groceries: "basket", .transport: "car", .healthcare: "cross",
+    .insurance: "shield_check", .dining: "fork_knife", .entertainment: "ticket", .shopping: "bag", .travel: "plane",
+    .subscriptions: "repeat", .savingsJar: "jar", .investments: "trend", .debt: "card", .salary: "briefcase",
+    .freelance: "laptop", .transfer: "arrows_swap", .refunds: "receipt", .flag: "flag", .tag: "tag",
+  ]
+
+  static func icon(_ g: Glyph) -> String { icons[g] ?? "tag" }
+
+  /// 03b `Bank`: `^[a-z0-9_]{2,32}$`.
+  static func isBank(_ s: String) -> Bool {
+    (2...32).contains(s.utf8.count) && s.utf8.allSatisfy { (0x61...0x7a).contains($0) || (0x30...0x39).contains($0) || $0 == 0x5f }
+  }
+
+  static func bucket(_ b: HasalaModels.Bucket) -> JSONValue {
+    switch b {
+    case .needs: .string("need")
+    case .wants: .string("want")
+    case .savings: .string("saving")
+    default: .null
+    }
+  }
+
+  static func accountKind(_ k: AccountKind) -> String {
+    switch k {
+    case .current: "current"
+    case .credit: "credit_card"
+    case .cash: "cash"
+    case .investment: "investment"
+    }
+  }
+
+  static func ruleMatch(_ m: RuleMatch) -> String {
+    switch m {
+    case .contains: "contains"
+    case .startsWith: "starts_with"
+    case .exact: "exact"
+    }
+  }
+
+  // MARK: The document
+
+  static func document() throws -> SampleSeed.Document {
+    let s = MayaLedger.state
+    let anchor = instant(MayaLedger.now)
+    let earliest = s.txns.map(\.postedAt).min() ?? MayaLedger.now
+    let setupAt = instant(LocalDateTime(earliest.date.year, earliest.date.month, 1, 8, 0))
+    let dictionary = try MerchantDictionary.bundled().get()
+    let builtins = Dictionary(uniqueKeysWithValues: TaxonomyV1.builtins.map { ($0.id, $0) })
+    var ops: [Draft] = []
+
+    func op(_ type: OpType, _ at: String, entity: (String, String)? = nil, ingest: String? = nil, _ p: [(String, JSONValue)]) {
+      ops.append(
+        Draft(
+          type: type, entity: entity.map { SampleSeed.EntityRefDraft(kind: $0.0, id: $0.1) }, ingestID: ingest,
+          payload: JSONObject(p), at: at))
+    }
+
+    // Categories: built-ins stay implicit; user ones get placeholders.
+    func categoryID(_ id: String) -> String { builtins[id] != nil ? id : "@category:\(id)" }
+    for c in s.categories {
+      let kind = c.kind.rawValue
+      if let b = builtins[c.id], b.name == c.name, b.kind.rawValue == kind, !c.archived { continue }
+      op(
+        .categoryDefined, setupAt,
+        [
+          ("id", .string(categoryID(c.id))), ("name", .string(c.name)), ("kind", .string(kind)),
+          ("bucket", c.kind == .spending ? bucket(c.bucket) : .null), ("icon", .string(icon(c.glyph))),
+          ("active", .bool(!c.archived)),
+        ])
+    }
+    for c in s.categories where c.role == .bill {
+      op(.categoryPlanRoleSet, setupAt, [("category_id", .string(categoryID(c.id))), ("role", .string("bills"))])
+    }
+
+    // Banks, from the card accounts (MayaLedger names a card account by its bank id).
+    let cardAccounts = s.accounts.filter { $0.last4 != nil && isBank($0.id) }
+    for a in cardAccounts { op(.bankDeclared, setupAt, [("bank", .string(a.id)), ("active", .bool(true))]) }
+
+    // Plan.
+    guard s.plan.startingSplit.count == 3 else { throw ExportError.unsupported("starting split") }
+    let split = s.plan.startingSplit.map { JSONValue.number(JSONNumber(Int64($0))) }
+    op(.budgetSplitSet, setupAt, [("need", split[0]), ("want", split[1]), ("saving", split[2])])
+    let income = s.bills.first(where: \.isIncome)
+    op(
+      .incomeSourceSet, setupAt,
+      [
+        ("id", .string("salary")), ("name", .string(income?.name ?? "Salary")),
+        ("category_id", .string(categoryID(income?.categoryID ?? "salary"))),
+        ("amount_minor", .string(String(s.plan.income.minor))), ("payday", .number(JSONNumber(Int64(s.plan.payday)))),
+        ("active", .bool(true)),
+      ])
+    let order = Dictionary(uniqueKeysWithValues: s.categories.enumerated().map { ($1.id, $0) })
+    let budgets = s.plan.budgets.compactMap { key, money -> (String, String, Int64)? in
+      let parts = key.split(separator: "@").map(String.init)
+      guard parts.count == 2 else { return nil }
+      return (parts[0], parts[1], money.minor)
+    }.sorted { (order[$0.0] ?? 99, $0.1) < (order[$1.0] ?? 99, $1.1) }
+    for (c, month, minor) in budgets {
+      op(
+        .budgetSet, setupAt,
+        [("category_id", .string(categoryID(c))), ("month", .string(month)), ("amount_minor", .string(String(minor))), ("scope", .string("onward"))])
+    }
+
+    // Accounts, cards, balances.
+    func accountID(_ a: HasalaModels.Account) -> String {
+      if let last4 = a.last4, isBank(a.id) { return OpAuthor.cardAccountID(bank: a.id, last4: last4) }
+      if a.kind == .cash { return OpAuthor.cashAccountID }
+      return "@account:\(a.id)"
+    }
+    var accountIDs: [String: String] = [:]
+    for a in s.accounts {
+      let id = accountID(a)
+      accountIDs[a.id] = id
+      let bank = cardAccounts.contains { $0.id == a.id } ? a.id : nil
+      op(
+        .accountSet, setupAt,
+        [
+          ("id", .string(id)), ("name", .string(a.name)), ("institution", bank.map(JSONValue.string) ?? .null),
+          ("kind", .string(accountKind(a.kind))), ("in_plan", .bool(a.inPlan)), ("currency", .string(a.balance.currency)),
+          ("statement_due_day", .null), ("active", .bool(true)), ("closed_on", .null), ("color", .null),
+        ])
+      if let bank, let last4 = a.last4 {
+        op(.cardLinked, setupAt, [("bank", .string(bank)), ("last4", .string(last4)), ("state", .string("mine")), ("account", .string(id))])
+      }
+    }
+    for a in s.accounts {
+      op(
+        .accountCheckin, anchor,
+        [
+          ("id", .string("@checkin:\(a.id)")), ("account", .string(accountIDs[a.id]!)), ("as_of", .string(anchor)),
+          ("balance_minor", .string(String(a.balance.minor))), ("source", .string("update")), ("void", .bool(false)),
+        ])
+    }
+
+    // Rules.
+    for r in s.rules {
+      op(
+        .ruleAdded, setupAt, entity: ("rule", "@rule:\(r.id)"),
+        [
+          ("patterns", .array(r.patterns.map(JSONValue.string))), ("match", .string(ruleMatch(r.match))),
+          ("category", .string(categoryID(r.categoryID))), ("priority", .number(JSONNumber(10))), ("enabled", .bool(r.enabled)),
+          ("removed", .bool(false)), ("origin", .string("manual")),
+        ])
+    }
+
+    // Projects and goals.
+    for p in s.projects {
+      guard !p.complete else { throw ExportError.unsupported("a completed project") }
+      op(
+        .projectDefined, setupAt, entity: ("project", "@project:\(p.id)"),
+        [
+          ("name", .string(p.name)), ("starts_on", .string(wire(p.starts))), ("ends_on", .string(wire(p.ends))),
+          ("budget_minor", .string(String(p.budget.minor))), ("count_in_plan", .bool(p.countInPlan)),
+          ("status", .string("active")), ("icon", .string(icon(p.glyph))),
+        ])
+    }
+    for g in s.goals {
+      op(
+        .goalDefined, setupAt, entity: ("goal", "@goal:\(g.id)"),
+        [
+          ("name", .string(g.name)), ("target_minor", .string(String(g.target.minor))), ("target_month", .string(wire(g.by))),
+          (
+            "source",
+            .object(
+              JSONObject([
+                ("kind", .string("category")), ("category_id", .string(categoryID(g.categoryID))),
+                ("since", .string(wire(MayaLedger.october) + "-01")),
+              ]))
+          ),
+          ("starting_minor", .string(String(g.saved.minor))), ("status", .string("active")), ("icon", .string(icon(g.glyph))),
+        ])
+    }
+
+    // Bills (the income bill is the income source above).
+    func billKey(_ b: HasalaModels.Bill) -> String {
+      let raw = s.txns.first { $0.billID == b.id }.map { $0.provenance?.rawMerchant ?? $0.merchant } ?? b.name
+      return Canon.merchantKey(raw)
+    }
+    var billIDs: [String: String] = [:]
+    for b in s.bills where !b.isIncome {
+      guard b.state == .tracked else { throw ExportError.unsupported("a dismissed bill") }
+      let key = billKey(b)
+      let id = OpAuthor.detectedBillID(key: key, direction: "debit", currency: b.amount.currency)
+      billIDs[b.id] = id
+      let usual = b.priceChangeFrom ?? b.amount
+      let payments = b.history + s.txns.filter { $0.billID == b.id }.map(\.postedAt.date)
+      let start = (payments + [b.nextDue]).min()!
+      op(
+        .billSet, setupAt, entity: ("bill", id),
+        [
+          ("name", .string(b.name)), ("keys", .array([.string(key)])), ("direction", .string("debit")),
+          ("currency", .string(b.amount.currency)), ("amount_mode", .string(b.approximate ? "variable" : "fixed")),
+          ("amount_minor", .string(String(usual.minor))),
+          ("tolerance_bp", b.approximate ? .null : .number(JSONNumber(200))),
+          ("cadence", .object(JSONObject([("unit", .string("month")), ("every", .number(JSONNumber(1)))]))),
+          ("anchor", .string(wire(b.nextDue))), ("start", .string(wire(start))), ("end", .null),
+          ("category", .string(categoryID(b.categoryID))), ("account", b.accountID.flatMap { accountIDs[$0] }.map(JSONValue.string) ?? .null),
+          ("source", .string("detected")), ("status", .string("active")),
+        ])
+    }
+
+    // Transactions, oldest first, then their annotations.
+    let cards = Dictionary(uniqueKeysWithValues: cardAccounts.map { ($0.id, $0.last4!) })
+    let categorizer = Categorizer(rules: [], dictionary: dictionary, categories: BuiltinCategories())
+    var named: [String: String] = [:]
+    for t in s.txns.sorted(by: { ($0.postedAt, $0.id) < ($1.postedAt, $1.id) }) {
+      guard t.splits.isEmpty, !t.isRefund, !t.isTransfer, !t.archived else { throw ExportError.unsupported("txn \(t.id)") }
+      let at = instant(t.postedAt)
+      let mailbox = t.provenance != nil
+      let raw = t.provenance?.rawMerchant ?? t.merchant
+      let card = t.accountID.flatMap { cards[$0] }
+      var p: [(String, JSONValue)] = [
+        ("amount_minor", .string(String(t.amount.minor))), ("currency", .string(t.amount.currency)),
+        ("direction", .string(t.direction == .out ? "debit" : "credit")), ("posted_at", .string(at)),
+        ("posted_precision", .string("time")), ("merchant_raw", .string(raw)), ("last4", .string(mailbox ? card ?? "" : "")),
+      ]
+      let category = t.needsReview ? nil : t.categoryID
+      if let c = category {
+        p.append(("category", .string(categoryID(c))))
+        p.append(("category_source", try source(t.categorySource, category: c, raw: raw, rules: s.rules, categorizer: categorizer)))
+      } else {
+        p.append(("category", .null))
+        p.append(("category_source", .object(JSONObject([("kind", .string("none"))]))))
+      }
+      p.append(("needs_review", .bool(category == nil)))
+      p.append(("unparsed", .bool(false)))
+      p.append(("tier", .string(mailbox ? "template" : "none")))
+      p.append(("entry_method", .string(mailbox ? "mailbox" : "manual")))
+      if let place = t.place { p.append(("location", .string(place))) }
+      if mailbox, let bank = t.accountID, cards[bank] != nil {
+        p.append(("bank", .string(bank)))
+        p.append(
+          (
+            "gates",
+            .object(
+              JSONObject([
+                ("ar", .string("pass")), ("sender", .string("trusted")), ("template", .string("sample@1")),
+                ("card", .string("known")), ("forwarded", .bool(false)),
+              ]))
+          ))
+      }
+      if mailbox {
+        p.append(
+          (
+            "provenance",
+            .object(
+              JSONObject([("provider", .string("gmail")), ("grant_id", .string("sample")), ("message_id", .string("@message:\(t.id)"))]))
+          ))
+      }
+      op(.txnIngested, at, entity: ("txn", "@txn:\(t.id)"), ingest: "@ingest:\(t.id)", p)
+
+      var set: [(String, JSONValue)] = []
+      if !t.note.isEmpty { set.append(("note", .string(t.note))) }
+      if let project = t.projectID { set.append(("project_id", .string("@project:\(project)"))) }
+      if let a = t.accountID, !(mailbox && card != nil), let id = accountIDs[a] { set.append(("account_id", .string(id))) }
+      if !set.isEmpty { op(.txnAnnotated, at, [("txn_id", .string("@txn:\(t.id)")), ("set", .object(JSONObject(set)))]) }
+
+      let key = Canon.merchantKey(raw)
+      let derived = MerchantDisplay.name(raw: raw, renamed: nil, dictionary: categorizer.dictionaryDisplay(merchantRaw: raw))
+      if derived != t.merchant, named[key] == nil {
+        named[key] = t.merchant
+        op(.merchantNamed, at, [("merchant_key", .string(key)), ("display_name", .string(t.merchant))])
+      }
+    }
+
+    // Paid occurrences, on their scheduled due dates.
+    for b in s.bills where !b.isIncome {
+      let linked = s.txns.filter { $0.billID == b.id }
+      var dues: [String: (LocalDate, String?, LocalDateTime)] = [:]
+      for d in b.history {
+        let due = scheduled(d, day: b.nextDue.day)
+        dues[wire(due)] = (due, nil, noon(d))
+      }
+      for t in linked {
+        let due = scheduled(t.postedAt.date, day: b.nextDue.day)
+        dues[wire(due)] = (due, "@txn:\(t.id)", t.postedAt)
+      }
+      for key in dues.keys.sorted() {
+        let (due, txn, when) = dues[key]!
+        op(
+          .billOccurrenceSet, instant(when),
+          [
+            ("bill", .string(billIDs[b.id]!)), ("due", .string(wire(due))), ("resolution", .string("paid")),
+            ("txn", txn.map(JSONValue.string) ?? .null), ("until", .null),
+          ])
+      }
+    }
+
+    return SampleSeed.Document(name: SampleManifest.name, anchor: anchor, ops: ops)
+  }
+
+  /// The occurrence of a monthly bill due on `day` in `paid`'s month (clamped).
+  static func scheduled(_ paid: LocalDate, day: Int) -> LocalDate {
+    LocalDate(paid.year, paid.month, min(day, CivilCalendar.daysIn(year: paid.year, month: paid.month)))
+  }
+
+  /// The `category_source` JSON of a filed row.
+  static func source(
+    _ s: HasalaModels.CategorySource?, category: String, raw: String, rules: [HasalaModels.Rule], categorizer: Categorizer
+  ) throws -> JSONValue {
+    switch s {
+    case .rule(let pattern)?:
+      let want = Canon.foldCase(pattern)
+      guard let r = rules.first(where: { $0.patterns.contains { Canon.foldCase($0) == want } }) ?? rules.first(where: { $0.matches(raw) })
+      else { throw ExportError.unsupported("rule \(pattern)") }
+      return .object(JSONObject([("kind", .string("rule")), ("rule_id", .string("@rule:\(r.id)"))]))
+    case .dictionary?:
+      let d = categorizer.decide(merchantRaw: raw, direction: .debit)
+      if d.category == category, case .dictionary(let bundle, let entry) = d.source {
+        return .object(JSONObject([("kind", .string("dictionary")), ("bundle", .string(bundle)), ("entry", .string(entry))]))
+      }
+      let first = Canon.subject(raw).split(separator: " ").first.map(String.init) ?? Canon.subject(raw)
+      return .object(
+        JSONObject([
+          ("kind", .string("dictionary")), ("bundle", .string(DictionaryManifest.bundle)), ("entry", .string("contains:\(first)")),
+        ]))
+    case .model?:
+      return .object(JSONObject([("kind", .string("model")), ("model", .string("sample"))]))
+    case .user?, .manual?, nil:
+      return .object(JSONObject([("kind", .string("user"))]))
+    }
+  }
+}
