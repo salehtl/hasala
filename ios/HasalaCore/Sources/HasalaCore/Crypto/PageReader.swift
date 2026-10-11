@@ -7,9 +7,11 @@
 //   then per row: R3-R9 (`Opener`) and R10 (`OpCodec.decodeR10`).
 //
 // The caller (CoreSync) persists rows, cursor and heads in one transaction, and
-// only when nothing hard-stopped (§7 "Client order"); re-fetching the roster
-// once on an unknown writer (R1) and `GET /keys` once on an epoch above the
-// high-water mark (R4) are its network steps.
+// only when nothing hard-stopped (§7 "Client order"). Its two network steps are
+// outcomes here, never decided by the reader: `refreshRoster` (R1: re-fetch
+// `GET /key-history` once, verify it with `KeyHistoryVerifier`, read the page
+// again with `rosterRefreshed`) and `refreshEpoch` (R4: re-read `GET /keys`
+// once, read the page again with `serverEpoch`).
 import CorePrimitives
 import CoreWire
 import Foundation
@@ -19,7 +21,9 @@ public enum PageReader {
   public struct Row: Sendable, Hashable {
     public let stream: String
     public let writerID: String
-    public let counter: Int64
+    /// `writer_counter` exactly as the wire carries it (a decimal string): R0
+    /// checks its grammar here, not the caller's parser.
+    public let counter: String
     public let sizeBucket: Int
     public let prevHash: Data
     public let blobHash: Data
@@ -27,7 +31,7 @@ public enum PageReader {
     public let blob: Data
 
     public init(
-      stream: String, writerID: String, counter: Int64, sizeBucket: Int, prevHash: Data, blobHash: Data, headSig: Data?,
+      stream: String, writerID: String, counter: String, sizeBucket: Int, prevHash: Data, blobHash: Data, headSig: Data?,
       blob: Data
     ) {
       self.stream = stream
@@ -49,20 +53,31 @@ public enum PageReader {
     public let serverEpoch: UInt32?
     /// Each writer's pinned head; a writer without one starts at the genesis.
     public let pinnedHeads: [WriterID: Chain.Head]
-    /// The verified roster (§10.13).
+    /// The roster `KeyHistoryVerifier` produced (§10.13; `KeyHistoryVerifier.Roster.forReader`),
+    /// never `GET /writers`.
     public let roster: [WriterID: HeadCheck.RosterWriter]
-    /// The device's own writer and its authored head.
+    /// Whether `roster` was re-fetched for this page already (R1's one re-fetch).
+    /// While false, an unknown writer is `refreshRoster`; once true, it is
+    /// `hardStop(.tampered(.unknownWriter))`.
+    public let rosterRefreshed: Bool
+    /// The device's own writer and its authored head. `authoredHead` is the
+    /// highest counter this device has SEALED for the writer, including the
+    /// in-flight record's counters (R-OUT-2; `04` §5.5), not only those the
+    /// server acknowledged: a batch the server accepted but whose response was
+    /// lost comes back in a pull, and must not read as `ownChainConflict`.
     public let own: (writer: WriterID, authoredHead: Int64)?
 
     public init(
       userID: UserID, opener: Opener, serverEpoch: UInt32?, pinnedHeads: [WriterID: Chain.Head],
-      roster: [WriterID: HeadCheck.RosterWriter], own: (writer: WriterID, authoredHead: Int64)?
+      roster: [WriterID: HeadCheck.RosterWriter], rosterRefreshed: Bool = false,
+      own: (writer: WriterID, authoredHead: Int64)?
     ) {
       self.userID = userID
       self.opener = opener
       self.serverEpoch = serverEpoch
       self.pinnedHeads = pinnedHeads
       self.roster = roster
+      self.rosterRefreshed = rosterRefreshed
       self.own = own
     }
   }
@@ -78,6 +93,10 @@ public enum PageReader {
     case needsUnlock(epoch: UInt32)
     /// R4: re-read `GET /keys` once and read the page again with `serverEpoch`.
     case refreshEpoch(UInt32)
+    /// R1: re-fetch `GET /key-history` once, verify it (§10.13) and read the
+    /// page again with the new roster and `rosterRefreshed: true`. Nothing from
+    /// the page is persisted.
+    case refreshRoster
   }
 
   public struct Result: Sendable, Hashable {
@@ -96,14 +115,14 @@ public enum PageReader {
     for (i, r) in page.enumerated() {
       guard
         let c = RowShape.check(
-          stream: r.stream, writerID: r.writerID, counter: String(r.counter), sizeBucket: r.sizeBucket, blob: r.blob,
+          stream: r.stream, writerID: r.writerID, counter: r.counter, sizeBucket: r.sizeBucket, blob: r.blob,
           prevHash: r.prevHash, blobHash: r.blobHash)
       else { return stopped(i, .hardStop(.tampered(.rowShape))) }
       checked.append(c)
     }
-    // R1: the roster.
+    // R1: the roster, re-fetched once before an unknown writer is tampering.
     for (i, c) in checked.enumerated() where state.roster[c.writerID] == nil {
-      return stopped(i, .hardStop(.tampered(.unknownWriter)))
+      return stopped(i, state.rosterRefreshed ? .hardStop(.tampered(.unknownWriter)) : .refreshRoster)
     }
     // Rows of the device's own writer above its authored head, which it did not author.
     if let own = state.own {

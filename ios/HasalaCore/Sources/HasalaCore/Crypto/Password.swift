@@ -36,7 +36,11 @@ public enum PasswordStretch {
   /// off the main actor.
   public static func stretch(password: String, serverSalt: Data, emailNorm: String) throws(Failure) -> SecureBytes {
     let saltC = try salt(serverSalt: serverSalt, emailNorm: emailNorm)
-    let pw = SecureBytes(copying: Array(password.precomposedStringWithCanonicalMapping.utf8))
+    // NFC UTF-8 straight into SecureBytes (no Array copy). The Strings
+    // themselves are outside reach: §11.5 zeroing is best effort.
+    let nfc = password.precomposedStringWithCanonicalMapping
+    let pw = SecureBytes(count: nfc.utf8.count)
+    pw.withUnsafeMutableBytes { $0.copyBytes(from: nfc.utf8) }
     defer { pw.wipe() }
     do {
       return try PBKDF2.sha256(password: pw, salt: saltC, iterations: iterations)

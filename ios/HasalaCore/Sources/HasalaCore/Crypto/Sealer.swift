@@ -14,6 +14,10 @@ import CoreWire
 import Foundation
 
 /// A data key `K_e` and its epoch.
+///
+/// `@unchecked Sendable`: `key` is shared mutable memory, so `key.wipe()` zeroes
+/// it for every holder. Wipe only once no other task can still seal or open
+/// with it (no lock guards it; a wipe racing a seal is a data race).
 public final class EpochKey: @unchecked Sendable {
   public let epoch: UInt32
   public let key: SecureBytes

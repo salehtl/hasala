@@ -25,6 +25,11 @@ public enum UnwrapError: Error, Equatable, Sendable {
 
 /// The 65-byte key body. Its keys never touch disk; zero it as soon as the
 /// ceremony is done (``wipe()``).
+///
+/// `@unchecked Sendable` because `SecureBytes` is a reference to mutable memory:
+/// ``wipe()`` zeroes it in place for every holder. The caller must not wipe
+/// while any other task still uses the body (no lock guards it; a wipe racing a
+/// read is a data race and can hand that read zeros).
 public final class KeyBody: @unchecked Sendable {
   public static let byteCount = 65
   public static let version: UInt8 = 0x01
@@ -50,7 +55,11 @@ public final class KeyBody: @unchecked Sendable {
   init?(decoding body: some ContiguousBytes) {
     let ok: (SecureBytes, SecureBytes)? = body.withUnsafeBytes { b in
       guard b.count == KeyBody.byteCount, b[0] == KeyBody.version else { return nil }
-      return (SecureBytes(copying: Array(b[1..<33])), SecureBytes(copying: Array(b[33..<65])))
+      // Straight from the caller's buffer: no intermediate Array copy of a key.
+      return (
+        SecureBytes(copying: UnsafeRawBufferPointer(rebasing: b[1..<33])),
+        SecureBytes(copying: UnsafeRawBufferPointer(rebasing: b[33..<65]))
+      )
     }
     guard let ok else { return nil }
     amk = ok.0
@@ -162,9 +171,17 @@ public enum Wrap {
     try KeyDerivation.requireCount(salt.count, 32, "wrap salt")
     try KeyDerivation.requireCount(nonce.count, 12, "wrap nonce")
     let header = Data([version, kdf.rawValue]) + salt + nonce
+    // CryptoKit takes a DataProtocol: the one Data copy of the body is zeroed
+    // on the way out, with the SecureBytes it came from (§11.5, best effort).
+    let encoded = body.encoded()
+    var plaintext = encoded.withUnsafeBytes { Data($0) }
+    defer {
+      plaintext.resetBytes(in: 0..<plaintext.count)
+      encoded.wipe()
+    }
     let sealed = try AESGCM.seal(
       key: key, nonce: nonce, aad: associatedData(header: header, userID: userID, credentialID: credentialID),
-      plaintext: body.encoded().withUnsafeBytes { Data($0) })
+      plaintext: plaintext)
     return header + sealed
   }
 
@@ -278,7 +295,8 @@ public enum PhraseBox {
     try KeyDerivation.requireCount(nonce.count, 12, "phrase box nonce")
     let key = try KeyDerivation.phraseBoxKey(amk: amk, userID: userID)
     let ad = associatedData(userID: userID, recoveryPublicKey: recoveryPublicKey, versionByte: version)
-    let e = entropy.withUnsafeBytes { Data($0) }
+    var e = entropy.withUnsafeBytes { Data($0) }
+    defer { e.resetBytes(in: 0..<e.count) }
     return Data([version]) + nonce + (try AESGCM.seal(key: key, nonce: nonce, aad: ad, plaintext: e))
   }
 

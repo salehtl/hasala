@@ -306,6 +306,17 @@ struct StepUpTests {
     #expect(!StepUp.serverChallengeMatches(c, nonce: n, params: .mailboxUnlink))
     #expect(!StepUp.serverChallengeMatches(c, nonce: Data(repeating: 8, count: 32), params: .sessionLogoutAll))
     #expect(throws: SigningMessageError.self) { try StepUp.challenge(nonce: Data(count: 31), params: .phraseView) }
+    // The 32-byte tuple fields are length-checked before C is computed.
+    for p: StepUpParams in [
+      .keysBootstrap(authorityPublicKey: Data(count: 31)), .keysRecoveryRotate(newRecoveryPublicKey: Data(count: 33)),
+      .passwordSet(newVerifierHash: Data()), .passwordChange(newVerifierHash: Data(count: 31)),
+      .passwordReset(newVerifierHash: Data(count: 64)), .emailChange(newEmailNorm: "a@example.com", newVerifierHash: Data(count: 1)),
+    ] {
+      #expect(throws: SigningMessageError.self, "\(p.action)") { try StepUp.challenge(nonce: n, params: p) }
+      #expect(!StepUp.serverChallengeMatches(c, nonce: n, params: p))
+    }
+    _ = try StepUp.challenge(nonce: n, params: .emailChange(newEmailNorm: "a@example.com", newVerifierHash: nil))
+    _ = try StepUp.challenge(nonce: n, params: .passwordSet(newVerifierHash: Data(count: 32)))
   }
 }
 

@@ -92,6 +92,21 @@ public enum StepUpParams: Sendable {
     }
   }
 
+  /// The fixed-length tuple fields hold their lengths: the AAK and recovery
+  /// public keys and every `SHA256(S_new)` are 32 bytes. ``StepUp/challenge(nonce:params:)``
+  /// checks this first, so a wrong length is a caller bug reported as such, not
+  /// a step-up the server refuses later.
+  public func validate() throws(SigningMessageError) {
+    switch self {
+    case .keysBootstrap(let k): _ = try SigningMessage.check(k, 32, "authority_pubkey")
+    case .keysRecoveryRotate(let k): _ = try SigningMessage.check(k, 32, "new_recovery_pubkey")
+    case .passwordSet(let h), .passwordChange(let h), .passwordReset(let h):
+      _ = try SigningMessage.check(h, 32, "SHA256(S_new)")
+    case .emailChange(_, let h?): _ = try SigningMessage.check(h, 32, "SHA256(S_new)")
+    default: break
+    }
+  }
+
   /// The proof kinds the action accepts (the table's last column is binding).
   public var proofKinds: [StepUpProofKind] {
     switch self {
@@ -148,7 +163,8 @@ public enum StepUp {
   }
 
   public static func challenge(nonce: Data, params: StepUpParams) throws(SigningMessageError) -> Data {
-    try challenge(nonce: nonce, action: params.action, paramsHash: paramsHash(params))
+    try params.validate()
+    return try challenge(nonce: nonce, action: params.action, paramsHash: paramsHash(params))
   }
 
   /// AT-C9: whether the server's `challenge` is exactly the one this client

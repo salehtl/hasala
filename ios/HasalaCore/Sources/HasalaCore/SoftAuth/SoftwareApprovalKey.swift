@@ -5,6 +5,12 @@
 // no user presence; `nextFailure` simulates a cancelled or unavailable prompt.
 //
 // Test support only: never linked by the app target.
+//
+// Spec conflict, recorded: 04 §2.2 (and 01 §12.1) give this module a software
+// signer "over `P256.Signing.PrivateKey`", which needs CryptoKit, while 04 §2.3's
+// import table does not list CryptoKit for CoreSoftAuth. `imports.allow` follows
+// §2.2. Only P-256 signing is used here; the AT-C11 primitives (AES.GCM, HKDF,
+// Curve25519.Signing) are not, and `SecureEnclave` never is.
 import CoreAuth
 import CorePrimitives
 import CryptoKit

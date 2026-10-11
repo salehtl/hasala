@@ -300,10 +300,13 @@ struct GoCryptoV3Tests {
       if let ow = st["own_writer"]?.stringValue { own = (WriterID(ow)!, Int64(try st.int("own_authored_head"))) }
       let state = PageReader.State(
         userID: user, opener: Opener(epochHWM: UInt32(try st.int("epoch_hwm")), keys: keys),
-        serverEpoch: UInt32(try st.int("server_epoch")), pinnedHeads: pinned, roster: roster, own: own)
+        // The vector's roster is the one the reader decides with, i.e. after R1's
+        // one re-fetch: an unknown writer in it is `tampered(unknownWriter)`.
+        serverEpoch: UInt32(try st.int("server_epoch")), pinnedHeads: pinned, roster: roster, rosterRefreshed: true,
+        own: own)
       let page = try c.array("page").map { r in
         PageReader.Row(
-          stream: try r.string("stream"), writerID: try r.string("writer_id"), counter: Int64(try r.int("writer_counter")),
+          stream: try r.string("stream"), writerID: try r.string("writer_id"), counter: String(try r.int("writer_counter")),
           sizeBucket: try r.int("size_bucket"), prevHash: try G.hex(r["prev_hash"]), blobHash: try G.hex(r["blob_hash"]),
           headSig: r["head_sig"]?.stringValue.flatMap { try? Hex.decode($0) }, blob: try G.hex(r["blob"]))
       }

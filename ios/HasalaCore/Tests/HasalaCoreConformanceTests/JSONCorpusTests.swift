@@ -22,6 +22,19 @@ struct JSONCorpusTests {
     #expect(Self.publicFiles.count >= 39)
   }
 
+  @Test("a leading U+FEFF in a string value: CoreJSON keeps it, the comparison forgives only Foundation's drop")
+  func leadingBOMInString() throws {
+    let data = Data("[\"\\ufeffab\", \"a\\ufeffb\"]".utf8)
+    let ours = try JSONParser.parse([UInt8](data))
+    #expect(ours == .array([.string("\u{FEFF}ab"), .string("a\u{FEFF}b")]))
+    let theirs = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    #expect(Self.firstMismatch(ours, theirs, path: "$") == nil)
+    // Only the one leading U+FEFF is forgiven, and only on CoreJSON's side.
+    #expect(Self.firstMismatch(.string("ab"), "\u{FEFF}ab", path: "$") == "$")
+    #expect(Self.firstMismatch(.string("\u{FEFF}\u{FEFF}ab"), "ab", path: "$") == "$")
+    #expect(Self.firstMismatch(.string("\u{FEFF}ab"), "ac", path: "$") == "$")
+  }
+
   @Test("CoreJSON agrees with JSONSerialization on every public conformance file", arguments: publicFiles)
   func publicFile(_ relative: String) throws {
     try Self.check(root: Fixtures.conformanceRoot, relative)
@@ -69,7 +82,14 @@ struct JSONCorpusTests {
       return Double(x.literal) == n.doubleValue ? nil : path
     case .string(let x):
       guard let s = b as? String else { return path }
-      return utf8Equal(x, s) ? nil : path
+      if utf8Equal(x, s) { return nil }
+      // Foundation quirk: JSONSerialization drops ONE leading U+FEFF from a
+      // string value ("﻿ab" comes back as "ab"; "a﻿b" is kept), as if
+      // it were a byte-order mark. CoreJSON keeps it, which is correct, and
+      // 01 §15.1 puts U+FEFF inputs in phrase.json. Accept exactly that one
+      // difference and nothing else.
+      if x.unicodeScalars.first == "\u{FEFF}", utf8Equal(String(x.unicodeScalars.dropFirst()), s) { return nil }
+      return path
     case .array(let xs):
       guard let ys = b as? [Any], ys.count == xs.count else { return path }
       for (i, (x, y)) in zip(xs, ys).enumerated() {

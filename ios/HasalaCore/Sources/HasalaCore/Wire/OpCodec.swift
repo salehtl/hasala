@@ -9,8 +9,8 @@
 // `payload`), the payload in JavaScript's key order and number spelling
 // (`CoreJSON.JSONWriter`'s defaults) and every `authored_at` canonicalized to
 // `.sssZ`. The conformance suite proves it against the TypeScript-sealed blobs of
-// `conformance/ts`, and `conformance/swift/op/` carries the bytes for the other
-// executors.
+// `conformance/ts`, and `conformance/swift/op-manifest-v4.json` carries the
+// bytes for the other executors.
 //
 // # Messages are state
 //

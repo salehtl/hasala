@@ -300,19 +300,34 @@ struct TamperSuiteTests {
       message: SigningMessage.head(userID: testUser, counter: 2, blobHash: base.frame2.blobHash, writerID: testWriter))
     func row(_ f: SealedFrame, _ c: Int64, sig: Data?, blob: Data? = nil) -> PageReader.Row {
       PageReader.Row(
-        stream: "hot", writerID: testWriter.string, counter: c, sizeBucket: 1024, prevHash: f.prevHash.bytes,
+        stream: "hot", writerID: testWriter.string, counter: String(c), sizeBucket: 1024, prevHash: f.prevHash.bytes,
         blobHash: f.blobHash.bytes, headSig: sig, blob: blob ?? f.bytes)
     }
-    func state(roster: [WriterID: HeadCheck.RosterWriter], own: (writer: WriterID, authoredHead: Int64)? = nil) -> PageReader.State {
+    func state(
+      roster: [WriterID: HeadCheck.RosterWriter], refreshed: Bool = false, own: (writer: WriterID, authoredHead: Int64)? = nil
+    ) -> PageReader.State {
       PageReader.State(
-        userID: testUser, opener: base.opener, serverEpoch: nil, pinnedHeads: [:], roster: roster, own: own)
+        userID: testUser, opener: base.opener, serverEpoch: nil, pinnedHeads: [:], roster: roster,
+        rosterRefreshed: refreshed, own: own)
     }
     let roster = [testWriter: HeadCheck.RosterWriter(dwkPublicKey: dwk.publicKey, revokedAt: nil)]
     let page = [row(base.frame1, 1, sig: nil), row(base.frame2, 2, sig: sig)]
     let ok = PageReader.read(page, state: state(roster: roster))
     #expect(ok.stop == nil && ok.rows.count == 2)
     if case .opened(_, let ops)? = ok.rows.last { #expect(ops.first?.type == .rateSet) } else { Issue.record("row 2") }
-    #expect(PageReader.read(page, state: state(roster: [:])).stop == .hardStop(.tampered(.unknownWriter)))
+    // R1: an unknown writer first asks for the one roster re-fetch, then is tampering.
+    let unknown = PageReader.read(page, state: state(roster: [:]))
+    #expect(unknown.stop == .refreshRoster && unknown.stopRow == 0 && unknown.rows.isEmpty)
+    #expect(PageReader.read(page, state: state(roster: [:], refreshed: true)).stop == .hardStop(.tampered(.unknownWriter)))
+    #expect(PageReader.read(page, state: state(roster: roster, refreshed: true)).stop == nil)
+    // R0 reads the wire's decimal string: a sign, a space or a leading "+" is shape.
+    for bad in ["+1", " 1", "1 ", "0", "-1", "01x", ""] {
+      var p = page
+      p[0] = PageReader.Row(
+        stream: "hot", writerID: testWriter.string, counter: bad, sizeBucket: 1024, prevHash: base.frame1.prevHash.bytes,
+        blobHash: base.frame1.blobHash.bytes, headSig: nil, blob: base.frame1.bytes)
+      #expect(PageReader.read(p, state: state(roster: roster)).stop == .hardStop(.tampered(.rowShape)), "\(bad)")
+    }
     #expect(PageReader.read([page[1]], state: state(roster: roster)).stop == .hardStop(.tampered(.chainBreak)))
     let unsigned = PageReader.read([page[0], row(base.frame2, 2, sig: nil)], state: state(roster: roster))
     #expect(unsigned.stop == .hardStop(.tampered(.headUnsigned)) && unsigned.stopRow == 1)
