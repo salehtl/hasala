@@ -1085,16 +1085,13 @@ func TestUnknownPathOutsideTheAPIIs404JSON(t *testing.T) {
 // spec 02 §2.4, method and path as the table lists them, answers exactly what
 // an unknown path answers, 404 with {"error":"not_found"}, with and without a
 // session. Deleted, not disabled: not a 405, not a 401, not a 403.
-//
-// Two §2.4 rows are NOT here because this build still serves them: PUT
-// /api/v1/keys and POST /api/v1/account/challenge are ledgerd's key
-// publication and deletion-nonce paths, kept until WS-3's bootstrap and
-// step-up replace them (the PR's declared deviations).
 func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
 	retired := []string{
 		"POST /api/v1/auth/exchange",
+		"PUT /api/v1/keys",
+		"POST /api/v1/account/challenge",
 		"GET /api/v1/address",
 		"POST /api/v1/address/challenge",
 		"POST /api/v1/address/rotate",

@@ -97,7 +97,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/oplog"
-	"github.com/salehtl/hasala/server/internal/purge"
 )
 
 // Request-shaping limits. They bound what one caller can make the server hold
@@ -199,12 +198,6 @@ type Server struct {
 	// Pool and Passkeys when a Server was built field by field.
 	StepUp      *auth.StepUp
 	AccountKeys *auth.AccountKeys
-
-	// Deletion owns ledgerd's account-deletion challenge lane until WS-3's
-	// step-up replaces it. NEVER nil and ALWAYS mounted: App Review 5.1.1(v)
-	// requires in-app deletion. Handler fills it in when a Server was built
-	// field-by-field.
-	Deletion *purge.Challenges
 
 	// Accounts owns signup, passwords, recovery, resets, email change and
 	// freeze (spec 02 §10.4, §10.7–§10.13). Nil means those routes are NOT
@@ -308,7 +301,6 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		Sessions: &auth.Sessions{Pool: pool, TTL: cfg.Auth.SessionIdle},
 		Writers:  &auth.Writers{Pool: pool},
 		Appender: &oplog.Appender{Pool: pool},
-		Deletion: &purge.Challenges{Pool: pool, Now: now},
 		Now:      now,
 
 		TrustCloudflare: cfg.Server.TrustedProxy == config.ProxyCloudflare,
@@ -388,9 +380,6 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.MetaPerIP == nil {
 		s.MetaPerIP = NewLimiter(metaRate, metaBurst, metaMaxKeys, s.now)
-	}
-	if s.Deletion == nil {
-		s.Deletion = &purge.Challenges{Pool: s.Pool, Now: s.now}
 	}
 	if s.StepUpPerUser == nil {
 		s.StepUpPerUser = NewLimiter(stepUpRate, stepUpBurst, stepUpMaxKeys, s.now)

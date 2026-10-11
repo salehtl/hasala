@@ -70,7 +70,7 @@ func TestTheAppsRoutesAreMounted(t *testing.T) {
 // 410 account_deleted.
 func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	h := newHarness(t).passkeys()
-	keys, fake, _ := h.accounts()
+	keys, fake, q := h.accounts()
 	code, err := auth.MintInvite(bg, h.pool, auth.MintOptions{Review: true, Note: "demo", Now: time.Now()})
 	if err != nil {
 		t.Fatal(err)
@@ -201,6 +201,21 @@ func TestTheReviewAccountPathOverHTTP(t *testing.T) {
 	if h.countAPNs(mustUUID(t, a.user)) != 0 {
 		t.Fatal("the APNs token outlived the account")
 	}
+	// The goodbye (spec 02 §15.2 step 4) is queued in the purge, sent, and
+	// then nothing in the email log holds the address any more.
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(mailTexts(fake.To(a.addr)), "Your Hasala account and its data were deleted") {
+		t.Fatal("no goodbye email was sent")
+	}
+	var left int
+	if err := h.pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE recipient = $1`, a.addr).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("%d email log rows still hold the deleted account's address", left)
+	}
 }
 
 // #41 with a passkey step-up: a UV assertion over the account.delete
@@ -216,10 +231,9 @@ func TestAPasskeyAccountDeletesItselfWithAStepUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := DeleteAccountRequest{StepUp: su, WriterID: k.device.WriterID, Sig: b64(ed25519.Sign(k.device.DWK, msg))}
-	// Not mixed with ledgerd's form.
-	mixed := body
-	mixed.Nonce = b64(nonce)
-	wantStatus(t, h.req("DELETE", "/api/v1/account", k.token, mixed), http.StatusBadRequest)
+	// Not mixed with ledgerd's form, which is gone.
+	wantStatus(t, h.req("DELETE", "/api/v1/account", k.token, map[string]any{"step_up": su, "writer_id": k.device.WriterID,
+		"sig": body.Sig, "nonce": b64(nonce)}), http.StatusBadRequest)
 	if _, err := h.pool.Exec(bg, `UPDATE users SET frozen_at = now(), freeze_trigger_at = now(), frozen_by = 'holder'
 		WHERE id = $1`, k.user); err != nil {
 		t.Fatal(err)

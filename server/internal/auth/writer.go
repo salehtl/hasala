@@ -379,7 +379,8 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			return err
 		}
 		if counter != r.FinalCounter || !bytes.Equal(head, r.FinalHead) {
-			return fmt.Errorf("%w: the head is (%d, %x)", ErrHeadMoved, counter, head)
+			// The error is logged: the counter, never the head hash (spec 02 §20).
+			return fmt.Errorf("%w: the writer's counter is %d", ErrHeadMoved, counter)
 		}
 		var (
 			signerKey  []byte

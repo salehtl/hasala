@@ -3,20 +3,22 @@ package api
 import (
 	"crypto/ed25519"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/hex"
 	"net/http"
 	"testing"
 
-	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/authtest"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/purge"
 )
 
-// deletable is an account set up the way a real one is: a passkey (which is
-// the only way v2 accounts are created), a session, an enrolled device writer,
-// and some history worth losing.
+// deletableWriter is the writer every deletable account enrols.
+const deletableWriter = "ios-00000000-0000-4000-8000-000000000206"
+
+// deletable is an account set up the way a real one is: a passkey, a session,
+// an enrolled device writer, and some history worth losing.
 type deletable struct {
 	u    uuid.UUID
 	tok  string
@@ -35,70 +37,45 @@ func (h *harness) deletable(t *testing.T, note string) *deletable {
 	if err != nil {
 		t.Fatal(err)
 	}
-	priv := h.writer(u, "ios-00000000-0000-4000-8000-000000000206")
+	priv := h.writer(u, deletableWriter)
 	h.seed(u, 2)
 	return &deletable{u: u, tok: out.SessionToken, priv: priv, pk: pk, counter: 1}
 }
 
-// assertOver is the client half of factor 2: a passkey assertion over the raw
-// challenge this server minted, with no ceremony id and no second round trip.
-//
-// The options are built here rather than fetched, because the server issues
-// none: the deletion nonce IS the challenge, and the RP id is the origin the
-// page is served from. That is the whole point of the design — anything the
-// server had to hand out first would be a second piece of expiring state.
-func assertOver(t *testing.T, a *authtest.Authenticator, challenge []byte, counter uint32) json.RawMessage {
+// stepUp begins an account.delete step-up on token's session, with params
+// naming account target, and proves it with authenticator a. It answers the
+// step-up and its nonce.
+func (d *deletable) stepUp(t *testing.T, h *harness, token string, target uuid.UUID, a *authtest.Authenticator) (*StepUpWire, []byte) {
 	t.Helper()
-	return a.Assert(t, &protocol.CredentialAssertion{
-		Response: protocol.PublicKeyCredentialRequestOptions{
-			Challenge:      protocol.URLEncodedBase64(challenge),
-			RelyingPartyID: authtest.RPID,
-		},
-	}, counter)
-}
-
-// assert answers a challenge at a fresh counter.
-func (d *deletable) assert(t *testing.T, challenge []byte) json.RawMessage {
-	t.Helper()
-	d.counter++
-	return assertOver(t, d.pk, challenge, d.counter)
-}
-
-// body is a complete, valid three-factor request. Every refusal test takes this
-// and breaks exactly one thing, so a test that stops proving what it says can
-// only be one that stopped breaking anything.
-func (d *deletable) body(t *testing.T, nonce []byte) deleteBody {
-	t.Helper()
-	return deleteBody{
-		Assertion: d.assert(t, nonce),
-		Nonce:     base64.StdEncoding.EncodeToString(nonce),
-		Sig:       base64.StdEncoding.EncodeToString(ed25519.Sign(d.priv, purge.DeletionMessage(nonce, d.u))),
-	}
-}
-
-func (h *harness) deleteChallenge(t *testing.T, token string) []byte {
-	t.Helper()
-	w := h.req("POST", "/api/v1/account/challenge", token, struct{}{})
+	ph, _ := keyproto.ParamsHash(keyproto.ActionAccountDelete, []byte(target.String()))
+	w := h.req("POST", "/api/v1/auth/step-up/begin", token, StepUpBeginRequest{
+		Action: string(keyproto.ActionAccountDelete), ParamsHash: hex.EncodeToString(ph[:]), ProofKind: "passkey"})
 	wantStatus(t, w, http.StatusOK)
-	nonce, err := base64.StdEncoding.DecodeString(decodeJSON[ChallengeResponse](t, w).Nonce)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return nonce
+	b := decodeJSON[StepUpBeginResponse](t, w)
+	nonce, _ := base64.RawURLEncoding.DecodeString(b.Nonce)
+	c, _ := keyproto.StepUpChallenge(nonce, keyproto.ActionAccountDelete, ph)
+	d.counter++
+	return &StepUpWire{Nonce: b.Nonce, Proof: StepUpProofWire{Kind: "passkey",
+		Assertion: a.AssertChallenge(t, authtest.RPID, c[:], d.counter)}}, nonce
 }
 
-// expireChallenge ages a minted nonce out of its window without moving anyone's
-// clock, so one test's staleness cannot leak into another's timing.
-func (h *harness) expireChallenge(t *testing.T, nonce []byte) {
+// sign is the writer's signature over DeletionMessage(nonce, d.u).
+func (d *deletable) sign(t *testing.T, priv ed25519.PrivateKey, nonce []byte) string {
 	t.Helper()
-	tag, err := h.pool.Exec(bg,
-		`UPDATE account_deletion_challenges SET expires_at = issued_at WHERE nonce = $1`, nonce)
+	msg, err := keyproto.DeletionMessage(nonce, d.u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag.RowsAffected() != 1 {
-		t.Fatalf("expireChallenge matched %d rows, want 1", tag.RowsAffected())
-	}
+	return b64(ed25519.Sign(priv, msg))
+}
+
+// body is a complete, valid #41 request. Every refusal test takes this and
+// breaks exactly one thing, so a test that stops proving what it says can only
+// be one that stopped breaking anything.
+func (d *deletable) body(t *testing.T, h *harness) DeleteAccountRequest {
+	t.Helper()
+	su, nonce := d.stepUp(t, h, d.tok, d.u, d.pk)
+	return DeleteAccountRequest{StepUp: su, WriterID: deletableWriter, Sig: d.sign(t, d.priv, nonce)}
 }
 
 func (h *harness) countUsers(t *testing.T) int {
@@ -119,59 +96,24 @@ func (h *harness) accountExists(t *testing.T, u uuid.UUID) bool {
 	return n == 1
 }
 
-// revokeWriter retires a device writer. Revocation itself (step-up, the
-// pinned head, the RevocationMessage) is auth's to test, in writer_test.go;
-// what matters here is that the deletion path reads the roster's revoked
-// state, and the one update the writers guard permits sets exactly that.
-func (h *harness) revokeWriter(t *testing.T, u uuid.UUID, writerID string, _ ed25519.PrivateKey) {
-	t.Helper()
-	if _, err := h.pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1 AND writer_id = $2`, u, writerID); err != nil {
-		t.Fatalf("revoke %s: %v", writerID, err)
-	}
-}
-
-type deleteBody struct {
-	Assertion json.RawMessage `json:"assertion,omitempty"`
-	Nonce     string          `json:"nonce"`
-	Sig       string          `json:"sig"`
-}
-
 // ---------------------------------------------------------------------------
 // The three factors
 // ---------------------------------------------------------------------------
 
-// The deletion ceremony builds its WebAuthn assertion client-side, so the
-// challenge must carry the relying-party id the account's passkeys live under.
-// Without it the browser asserts against the app origin, finds no credential,
-// and offers to CREATE a passkey — the failure the operator hit. rp_id is the
-// parent domain, not the origin, and it must be the same one sign-in uses.
-func TestAccountChallengeCarriesTheRelyingPartyID(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-
-	w := h.req("POST", "/api/v1/account/challenge", acc.tok, struct{}{})
-	wantStatus(t, w, http.StatusOK)
-	resp := decodeJSON[AccountChallengeResponse](t, w)
-	if resp.RPID != authtest.RPID {
-		t.Fatalf("challenge rp_id = %q, want %q", resp.RPID, authtest.RPID)
-	}
-	if resp.Nonce == "" {
-		t.Fatal("challenge carried no nonce")
-	}
-}
-
-// Spec §3.4: a stolen session token must not be able to destroy a life's
-// financial history. This is the whole reason the endpoint takes a body at all.
+// A stolen session token must not be able to destroy a life's financial
+// history: without a step-up the answer is step_up_required, and nothing moves.
 func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 
-	w := h.req("DELETE", "/api/v1/account", acc.tok, deleteBody{})
-	wantStatus(t, w, http.StatusForbidden)
+	for _, body := range []any{map[string]any{}, DeleteAccountRequest{WriterID: deletableWriter, Sig: b64(make([]byte, 64))}} {
+		w := h.req("DELETE", "/api/v1/account", acc.tok, body)
+		wantStatus(t, w, http.StatusForbidden)
+		wantError(t, w, "step_up_required")
+	}
 	if !h.accountExists(t, acc.u) {
 		t.Fatal("a session token alone deleted the account")
 	}
-	// The op log is untouched, not partly gone.
 	var n int
 	if err := h.pool.QueryRow(bg, `SELECT count(*) FROM op_log WHERE user_id = $1`, acc.u).Scan(&n); err != nil {
 		t.Fatal(err)
@@ -181,240 +123,94 @@ func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 	}
 }
 
-// The session plus a valid signature, and no re-authentication at all. Malware
-// on an unlocked device that can drive the writer key has exactly this much.
-func TestDeleteAccountRefusesKeyPossessionWithoutAnAssertion(t *testing.T) {
+// ledgerd's form is gone (spec 02 §2.4): its challenge route answers 404, and
+// a body that still carries its fields is malformed.
+func TestLedgerdsDeletionFormIsGone(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
-	nonce := h.deleteChallenge(t, acc.tok)
-
-	body := acc.body(t, nonce)
-	body.Assertion = nil
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
+	wantStatus(t, h.req("POST", "/api/v1/account/challenge", acc.tok, struct{}{}), http.StatusNotFound)
+	for _, body := range []map[string]any{
+		{"nonce": b64(make([]byte, 32)), "sig": b64(make([]byte, 64))},
+		{"assertion": map[string]any{}, "nonce": b64(make([]byte, 32)), "sig": b64(make([]byte, 64))},
+	} {
+		wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusBadRequest)
+	}
 	if !h.accountExists(t, acc.u) {
-		t.Fatal("the account was deleted with no re-authentication")
+		t.Fatal("ledgerd's form deleted the account")
 	}
 }
 
-// An assertion over a challenge that has aged out. This is the whole freshness
-// story: there is no second window to check, so if the nonce's own expiry did
-// not bite, nothing would.
-func TestDeleteAccountRefusesAnAssertionOverAStaleChallenge(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	nonce := h.deleteChallenge(t, acc.tok)
-	body := acc.body(t, nonce)
-	h.expireChallenge(t, nonce)
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("an assertion over an expired challenge deleted the account")
-	}
-}
-
-// A whole, correct request, sent twice. The assertion is bound to a nonce, the
-// nonce is spent by the attempt, so the second copy has nothing left to prove
-// anything with — which is what makes an intercepted request worthless.
-func TestDeleteAccountRefusesAReplayedAssertion(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	other := h.deletable(t, "bob")
-	nonce := h.deleteChallenge(t, other.tok)
-	body := other.body(t, nonce)
-
-	// The first one really does work, or the second proves nothing.
-	wantStatus(t, h.req("DELETE", "/api/v1/account", other.tok, body), http.StatusNoContent)
-	// Replayed against a session that is still live. It is `acc`'s session
-	// rather than the deleted account's, so the 403 cannot be a 410 in
-	// disguise.
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("a replayed request deleted a second account")
-	}
-}
-
-// A genuine, fresh assertion from somebody else's passkey is not
-// re-authentication for this account. Without the binding to the credential's
-// OWNER, any valid assertion from anybody satisfies the factor.
-func TestDeleteAccountRefusesAnAssertionFromAnotherAccountsCredential(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	mallory := h.deletable(t, "mallory")
-	nonce := h.deleteChallenge(t, acc.tok)
-
-	body := acc.body(t, nonce)
-	mallory.counter++
-	body.Assertion = assertOver(t, mallory.pk, nonce, mallory.counter)
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("another account's passkey deleted this one")
-	}
-	if !h.accountExists(t, mallory.u) {
-		t.Fatal("the wrong account was deleted")
-	}
-}
-
-// A credential this deployment has never enrolled is a rejection, not a first
-// enrolment. The login path makes the same promise, for the same reason: a
-// re-authentication that could mint an identity would be a way past the gate.
-func TestDeleteAccountRefusesAnAssertionFromAnUnenrolledCredential(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	nonce := h.deleteChallenge(t, acc.tok)
-
-	stranger := authtest.New(t)
-	stranger.Handle = authtest.RandBytes(t, 32)
-	body := acc.body(t, nonce)
-	body.Assertion = assertOver(t, stranger, nonce, 2)
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("an unenrolled credential deleted the account")
-	}
-}
-
-// A rejected delete must WRITE NOTHING.
-//
-// The IdP version of this handler resolved its identity with auth.UpsertUser,
-// which CREATES a users row for an unknown subject — a row-creation primitive
-// on the endpoint whose entire job is destruction, reached on the path that
-// answers 403, and every stray account landed in the retention sweep's
-// WithoutConsentRecord list for ever. An assertion cannot do that, and this is
-// the test that says so.
-func TestDeleteAccountCreatesNoAccountWhenItRefuses(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	nonce := h.deleteChallenge(t, acc.tok)
-	before := h.countUsers(t)
-
-	stranger := authtest.New(t)
-	stranger.Handle = authtest.RandBytes(t, 32)
-	body := acc.body(t, nonce)
-	body.Assertion = assertOver(t, stranger, nonce, 2)
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
-	if after := h.countUsers(t); after != before {
-		t.Fatalf("a rejected delete changed the account count from %d to %d", before, after)
-	}
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("the caller's own account was deleted")
-	}
-}
-
-func TestDeleteAccountRefusesASignatureFromAnUnenrolledKey(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	nonce := h.deleteChallenge(t, acc.tok)
-	_, stranger, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	body := acc.body(t, nonce)
-	body.Sig = base64.StdEncoding.EncodeToString(ed25519.Sign(stranger, purge.DeletionMessage(nonce, acc.u)))
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("a signature from an unenrolled key deleted the account")
-	}
-}
-
-// A revoked device must not be able to delete the account, or revocation would
-// mean nothing. Note what this device still HAS: the session, and the passkey.
-// Factor 3 is the only thing it lost.
-func TestDeleteAccountRefusesASignatureFromARevokedKey(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	h.revokeWriter(t, acc.u, "ios-00000000-0000-4000-8000-000000000206", acc.priv)
-	nonce := h.deleteChallenge(t, acc.tok)
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("a revoked device key deleted the account")
-	}
-}
-
-// The property the whole design turns on: a caller cannot learn WHICH factor
-// they are missing by watching the answer change. Every refusal is one status
-// and one body.
+// Every way of getting one factor wrong is the step-up's one refusal, so a
+// caller cannot learn which factor it is missing, and the account stays.
 func TestEveryDeletionRefusalIsTheSameAnswer(t *testing.T) {
-	// A harness per case, because the per-user attempt limiter is real: six
-	// cases sharing one account exhaust its burst and the sixth would be
-	// "refused" with a 429, which would make this test pass for the wrong
-	// reason on the day the answers stopped agreeing.
+	// A harness per case, because the per-user attempt limiter is real.
 	for _, tc := range []struct {
 		name  string
-		build func(t *testing.T, h *harness, acc, mallory *deletable) deleteBody
+		build func(t *testing.T, h *harness, acc, mallory *deletable) DeleteAccountRequest
 	}{
-		{
-			name:  "nothing at all",
-			build: func(*testing.T, *harness, *deletable, *deletable) deleteBody { return deleteBody{} },
-		},
-		{
-			name: "no assertion",
-			build: func(t *testing.T, h *harness, acc, _ *deletable) deleteBody {
-				b := acc.body(t, h.deleteChallenge(t, acc.tok))
-				b.Assertion = nil
-				return b
-			},
-		},
-		{
-			name: "no signature",
-			build: func(t *testing.T, h *harness, acc, _ *deletable) deleteBody {
-				b := acc.body(t, h.deleteChallenge(t, acc.tok))
-				b.Sig = base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))
-				return b
-			},
-		},
-		{
-			name: "another account's assertion",
-			build: func(t *testing.T, h *harness, acc, mallory *deletable) deleteBody {
-				nonce := h.deleteChallenge(t, acc.tok)
-				b := acc.body(t, nonce)
-				mallory.counter++
-				b.Assertion = assertOver(t, mallory.pk, nonce, mallory.counter)
-				return b
-			},
-		},
-		{
-			name: "a spent challenge",
-			build: func(t *testing.T, h *harness, acc, _ *deletable) deleteBody {
-				nonce := h.deleteChallenge(t, acc.tok)
-				first := acc.body(t, nonce)
-				first.Sig = base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))
-				h.req("DELETE", "/api/v1/account", acc.tok, first)
-				return acc.body(t, nonce)
-			},
-		},
-		{
-			name: "an expired challenge",
-			build: func(t *testing.T, h *harness, acc, _ *deletable) deleteBody {
-				nonce := h.deleteChallenge(t, acc.tok)
-				b := acc.body(t, nonce)
-				h.expireChallenge(t, nonce)
-				return b
-			},
-		},
-		{
-			name: "a challenge minted for somebody else",
-			build: func(t *testing.T, h *harness, acc, mallory *deletable) deleteBody {
-				return acc.body(t, h.deleteChallenge(t, mallory.tok))
-			},
-		},
+		{"a signature over another nonce", func(t *testing.T, h *harness, acc, _ *deletable) DeleteAccountRequest {
+			b := acc.body(t, h)
+			b.Sig = acc.sign(t, acc.priv, make([]byte, 32))
+			return b
+		}},
+		{"a signature by an unenrolled key", func(t *testing.T, h *harness, acc, _ *deletable) DeleteAccountRequest {
+			_, stranger, _ := ed25519.GenerateKey(nil)
+			su, nonce := acc.stepUp(t, h, acc.tok, acc.u, acc.pk)
+			return DeleteAccountRequest{StepUp: su, WriterID: deletableWriter, Sig: acc.sign(t, stranger, nonce)}
+		}},
+		{"a signature by a revoked writer", func(t *testing.T, h *harness, acc, _ *deletable) DeleteAccountRequest {
+			if _, err := h.pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1 AND writer_id = $2`,
+				acc.u, deletableWriter); err != nil {
+				t.Fatal(err)
+			}
+			return acc.body(t, h)
+		}},
+		{"a writer the account does not have", func(t *testing.T, h *harness, acc, _ *deletable) DeleteAccountRequest {
+			su, nonce := acc.stepUp(t, h, acc.tok, acc.u, acc.pk)
+			return DeleteAccountRequest{StepUp: su, WriterID: "ios-11111111-1111-4111-8111-111111111111",
+				Sig: acc.sign(t, acc.priv, nonce)}
+		}},
+		{"another account's passkey", func(t *testing.T, h *harness, acc, mallory *deletable) DeleteAccountRequest {
+			su, nonce := acc.stepUp(t, h, acc.tok, acc.u, mallory.pk)
+			return DeleteAccountRequest{StepUp: su, WriterID: deletableWriter, Sig: acc.sign(t, acc.priv, nonce)}
+		}},
+		{"a step-up naming another account", func(t *testing.T, h *harness, acc, mallory *deletable) DeleteAccountRequest {
+			su, nonce := acc.stepUp(t, h, acc.tok, mallory.u, acc.pk)
+			return DeleteAccountRequest{StepUp: su, WriterID: deletableWriter, Sig: acc.sign(t, acc.priv, nonce)}
+		}},
+		{"another session's step-up", func(t *testing.T, h *harness, acc, mallory *deletable) DeleteAccountRequest {
+			su, nonce := mallory.stepUp(t, h, mallory.tok, mallory.u, mallory.pk)
+			return DeleteAccountRequest{StepUp: su, WriterID: deletableWriter, Sig: acc.sign(t, acc.priv, nonce)}
+		}},
+		{"a spent step-up", func(t *testing.T, h *harness, acc, _ *deletable) DeleteAccountRequest {
+			b := acc.body(t, h)
+			bad := b
+			bad.Sig = acc.sign(t, acc.priv, make([]byte, 32))
+			wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, bad), http.StatusForbidden)
+			return b
+		}},
+		{"an expired step-up", func(t *testing.T, h *harness, acc, _ *deletable) DeleteAccountRequest {
+			b := acc.body(t, h)
+			if _, err := h.pool.Exec(bg, `UPDATE step_up_challenges SET issued_at = issued_at - interval '10 minutes',
+				expires_at = issued_at - interval '9 minutes' WHERE user_id = $1`, acc.u); err != nil {
+				t.Fatal(err)
+			}
+			return b
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t).passkeys()
 			acc := h.deletable(t, "alice")
 			mallory := h.deletable(t, "mallory")
+			before := h.countUsers(t)
 
 			w := h.req("DELETE", "/api/v1/account", acc.tok, tc.build(t, h, acc, mallory))
 			wantStatus(t, w, http.StatusForbidden)
-			if got := w.Body.String(); got != `{"error":"deletion_rejected"}` {
+			if got := w.Body.String(); got != `{"error":"step_up_failed"}` {
 				t.Fatalf("body = %s, want the one refusal every factor shares", got)
 			}
-			if !h.accountExists(t, acc.u) {
-				t.Fatal("the refusal deleted the account anyway")
+			if !h.accountExists(t, acc.u) || !h.accountExists(t, mallory.u) || h.countUsers(t) != before {
+				t.Fatal("a refused deletion changed the accounts")
 			}
 		})
 	}
@@ -428,9 +224,9 @@ func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
 	bystander := h.deletable(t, "bob")
-	nonce := h.deleteChallenge(t, acc.tok)
 
-	w := h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce))
+	body := acc.body(t, h)
+	w := h.req("DELETE", "/api/v1/account", acc.tok, body)
 	wantStatus(t, w, http.StatusNoContent)
 
 	if h.accountExists(t, acc.u) {
@@ -442,8 +238,6 @@ func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 	}
 	for _, r := range rels {
 		var n int
-		// r.SQL() quotes schema and name separately; discovery now reaches
-		// relations outside `public`, so the name may be two parts.
 		if err := h.pool.QueryRow(bg, `SELECT count(*) FROM `+r.SQL()+` WHERE user_id = $1`, acc.u).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
@@ -451,61 +245,32 @@ func TestDeleteAccountWithAllThreeFactorsPurgesTheAccount(t *testing.T) {
 			t.Fatalf("%s still holds %d rows for the deleted account", r, n)
 		}
 	}
-	// The credential went with it, so the passkey that just re-authenticated
-	// cannot re-authenticate anything ever again.
-	var creds int
-	if err := h.pool.QueryRow(bg,
-		`SELECT count(*) FROM webauthn_credentials WHERE user_id = $1`, acc.u).Scan(&creds); err != nil {
-		t.Fatal(err)
-	}
-	if creds != 0 {
-		t.Fatalf("%d credentials survived the account they belong to", creds)
-	}
 	if !h.accountExists(t, bystander.u) {
 		t.Fatal("the other account went with it")
 	}
-
-	// The session died with the account, so the credential that reached this
-	// endpoint is worth nothing afterwards — and it says so DISTINGUISHABLY.
-	// A 401 here would be indistinguishable from an expired session, and the
-	// device that just deleted its own account has to know which of the two it
-	// is looking at before it wipes anything.
+	// The session died with the account, and says so distinguishably: a 401
+	// would look like an expired session, and the device that just deleted its
+	// own account has to know which one it is looking at before it wipes.
 	after := h.req("GET", "/api/v1/sync?stream=hot", acc.tok, nil)
 	wantStatus(t, after, http.StatusGone)
 	if got := after.Body.String(); got != `{"error":"account_deleted"}` {
 		t.Fatalf("body = %s", got)
 	}
-	// And so does every other route the dead session can reach.
-	wantStatus(t, h.req("POST", "/api/v1/account/challenge", acc.tok, struct{}{}), http.StatusGone)
+	// A replay of the whole request meets the same 410.
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusGone)
 }
 
-func TestDeleteAccountChallengeIsSingleUse(t *testing.T) {
+// The signer may be any live writer of the account (spec 02 §15.2:
+// "<signer, live>"), not only the session's own.
+func TestAnotherLiveWriterMaySignTheDeletion(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
-	nonce := h.deleteChallenge(t, acc.tok)
-
-	// A first attempt that fails for an unrelated reason still SPENDS the
-	// nonce: one challenge buys one attempt, or it buys unlimited guesses.
-	bad := acc.body(t, nonce)
-	bad.Sig = base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, bad), http.StatusForbidden)
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("a replayed challenge deleted the account")
-	}
-}
-
-// A nonce minted for one account must be worthless against another, even when
-// the second account signs it correctly.
-func TestDeleteAccountRefusesAnotherAccountsChallenge(t *testing.T) {
-	h := newHarness(t).passkeys()
-	acc := h.deletable(t, "alice")
-	other := h.deletable(t, "bob")
-	nonce := h.deleteChallenge(t, other.tok)
-
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusForbidden)
-	if !h.accountExists(t, acc.u) {
-		t.Fatal("another account's challenge deleted this one")
+	other := h.writer(acc.u, "ios-22222222-2222-4222-8222-222222222222")
+	su, nonce := acc.stepUp(t, h, acc.tok, acc.u, acc.pk)
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, DeleteAccountRequest{StepUp: su,
+		WriterID: "ios-22222222-2222-4222-8222-222222222222", Sig: acc.sign(t, other, nonce)}), http.StatusNoContent)
+	if h.accountExists(t, acc.u) {
+		t.Fatal("the account survived its deletion")
 	}
 }
 
@@ -513,53 +278,24 @@ func TestDeleteAccountRefusesAnotherAccountsChallenge(t *testing.T) {
 // Shape
 // ---------------------------------------------------------------------------
 
-// A deployment with no relying party cannot verify factor 2 at all. That is a
-// fact about the SERVER, and answering the ordinary 403 would send every user
-// off to re-authenticate against a ceremony this process would refuse again —
-// which is exactly how this endpoint spent months looking like a policy
-// instead of a defect.
-func TestDeleteAccountWithoutARelyingPartyIsUnavailableNotForbidden(t *testing.T) {
-	h := newHarness(t) // deliberately NOT .passkeys()
-	u := h.user("sub-alice")
-	tok := h.session(u)
-
-	w := h.req("DELETE", "/api/v1/account", tok, deleteBody{Nonce: "AA==", Sig: "AA=="})
-	wantStatus(t, w, http.StatusServiceUnavailable)
-	if !h.accountExists(t, u) {
-		t.Fatal("the account was deleted by a server that cannot verify a re-authentication")
-	}
-}
-
-// Rotation still takes an ID token and collects its two factors in one user
-// gesture. A design where one expires while the other is still good produces a
-// flow that fails halfway, for a reason the user cannot see.
-func TestTheReauthWindowAndTheChallengeTTLAgree(t *testing.T) {
-	if reauthMaxAge != purge.ChallengeTTL {
-		t.Fatalf("reauthMaxAge %v != purge.ChallengeTTL %v", reauthMaxAge, purge.ChallengeTTL)
-	}
-}
-
-func TestDeleteAccountRoutesNeedASession(t *testing.T) {
+func TestDeleteAccountNeedsASession(t *testing.T) {
 	h := newHarness(t).passkeys()
-	wantStatus(t, h.req("POST", "/api/v1/account/challenge", "", struct{}{}), http.StatusUnauthorized)
-	wantStatus(t, h.req("DELETE", "/api/v1/account", "", deleteBody{}), http.StatusUnauthorized)
+	wantStatus(t, h.req("DELETE", "/api/v1/account", "", DeleteAccountRequest{}), http.StatusUnauthorized)
 }
 
-// Malformed input describes the CALLER's own submission and reveals nothing
-// about the account, so it is a 400. A client with a coding bug must not be
-// sent into an endless re-authentication loop.
+// Malformed input describes the caller's own submission and reveals nothing
+// about the account, so it is a 400.
 func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
-	for _, tc := range []struct {
-		name string
-		body deleteBody
-	}{
-		{name: "nonce is not base64", body: deleteBody{Nonce: "!!", Sig: "AA=="}},
-		{name: "sig is not base64", body: deleteBody{Nonce: "AA==", Sig: "!!"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, tc.body), http.StatusBadRequest)
+	good := acc.body(t, h)
+	badSig := good
+	badSig.Sig = "!!"
+	badNonce := good
+	badNonce.StepUp = &StepUpWire{Nonce: "!!", Proof: good.StepUp.Proof}
+	for name, body := range map[string]DeleteAccountRequest{"sig is not base64": badSig, "nonce is not base64url": badNonce} {
+		t.Run(name, func(t *testing.T) {
+			wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, body), http.StatusBadRequest)
 		})
 	}
 	if !h.accountExists(t, acc.u) {

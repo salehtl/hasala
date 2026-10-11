@@ -524,8 +524,7 @@ func TestAccountDeletionWakesEveryDevice(t *testing.T) {
 	h.bind(acc.tok, "ios-00000000-0000-4000-8000-000000000206")
 	tk := putToken(h, acc.tok, 5)
 	wk.take()
-	nonce := h.deleteChallenge(t, acc.tok)
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusNoContent)
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, h)), http.StatusNoContent)
 	ws := wk.take()
 	if len(ws) != 1 || len(ws[0].tokens) != 1 || ws[0].tokens[0] != tk || ws[0].r != pushv2.ReasonAccountGone {
 		t.Fatalf("deletion wakes %+v", ws)

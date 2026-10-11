@@ -35,12 +35,8 @@ func TestASuspendedAccountCanStillDeleteItself(t *testing.T) {
 	if got := decodeJSON[errorBody](t, w).Error; got != "account_suspended" {
 		t.Fatalf("step-up begin for writer.revoke while suspended: %q", got)
 	}
-	del, _ := keyproto.ParamsHash(keyproto.ActionAccountDelete)
-	wantStatus(t, h.req("POST", "/api/v1/auth/step-up/begin", acc.tok, StepUpBeginRequest{
-		Action: string(keyproto.ActionAccountDelete), ParamsHash: hex.EncodeToString(del[:]), ProofKind: "passkey"}), http.StatusOK)
-
-	nonce := h.deleteChallenge(t, acc.tok)
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusNoContent)
+	// The account.delete step-up begins, and the deletion goes through.
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, h)), http.StatusNoContent)
 	if h.accountExists(t, acc.u) {
 		t.Fatal("a suspended account could not delete itself")
 	}
