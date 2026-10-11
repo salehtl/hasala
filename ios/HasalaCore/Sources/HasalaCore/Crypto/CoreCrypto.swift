@@ -11,7 +11,11 @@
 //   BootstrapPayload.swift the canonical payload (§10.3.1)
 //   Accounts.swift         EmailNorm, NameOK, DisplayName (§4.11)
 //   Password.swift         PasswordStretch, PasswordPolicy, ResetCode (§4.10, D37)
-//   DeviceKeys.swift       DWK, DAK checks, HeadCheck (R2b)
+//   DeviceKeys.swift       DWK, DAK checks, HeadCheck (R2b; §12.1 places it in CoreWire, see
+//                          Wire/CoreWire.swift for why it is here)
+//   KeyHistoryVerifier.swift  the verified roster from GET /key-history, and the GET /writers
+//                          comparison (§10.13)
+//   PageReader.swift       the §6.6 reader composed, R0-R10 in order
 //
 // Imports only Foundation, CryptoKit, Security and zlib, and the AT-C11 calls go
 // through CorePrimitives. Nothing here persists, logs or transmits a secret.
