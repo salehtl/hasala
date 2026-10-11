@@ -29,7 +29,7 @@ func appendOne(ctx context.Context, t *testing.T, a *Appender, u uuid.UUID, writ
 	if err != nil {
 		return err
 	}
-	_, err = a.AppendClient(ctx, u, writer, blob.StreamHot, []Row{r})
+	_, err = a.AppendClient(ctx, u, writer, blob.StreamHot, []Row{r}, testHeadSig(u, writer, []Row{r}))
 	return err
 }
 
@@ -80,11 +80,11 @@ func TestAppendClientChargesTheAccountForTheBytesItStored(t *testing.T) {
 	u := insertUser(t, pool)
 
 	var prev [32]byte
-	r1, h1 := mustSeal(t, u, "dev-a", blob.StreamHot, 1, prev)
+	r1, h1 := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, prev)
 	r1.TypeFlag = TypeFlagEdit
-	r2, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 2, h1)
+	r2, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, h1)
 	r2.TypeFlag = TypeFlagEdit
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, []Row{r1, r2}); err != nil {
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, []Row{r1, r2}, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", []Row{r1, r2})); err != nil {
 		t.Fatal(err)
 	}
 	want := storedBytes(t, pool, u, blob.StreamHot)
@@ -103,9 +103,9 @@ func TestAppendClientIsRefusedAtTheCeiling(t *testing.T) {
 	setOplogCeiling(t, pool, 1)
 
 	var prev [32]byte
-	r1, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, prev)
+	r1, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, prev)
 	r1.TypeFlag = TypeFlagEdit
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, []Row{r1})
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, []Row{r1}, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", []Row{r1}))
 	if !errors.Is(err, budget.ErrRefused) {
 		t.Fatalf("append client over the ceiling = %v, want budget.ErrRefused", err)
 	}
@@ -140,7 +140,7 @@ func TestTheLedgerIsUnchangedAfterARolledBackAppend(t *testing.T) {
 	u := insertUser(t, pool)
 
 	var prev [32]byte
-	r1, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, prev)
+	r1, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, prev)
 	if _, err := a.appendRaw(bg, []Row{r1}); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestTheLedgerIsUnchangedAfterARolledBackAppend(t *testing.T) {
 	// The identical row again: position (dev-a, hot, 1) is taken, so the INSERT
 	// fails AFTER the gate has already charged the account inside that same
 	// transaction.
-	r2, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, prev)
+	r2, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, prev)
 	if _, err := a.appendRaw(bg, []Row{r2}); err == nil {
 		t.Fatal("re-appending a taken position succeeded")
 	}
@@ -180,7 +180,7 @@ func TestConcurrentAppendsFromOneAccountSerializeWithoutDeadlock(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs[i] = appendOne(bg, t, a, u, fmt.Sprintf("dev-%d", i))
+			errs[i] = appendOne(bg, t, a, u, fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", 0x100+i))
 		}()
 	}
 	wg.Wait()
@@ -219,14 +219,14 @@ func TestOneAccountsHeldUsageRowDoesNotBlockAnother(t *testing.T) {
 	// A different account is untouched by that lock.
 	freeCtx, cancel := context.WithTimeout(bg, 15*time.Second)
 	defer cancel()
-	if err := appendOne(freeCtx, t, a, other, "dev-a"); err != nil {
+	if err := appendOne(freeCtx, t, a, other, "ios-00000000-0000-4000-8000-00000000000a"); err != nil {
 		t.Fatalf("an append for a different account was blocked: %v", err)
 	}
 
 	// The same account waits, which is what proves the lock is real.
 	sameCtx, cancelSame := context.WithTimeout(bg, 2*time.Second)
 	defer cancelSame()
-	err = appendOne(sameCtx, t, a, busy, "dev-a")
+	err = appendOne(sameCtx, t, a, busy, "ios-00000000-0000-4000-8000-00000000000a")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("an append for the account whose usage row is held = %v, want it to block until the deadline", err)
 	}

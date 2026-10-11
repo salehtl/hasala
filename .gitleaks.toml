@@ -80,3 +80,29 @@ paths = [
   '''^server/internal/dict/dict_test\.go$''',
 ]
 regexes = ['''^0011223344556677889900aabbccddeeff112233445566778899aabbccddeeff$''']
+
+# Spec 01 §15.1: the conformance vectors that carry synthetic key material,
+# allowlisted by exact path and exact value, never by directory. Everything in
+# them is written by server/cmd/gen-crypto-vectors from the anchor inputs of
+# spec 01 §15.5 or from the generator's labelled SHA-256 stream (block i =
+# SHA256(label "|" i)); none of it is, or derives from, a credential.
+[[allowlists]]
+description = "crypto-v3 wraps.json unwrap inputs: anchor E (BIP-39's published vector 9e88..), and E and P of the 'wraps.json' stream"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^conformance/crypto-v3/wraps\.json$''']
+regexes = [
+  '''^9e885d952ad362caeb4efe34a8e91bd2$''',
+  '''^3c23dfafc5d644783e642df43a05d006$''',
+  '''^2d6d59326919622eb5f8712835fc14104375a2c7bf43a8b6a9ed20be373b6f61$''',
+]
+
+[[allowlists]]
+description = "api-v1 messages.json auth_hash: SHA-256 of the anchor attestationObject (00..3f) and of A19's stretched S"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^conformance/api-v1/messages\.json$''']
+regexes = [
+  '''^fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108$''',
+  '''^6b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12$''',
+]

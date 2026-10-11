@@ -193,7 +193,7 @@ func bytesOf(b byte, n int) []byte {
 
 func TestVerifyChainAcceptsAContiguousRun(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 5)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 5)
 	if err := VerifyChain(rows, 0, blob.ZeroHash); err != nil {
 		t.Fatalf("a well-formed chain must verify: %v", err)
 	}
@@ -210,13 +210,13 @@ func TestVerifyChainAcceptsAContiguousRun(t *testing.T) {
 // genesis would have nothing to anchor against.
 func TestFirstBlobOfAChainLinksToZeroHash(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
 	if err := VerifyChain(rows, 0, blob.ZeroHash); err != nil {
 		t.Fatalf("counter 1 chained from ZeroHash must verify: %v", err)
 	}
 	var junk [32]byte
 	junk[0] = 1
-	forged, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, junk, 1)
+	forged, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, junk, 1)
 	if err := VerifyChain(forged, 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("counter 1 with a non-zero prev must break: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestFirstBlobOfAChainLinksToZeroHash(t *testing.T) {
 // THE integrity property, part 1: an op the server never delivered is detected.
 func TestVerifyChainDetectsADroppedOp(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 5)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 5)
 	dropped := append(append([]Row{}, rows[:2]...), rows[3:]...) // 1,2,4,5
 	if err := VerifyChain(dropped, 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("a dropped op must break the chain, got %v", err)
@@ -235,7 +235,7 @@ func TestVerifyChainDetectsADroppedOp(t *testing.T) {
 // THE integrity property, part 2: ops served out of order are detected.
 func TestVerifyChainDetectsAReorderedOp(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 5)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 5)
 	swapped := append([]Row{}, rows...)
 	swapped[2], swapped[3] = swapped[3], swapped[2]
 	if err := VerifyChain(swapped, 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
@@ -248,7 +248,7 @@ func TestVerifyChainDetectsAReorderedOp(t *testing.T) {
 // recomputed from the stored bytes rather than trusted.
 func TestVerifyChainDetectsATamperedBlob(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
 	rows[1].Blob = append([]byte(nil), rows[1].Blob...)
 	rows[1].Blob[600] ^= 0xff
 	if err := VerifyChain(rows, 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
@@ -258,7 +258,7 @@ func TestVerifyChainDetectsATamperedBlob(t *testing.T) {
 
 func TestVerifyChainDetectsAForgedPrevHash(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
 	rows[2].PrevHash = bytesOf(0x11, 32)
 	if err := VerifyChain(rows, 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("a forged prev_hash must break the chain, got %v", err)
@@ -267,7 +267,7 @@ func TestVerifyChainDetectsAForgedPrevHash(t *testing.T) {
 
 func TestVerifyChainDetectsAChainThatDoesNotContinueTheHead(t *testing.T) {
 	u := uuid.New()
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 4, blob.ZeroHash, 2)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 4, blob.ZeroHash, 2)
 	if err := VerifyChain(rows, 2, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("counter 4 after head 2 must break, got %v", err)
 	}
@@ -281,7 +281,7 @@ func TestHeadOfAnUnusedChainIsZero(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	c, h, err := a.Head(bg, u, "dev-a", blob.StreamHot)
+	c, h, err := a.Head(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,11 +294,11 @@ func TestHeadAdvancesWithEveryAppend(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	rows, want := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows); err != nil {
+	rows, want := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows)); err != nil {
 		t.Fatal(err)
 	}
-	c, h, err := a.Head(bg, u, "dev-a", blob.StreamHot)
+	c, h, err := a.Head(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestHeadAdvancesWithEveryAppend(t *testing.T) {
 		t.Fatalf("Head = (%d, %x), want (3, %x)", c, h, want)
 	}
 	// Another writer's chain is untouched by this one.
-	if c, _, err := a.Head(bg, u, "dev-b", blob.StreamHot); err != nil || c != 0 {
+	if c, _, err := a.Head(bg, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot); err != nil || c != 0 {
 		t.Fatalf("dev-b head = (%d, %v), want (0, nil)", c, err)
 	}
 }
@@ -320,12 +320,12 @@ func TestClientAppendRejectsCounterGap(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, head := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 2)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows); err != nil {
+	rows, head := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 2)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows)); err != nil {
 		t.Fatal(err)
 	}
-	gapped, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 4, head, 1)
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, gapped)
+	gapped, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 4, head, 1)
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, gapped, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", gapped))
 	assertChainBreak(t, err)
 
 	assertGapFree(t, pool, u, 2)
@@ -339,14 +339,14 @@ func TestClientAppendRejectsForgedPrevHash(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows); err != nil {
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows)); err != nil {
 		t.Fatal(err)
 	}
 	var forged [32]byte
 	forged[3] = 0x99
-	next, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 2, forged, 1)
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, next)
+	next, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, forged, 1)
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, next, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", next))
 	assertChainBreak(t, err)
 	assertGapFree(t, pool, u, 1)
 }
@@ -356,12 +356,12 @@ func TestClientAppendRejectsRecomputedHashMismatch(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
 	// The row claims a hash that is not SHA256(prev || blob). A server that
 	// stored the caller's word for it would let a writer make its own chain
 	// unverifiable from the stored bytes.
 	rows[0].BlobHash = bytesOf(0x42, 32)
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows)
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 	assertChainBreak(t, err)
 	assertGapFree(t, pool, u, 0)
 	if got := nextSeqOf(t, pool, u); got != 1 {
@@ -374,9 +374,9 @@ func TestChainBreakRollsBackTheWholeBatch(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
 	rows[2].PrevHash = bytesOf(0x7e, 32) // the third row breaks the run
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows)
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 	assertChainBreak(t, err)
 
 	assertGapFree(t, pool, u, 0)
@@ -389,11 +389,11 @@ func TestClientAppendRejectsRowsThatDisagreeWithTheCall(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
-	if _, err := a.AppendClient(bg, u, "dev-b", blob.StreamHot, rows); err == nil {
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000b", rows)); err == nil {
 		t.Fatal("a row naming another writer must be rejected, not silently rewritten")
 	}
-	if _, err := a.AppendClient(bg, uuid.New(), "dev-a", blob.StreamHot, rows); err == nil {
+	if _, err := a.AppendClient(bg, uuid.New(), "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(uuid.New(), "ios-00000000-0000-4000-8000-00000000000a", rows)); err == nil {
 		t.Fatal("a row naming another user must be rejected")
 	}
 	// The row-versus-call STREAM disagreement is not asserted here: hot is the
@@ -413,14 +413,14 @@ func TestResendingACommittedBatchReturnsItsSeqsInsteadOfFailing(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
-	first, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	first, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The client never saw the response (deadline expired during Commit) and
 	// sends the identical batch again.
-	again, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows)
+	again, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 	if err != nil {
 		t.Fatalf("a resend of an already-applied batch must not fail: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestResendingACommittedBatchReturnsItsSeqsInsteadOfFailing(t *testing.T) {
 		t.Fatalf("next_seq = %d, want 4 — the resend burned a seq", got)
 	}
 	// An older, fully-applied prefix is answered the same way.
-	prefix, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows[:2])
+	prefix, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows[:2], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows[:2]))
 	if err != nil {
 		t.Fatalf("a resend of an applied prefix must not fail: %v", err)
 	}
@@ -446,12 +446,12 @@ func TestResendingDifferentBytesAtAnAppliedCounterIsAChainBreak(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows); err != nil {
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows)); err != nil {
 		t.Fatal(err)
 	}
-	other, _ := sealBody(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, `{"forked":true}`)
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, []Row{other})
+	other, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, `{"forked":true}`)
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, []Row{other}, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", []Row{other}))
 	assertChainBreak(t, err)
 	assertGapFree(t, pool, u, 1)
 }
@@ -465,11 +465,11 @@ func TestAPartiallyAppliedResendIsRejectedWithoutClaimingAChainBreak(t *testing.
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows[:2]); err != nil {
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows[:2], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows[:2])); err != nil {
 		t.Fatal(err)
 	}
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows[1:])
+	_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows[1:], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows[1:]))
 	if err == nil {
 		t.Fatal("a partially-applied batch must be rejected")
 	}
@@ -478,7 +478,7 @@ func TestAPartiallyAppliedResendIsRejectedWithoutClaimingAChainBreak(t *testing.
 	}
 	assertGapFree(t, pool, u, 2)
 	// Resubmitting only the new row works.
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows[2:]); err != nil {
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows[2:], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows[2:])); err != nil {
 		t.Fatalf("the suffix must be appendable: %v", err)
 	}
 	assertGapFree(t, pool, u, 3)
@@ -504,7 +504,7 @@ func TestTheChainCheckRunsAfterTheCounterLockIsTaken(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 3)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 3)
 	var seen int64
 	prepare := func(ctx context.Context, tx pgx.Tx, rows []Row) error {
 		return tx.QueryRow(ctx, `SELECT next_seq FROM oplog_seq WHERE user_id=$1`, u).Scan(&seen)
@@ -537,8 +537,8 @@ func TestAnAppendQueuedBehindAnotherSeesTheCommittedHead(t *testing.T) {
 	a := &Appender{Pool: pool}
 	warmPool(t, pool, 4)
 
-	first, h1 := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
-	if _, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, first); err != nil {
+	first, h1 := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, first, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", first)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -547,17 +547,17 @@ func TestAnAppendQueuedBehindAnotherSeesTheCommittedHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	winner, _ := sealBody(t, u, "dev-a", blob.StreamHot, 2, h1, `{"winner":true}`)
+	winner, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, h1, `{"winner":true}`)
 	if _, err := a.appendTx(bg, tx, u, []Row{winner}, nil); err != nil {
 		t.Fatal(err)
 	}
 
 	// The racer: a DIFFERENT blob at counter 2, submitted while the winner
 	// still holds the lock.
-	racer, _ := sealBody(t, u, "dev-a", blob.StreamHot, 2, h1, `{"racer":true}`)
+	racer, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, h1, `{"racer":true}`)
 	done := make(chan error, 1)
 	go func() {
-		_, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, []Row{racer})
+		_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, []Row{racer}, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", []Row{racer}))
 		done <- err
 	}()
 
@@ -573,7 +573,7 @@ func TestAnAppendQueuedBehindAnotherSeesTheCommittedHead(t *testing.T) {
 		t.Fatal("the racing append never returned")
 	}
 	assertGapFree(t, pool, u, 2)
-	if got := countersOf(t, pool, u, "dev-a", blob.StreamHot); !reflect.DeepEqual(got, []int64{1, 2}) {
+	if got := countersOf(t, pool, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot); !reflect.DeepEqual(got, []int64{1, 2}) {
 		t.Fatalf("counters = %v, want [1 2]", got)
 	}
 }
@@ -616,7 +616,7 @@ func TestConcurrentDoubleAppendFromOneWriterIsACleanChainBreak(t *testing.T) {
 		bodies := [2]string{fmt.Sprintf(`{"a":%d}`, round), fmt.Sprintf(`{"b":%d}`, round)}
 		var racers [2][]Row
 		for i, body := range bodies {
-			r, _ := sealBody(t, u, "dev-a", blob.StreamHot, counter+1, head, body)
+			r, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, counter+1, head, body)
 			racers[i] = []Row{r}
 		}
 		var (
@@ -629,7 +629,7 @@ func TestConcurrentDoubleAppendFromOneWriterIsACleanChainBreak(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				<-start
-				_, errs[i] = a.AppendClient(bg, u, "dev-a", blob.StreamHot, racers[i])
+				_, errs[i] = a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, racers[i], testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", racers[i]))
 			}(i)
 		}
 		close(start)
@@ -653,7 +653,7 @@ func TestConcurrentDoubleAppendFromOneWriterIsACleanChainBreak(t *testing.T) {
 			t.Fatalf("round %d: %d of 2 racers won, want exactly 1 (errs: %v)", round, wins, errs)
 		}
 		var err error
-		if counter, head, err = a.Head(bg, u, "dev-a", blob.StreamHot); err != nil {
+		if counter, head, err = a.Head(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot); err != nil {
 			t.Fatal(err)
 		}
 		if counter != int64(round+1) {
@@ -686,12 +686,12 @@ func TestAppliedLookupResolvesSeqsAndSpotsAFork(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 2)
-	seqs, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 2)
+	seqs, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := appliedSeqs(bg, pool, u, "dev-a", blob.StreamHot, rows)
+	got, err := appliedSeqs(bg, pool, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows)
 	if err != nil {
 		t.Fatalf("identical rows must resolve to their seqs: %v", err)
 	}
@@ -700,14 +700,14 @@ func TestAppliedLookupResolvesSeqsAndSpotsAFork(t *testing.T) {
 	}
 
 	forked := append([]Row(nil), rows...)
-	other, _ := sealBody(t, u, "dev-a", blob.StreamHot, 2, blob.ZeroHash, `{"forked":true}`)
+	other, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, blob.ZeroHash, `{"forked":true}`)
 	forked[1] = other
-	if _, err := appliedSeqs(bg, pool, u, "dev-a", blob.StreamHot, forked); !errors.Is(err, ErrChainBreak) {
+	if _, err := appliedSeqs(bg, pool, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, forked); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("different bytes at an applied counter must be a chain break, got %v", err)
 	}
 
-	missing, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 5, blob.ZeroHash, 1)
-	_, err = appliedSeqs(bg, pool, u, "dev-a", blob.StreamHot, missing)
+	missing, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 5, blob.ZeroHash, 1)
+	_, err = appliedSeqs(bg, pool, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, missing)
 	if err == nil {
 		t.Fatal("a counter that was never stored must not resolve")
 	}
@@ -744,22 +744,22 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	// counter 1. Sharing a writer would make the first case's stored row turn
 	// the rest into replay-detection tests, which pass whether or not the AAD
 	// is checked at all.
-	movedCounter, _ := sealBody(t, u, "dev-1", blob.StreamHot, 7, blob.ZeroHash, `{"moved":"counter"}`)
+	movedCounter, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-000000000101", blob.StreamHot, 7, blob.ZeroHash, `{"moved":"counter"}`)
 	movedCounter = rechain(movedCounter)
 
-	movedUser, _ := sealBody(t, uuid.New(), "dev-2", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"user"}`)
+	movedUser, _ := sealBody(t, uuid.New(), "ios-00000000-0000-4000-8000-000000000102", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"user"}`)
 	movedUser.UserID = u
 
-	movedWriter, _ := sealBody(t, u, "dev-z", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"writer"}`)
-	movedWriter.WriterID = "dev-4"
+	movedWriter, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-00000000007a", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"writer"}`)
+	movedWriter.WriterID = "ios-00000000-0000-4000-8000-000000000104"
 
 	cases := []struct {
 		name, writer string
 		row          Row
 	}{
-		{"sealed at counter 7, stored at counter 1", "dev-1", movedCounter},
-		{"sealed for another user", "dev-2", movedUser},
-		{"sealed by another writer", "dev-4", movedWriter},
+		{"sealed at counter 7, stored at counter 1", "ios-00000000-0000-4000-8000-000000000101", movedCounter},
+		{"sealed for another user", "ios-00000000-0000-4000-8000-000000000102", movedUser},
+		{"sealed by another writer", "ios-00000000-0000-4000-8000-000000000104", movedWriter},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -769,7 +769,7 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 			if err := VerifyChain([]Row{c.row}, 0, blob.ZeroHash); err != nil {
 				t.Fatalf("premise broken: the chain must verify: %v", err)
 			}
-			if _, err := a.AppendClient(bg, u, c.writer, blob.StreamHot, []Row{c.row}); err == nil {
+			if _, err := a.AppendClient(bg, u, c.writer, blob.StreamHot, []Row{c.row}, testHeadSig(u, c.writer, []Row{c.row})); err == nil {
 				t.Fatal("a blob sealed for a different position must not be stored")
 			}
 		})
@@ -780,8 +780,8 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	}
 
 	// The control: the same payload, sealed where it is actually stored.
-	ok, _ := sealBody(t, u, "dev-1", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"counter"}`)
-	if _, err := a.AppendClient(bg, u, "dev-1", blob.StreamHot, []Row{ok}); err != nil {
+	ok, _ := sealBody(t, u, "ios-00000000-0000-4000-8000-000000000101", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"counter"}`)
+	if _, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-000000000101", blob.StreamHot, []Row{ok}, testHeadSig(u, "ios-00000000-0000-4000-8000-000000000101", []Row{ok})); err != nil {
 		t.Fatalf("a correctly sealed row must be accepted: %v", err)
 	}
 }
@@ -797,9 +797,9 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 // two-streams splice went with the cold stream.)
 func TestVerifyChainDetectsRowsSplicedFromTwoChains(t *testing.T) {
 	u := uuid.New()
-	base, head := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 2)
+	base, head := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 2)
 
-	twoWriters, _ := chainFrom(t, u, "dev-b", blob.StreamHot, 3, head, 2)
+	twoWriters, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, 3, head, 2)
 	if err := VerifyChain(append(append([]Row{}, base...), twoWriters...), 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("two writers spliced into one chain must break, got %v", err)
 	}
@@ -811,9 +811,9 @@ func TestClientAppendRefusesEveryStreamButHot(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 1)
 	for _, stream := range []string{"cold", "", "HOT"} {
-		_, err := a.AppendClient(bg, u, "dev-a", stream, rows)
+		_, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", stream, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 		if err == nil {
 			t.Fatalf("stream %q must be refused", stream)
 		}
@@ -833,8 +833,8 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 2)
-	seqs, err := a.AppendClient(bg, u, "dev-a", blob.StreamHot, rows)
+	rows, _ := chainFrom(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash, 2)
+	seqs, err := a.AppendClient(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, testHeadSig(u, "ios-00000000-0000-4000-8000-00000000000a", rows))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -842,7 +842,7 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 		&pgconn.PgError{Code: uniqueViolation, ConstraintName: positionConstraint})
 
 	// Byte-identical rows: "already applied", answered with the stored seqs.
-	got, err := a.resolveAppendErr(bg, u, "dev-a", blob.StreamHot, rows, nil, dup)
+	got, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, nil, dup)
 	if err != nil {
 		t.Fatalf("a duplicate position holding identical bytes must resolve: %v", err)
 	}
@@ -853,8 +853,8 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 	// Different bytes at a taken position: an invariant violation, NOT a chain
 	// break; a client must not be hard-stopped by a server-side bug.
 	forked := append([]Row(nil), rows...)
-	forked[1], _ = sealBody(t, u, "dev-a", blob.StreamHot, 2, blob.ZeroHash, `{"forked":true}`)
-	_, err = a.resolveAppendErr(bg, u, "dev-a", blob.StreamHot, forked, nil, dup)
+	forked[1], _ = sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, blob.ZeroHash, `{"forked":true}`)
+	_, err = a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, forked, nil, dup)
 	if !errors.Is(err, ErrPositionTaken) {
 		t.Fatalf("want ErrPositionTaken, got %T: %v", err, err)
 	}
@@ -865,10 +865,10 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 	// Anything else passes through untouched, and a nil error returns the seqs
 	// it was handed.
 	boom := errors.New("boom")
-	if _, err := a.resolveAppendErr(bg, u, "dev-a", blob.StreamHot, rows, nil, boom); !errors.Is(err, boom) {
+	if _, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, nil, boom); !errors.Is(err, boom) {
 		t.Fatalf("an unrelated error must pass through, got %v", err)
 	}
-	if got, err := a.resolveAppendErr(bg, u, "dev-a", blob.StreamHot, rows, seqs, nil); err != nil || !reflect.DeepEqual(got, seqs) {
+	if got, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, seqs, nil); err != nil || !reflect.DeepEqual(got, seqs) {
 		t.Fatalf("a successful append must return its seqs: %v, %v", got, err)
 	}
 }

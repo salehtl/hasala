@@ -47,15 +47,16 @@ func TestASuspendedAccountIsRefusedOnEveryWriteMethod(t *testing.T) {
 	tok := h.session(u)
 	h.suspend(u)
 
-	// One route per mutating method the mux actually serves, so the check is
-	// about the METHOD and not about one handler.
+	// One route per mutating method the mux actually serves (no PUT route is
+	// mounted since ledgerd's PUT /keys was retired), so the check is about
+	// the METHOD and not about one handler.
 	for _, tc := range []struct {
 		method, path string
 		body         any
 	}{
-		{http.MethodPost, "/api/v1/sync", UploadRequest{WriterID: "w1", Stream: "hot"}},
+		{http.MethodPost, "/api/v1/sync", UploadRequest{WriterID: "ios-00000000-0000-4000-8000-000000000207", Stream: "hot"}},
 		{http.MethodPost, "/api/v1/writers/challenge", nil},
-		{http.MethodPut, "/api/v1/keys", map[string]any{}},
+		{http.MethodPost, "/api/v1/account/bootstrap", map[string]any{}},
 		{http.MethodDelete, "/api/v1/keys/wraps", map[string]any{}},
 	} {
 		w := h.req(tc.method, tc.path, tok, tc.body)
@@ -206,7 +207,7 @@ func TestTheHeadroomFuseRefusesWritesAndPermitsReads(t *testing.T) {
 		token        string
 		body         any
 	}{
-		{http.MethodPost, "/api/v1/sync", tok, UploadRequest{WriterID: "w1", Stream: "hot"}},
+		{http.MethodPost, "/api/v1/sync", tok, UploadRequest{WriterID: "ios-00000000-0000-4000-8000-000000000207", Stream: "hot"}},
 		{http.MethodPost, "/api/v1/writers/challenge", tok, nil},
 		// UNAUTHENTICATED, and the case that matters most: the gate wraps the
 		// whole mux, so a write is refused before a session is even looked
@@ -281,14 +282,14 @@ func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
 	h.h = h.srv.Handler()
 	u := h.user("bytes-small")
 	tok := h.session(u)
-	h.writer(u, "w-small")
+	h.writer(u, "ios-00000000-0000-4000-8000-000000000203")
 
 	var prev [32]byte
 	small := 0
 	for i := int64(1); i <= 20; i++ {
-		blobs, next := uploadChain(t, u, "w-small", i, prev, 1)
+		blobs, next := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000203", i, prev, 1)
 		w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-			WriterID: "w-small", Stream: "hot", Blobs: blobs,
+			WriterID: "ios-00000000-0000-4000-8000-000000000203", Stream: "hot", Blobs: blobs,
 		})
 		if w.Code != http.StatusOK {
 			t.Fatalf("small upload %d refused: %d %s", i, w.Code, w.Body)
@@ -309,15 +310,15 @@ func TestTheUploadLimiterChargesBytesNotRequests(t *testing.T) {
 	h2.h = h2.srv.Handler()
 	u2 := h2.user("bytes-large")
 	tok2 := h2.session(u2)
-	h2.writer(u2, "w-large")
+	h2.writer(u2, "ios-00000000-0000-4000-8000-000000000204")
 
 	// INCOMPRESSIBLE. blob.Seal deflates the plaintext before bucketing, so a
 	// blob of zeroes would be charged as the few dozen bytes it stores rather
 	// than the size it was written as — which is correct (the budget counts
 	// DURABLE bytes) and would make this test measure nothing.
-	big, _ := sealUpload(t, u2, "w-large", 1, [32]byte{}, string(randomBody(t, budget+1<<10)))
+	big, _ := sealUpload(t, u2, "ios-00000000-0000-4000-8000-000000000204", 1, [32]byte{}, string(randomBody(t, budget+1<<10)))
 	w := h2.req(http.MethodPost, "/api/v1/sync", tok2, UploadRequest{
-		WriterID: "w-large", Stream: "hot", Blobs: []UploadBlob{big},
+		WriterID: "ios-00000000-0000-4000-8000-000000000204", Stream: "hot", Blobs: []UploadBlob{big},
 	})
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("one oversized upload: %d %s, want 429 on the BYTE budget", w.Code, w.Body)
@@ -345,21 +346,21 @@ func TestTheUploadRequestLimiterIsSeparateFromTheByteBudget(t *testing.T) {
 	h.h = h.srv.Handler()
 	u := h.user("request-budget")
 	tok := h.session(u)
-	h.writer(u, "w-req")
+	h.writer(u, "ios-00000000-0000-4000-8000-000000000201")
 
 	var prev [32]byte
 	for i := int64(1); i <= 2; i++ {
-		blobs, next := uploadChain(t, u, "w-req", i, prev, 1)
+		blobs, next := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000201", i, prev, 1)
 		if w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-			WriterID: "w-req", Stream: "hot", Blobs: blobs,
+			WriterID: "ios-00000000-0000-4000-8000-000000000201", Stream: "hot", Blobs: blobs,
 		}); w.Code != http.StatusOK {
 			t.Fatalf("upload %d: %d %s", i, w.Code, w.Body)
 		}
 		prev = next
 	}
-	blobs, _ := uploadChain(t, u, "w-req", 3, prev, 1)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000201", 3, prev, 1)
 	w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-		WriterID: "w-req", Stream: "hot", Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-000000000201", Stream: "hot", Blobs: blobs,
 	})
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("third upload: %d %s, want 429", w.Code, w.Body)
@@ -385,7 +386,7 @@ func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
 	h.h = h.srv.Handler()
 	u := h.user("garbage")
 	tok := h.session(u)
-	h.writer(u, "w-garbage")
+	h.writer(u, "ios-00000000-0000-4000-8000-000000000202")
 
 	// Structurally invalid: the declared hashes are nonsense, so the batch is
 	// refused before the append.
@@ -398,16 +399,16 @@ func TestARejectedUploadCostsNoByteBudget(t *testing.T) {
 	}
 	for i := 0; i < 20; i++ {
 		if w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-			WriterID: "w-garbage", Stream: "hot", Blobs: []UploadBlob{junk},
+			WriterID: "ios-00000000-0000-4000-8000-000000000202", Stream: "hot", Blobs: []UploadBlob{junk},
 		}); w.Code == http.StatusOK {
 			t.Fatalf("a malformed batch was accepted")
 		}
 	}
 
 	// A real upload big enough to need most of the budget still lands.
-	big, _ := sealUpload(t, u, "w-garbage", 1, [32]byte{}, string(randomBody(t, 32<<10)))
+	big, _ := sealUpload(t, u, "ios-00000000-0000-4000-8000-000000000202", 1, [32]byte{}, string(randomBody(t, 32<<10)))
 	if w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-		WriterID: "w-garbage", Stream: "hot", Blobs: []UploadBlob{big},
+		WriterID: "ios-00000000-0000-4000-8000-000000000202", Stream: "hot", Blobs: []UploadBlob{big},
 	}); w.Code != http.StatusOK {
 		t.Fatalf("a large valid upload after twenty rejected ones: %d %s", w.Code, w.Body)
 	}

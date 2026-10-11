@@ -147,7 +147,33 @@ func Open3(e blob.Envelope, epochKey []byte, prevHash [32]byte, frame []byte) ([
 	if subtle.ConstantTimeCompare(f.AAD, e.AAD()) != 1 {
 		return nil, ErrAADMismatch
 	}
-	hl := blob.FixedHeaderSize + len(f.AAD)
+	region, err := OpenRegion3(epochKey, prevHash, frame)
+	if err != nil {
+		return nil, fmt.Errorf("%w: aead: %v", ErrSetAside, err)
+	}
+	g, err := RegionPayload(region)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+	}
+	out, err := GunzipStrict(g)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+	}
+	return out, nil
+}
+
+// OpenRegion3 is the AEAD layer of §6.4 in reverse: it splits a frame whose
+// aad_len is in range into header, nonce and ct ‖ tag, derives K_blob and
+// opens R. It checks nothing a reader checks before R7; the caller does.
+func OpenRegion3(epochKey []byte, prevHash [32]byte, frame []byte) ([]byte, error) {
+	if len(frame) < blob.FixedHeaderSize {
+		return nil, errors.New("blobtest: frame is shorter than its header")
+	}
+	l := int(binary.BigEndian.Uint16(frame[5:7]))
+	hl := blob.FixedHeaderSize + l
+	if hl+blob.NonceSize+blob.TagSize > len(frame) {
+		return nil, errors.New("blobtest: aad_len runs past the frame")
+	}
 	header, nonce, ct := frame[:hl], frame[hl:hl+blob.NonceSize], frame[hl+blob.NonceSize:]
 	ad := associatedData(header, prevHash)
 	key, err := blobKey(epochKey, nonce, ad)
@@ -158,27 +184,84 @@ func Open3(e blob.Envelope, epochKey []byte, prevHash [32]byte, frame []byte) ([
 	if err != nil {
 		return nil, err
 	}
-	region, err := gcm.Open(nil, nonce, ct, ad)
-	if err != nil {
-		return nil, fmt.Errorf("%w: aead: %v", ErrSetAside, err)
+	return gcm.Open(nil, nonce, ct, ad)
+}
+
+// RegionPayload reads R = u32be(m) ‖ G ‖ padding and returns G, refusing
+// m > |R| − 4 (spec 01 §6.6 R8).
+func RegionPayload(region []byte) ([]byte, error) {
+	if len(region) < 4 {
+		return nil, errors.New("blobtest: region is shorter than its length field")
 	}
 	m := int(binary.BigEndian.Uint32(region[:4]))
-	if m > len(region)-4 {
-		return nil, fmt.Errorf("%w: payload length %d runs past the region", ErrMalformed, m)
+	if m < 0 || m > len(region)-4 {
+		return nil, fmt.Errorf("blobtest: payload length %d runs past the region", m)
 	}
-	zr, err := gzip.NewReader(bytes.NewReader(region[4 : 4+m]))
+	return region[4 : 4+m], nil
+}
+
+// GunzipStrict is spec 01 §6.6 R9: exactly one gzip member, CRC32 and ISIZE
+// verified (compress/gzip checks both at EOF), no trailing bytes, and the
+// output capped at MaxPlaintext while inflating.
+func GunzipStrict(g []byte) ([]byte, error) {
+	br := bytes.NewReader(g)
+	zr, err := gzip.NewReader(br)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+		return nil, err
 	}
 	zr.Multistream(false)
 	out, err := io.ReadAll(io.LimitReader(zr, blob.MaxPlaintext+1))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+		return nil, err
 	}
 	if len(out) > blob.MaxPlaintext {
-		return nil, fmt.Errorf("%w: plaintext exceeds %d bytes", ErrMalformed, blob.MaxPlaintext)
+		return nil, fmt.Errorf("blobtest: plaintext exceeds %d bytes", blob.MaxPlaintext)
+	}
+	if br.Len() != 0 {
+		return nil, fmt.Errorf("blobtest: %d bytes follow the gzip member", br.Len())
 	}
 	return out, nil
+}
+
+// Gzip is the reference compressor (level 9, mtime 0). Byte identity of G
+// across Go and Swift is not required (spec 01 §6.7).
+func Gzip(plaintext []byte) ([]byte, error) { return gzip3(plaintext) }
+
+// Region3 builds R = u32be(|G|) ‖ G ‖ 0x00… of exactly n bytes.
+func Region3(g []byte, n int) ([]byte, error) {
+	if len(g)+4 > n {
+		return nil, fmt.Errorf("blobtest: %d bytes of payload do not fit a %d-byte region", len(g), n)
+	}
+	r := make([]byte, n)
+	binary.BigEndian.PutUint32(r[:4], uint32(len(g)))
+	copy(r[4:], g)
+	return r, nil
+}
+
+// SealWithNonce3 seals plaintext as Seal3 does but with the nonce given and no
+// re-seal: the vector generator needs reproducible frames.
+func SealWithNonce3(e blob.Envelope, epoch uint32, epochKey []byte, prevHash [32]byte, nonce, plaintext []byte) (blob.Sealed, error) {
+	header, err := blob.Header3(e, epoch)
+	if err != nil {
+		return blob.Sealed{}, err
+	}
+	g, err := gzip3(plaintext)
+	if err != nil {
+		return blob.Sealed{}, err
+	}
+	bucket, err := blob.BucketFor(len(header) + blob.NonceSize + 4 + len(g) + blob.TagSize)
+	if err != nil {
+		return blob.Sealed{}, err
+	}
+	region, err := Region3(g, bucket-len(header)-blob.NonceSize-blob.TagSize)
+	if err != nil {
+		return blob.Sealed{}, err
+	}
+	frame, err := SealRegion3(epochKey, header, prevHash, nonce, region)
+	if err != nil {
+		return blob.Sealed{}, err
+	}
+	return blob.Sealed{Bytes: frame, SizeBucket: bucket}, nil
 }
 
 func gzip3(plaintext []byte) ([]byte, error) {

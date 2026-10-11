@@ -1,0 +1,349 @@
+{
+  "note": "spec 01 §10.2 / spec 02 §8.3: enc(T) = for each field u32be(len) ‖ field; params_hash = SHA256(\"hasala/v1/step-up-params\" ‖ 00 ‖ action ‖ 00 ‖ enc(T)); C = SHA256(\"hasala/v1/step-up\" ‖ 00 ‖ nonce32 ‖ action ‖ 00 ‖ params_hash); DeviceStepUpMessage = \"hasala/v1/step-up-device\" ‖ 00 ‖ C ‖ 00 ‖ writer_id (98 bytes), present for actions with a device proof kind. All 20 actions, the empty-field email.change, and one synthetic 3-field tuple (not an action). Reproduces A11, A18's params hash, A22 and A23.",
+  "actions": [
+    {
+      "action": "passkey.add",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "154bb157e36116967996bc8b8f642c58a543f38195bd13b416a8f0f18550cf85",
+      "c": "8615728753f2b390c676dd76dd6c39e3395e9b0c38b37cdbcf769be7704141e5",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d646576696365008615728753f2b390c676dd76dd6c39e3395e9b0c38b37cdbcf769be7704141e500696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "passkey.delete",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "0102030405060708090a0b0c0d0e0f10"
+      ],
+      "fields_note": "(credential_id raw)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "000000100102030405060708090a0b0c0d0e0f10",
+      "params_hash": "7686789f2d3f75ea516987626f0da957e1e04998a6f5797b5d3153321ac449b5",
+      "c": "20f8bbc4410b52bef9b467a00dcf8313777d3dd8afea81a22bd7fb09d6d97b79",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d6465766963650020f8bbc4410b52bef9b467a00dcf8313777d3dd8afea81a22bd7fb09d6d97b7900696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "keys.bootstrap",
+      "proof_kinds": [
+        "passkey"
+      ],
+      "fields": [
+        "174553b456dddfc6908ecab1c101fe6ab21e2baa0617795b7d43a63482993fd5"
+      ],
+      "fields_note": "(authority_pubkey)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "00000020174553b456dddfc6908ecab1c101fe6ab21e2baa0617795b7d43a63482993fd5",
+      "params_hash": "2ca5b81b21d38d25acc0e7a2d67cc21de22ec4d80970b057de8e87a0da720cf7",
+      "c": "ff9ba915366a6b698c8748c98784e6a0a6fc7ab36d2f60ebe63b1103d316782c"
+    },
+    {
+      "action": "keys.wrap.put",
+      "proof_kinds": [
+        "passkey"
+      ],
+      "fields": [
+        "0102030405060708090a0b0c0d0e0f10"
+      ],
+      "fields_note": "(credential_id raw)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "000000100102030405060708090a0b0c0d0e0f10",
+      "params_hash": "1f03edd1f42e5b0dc4252411bb3e0d53b9ad865c42ffd5819498e129367be8e0",
+      "c": "34b97008cbe0f85e1f2db8ecb292f5ca4953fdfbf866cc27ecd83d3a762dab74"
+    },
+    {
+      "action": "keys.wrap.delete",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "0102030405060708090a0b0c0d0e0f10"
+      ],
+      "fields_note": "(credential_id raw)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "000000100102030405060708090a0b0c0d0e0f10",
+      "params_hash": "c6562a937b3e944719d6c517edbe512e1be915bf86fec9e8ccf6a61a7b726af9",
+      "c": "089d00c656cdfb88c126aee0d3779e1fa99d67d93faf3a5460beedc634cc5659",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500089d00c656cdfb88c126aee0d3779e1fa99d67d93faf3a5460beedc634cc565900696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "keys.recovery.rotate",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "21751a01ea5863cde7576580c8b3e685ad5d57b42856b882bcf7d59ec119f308"
+      ],
+      "fields_note": "(new_recovery_pubkey)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "0000002021751a01ea5863cde7576580c8b3e685ad5d57b42856b882bcf7d59ec119f308",
+      "params_hash": "af6881cb23865fa9166f64da4b42c7b6a346f43d413f2738df5dc04177819ba3",
+      "c": "5a5e897a5a8ca54a4182bfbe3baf251d33810bf04ff35e3bf471ac9f111441ae",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d646576696365005a5e897a5a8ca54a4182bfbe3baf251d33810bf04ff35e3bf471ac9f111441ae00696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "keys.epoch.rotate",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "00000002"
+      ],
+      "fields_note": "(u32be(new_epoch = 2))",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "0000000400000002",
+      "params_hash": "e7cc3ea7af1f67ec04f2d50366023c233ebca723c782611f67f3ac49f8e15dce",
+      "c": "c70482394e1ba71a56aef181f5bfcaa378ea69a79ed92eb7663bc145acc68466",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500c70482394e1ba71a56aef181f5bfcaa378ea69a79ed92eb7663bc145acc6846600696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "writer.revoke",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464"
+      ],
+      "fields_note": "(writer_id UTF-8)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "00000028696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "params_hash": "19ac3bcf15bceddd20e0e5fc96aaea647f3008ec53fb68dd70d9eba02edba3b7",
+      "c": "c4136d9632ce5faebafc8cfdcac49df3e23b88451d1be7b1ac77982a10863bd4",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500c4136d9632ce5faebafc8cfdcac49df3e23b88451d1be7b1ac77982a10863bd400696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "mailbox.link",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "d75c7d5abfc3b40ffe10a6f88e944df66c57b19ddc919c1ee49911beab59690c"
+      ],
+      "fields_note": "(SHA256(id_token ASCII)), id_token = \"header.claims.signature\"",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "00000020d75c7d5abfc3b40ffe10a6f88e944df66c57b19ddc919c1ee49911beab59690c",
+      "params_hash": "ba03842cbe5272e5c7702a61e72c26c74c85eaa6d5f887450fec2e83dfa39dc3",
+      "c": "99d575cc572912303e6d15778fa970a39802ecce9bfb401b82c9f7fa2cd29b11",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d6465766963650099d575cc572912303e6d15778fa970a39802ecce9bfb401b82c9f7fa2cd29b1100696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "mailbox.unlink",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "6f38080c736f050af21a5759da6d6a596c2cf62434501e5674907d8a9575c515",
+      "c": "16409cf8c5517ec700c4aae8f6e557d6898f077101af8394e782c4ed5116856b",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d6465766963650016409cf8c5517ec700c4aae8f6e557d6898f077101af8394e782c4ed5116856b00696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "session.logout_all",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "feec00bcd26e8dda1501ae355f6057831a4c7c1069c04080359d023da70fc84c",
+      "c": "620e8efa0c5b068d7385582c1c97f76f789c0d9d6d6ca220b4d792f7248aa717",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500620e8efa0c5b068d7385582c1c97f76f789c0d9d6d6ca220b4d792f7248aa71700696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "account.delete",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "36663163326239652d346433612d346635622d386337642d306531663261336234633564"
+      ],
+      "fields_note": "(uuid_str(user_id) UTF-8)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "0000002436663163326239652d346433612d346635622d386337642d306531663261336234633564",
+      "params_hash": "4f663475064aa7fb55648bf8b26a3534728987013c93208fdf2fcf7ea1a3180b",
+      "c": "d819d9ababfbdc54b1758aa770d0b097a6490c8c3a77eef4771e4a2718f63eb2",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500d819d9ababfbdc54b1758aa770d0b097a6490c8c3a77eef4771e4a2718f63eb200696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "password.set",
+      "proof_kinds": [
+        "passkey"
+      ],
+      "fields": [
+        "6b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12"
+      ],
+      "fields_note": "(SHA256(S_new)), S of A19",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "000000206b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12",
+      "params_hash": "a8b6d00338c359977557b4affe9ae18808c9042557475e686f804f24240d2242",
+      "c": "7ac70a895bc9effe81bf9df8b998a1d9982ead3bb7b5083d2e33f998f8eb478c"
+    },
+    {
+      "action": "password.change",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "6b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12"
+      ],
+      "fields_note": "(SHA256(S_new)), S of A19",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "000000206b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12",
+      "params_hash": "71e79da4e20713d241e3f74141c02f3b1d4cac608a7fdc60328112aba7936028",
+      "c": "f2cdff80e8a21b2ee4af805282b3865b68d56c3cbea97f7c8faaaf6fd37b6483",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500f2cdff80e8a21b2ee4af805282b3865b68d56c3cbea97f7c8faaaf6fd37b648300696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "password.remove",
+      "proof_kinds": [
+        "passkey"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "38b1eadf39badfcc5cbf27fa56a67b29ac9a87f3fbd9a4239df4bdb6afe276b3",
+      "c": "5a2f8180d615adcc6a8dca66027f6123cf2f3156c7928fe166322f7ad86d9a62"
+    },
+    {
+      "action": "password.reset",
+      "proof_kinds": [
+        "device_code"
+      ],
+      "fields": [
+        "6b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12"
+      ],
+      "fields_note": "(SHA256(S_new)), S of A19",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "000000206b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12",
+      "params_hash": "972fd0715c61e898cb74e05cea8a15693bfcc49644c792b970f2489d73ad0f3f",
+      "c": "c6177f57f949746d8cfb585cefadc74de380d207858ae144d83abe7d36d24743",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500c6177f57f949746d8cfb585cefadc74de380d207858ae144d83abe7d36d2474300696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "email.change",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "a37e2973e835570d06723bd905efca3be7e9bef7227c815257fc647696f502d0",
+        "6b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12"
+      ],
+      "fields_note": "(SHA256(utf8(new_email_norm)), SHA256(S_new)), new address maya@example.ae",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "00000020a37e2973e835570d06723bd905efca3be7e9bef7227c815257fc647696f502d0000000206b2e179e793c2fb3450b56ed96e237c6e661441ce10834a8127edb696cf5bd12",
+      "params_hash": "917c1f970ef94b228665fa2a4dfa10de29ff3fdbb1c4dd9b89caa101d80065ef",
+      "c": "febb9ec28f7243b18968af9f38f9681441d2d61225f4cdfdb9a00407ae49a829",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500febb9ec28f7243b18968af9f38f9681441d2d61225f4cdfdb9a00407ae49a82900696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "phrase.view",
+      "proof_kinds": [
+        "passkey"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "69fb93febed80853281da2e586009820a3df214874b2472010ad1236a1e13c96",
+      "c": "5e0f69f1376552c429b9c94891141258f56c1d165cd60846342a06cfdd9c7982"
+    },
+    {
+      "action": "account.freeze",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "9a0e3fa7c7b4bb2ad248bf21b53d37ede9e097866800460b1b35edc10a6fdb89",
+      "c": "d383ec9bf1bf6d16df27fe71f61c1778156cd3379a15a49af65cd30a95b5d701",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500d383ec9bf1bf6d16df27fe71f61c1778156cd3379a15a49af65cd30a95b5d70100696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "account.unfreeze",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [],
+      "fields_note": "()",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "",
+      "params_hash": "5a46e00c837618abd9ba6391bdba189d676d1136bbcef39d67ca0508ac2809d0",
+      "c": "141c4d710b66a4b06e99ec39271bb28e142a59b85ad6c53a9d4a92d009d5b980",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500141c4d710b66a4b06e99ec39271bb28e142a59b85ad6c53a9d4a92d009d5b98000696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "email.change",
+      "proof_kinds": [
+        "passkey",
+        "device"
+      ],
+      "fields": [
+        "a37e2973e835570d06723bd905efca3be7e9bef7227c815257fc647696f502d0",
+        ""
+      ],
+      "fields_note": "(SHA256(new address), the empty field): no password",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "00000020a37e2973e835570d06723bd905efca3be7e9bef7227c815257fc647696f502d000000000",
+      "params_hash": "4e707d6e9045a6e3e98b172e285a1fde53455406edba5f594f296d3537093995",
+      "c": "deb5f9cb198cd7c49263c7d3655d068a1d63044eba7256ec3257b85a42d65129",
+      "device_step_up_message": "686173616c612f76312f737465702d75702d64657669636500deb5f9cb198cd7c49263c7d3655d068a1d63044eba7256ec3257b85a42d6512900696f732d30613162326333642d346535662d346136622d386337642d396530663161326233633464",
+      "device_writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    },
+    {
+      "action": "test.three_fields",
+      "proof_kinds": null,
+      "fields": [
+        "01",
+        "",
+        "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"
+      ],
+      "fields_note": "a synthetic three-field tuple: (01, empty, 00..2f)",
+      "nonce": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f",
+      "enc": "00000001010000000000000030000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+      "params_hash": "c8860c61bd894c80c073c8539cafa26ab7fc17f61b78fc6494337e377e8e8353",
+      "c": "d2e7cef8f1fbb185f1201e6efc8064947756f8c629adae06a0d8f4168e375868",
+      "synthetic": true
+    }
+  ]
+}
