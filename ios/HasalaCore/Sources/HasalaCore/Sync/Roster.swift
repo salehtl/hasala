@@ -67,6 +67,25 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     return (try? e.encode(self)) ?? Data()
   }
 
+  /// Whether `self` (a fresh fetch) only extends `pinned` (01 §10.13: the
+  /// server cannot roll the roster back). It must be under the same AAK, at or
+  /// past the pinned `last_entry_id`, keep every pinned writer with the same
+  /// DWK and DAK, and keep every pinned `final` exactly (a revocation never
+  /// changes or disappears). New writers and new revocations are fine.
+  public func extends(_ pinned: PinnedRoster) -> Bool {
+    guard authority_pubkey == pinned.authority_pubkey else { return false }
+    if let old = pinned.last_entry_id {
+      guard let new = last_entry_id, new >= old else { return false }
+    }
+    for (id, old) in pinned.writers {
+      guard let new = writers[id], new.dwk == old.dwk, new.dak == old.dak else { return false }
+      if old.final_counter != nil || old.final_head != nil {
+        guard new.final_counter == old.final_counter, new.final_head == old.final_head else { return false }
+      }
+    }
+    return true
+  }
+
   public static func decode(_ d: Data?) -> PinnedRoster? {
     guard let d else { return nil }
     return try? JSONDecoder().decode(PinnedRoster.self, from: d)
@@ -103,6 +122,17 @@ public enum RosterService {
       return KeyHistoryVerifier.ServerWriter(
         writerID: w.writer_id, publicKey: pub, dakPublicKey: dak, revoked: w.revoked_at != nil)
     }
+  }
+
+  /// Fetches the roster again and checks it only extends `pinned`
+  /// (`extends`); a rollback is `rosterInvalid`. Nothing is persisted.
+  public static func refetch(client: AuthClient, bearer: String, pinned: PinnedRoster) async throws(SyncStop)
+    -> PinnedRoster
+  {
+    guard let aak = pinned.authorityPublicKey else { throw .halted(.rosterInvalid) }
+    let fresh = try await fetch(client: client, bearer: bearer, authorityPublicKey: aak)
+    guard fresh.extends(pinned) else { throw .halted(.rosterInvalid) }
+    return fresh
   }
 
   /// Fetches `GET /key-history` and `GET /writers`, verifies both under

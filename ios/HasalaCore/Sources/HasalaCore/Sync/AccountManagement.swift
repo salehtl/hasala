@@ -18,11 +18,15 @@ import CoreWire
 import Foundation
 
 public enum AccountManagement {
+  /// `engine` is this account's one `SyncEngine`: the catch-up runs through
+  /// it, so it never overlaps another run's flush (a second, concurrent
+  /// flush could seal the same pending op twice).
   public static func removeThisIPhone(
-    _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding
+    _ env: AccountEnvironment, engine: SyncEngine, factor: StepUpHelper.Factor, binding: AccountBinding
   ) async throws(CeremonyError) {
+    let ctx = engine.context
     for attempt in 0..<2 {
-      try await catchUp(ctx)
+      try await catchUp(engine)
       let head = (try? ctx.store.chainHeads()[ctx.writerID]) ?? .genesis
       let bearer = try AccountCreation.currentBearer(env)
       let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
@@ -75,14 +79,14 @@ public enum AccountManagement {
     AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
   }
 
-  /// Uploads what is queued and pulls to the head, so the pinned head is current.
-  static func catchUp(_ ctx: SyncContext) async throws(CeremonyError) {
-    do {
-      _ = try await Pusher.flush(ctx, deadline: nil)
-    } catch {
-      if case .latched = error {} else { throw .badResponse("sync before removal: \(error)") }
+  /// Uploads what is queued and pulls to the head, so the pinned head is
+  /// current: one engine run (coalesced with any run in flight). A latch
+  /// stops only the upload; the pull still runs and the head is the verified
+  /// one either way.
+  static func catchUp(_ engine: SyncEngine) async throws(CeremonyError) {
+    if let stop = await engine.run(.refresh).stop {
+      throw .badResponse("sync before removal: \(stop)")
     }
-    do { _ = try await Puller.pull(ctx, observer: nil) } catch { throw .badResponse("pull before removal: \(error)") }
   }
 
   static func dwk(_ env: AccountEnvironment, _ ctx: SyncContext) throws(CeremonyError) -> SecureBytes {

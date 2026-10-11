@@ -22,6 +22,9 @@ public enum StoreError: Error, Sendable, Hashable {
   case corrupt(String)
   /// `persistBatch` while another batch is in flight.
   case batchInFlight
+  /// `persistBatch` with a batch that does not follow the authored head, or
+  /// that carries an op no longer pending: it was sealed from a stale read.
+  case staleBatch
 }
 
 /// `store_meta` (§4.2).
@@ -411,6 +414,28 @@ public final class LedgerStore: Sendable {
     try write { db in
       guard try Int.fetchOne(db, sql: "SELECT count(*) FROM inflight_blobs") == 0 else {
         throw StoreError.batchInFlight
+      }
+      // The batch must continue the authored head and seal only pending ops,
+      // checked inside this transaction (a defence behind the engine's
+      // one-run-at-a-time rule: a batch sealed from a stale read would put a
+      // duplicate op in the shared log).
+      guard let first = blobs.first,
+        let head = try Row.fetchOne(db, sql: "SELECT authored_counter, authored_hash FROM sync_state WHERE id = 1"),
+        first.counter == (head["authored_counter"] as Int64) + 1,
+        first.prevHash.bytes == (head["authored_hash"] as Data)
+      else { throw StoreError.staleBatch }
+      var expected = first.counter
+      var prev = first.prevHash
+      var seen = Set<String>()
+      for b in blobs {
+        guard b.counter == expected, b.prevHash == prev else { throw StoreError.staleBatch }
+        expected += 1
+        prev = b.blobHash
+        for id in b.opIDs {
+          guard seen.insert(id).inserted,
+            try Int.fetchOne(db, sql: "SELECT count(*) FROM pending_ops WHERE op_id = ?", arguments: [id]) == 1
+          else { throw StoreError.staleBatch }
+        }
       }
       for b in blobs {
         let ids = try JSONEncoder().encode(b.opIDs)

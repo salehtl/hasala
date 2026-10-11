@@ -134,6 +134,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var minIOSBuild = 0
     var uploads = 0
     var pullLimitOverride: Int?
+    /// `GET /account` answers this address instead of the stored one.
+    var misreportedEmail: [UserID: String?] = [:]
   }
 
   let state = Mutex(State())
@@ -179,6 +181,21 @@ public final class FakeServer: Transport, @unchecked Sendable {
       let head = s.users[user]?.log.last(where: { $0.writerID == writer.string })
       s.users[user]?.writers[writer.string]?.revoked = (head?.counter ?? 0, head?.blobHash ?? Data(count: 32))
       for (t, sess) in s.sessions where sess.writerID == writer { s.sessions[t]?.revoked = true }
+    }
+  }
+
+  /// `GET /account` answers `email` (nil: no address at all) for this user.
+  public func misreportEmail(user: UserID, _ email: String?) {
+    state.withLock { $0.misreportedEmail[user] = .some(email) }
+  }
+
+  /// A malicious server un-revokes a writer: the revocation entry leaves the
+  /// key history (still a valid, signed history) and `GET /writers` shows the
+  /// writer live again (spec 01 §10.13 says a device must refuse this).
+  public func rollBackRevocation(user: UserID, writer: WriterID) {
+    state.withLock { s in
+      s.users[user]?.history.removeAll { $0.writerID == writer.string && $0.event == "revoked" }
+      s.users[user]?.writers[writer.string]?.revoked = nil
     }
   }
 
@@ -264,7 +281,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
     case "GET /api/v1/account":
       return Self.ok(
         AccountInfo(
-          user_id: user.id.string, status: "active", has_keys: user.keys != nil, email: user.emailNorm,
+          user_id: user.id.string, status: "active", has_keys: user.keys != nil,
+          email: state.withLock { $0.misreportedEmail[user.id] } ?? user.emailNorm,
           display_name: user.displayName, has_password: user.passwordHash != nil,
           password_salt: Base64.encode(sSrv(user.emailNorm)),
           has_passkey: state.withLock { s in s.credentials.values.contains { $0.userID == user.id } }, frozen: user.frozen,

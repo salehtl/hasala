@@ -319,7 +319,7 @@ struct SyncTests {
     let k1 = try EpochKey(epoch: 1, key: try #require(try ctxA.secrets.epochKey(userID: ctxA.userID, epoch: 1)))
     let head = try #require(try ctxA.store.chainHeads()[ctxA.writerID])
     try await AccountManagement.removeThisIPhone(
-      a.env, ctx: ctxA, factor: .device(password: password), binding: try #require(a.binding))
+      a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding))
     // A malicious server serves A's counter 2 anyway, correctly signed by A's DWK.
     let frame = try Sealer(epoch: 1, key: k1).seal(
       plaintextOps: Data(try OpCodec.encodeBlobOps([op(2)])),

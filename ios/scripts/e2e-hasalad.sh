@@ -11,7 +11,9 @@ set -euo pipefail
 
 HASALAD="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 IOS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/hasala-e2e.XXXXXX")"
+# /tmp, not $TMPDIR: Postgres's unix socket lives here, and a socket path
+# longer than 103 bytes (a deep $TMPDIR on macOS) makes the server fail to start.
+TMP="$(mktemp -d /tmp/hasala-e2e.XXXXXX)"
 PORT="${HASALA_E2E_PORT:-18443}"
 SERVER_PID=""
 

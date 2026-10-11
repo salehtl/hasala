@@ -104,7 +104,7 @@ enum Puller {
     }
 
     var roster = PinnedRoster.decode(state.rosterJSON)
-    guard let pinned = roster, let aak = pinned.authorityPublicKey else { throw .halted(.rosterInvalid) }
+    guard let pinned = roster, pinned.authorityPublicKey != nil else { throw .halted(.rosterInvalid) }
     let heads = try ctx.storeCall { () throws(StoreError) in try ctx.store.chainHeads() }
     let inflightTop = try ctx.storeCall { () throws(StoreError) in try ctx.store.inflight().last?.counter } ?? 0
     let own = (writer: ctx.writerID, authoredHead: max(state.authoredHead.counter, inflightTop))
@@ -122,7 +122,7 @@ enum Puller {
       switch result.stop {
       case .refreshRoster?:
         guard !rosterRefreshed else { throw .halted(.tampered(.unknownWriter)) }
-        let fresh = try await RosterService.fetch(client: ctx.client, bearer: bearer, authorityPublicKey: aak)
+        let fresh = try await RosterService.refetch(client: ctx.client, bearer: bearer, pinned: pinned)
         try ctx.storeCall { () throws(StoreError) in try ctx.store.setRoster(fresh.encoded()) }
         roster = fresh
         rosterRefreshed = true

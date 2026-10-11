@@ -34,17 +34,27 @@ enum Pusher {
   static let maxBlobPlaintext = 64 * 1024
   static let maxResends = 3
 
-  static func flush(_ ctx: SyncContext, deadline: ContinuousClock.Instant?) async throws(SyncStop) -> PushSummary {
+  /// Step 1 alone: resends the in-flight batch, if any, byte-identical. The
+  /// engine's reconcile stage runs this before its pre-push pull; it never
+  /// seals anything new.
+  static func reconcile(_ ctx: SyncContext) async throws(SyncStop) -> PushSummary {
     var summary = PushSummary()
     let state = try ctx.storeCall { () throws(StoreError) in try ctx.store.syncState() }
     if let latch = state.latch { throw .latched(latch) }
-    // 1: reconcile what is in flight, byte-identical.
-    var inflight = try ctx.storeCall { () throws(StoreError) in try ctx.store.inflight() }
+    let inflight = try ctx.storeCall { () throws(StoreError) in try ctx.store.inflight() }
     if !inflight.isEmpty {
       summary.opsAcknowledged += try await send(inflight, ctx: ctx)
       summary.batches += 1
       summary.blobs += inflight.count
     }
+    return summary
+  }
+
+  /// Steps 1 and 4-7. Only `SyncEngine` calls this (one run at a time): two
+  /// concurrent flushes could seal the same pending op twice.
+  static func flush(_ ctx: SyncContext, deadline: ContinuousClock.Instant?) async throws(SyncStop) -> PushSummary {
+    var summary = try await reconcile(ctx)
+    var inflight: [InflightBlob]
     // 4-7
     while true {
       if let deadline, ContinuousClock.now >= deadline { return summary }
@@ -134,7 +144,10 @@ enum Pusher {
         frame = try sealer.seal(plaintextOps: plaintext, envelope: envelope, prevHash: prev, random: ctx.random)
       } catch {
         switch error {
-        case .sealerFault: throw .latched(.sealerFault, alarm: true)
+        case .sealerFault:
+          // Persisted, so later runs do not seal (and fault) again (§5.5).
+          try? ctx.store.setLatch(.sealerFault)
+          throw .latched(.sealerFault, alarm: true)
         default: throw .latched(.hardStop)
         }
       }

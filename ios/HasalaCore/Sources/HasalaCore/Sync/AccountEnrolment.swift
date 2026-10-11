@@ -5,9 +5,15 @@
 //            PRF wrap of the asserting credential → the commitments → the body
 //   enrol:   new writer id, DWK and DAK (no prompt) → #23 challenge → #24
 //            register (the AAK signs RegistrationMessage; binds the session)
-//   persist: Keychain DWK and K_1, the store (store_meta, sync_state with
-//            meta.log_generation), the roster verified under AAK.pub and pinned,
-//            then the binding item last (boot reads it as "enrolled")
+//   mint:    the DWK seed goes to the Keychain at once, before any server call
+//            (§6.2 "persisted ... before first use"), so a writer the server
+//            registered but whose answer was lost still has its key here
+//   persist: Keychain K_1, the store (store_meta, sync_state with
+//            meta.log_generation), the roster verified under AAK.pub and pinned
+//            (or, when the fetch fails for a transient reason, AAK.pub alone:
+//            the first sync run fetches and verifies the roster), the caller's
+//            check (E-04 after a bootstrap), then the binding item last (boot
+//            reads it as "enrolled")
 import CoreAuth
 import CoreCrypto
 import CorePrimitives
@@ -16,8 +22,9 @@ import CoreWire
 import Foundation
 
 /// A new writer's keys (spec 01 §4.8–§4.9): the writer id is minted once per
-/// enrolment, the DWK seed stays in memory until it is in the Keychain, and
-/// the DAK is created in the Secure Enclave with no prompt.
+/// enrolment, the DWK seed is written to the Keychain before `mint` returns
+/// (before the writer is first used on the wire), and the DAK is created in
+/// the Secure Enclave with no prompt.
 public struct NewDevice: @unchecked Sendable {
   public let writerID: WriterID
   public let dwkSeed: SecureBytes
@@ -31,6 +38,11 @@ public struct NewDevice: @unchecked Sendable {
     let dak: Data
     do { dak = try await env.approvalKeys.create(userID: userID, writerID: w) } catch { throw .approvalKey(error) }
     guard DAK.isValidPublicKey(dak) else { throw .approvalKey(.unavailable) }
+    // Persisted before first use (§6.2): a lost answer to the registration or
+    // the bootstrap leaves a server-side writer whose key this iPhone keeps.
+    // TODO(WS-14): the lost-answer path itself (C2b-P with this writer, §6.2
+    // C1-P row) needs the minted writer id remembered outside the binding.
+    try secretStep { () throws(SecretStoreError) in try env.secrets.writeWriterSeed(seed, userID: userID, writerID: w) }
     return NewDevice(writerID: w, dwkSeed: seed, dwkPublic: pub, dakPublic: dak)
   }
 }
@@ -134,13 +146,16 @@ public enum Enrolment {
       authorityPublicKey: aak)
   }
 
-  /// The end of every enrolment (C1, C1-P, C2, C2-P, C3).
+  /// The end of every enrolment (C1, C1-P, C2, C2-P, C3). `beforeBinding`
+  /// runs after everything else is stored and before the binding item is
+  /// written: a throw there (E-04's integrity alarm) leaves the iPhone
+  /// unbound, so boot never opens the account.
   static func persist(
     _ env: AccountEnvironment, userID: UserID, device: NewDevice, epochKey: SecureBytes, emailNorm: String,
-    serverSalt: Data, displayName: String?, authorityPublicKey: Data
+    serverSalt: Data, displayName: String?, authorityPublicKey: Data,
+    beforeBinding: (@Sendable () async throws(CeremonyError) -> Void)? = nil
   ) async throws(CeremonyError) -> EnrolledAccount {
     try secretStep { () throws(SecretStoreError) in
-      try env.secrets.writeWriterSeed(device.dwkSeed, userID: userID, writerID: device.writerID)
       try env.secrets.writeEpochKey(epochKey, userID: userID, epoch: 1)
     }
     device.dwkSeed.wipe()
@@ -167,15 +182,24 @@ public enum Enrolment {
     } catch {
       throw .store(error)
     }
-    let roster: PinnedRoster
+    // The roster: verified and pinned now when the server answers; a key
+    // history that fails verification stops here (no binding). A transient
+    // failure pins AAK.pub alone, so a later failure cannot strand an iPhone
+    // whose writer the server already accepted; the first sync run verifies
+    // the roster under that pinned key (R1 for any row, the refresh stage).
+    var roster = PinnedRoster(authorityPublicKey: authorityPublicKey, roster: .empty)
     do {
       roster = try await RosterService.fetch(client: env.client, bearer: bearer, authorityPublicKey: authorityPublicKey)
+      guard roster.writers[device.writerID.string] != nil else {
+        throw CeremonyError.integrityAlarm("own writer not in key history")
+      }
+    } catch let e as CeremonyError {
+      throw e
     } catch {
-      if case .halted = error { throw .integrityAlarm("key history") }
-      throw .api(.transport(.offline(.unknown)))
+      if case .halted? = error as? SyncStop { throw .integrityAlarm("key history") }
     }
-    guard roster.writers[device.writerID.string] != nil else { throw .integrityAlarm("own writer not in key history") }
     do { try store.setRoster(roster.encoded()) } catch { throw .store(error) }
+    if let beforeBinding { try await beforeBinding() }
     let binding = AccountBinding(
       userID: userID, writerID: device.writerID, apiBase: env.apiBase, keyEpoch: 1, emailNorm: emailNorm,
       serverSalt: serverSalt, displayName: displayName)

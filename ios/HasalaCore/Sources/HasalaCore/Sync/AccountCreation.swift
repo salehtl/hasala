@@ -268,9 +268,11 @@ public enum AccountCreation {
     return s.token
   }
 
-  /// Step 10/15 of C1-P/C1: the Keychain (session, DWK, `K_1`, binding), the
-  /// store, the pinned roster; then E-04's comparison. A difference raises the
-  /// integrity alarm and stops onboarding.
+  /// Step 10/15 of C1-P/C1: the Keychain (session, `K_1`; the DWK went in at
+  /// mint), the store, the pinned roster; then E-04's comparison; then the
+  /// binding item. A difference raises the integrity alarm and stops
+  /// onboarding: the binding is never written, so boot never opens the
+  /// account (it stays at `onboardingKeys`, C1's interrupted path).
   static func persistAndCompare(
     _ env: AccountEnvironment, grant: SessionGrant, userID: UserID, device: NewDevice, keys: NewAccountKeys,
     emailNorm: String, serverSalt: Data, displayName: String?, recoveryWrap: String, recoveryPublicKey: String,
@@ -283,18 +285,31 @@ public enum AccountCreation {
     let commit = try cryptoStep("commit") { try keys.body.amkCommitment(userID: userID) }
     let account = try await Enrolment.persist(
       env, userID: userID, device: device, epochKey: k1, emailNorm: emailNorm, serverSalt: serverSalt,
-      displayName: displayName, authorityPublicKey: aak)
-    // E-04.
+      displayName: displayName, authorityPublicKey: aak,
+      beforeBinding: { () async throws(CeremonyError) in
+        try await compareAfterBootstrap(
+          env, commit: commit, authorityPublicKey: aak, recoveryPublicKey: recoveryPublicKey,
+          recoveryWrap: recoveryWrap, emailNorm: emailNorm)
+      })
+    keys.wipe()
+    return account
+  }
+
+  /// E-04: `GET /keys` and `GET /account` must equal this device's values. An
+  /// address that is missing from the answer is a difference (`02` #40 always
+  /// returns it to the account's own session).
+  static func compareAfterBootstrap(
+    _ env: AccountEnvironment, commit: Data, authorityPublicKey: Data, recoveryPublicKey: String,
+    recoveryWrap: String, emailNorm: String
+  ) async throws(CeremonyError) {
     let bearer = try currentBearer(env)
     let k = try await apiStep { () async throws(APIError) in try await env.client.keys(bearer: bearer) }
-    guard k.amk_commitment == Base64.encode(commit), k.authority_pubkey == Base64.encode(aak),
+    guard k.amk_commitment == Base64.encode(commit), k.authority_pubkey == Base64.encode(authorityPublicKey),
       k.recovery_pubkey == recoveryPublicKey, k.recovery_wrap == recoveryWrap
     else { throw .integrityAlarm("keys differ after bootstrap") }
     let a = try await apiStep { () async throws(APIError) in try await env.client.account(bearer: bearer) }
-    if let e = a.email, (try? EmailNorm.normalize(e)) != emailNorm {
+    guard let e = a.email, (try? EmailNorm.normalize(e)) == emailNorm else {
       throw .integrityAlarm("address differs after bootstrap")
     }
-    keys.wipe()
-    return account
   }
 }

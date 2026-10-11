@@ -293,7 +293,7 @@ struct AccountManagementTests {
     let enrolledB = try await Enrolment.enrolWriter(
       b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
     try await AccountManagement.removeThisIPhone(
-      a.env, ctx: ctxA, factor: .device(password: password), binding: try #require(a.binding))
+      a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding))
     #expect(a.keychain.count == 0)  // §4.7 row 2: every item gone
     // B's verified roster: A revoked at counter 1 (the op A flushed first).
     let ctxB = Enrolment.context(b.env, account: enrolledB)

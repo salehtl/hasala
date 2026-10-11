@@ -55,6 +55,8 @@ public struct SyncStatus: Sendable, Hashable {
   /// New integrity-alarm occurrences since the app last acknowledged (A-32).
   public var integrityAlarms: Int = 0
   /// `Hasala-Request-Id` of the last failing call (diagnostics, §18.2).
+  /// TODO(WS-18): not set yet; `SyncStop` does not carry the failing
+  /// response's request id, and the diagnostics screen is not built.
   public var lastFailingRequestID: String?
   /// `Retry-After` of the last `429`, seconds.
   public var retryAfterSeconds: Int?

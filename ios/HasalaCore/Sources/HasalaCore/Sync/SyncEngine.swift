@@ -37,7 +37,8 @@ public actor SyncEngine {
   let observer: (any PageObserver)?
   public private(set) var status = SyncStatus()
   private var inFlight: Task<RunOutcome, Never>?
-  private var rerun = false
+  /// The trailing rerun asked for while a run was in flight, if any.
+  private var rerun: SyncTrigger?
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
   private var offlineAttempts = 0
 
@@ -81,33 +82,39 @@ public actor SyncEngine {
     return base * (0.8 + 0.4 * Double(r) / 255.0)
   }
 
-  /// Runs once, coalescing with a run in flight.
+  /// Runs once, coalescing with a run in flight: a call while a run is in
+  /// flight asks for one trailing rerun and returns the merged outcome.
   @discardableResult
   public func run(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant? = nil) async -> RunOutcome {
     if let t = inFlight {
-      rerun = true
-      _ = await t.value
-      if let t2 = inFlight { return await t2.value }
+      // The rerun keeps the strongest trigger asked for: one that re-verifies
+      // the roster wins over `authored`.
+      if rerun == nil || trigger.refreshesRoster { rerun = trigger }
       return await t.value
     }
     let task = Task { await self.loop(trigger, deadline: deadline) }
     inFlight = task
-    let out = await task.value
-    inFlight = nil
-    return out
+    return await task.value
   }
 
+  /// Every run's body. `inFlight` is cleared here, in the same actor step as
+  /// the last `rerun` check (no suspension between them), so a `run` call can
+  /// never set `rerun` after that check and still be handed this outcome.
   private func loop(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = await once(trigger, deadline: deadline)
-    while rerun {
-      rerun = false
+    while let next = rerun {
+      rerun = nil
       if out.stop != nil { break }
-      let next = await once(trigger, deadline: deadline)
-      out.newData = out.newData || next.newData
-      out.pulled.rowsStored += next.pulled.rowsStored
-      out.pushed.opsAcknowledged += next.pushed.opsAcknowledged
-      out.stop = next.stop
+      let again = await once(next, deadline: deadline)
+      out.newData = out.newData || again.newData
+      out.pulled.rowsStored += again.pulled.rowsStored
+      out.pulled.opsOpened += again.pulled.opsOpened
+      out.pushed.batches += again.pushed.batches
+      out.pushed.blobs += again.pushed.blobs
+      out.pushed.opsAcknowledged += again.pushed.opsAcknowledged
+      out.stop = again.stop
     }
+    inFlight = nil
     return out
   }
 
@@ -119,14 +126,16 @@ public actor SyncEngine {
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
       if hasInflight {
         set(.pushing)
-        out.pushed = try await flushRespectingLatch(deadline: deadline)
+        out.pushed = try await latchAware { () async throws(SyncStop) in try await Pusher.reconcile(context) }
       }
       set(.pulling)
       if trigger.refreshesRoster { try await refreshRoster() }
       out.pulled = try await Puller.pull(context, observer: observer)
       if out.pulled.alarms > 0 { status.integrityAlarms += out.pulled.alarms }
       set(.pushing)
-      let pushed = try await flushRespectingLatch(deadline: deadline)
+      let pushed = try await latchAware { () async throws(SyncStop) in
+        try await Pusher.flush(context, deadline: deadline)
+      }
       out.pushed.batches += pushed.batches
       out.pushed.blobs += pushed.blobs
       out.pushed.opsAcknowledged += pushed.opsAcknowledged
@@ -159,17 +168,15 @@ public actor SyncEngine {
   /// next page is read.
   private func refreshRoster() async throws(SyncStop) {
     let state = try context.storeCall { () throws(StoreError) in try context.store.syncState() }
-    guard let pinned = PinnedRoster.decode(state.rosterJSON), let aak = pinned.authorityPublicKey else {
-      throw .halted(.rosterInvalid)
-    }
-    let fresh = try await RosterService.fetch(client: context.client, bearer: try context.bearer(), authorityPublicKey: aak)
+    guard let pinned = PinnedRoster.decode(state.rosterJSON) else { throw .halted(.rosterInvalid) }
+    let fresh = try await RosterService.refetch(client: context.client, bearer: try context.bearer(), pinned: pinned)
     if fresh != pinned { try context.storeCall { () throws(StoreError) in try context.store.setRoster(fresh.encoded()) } }
   }
 
   /// A latch stops the flush but not the pull (§5.4: reads continue).
-  private func flushRespectingLatch(deadline: ContinuousClock.Instant?) async throws(SyncStop) -> PushSummary {
+  private func latchAware(_ push: () async throws(SyncStop) -> PushSummary) async throws(SyncStop) -> PushSummary {
     do {
-      return try await Pusher.flush(context, deadline: deadline)
+      return try await push()
     } catch {
       if case .latched(let l, let alarm) = error {
         status.latch = l

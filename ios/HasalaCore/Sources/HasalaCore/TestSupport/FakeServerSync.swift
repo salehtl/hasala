@@ -115,7 +115,10 @@ extension FakeServer {
         u.log.append(
           StoredRow(
             seq: s.seq, writerID: wid.string, counter: x.counter, sizeBucket: x.blob.count, blobHash: x.hash,
-            prevHash: x.prev, blob: x.blob, headSig: i == apply.count - 1 ? headSig : nil))
+            prevHash: x.prev, blob: x.blob,
+            // head_sig covers the batch's last row only: a partial apply stores
+            // no signature on a row it does not sign.
+            headSig: i == apply.count - 1 && apply.count == rows.count ? headSig : nil))
       }
       s.users[u.id] = u
       return (Self.ok(UploadResponse(seqs: seqs)), lose)
