@@ -231,3 +231,66 @@ func TestHint(t *testing.T) {
 		}
 	}
 }
+
+// Spec 07 §2.11, §6.6: mail-redact drops a subject-less row's address seven
+// days after it became final; mail-log deletes rows past the retention, never
+// one being sent.
+func TestTheLogSweepsRedactAndExpireRows(t *testing.T) {
+	f := newFixture(t)
+	alert := func(to string, user *uuid.UUID) int64 {
+		return f.enqueue(Enqueue{Kind: "alert", Subkind: "new_passkey", Lane: LaneTransactional, To: to, Tag: tag(),
+			UserID: user, Params: map[string]any{"event_at": "x"}})
+	}
+	orphan := alert("nobody@example.com", nil)
+	owned := alert("maya@example.com", &f.user)
+	if n, err := f.q.RunOnce(bg); err != nil || n != 2 {
+		t.Fatalf("RunOnce = %d, %v", n, err)
+	}
+	queued := alert("later@example.com", nil)
+	if _, err := f.pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = $2 WHERE id = $1`, queued, f.c.now().Add(365*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	sending := alert("inflight@example.com", nil)
+	if _, err := f.pool.Exec(bg, `UPDATE mail_log SET status = 'sending', next_attempt_at = NULL, lease_until = $2 WHERE id = $1`,
+		sending, f.c.now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	f.c.add(6 * 24 * time.Hour)
+	if _, err := f.q.SweepLog(bg, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, rcpt, _, _ := f.row(orphan); rcpt == nil {
+		t.Fatal("redacted before seven days")
+	}
+	f.c.add(2 * 24 * time.Hour)
+	if _, err := f.q.SweepLog(bg, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, rcpt, _, _ := f.row(orphan); rcpt != nil {
+		t.Fatal("a final subject-less row kept its address past seven days")
+	}
+	if _, rcpt, _, _ := f.row(owned); rcpt == nil {
+		t.Fatal("a row with a subject lost its address to mail-redact")
+	}
+	if _, rcpt, _, _ := f.row(queued); rcpt == nil {
+		t.Fatal("a queued row lost its address")
+	}
+
+	f.c.add(23 * 24 * time.Hour) // 31 days
+	n, err := f.q.SweepLog(bg, DefaultLogRetention)
+	if err != nil || n != 3 {
+		t.Fatalf("SweepLog = %d, %v", n, err)
+	}
+	var left []int64
+	rows, _ := f.pool.Query(bg, `SELECT id FROM mail_log ORDER BY id`)
+	for rows.Next() {
+		var id int64
+		_ = rows.Scan(&id)
+		left = append(left, id)
+	}
+	rows.Close()
+	if len(left) != 1 || left[0] != sending {
+		t.Fatalf("rows left after the retention: %v (want only the one being sent, %d)", left, sending)
+	}
+}

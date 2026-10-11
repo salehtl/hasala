@@ -156,6 +156,14 @@ func TestValuesAreValidated(t *testing.T) {
 	wantErr(t, env{"HASALA_RP_ID": "https://hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app"}, "bare domain")
 	wantErr(t, env{"HASALA_RP_ID": "hasala.app"}, "rp_origins is empty")
 	wantErr(t, env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "hasala.app"}, "absolute origin")
+	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "100h"}, "log_retention")
+	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "2161h"}, "log_retention")
+	if c := mustLoad(t, env{"HASALA_EMAIL_LOG_RETENTION": "168h"}); c.Email.LogRetention != 168*time.Hour {
+		t.Fatalf("HASALA_EMAIL_LOG_RETENTION not applied: %v", c.Email.LogRetention)
+	}
+	if c := mustLoad(t, env{}); c.Email.LogRetention != 720*time.Hour {
+		t.Fatalf("the email log's default retention is %v, want 720h", c.Email.LogRetention)
+	}
 }
 
 func TestTheOptionalGroupsAreAllOrNothing(t *testing.T) {

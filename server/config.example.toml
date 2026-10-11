@@ -56,3 +56,4 @@ allowed_environments = ["production", "sandbox"]
 # from_name = "Hasala"
 # from = "no-reply@hasala.app"
 # freeze_url = "https://hasala.app/freeze"
+# log_retention = "720h"

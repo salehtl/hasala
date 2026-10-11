@@ -495,3 +495,46 @@ func (q *Queue) EnableKick() {
 		q.kick = make(chan struct{}, 1)
 	}
 }
+
+// Log retention (spec 07 §6.6, §2.11; spec 01 §4.11).
+const (
+	// DefaultLogRetention is HASALA_EMAIL_LOG_RETENTION's default.
+	DefaultLogRetention = 30 * 24 * time.Hour
+	// RedactAfter is how long a final row with no subject keeps its address.
+	RedactAfter = 7 * 24 * time.Hour
+	sweepBatch  = 1000
+)
+
+// SweepLog is spec 07 §2.11's mail-log and mail-redact sweeps, run by serve:
+// rows older than retention go (never one being sent), and a final row with
+// no subject (user_id and waitlist_entry_id both NULL: a signup code, an
+// address-in-use notice, a test) loses its plaintext address seven days after
+// it became final. Deletes run in batches of 1,000.
+func (q *Queue) SweepLog(ctx context.Context, retention time.Duration) (int64, error) {
+	if retention <= 0 {
+		retention = DefaultLogRetention
+	}
+	now := q.now()
+	var total int64
+	for {
+		tag, err := q.Pool.Exec(ctx,
+			`DELETE FROM mail_log WHERE id IN (SELECT id FROM mail_log
+			   WHERE created_at < $1 AND status <> 'sending' ORDER BY id LIMIT $2)`,
+			now.Add(-retention), sweepBatch)
+		if err != nil {
+			return total, fmt.Errorf("mailq: mail-log sweep: %w", err)
+		}
+		total += tag.RowsAffected()
+		if tag.RowsAffected() < sweepBatch {
+			break
+		}
+	}
+	tag, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET recipient = NULL
+		  WHERE recipient IS NOT NULL AND user_id IS NULL AND waitlist_entry_id IS NULL AND final_at < $1`,
+		now.Add(-RedactAfter))
+	if err != nil {
+		return total, fmt.Errorf("mailq: mail-redact sweep: %w", err)
+	}
+	return total + tag.RowsAffected(), nil
+}

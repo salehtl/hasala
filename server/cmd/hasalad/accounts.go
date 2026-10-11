@@ -24,6 +24,9 @@ import (
 // that hold a plaintext address.
 const ceremonySweepInterval = 5 * time.Minute
 
+// fakeSenderKeeps bounds what serve's fake sender holds in memory.
+const fakeSenderKeeps = 64
+
 // loadAuthKeys reads salt_key and auth_key (generation 1, spec 01 §4.11). Both
 // files or neither; behind Cloudflare both are required (config) and the two
 // keys must differ.
@@ -109,7 +112,7 @@ func enableAccounts(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 		sender = &mail.Cloudflare{AccountID: cfg.Email.CloudflareAccountID, Token: strings.TrimSpace(string(raw)), From: from}
 	} else {
 		slog.Warn("hasalad serve: no [email] group: emails are recorded by a fake sender and never leave this process")
-		sender = &mail.Fake{}
+		sender = &mail.Fake{Max: fakeSenderKeeps}
 	}
 	logf := func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) }
 	q := &mailq.Queue{Pool: pool, Sender: sender, Bounced: auth.BounceHook, Tagger: keys.EmailTag, Logf: logf}
@@ -133,6 +136,13 @@ func enableAccounts(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 				return "", err
 			}
 			return fmt.Sprintf("swept %d expired ceremony(s)", n), nil
+		}),
+		startSweep(ctx, "mail log sweep", func(ctx context.Context) (string, error) {
+			n, err := q.SweepLog(ctx, cfg.Email.LogRetention)
+			if err != nil || n == 0 {
+				return "", err
+			}
+			return fmt.Sprintf("deleted or redacted %d email log row(s)", n), nil
 		}),
 		startSweep(ctx, "account sweep", func(ctx context.Context) (string, error) {
 			n, err := a.SweepHourly(ctx)

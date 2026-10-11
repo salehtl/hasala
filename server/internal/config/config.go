@@ -134,8 +134,7 @@ type AuthConfig struct {
 	RPDisplayName string   `toml:"rp_display_name"`
 	RPOrigins     []string `toml:"rp_origins"`
 	// SessionIdle and SessionMax are spec 02 §9.2's sliding idle limit and
-	// absolute cap (PO-15: 30 and 90 days). Until WS-3 lands the sliding
-	// renewal, a session lives for SessionIdle from issue.
+	// absolute cap (PO-15: 30 and 90 days).
 	SessionIdle time.Duration `toml:"session_idle"`
 	SessionMax  time.Duration `toml:"session_max"`
 	InviteTTL   time.Duration `toml:"invite_ttl"`
@@ -195,6 +194,9 @@ type EmailConfig struct {
 	FromName            string `toml:"from_name"`
 	From                string `toml:"from"`
 	FreezeURL           string `toml:"freeze_url"`
+	// LogRetention (HASALA_EMAIL_LOG_RETENTION) is how long a mail_log row
+	// lives (spec 07 §6.6): 30 days, bounded 7 to 90.
+	LogRetention time.Duration `toml:"log_retention"`
 	// APITokenFile (HASALA_EMAIL_API_TOKEN_FILE). Never TOML.
 	APITokenFile string `toml:"-"`
 	// WebBaseURL (HASALA_WEB_BASE_URL) is the base of every link in spec 07's
@@ -282,10 +284,11 @@ func defaults() Config {
 			AllowedEnvironments: []string{"production", "sandbox"},
 		},
 		Email: EmailConfig{
-			FromName:   "Hasala",
-			From:       "no-reply@hasala.app",
-			FreezeURL:  "https://hasala.app/freeze",
-			WebBaseURL: "https://hasala.app",
+			FromName:     "Hasala",
+			From:         "no-reply@hasala.app",
+			FreezeURL:    "https://hasala.app/freeze",
+			WebBaseURL:   "https://hasala.app",
+			LogRetention: 720 * time.Hour,
 		},
 	}
 }
@@ -419,6 +422,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_FREEZE_URL", &c.Email.FreezeURL)
 	str("HASALA_EMAIL_API_TOKEN_FILE", &c.Email.APITokenFile)
 	str("HASALA_WEB_BASE_URL", &c.Email.WebBaseURL)
+	dur("HASALA_EMAIL_LOG_RETENTION", &c.Email.LogRetention)
 
 	str("HASALA_CONSOLE_LISTEN", &c.Console.Listen)
 	str("HASALA_CONSOLE_METRICS_LISTEN", &c.Console.MetricsListen)
@@ -635,6 +639,9 @@ func (c Config) validateEmail(prod bool) error {
 		if err != nil || u.Scheme != "https" || u.Host != "hasala.app" || u.RawQuery != "" || u.Fragment != "" {
 			return fmt.Errorf("%s is %q: it must be an https URL on hasala.app with no query or fragment", name, raw)
 		}
+	}
+	if e.LogRetention < 168*time.Hour || e.LogRetention > 2160*time.Hour {
+		return fmt.Errorf("email.log_retention is %s (HASALA_EMAIL_LOG_RETENTION): it must be 168h to 2160h", e.LogRetention)
 	}
 	if e.Enabled() {
 		if !cfAccountID.MatchString(e.CloudflareAccountID) {

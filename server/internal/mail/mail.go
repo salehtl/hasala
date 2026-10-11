@@ -39,11 +39,13 @@ var (
 
 // Fake records every message instead of sending it (spec 02 §14.4
 // "Unconfigured"). Tests read codes and freeze tokens from it. Err, when set,
-// decides each send's outcome.
+// decides each send's outcome. Max, when positive, keeps only the newest Max
+// messages (serve without [email] is a long-running process).
 type Fake struct {
 	mu   sync.Mutex
 	sent []Message
 	Err  func(Message) error
+	Max  int
 }
 
 // Send records m.
@@ -56,6 +58,9 @@ func (f *Fake) Send(_ context.Context, m Message) (string, error) {
 		}
 	}
 	f.sent = append(f.sent, m)
+	if f.Max > 0 && len(f.sent) > f.Max {
+		f.sent = append([]Message(nil), f.sent[len(f.sent)-f.Max:]...)
+	}
 	return "fake", nil
 }
 

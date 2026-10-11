@@ -522,6 +522,15 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (Rep
 		rep.Rows[r.String()] = n
 	}
 
+	// The account's address also sits in rows that never carried its user_id
+	// (spec 02 §15.2 step 3, spec 07 §6.6, review 2 F-14): the signup code and
+	// the invite were sent before the account existed, and another account's
+	// notice may name it. These are plaintext matches, so every caller makes
+	// them, before the account row goes.
+	if err := eraseAddress(ctx, tx, users); err != nil {
+		return rep, err
+	}
+
 	// The one statement that matters. Everything else cascades from it, which
 	// is what satisfies the append-only triggers — see the package comment.
 	//
@@ -853,4 +862,29 @@ func verifiedByAny(keys []ed25519.PublicKey, msg, sig []byte) bool {
 		}
 	}
 	return false
+}
+
+// eraseAddress is the plaintext-address half of a purge (spec 02 §15.2 step
+// 3): a queued mail_log row to the address is deleted, one being sent is
+// suppressed without it, a final one keeps only its hint and tag; the
+// account's joined waitlist entry goes; and a signup or email-change ceremony
+// holding the address goes. The email_tag steps (§15.2 step 2) need auth_key,
+// which this package does not hold; those codes expire within the hour.
+func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID) error {
+	const addrs = `(SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`
+	for _, q := range []string{
+		`DELETE FROM mail_log WHERE status = 'queued' AND recipient IN ` + addrs,
+		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now(), error = 'purged'
+		  WHERE status = 'sending' AND recipient IN ` + addrs,
+		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL AND recipient IN ` + addrs,
+		`DELETE FROM waitlist_entries WHERE state = 'joined'
+		    AND id IN (SELECT waitlist_entry_id FROM invite_codes WHERE redeemed_by = ANY($1))`,
+		`DELETE FROM signup_ceremonies WHERE email_norm IN ` + addrs,
+		`DELETE FROM email_change_ceremonies WHERE new_email_norm IN ` + addrs,
+	} {
+		if _, err := tx.Exec(ctx, q, users); err != nil {
+			return fmt.Errorf("purge: erase the address: %w", err)
+		}
+	}
+	return nil
 }
