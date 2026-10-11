@@ -39,11 +39,11 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
 - CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
   without the private fixtures. Jobs `gate` (`check.sh --fence-only` before
   anything else, then `nix flake check --no-build`, a build of every check
-  except `hasala-vm`, and `scripts/check.sh` in the devShell), `vuln`
+  except `qa-vm`, and `scripts/check.sh` in the devShell), `vuln`
   (`govulncheck ./...` in `server/`, failing on anything reachable) and
   `secrets` (gitleaks over the full history). Keep those job names: required
   status checks match them by name. A fourth job, `web`, checks the website
-  (see "Website"), and `nixos-vm` builds `checks.x86_64-linux.hasala-vm` with
+  (see "Website"), and `nixos-vm` builds `checks.x86_64-linux.qa-vm` with
   KVM; neither is a required check. `.gitleaks.toml` allowlists
   known public test vectors only, each scoped to its rule, its files and its
   exact value; never widen it to pass a real secret.
@@ -65,7 +65,7 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   which is byte-frozen). The infra checks: `ingress-lint` (both systems; the
   module's rendered tunnel config against `infra/qa/cloudflared/config.golden.yml`
   plus `lint.sh`), and on x86_64-linux `module-eval` (every module assertion
-  fires on its misuse) and `hasala-vm` (needs KVM). On a Mac,
+  fires on its misuse) and `qa-vm` (needs KVM). On a Mac,
   `nix flake check --no-build --all-systems` evaluates the Linux ones.
 - `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
   `console` (a stub until the console is built) and `version`; configuration

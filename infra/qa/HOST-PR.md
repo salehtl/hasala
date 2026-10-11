@@ -154,7 +154,15 @@ in
 ```
 
 The module itself adds `RequiresMountsFor=` on the backup directory to every
-backup unit, so dumps can never land on `/` behind an unmounted disk.
+backup unit (`hasala-backup`, `-premigrate`, `-offsite` and `-check`), so dumps
+can never land on `/` behind an unmounted disk. Because `hasala-migrate`
+requires the pre-migration dump, a missing backup disk also stops `hasalad`
+and the console from starting, even with nothing pending: deliberate, fail
+closed, and alerted through `onFailure`.
+
+Every secret option is a **string** path (the `config.sops.secrets.….path`
+above), never a Nix path literal: M22 refuses any value under the Nix store,
+where a secret would be world-readable.
 
 ### `modules/sops.nix`
 
@@ -266,17 +274,23 @@ console that serves (spec 07 §8). Until then, enabling it leaves
 What the module adds by itself when `console.enable`:
 
 - `hasala-console.service`: `hasalad console` as its own OS user
-  `hasala-console` (peer-mapped to `hasala_runtime`), `127.0.0.1:8472`, metrics
+  `hasala-console` (peer-mapped to `hasala_runtime` for now; spec 05 review 2's
+  own `hasala_console` role waits for the server's grant split),
+  `127.0.0.1:8472`, metrics
   and `/healthz` on `127.0.0.1:9473`, no access to `hasalad`'s credentials (and
   `hasalad` none to the console's).
 - The kernel rule in `networking.firewall.extraCommands`: locally generated TCP
-  to `127.0.0.1:8472` is reset unless its owner is `console.restrictToUser`
-  (`nginx`). The host's firewall must be the iptables one (M21 refuses
-  nftables, M22 a disabled firewall).
+  to `127.0.0.1:8472` (and its `ip6tables` twin, `[::1]:8472`) is reset unless
+  its owner is `console.restrictToUser` (`nginx`). The host's firewall must be
+  the iptables one and enabled (M21 refuses nftables and a disabled firewall).
+  `hasala-health`'s probe P10 checks every two minutes that the rule still
+  resets a non-nginx connection.
 - Assertions M14–M19: distinct ports, neither console port in the firewall or
   the tunnel ingress, a non-empty login list, a host outside `hasala.app`, and
-  exactly one nginx vhost proxying to the console, which must be in
+  exactly one nginx vhost proxying to the console (by any loopback spelling,
+  in `proxyPass`, `extraConfig` or through an upstream), which must be in
   `services.nginx.tailscaleAuth.virtualHosts` with `auth_request /auth;` on `/`.
+  M20 also needs a non-empty `asc.refusedKeyIds` whenever `asc.enable`.
 - A Prometheus job `hasala-console` (127.0.0.1:9473) and health probe P8.
 
 PR C's body adds the LAN DNS result for the console's name, the closure

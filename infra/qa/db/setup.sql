@@ -5,6 +5,9 @@
 -- Infra only creates the roles, the database and the schema's ownership. The
 -- table, sequence and default-privilege grants to hasala_runtime belong to the
 -- baseline migration (server/internal/pg/migrations), run as hasala_migrate.
+--
+-- hasala_console (spec 05 review 2 row 1, F-10) is not created yet: it waits
+-- for spec 02/07's grant split (see infra/qa/nix/postgresql.nix).
 \set ON_ERROR_STOP on
 
 DO $$

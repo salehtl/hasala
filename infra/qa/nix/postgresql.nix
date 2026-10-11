@@ -19,6 +19,8 @@ rec {
     listen_addresses = "";
     # 0770 octal: the socket's group is the server's group, hasala-db.
     unix_socket_permissions = 504;
+    # Spec 05 review 2 row 1 raises this to 48 for hasala_console's
+    # CONNECTION LIMIT 8; that role is deferred (see ident below), so 40.
     max_connections = 40;
     superuser_reserved_connections = 3;
     shared_buffers = "256MB";
@@ -98,8 +100,17 @@ rec {
     host    all       all             ::/0       reject
   '';
 
-  # §5.3.4: OS user → role. Root has no mapping. The console shares the runtime
-  # role with serve and the CLI (spec 07 §14.1).
+  # §5.3.4: OS user → role. Root has no mapping.
+  #
+  # The console shares hasala_runtime with serve and the CLI. This deviates
+  # from spec 05 review 2 row 1 (F-10), which supersedes spec 07 §14.1 and
+  # maps hasala-console and a new hasala-cli to their own role,
+  # hasala_console, until spec 02/07's grants for that role exist: the
+  # baseline migration grants DML to hasala_runtime only, so mapping the
+  # console to a role with no grants would break it. When 02/07 split the
+  # grants, this file, setup.sql (the role, CONNECTION LIMIT 8), the hba line,
+  # max_connections (48), module.nix's console DSN and hasala-admin move
+  # together.
   ident =
     { console }:
     ''

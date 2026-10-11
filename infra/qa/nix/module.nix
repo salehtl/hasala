@@ -17,9 +17,10 @@
 #   hasala-backup(+timer), hasala-backup-offsite, hasala-backup-check(+timer)
 #   hasala-health(+timer), hasala-email-token-check(+timer)
 #
-# Secrets are only ever paths given as options. Each reaches exactly one unit
-# through LoadCredential= and is passed to the process as a *_FILE path into
-# $CREDENTIALS_DIRECTORY; no secret is ever in Environment=.
+# Secrets are only ever absolute string paths given as options, never Nix
+# path literals and never under the Nix store (M22). Each reaches exactly one
+# unit through LoadCredential= and is passed to the process as a *_FILE path
+# into $CREDENTIALS_DIRECTORY; no secret is ever in Environment=.
 self:
 {
   config,
@@ -58,6 +59,8 @@ let
   backupDSN = "host=${socketDir} dbname=hasala user=hasala_backup";
 
   hasalad = lib.getExe cfg.package;
+  # The app id the AASA must name (P5): team id + bundle id.
+  appId = "${cfg.apns.teamId}.${cfg.apns.topic}";
   loopback = port: "127.0.0.1:${toString port}";
 
   # ---------------------------------------------------------------- hardening
@@ -94,6 +97,8 @@ let
     UMask = "0077";
     RemoveIPC = true;
     Slice = "hasala.slice";
+    # No core dump of a process that holds a key (spec 05 §5.2, review 2 F-22).
+    LimitCORE = 0;
     # Never reach the neighbours: the host's Postgres, the host's secrets, and
     # whatever the host adds (its other services' state).
     InaccessiblePaths = cfg.hardening.inaccessiblePaths;
@@ -204,6 +209,10 @@ let
   # §5.13 / spec 07 §14.1: the console's complete environment. None of serve's
   # secrets; serve never gets any of these (fence F7-4, M20).
   consoleEnv = {
+    # Deviates from spec 05 review 2 row 1 (F-10), which moves the console and
+    # the CLI to their own role, hasala_console, until spec 02/07's grant split
+    # exists: today the baseline migration grants DML to hasala_runtime only,
+    # so a hasala_console DSN would leave the console with no table access.
     HASALA_PG_DSN = runtimeDSN;
     HASALA_RP_ID = cfg.rpId;
     # Not in spec 07 §14.1's table, but the server's shared configuration
@@ -265,7 +274,13 @@ let
       # The purge ledger and the log generation (§5.8.1), read through the
       # hasala-ledger group; never written here.
       led="$dir/hasala-ledger-$ts.tar.age"
-      tar -C ${ledgerDir} -cf - --ignore-failed-read purged generation 2>/dev/null \
+      # A file that does not exist yet is left out; one that exists but cannot
+      # be read fails the backup (pipefail), never an empty ledger copy.
+      files=()
+      for f in purged generation; do
+        if [ -e ${ledgerDir}/"$f" ]; then files+=("$f"); fi
+      done
+      tar -C ${ledgerDir} -cf - -T /dev/null "''${files[@]}" \
         | age ${ageRecipientFlags} -o "$led.part"
       sync "$led.part"
       mv "$led.part" "$led"
@@ -325,7 +340,9 @@ let
         *) echo "usage: sudo hasala-admin {${concatStringsSep "|" (lib.attrNames adminModes)}} [flags]" >&2; exit 2 ;;
       esac
       # Every mode except migrate runs as hasala_runtime: spec 02 §5.6 refuses
-      # any non-migrate mode whose role owns op_log or key_history.
+      # any non-migrate mode whose role owns op_log or key_history. (Spec 05
+      # review 2 row 1, F-10, moves these to OS user hasala-cli → role
+      # hasala_console; deferred until spec 02/07's grants for that role exist.)
       if [ "$user" = hasala-migrate ]; then
         dsn="HASALA_MIGRATE_DSN=${migrateDSN}"
         groups="hasala-db"
@@ -343,6 +360,7 @@ let
         -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes \
         -p PrivateDevices=yes -p ProtectKernelTunables=yes -p ProtectControlGroups=yes \
         -p PrivateNetwork=yes -p RestrictAddressFamilies=AF_UNIX -p CapabilityBoundingSet= \
+        -p LimitCORE=0 \
         ${concatStringsSep " " (map (p: "-p InaccessiblePaths=${p}") cfg.hardening.inaccessiblePaths)} \
         -p SyslogIdentifier=hasala-admin -p ReadWritePaths=${ledgerDir} -p UMask=0077 \
         -E "$dsn" -E TZ=UTC -E HASALA_PURGE_LEDGER_PATH=${ledgerDir}/purged \
@@ -353,9 +371,12 @@ let
 
   # ------------------------------------------------------------------ health
   # §5.9.3, the probes this build can answer: P1 (local API), P2–P4 and P9
-  # (through Cloudflare, when the tunnel is on), P5 (the AASA) and P8 (the
-  # console, when on). P6 (mail metrics) and P7 (apex token pages) need the
-  # metrics listener and the website's live checks; they join when those land.
+  # (through Cloudflare, when the tunnel is on), P5 (the AASA, headers and
+  # body), and with the console on P8 (its /healthz) and P10 (the kernel rule
+  # still resets a non-nginx connection to the console port, on 127.0.0.1 and
+  # ::1; this unit is a DynamicUser, never nginx). P6 (mail metrics) and P7
+  # (apex token pages) need the metrics listener and the website's live
+  # checks; they join when those land.
   healthScript = pkgs.writeShellApplication {
     name = "hasala-health";
     runtimeInputs = [
@@ -383,11 +404,20 @@ let
         if [ "$c" != 200 ] || grep -qi '^location:' "$RUNTIME_DIRECTORY/headers" \
           || ! grep -qi '^content-type: application/json' "$RUNTIME_DIRECTORY/headers"; then
           note "P5 AASA answered $c"
+        elif ! jq -e --arg app ${lib.escapeShellArg appId} \
+          '.webcredentials.apps == [$app] and ([.applinks.details[0].components[] | .["/"]] == ["/i/*"])' \
+          "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
+          note "P5 AASA body does not claim exactly webcredentials and /i/*"
         fi
       ''}
       ${optionalString cfg.console.enable ''
         c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
         { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note "P8 console healthz answered $c"
+        for u in ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.console.port}/"} ${lib.escapeShellArg "http://[::1]:${toString cfg.console.port}/"}; do
+          rc=0
+          curl -sg -o /dev/null --max-time 5 "$u" || rc=$?
+          [ "$rc" = 7 ] || note "P10 $u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
+        done
       ''}
       rm -f "$RUNTIME_DIRECTORY/body" "$RUNTIME_DIRECTORY/headers"
 
@@ -525,11 +555,27 @@ let
     port = cfg.listen.port;
   };
 
+  # M19: a virtual host "reaches the console" when any of its proxy text
+  # names the console port on any host (127.0.0.1, localhost, [::1], ...) or
+  # names an upstream that does. nginx is the one user the kernel rule lets
+  # through, so every such vhost must be the tailnet-gated one.
+  namesConsolePort =
+    text: text != null && builtins.match ".*:${toString cfg.console.port}([^0-9].*)?" text != null;
+  consoleUpstreams = lib.attrNames (
+    lib.filterAttrs (_: u: lib.any namesConsolePort (lib.attrNames (u.servers or { }))) (
+      config.services.nginx.upstreams or { }
+    )
+  );
+  reachesConsole =
+    text:
+    namesConsolePort text
+    || (text != null && lib.any (u: lib.hasInfix "://${u}" text) consoleUpstreams);
   nginxConsoleVhosts = lib.filterAttrs (
     _: vh:
-    lib.any (loc: loc.proxyPass != null && lib.hasInfix (loopback cfg.console.port) loc.proxyPass) (
-      lib.attrValues (vh.locations or { })
-    )
+    reachesConsole (vh.extraConfig or null)
+    || lib.any (
+      loc: reachesConsole (loc.proxyPass or null) || reachesConsole (loc.extraConfig or null)
+    ) (lib.attrValues (vh.locations or { }))
   ) config.services.nginx.virtualHosts;
 
   limitOption =
@@ -554,15 +600,33 @@ let
       inherit description;
     };
 
+  # Spec 05 §5.1, M22 (review 2 F-22): a string, never types.path, so a Nix
+  # path literal (which would copy the secret into the world-readable store)
+  # is a type error, and M22 refuses any string under the store.
   secretPath =
     description:
     mkOption {
-      type = types.nullOr types.path;
+      type = types.nullOr types.str;
       default = null;
       description =
         description
-        + " A root-only file; it reaches the unit through LoadCredential= and is never copied into the Nix store by this module (pass a string path, not a Nix path literal).";
+        + " An absolute path to a root-only file outside the Nix store (a string, never a Nix path literal; M22). It reaches the unit through LoadCredential=.";
     };
+
+  secretFiles = {
+    "apns.keyFile" = cfg.apns.keyFile;
+    inherit (cfg) mailboxRouteKeyFile authKeyFile;
+    "email.apiTokenFile" = cfg.email.apiTokenFile;
+    "web.turnstile.secretFile" = cfg.web.turnstile.secretFile;
+    "asc.keyFile" = cfg.asc.keyFile;
+    "tunnel.credentialsFile" = cfg.tunnel.credentialsFile;
+    "backup.offsite.rcloneConfigFile" = cfg.backup.offsite.rcloneConfigFile;
+  };
+  outsideStore =
+    p:
+    p == null
+    || (lib.hasPrefix "/" p && !lib.hasPrefix "${builtins.storeDir}/" p && p != builtins.storeDir);
+  secretsInStore = lib.attrNames (lib.filterAttrs (_: p: !outsideStore p) secretFiles);
 in
 {
   options.services.hasala = {
@@ -695,11 +759,7 @@ in
         default = "";
         description = "The tunnel's UUID (not secret: it is in the public CNAME).";
       };
-      credentialsFile = mkOption {
-        type = types.nullOr types.path;
-        default = null;
-        description = "The tunnel credentials JSON; root-only, via LoadCredential.";
-      };
+      credentialsFile = secretPath "The tunnel credentials JSON.";
       metricsPort = portOption 9472 "cloudflared metrics port, on 127.0.0.1.";
       ingress = mkOption {
         type = types.listOf (types.attrsOf types.str);
@@ -745,11 +805,7 @@ in
       };
       offsite = {
         enable = mkEnableOption "the off-site copy (rclone)";
-        rcloneConfigFile = mkOption {
-          type = types.nullOr types.path;
-          default = null;
-          description = "rclone.conf for the off-site remote; root-only, via LoadCredential.";
-        };
+        rcloneConfigFile = secretPath "rclone.conf for the off-site remote.";
         remote = mkOption {
           type = types.str;
           default = "";
@@ -1002,6 +1058,7 @@ in
                   cfg.console.enable
                   && cfg.asc.keyFile != null
                   && matches "[A-Z0-9]{10}" cfg.asc.keyId
+                  && cfg.asc.refusedKeyIds != [ ]
                   && !lib.elem cfg.asc.keyId cfg.asc.refusedKeyIds
                   && matches uuidRe cfg.asc.issuerId
                 )
@@ -1013,14 +1070,15 @@ in
                 || lib.hasPrefix "HASALA_TESTFLIGHT_" k
               ) (lib.attrNames (fixedEnv // cfg.extraEnvironment))
             )
-            "App Store Connect needs the console, the dedicated key (file, 10-character id not in refusedKeyIds) and a UUID issuer; serve never gets a console, ASC or TestFlight variable."
+            "App Store Connect needs the console, the dedicated key (file, 10-character id not in a non-empty refusedKeyIds) and a UUID issuer; serve never gets a console, ASC or TestFlight variable."
           )
-          (a "M21" (
-            !cfg.console.enable || !config.networking.nftables.enable
-          ) "the console's kernel rule is written for iptables; an nftables host would silently drop it.")
-          (a "M22" (
-            !cfg.console.enable || config.networking.firewall.enable
-          ) "the console's kernel rule lives in the iptables firewall, which must be enabled.")
+          (a "M21"
+            (!cfg.console.enable || (config.networking.firewall.enable && !config.networking.nftables.enable))
+            "the console's kernel rule lives in the iptables firewall: it must be enabled, and an nftables host would silently drop the rule."
+          )
+          (a "M22" (secretsInStore == [ ])
+            "every secret-file option is an absolute path outside ${builtins.storeDir} (a secret in the store is world-readable); offending: ${concatStringsSep ", " secretsInStore}."
+          )
         ];
 
       # ------------------------------------------------------------- §5.11
@@ -1376,6 +1434,8 @@ in
       # console port; every other local process, root included, gets a reset.
       # It filters locally generated packets to one loopback port and opens
       # nothing. The metrics port is not filtered (it serves no console route).
+      # The ip6tables twin covers ::1 (spec 05 §5.14, review 2 F-11): the
+      # console always listens on 127.0.0.1, so it is defence in depth.
       networking.firewall.extraCommands = ''
         iptables -w -N hasala-console-out 2>/dev/null || true
         iptables -w -F hasala-console-out
@@ -1383,11 +1443,20 @@ in
         iptables -w -A hasala-console-out -p tcp -j REJECT --reject-with tcp-reset
         iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null \
           || iptables -w -I OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.console.port} -j hasala-console-out
+        ip6tables -w -N hasala-console-out 2>/dev/null || true
+        ip6tables -w -F hasala-console-out
+        ip6tables -w -A hasala-console-out -m owner --uid-owner ${cfg.console.restrictToUser} -j RETURN
+        ip6tables -w -A hasala-console-out -p tcp -j REJECT --reject-with tcp-reset
+        ip6tables -w -C OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null \
+          || ip6tables -w -I OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out
       '';
       networking.firewall.extraStopCommands = ''
         iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null || true
         iptables -w -F hasala-console-out 2>/dev/null || true
         iptables -w -X hasala-console-out 2>/dev/null || true
+        ip6tables -w -D OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null || true
+        ip6tables -w -F hasala-console-out 2>/dev/null || true
+        ip6tables -w -X hasala-console-out 2>/dev/null || true
       '';
     })
 
@@ -1401,6 +1470,7 @@ in
 
       systemd.services.hasala-backup = {
         description = "Hasala encrypted backup (pg_dump + purge ledger, age)";
+        partOf = [ "hasala.target" ];
         requires = [ "hasala-postgresql.service" ];
         after = [
           "hasala-postgresql.service"
@@ -1427,6 +1497,13 @@ in
       # fails hasala-migrate, so the new binary never starts on an unbacked-up
       # schema change. `migrate --pending` is read-only and prints 0 for a
       # fresh cluster.
+      #
+      # RequiresMountsFor on the backup disk is deliberate, and it means a
+      # missing backup disk stops hasalad (and the console) from starting even
+      # when nothing is pending: the unit cannot know that before the mount
+      # dependency is resolved, and failing closed (with onFailure alerting)
+      # beats a migration that could not be backed up. Mount the disk, or
+      # set backup.enable = false, to start without it.
       systemd.services.hasala-backup-premigrate = {
         description = "Hasala encrypted backup before pending migrations";
         requires = [ "hasala-db-setup.service" ];
@@ -1452,7 +1529,11 @@ in
 
       systemd.services.hasala-backup-check = {
         description = "Hasala backup freshness and retention check";
+        partOf = [ "hasala.target" ];
         onFailure = cfg.monitoring.onFailure;
+        # Like every backup unit: an unmounted backup disk is a failure, never
+        # an empty directory on / that looks fresh or clean.
+        unitConfig.RequiresMountsFor = [ cfg.backup.dir ];
         serviceConfig =
           hardening
           // {
@@ -1490,6 +1571,7 @@ in
     (mkIf (cfg.backup.enable && cfg.backup.offsite.enable) {
       systemd.services.hasala-backup-offsite = {
         description = "Hasala off-site copy of the encrypted backups";
+        partOf = [ "hasala.target" ];
         onFailure = cfg.monitoring.onFailure;
         unitConfig.RequiresMountsFor = [ cfg.backup.dir ];
         serviceConfig = hardening // {
@@ -1524,6 +1606,7 @@ in
     (mkIf cfg.monitoring.healthCheck.enable {
       systemd.services.hasala-health = {
         description = "Hasala health probes";
+        partOf = [ "hasala.target" ];
         onFailure = cfg.monitoring.onFailure;
         serviceConfig = hardening // {
           Type = "oneshot";
@@ -1554,6 +1637,7 @@ in
     (mkIf (cfg.monitoring.healthCheck.enable && emailOn) {
       systemd.services.hasala-email-token-check = {
         description = "Fail if the Cloudflare email send token is inactive or about to expire";
+        partOf = [ "hasala.target" ];
         onFailure = cfg.monitoring.onFailure;
         serviceConfig = hardening // {
           Type = "oneshot";

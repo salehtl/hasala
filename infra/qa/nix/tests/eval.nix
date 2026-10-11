@@ -6,7 +6,9 @@
 #
 #   AT-E1  a minimal system and a fully configured one evaluate their toplevel
 #          with no failed assertion;
-#   AT-E2  each misuse fails the named module assertion (M1–M22);
+#   AT-E2  each misuse fails the named module assertion (M1–M22), and each
+#          ill-typed value (a Nix path literal for a secret, an unknown key
+#          kind, a tester limit of 0) fails the option's type, via tryEval;
 #   AT-E3  the rendered units carry exactly the environment and credentials the
 #          specs fix, and no secret reaches an Environment= line.
 {
@@ -328,15 +330,104 @@ let
         }
       ))
     ];
+    "asc with no refused key ids" = [
+      "M20"
+      (hasala (
+        lib.recursiveUpdate consoleOn {
+          asc = {
+            enable = true;
+            keyFile = secret "asc_key_p8";
+            keyId = "ZYXWV98765";
+            issuerId = "00000000-0000-4000-8000-000000000001";
+          };
+        }
+      ))
+    ];
     "console on an nftables host" = [
       "M21"
       (lib.recursiveUpdate (hasala consoleOn) { networking.nftables.enable = true; })
     ];
     "console with the firewall off" = [
-      "M22"
+      "M21"
       (lib.recursiveUpdate (hasala consoleOn) { networking.firewall.enable = false; })
     ];
+    # M19: nginx is the one user the kernel rule lets through, so a second,
+    # ungated vhost reaching the console by any loopback spelling is refused.
+    "second vhost to localhost:8472" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.virtualHosts."other.example.test".locations."/".proxyPass = "http://localhost:8472";
+      })
+    ];
+    "second vhost to [::1]:8472" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.virtualHosts."other.example.test".locations."/".proxyPass = "http://[::1]:8472";
+      })
+    ];
+    "second vhost with proxy_pass in extraConfig" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.virtualHosts."other.example.test".locations."/x".extraConfig =
+          "proxy_pass http://127.0.0.1:8472;";
+      })
+    ];
+    "second vhost through an upstream" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.upstreams.console.servers."127.0.0.1:8472" = { };
+        services.nginx.virtualHosts."other.example.test".locations."/".proxyPass = "http://console";
+      })
+    ];
+    # M22 (review 2 F-22): a secret under the Nix store is world-readable.
+    "authKeyFile under the Nix store" = [
+      "M22"
+      (hasala { authKeyFile = "${builtins.storeDir}/x-auth-key"; })
+    ];
+    "asc.keyFile under the Nix store" = [
+      "M22"
+      (lib.recursiveUpdate full {
+        services.hasala.asc.keyFile = "${builtins.storeDir}/0000000000000000000000000000000-asc.p8";
+      })
+    ];
+    "relative secret path" = [
+      "M22"
+      (hasala { apns.keyFile = "secrets/apns.p8"; })
+    ];
   };
+
+  # AT-E2, type errors: name → [ the option to force, the configuration ].
+  # Forcing the option itself (not the toplevel) proves the type, not an
+  # assertion, refused it.
+  typeErrors = {
+    "asc.keyKind developer" = [
+      (c: c.asc.keyKind)
+      (hasala { asc.keyKind = "developer"; })
+    ];
+    "asc.testerLimit 0" = [
+      (c: c.asc.testerLimit)
+      (hasala { asc.testerLimit = 0; })
+    ];
+    # A path literal would be copied into the store; the type refuses it.
+    "authKeyFile as a Nix path literal" = [
+      (c: c.authKeyFile)
+      (hasala { authKeyFile = ./lib.nix; })
+    ];
+    "tunnel.credentialsFile as a Nix path literal" = [
+      (c: c.tunnel.credentialsFile)
+      (hasala { tunnel.credentialsFile = ./lib.nix; })
+    ];
+  };
+  typeErrorErrors = lib.concatLists (
+    lib.mapAttrsToList (
+      name: c:
+      let
+        get = lib.elemAt c 0;
+        sys = t.evalSystem (lib.elemAt c 1);
+      in
+      lib.optional (builtins.tryEval (builtins.deepSeq (get sys.config.services.hasala) true)).success "AT-E2 \"${name}\": the option's type accepted it"
+    ) typeErrors
+  );
 
   failedHasala =
     sys:
@@ -546,7 +637,15 @@ let
       ++ check (
         c ? IPAddressDeny || c.PrivateNetwork or false
       ) "AT-E3 ${u} has neither IPAddressDeny nor PrivateNetwork"
+      ++ check ((c.LimitCORE or null) == 0) "AT-E3 ${u} lacks LimitCORE = 0"
+      ++ check (lib.elem "hasala.target" (
+        (svc fullSys u).partOf or [ ]
+      )) "AT-E3 ${u} is not PartOf hasala.target"
     ) hardenedUnits
+    ++ check (
+      lib.hasInfix "ip6tables -w -I OUTPUT -o lo -p tcp -d ::1 --dport 8472" fullSys.config.networking.firewall.extraCommands
+      && lib.hasInfix "ip6tables -w -X hasala-console-out" fullSys.config.networking.firewall.extraStopCommands
+    ) "AT-E3 the kernel rule has no ::1 twin"
     ++ check (
       (hardeningOf "hasala-postgresql").PrivateNetwork
       && (hardeningOf "hasala-postgresql").RestrictAddressFamilies == [ "AF_UNIX" ]
@@ -568,7 +667,7 @@ let
       (envOf minimal "hasalad").HASALA_TRUSTED_PROXY == "none"
     ) "AT-E3 no tunnel must mean trusted_proxy none";
 
-  errors = negativeErrors ++ positiveErrors ++ envErrors;
+  errors = negativeErrors ++ typeErrorErrors ++ positiveErrors ++ envErrors;
 
   # AT-E1: both toplevels evaluate. The paths are recorded without their
   # context, so the check builds nothing of either system.
@@ -584,6 +683,7 @@ else
     {
       echo "AT-E1 toplevels: ${lib.concatStringsSep " " toplevels}"
       echo "AT-E2 ${toString (lib.length (lib.attrNames negatives))} misuse cases, each refused by its assertion"
+      echo "AT-E2 ${toString (lib.length (lib.attrNames typeErrors))} ill-typed values, each refused by its option type"
       echo "AT-E3 environment, credential and hardening checks passed"
     } > "$out"
   ''

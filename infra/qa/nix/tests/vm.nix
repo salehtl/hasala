@@ -1,4 +1,4 @@
-# checks.x86_64-linux.hasala-vm (spec 05 §14, AT-V*): boots services.hasala in
+# checks.x86_64-linux.qa-vm (spec 05 §4.2, §14, AT-V*): boots services.hasala in
 # a NixOS VM with dummy secrets, the tunnel off (the VM has no route to
 # Cloudflare), backups on (to a deterministic test recipient) and the console on.
 #
@@ -26,15 +26,17 @@ let
   testRecipient = "age1uqtdju3geshs2ad6fc6jj0eg22g8xwhe74w09vdwlp5vpfqazpnq779v4u";
 in
 {
-  name = "hasala-vm";
+  name = "qa-vm";
 
   nodes.machine =
     { config, pkgs, ... }:
     let
       # Dummy secrets: well-formed, derived from fixed labels, never used for
-      # anything real. They reach the units through LoadCredential= like the
-      # host's sops files do.
-      dummy = name: value: pkgs.writeText "hasala-vm-${name}" value;
+      # anything real. M22 refuses a secret under the Nix store, so they are
+      # written at boot (hasala-vm-secrets below), root-only, outside it, and
+      # reach the units through LoadCredential= like the host's sops files do.
+      secretDir = "/var/lib/hasala-vm-secrets";
+      dummy = name: "${secretDir}/${name}";
       hex64 = label: builtins.hashString "sha256" "hasala-vm-test-${label}";
     in
     {
@@ -51,13 +53,13 @@ in
         # The VM's disk is a few GiB: the default 16 GiB floor would trip the
         # disk fuse and refuse every write.
         headroomFloorBytes = 64 * 1024 * 1024;
-        authKeyFile = dummy "auth-key" (hex64 "auth-key");
+        authKeyFile = dummy "auth-key";
         email = {
           cloudflareAccountId = builtins.substring 0 32 (hex64 "cf-account");
-          apiTokenFile = dummy "email-token" "dummy-email-send-token";
+          apiTokenFile = dummy "email-token";
         };
         apns = {
-          keyFile = dummy "apns.p8" "dummy apns key";
+          keyFile = dummy "apns.p8";
           keyId = "ABCDE12345";
         };
         backup = {
@@ -70,6 +72,8 @@ in
           logins = [ consoleLogin ];
           tailnet = consoleTailnet;
         };
+        # The test starts hasala-health by hand (P10); its timer stays off.
+        monitoring.healthCheck.enable = true;
         # A stand-in for a neighbour's state that no Hasala unit may read.
         hardening.inaccessiblePaths = [
           "-/var/lib/postgresql"
@@ -78,6 +82,63 @@ in
           "-/var/lib/neighbour"
         ];
       };
+
+      systemd.timers.hasala-health.wantedBy = lib.mkForce [ ];
+      systemd.timers.hasala-email-token-check.wantedBy = lib.mkForce [ ];
+
+      # Before any service (sysinit), so every LoadCredential= finds its file.
+      systemd.services.hasala-vm-secrets = {
+        description = "Dummy Hasala secrets for the VM test, written at boot outside the store";
+        wantedBy = [ "sysinit.target" ];
+        before = [
+          "sysinit.target"
+          "shutdown.target"
+        ];
+        after = [ "local-fs.target" ];
+        conflicts = [ "shutdown.target" ];
+        unitConfig.DefaultDependencies = false;
+        path = [ pkgs.coreutils ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          UMask = "0077";
+        };
+        script = ''
+          d=${secretDir}
+          install -d -m 0700 "$d"
+          hex() { printf '%s' "hasala-vm-test-$1" | sha256sum | cut -c1-64; }
+          printf '%s' "$(hex auth-key)" > "$d/auth-key"
+          printf '%s' dummy-email-send-token > "$d/email-token"
+          printf '%s' 'dummy apns key' > "$d/apns.p8"
+          chmod 0400 "$d"/*
+        '';
+      };
+
+      # AT-V13: an egress probe the test runs inside hasalad's own cgroup,
+      # where IPAddressDeny's BPF filter applies.
+      environment.etc."hasala-vm/egress.py".text = ''
+        import socket
+        import sys
+
+        host = sys.argv[1]
+        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            u.sendto(b"x", (host, 443))
+            print("udp=sent")
+        except PermissionError:
+            print("udp=EPERM")
+        except OSError as e:
+            print(f"udp=errno{e.errno}")
+        t = socket.socket()
+        t.settimeout(3)
+        try:
+            t.connect((host, 443))
+            print("tcp=connected")
+        except PermissionError:
+            print("tcp=EPERM")
+        except OSError as e:
+            print(f"tcp=errno{e.errno}")
+      '';
 
       # The kernel rule lets only this user reach the console port. The VM has
       # no nginx; the test acts as the nginx user directly.
@@ -100,6 +161,7 @@ in
         pkgs.iproute2
         pkgs.python3
         pkgs.util-linux
+        config.networking.firewall.package
         config.services.hasala.database.package
       ];
     };
@@ -317,7 +379,33 @@ in
           # The secrets are only ever *_FILE paths into the credentials directory.
           env = machine.succeed("systemctl show -P Environment hasalad.service")
           assert "/run/credentials/hasalad.service/auth-key" in env or "%d/auth-key" in env, env
-          assert "hasala-vm-auth-key" not in env, env
+          assert "hasala-vm-secrets" not in env, env
+          auth_key = machine.succeed("cat /var/lib/hasala-vm-secrets/auth-key").strip()
+          assert auth_key not in env, "the auth key's value is in the environment"
+          # The dummy secrets live outside the store, root-only (M22).
+          assert machine.succeed("stat -c '%a %U' /var/lib/hasala-vm-secrets/auth-key").strip() == "400 root"
+          # Egress (spec AT-V13): from inside hasalad's cgroup, where
+          # IPAddressDeny's BPF filter applies, a packet to the LAN range is
+          # refused with EPERM. UDP reports it synchronously; a TCP connect
+          # must never complete (Linux's tcp_connect ignores the filter's
+          # error on the SYN, so its errno is printed, not asserted). A /32
+          # route on the test network makes the address routable, so EPERM is
+          # the filter's answer, not ENETUNREACH. Outside the cgroup the same
+          # UDP send goes out.
+          dev = machine.succeed("ip -4 -o addr show scope global | awk '{print $2}' | head -1").strip()
+          machine.succeed(f"ip route replace 10.9.9.9/32 dev {dev}")
+          cg = machine.succeed("systemctl show -P ControlGroup hasalad.service").strip()
+          probe = "$(command -v python3) /etc/hasala-vm/egress.py 10.9.9.9"
+          inside = machine.succeed(f"sh -c 'echo $$ > /sys/fs/cgroup{cg}/cgroup.procs && exec {probe}'")
+          print(inside)
+          assert "udp=EPERM" in inside, inside
+          assert "tcp=connected" not in inside, inside
+          outside = machine.succeed(probe)
+          print(outside)
+          assert "udp=sent" in outside, outside
+          # Loopback stays open from the same cgroup.
+          machine.succeed(f"sh -c 'echo $$ > /sys/fs/cgroup{cg}/cgroup.procs && exec curl -sf {API}/api/v1/healthz'")
+          machine.succeed("ip route del 10.9.9.9/32")
           print(machine.succeed("systemd-analyze security hasalad.service hasala-postgresql.service hasala-console.service | tail -n 3 || true"))
 
       with subtest("AT-V17/V18/V19: the console and its kernel rule"):
@@ -340,15 +428,46 @@ in
                   " -p WorkingDirectory=/var/empty"
                   f" $(command -v python3) -m http.server --bind 127.0.0.1 {CONSOLE_PORT}"
               )
+          # The console never listens on ::1 (no option for it); a stand-in
+          # there proves the ip6tables twin (spec 05 §5.14, F-11) bites too.
+          machine.succeed(
+              "systemd-run --unit=console-standin6 --uid=hasala-console --gid=hasala-console"
+              " -p WorkingDirectory=/var/empty"
+              f" $(command -v python3) -m http.server --bind ::1 {CONSOLE_PORT}"
+          )
           machine.wait_until_succeeds(f"ss -ltnH 'sport = :{CONSOLE_PORT}' | grep -q '127.0.0.1:{CONSOLE_PORT}'")
+          machine.wait_until_succeeds(f"ss -ltnH 'sport = :{CONSOLE_PORT}' | grep -qF '[::1]:{CONSOLE_PORT}'")
+          machine.succeed(f"ip6tables -w -S OUTPUT | grep -q -- '-d ::1/128 .*--dport {CONSOLE_PORT} -j hasala-console-out'")
           url = f"http://127.0.0.1:{CONSOLE_PORT}/"
+          url6 = f"http://[::1]:{CONSOLE_PORT}/"
           # The kernel rule: root, a user shell and a DynamicUser service (as
           # cloudflared runs) all get a reset; only the nginx user connects.
+          for u in [url, url6]:
+              machine.fail(f"curl -sg --max-time 5 {u}")
+              machine.fail(as_user("alice", f"curl -sg --max-time 5 {u}"))
+              machine.fail(as_user("hasala", f"curl -sg --max-time 5 {u}"))
+              machine.fail(f"systemd-run --wait --pipe -p DynamicUser=yes $(command -v curl) -sg --max-time 5 {u}")
+              machine.succeed(as_user("nginx", f"curl -sg --max-time 5 -o /dev/null {u}"))
+
+          # P10 (spec 05 §5.9.3): hasala-health, a DynamicUser, reports
+          # nothing while the rule holds, and reports P10 once it is gone.
+          def health_run():
+              since = machine.succeed("date +%s").strip()
+              machine.execute("systemctl start hasala-health.service")
+              machine.succeed("sleep 1")
+              return machine.succeed(f"journalctl -u hasala-health -o cat --since @{since}")
+
+          out = health_run()
+          print(out)
+          assert "P10" not in out, out
+          machine.succeed(f"iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
+          out = health_run()
+          print(out)
+          assert f"P10 http://127.0.0.1:{CONSOLE_PORT}/" in out, out
+          machine.succeed("systemctl restart firewall.service")
+          machine.succeed(f"iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
           machine.fail(f"curl -s --max-time 5 {url}")
-          machine.fail(as_user("alice", f"curl -s --max-time 5 {url}"))
-          machine.fail(as_user("hasala", f"curl -s --max-time 5 {url}"))
-          machine.fail(f"systemd-run --wait --pipe -p DynamicUser=yes $(command -v curl) -s --max-time 5 {url}")
-          machine.succeed(as_user("nginx", f"curl -s --max-time 5 -o /dev/null {url}"))
+          machine.succeed("systemctl reset-failed hasala-health.service || true")
           if built:
               ok = [
                   "-H 'Host: ${consoleHost}'",
@@ -368,6 +487,7 @@ in
               machine.fail(f"nsenter -t {pid} -m -- ls /run/credentials/hasalad.service")
           else:
               machine.succeed("systemctl stop console-standin.service")
+          machine.succeed("systemctl stop console-standin6.service")
           for line in machine.succeed("ss -ltnH").splitlines():
               assert line.split()[3].rsplit(":", 1)[0] in ("127.0.0.1", "[::1]"), line
 

@@ -57,10 +57,10 @@ jobs:
       # (nixos-vm), which is not a required check.
       - name: nix flake check (evaluate everything)
         run: nix flake check --no-build
-      - name: nix flake check (build every check but hasala-vm)
+      - name: nix flake check (build every check but qa-vm)
         run: |
           set -euo pipefail
-          checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "hasala-vm" ])' \
+          checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "qa-vm" ])' \
             | jq -r '.[] | ".#checks.x86_64-linux." + .')"
           echo "$checks"
           # shellcheck disable=SC2086 # one installable per word
@@ -104,8 +104,8 @@ jobs:
           use-flakehub: false
           use-gha-cache: true
           diagnostic-endpoint: ""
-      - name: hasala-vm
-        run: nix build --no-link --print-build-logs .#checks.x86_64-linux.hasala-vm
+      - name: qa-vm
+        run: nix build --no-link --print-build-logs .#checks.x86_64-linux.qa-vm
 
   vuln:
     runs-on: ubuntu-latest
