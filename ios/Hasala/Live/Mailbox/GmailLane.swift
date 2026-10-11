@@ -68,6 +68,9 @@ nonisolated final class GmailLane: Sendable {
         for _ in 0..<50 where !Task.isCancelled {
           let r = await engine.runCycle(trigger: .refresh)
           if r.phase != .scanning || (r.haltedOn != nil && r.haltedOn != .stagingFull) { break }
+          // Nothing listed and not finished: no trusted sender yet (or offline). Stop rather
+          // than spin; the board shows the scan as waiting and the next trigger resumes it.
+          if r.listed == 0 && !r.completed { break }
         }
         await engine.setProgressHandler(nil)
         continuation.finish()
@@ -126,6 +129,7 @@ nonisolated final class GmailLane: Sendable {
         for _ in 0..<50 where !Task.isCancelled {
           let r = await engine.runCycle(trigger: .processing)
           if r.completed || r.haltedOn != nil || r.phase == .awaitingCards { break }
+          if r.listed == 0 && r.ops == 0 && r.staged == 0 { break }  // no progress possible now
         }
       }
       let phase = await engine.status().phase

@@ -133,8 +133,16 @@ public actor RefreshingGmailTokenProvider: GmailTokenProvider {
     do { return try store.read() != nil } catch { return nil }
   }
 
+  /// Deletes the Keychain item without revoking at Google: another iPhone became the holder
+  /// (spec 04 §7.4). Both iPhones use the same iOS client id, and a revoke ends the app's whole
+  /// grant for that Google account, the new holder's tokens included.
+  public func forget() {
+    cached = nil
+    try? store.delete()
+  }
+
   /// Revokes the refresh token at Google (best effort) and deletes the Keychain item. Used on
-  /// Disconnect and when another iPhone became the holder (spec 04 §7.4).
+  /// Disconnect (spec 04 §7.4), where ending the grant is the point.
   public func revokeAndForget() async {
     cached = nil
     if let token = try? store.read() {

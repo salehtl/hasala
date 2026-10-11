@@ -176,6 +176,26 @@ import Testing
 }
 
 @Suite struct GmailClientTests {
+  @Test func quota403ReasonsReadAsRateLimits() {
+    func body(_ s: String) -> Data { Data(s.utf8) }
+    #expect(GmailClient.isRateLimit(errorBody: body(#"{"error":{"code":403,"errors":[{"domain":"usageLimits","reason":"userRateLimitExceeded"}]}}"#)))
+    #expect(GmailClient.isRateLimit(errorBody: body(#"{"error":{"code":403,"errors":[{"reason":"rateLimitExceeded"}]}}"#)))
+    #expect(GmailClient.isRateLimit(errorBody: body(#"{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}"#)))
+    #expect(GmailClient.isRateLimit(errorBody: body(#"{"error":{"details":[{"reason":"RATE_LIMIT_EXCEEDED"}]}}"#)))
+    #expect(!GmailClient.isRateLimit(errorBody: body(#"{"error":{"code":403,"errors":[{"reason":"insufficientPermissions"}],"status":"PERMISSION_DENIED"}}"#)))
+    #expect(!GmailClient.isRateLimit(errorBody: body("not json")))
+    #expect(!GmailClient.isRateLimit(errorBody: Data()))
+  }
+
+  @Test func quota403SurfacesAs429() async {
+    let fake = FakeGmail()
+    fake.fail("/profile", with: [403], reason: "userRateLimitExceeded")
+    fake.fail("/profile", with: [403], reason: "insufficientPermissions")
+    let c = GmailClient(http: fake, accessToken: "t")
+    await #expect(throws: GmailAPIError.status(429, op: "profile")) { _ = try await c.profileHistoryID() }
+    await #expect(throws: GmailAPIError.status(403, op: "profile")) { _ = try await c.profileHistoryID() }
+  }
+
   @Test func refusesAnUnfilteredListing() async {
     let c = GmailClient(http: FakeGmail(), accessToken: "t")
     await #expect(throws: GmailAPIError.unfilteredListing) { try await c.messagesList(query: "newer_than:30d", pageToken: nil) }

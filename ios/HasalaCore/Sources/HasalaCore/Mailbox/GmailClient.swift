@@ -96,7 +96,14 @@ public struct GmailClient: Sendable {
       body: body.map { Data(JSONWriter().bytes($0)) })
     let res: HTTPResponse
     do { res = try await http.send(req) } catch { throw .offline }
-    guard res.ok else { throw .status(res.status, op: op) }
+    guard res.ok else {
+      // Gmail answers per-user and per-project quota with 403 as well as 429. Those are a
+      // back-off, not a lost grant: report them as 429 so the engine retries and narrows instead
+      // of asking the user to reconnect. Every other 403 (insufficientPermissions, forbidden)
+      // stays 403.
+      if res.status == 403, Self.isRateLimit(errorBody: res.body) { throw .status(429, op: op) }
+      throw .status(res.status, op: op)
+    }
     if res.body.isEmpty { return JSONObject() }
     guard let o = (try? JSONParser.parse([UInt8](res.body)))?.objectValue else {
       throw .status(res.status, op: op)
@@ -172,6 +179,23 @@ public struct GmailClient: Sendable {
 
   public func stop() async throws(GmailAPIError) {
     _ = try await call(.post, "/stop", [], body: nil, op: "stop")
+  }
+
+  /// The Google API error reasons that mean "slow down" (`error.errors[].reason`, the legacy
+  /// shape Gmail still sends, or `error.details[].reason` / `error.status` in the AIP-193 shape).
+  static let rateLimitReasons: Set<String> = [
+    "ratelimitexceeded", "userratelimitexceeded", "dailylimitexceeded", "quotaexceeded",
+    "rate_limit_exceeded", "resource_exhausted",
+  ]
+
+  /// Whether a non-2xx body names a rate or quota limit. Reads only the error's reason codes.
+  public static func isRateLimit(errorBody: Data) -> Bool {
+    guard !errorBody.isEmpty, let e = (try? JSONParser.parse([UInt8](errorBody)))?["error"] else { return false }
+    var reasons: [String] = []
+    for x in e["errors"]?.arrayValue ?? [] { if let r = x["reason"]?.stringValue { reasons.append(r) } }
+    for x in e["details"]?.arrayValue ?? [] { if let r = x["reason"]?.stringValue { reasons.append(r) } }
+    if let st = e["status"]?.stringValue { reasons.append(st) }
+    return reasons.contains { rateLimitReasons.contains($0.lowercased()) }
   }
 
   /// Gmail sends int64s as decimal strings; accept a JSON number too.

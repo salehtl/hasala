@@ -51,7 +51,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   private var messages: [String: Message] = [:]
   private var order: [String] = []
   private var _requests: [Recorded] = []
-  private var failures: [String: [Int]] = [:]
+  private var failures: [String: [(status: Int, reason: String?)]] = [:]
   private var lastNonce = ""
 
   public var historyID = "1000"
@@ -90,9 +90,10 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   }
 
   /// The next answers for any request whose path contains `pathContains` (e.g. a message id):
-  /// each status is used once, then the request is served normally.
-  public func fail(_ pathContains: String, with statuses: [Int]) {
-    lock.withLock { failures[pathContains, default: []].append(contentsOf: statuses) }
+  /// each status is used once, then the request is served normally. `reason` goes in Google's
+  /// error body (`error.errors[0].reason`, e.g. "userRateLimitExceeded" on a 403).
+  public func fail(_ pathContains: String, with statuses: [Int], reason: String? = nil) {
+    lock.withLock { failures[pathContains, default: []].append(contentsOf: statuses.map { ($0, reason) }) }
   }
 
   public var requests: [Recorded] { lock.withLock { _requests } }
@@ -123,14 +124,18 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
           method: request.method.rawValue, path: path, query: query, form: form,
           authorization: request.header("Authorization")))
     }
-    if let status = lock.withLock({ () -> Int? in
+    if let failure = lock.withLock({ () -> (status: Int, reason: String?)? in
       for (k, v) in failures where !v.isEmpty && path.contains(k) {
         failures[k] = Array(v.dropFirst())
         return v[0]
       }
       return nil
     }) {
-      return json(status, ["error": .object(JSONObject([("code", .number(JSONNumber(Int64(status))))]))])
+      var error: [(String, JSONValue)] = [("code", .number(JSONNumber(Int64(failure.status))))]
+      if let r = failure.reason {
+        error.append(("errors", .array([.object(JSONObject([("domain", .string("usageLimits")), ("reason", .string(r))]))])))
+      }
+      return json(failure.status, ["error": .object(JSONObject(error))])
     }
     let full = request.url.absoluteString
     if full.hasPrefix(Self.tokenURL) { return token(form) }

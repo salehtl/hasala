@@ -299,14 +299,15 @@ let day: Int64 = 86_400_000
     #expect(r.haltedOn == nil && !r.completed && r.phase == .active)
   }
 
-  @Test func anotherHolderStopsThisDeviceAndRevokesItsOwnToken() async throws {
+  @Test func anotherHolderStopsThisDeviceAndForgetsItsOwnToken() async throws {
     let rig = Rig()
     await rig.connectAndActivate()
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
     let r = await rig.engine.runCycle(trigger: .launch)
     #expect(r.phase == .otherDevice && r.haltedOn == .notHolder)
     #expect(try rig.keychain.read() == nil)
-    #expect(rig.gmail.requests.contains { $0.form.contains { $0.0 == "token" } })  // revoke
+    // Deleted here but never revoked at Google: a revoke would end the new holder's grant too.
+    #expect(!rig.gmail.requests.contains { $0.form.contains { $0.0 == "token" } })
     #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })  // never users.stop
     #expect(await rig.engine.status().hero == .otherDevice)
   }
@@ -390,6 +391,182 @@ let day: Int64 = 86_400_000
     let (ra, rb) = await (a, b)
     #expect(ra.ops + rb.ops == 1)
     #expect(await rig.enqueued().filter { $0.messageID == "x" }.count == 1)
+  }
+}
+
+/// The interruptions the review of the first lane found: a reconnect, a takeover or a crash
+/// during first-connect setup must resume the phase it cut short, never re-run the card step.
+@Suite struct InterruptionTests {
+  static func stageTwoCards(_ rig: Rig) async {
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 3 * day))
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "e1", dateMs: Rig.t0 - 2 * day))
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .awaitingCards)
+  }
+
+  static func all(_ rig: Rig, _ state: CardState = .mine) async -> [CardDecision] {
+    await rig.engine.scanSummary().cards.map { CardDecision(card: $0.card, state: state) }
+  }
+
+  @Test func reconnectDuringTheBackfillResumesItWithoutAskingForTheCardsAgain() async throws {
+    let rig = Rig()
+    await Self.stageTwoCards(rig)
+    let decisions = await Self.all(rig)
+    await rig.tokens.invalidate()
+    rig.gmail.invalidGrant = true
+    let cut = await rig.engine.confirmCards(decisions)
+    #expect(cut.phase == .reconnectRequired && cut.ops == 0)
+    #expect(await rig.state().haltedDetail == "resume:authoring_backfill")
+
+    rig.gmail.invalidGrant = false
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30) != .cancelled)
+    let s = await rig.state()
+    #expect(s.phase == .authoringBackfill && s.scanStartedMs == Rig.t0 && s.backfillDays == 90)
+    let done = await rig.engine.runCycle(trigger: .launch)
+    #expect(done.phase == .active && done.completed && done.ops == 2 && done.review == 0)
+    #expect(await rig.ledger.authoredCards.count == 2)  // the card step ran once
+    #expect(Set(await rig.enqueued().map(\.messageID)) == ["d1", "e1"])
+  }
+
+  @Test func retryAfterReconnectRequiredResumesTheBackfill() async {
+    let rig = Rig()
+    await Self.stageTwoCards(rig)
+    await rig.tokens.invalidate()
+    rig.gmail.invalidGrant = true
+    _ = await rig.engine.confirmCards(await Self.all(rig))
+    // The grant comes back (e.g. a blip at Google): "Try again" resumes the backfill.
+    rig.gmail.invalidGrant = false
+    try? rig.keychain.write("fake-refresh-token")
+    let r = await rig.engine.runCycle(trigger: .retry)
+    #expect(r.phase == .active && r.ops == 2)
+    #expect(await rig.ledger.authoredCards.count == 2)
+  }
+
+  @Test func takeoverDuringTheBackfillResumesItAfterReadThemHereInstead() async throws {
+    let rig = Rig()
+    await Self.stageTwoCards(rig)
+    rig.clock.advance(11 * 60_000)  // the holder check is due again
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    let cut = await rig.engine.confirmCards(await Self.all(rig))
+    #expect(cut.phase == .otherDevice && cut.ops == 0)
+    #expect(try rig.keychain.read() == nil)
+
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    #expect(await rig.state().phase == .authoringBackfill)
+    let done = await rig.engine.runCycle(trigger: .launch)
+    #expect(done.phase == .active && done.ops == 2)
+    #expect(await rig.ledger.authoredCards.count == 2)
+  }
+
+  @Test func reconnectDuringTheScanKeepsItsWindow() async {
+    let rig = Rig()
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 3 * day))
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    await rig.tokens.invalidate()
+    rig.gmail.invalidGrant = true
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .reconnectRequired)
+    rig.gmail.invalidGrant = false
+    rig.clock.advance(day)
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
+    let s = await rig.state()
+    #expect(s.phase == .scanning && s.scanStartedMs == Rig.t0 && s.backfillDays == 90)
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .awaitingCards)
+  }
+
+  @Test func repeatingTheCardStepAuthorsNoSecondAccount() async {
+    let rig = Rig(backend: .memory)
+    await Self.stageTwoCards(rig)
+    let decisions = await Self.all(rig)
+    await rig.memory.setFailNextCommit(true)  // a crash after the card ops, before the phase commit
+    #expect(await rig.engine.confirmCards(decisions).phase == .awaitingCards)
+    #expect(await rig.ledger.authoredCards.count == 2)
+    let done = await rig.engine.confirmCards(decisions)
+    #expect(done.phase == .active && done.ops == 2)
+    #expect(await rig.ledger.authoredCards.count == 2)
+    // Changing one's mind is still authored.
+    let rig2 = Rig(backend: .memory)
+    await Self.stageTwoCards(rig2)
+    await rig2.ledger.setCards([CardKey(bank: "dib", last4: "1234"): .mine])
+    _ = await rig2.engine.confirmCards(await Self.all(rig2, .notMine))
+    #expect(await rig2.ledger.authoredCards.map(\.state) == [.notMine, .notMine])
+  }
+}
+
+@Suite struct ListingAndErrorTests {
+  @Test func gmailQuota403IsARetryNotAReconnect() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.gmail.add(SyntheticMail.dibCard(id: "busy", dateMs: rig.clock.nowMs() - 1000))
+    rig.gmail.fail("/messages/busy", with: [403, 403], reason: "userRateLimitExceeded")
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.ops == 1 && r.completed && r.phase == .active)
+
+    // Persisting past the retries is a transient halt, never "Reconnect Gmail".
+    rig.gmail.add(SyntheticMail.dibCard(id: "busier", amount: "3.00", dateMs: rig.clock.nowMs() - 500))
+    rig.gmail.fail("/messages/busier", with: [403, 403, 403], reason: "rateLimitExceeded")
+    let r2 = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r2.haltedOn == .gmail && r2.phase == .active)
+  }
+
+  @Test func gmailPermission403AsksToReconnect() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.gmail.add(SyntheticMail.dibCard(id: "nope", dateMs: rig.clock.nowMs() - 1000))
+    rig.gmail.fail("/messages/nope", with: [403], reason: "insufficientPermissions")
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.haltedOn == .reconnectRequired && r.phase == .reconnectRequired)
+  }
+
+  @Test func anotherClientErrorHaltsAndTryAgainResumes() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let before = await rig.state().watermarkMs
+    rig.gmail.add(SyntheticMail.dibCard(id: "odd", dateMs: rig.clock.nowMs() - 1000))
+    rig.gmail.fail("/messages/odd", with: [400])
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.haltedOn == .gmail && r.phase == .halted)
+    #expect(await rig.state().watermarkMs == before)
+    #expect(await rig.engine.status().hero == .needsYou)
+    let retry = await rig.engine.runCycle(trigger: .retry)
+    #expect(retry.phase == .active && retry.ops == 1 && retry.completed)
+  }
+
+  @Test func deadlineRunsDownloadEachPageBeforeListingTheNext() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.gmail.pageSize = 2
+    for i in 0..<5 { rig.gmail.add(SyntheticMail.dibCard(id: "p\(i)", amount: "\(i + 1).00", dateMs: rig.clock.nowMs() - Int64(i + 1) * 1000)) }
+    rig.gmail.historyID = "3000"
+    rig.gmail.clearRequests()
+    let r = await rig.engine.runCycle(trigger: .appRefresh, deadlineMs: rig.clock.nowMs() + 60_000)
+    #expect(r.completed && r.ops == 5 && r.listed == 5)
+    let paths = rig.gmail.requests.map { r in r.path.hasSuffix("/messages") ? "list" : (r.query.contains { $0 == ("format", "raw") } ? "raw" : "") }
+    let firstRaw = paths.firstIndex(of: "raw") ?? Int.max
+    let lastList = paths.lastIndex(of: "list") ?? -1
+    #expect(firstRaw < lastList)  // interleaved, not "list everything first"
+    #expect(paths.filter { $0 == "list" }.count == 3)
+  }
+
+  @Test func aSpentDeadlineListsNothing() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let before = await rig.state().watermarkMs
+    rig.gmail.add(SyntheticMail.dibCard(id: "late", dateMs: rig.clock.nowMs() - 1000))
+    rig.gmail.historyID = "3001"
+    rig.gmail.clearRequests()
+    let r = await rig.engine.runCycle(trigger: .appRefresh, deadlineMs: rig.clock.nowMs() + 1_000)
+    #expect(!r.completed && r.listed == 0)
+    #expect(rig.listRequests.isEmpty)
+    #expect(await rig.state().watermarkMs == before)
+  }
+
+  @Test func pagedScanStillReachesTheCards() async {
+    let rig = Rig()
+    rig.gmail.pageSize = 2
+    for i in 0..<5 { rig.gmail.add(SyntheticMail.dibCard(id: "s\(i)", dateMs: Rig.t0 - Int64(i + 1) * day)) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
+    let r = await rig.engine.runCycle(trigger: .processing)
+    #expect(r.staged == 5 && r.phase == .awaitingCards)
   }
 }
 
