@@ -267,6 +267,9 @@ func TestMailboxLink(t *testing.T) {
 	// its watch report is 409 not_holder.
 	d2 := authtest.NewDevice(t)
 	tok2 := k.enrol(d2)
+	if ws := wk.take(); len(ws) != 1 || ws[0].writer != d2.WriterID || ws[0].r != pushv2.ReasonSecurity {
+		t.Fatalf("enrolment wakes %+v, want a security wake to the others", ws)
+	}
 	n2 := linkChallenge(h, tok2)
 	wantStatus(t, link(k, tok2, fakeToken(goodClaims(n2))), http.StatusOK)
 	st := decodeJSON[LinkStatusResponse](t, h.req("GET", "/api/v1/mailbox/link", k.token, nil))

@@ -52,6 +52,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // Rate-limit budget. The shape of the legitimate traffic is a person signing in:
@@ -279,6 +280,7 @@ func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, 
 		s.writePasskeyAddErr(w, r, "add/finish", err)
 		return
 	}
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, PasskeyAddResponse{CredentialID: b64url(credID)})
 }
 

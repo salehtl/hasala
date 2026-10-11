@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // routes_writers.go: the writer challenge, AAK-only registration, revocation
@@ -124,6 +125,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request, userID u
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	// A new device is a security event for every other one (spec 02 §12.5).
+	s.wakeOthers(r.Context(), userID, req.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, RegisterResponse{WriterID: req.WriterID})
 }
 
@@ -168,6 +171,9 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request, userID uui
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	// The revoked writer's own token went with it (spec 02 §9.5); every other
+	// device hears of the revocation.
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }
 
