@@ -366,7 +366,7 @@ CONFORMANCE=(
 	"authres||src/mail/authres-conformance.test.ts"
 	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
 	"categorize||src/categorize/oracle-conformance.test.ts"
-	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg|"
+	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api|"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"
 	"fx||src/replay/fx.test.ts"
