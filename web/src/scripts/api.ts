@@ -1,5 +1,5 @@
 /**
- * Talking to hasalad's public routes (spec 07 §5): JSON in, `02`'s JSON
+ * Talking to hasalad's public routes: JSON in, `02`'s JSON
  * envelope out ({ "error": "<code>", "detail"?: "..." } on failure). No
  * cookies, no referrer. A network failure resolves to status 0.
  */
@@ -38,7 +38,7 @@ export function waitText(seconds: number): string {
   return h === 1 ? 'an hour' : `${h} hours`;
 }
 
-/** Spec 07 §5.3 / §5.6: a bank name the server accepts (bank_text, §4.3), or null. */
+/** A bank name the server accepts (its bank_text rules), or null. */
 export function bankText(v: string): string | null {
   const t = v.trim().replace(/\s+/g, ' ');
   if (!t) return '';
@@ -85,7 +85,7 @@ function loadTurnstile(): void {
 
 /**
  * Cloudflare Turnstile, rendered explicitly (so it also appears after a
- * client-side navigation) with the action the server checks (spec 07 §5.10).
+ * client-side navigation) with the action the server checks.
  * Returns a reset function: tokens are single use, so call it after every
  * attempt. A no-op when the form has no widget (no site key at build time).
  */

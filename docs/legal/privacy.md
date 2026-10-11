@@ -255,7 +255,7 @@ Our server is located in [[OWNER: country]]. Cloudflare, Google and Apple operat
 | Server logs | Our logs never contain your email address, IP address, tokens or sealed data. They hold only technical events and error codes. They are kept for [[OWNER: period, per the host's log retention]]. |
 | Support emails | [[OWNER: period]] |
 | Waitlist sign-up, not confirmed | 7 days. |
-| Waitlist sign-up, confirmed | Until you join, leave the list, or 12 months, whichever comes first. [[OWNER: Confirm 12 months, and set the server's waitlist retention to match (spec 07 Q8; its default is 180 days).]] |
+| Waitlist sign-up, confirmed | Until you join, leave the list, or 12 months, whichever comes first. [[OWNER: Confirm 12 months, and set the server's waitlist retention to match (its default is 180 days).]] |
 | Website bank votes | Kept. They contain nothing that identifies you. |
 | Bank requests from the app | Until you delete your account. |
 | Email records | 30 days. We never keep what an email said. |

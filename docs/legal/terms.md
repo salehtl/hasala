@@ -118,7 +118,7 @@ We may end your access if you seriously or repeatedly break these terms. We may 
 
 ## Source-available code
 
-Hasala's source code will be published as source-available under the Functional Source License, Version 1.1, with the Apache License 2.0 as the future licence (FSL-1.1-ALv2). [[OWNER: Add the repository link once it is public.]]
+Hasala's source code is published as source-available at [github.com/salehtl/hasala](https://github.com/salehtl/hasala), under the Functional Source License, Version 1.1, with the Apache License 2.0 as the future licence (FSL-1.1-ALv2).
 
 That licence covers your use of the code. These terms cover your use of the Hasala service that we run. Under the FSL, each version of the code becomes available under the Apache License 2.0 two years after we make it available. Until then, it may not be used to offer a competing product or service. Read the licence itself for the exact terms. Hasala's name and logo are not licensed for use under it. [[OWNER: Confirm the trade mark position.]]
 

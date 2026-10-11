@@ -18,6 +18,6 @@
   "routes": [{ "pattern": "hasala.app", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false,
-  // Off: request logs would record /i/<code> paths (spec 07 §4.4: no path logging).
+  // Off: request logs would record /i/<code> paths (invite codes must not be logged).
   "observability": { "enabled": false }
 }

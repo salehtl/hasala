@@ -10,7 +10,7 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, sep } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
@@ -45,7 +45,8 @@ const rewrites = readFileSync(join(root, '_redirects'), 'utf8')
 const isFile = (p: string) => existsSync(p) && statSync(p).isFile();
 function resolve(path: string): string | null {
   const p = normalize(join(root, path));
-  if (!p.startsWith(normalize(root))) return null;
+  const base = normalize(join(root, sep));
+  if (p !== base.slice(0, -1) && !p.startsWith(base)) return null;
   if (path === '/') return join(root, 'index.html');
   for (const c of [p, `${p}.html`, join(p, 'index.html')]) if (isFile(c)) return c;
   return null;
@@ -101,5 +102,6 @@ createServer((req, res) => {
     headers.set('content-encoding', 'gzip');
     headers.set('vary', 'accept-encoding');
   }
+  headers.set('content-length', String(body.length));
   res.writeHead(status, Object.fromEntries(headers)).end(req.method === 'HEAD' ? undefined : body);
 }).listen(port, '127.0.0.1', () => console.log(`serving ${root} on http://127.0.0.1:${port}/`));

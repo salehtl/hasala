@@ -5,13 +5,11 @@
  * a few lines of script read the code from the address bar. On an iPhone
  * with Hasala installed the link opens the app instead (universal link).
  *
- * Spec 07 §4.4 and §18.6 item 6: the invite email links to
- * /i/<CODE>#<LINK_KEY>. The page may show the code, never calls the API,
- * loads nothing from anyone else and sends no referrer. It shows the
- * external-TestFlight steps (owner decision 2026-10-11, replacing the
- * internal-testing steps of §6.4.2: testers are invited by email or link,
- * need no App Store Connect account and never see each other) and no
- * "Saved until" line. The older /i#<CODE> form (spec 06 §12.2) works too.
+ * The invite email links to /i/<CODE>#<LINK_KEY>. The page may show the
+ * code, never calls the API, loads nothing from anyone else and sends no
+ * referrer. It shows the external-TestFlight steps (testers are invited by
+ * email or link, need no App Store Connect account and never see each
+ * other) and no "Saved until" line. The older /i#<CODE> form works too.
  */
 import { Picture } from 'astro:assets';
 import Base from '../layouts/Base.astro';
@@ -122,7 +120,7 @@ import { SITE } from '../data/site';
 <script>
   import { onPage } from '../scripts/page';
 
-  // The code: 24 base32 characters (spec 07 §4.4), from /i/<code> or, in the
+  // The code: 24 base32 characters, from /i/<code> or, in the
   // older form, from /i#<code>. Hyphens and spaces are ignored, as in the app.
   const norm = (v: string) => v.toUpperCase().replace(/[\s-]/g, '');
   const isCode = (v: string) => /^[A-Z2-7]{24}$/.test(v);

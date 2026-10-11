@@ -2,7 +2,7 @@
 import Icon from '../Icon.astro';
 import { BANKS, OTHER_BANKS } from '../../data/site';
 import { API_BASE, TURNSTILE_SITEKEY } from '../../lib/env';
-// "Tell us" posts an anonymous bank vote (spec 07 P4, POST /api/v1/bank-requests).
+// "Tell us" posts an anonymous bank vote (POST /api/v1/bank-requests).
 // Without JavaScript it falls back to the invite form below, where "Another
 // bank" also records the bank once the address is confirmed.
 ---

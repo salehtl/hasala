@@ -1,5 +1,5 @@
 /**
- * The waitlist form and the Banks "Tell us" form (spec 07 §5.3, §5.6, §18.6).
+ * The waitlist form and the Banks "Tell us" form.
  *
  * Waitlist: validates on submit, then live once a field has an error; never
  * clears what was typed; errors are red-700 text with an icon, never colour
@@ -7,7 +7,7 @@
  * button's width, says "Sending…" and locks the fields; after 8 s it says
  * "Still trying". Posts JSON to PUBLIC_API_BASE/v1/waitlist. Every accepted
  * submission shows the same "Check your email" card: the server answers
- * 202 whether the address is new or already on the list (D7-7).
+ * 202 whether the address is new or already on the list.
  *
  * Tell us: posts an anonymous vote to PUBLIC_API_BASE/v1/bank-requests and
  * shows "Counted", with the invite form offered as a second step.
@@ -167,7 +167,7 @@ function setup(signal: AbortSignal): void {
   const showDone = () => {
     const addr = email.value.trim();
     done.querySelectorAll('[data-done-email]').forEach((el) => (el.textContent = addr));
-    // The catalog name only, as in the confirmation email (spec 07 §6.4.1).
+    // The catalog name only, as in the confirmation email.
     done.querySelector('[data-done-bank]')!.textContent = BANK_NAMES[bank.value] ?? '';
     form.hidden = true;
     done.hidden = false;

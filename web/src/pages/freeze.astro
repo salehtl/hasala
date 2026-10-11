@@ -1,13 +1,13 @@
 ---
 /**
  * hasala.app/freeze: "Freeze your account?" (Paper page 14, "Web ·
- * hasala.app/freeze"; copy S-36 in spec 01 §14). The new-sign-in and
+ * hasala.app/freeze"; copy from the Hasala design archive, private). The new-sign-in and
  * recovery-used alert emails link here as https://hasala.app/freeze#<token>:
  * 43 base64url characters in the fragment, which no request carries, so the
- * token never reaches a server log (spec 01 §10.18).
+ * token never reaches a server log.
  *
  * The page asks for nothing. The button POSTs {token} as a CORS-free simple
- * request (no-cors, text/plain, no referrer; spec 05 §7.6.3). The answer is
+ * request (no-cors, text/plain, no referrer). The answer is
  * opaque, and the server answers 204 whether or not the token was valid, so
  * the page never claims more than "if this link was valid". Link scanners
  * only GET the page and never press the button.
@@ -88,7 +88,8 @@ import { API_BASE } from '../lib/env';
 </Base>
 
 <script>
-  // Spec 05 §7.6.3's script, with this page's status line and done state.
+  // The freeze request (Hasala design archive, private), with this page's
+  // status line and done state.
   // onPage: it runs again whenever the router brings this page back (Back).
   import { onPage } from '../scripts/page';
 

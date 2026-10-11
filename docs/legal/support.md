@@ -63,7 +63,7 @@ To protect your privacy on the Lock Screen, notifications are generic by default
 
 ### Where is Hasala's source code?
 
-Hasala's code will be published as source-available under the FSL-1.1-ALv2 licence. We'll link to it here once it's public.
+Hasala's code is published as source-available under the FSL-1.1-ALv2 licence, at [github.com/salehtl/hasala](https://github.com/salehtl/hasala). Source-available means you can read it, but it isn't open source.
 
 ## Missing transactions or alerts
 

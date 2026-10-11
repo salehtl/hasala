@@ -32,7 +32,7 @@ export const BANKS = [
 
 /**
  * Banks people can ask for in the "Bank with someone else?" tile. The values
- * are the server's catalog slugs (spec 07 §2.2, §18.6); any other bank is
+ * are the server's catalog slugs; any other bank is
  * "Another bank" with its name typed in. The names are the catalog's own, so
  * one carried into the invite form as "Another bank" matches its aliases.
  */
