@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -75,7 +76,12 @@ type Keys struct {
 
 	SaltKeyID string         // key_id(salt_key)
 	AuthKeyID map[int]string // generation → key_id(auth_key_g)
+
+	hashes atomic.Int64 // VerifierHash calls, for the uniform-cost tests (spec 02 AT-AUTH-3)
 }
+
+// HashCount is how many server PBKDF2 computations this key set has run.
+func (k *Keys) HashCount() int64 { return k.hashes.Load() }
 
 // New derives the key set from salt_key and the auth_key generations it is
 // given (map generation → 32-byte key); current is the generation new hashes,
@@ -212,5 +218,6 @@ func (k *Keys) VerifierHash(s, pwSalt []byte, generation int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	k.hashes.Add(1)
 	return pbkdf2.Key(sha256.New, string(p), pwSalt, ServerIterations, VerifierSize)
 }
