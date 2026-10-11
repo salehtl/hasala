@@ -15,10 +15,22 @@
 HASALA_TRIAL_MARKER="TRIAL"
 
 # hasala_build_root IOS_DIR: the directory that holds <BUILD>/ (one per archive) and
-# last-build-number: IOS_DIR/build. HASALA_BUILD_DIR moves it, for the offline script
-# tests only; leave it unset for a release.
+# last-build-number: IOS_DIR/build. The offline script tests move it with
+# HASALA_BUILD_DIR, which counts only together with HASALA_TEST_MODE=1 (and is then
+# announced on stderr). A HASALA_BUILD_DIR without HASALA_TEST_MODE=1 is refused: this
+# fails, saying so, and archive.sh and upload.sh exit 2 before they do anything, so a
+# stray variable in a release shell never moves the builds or last-build-number.
 hasala_build_root() {
-	printf '%s\n' "${HASALA_BUILD_DIR:-$1/build}"
+	if [[ -z "${HASALA_BUILD_DIR:-}" ]]; then
+		printf '%s\n' "$1/build"
+		return 0
+	fi
+	if [[ "${HASALA_TEST_MODE:-}" != 1 ]]; then
+		echo "HASALA_BUILD_DIR is set ('$HASALA_BUILD_DIR') but HASALA_TEST_MODE is not 1: HASALA_BUILD_DIR is for the offline script tests only; unset it to release from $1/build" >&2
+		return 1
+	fi
+	echo "TEST MODE (HASALA_TEST_MODE=1): builds and last-build-number are in $HASALA_BUILD_DIR, not $1/build" >&2
+	printf '%s\n' "$HASALA_BUILD_DIR"
 }
 
 # hasala_build_newer NEW LAST: true when build NEW is strictly newer than LAST

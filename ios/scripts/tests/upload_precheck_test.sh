@@ -6,8 +6,9 @@
 # §10.3–§10.4).
 #
 # Offline. The builds are fake .ipa files under HASALA_BUILD_DIR in a temporary
-# directory, so the real ios/build (and its last-build-number) is never read or
-# written; HOME is an empty temporary directory. The cases that get past the key
+# directory (with HASALA_TEST_MODE=1, without which upload.sh refuses it), so the real
+# ios/build (and its last-build-number) is never read or written; HOME is an empty
+# temporary directory. The cases that get past the key
 # check use a fake key file and a stub `xcrun` first on PATH that records its
 # arguments and never runs altool; DEVELOPER_DIR points nowhere, so the real xcrun
 # could not run altool either.
@@ -84,12 +85,13 @@ summary() {
 	} >"$s"
 }
 # upload NAME WANT [VAR=value...] -- ARG...: runs upload.sh ARG... with HOME empty,
-# no ASC_* variables, HASALA_BUILD_DIR=$root, the stub xcrun first on PATH and
-# DEVELOPER_DIR nowhere, plus the given variables; WANT is the exit code it must give.
+# no ASC_* variables, HASALA_BUILD_DIR=$root in test mode, the stub xcrun first on PATH
+# and DEVELOPER_DIR nowhere, plus the given variables; WANT is the exit code it must
+# give.
 upload() {
 	local name="$1" want="$2" rc=0
 	shift 2
-	local vars=(HOME="$work/home" HASALA_BUILD_DIR="$root" PATH="$work/stub:$PATH" DEVELOPER_DIR="$work/no-xcode")
+	local vars=(HOME="$work/home" HASALA_BUILD_DIR="$root" HASALA_TEST_MODE=1 PATH="$work/stub:$PATH" DEVELOPER_DIR="$work/no-xcode")
 	while [[ "$1" != "--" ]]; do
 		vars+=("$1")
 		shift
@@ -199,6 +201,19 @@ make_build "$b2"
 summary "$b2" pass
 upload "a newer build uploads" 0 STUB_UPLOAD_RC=0 -- "$root/$b2/export/Hasala.ipa" --yes
 equal "$(cat "$root/last-build-number")" "$b2" "...and is recorded"
+
+# HASALA_BUILD_DIR outside test mode: refused (2) before anything, even for a newer,
+# inspected build with a key that would upload.
+b3=991231.12359
+make_build "$b3"
+summary "$b3" pass
+: >"$work/calls"
+upload "HASALA_BUILD_DIR without HASALA_TEST_MODE=1" 2 HASALA_TEST_MODE= STUB_UPLOAD_RC=0 \
+	ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" -- "$root/$b3/export/Hasala.ipa" --yes
+said "refusing to run with HASALA_BUILD_DIR set outside test mode" "refused for HASALA_BUILD_DIR"
+equal "$(cat "$work/calls")" "" "...before it ran xcrun"
+equal "$(cat "$root/last-build-number")" "$b2" "...or recorded the build"
+upload "HASALA_BUILD_DIR with HASALA_TEST_MODE=yes" 2 HASALA_TEST_MODE=yes -- "$root/$b3/export/Hasala.ipa"
 
 upload "an extra argument" 2 -- "$ipa" --yes --force
 exit "$fail"

@@ -27,8 +27,10 @@
 # Connect may have taken the number even then, and archive.sh and this script refuse
 # a number that is not newer (spec 06 §10.4). A validation alone records nothing.
 #
-# Exit codes (spec 06 §10.4): 2 usage, 14 key, 21 not newer (or not recordable), 40
-# inspection not passed, 50 validation failed, 60 upload failed.
+# Exit codes (spec 06 §10.4): 2 usage (or HASALA_BUILD_DIR set without
+# HASALA_TEST_MODE=1, see hasala_build_root in release-common.sh), 14 key, 21 not
+# newer (or not recordable), 40 inspection not passed, 50 validation failed, 60
+# upload failed.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +46,11 @@ if [[ -z "$ipa" || ! -f "$ipa" ]] || [[ -n "$confirm" && "$confirm" != "--yes" ]
 	echo "usage: upload.sh <path/to/Hasala.ipa> [--yes]" >&2
 	exit 2
 fi
+# Where builds and last-build-number live: ios/build, unless the script tests moved it.
+if ! build_root="$(hasala_build_root "$ios")"; then
+	echo "upload: refusing to run with HASALA_BUILD_DIR set outside test mode" >&2
+	exit 2
+fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -57,7 +64,6 @@ if [[ ! "$build" =~ ^[0-9]{6}\.1[0-9]{4}$ ]]; then
 fi
 
 # --- this must be archive.sh's own export for this build, and it must have passed ------
-build_root="$(hasala_build_root "$ios")"
 out="$build_root/$build"
 ipa_dir="$(cd "$(dirname "$ipa")" && pwd -P)"
 want_dir="$(cd "$out/export" 2>/dev/null && pwd -P || true)"

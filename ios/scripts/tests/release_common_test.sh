@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # release-common.sh's helpers: MARKETING_VERSION from the xcconfigs (inspection I3),
-# hasala_absent (every absence check in inspect-ipa.sh) and hasala_record_build.
+# hasala_absent (every absence check in inspect-ipa.sh), hasala_record_build and
+# hasala_build_root (HASALA_BUILD_DIR counts only with HASALA_TEST_MODE=1).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ios="$(cd "$here/.." && pwd)"
@@ -59,9 +60,20 @@ if [[ "$(cat "$work/root/last-build-number")" == 991231.12359 && ! -e "$work/roo
 else
 	bad "hasala_record_build"
 fi
-if [[ "$(HASALA_BUILD_DIR='' hasala_build_root /x/ios)" == /x/ios/build && "$(HASALA_BUILD_DIR=/t hasala_build_root /x/ios)" == /t ]]; then
-	ok "hasala_build_root is ios/build unless HASALA_BUILD_DIR is set"
-else
-	bad "hasala_build_root"
-fi
+# root NAME WANT(path|refused) [VAR=value...]: hasala_build_root /x/ios with only the
+# given HASALA_BUILD_DIR and HASALA_TEST_MODE.
+root() {
+	local name="$1" want="$2" got
+	shift 2
+	got="$(env -u HASALA_BUILD_DIR -u HASALA_TEST_MODE "$@" bash -c 'source "$1" && hasala_build_root /x/ios' _ \
+		"$here/release-common.sh" 2>/dev/null)" || got=refused
+	if [[ "$got" == "$want" ]]; then ok "hasala_build_root $name: $got"; else bad "hasala_build_root $name: got '$got', want '$want'"; fi
+}
+root "with neither variable" /x/ios/build
+root "with HASALA_BUILD_DIR empty" /x/ios/build HASALA_BUILD_DIR=
+root "with HASALA_TEST_MODE=1 alone" /x/ios/build HASALA_TEST_MODE=1
+root "with HASALA_BUILD_DIR and HASALA_TEST_MODE=1" /t HASALA_BUILD_DIR=/t HASALA_TEST_MODE=1
+root "with HASALA_BUILD_DIR alone" refused HASALA_BUILD_DIR=/t
+root "with HASALA_BUILD_DIR and HASALA_TEST_MODE=0" refused HASALA_BUILD_DIR=/t HASALA_TEST_MODE=0
+root "with HASALA_BUILD_DIR and HASALA_TEST_MODE=yes" refused HASALA_BUILD_DIR=/t HASALA_TEST_MODE=yes
 exit "$fail"

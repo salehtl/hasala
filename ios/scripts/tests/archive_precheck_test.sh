@@ -6,9 +6,10 @@
 # Offline, and nothing is archived, signed or provisioned: xcodebuild is a stub first
 # on PATH that answers -version and refuses everything else (so `xcodebuild archive`
 # fails, exit 30, before anything is built), the key is a text file, HOME is empty,
-# and HASALA_BUILD_DIR keeps every build directory and last-build-number in a
-# temporary directory. archive.sh runs with --allow-dirty --allow-branch, so the
-# state of this checkout does not matter.
+# and HASALA_BUILD_DIR (with HASALA_TEST_MODE=1, without which archive.sh refuses it)
+# keeps every build directory and last-build-number in a temporary directory.
+# archive.sh runs with --allow-dirty --allow-branch, so the state of this checkout
+# does not matter.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -48,11 +49,11 @@ chmod 600 "$key"
 : >"$work/calls"
 
 # archive NAME WANT [VAR=value...]: archive.sh --allow-dirty --allow-branch with the
-# stubs, the fake key and HASALA_BUILD_DIR=$root, plus the given variables.
+# stubs, the fake key and HASALA_BUILD_DIR=$root in test mode, plus the given variables.
 archive() {
 	local name="$1" want="$2" rc=0
 	shift 2
-	env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH HOME="$work/home" HASALA_BUILD_DIR="$root" \
+	env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH HOME="$work/home" HASALA_BUILD_DIR="$root" HASALA_TEST_MODE=1 \
 		PATH="$work/stub:$PATH" ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000 \
 		ASC_KEY_PATH="$key" "$@" "$here/archive.sh" --allow-dirty --allow-branch >"$work/out" 2>&1 || rc=$?
 	if [[ "$rc" == "$want" ]]; then echo "ok   $name (exit $rc)"; else
@@ -70,7 +71,16 @@ said() {
 }
 archives() { grep -c '^archive ' "$work/calls" || true; }
 
+# HASALA_BUILD_DIR outside test mode: refused (2) before anything else runs.
+archive "HASALA_BUILD_DIR without HASALA_TEST_MODE=1" 2 HASALA_TEST_MODE=
+said "refusing to run with HASALA_BUILD_DIR set outside test mode" "refused for HASALA_BUILD_DIR"
+if [[ ! -s "$work/calls" && ! -e "$root" ]]; then echo "ok   ...before it ran xcodebuild or made a build directory"; else
+	echo "FAIL archive.sh ran xcodebuild or made $root with HASALA_BUILD_DIR outside test mode"
+	fail=1
+fi
+archive "HASALA_BUILD_DIR with HASALA_TEST_MODE=0" 2 HASALA_TEST_MODE=0
 archive "no key file" 14 ASC_KEY_PATH="$work/keys/none/AuthKey_TESTKEY000.p8"
+said "TEST MODE (HASALA_TEST_MODE=1)" "test mode is announced"
 archive "Xcode 26" 16 STUB_XCODE=26.4
 said "needs Xcode 27.x" "refused for the Xcode version"
 archive "git fails while checking the tree" 128 STUB_GIT_FAIL=1
@@ -106,7 +116,7 @@ if [[ "$(archives)" == 1 ]]; then echo "ok   ...and never reached xcodebuild arc
 fi
 
 rc=0
-env HOME="$work/home" HASALA_BUILD_DIR="$root" PATH="$work/stub:$PATH" "$here/archive.sh" --upload >/dev/null 2>&1 || rc=$?
+env HOME="$work/home" HASALA_BUILD_DIR="$root" HASALA_TEST_MODE=1 PATH="$work/stub:$PATH" "$here/archive.sh" --upload >/dev/null 2>&1 || rc=$?
 if [[ "$rc" == 2 ]]; then echo "ok   archive.sh refuses an unknown option (exit 2)"; else
 	echo "FAIL archive.sh --upload: exit $rc, want 2"
 	fail=1

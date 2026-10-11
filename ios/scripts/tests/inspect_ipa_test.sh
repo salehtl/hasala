@@ -8,7 +8,10 @@
 # Regressions: I12 once piped strings into `grep -q` under pipefail, so a large
 # binary with a dev host near its start passed (grep exits at the match, strings dies
 # of SIGPIPE, `!` turns the failed pipeline into success); I7 once skipped binary
-# files (grep -I), so a secret in the Mach-O or the binary Info.plist passed.
+# files (grep -I), so a secret in the Mach-O or the binary Info.plist passed; I12 and
+# AT-REV-4 once read only the main binary, so a dev host in Info.plist (where
+# HasalaAPIBaseURL lives) or in a resource passed; an .ipa that unpacks to mode 000
+# once left the inspection's temporary directory behind.
 #
 # Offline and local: Xcode's clang, actool and codesign (ad hoc, no identity, no
 # keychain, no provisioning). The "secrets" are assembled at run time, so this file
@@ -19,7 +22,7 @@ ios="$(cd "$here/.." && pwd)"
 # shellcheck source=../release-common.sh
 source "$here/release-common.sh"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+trap 'chmod -R u+rwx "$work" 2>/dev/null || true; rm -rf "$work"' EXIT
 fail=0
 golden="$here/golden/app.release.entitlements.plist"
 marketing="$(hasala_marketing_version "$ios/Config")"
@@ -44,7 +47,8 @@ compile "$tpl/Hasala" "$work/main.c"
 cp "$ios/Hasala/PrivacyInfo.xcprivacy" "$tpl/"
 for kv in "CFBundleExecutable string Hasala" "CFBundleIdentifier string app.hasala.ios" \
 	"CFBundleVersion string $build" "CFBundleShortVersionString string $marketing" \
-	"HasalaGitCommit string $commit" "ITSAppUsesNonExemptEncryption bool false"; do
+	"HasalaGitCommit string $commit" "ITSAppUsesNonExemptEncryption bool false" \
+	"HasalaAPIBaseURL string https://api.hasala.app"; do
 	/usr/libexec/PlistBuddy -c "Add :$kv" "$tpl/Info.plist" >/dev/null
 done
 /usr/bin/plutil -convert binary1 "$tpl/Info.plist"
@@ -85,13 +89,13 @@ failed() {
 	fi
 }
 
-# only_failed LABEL: as failed, and no other check failed.
+# only_failed LABEL...: as failed, for each LABEL, and no other check failed.
 only_failed() {
-	failed "$1"
-	local n
+	local label n
+	for label in "$@"; do failed "$label"; done
 	n="$(grep -c '^  FAIL  ' "$work/out" || true)"
-	if [[ "$n" == 1 ]]; then echo "ok   ...and nothing else failed"; else
-		echo "FAIL $n checks failed, want only '$1'"
+	if [[ "$n" == "$#" ]]; then echo "ok   ...and nothing else failed"; else
+		echo "FAIL $n checks failed, want only: $*"
 		sed 's/^/     /' "$work/out"
 		fail=1
 	fi
@@ -133,7 +137,59 @@ else
 fi
 seal devhost
 inspect devhost 40
-only_failed "I12 no dev hosts"
+only_failed "I12 no dev hosts in any file"
+
+# --- I12: every file, not only the main binary -------------------------------------------
+# A dev host as the API endpoint, in the binary Info.plist.
+app="$(variant api-devhost)"
+/usr/bin/plutil -replace HasalaAPIBaseURL -string "http://localhost:8080" "$app/Info.plist"
+seal api-devhost
+inspect api-devhost 40
+only_failed "I12 no dev hosts in any file" "I12 HasalaAPIBaseURL is https://api.hasala.app"
+
+# A dev host in another Info.plist value that has a non-ASCII character, which a
+# binary plist stores as UTF-16: no byte search of Info.plist finds it, its XML does.
+app="$(variant devhost-utf16)"
+/usr/bin/plutil -insert HasalaNote -string "http://localhost:8080/ $(printf '\342\200\223') dev" "$app/Info.plist"
+/usr/bin/plutil -convert binary1 "$app/Info.plist"
+if hasala_absent 'localhost' "$app/Info.plist"; then
+	echo "     (the binary Info.plist holds the dev host as UTF-16; its bytes have no 'localhost')"
+else
+	echo "FAIL the test's binary Info.plist has 'localhost' in ASCII; this case would not test the XML conversion"
+	fail=1
+fi
+seal devhost-utf16
+inspect devhost-utf16 40
+only_failed "I12 no dev hosts in any file"
+
+# A dev host in a resource file.
+app="$(variant devhost-resource)"
+printf '{"api": "http://127.0.0.1:8080/"}\n' >"$app/endpoints.json"
+seal devhost-resource
+inspect devhost-resource 40
+only_failed "I12 no dev hosts in any file"
+
+# A dev host in a localized .strings resource (a binary plist, the value UTF-16).
+app="$(variant devhost-strings)"
+mkdir -p "$app/en.lproj"
+/usr/libexec/PlistBuddy -c "Add :push string gateway.sandbox.push.apple.com $(printf '\342\200\223') dev" "$app/en.lproj/Localizable.strings" >/dev/null
+/usr/bin/plutil -convert binary1 "$app/en.lproj/Localizable.strings"
+seal devhost-strings
+inspect devhost-strings 40
+only_failed "I12 no dev hosts in any file"
+
+# Another endpoint that is not a dev host: only the exact HasalaAPIBaseURL check sees it.
+app="$(variant api-staging)"
+/usr/bin/plutil -replace HasalaAPIBaseURL -string "https://staging.hasala.app" "$app/Info.plist"
+seal api-staging
+inspect api-staging 40
+only_failed "I12 HasalaAPIBaseURL is https://api.hasala.app"
+
+app="$(variant api-missing)"
+/usr/bin/plutil -remove HasalaAPIBaseURL "$app/Info.plist"
+seal api-missing
+inspect api-missing 40
+only_failed "I12 HasalaAPIBaseURL is https://api.hasala.app"
 
 # --- I7: secrets in binary files ----------------------------------------------------------
 app="$(variant secret-plist)"
@@ -141,6 +197,13 @@ app="$(variant secret-plist)"
 /usr/bin/plutil -convert binary1 "$app/Info.plist"
 seal secret-plist
 inspect secret-plist 40
+only_failed "I7 no secrets in any file"
+
+app="$(variant secret-plist-utf16)"
+/usr/bin/plutil -insert HasalaNote -string "GOC$(echo SPX)-synthetic $(printf '\342\200\223') test value" "$app/Info.plist"
+/usr/bin/plutil -convert binary1 "$app/Info.plist"
+seal secret-plist-utf16
+inspect secret-plist-utf16 40
 only_failed "I7 no secrets in any file"
 
 app="$(variant secret-macho)"
@@ -162,7 +225,13 @@ printf 'const char *const persona = "%s";\nint main(void) { return persona[0] ==
 compile "$app/Hasala" "$work/mocks.c"
 seal mocks
 inspect mocks 40
-only_failed "AT-REV-4 no mock data (HasalaMocks)"
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
+app="$(variant mocks-resource)"
+printf '{"persona": "%s"}\n' "Maya Rahman" >"$app/persona.json"
+seal mocks-resource
+inspect mocks-resource 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
 
 # --- I3, I4: Info.plist against archive.sh's expectations ----------------------------------
 variant marketing >/dev/null
@@ -219,6 +288,35 @@ failed "I1 no ?mode=developer domain"
 echo "not a zip" >"$work/broken.ipa"
 inspect broken 40
 failed "the .ipa can be hashed and unzipped"
+
+# --- an .ipa whose every entry is mode 000 ---------------------------------------------------
+# The good app with every file and directory stored as mode 000, which unzip restores.
+# Every check that reads the app fails (40), and the inspection's temporary directory,
+# made under TMPDIR, is removed all the same.
+/usr/bin/python3 -I - "$work/good.ipa" "$work/mode000.ipa" <<'PY2'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as src, zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED) as dst:
+    for i in src.infolist():
+        o = zipfile.ZipInfo(i.filename, i.date_time)
+        o.create_system = 3
+        o.external_attr = (0o040000 << 16) | 0x10 if i.is_dir() else 0o100000 << 16
+        dst.writestr(o, src.read(i), zipfile.ZIP_DEFLATED)
+PY2
+mkdir "$work/tmp"
+rc=0
+TMPDIR="$work/tmp" "$here/inspect-ipa.sh" "$work/mode000.ipa" "$build" "$marketing" "$commit" false >"$work/out" 2>&1 || rc=$?
+if [[ "$rc" == 40 ]]; then echo "ok   mode000 (exit $rc)"; else
+	echo "FAIL mode000: exit $rc, want 40"
+	sed 's/^/     /' "$work/out"
+	fail=1
+fi
+failed "I3 CFBundleVersion is $build"
+failed "I12 no dev hosts in any file"
+left="$(ls -A "$work/tmp")"
+if [[ -z "$left" ]]; then echo "ok   ...and it left nothing in TMPDIR"; else
+	echo "FAIL the inspection of mode000 left $left in TMPDIR"
+	fail=1
+fi
 
 if "$here/inspect-ipa.sh" "$work/good.ipa" "$build" "$marketing" "$commit" >/dev/null 2>&1; then
 	echo "FAIL inspect-ipa.sh ran without the encryption argument"

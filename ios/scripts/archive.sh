@@ -23,7 +23,8 @@
 #   ios/build/<BUILD>/archive.log, export.log, summary.txt
 #
 # Exit codes (spec 06 §10.4; PRECHECK reduced to 10, 11, 14, 16, 21 for Gate A0, §15.2):
-#   2 usage, or MARKETING_VERSION cannot be read from ios/Config
+#   2 usage, MARKETING_VERSION cannot be read from ios/Config, or HASALA_BUILD_DIR is
+#     set without HASALA_TEST_MODE=1 (see hasala_build_root in release-common.sh)
 #   10 dirty tree   11 branch is not main   14 key or asc.env missing or unsafe
 #   16 Xcode is not 27.x   21 build number not newer than the last upload, or
 #   ios/build/<BUILD>/ exists already (a second archive in the same UTC minute)
@@ -57,6 +58,11 @@ for a in "$@"; do
 		;;
 	esac
 done
+# Where builds and last-build-number live: ios/build, unless the script tests moved it.
+if ! build_root="$(hasala_build_root "$ios")"; then
+	echo "archive: refusing to run with HASALA_BUILD_DIR set outside test mode" >&2
+	exit 2
+fi
 
 # --- precheck (10, 11, 14, 16, 21) ---------------------------------------------------
 trial=()
@@ -96,7 +102,6 @@ fi
 
 BUILD="$("$here/build_number.sh" "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)")"
 SHA="$(git -C "$repo" rev-parse --short=12 HEAD)"
-build_root="$(hasala_build_root "$ios")"
 last_file="$build_root/last-build-number"
 if [[ -f "$last_file" ]]; then
 	last="$(cat "$last_file")"
