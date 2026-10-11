@@ -83,15 +83,20 @@ func (a *Accounts) PasswordLoginBegin(ctx context.Context, email string) (Passwo
 func checkBinding(ctx context.Context, q querier, userID *uuid.UUID, challenge []byte, d *DeviceBinding) error {
 	key := []byte(dummyBindKey)
 	live, known := false, false
-	if userID != nil && keyproto.ValidWriterID(d.WriterID) {
-		var pub []byte
-		err := q.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
-			*userID, d.WriterID).Scan(&pub, &live)
-		if err == nil {
-			key, known = pub, true
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("auth: read the binding writer: %w", err)
-		}
+	// The same one lookup whether or not the address has an account (spec 02
+	// §9.4: the cost depends only on the proof); the nil id matches no row.
+	owner := uuid.Nil
+	if userID != nil {
+		owner = *userID
+	}
+	var pub []byte
+	err := q.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+		owner, d.WriterID).Scan(&pub, &live)
+	switch {
+	case err == nil && userID != nil && keyproto.ValidWriterID(d.WriterID):
+		key, known = pub, true
+	case err != nil && !errors.Is(err, pgx.ErrNoRows):
+		return fmt.Errorf("auth: read the binding writer: %w", err)
 	}
 	msg, err := keyproto.SessionBindMessage(challenge, d.WriterID)
 	if err != nil {
@@ -214,7 +219,14 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 	} else if err := writerPasswordBudget(ctx, a.Pool, *userID, boundWriter, now); err != nil {
 		return SignedIn{}, err
 	}
-	// 5. Spend the ceremony, then the one PBKDF2.
+	// 4. The gate, before the ceremony is spent: a busy server (503) spends
+	// nothing, and the retry can use the same ceremony.
+	release, err := a.Gate.Acquire(ctx)
+	if err != nil {
+		return SignedIn{}, gateErr(err)
+	}
+	defer release()
+	// 5. Spend the ceremony, then the one PBKDF2 in the slot already held.
 	tag2, err := a.Pool.Exec(ctx,
 		`UPDATE password_login_ceremonies SET used_at = $2 WHERE id = $1 AND used_at IS NULL AND expires_at > $2`, ceremonyID, now)
 	if err != nil {
@@ -231,7 +243,8 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 	}
 	paused := exists && st.PausedUntil != nil && st.PausedUntil.After(now) && boundWriter == ""
 	compare := exists && st.hasPassword() && !paused
-	ok, err := passwordStep(st, compare)
+	ok, err := passwordMatches(ctx, a.Keys, nil, st, verifier, compare)
+	release()
 	if err != nil {
 		return SignedIn{}, err
 	}
@@ -282,67 +295,37 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 	if len(verifier) != authkeys.VerifierSize {
 		return PasswordSignedUp{}, fmt.Errorf("%w: verifier is not 32 bytes", ErrBadRequest)
 	}
-	// 1. Claim once: spent by the attempt.
-	s, err := scanSignup(a.Pool.QueryRow(ctx, `UPDATE signup_ceremonies SET claimed_at = $2
-		WHERE id = $1 AND expires_at > $2 AND claimed_at IS NULL AND (email_proven OR verified_at IS NOT NULL)
-		RETURNING `+signupColumns, signupID, now))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return PasswordSignedUp{}, fmt.Errorf("%w: the signup is not claimable", ErrCodeRejected)
-	}
+	// 1. The signup must be claimable. The claim itself is the account
+	// transaction's first statement (AT-AUTH-2: a busy gate or a fault in that
+	// transaction leaves the signup unclaimed); a request the checks below
+	// refuse spends it, since its nonce is consumed by the attempt.
+	s, err := readySignup(ctx, a.Pool, signupID, now)
 	if err != nil {
-		return PasswordSignedUp{}, fmt.Errorf("auth: password signup: claim: %w", err)
+		return PasswordSignedUp{}, err
+	}
+	spend := func(err error) (PasswordSignedUp, error) {
+		if _, xerr := a.Pool.Exec(ctx, `UPDATE signup_ceremonies SET claimed_at = $2 WHERE id = $1 AND claimed_at IS NULL`,
+			signupID, now); xerr != nil {
+			return PasswordSignedUp{}, errors.Join(err, fmt.Errorf("auth: password signup: spend: %w", xerr))
+		}
+		return PasswordSignedUp{}, err
 	}
 	if err := addressFree(ctx, a.Pool, s); err != nil {
+		if errors.Is(err, ErrEmailInUse) || errors.Is(err, ErrCodeRejected) {
+			return spend(err)
+		}
 		return PasswordSignedUp{}, err
 	}
 	// 2. Bootstrap checks 3, 5, 6 against the signup.
-	sh := sha256.Sum256(verifier)
-	switch {
-	case b.FormatVersion != keyproto.BootstrapPayloadVersion:
-		return PasswordSignedUp{}, fmt.Errorf("%w: format_version %d", ErrKeysMalformed, b.FormatVersion)
-	case byte(b.AuthKind) != keyproto.AuthKindPassword || !sameBytes(b.AuthHash, sh[:]):
-		return PasswordSignedUp{}, fmt.Errorf("%w: auth_kind 2 with auth_hash = SHA256(S)", ErrKeysMalformed)
-	case !sameBytes(b.EmailHash, signupEmailHash(s)):
-		return PasswordSignedUp{}, fmt.Errorf("%w: email_hash is not the signup's address", ErrKeysMalformed)
-	case b.PRFCredentialID != nil:
-		return PasswordSignedUp{}, fmt.Errorf("%w: a password signup carries no PRF wrap", ErrKeysMalformed)
-	case !sameBytes(b.Writer.Nonce, s.Nonce):
-		return PasswordSignedUp{}, fmt.Errorf("%w: the nonce is not the signup's", ErrBadSignature)
-	case b.Writer.Alg != AlgEd25519:
-		return PasswordSignedUp{}, fmt.Errorf("%w: writer.alg %q", ErrKeysMalformed, b.Writer.Alg)
-	case !keyproto.ValidWriterID(b.Writer.WriterID):
-		return PasswordSignedUp{}, ErrBadWriterID
-	}
-	pl := keyproto.BootstrapPayload{
-		UserID: s.UserID, AMKCommitment: b.AMKCommitment, AuthorityPubkey: b.AuthorityPubkey,
-		RecoveryPubkey: b.RecoveryPubkey, RecoveryWrap: b.RecoveryWrap, PhraseBox: b.PhraseBox,
-		EmailHash: b.EmailHash, AuthKind: keyproto.AuthKindPassword, AuthHash: b.AuthHash,
-		WriterPubkey: b.Writer.PubKey, WriterDAK: b.Writer.DAKPubkey, WriterID: b.Writer.WriterID,
-	}
-	payload, err := pl.Bytes()
-	if err != nil {
-		return PasswordSignedUp{}, fmt.Errorf("%w: %v", ErrKeysMalformed, err)
-	}
-	if err := pl.CheckKeys(); err != nil {
-		return PasswordSignedUp{}, fmt.Errorf("%w: %v", ErrKeysMalformed, err)
-	}
-	bm, err := keyproto.BootstrapMessage(s.Nonce, payload)
-	if err != nil {
-		return PasswordSignedUp{}, fmt.Errorf("%w: %v", ErrKeysMalformed, err)
-	}
-	rm, err := keyproto.RegistrationMessage(s.Nonce, b.Writer.WriterID, b.Writer.PubKey, b.Writer.DAKPubkey)
-	if err != nil {
-		return PasswordSignedUp{}, fmt.Errorf("%w: %v", ErrKeysMalformed, err)
-	}
-	if !keyproto.VerifyEd25519(b.AuthorityPubkey, bm, b.AuthoritySig) || !keyproto.VerifyEd25519(b.AuthorityPubkey, rm, b.Writer.Sig) {
-		return PasswordSignedUp{}, fmt.Errorf("%w: authority_sig or registration_sig", ErrBadSignature)
+	if err := checkPasswordBootstrap(s, verifier, b); err != nil {
+		return spend(err)
 	}
 	// 3. The verifier, through the gate.
 	hash, salt, err := newPasswordHash(ctx, a.Keys, a.Gate, verifier)
 	if err != nil {
 		return PasswordSignedUp{}, err
 	}
-	// 4. One transaction.
+	// 4. One transaction, which claims the signup first.
 	handle, err := randBytes(userHandleBytes)
 	if err != nil {
 		return PasswordSignedUp{}, err
@@ -352,6 +335,16 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 		return PasswordSignedUp{}, err
 	}
 	defer pgtx.Rollback(ctx, tx)
+	claimed, err := claimSignupTx(ctx, tx, signupID, now)
+	if err != nil {
+		return PasswordSignedUp{}, err
+	}
+	if claimed.UserID != s.UserID || claimed.EmailNorm != s.EmailNorm || !sameBytes(claimed.Nonce, s.Nonce) {
+		// The bootstrap was checked against the row as read; a signup row
+		// never changes these, but the claim must be of that row.
+		return PasswordSignedUp{}, fmt.Errorf("%w: the signup changed", ErrCodeRejected)
+	}
+	s = claimed
 	if err := createAccountTx(ctx, tx, s, handle, now); err != nil {
 		return PasswordSignedUp{}, err
 	}
@@ -383,6 +376,53 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 		return PasswordSignedUp{}, fmt.Errorf("auth: password signup: commit: %w", err)
 	}
 	return PasswordSignedUp{Session: m, UserID: s.UserID, WriterID: b.Writer.WriterID}, nil
+}
+
+// checkPasswordBootstrap is #45's step 2: spec 02 §10.1 checks 3, 5 and 6
+// against the signup (its reserved id, its address, SHA256(S), its nonce).
+func checkPasswordBootstrap(s signupRow, verifier []byte, b Bootstrap) error {
+	sh := sha256.Sum256(verifier)
+	switch {
+	case b.FormatVersion != keyproto.BootstrapPayloadVersion:
+		return fmt.Errorf("%w: format_version %d", ErrKeysMalformed, b.FormatVersion)
+	case byte(b.AuthKind) != keyproto.AuthKindPassword || !sameBytes(b.AuthHash, sh[:]):
+		return fmt.Errorf("%w: auth_kind 2 with auth_hash = SHA256(S)", ErrKeysMalformed)
+	case !sameBytes(b.EmailHash, signupEmailHash(s)):
+		return fmt.Errorf("%w: email_hash is not the signup's address", ErrKeysMalformed)
+	case b.PRFCredentialID != nil:
+		return fmt.Errorf("%w: a password signup carries no PRF wrap", ErrKeysMalformed)
+	case !sameBytes(b.Writer.Nonce, s.Nonce):
+		return fmt.Errorf("%w: the nonce is not the signup's", ErrBadSignature)
+	case b.Writer.Alg != AlgEd25519:
+		return fmt.Errorf("%w: writer.alg is not Ed25519", ErrKeysMalformed)
+	case !keyproto.ValidWriterID(b.Writer.WriterID):
+		return ErrBadWriterID
+	}
+	pl := keyproto.BootstrapPayload{
+		UserID: s.UserID, AMKCommitment: b.AMKCommitment, AuthorityPubkey: b.AuthorityPubkey,
+		RecoveryPubkey: b.RecoveryPubkey, RecoveryWrap: b.RecoveryWrap, PhraseBox: b.PhraseBox,
+		EmailHash: b.EmailHash, AuthKind: keyproto.AuthKindPassword, AuthHash: b.AuthHash,
+		WriterPubkey: b.Writer.PubKey, WriterDAK: b.Writer.DAKPubkey, WriterID: b.Writer.WriterID,
+	}
+	payload, err := pl.Bytes()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrKeysMalformed, err)
+	}
+	if err := pl.CheckKeys(); err != nil {
+		return fmt.Errorf("%w: %v", ErrKeysMalformed, err)
+	}
+	bm, err := keyproto.BootstrapMessage(s.Nonce, payload)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrKeysMalformed, err)
+	}
+	rm, err := keyproto.RegistrationMessage(s.Nonce, b.Writer.WriterID, b.Writer.PubKey, b.Writer.DAKPubkey)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrKeysMalformed, err)
+	}
+	if !keyproto.VerifyEd25519(b.AuthorityPubkey, bm, b.AuthoritySig) || !keyproto.VerifyEd25519(b.AuthorityPubkey, rm, b.Writer.Sig) {
+		return fmt.Errorf("%w: authority_sig or registration_sig", ErrBadSignature)
+	}
+	return nil
 }
 
 // PasswordSalt is #59: s_srv for any address (enumeration-free by

@@ -18,16 +18,16 @@ const (
 )
 
 // Gate is the process-wide PBKDF2 semaphore of spec 02 §16.2: at most
-// Concurrency hashes run at once, at most Queue callers wait, and a caller
-// waits at most Wait. Every limiter runs before it, so a refused request costs
-// no PBKDF2. A nil *Gate runs the work ungated (tests).
+// Concurrency hashes run at once, at most Queue callers wait, first in first
+// out, and a caller waits at most Wait. Every limiter runs before it, so a
+// refused request costs no PBKDF2. A nil *Gate runs the work ungated (tests).
 type Gate struct {
-	slots chan struct{}
 	queue int
 	wait  time.Duration
 
 	mu      sync.Mutex
-	waiting int
+	free    int             // idle slots
+	waiters []chan struct{} // FIFO; a slot is handed over by closing one
 }
 
 // NewGate builds a gate; concurrency < 1 is 1, queue < 0 is DefaultGateQueue
@@ -42,43 +42,81 @@ func NewGate(concurrency, queue int, wait time.Duration) *Gate {
 	if wait <= 0 {
 		wait = DefaultGateWait
 	}
-	return &Gate{slots: make(chan struct{}, concurrency), queue: queue, wait: wait}
+	return &Gate{free: concurrency, queue: queue, wait: wait}
+}
+
+// Acquire takes a slot, waiting in line behind earlier callers, or answers
+// ErrGateBusy (the line is full or the wait ran out) or the context's error.
+// The caller runs release exactly once. On a nil *Gate it is a no-op.
+func (g *Gate) Acquire(ctx context.Context) (release func(), err error) {
+	if g == nil {
+		return func() {}, nil
+	}
+	g.mu.Lock()
+	if g.free > 0 && len(g.waiters) == 0 {
+		g.free--
+		g.mu.Unlock()
+		return g.releaser(), nil
+	}
+	if len(g.waiters) >= g.queue {
+		g.mu.Unlock()
+		return nil, ErrGateBusy
+	}
+	ch := make(chan struct{})
+	g.waiters = append(g.waiters, ch)
+	g.mu.Unlock()
+
+	t := time.NewTimer(g.wait)
+	defer t.Stop()
+	var why error
+	select {
+	case <-ch:
+		return g.releaser(), nil
+	case <-t.C:
+		why = ErrGateBusy
+	case <-ctx.Done():
+		why = ctx.Err()
+	}
+	g.mu.Lock()
+	for i, w := range g.waiters {
+		if w == ch {
+			g.waiters = append(g.waiters[:i], g.waiters[i+1:]...)
+			g.mu.Unlock()
+			return nil, why
+		}
+	}
+	g.mu.Unlock()
+	// The slot was handed over as the wait ended: pass it on.
+	g.releaser()()
+	return nil, why
+}
+
+// releaser hands a held slot to the longest waiter, or back to the pool.
+func (g *Gate) releaser() func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			if len(g.waiters) > 0 {
+				ch := g.waiters[0]
+				g.waiters = g.waiters[1:]
+				close(ch)
+				return
+			}
+			g.free++
+		})
+	}
 }
 
 // Do runs f inside a slot, or answers ErrGateBusy without running it.
 func (g *Gate) Do(ctx context.Context, f func() error) error {
-	if g == nil {
-		return f()
+	release, err := g.Acquire(ctx)
+	if err != nil {
+		return err
 	}
-	select {
-	case g.slots <- struct{}{}:
-		defer func() { <-g.slots }()
-		return f()
-	default:
-	}
-	g.mu.Lock()
-	if g.waiting >= g.queue {
-		g.mu.Unlock()
-		return ErrGateBusy
-	}
-	g.waiting++
-	g.mu.Unlock()
-	defer func() {
-		g.mu.Lock()
-		g.waiting--
-		g.mu.Unlock()
-	}()
-	t := time.NewTimer(g.wait)
-	defer t.Stop()
-	select {
-	case g.slots <- struct{}{}:
-		defer func() { <-g.slots }()
-		return f()
-	case <-t.C:
-		return ErrGateBusy
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	defer release()
+	return f()
 }
 
 // HashGated is VerifierHash through the gate. Callers count it as the one

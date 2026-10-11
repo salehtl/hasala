@@ -113,7 +113,7 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 		return Bootstrapped{}, ErrBadWriterID
 	}
 	if b.Writer.Alg != AlgEd25519 {
-		return Bootstrapped{}, fmt.Errorf("%w: writer.alg %q", ErrKeysMalformed, b.Writer.Alg)
+		return Bootstrapped{}, fmt.Errorf("%w: writer.alg is not Ed25519", ErrKeysMalformed)
 	}
 	if b.AuthKind < 0 || b.AuthKind > int(keyproto.AuthKindPassword) {
 		return Bootstrapped{}, fmt.Errorf("%w: auth_kind %d", ErrKeysMalformed, b.AuthKind)

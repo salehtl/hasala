@@ -246,6 +246,7 @@ CREATE TABLE password_reset_ceremonies (
   reset_nonce        bytea NOT NULL,
   ek_pubkey          bytea,
   approved_by_writer text,
+  approved_session   bytea,
   approval_sig       bytea,
   approved_at        timestamptz,
   consumed_at        timestamptz,
@@ -254,10 +255,12 @@ CREATE TABLE password_reset_ceremonies (
   CONSTRAINT password_reset_sizes CHECK (
     octet_length(email_tag) = 32 AND octet_length(reset_nonce) = 32
     AND (ek_pubkey IS NULL OR octet_length(ek_pubkey) = 32)
-    AND (approval_sig IS NULL OR octet_length(approval_sig) = 64)),
+    AND (approval_sig IS NULL OR octet_length(approval_sig) = 64)
+    AND (approved_session IS NULL OR octet_length(approved_session) = 32)),
   CONSTRAINT password_reset_nonce_uniq UNIQUE (reset_nonce),
   CONSTRAINT password_reset_approval_shape CHECK (
     (approved_by_writer IS NULL) = (approval_sig IS NULL)
+    AND (approved_by_writer IS NULL) = (approved_session IS NULL)
     AND (approved_by_writer IS NULL) = (approved_at IS NULL)
     AND (approved_at IS NULL OR ek_pubkey IS NOT NULL)
     AND (ek_pubkey IS NULL OR verified_at IS NOT NULL)

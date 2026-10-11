@@ -224,10 +224,10 @@ func verifyCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.
 		return nil, fmt.Errorf("%w: used or burned", ErrCodeRejected)
 	case !expires.After(now):
 		return nil, fmt.Errorf("%w: expired", ErrCodeRejected)
-	case !sixDigits(c.Submitted):
-		return nil, fmt.Errorf("%w: not six digits", ErrCodeRejected)
 	}
-	if !keys.CodeMatches(stored, purpose, c.CodeID, tag, c.Submitted) {
+	// A guess that is not six digits is a wrong guess at a usable code, like
+	// any other: it counts against the code, and nothing else is spent.
+	if !sixDigits(c.Submitted) || !keys.CodeMatches(stored, purpose, c.CodeID, tag, c.Submitted) {
 		return &codeFailure{codeID: c.CodeID, purpose: purpose, ceremonyKind: kind, tag: tag},
 			fmt.Errorf("%w: wrong code", ErrCodeRejected)
 	}

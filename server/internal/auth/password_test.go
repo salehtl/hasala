@@ -277,10 +277,12 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	if code == wrong {
 		wrong = "111111"
 	}
-	su.Proof.Code = wrong
-	for i := 0; i < 4; i++ {
+	// A malformed guess is a wrong guess like any other: it does not burn the
+	// step-up.
+	for i, guess := range []string{"12345", wrong, wrong, wrong} {
+		su.Proof.Code = guess
 		if err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
-			t.Fatal(err)
+			t.Fatalf("guess %d: %v", i, err)
 		}
 	}
 	su.Proof.Code = code

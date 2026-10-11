@@ -28,6 +28,12 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A second session bound to the approving iPhone's writer: only the
+	// session the approval comes from survives (spec 02 §10.9).
+	sibling, err := m.loginPassword(m.s, m.device)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.fake.Reset()
 
 	// N: begin and verify with the emailed code.
@@ -95,6 +101,9 @@ func TestC9ResetIsApprovedByASignedInIPhone(t *testing.T) {
 	}
 	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
 		t.Fatalf("the approving iPhone was signed out: %v", err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, sibling.Session.Token); !errors.Is(err, ErrSessionRevoked) {
+		t.Fatal("another session of the approving writer survived the reset")
 	}
 	if _, err := f.acct.ResetFinish(bgctx, id, newS, finishSig(newS)); !errors.Is(err, ErrResetRefused) {
 		t.Fatalf("a replayed finish: %v", err)

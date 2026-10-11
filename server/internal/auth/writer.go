@@ -191,7 +191,7 @@ func (r Registration) checkShape() error {
 		return ErrBadWriterID
 	}
 	if r.Alg != AlgEd25519 {
-		return fmt.Errorf("%w: alg %q", ErrWriterMalformed, r.Alg)
+		return fmt.Errorf("%w: alg is not Ed25519", ErrWriterMalformed)
 	}
 	if err := keyproto.CheckEd25519PublicKey(r.PubKey); err != nil {
 		return fmt.Errorf("%w: pubkey: %v", ErrWriterMalformed, err)

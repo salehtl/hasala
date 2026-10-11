@@ -366,7 +366,7 @@ func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded) (Proven, fail
 	case subtle.ConstantTimeCompare(ph, g.ParamsHash[:]) != 1:
 		return Proven{}, nil, fmt.Errorf("%w: params differ from the ones begun", ErrStepUpFailed)
 	case kind != g.StepUp.Proof.Kind:
-		return Proven{}, nil, fmt.Errorf("%w: proof kind %q, begun as %q", ErrStepUpFailed, g.StepUp.Proof.Kind, kind)
+		return Proven{}, nil, fmt.Errorf("%w: the proof kind is not the one begun (%s)", ErrStepUpFailed, kind)
 	case used != nil:
 		return Proven{}, nil, fmt.Errorf("%w: nonce already used", ErrStepUpFailed)
 	case !expires.After(s.now()):

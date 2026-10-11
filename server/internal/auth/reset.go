@@ -209,8 +209,9 @@ func (a *Accounts) ResetApprove(ctx context.Context, session SessionInfo, resetI
 		return fmt.Errorf("%w: the approval does not verify", ErrResetRefused)
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE password_reset_ceremonies SET approved_by_writer = $2, approval_sig = $3, approved_at = $4 WHERE id = $1`,
-		resetID, writerID, sig, now); err != nil {
+		`UPDATE password_reset_ceremonies SET approved_by_writer = $2, approved_session = $3, approval_sig = $4, approved_at = $5
+		  WHERE id = $1`,
+		resetID, writerID, session.Hash, sig, now); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -256,14 +257,16 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 		return SignedIn{}, err
 	}
 	defer pgtx.Rollback(ctx, tx)
-	tag, err := tx.Exec(ctx,
-		`UPDATE password_reset_ceremonies SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL`,
-		resetID, now)
+	var approvedSession []byte
+	err = tx.QueryRow(ctx,
+		`UPDATE password_reset_ceremonies SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL
+		 RETURNING approved_session`,
+		resetID, now).Scan(&approvedSession)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SignedIn{}, fmt.Errorf("%w: already consumed", ErrResetRefused)
+	}
 	if err != nil {
 		return SignedIn{}, err
-	}
-	if tag.RowsAffected() != 1 {
-		return SignedIn{}, fmt.Errorf("%w: already consumed", ErrResetRefused)
 	}
 	st, err := readAccount(ctx, tx, *userID, true)
 	if err != nil {
@@ -280,22 +283,8 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	if err := setPasswordTx(ctx, tx, st.ID, hash, salt, a.Keys.Current(), now); err != nil {
 		return SignedIn{}, err
 	}
-	// Keep the approving iPhone's live sessions (the approval came from one).
-	var keep [][]byte
-	rows, err := tx.Query(ctx, `SELECT token_hash FROM sessions WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
-		st.ID, *approver)
-	if err != nil {
-		return SignedIn{}, err
-	}
-	for rows.Next() {
-		var h []byte
-		if err := rows.Scan(&h); err != nil {
-			rows.Close()
-			return SignedIn{}, err
-		}
-		keep = append(keep, h)
-	}
-	rows.Close()
+	// Keep the session the approval came from (spec 02 §10.9), and only it.
+	keep := [][]byte{approvedSession}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, st.ID, keep, now); err != nil {
 		return SignedIn{}, err
 	}

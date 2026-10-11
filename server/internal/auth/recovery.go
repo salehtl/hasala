@@ -229,7 +229,7 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		return RecoverFinished{}, refuse("not claimable")
 	}
 	if kind != r.Kind {
-		return RecoverFinished{}, refuse("kind %q, verified as %q", r.Kind, kind)
+		return RecoverFinished{}, refuse("the kind is not the one verified (%s)", kind)
 	}
 	st, err := readAccount(ctx, a.Pool, userID, false)
 	if err != nil || !st.active() || !st.HasKeys || st.frozen() {
@@ -307,22 +307,34 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err != nil || !keyproto.VerifyEd25519(authorityPub, rm, w.Sig) {
 		return RecoverFinished{}, refuse("registration_sig")
 	}
+	// A busy gate or a server fault before the commit is not the attempt's
+	// failure: the verified ceremony goes back unclaimed, so the retry (under
+	// recover-ip's 3 an hour) is not refused for the server's sake.
+	release := func(err error) (RecoverFinished, error) {
+		if _, xerr := a.Pool.Exec(ctx, `UPDATE recovery_ceremonies SET claimed_at = NULL WHERE id = $1 AND claimed_at = $2`,
+			r.CeremonyID, now); xerr != nil {
+			return RecoverFinished{}, errors.Join(err, fmt.Errorf("auth: recovery: release the ceremony: %w", xerr))
+		}
+		return RecoverFinished{}, err
+	}
 	if kind == MethodPassword {
 		if hash, salt, err = newPasswordHash(ctx, a.Keys, a.Gate, r.Verifier); err != nil {
-			return RecoverFinished{}, err
+			return release(err)
 		}
 	}
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
 	if err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	defer pgtx.Rollback(ctx, tx)
-	if err := lockUser(ctx, tx, userID); err != nil {
-		return RecoverFinished{}, refuse("%v", err)
+	// The account's state again, under the lock: a freeze or a suspension
+	// that landed since the check above refuses.
+	if st, err = readAccount(ctx, tx, userID, true); err != nil || !st.active() || !st.HasKeys || st.frozen() {
+		return RecoverFinished{}, refuse("the account is not active, keyed and unfrozen")
 	}
 	var live int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM writers WHERE user_id = $1 AND revoked_at IS NULL`, userID).Scan(&live); err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	if live >= MaxLiveWriters {
 		return RecoverFinished{}, refuse("too many devices")
@@ -343,24 +355,24 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 			}
 		}
 	} else if err := setPasswordTx(ctx, tx, userID, hash, salt, a.Keys.Current(), now); err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	if err := insertWriterTx(ctx, tx, userID, w, now); err != nil {
 		return RecoverFinished{}, refuse("%v", err)
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, userID, nil, now); err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	m, err := a.Sessions.IssueTx(ctx, tx, Mint{UserID: userID, MintedBy: MintedRecover, CredentialID: cred, WriterID: w.WriterID})
 	if err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	if err := recordEventTx(ctx, tx, a.Mail, userID, AuthEvent{Kind: EventRecoveryUsed, Method: method,
 		WriterID: w.WriterID, CredentialID: cred}, now); err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	if err := recordEventTx(ctx, tx, a.Mail, userID, AuthEvent{Kind: EventDeviceAdded, WriterID: w.WriterID}, now); err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return RecoverFinished{}, err
