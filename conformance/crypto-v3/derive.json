@@ -1,0 +1,137 @@
+{
+  "note": "spec 01 §4: RK_seed = HKDF(E, 0^32, D04); RWK = HKDF(E, salt, D05); PWK = HKDF(P, salt, D06); amk_commitment = HMAC(AMK, D09 ‖ 00 ‖ uuid_raw); K_1 = HKDF(AMK, uuid_raw, D10 ‖ 00 ‖ u32be(1)); K_pv = HKDF(AMK, uuid_raw, D35). The first set is the anchor set (A01–A08, A19's K_pv).",
+  "prf_salt_unlock": "6bd5a9ebcc65e64bfab48f34528496a6449975b922e87a7ac79518c742170d01",
+  "phrase_of_anchor_e": "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic",
+  "sets": [
+    {
+      "name": "anchors A03–A08 (spec 01 §15.5)",
+      "user_id": "6f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d",
+      "e": "9e885d952ad362caeb4efe34a8e91bd2",
+      "amk": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "aak_seed": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+      "dwk_seed": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+      "p": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+      "recovery_wrap_salt": "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+      "prf_wrap_salt": "303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f",
+      "rk_seed": "bd4572ae0cb80d9c07f9221c0c992c6a6e3fc00a7b766dc7fa732227af4130c8",
+      "rk_pub": "011b14200fa13205fe88feed06b6cef5a94bc07e8dfb89e2e97f1344071b1d7d",
+      "rwk": "d2536aa0185606de0d738686bacd1be63b86cf4585709cc6db805376853bd800",
+      "pwk": "f77bcc6418fafe78e1f05fb437199d52d7610165c0ee33d104f3d4937fcd3f9c",
+      "amk_commitment": "68e63be415f5e196e693f3da355d60eea5cf0c1168adea750c02b0185c2aaa22",
+      "k_1": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "k_pv": "d02f4066e537419b47f48789776a2261caa5a071f12337819707f764b69a8447",
+      "aak_pub": "174553b456dddfc6908ecab1c101fe6ab21e2baa0617795b7d43a63482993fd5",
+      "dwk_pub": "cd14b37f956e953194ff7fb73b3d81dcc561d61a7538094b7c3e1a643ee5f3aa"
+    },
+    {
+      "name": "stream set 1",
+      "user_id": "602806b1-8127-4dae-b3bf-08854369d70e",
+      "e": "b422d7a5bb6eca72cc102b71641de097",
+      "amk": "ece8bbb6f595f77d0821ed5d9502cc5908206c61ff9d824e1e229006d1c93558",
+      "aak_seed": "e277a8616b747c81edfeb108ef40575191fb282f7ddf987a3d3e5a361b4138a3",
+      "dwk_seed": "6984caa1ac20160db7f73fd937d3c2910766d28ed6d19d121b5134d539378856",
+      "p": "6839b24c998e7f5278cb47d8b1091dfd84611ac3d72e62b48733e860dde3baee",
+      "recovery_wrap_salt": "30d457b8b6353b04d01e68a63d71d9ae9b742f74d7d83fcb4b770978aadc3478",
+      "prf_wrap_salt": "7a4c5c03fed32ad81337e965270bdb1c3ad5dd3f1157366d1e69fc5bd88f9089",
+      "rk_seed": "45824f7231b25c26caf9c91fce45c5289c349b3d884c27101872af8311daa4bc",
+      "rk_pub": "98a90959d5056bf99eb4406bdbe908d9e133d5c0a16420bb7077f3ce3c06b642",
+      "rwk": "cef0094f31add1015800a0263479e6e8645e4143350cafc92bc2015d0036ec81",
+      "pwk": "b9ba2d4e9951d059d434208e55c0d59ba673b44f3b0983e4289b4272a1d26627",
+      "amk_commitment": "69101bddae8c785b82250ad0efc065c7bb0549aff93da5cd4984716cc07942f9",
+      "k_1": "097631791674d444d415e24d9f60ff5423c43106617250e5a9f5e5f4a9c810f7",
+      "k_pv": "90bd49c3b4467cd0b2d4559eb584887f3bd23fb221780cd7c0b12f57eac505e1",
+      "aak_pub": "d80b78268d5b4bbe0f7f9c318a92fe7e4f3aeb878ad6eabb22d893f8d3517e3d",
+      "dwk_pub": "581f4025c06ca20a789b4673f5af69e62c223ff06e0b73901cb6eb96ccb583b5"
+    },
+    {
+      "name": "stream set 2",
+      "user_id": "3cd0d7aa-5495-493e-a607-2dabaab9e8dd",
+      "e": "f0255134aba819764d83aacd19a4ffde",
+      "amk": "1050d358a7be8de36421cb123a38dfec56ffb85ca1a0c5e1c036a9dd2b802312",
+      "aak_seed": "efffdb11b666d0dc584c7ddbd319b147414eb5a33307555d0d93bd64d415e0cb",
+      "dwk_seed": "690545d464329c87742d10cf63e9faf432af0e16fe17181be871793fdbdbb7e5",
+      "p": "5db40805d826037e8ce03d9d6f2db425d6d18dd90bc17588da9ec4d49d796e1f",
+      "recovery_wrap_salt": "b3aeb27bec8cf21d9bd97882c445833ae06d175064fea75144f1ef665b279d0b",
+      "prf_wrap_salt": "2bdc8ce822224a773428ecae67bbfa6fd98bbffe0c951c2f5850590f3894e7fc",
+      "rk_seed": "aa87c1ba9d65e04aa036e35ae2172c0e9d7304533dafcc2b8df112387d7bfef4",
+      "rk_pub": "5013706490a555c0b89df46961ec212386dab708f5e4bb6d5e7ec9954c1af0b8",
+      "rwk": "0b05aaf413cf17143ff3d422d6109c7c2087b8fa68fe9843461de456828434ba",
+      "pwk": "42c7c06058473be7422a9add2e619618fd06b0a68ee152884be4194634a7c8c0",
+      "amk_commitment": "c5dfcdbd59e8f0b408c249fbaaf4c901bd62be5a769ba5d70406abe4f417ab40",
+      "k_1": "17df165a90da4e9319a4ef95c0a4bd0bc0a6ab18c289cd61bb85cdf6e3d19e0a",
+      "k_pv": "75a7312acde2c067aea84f7358f33a8422d849e1d2d85ae1eafb9bd04f696eb5",
+      "aak_pub": "c64dfcdc250971e288c727774d727d6b9a39c5ee201101df256bf8f3de30170c",
+      "dwk_pub": "403a1073910e87d0752b1cfd293c280626ae913d93b4c84be071b26b2d776420"
+    },
+    {
+      "name": "stream set 3",
+      "user_id": "b6e0060d-55a1-473a-b12a-3ef44dd1ffcc",
+      "e": "2849af39d71084ee46cd920e7e5e158c",
+      "amk": "2e0cd1c3035a9d9c972e6898fa87f0462a46752318890ad75e8718d57ec3b1b3",
+      "aak_seed": "a78251442ff980d3329bb31edb539165db503f2228d2467796a22835a390864c",
+      "dwk_seed": "e2abcf9f873696b36aac8fd60d97b4571c03aa124828c54f0a16264dc27afd80",
+      "p": "c4521b4e27392bff4ad09b0807729b579870862b0dad7e3522bc664c03dbb6b2",
+      "recovery_wrap_salt": "22972ed0c3ac6659bdd6c1eb84d346e5767946c5300067d7f69c6094dee9c349",
+      "prf_wrap_salt": "74421d110d8045eded8a9dd57a9851590378472bcdf09d27a6938f4d8e451d5f",
+      "rk_seed": "c190aa649785e9f2842d1f5462e5a97e05a16c30c5149eebaa407ec5cb40c560",
+      "rk_pub": "4efdb1ed6490673a58762efee11a93c246b88ea926418b05bbb0014d48891b8c",
+      "rwk": "e7ad7ce5ad7c01bfd30d8a87d468e91fc7b1987ce8fda889823aaa6ec7f07bc4",
+      "pwk": "cf81af7863ef4755293bb29c92600d70ddbeb85261348f5897c9788be6137590",
+      "amk_commitment": "e75362a04c1db8faae6ce24fd7fe6cc6a83f0bf171163076e4d469cd5fbd6390",
+      "k_1": "5bf9cb8955d4b8b048fbb3b9549090add116d52b797607e19491c33420363a7c",
+      "k_pv": "a660e7c2685742cdafa505c3e34666d9c95f22ff358b0db8762f488df51a0784",
+      "aak_pub": "8b98e581e2548d05dc1c614ad61bcef43a17817d47ee50bea2a1b741e95e7719",
+      "dwk_pub": "b87af1448048520fa1857e2121572f76e253b74208c9527218bac4431792fbda"
+    }
+  ],
+  "blob_keys": [
+    {
+      "k_e": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "nonce": "d0d1d2d3d4d5d6d7d8d9dadb",
+      "ad": "686173616c612f76312f626c6f620061642d6f6e65",
+      "sha256_ad": "a66be0b9c435bc7f7fa3d4fbdd0079d185e7e84316862c4b41dd52308af261dc",
+      "k_blob": "4a851680780339670cc246144b413184783d92f67c8716396ab9717d33d6513e",
+      "construction": "HKDF(k_e, salt = nonce, info = \"hasala/v1/blob-key\" ‖ 00 ‖ SHA256(ad))"
+    },
+    {
+      "k_e": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "nonce": "e0e1e2e3e4e5e6e7e8e9eaeb",
+      "ad": "686173616c612f76312f626c6f620061642d6f6e65",
+      "sha256_ad": "a66be0b9c435bc7f7fa3d4fbdd0079d185e7e84316862c4b41dd52308af261dc",
+      "k_blob": "66a70bc727b234293c834b3e6d5118582c1ccb184e226baee14fd4f26bb33256",
+      "construction": "HKDF(k_e, salt = nonce, info = \"hasala/v1/blob-key\" ‖ 00 ‖ SHA256(ad))"
+    },
+    {
+      "k_e": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "nonce": "5c74f9551a49b1510ca6881e",
+      "ad": "686173616c612f76312f626c6f620061642d6f6e65",
+      "sha256_ad": "a66be0b9c435bc7f7fa3d4fbdd0079d185e7e84316862c4b41dd52308af261dc",
+      "k_blob": "081b00a3364cf0a18badfe21117d7e132839bcc3fd2ee8c8f8b130a1100c99ef",
+      "construction": "HKDF(k_e, salt = nonce, info = \"hasala/v1/blob-key\" ‖ 00 ‖ SHA256(ad))"
+    },
+    {
+      "k_e": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "nonce": "d0d1d2d3d4d5d6d7d8d9dadb",
+      "ad": "2ef8e1764c31d9e03c9d95de941636adbfa7b7b4f6ed658363ec9fbd941ecbba695ce350588211dfa38ebe63de0aea1a7b7f644d65d29340c36b1813783f1b687fecf2aa42e6d2d62472f9568ad4f78ae5a8900234e84a8e6ea7692ccc18ca7eda00d40a80ba693dcbc6e2de4099515177ff6db588dd09d77d8d7d1a1b5cea89327742bd43a96254b31b1f2d7047c9f5663434687f05",
+      "sha256_ad": "dcda5a02396488cc5e3a5a91c68fc08e0787997c3a97d9c367c883d2f5038fc3",
+      "k_blob": "33933ab6248964d61d6ef94c4258196512c0ec19c63bc8c158d7592aad11c3c2",
+      "construction": "HKDF(k_e, salt = nonce, info = \"hasala/v1/blob-key\" ‖ 00 ‖ SHA256(ad))"
+    },
+    {
+      "k_e": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "nonce": "e0e1e2e3e4e5e6e7e8e9eaeb",
+      "ad": "2ef8e1764c31d9e03c9d95de941636adbfa7b7b4f6ed658363ec9fbd941ecbba695ce350588211dfa38ebe63de0aea1a7b7f644d65d29340c36b1813783f1b687fecf2aa42e6d2d62472f9568ad4f78ae5a8900234e84a8e6ea7692ccc18ca7eda00d40a80ba693dcbc6e2de4099515177ff6db588dd09d77d8d7d1a1b5cea89327742bd43a96254b31b1f2d7047c9f5663434687f05",
+      "sha256_ad": "dcda5a02396488cc5e3a5a91c68fc08e0787997c3a97d9c367c883d2f5038fc3",
+      "k_blob": "60a7f6d56a453883e90c88f071e1d331b8c976cdcb811f5a17665f93bb6e4d47",
+      "construction": "HKDF(k_e, salt = nonce, info = \"hasala/v1/blob-key\" ‖ 00 ‖ SHA256(ad))"
+    },
+    {
+      "k_e": "c2e59f467f32b6e843710e8f959c186013d2d2fe94ec883c64ebfa3155f8e188",
+      "nonce": "41b779e1fa107f5e205bf5d5",
+      "ad": "2ef8e1764c31d9e03c9d95de941636adbfa7b7b4f6ed658363ec9fbd941ecbba695ce350588211dfa38ebe63de0aea1a7b7f644d65d29340c36b1813783f1b687fecf2aa42e6d2d62472f9568ad4f78ae5a8900234e84a8e6ea7692ccc18ca7eda00d40a80ba693dcbc6e2de4099515177ff6db588dd09d77d8d7d1a1b5cea89327742bd43a96254b31b1f2d7047c9f5663434687f05",
+      "sha256_ad": "dcda5a02396488cc5e3a5a91c68fc08e0787997c3a97d9c367c883d2f5038fc3",
+      "k_blob": "0f1a819d04af836c4670a174b31db6192066fa318414c35a3fcea5f62527d1ac",
+      "construction": "HKDF(k_e, salt = nonce, info = \"hasala/v1/blob-key\" ‖ 00 ‖ SHA256(ad))"
+    }
+  ]
+}

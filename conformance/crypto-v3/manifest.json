@@ -1,0 +1,267 @@
+{
+  "note": "Written by Go (WS-2) from fixed inputs; Swift reads these files and never regenerates them. Every file is listed with its SHA-256; Go's TestCommittedVectorsAreCurrent regenerates the tree and requires it byte for byte. Binary values are lowercase hex. Key material here is synthetic, from the anchor inputs of spec 01 §15.5 or patterned seeds named in each file.",
+  "spec": "spec 01 §15 (draft 2026-10-11, review 2); spec 02 §22",
+  "regenerate": "cd server && go run ./cmd/gen-crypto-vectors",
+  "domains": [
+    {
+      "id": "D01",
+      "string": "hasala/v1/register"
+    },
+    {
+      "id": "D02",
+      "string": "hasala/v1/step-up"
+    },
+    {
+      "id": "D03",
+      "string": "hasala/v1/step-up-params"
+    },
+    {
+      "id": "D04",
+      "string": "hasala/v1/recovery-key"
+    },
+    {
+      "id": "D05",
+      "string": "hasala/v1/wrap/recovery"
+    },
+    {
+      "id": "D06",
+      "string": "hasala/v1/wrap/prf"
+    },
+    {
+      "id": "D07",
+      "string": "hasala/v1/wrap"
+    },
+    {
+      "id": "D08",
+      "string": "hasala/v1/prf-salt/unlock"
+    },
+    {
+      "id": "D09",
+      "string": "hasala/v1/amk-commitment"
+    },
+    {
+      "id": "D10",
+      "string": "hasala/v1/epoch-key"
+    },
+    {
+      "id": "D11",
+      "string": "hasala/v1/blob-key"
+    },
+    {
+      "id": "D12",
+      "string": "hasala/v1/blob"
+    },
+    {
+      "id": "D13",
+      "string": "hasala/v1/writer-registration"
+    },
+    {
+      "id": "D14",
+      "string": "hasala/v1/writer-revocation"
+    },
+    {
+      "id": "D15",
+      "string": "hasala/v1/session-bind"
+    },
+    {
+      "id": "D16",
+      "string": "hasala/v1/account-delete"
+    },
+    {
+      "id": "D17",
+      "string": "hasala/v1/bootstrap"
+    },
+    {
+      "id": "D18",
+      "string": "hasala/v1/recovery-signin"
+    },
+    {
+      "id": "D19",
+      "string": "hasala/v1/recovery-rotate"
+    },
+    {
+      "id": "D20",
+      "string": "hasala/v1/epoch-rotate"
+    },
+    {
+      "id": "D21",
+      "string": "hasala/v1/keyring-key"
+    },
+    {
+      "id": "D22",
+      "string": "hasala/v1/keyring"
+    },
+    {
+      "id": "D23",
+      "string": "hasala/v1/device-comparison"
+    },
+    {
+      "id": "D24",
+      "string": "hasala/v1/mailbox-route"
+    },
+    {
+      "id": "D25",
+      "string": "hasala/v1/mailbox-route-key-id"
+    },
+    {
+      "id": "D26",
+      "string": "hasala/v1/password"
+    },
+    {
+      "id": "D27",
+      "string": "hasala/v1/server/password-salt"
+    },
+    {
+      "id": "D28",
+      "string": "hasala/v1/server/password-pepper"
+    },
+    {
+      "id": "D29",
+      "string": "hasala/v1/server/email-code"
+    },
+    {
+      "id": "D30",
+      "string": "hasala/v1/server/email-tag"
+    },
+    {
+      "id": "D31",
+      "string": "hasala/v1/step-up-device"
+    },
+    {
+      "id": "D32",
+      "string": "hasala/v1/writer-head"
+    },
+    {
+      "id": "D33",
+      "string": "hasala/v1/passkey-add"
+    },
+    {
+      "id": "D34",
+      "string": "hasala/v1/wrap-put"
+    },
+    {
+      "id": "D35",
+      "string": "hasala/v1/phrase-box-key"
+    },
+    {
+      "id": "D36",
+      "string": "hasala/v1/phrase-box"
+    },
+    {
+      "id": "D37",
+      "string": "hasala/v1/reset-code"
+    },
+    {
+      "id": "D38",
+      "string": "hasala/v1/reset-approve"
+    },
+    {
+      "id": "D39",
+      "string": "hasala/v1/reset-finish"
+    },
+    {
+      "id": "D40",
+      "string": "hasala/v1/email-change"
+    },
+    {
+      "id": "D41",
+      "string": "hasala/v1/server/auth-key-id"
+    },
+    {
+      "id": "D42",
+      "string": "hasala/v1/device-freeze"
+    }
+  ],
+  "files": [
+    {
+      "path": "approval.json",
+      "sha256": "31d9500798596e452cbbfcefa45daeae136c4c67ae8526d44cd6c16b4479326a"
+    },
+    {
+      "path": "chain.json",
+      "sha256": "39a835dc8c04c434c23f80faee8d3babd18be4edd7b211848839ef155a4addc1"
+    },
+    {
+      "path": "codes.json",
+      "sha256": "bd097feb3e44f32ad560e681b77176ce3878486242f4934c00e1ca2fa798113a"
+    },
+    {
+      "path": "derive.json",
+      "sha256": "9166742ee94096df5ef92e1e5cdc34903aa4342c9bf62858c4f0ee21d89f9bee"
+    },
+    {
+      "path": "frame-aead.json",
+      "sha256": "7fd23ce7aa9a901e53a8cb5e913fe7f7507686823b32da14aeb45bb4f2aa1d45"
+    },
+    {
+      "path": "frames.json",
+      "sha256": "91ae01cfeb4dcb25eccbaa179c99da91096e4098eaafd93b5daa1ce84e63d866"
+    },
+    {
+      "path": "frames/1024-fit-c1.bin",
+      "sha256": "f681b3fa590d7bb5c8b675db1548db7cdb37baaff23db847a11293b97eb4ce18"
+    },
+    {
+      "path": "frames/1024-spill-c9.bin",
+      "sha256": "82ba423d63c78b4bc854e440583c8efad2e01598a14aeab24278aed6fc0d3a80"
+    },
+    {
+      "path": "frames/16384-fit-c1.bin",
+      "sha256": "7904e543d5ef8878b5dc0f6c20e0dba559d8cc90b1ece752670c743f0f2529f2"
+    },
+    {
+      "path": "frames/16384-spill-c9.bin",
+      "sha256": "008591beb2beb6e2042b9587956b80ea4d6d901de409b325ea91dcd778e7757e"
+    },
+    {
+      "path": "frames/4096-fit-c10.bin",
+      "sha256": "d84171da39281077955a60e8e15e1d4624cc29e9d7cfb43618ba533a62be9536"
+    },
+    {
+      "path": "frames/4096-spill-c99999.bin",
+      "sha256": "9733e9425ca7295edccc09e5f32d54e003510d479bede877abd5d086094935bb"
+    },
+    {
+      "path": "frames/65536-fit-c10.bin",
+      "sha256": "759c5642c04ac8f852e6df2aeb1fb0c892931295e4f58153bcd3aefdde0fef2a"
+    },
+    {
+      "path": "frames/65536-spill-c99999.bin",
+      "sha256": "faa2e546cc86f9556ec22f701b314dca6aab17775c3313b28c05c1435d661825"
+    },
+    {
+      "path": "password.json",
+      "sha256": "1b51f1be414d24056592576196c1d9db7926c428448ee76e14fc43bd264bc973"
+    },
+    {
+      "path": "phrase-box.json",
+      "sha256": "d91f0e8dce299b5dbe524e32a3a46a953f44f0ce1772ce0349baa5b04ec0a5f8"
+    },
+    {
+      "path": "phrase.json",
+      "sha256": "acf8496698cab9dd2c268036174c2b9aaf1409ef23dc199b82aad0910f5a2756"
+    },
+    {
+      "path": "predicate.json",
+      "sha256": "d17bd32564c4d23614efc5086adf8a7d8adbeede2d0f4629ef1158f339ab43ea"
+    },
+    {
+      "path": "tamper.json",
+      "sha256": "41d6aee31d5a599fb1dff9f5dcaca5fc0aeb707127aceb9184f67c4eaa02cd20"
+    },
+    {
+      "path": "wraps.json",
+      "sha256": "86a1b5f5b1ee863c7b989bed8a3121fadb069efed1bbdd64b93046490a8a028a"
+    }
+  ],
+  "api_v1_files": [
+    {
+      "path": "messages.json",
+      "sha256": "1f29bd164c1308173cdbe257b225cdfa7311dfb8e699f8a9062c2904a2f2c50a"
+    },
+    {
+      "path": "stepup.json",
+      "sha256": "b838257770bfa284934d0e158769de6d67ef2b65faccc5aebe62a5034e313ce3"
+    }
+  ]
+}
