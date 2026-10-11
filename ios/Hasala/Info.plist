@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>app.hasala.ios.refresh</string>
+		<string>app.hasala.ios.processing</string>
+	</array>
+	<key>HasalaEnvironment</key>
+	<string>$(HASALA_ENVIRONMENT)</string>
+	<key>HasalaAPIBaseURL</key>
+	<string>$(HASALA_API_BASE_URL)</string>
+	<key>HasalaGoogleClientID</key>
+	<string>$(HASALA_GOOGLE_IOS_CLIENT_ID)</string>
+	<key>HasalaGoogleRedirectScheme</key>
+	<string>$(HASALA_GOOGLE_REDIRECT_SCHEME)</string>
+	<key>HasalaGmailPubSubTopic</key>
+	<string>$(HASALA_GMAIL_PUBSUB_TOPIC)</string>
+	<key>HasalaGitCommit</key>
+	<string>$(HASALA_GIT_COMMIT)</string>
+</dict>
+</plist>

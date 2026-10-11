@@ -6,11 +6,12 @@
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac) and `web` (the website) are not required checks.
+# client core on a Mac), `ios` (the app on a Mac) and `web` (the website) are
+# not required checks.
 #
 # Path-aware on pull requests: the first job, `changes`, lists the files the
-# pull request changes and says which areas they touch; `gate`, `vuln`, `swift`
-# and `web` run only when theirs is touched, and `secrets` always runs. Jobs are
+# pull request changes and says which areas they touch; `gate`, `vuln`, `swift`,
+# `ios` and `web` run only when theirs is touched, and `secrets` always runs. Jobs are
 # skipped with a job-level `if:`, never a workflow-level `paths:` filter: a
 # skipped job still reports its check, as "skipped", which a required check
 # counts as passing, whereas a workflow that never starts leaves its required
@@ -48,8 +49,8 @@ defaults:
 
 jobs:
   # Which areas the pull request touches, as outputs `gate` (read by gate and
-  # vuln), `swift` and `web`, each "true" or "false"; any other event sets all
-  # three to "true". The checkout of a pull request is its merge commit
+  # vuln), `swift`, `ios` and `web`, each "true" or "false"; any other event sets
+  # all of them to "true". The checkout of a pull request is its merge commit
   # (refs/pull/N/merge) and depth 2 fetches both parents, so `git diff HEAD^1
   # HEAD` is exactly what merging would change on the base as it is now.
   # --no-renames lists both ends of a move, so moving a file out of an area
@@ -60,6 +61,7 @@ jobs:
     outputs:
       gate: ${{ steps.areas.outputs.gate }}
       swift: ${{ steps.areas.outputs.swift }}
+      ios: ${{ steps.areas.outputs.ios }}
       web: ${{ steps.areas.outputs.web }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,7 +75,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if [[ "$EVENT" != pull_request ]]; then
-            printf '%s=true\n' gate swift web | tee -a "$GITHUB_OUTPUT"
+            printf '%s=true\n' gate swift ios web | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
           files="$(git diff --no-renames --name-only HEAD^1 HEAD)"
@@ -92,6 +94,9 @@ jobs:
           # runs the same lints, so ios/ alone does not start gate.
           area gate '^(server|conformance|reference|scripts|infra|\.github)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$|(^|/)go\.(mod|sum)$|\.(go|nix)$'
           area swift '^(ios|conformance|\.github)/'
+          # The app: its sources and scripts, the Paper tokens it is generated
+          # from, and the flake that pins its XcodeGen.
+          area ios '^(ios|design|\.github)/|^flake\.(nix|lock)$'
           # The site's toolchain (Bun) comes from the flake's devShell.
           area web '^(web|docs/legal|\.github)/|^flake\.(nix|lock)$'
 
@@ -195,6 +200,94 @@ jobs:
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
+
+  # The iOS app (ios/): token generator freshness, the HasalaKit package tests on
+  # macOS, then a simulator build with the unit and UI smoke tests. Nothing is
+  # signed here (CODE_SIGNING_ALLOWED=NO) and no Apple credential exists in CI;
+  # archives, signing and uploads happen only on the owner's Mac
+  # (ios/scripts/archive.sh, ios/scripts/upload.sh). Not a required check.
+  # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
+  ios:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.changes.outputs.ios != 'false' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
+
+      - name: Design tokens are generated from design/tokens/paper-tokens.json
+        run: swift ios/tools/tokens/generate.swift --check
+
+      - name: No Swift file references in the project (synchronized folders only)
+        run: |
+          if grep -q 'lastKnownFileType = sourcecode.swift' ios/Hasala.xcodeproj/project.pbxproj; then
+            echo "::error::ios/Hasala.xcodeproj lists Swift files; every target root must be a synchronized folder"
+            exit 1
+          fi
+
+      # XcodeGen 2.46.0 from the flake (packages.aarch64-darwin.xcodegen, pinned
+      # by hash): only that one package is built, not the devShell. A missing
+      # or different XcodeGen fails the step (generate-project.sh exits 2).
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+
+      - name: Project matches ios/project.yml (XcodeGen 2.46.0, AT-01)
+        run: |
+          xcodegen="$(nix build .#xcodegen --no-link --print-out-paths)/bin/xcodegen"
+          XCODEGEN="$xcodegen" ios/scripts/generate-project.sh --check
+
+      - name: Release script tests (build numbers, upload prechecks; offline)
+        run: |
+          ios/scripts/tests/build_number_test.sh
+          ios/scripts/tests/upload_precheck_test.sh
+
+      - name: HasalaKit tests (macOS)
+        run: swift test --package-path ios/HasalaKit
+
+      - name: Build and test in the simulator (unsigned)
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          rts = json.load(sys.stdin)["devices"]
+          best = None
+          for rt, devs in rts.items():
+              if ".iOS-" not in rt:
+                  continue
+              ver = tuple(int(x) for x in rt.rsplit(".iOS-", 1)[1].split("-"))
+              if ver < (26,):
+                  continue
+              for d in devs:
+                  if d["name"].startswith("iPhone") and (best is None or ver > best[0]):
+                      best = (ver, d["udid"], d["name"])
+          if best is None:
+              sys.exit("no iPhone simulator with iOS 26 or later")
+          print(best[1])
+          ')"
+          xcrun simctl list devices | grep "$udid"
+          xcodebuild test \
+            -project ios/Hasala.xcodeproj -scheme Hasala \
+            -destination "id=$udid" \
+            -resultBundlePath "$RUNNER_TEMP/Hasala.xcresult" \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-xcresult
+          path: ${{ runner.temp }}/Hasala.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
 
   # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
   # `swift test` passes (unit tests and the conformance suite, reading

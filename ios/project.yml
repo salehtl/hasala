@@ -1,0 +1,106 @@
+# XcodeGen source of truth for ios/Hasala.xcodeproj (spec 06 §2.1). The project is
+# generated from this file and committed; regenerate it with
+#
+#   ios/scripts/generate-project.sh
+#
+# which needs XcodeGen 2.46.0, pinned in the flake (`nix build .#xcodegen`; the
+# darwin devShell puts it on PATH). Every target root is a
+# synchronized folder, so adding or removing a Swift file never changes the
+# .pbxproj (spec 04 §1.2). Build settings live in Config/*.xcconfig, not here,
+# except target wiring. Gate A0: the app target only; the widget and the dormant
+# notification service extension join at A1 (spec 06 §15.2).
+name: Hasala
+options:
+  bundleIdPrefix: app.hasala
+  deploymentTarget:
+    iOS: "26.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+  xcodeVersion: "27.0"
+packages:
+  HasalaKit:
+    path: HasalaKit
+settings:
+  base:
+    DEVELOPMENT_TEAM: 8CFG28JHP3
+    CODE_SIGN_STYLE: Automatic
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Hasala:
+    type: application
+    platform: iOS
+    sources:
+      - path: Hasala
+        type: syncedFolder
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    dependencies:
+      - package: HasalaKit
+        product: HasalaModels
+      - package: HasalaKit
+        product: HasalaDesign
+      - package: HasalaKit
+        product: HasalaMocks
+  HasalaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HasalaTests
+        type: syncedFolder
+    dependencies:
+      - target: Hasala
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.hasala.ios.tests
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Hasala.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hasala"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG HASALA_MOCKS
+  HasalaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: HasalaUITests
+        type: syncedFolder
+    dependencies:
+      - target: Hasala
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.hasala.ios.uitests
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: Hasala
+schemes:
+  Hasala:
+    build:
+      targets:
+        Hasala: all
+        HasalaTests: [test]
+        HasalaUITests: [test]
+    run:
+      config: Debug
+      commandLineArguments:
+        "-HasalaScenario maya": true
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - HasalaTests
+        - HasalaUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

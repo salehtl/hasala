@@ -10,7 +10,7 @@ beta; every deployment is **QA** until a production VPS exists.
 | --- | --- |
 | `server/` | The Go backend `hasalad` (module `github.com/salehtl/hasala/server`), forked from ledgerd at `4b01e36`. Postgres. |
 | `server/oracle/` | A separate Go module: ledgerd's frozen v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Test-time oracle only; the server's build graph cannot reach it. |
-| `ios/` | The native SwiftUI app and its Swift packages (`HasalaCore` = the ported client core). Not in this tree yet. |
+| `ios/` | The native SwiftUI app and its Swift packages (`HasalaCore` = the ported client core; `HasalaKit` = the design system, read models and the Maya mock). |
 | `conformance/` | Shared fixtures. Go, the TypeScript reference and Swift must all produce byte-identical output against them. |
 | `reference/ledgerd-client/` | ledgerd's TypeScript client core. **Reference and fixture oracle only** — the Swift port must match it. Not shipped. |
 | `reference/ledgerd-pwa/` | ledgerd's React PWA. Reference for product logic (`src/lib/`) only. Not shipped. |
@@ -74,6 +74,23 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
   toolchain needed) in `secrets` on every push and pull request, and in `gate`
   before anything else.
+- The iOS app (`ios/`, macOS only) builds with Xcode 27 from the system. The
+  `Hasala.xcodeproj` is generated from `ios/project.yml` by XcodeGen **2.46.0**
+  (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
+  and committed. The flake pins that XcodeGen (`nix build .#xcodegen`, on PATH in
+  the darwin devShell); nixpkgs' own 2.44.1 writes a project without resources.
+  Tests: `swift test --package-path ios/HasalaKit` (design tokens, money
+  formatting, the Maya mock, text contrast) and `xcodebuild test -project
+  ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
+  (unit tests, and UI tests that run the accessibility audit at the default
+  and `.accessibility3` text sizes). Design tokens are generated from
+  `design/tokens/paper-tokens.json` by `swift ios/tools/tokens/generate.swift`
+  (`--check` in CI). Debug builds run the synthetic Maya scenario
+  (`-HasalaScenario maya|mayaHidden`); Release builds never reach the mocks.
+  `ios/scripts/archive.sh` archives and exports a signed .ipa on the owner's Mac
+  and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
+  from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. CI job `ios` builds
+  and tests unsigned in the simulator; it is not a required check.
 - `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
   which is byte-frozen).

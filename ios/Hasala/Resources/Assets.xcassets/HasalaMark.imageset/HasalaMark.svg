@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="616" height="368" viewBox="0 0 616 368" fill="none">
+  <title>Hasala mark</title>
+  <defs><linearGradient id="hasala-coin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"/><stop offset="1" stop-color="#EBB04A"/></linearGradient><clipPath id="hasala-slot-line"><rect x="0" y="0" width="1024" height="632"/></clipPath></defs>
+  <g transform="translate(-204 -328)">
+    <!-- plate around the slot (keeps the slot readable on any ground) -->
+    <rect x="212" y="576" width="600" height="112" rx="56" fill="#142659" fill-opacity="0.12"/>
+    <!-- slot, blue-950, with a lit lower lip -->
+    <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"/>
+    <rect x="268" y="648" width="488" height="10" rx="5" fill="#FFFFFF" fill-opacity="0.22"/>
+    <!-- dirham, halfway in: cut at the slot's centre line -->
+    <g clip-path="url(#hasala-slot-line)">
+      <circle cx="512" cy="538.2" r="184" fill="#C98A1E"/>
+      <circle cx="512" cy="519.8" r="184" fill="url(#hasala-coin)"/>
+      <circle cx="512" cy="519.8" r="139.8" fill="none" stroke="#C98A1E" stroke-opacity="0.5" stroke-width="10.1"/>
+      <!-- double rule: the dirham sign's two strokes, Ledger's accountant's rule -->
+      <line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
+      <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
