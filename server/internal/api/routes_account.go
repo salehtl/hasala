@@ -144,6 +144,12 @@ func (s *Server) mountAccount(mux *http.ServeMux) {
 	// there is no deployment of this server in which the route may be absent.
 	mux.HandleFunc("POST /api/v1/account/challenge", s.requireSession(s.handleAccountChallenge))
 	mux.HandleFunc("DELETE /api/v1/account", s.requireSession(s.handleDeleteAccount))
+	// account.go: #40, and with the account ceremonies #76 and #67.
+	mux.HandleFunc("GET /api/v1/account", s.requireSessionFrozenOK(s.handleGetAccount))
+	if s.Accounts != nil {
+		mux.HandleFunc("PUT /api/v1/account/display-name", s.requireSession(s.userLimited(s.handleSetDisplayName)))
+		mux.HandleFunc("POST /api/v1/keys/phrase/view", s.requireSession(s.userLimited(s.handlePhraseView)))
+	}
 }
 
 // handleAccountChallenge mints a single-use deletion nonce.

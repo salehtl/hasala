@@ -487,6 +487,9 @@ func (a *Accounts) ChangePassword(ctx context.Context, session SessionInfo, veri
 func (a *Accounts) RemovePassword(ctx context.Context, session SessionInfo, su *StepUpObject) error {
 	return a.passwordAction(ctx, session, keyproto.ActionPasswordRemove, nil, su,
 		func(ctx context.Context, tx pgx.Tx, st accountState, _ Proven, now time.Time) (string, error) {
+			if !st.hasPassword() {
+				return "", fmt.Errorf("%w: the account has no password", ErrBadRequest)
+			}
 			var passkeys int
 			if err := tx.QueryRow(ctx, `SELECT count(*) FROM webauthn_credentials WHERE user_id = $1`, st.ID).Scan(&passkeys); err != nil {
 				return "", err
