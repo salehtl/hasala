@@ -7,12 +7,14 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/budget"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog"
 )
 
@@ -35,6 +37,10 @@ type Row struct {
 	PrevHash      string    `json:"prev_hash"` // hex
 	CreatedAt     time.Time `json:"created_at"`
 	Blob          string    `json:"blob"` // base64
+	// HeadSig is the batch's DWK signature over HeadMessage (spec 01 §7.1), b64
+	// on the last row of each upload batch and null on the others. A page
+	// never ends inside a batch, so every writer's last row in a page has one.
+	HeadSig *string `json:"head_sig"`
 }
 
 // PullResponse answers GET /api/v1/sync.
@@ -86,6 +92,9 @@ type UploadRequest struct {
 	WriterID string       `json:"writer_id"`
 	Stream   string       `json:"stream"`
 	Blobs    []UploadBlob `json:"blobs"`
+	// HeadSig is the writer's DWK signature over HeadMessage(user_id, c_last,
+	// blob_hash_last, writer_id) for the batch's last blob (spec 01 §7.1, b64).
+	HeadSig string `json:"head_sig"`
 }
 
 // UploadResponse returns the assigned seqs, in submission order.
@@ -97,7 +106,57 @@ type UploadResponse struct {
 // Pull
 // ---------------------------------------------------------------------------
 
+// pullSlots bounds the pulls in flight per account (spec 02 §11.3: at most 2;
+// the third gets 429). The map holds one counter per account only while a
+// pull runs.
+type pullSlots struct {
+	mu    sync.Mutex
+	inUse map[uuid.UUID]int
+}
+
+func (p *pullSlots) acquire(u uuid.UUID) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.inUse == nil {
+		p.inUse = map[uuid.UUID]int{}
+	}
+	if p.inUse[u] >= maxConcurrentPulls {
+		return false
+	}
+	p.inUse[u]++
+	return true
+}
+
+func (p *pullSlots) release(u uuid.UUID) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.inUse[u]--; p.inUse[u] <= 0 {
+		delete(p.inUse, u)
+	}
+}
+
+// pullAdmitted applies the concurrency bound and then pull-user; the caller
+// releases the slot when it returns true. The slot comes first so a pull
+// refused for being the third in flight spends no pull-user token, and a
+// slot the limiter then refuses is given back.
+func (s *Server) pullAdmitted(w http.ResponseWriter, userID uuid.UUID) bool {
+	if !s.pulls.acquire(userID) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
+		return false
+	}
+	if !s.PullPerUser.Allow(userID.String()) {
+		s.pulls.release(userID)
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
+		return false
+	}
+	return true
+}
+
 func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	if !s.pullAdmitted(w, userID) {
+		return
+	}
+	defer s.pulls.release(userID)
 	stream, ok := requireStream(w, r)
 	if !ok {
 		return
@@ -125,7 +184,13 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 	next := after
 	for _, row := range rows {
 		next = row.Seq
+		var headSig *string
+		if row.HeadSig != nil {
+			hs := base64.StdEncoding.EncodeToString(row.HeadSig)
+			headSig = &hs
+		}
 		out.Rows = append(out.Rows, Row{
+			HeadSig:       headSig,
 			Seq:           strconv.FormatInt(row.Seq, 10),
 			Stream:        row.Stream,
 			WriterID:      row.WriterID,
@@ -154,6 +219,10 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 }
 
 func (s *Server) handleHashes(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	if !s.pullAdmitted(w, userID) {
+		return
+	}
+	defer s.pulls.release(userID)
 	stream, ok := requireStream(w, r)
 	if !ok {
 		return
@@ -216,17 +285,21 @@ func requireStream(w http.ResponseWriter, r *http.Request) (string, bool) {
 // Upload
 // ---------------------------------------------------------------------------
 
-// handleUpload appends a device's own blobs.
+// handleUpload appends a device's own blobs (spec 02 #30, §11.1).
 //
 // Order matters and is not arbitrary:
 //
 //  1. the session resolves the account — there is no user field on the wire;
-//  2. the writer must be a LIVE writer of THAT account (oplog.AppendClient
-//     documents that its caller owns this check, because auth imports oplog and
-//     the roster lookup cannot live down there);
-//  3. every blob is validated structurally, including that its embedded AAD
-//     names the exact position it is being stored at;
-//  4. only then does the append transaction open.
+//  2. the body's shape: the stream, the batch size, a 64-byte head_sig;
+//  3. the writer: the §4.8 grammar, then the session must be bound to exactly
+//     that writer (spec 02 §9.4), and it must be live;
+//  4. the account has keys;
+//  5. every blob is validated structurally — size, the plaintext predicate,
+//     and the embedded AAD of the exact position it is being stored at;
+//  6. only then does the append transaction open, where the writer row is
+//     read FOR SHARE, the chain joined to the stored head, the epoch checked
+//     for rows above the head, and the head signature verified over the last
+//     row as the server recomputed it.
 //
 // Nothing is stored unless the whole batch is: oplog.AppendClient rolls back as
 // a unit, so a rejected batch consumes neither a seq nor a counter.
@@ -260,7 +333,39 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 			"at most "+strconv.Itoa(maxUploadBlobs)+" blobs per upload")
 		return
 	}
-	if !s.writerIsLive(w, r, userID, req.WriterID) {
+	headSig, err := base64.StdEncoding.DecodeString(req.HeadSig)
+	if err != nil || len(headSig) != keyproto.Ed25519SigSize {
+		writeErr(w, http.StatusBadRequest, "bad_signature", "head_sig must be a 64-byte signature in base64")
+		return
+	}
+	if !keyproto.ValidWriterID(req.WriterID) {
+		writeErr(w, http.StatusBadRequest, "bad_writer_id", "writer_id does not match the ios-<uuid v4> grammar")
+		return
+	}
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	if info.WriterID == "" {
+		writeErr(w, http.StatusForbidden, "writer_unbound", "")
+		return
+	}
+	if req.WriterID != info.WriterID {
+		writeErr(w, http.StatusForbidden, "writer_mismatch", "")
+		return
+	}
+	if !s.requireBound(w, r, info) {
+		return
+	}
+	var hasKeys bool
+	if err := s.Pool.QueryRow(r.Context(),
+		`SELECT EXISTS (SELECT 1 FROM account_keys WHERE user_id = $1)`, userID).Scan(&hasKeys); err != nil {
+		s.logf("api: upload for %s: read keys: %v", userID, err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
+	}
+	if !hasKeys {
+		writeErr(w, http.StatusForbidden, "keys_required", "")
 		return
 	}
 
@@ -281,27 +386,14 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 
 	// The batch's INTERNAL consistency is checked here, before the append, so
 	// that its failure is answered as what it is: a client-side arithmetic
-	// error.
-	//
-	// oplog.AppendClient runs this same check before it opens a transaction and
-	// reports failure as ErrChainBreak — correct for that package, wrong at this
-	// layer, because a chain break is spec §3.3:68's non-dismissable "your
-	// server may have tampered with your data" hard stop. Nothing the server
-	// did can make the blobs in one request fail to link to each other: they
-	// arrived together, in this request, from the client that authored them. A
-	// client bug must never tell a user their operator may have tampered with
-	// their log.
-	//
-	// What is left for AppendClient's ErrChainBreak is the HEAD-relative
-	// case — the batch does not continue what is stored — which is genuinely
-	// ambiguous between "this client skipped" and "the server lost rows", and
-	// is the case the hard stop exists for.
+	// error. oplog.AppendClient runs the same check and reports ErrChainBreak,
+	// a sync hard stop; nothing the server did can make the blobs of one
+	// request fail to link to each other, so a client bug must never tell a
+	// user their operator may have tampered with their log. What is left for
+	// AppendClient's ErrChainBreak is the HEAD-relative case.
 	var claimedPrev [32]byte
 	copy(claimedPrev[:], rows[0].PrevHash)
 	if err := oplog.VerifyChain(rows, rows[0].WriterCounter-1, claimedPrev); err != nil {
-		// Deliberately NOT err.Error(): oplog's text says "writer hash chain
-		// break", which is the vocabulary of the hard stop this answer exists
-		// to avoid raising.
 		s.logf("api: upload for %s: batch is not internally chained: %v", userID, err)
 		writeErr(w, http.StatusBadRequest, "bad_request",
 			"the blobs in this batch do not chain to each other: counters must be consecutive, "+
@@ -311,27 +403,14 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 	}
 
 	// The byte budget, spent immediately before the append and charged in the
-	// bytes that are about to become durable — not in requests, and not in the
-	// size of the JSON that carried them. Base64 framing is the client's
-	// transport choice; what this budget exists to shape is what lands on the
-	// disk.
-	//
-	// It is charged AFTER validation, so a batch that is refused as malformed
-	// costs no budget: a client with a bug must not be able to spend a day's
-	// worth of an honest user's own quota. The request limiter above is what
-	// bounds a caller who only ever sends garbage.
-	//
-	// The charge is all-or-nothing per batch, matching the append: either the
-	// whole batch is admitted or none of it is stored, so a partial charge
-	// would account for bytes that were never written.
+	// bytes that are about to become durable, after validation (a malformed
+	// batch costs no budget), all-or-nothing per batch like the append.
 	var uploadBytes int
 	for _, row := range rows {
 		uploadBytes += len(row.Blob)
 	}
 	if !s.SyncUploadBytes.AllowN(userID.String(), float64(uploadBytes)) {
-		// 429 rather than 413: the batch is not too large, it is too soon. A
-		// 413 would tell a client to split the batch, which does not help and
-		// makes the traffic worse.
+		// 429 rather than 413: the batch is not too large, it is too soon.
 		s.logf("api: upload for %s: %d bytes over the upload byte budget", userID, uploadBytes)
 		w.Header().Set("Retry-After", "60")
 		writeErr(w, http.StatusTooManyRequests, "upload_bytes",
@@ -340,9 +419,9 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		return
 	}
 
-	seqs, err := s.Appender.AppendClient(r.Context(), userID, req.WriterID, req.Stream, rows)
+	seqs, err := s.Appender.AppendClient(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
 	if err != nil {
-		s.writeAppendErr(w, userID, err)
+		s.writeAppendErr(w, r, userID, err)
 		return
 	}
 	out := UploadResponse{Seqs: make([]string, len(seqs))}
@@ -350,32 +429,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		out.Seqs[i] = strconv.FormatInt(q, 10)
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// writerIsLive checks the roster. A writer that is unknown to this account or
-// revoked may not append — and both answer 403 rather than 404: the caller can
-// read their own roster, so there is nothing to hide from them. (Spec 02 §9.4
-// binds the session to one writer; until WS-3 does, any live writer of the
-// account may upload.)
-func (s *Server) writerIsLive(w http.ResponseWriter, r *http.Request, userID uuid.UUID, writerID string) bool {
-	roster, err := s.Writers.Roster(r.Context(), userID)
-	if err != nil {
-		s.logf("api: upload: roster for %s: %v", userID, err)
-		writeErr(w, http.StatusInternalServerError, "internal", "")
-		return false
-	}
-	for _, wr := range roster {
-		if wr.WriterID != writerID {
-			continue
-		}
-		if !wr.Live() {
-			writeErr(w, http.StatusForbidden, "writer_revoked", "that writer is revoked")
-			return false
-		}
-		return true
-	}
-	writeErr(w, http.StatusForbidden, "forbidden", "no such writer on this account")
-	return false
 }
 
 // uploadRefusal is why one blob of an upload cannot be stored: the HTTP status,
@@ -402,9 +455,10 @@ func refuseBlob(status int, code, detail string) *uploadRefusal {
 //
 // The AAD check stops a blob being stored at a position it was not sealed for,
 // including a blob sealed for ANOTHER USER. It reads the cleartext header, so
-// the server needs no key. (The key-epoch check against the account's current
-// epoch, 409 stale_epoch, arrives with WS-3's account_keys; until then
-// LooksSealed bounds the epoch to 1..2³¹−1.)
+// the server needs no key. The key-epoch check against the account's current
+// epoch (409 stale_epoch) runs inside oplog.AppendClient after the head read,
+// for rows above the stored head only (spec 01 §8.3), so a replayed batch is
+// never refused for its epoch.
 func decodeUploadBlob(userID uuid.UUID, writerID, stream string, b UploadBlob) (oplog.Row, *uploadRefusal) {
 	counter, err := strconv.ParseInt(b.WriterCounter, 10, 64)
 	if err != nil || counter < 1 {
@@ -475,8 +529,15 @@ func decodeUploadBlob(userID uuid.UUID, writerID, stream string, b UploadBlob) (
 // hard stop (spec §3.3:68), a partial resend has a trivial fix, and a taken
 // position is a server-side invariant violation the client cannot repair. All
 // three describe the caller's own log, so the detail discloses nothing.
-func (s *Server) writeAppendErr(w http.ResponseWriter, userID uuid.UUID, err error) {
+func (s *Server) writeAppendErr(w http.ResponseWriter, r *http.Request, userID uuid.UUID, err error) {
+	var stale *oplog.StaleEpochError
 	switch {
+	case errors.As(err, &stale):
+		s.logf("api: upload for %s: %v", userID, err)
+		writeErr(w, http.StatusConflict, "stale_epoch", "current_epoch "+strconv.FormatInt(stale.Current, 10))
+	case errors.Is(err, oplog.ErrHeadSignature), errors.Is(err, oplog.ErrWriterRevoked),
+		errors.Is(err, oplog.ErrUnknownWriter), errors.Is(err, oplog.ErrKeysRequired):
+		s.writeKeyErr(w, r, err)
 	case errors.Is(err, oplog.ErrPartiallyApplied):
 		// The client contract, quoted verbatim from oplog/chain.go: the server
 		// refuses a straddling batch rather than trimming it.

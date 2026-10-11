@@ -240,9 +240,7 @@ struct GoCryptoV3Tests {
       derived.append(prev)
       prev = h
     }
-    withKnownIssue("crypto-v3/chain.json prev_hash fields repeat the last hash (Go generator, WS-2)", isIntermittent: true) {
-      #expect(listed == derived)
-    }
+    #expect(listed == derived)
   }
 
   @Test("predicate.json: LooksSealed agrees with Go (and the SQL) on every case")

@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/salehtl/hasala/server/internal/blob"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
 // This file implements the per-writer hash chains (spec 01 §7).
@@ -205,13 +208,21 @@ func VerifyChain(rows []Row, fromCounter int64, fromHash [32]byte) error {
 }
 
 // AppendClient appends one writer's blobs to one stream, verifying that they
-// continue that (writer, stream) chain before anything is stored. The client
-// authored these blobs and their hashes — the server only checks arithmetic it
-// can redo from the stored bytes, which is all it is able to check without the
+// continue that (writer, stream) chain and that the batch's head is signed by
+// the writer before anything is stored. The client authored these blobs and
+// their hashes — the server only checks arithmetic it can redo from the stored
+// bytes and a signature over it, which is all it is able to check without the
 // key (and all it should be trusted to check).
 //
-// The caller must have established that writerID is a live, registered writer
-// of userID; see the roster note at the top of this file.
+// headSig is the DWK signature over HeadMessage(user_id, c_last, blob_hash_last,
+// writer_id) (spec 01 §7.1, R-02), checked against the batch's last row AS THE
+// SERVER RECOMPUTED IT, under writers.pubkey read FOR SHARE (a concurrent
+// revocation holds the row FOR UPDATE, spec 02 §9.5). It is stored on the last
+// row only.
+//
+// The caller must have established that writerID is the session's bound
+// writer; this method re-checks that the writer is enrolled and live under the
+// row lock, so a revocation that commits between the two cannot let a row in.
 //
 // # Idempotent replay (the ambiguous-commit contract)
 //
@@ -220,16 +231,21 @@ func VerifyChain(rows []Row, fromCounter int64, fromHash [32]byte) error {
 // retry safe: a batch whose counters are at or below the committed head is a
 // REPLAY, not a gap, so if every row's blob_hash matches what is already stored
 // at that position the call returns those rows' original seqs and appends
-// nothing. Byte-identical is the whole test — different bytes at an applied
-// counter is a forked writer, which is ErrChainBreak.
+// nothing, without re-verifying the signature (spec 01 §8.3: a replay is never
+// refused for its epoch or its head). Byte-identical is the whole test —
+// different bytes at an applied counter is a forked writer, which is
+// ErrChainBreak.
 //
 // A batch that straddles the head (some rows applied, some not) is refused with
-// a plain error rather than ErrChainBreak: the seq block is reserved for the
-// whole batch before the head is known, so shrinking it mid-transaction would
-// either burn a seq or unwind the counter, and neither is worth doing for a
-// case the client can avoid by reading its head and resending only the rows
-// above it.
-func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID, stream string, rows []Row) ([]int64, error) {
+// ErrPartiallyApplied: the client resends only the rows above the head, with
+// the same head_sig (it ends at the same last row).
+//
+// # The epoch (spec 01 §8.3)
+//
+// Every row above the stored head must carry account_keys.current_epoch, read
+// FOR SHARE after the head (ErrStaleEpoch); rows at or below the head take the
+// replay path and are never refused for their epoch.
+func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID, stream string, rows []Row, headSig []byte) ([]int64, error) {
 	if len(rows) == 0 {
 		return nil, nil
 	}
@@ -258,6 +274,9 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 		if r.Stream != "" && r.Stream != stream {
 			return nil, fmt.Errorf("oplog: append client: row %d names stream %q, the call names %q", i, r.Stream, stream)
 		}
+		if r.HeadSig != nil {
+			return nil, fmt.Errorf("oplog: append client: row %d carries a head_sig; the batch's travels beside the rows", i)
+		}
 		r.UserID, r.WriterID, r.Stream = userID, writerID, stream
 		if r.TypeFlag == "" {
 			r.TypeFlag = TypeFlagEdit
@@ -280,9 +299,31 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 	if err := VerifyChain(batch, batch[0].WriterCounter-1, claimedPrev); err != nil {
 		return nil, err
 	}
+	last := &batch[len(batch)-1]
+	headMsg, err := keyproto.HeadMessage(userID, uint64(last.WriterCounter), last.BlobHash, writerID)
+	if err != nil {
+		// writerID is not the §4.8 grammar: no writer could have signed a head.
+		return nil, fmt.Errorf("%w: %v", ErrHeadSignature, err)
+	}
 
 	var replayed []int64
 	prepare := func(ctx context.Context, tx pgx.Tx, rows []Row) error {
+		var (
+			pub     []byte
+			revoked *time.Time
+		)
+		err := tx.QueryRow(ctx,
+			`SELECT pubkey, revoked_at FROM writers WHERE user_id = $1 AND writer_id = $2 FOR SHARE`,
+			userID, writerID).Scan(&pub, &revoked)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUnknownWriter
+		}
+		if err != nil {
+			return fmt.Errorf("oplog: read writer %s: %w", writerID, err)
+		}
+		if revoked != nil {
+			return ErrWriterRevoked
+		}
 		headCounter, headHash, err := headOf(ctx, tx, userID, writerID, stream)
 		if err != nil {
 			return err
@@ -303,6 +344,27 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 			return fmt.Errorf("%w: (%s, %s) counter %d links to %x, but the stored head is %x",
 				ErrChainBreak, writerID, stream, rows[0].WriterCounter, rows[0].PrevHash, headHash)
 		}
+		var current int64
+		err = tx.QueryRow(ctx, `SELECT current_epoch FROM account_keys WHERE user_id = $1 FOR SHARE`, userID).Scan(&current)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrKeysRequired
+		}
+		if err != nil {
+			return fmt.Errorf("oplog: read current epoch: %w", err)
+		}
+		for i := range rows {
+			e, err := blob.KeyEpoch(rows[i].Blob)
+			if err != nil {
+				return err
+			}
+			if int64(e) != current {
+				return &StaleEpochError{Frame: e, Current: current}
+			}
+		}
+		if !keyproto.VerifyEd25519(pub, headMsg, headSig) {
+			return ErrHeadSignature
+		}
+		rows[len(rows)-1].HeadSig = headSig
 		return nil
 	}
 
@@ -312,6 +374,34 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 	}
 	return a.resolveAppendErr(ctx, userID, writerID, stream, batch, seqs, err)
 }
+
+// Errors of the writer, epoch and head checks.
+var (
+	// ErrHeadSignature: head_sig is missing or does not verify under the
+	// writer's DWK over the batch's last (counter, blob_hash) (400 bad_signature).
+	ErrHeadSignature = errors.New("oplog: the batch head signature does not verify")
+	// ErrUnknownWriter: the writer is not enrolled on this account.
+	ErrUnknownWriter = errors.New("oplog: no such writer on this account")
+	// ErrWriterRevoked: the writer is revoked (403 writer_revoked).
+	ErrWriterRevoked = errors.New("oplog: the writer is revoked")
+	// ErrKeysRequired: the account has not bootstrapped (403 keys_required).
+	ErrKeysRequired = errors.New("oplog: the account has no keys")
+	// ErrStaleEpoch matches every *StaleEpochError (409 stale_epoch).
+	ErrStaleEpoch = errors.New("oplog: a frame's key epoch is not the account's current epoch")
+)
+
+// StaleEpochError carries the epochs for the 409's detail.
+type StaleEpochError struct {
+	Frame   uint32
+	Current int64
+}
+
+func (e *StaleEpochError) Error() string {
+	return fmt.Sprintf("oplog: frame key epoch %d, the account's current epoch is %d", e.Frame, e.Current)
+}
+
+// Is makes errors.Is(err, ErrStaleEpoch) hold.
+func (e *StaleEpochError) Is(target error) bool { return target == ErrStaleEpoch }
 
 // resolveAppendErr turns the outcome of appendRows into AppendClient's answer.
 //

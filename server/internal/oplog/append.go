@@ -37,6 +37,10 @@ type Row struct {
 	SizeBucket    int
 	BlobHash      []byte // 32 bytes: blob.Hash(prev, sealed)
 	PrevHash      []byte // 32 bytes: the previous blob hash in this (writer, stream) chain
+	// HeadSig is the batch's DWK signature over HeadMessage (spec 01 §7.1),
+	// stored on the LAST row of each upload batch only and nil on the others.
+	// AppendClient sets it; a caller never does.
+	HeadSig []byte
 	// CreatedAt defaults to now() when left zero. It is therefore NOT monotone with seq, and
 	// ordering the log by it instead of by seq is subtly wrong — replay folds by
 	// seq, and nothing else is a total order. Treat it as a diagnostic
@@ -383,8 +387,8 @@ func (a *Appender) admit(ctx context.Context, tx pgx.Tx, userID uuid.UUID, rows 
 
 const insertRowSQL = `INSERT INTO op_log
 	(user_id, seq, stream, writer_id, writer_counter, type_flag,
-	 blob, size_bucket, blob_hash, prev_hash, created_at)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, coalesce($11::timestamptz, now()))`
+	 blob, size_bucket, blob_hash, prev_hash, head_sig, created_at)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, coalesce($12::timestamptz, now()))`
 
 // allocSeq takes the user's counter lock and reserves n consecutive values,
 // returning the first. It is the ONLY place a seq is ever allocated.
@@ -418,8 +422,12 @@ func insertRows(ctx context.Context, tx pgx.Tx, rows []Row, seqs []int64) error 
 			t := r.CreatedAt
 			createdAt = &t
 		}
+		var headSig any
+		if r.HeadSig != nil {
+			headSig = r.HeadSig
+		}
 		batch.Queue(insertRowSQL, r.UserID, seqs[i], r.Stream, r.WriterID, r.WriterCounter,
-			r.TypeFlag, r.Blob, r.SizeBucket, r.BlobHash, r.PrevHash, createdAt)
+			r.TypeFlag, r.Blob, r.SizeBucket, r.BlobHash, r.PrevHash, headSig, createdAt)
 	}
 	br := tx.SendBatch(ctx, batch)
 	var firstErr error

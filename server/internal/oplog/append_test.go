@@ -2,7 +2,11 @@ package oplog
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/blob/blobtest"
+	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -74,8 +79,8 @@ func insertUserWithoutSeqRow(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 }
 
 // testWriters is every writer id the tests in this package append under.
-var testWriters = []string{"dev-a", "dev-b", "dev-z", "dev-0", "dev-1", "dev-2", "dev-3", "dev-4",
-	"dev-5", "dev-6", "dev-7", "dev-8", "dev-9"}
+var testWriters = []string{"ios-00000000-0000-4000-8000-00000000000a", "ios-00000000-0000-4000-8000-00000000000b", "ios-00000000-0000-4000-8000-00000000007a", "ios-00000000-0000-4000-8000-000000000100", "ios-00000000-0000-4000-8000-000000000101", "ios-00000000-0000-4000-8000-000000000102", "ios-00000000-0000-4000-8000-000000000103", "ios-00000000-0000-4000-8000-000000000104",
+	"ios-00000000-0000-4000-8000-000000000105", "ios-00000000-0000-4000-8000-000000000106", "ios-00000000-0000-4000-8000-000000000107", "ios-00000000-0000-4000-8000-000000000108", "ios-00000000-0000-4000-8000-000000000109"}
 
 func insertUserRow(t *testing.T, tx pgx.Tx) uuid.UUID {
 	t.Helper()
@@ -89,17 +94,59 @@ func insertUserRow(t *testing.T, tx pgx.Tx) uuid.UUID {
 		sub).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	for _, w := range testWriters {
-		key := make([]byte, 32)
-		if _, err := rand.Read(key); err != nil {
+	rnd := func(n int) []byte {
+		b := make([]byte, n)
+		if _, err := rand.Read(b); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tx.Exec(bg, `INSERT INTO writers (user_id, writer_id, kind, pubkey, registered_at)
-			VALUES ($1, $2, 'device', $3, now())`, id, w, key); err != nil {
+		return b
+	}
+	// Synthetic keys (current_epoch 1): AppendClient reads the epoch.
+	if _, err := tx.Exec(bg,
+		`INSERT INTO account_keys (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey,
+		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at)
+		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, now(), now())`,
+		id, rnd(32), rnd(32), rnd(32), append([]byte{1, 1}, rnd(125)...), append([]byte{1}, rnd(44)...)); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range testWriters {
+		if _, err := tx.Exec(bg, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
+			VALUES ($1, $2, 'ed25519', $3, $4, now())`, id, w, []byte(testDWK(w).Public().(ed25519.PublicKey)), testDAK(t)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return id
+}
+
+// testDWK is oplogtest.DWK (this package's tests cannot import oplogtest,
+// which imports oplog): the deterministic DWK of a test writer.
+func testDWK(writerID string) ed25519.PrivateKey {
+	seed := sha256.Sum256([]byte("oplogtest-dwk|" + writerID))
+	return ed25519.NewKeyFromSeed(seed[:])
+}
+
+// testHeadSig signs the batch head of rows by their writer's test DWK.
+func testHeadSig(u uuid.UUID, writerID string, rows []Row) []byte {
+	if len(rows) == 0 {
+		return nil
+	}
+	last := rows[len(rows)-1]
+	m, err := keyproto.HeadMessage(u, uint64(last.WriterCounter), last.BlobHash, writerID)
+	if err != nil {
+		return make([]byte, 64) // a writer id outside the grammar: no head can verify
+	}
+	return ed25519.Sign(testDWK(writerID), m)
+}
+
+func testDAK(t *testing.T) []byte {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []byte{4}
+	out = append(out, k.X.FillBytes(make([]byte, 32))...)
+	return append(out, k.Y.FillBytes(make([]byte, 32))...)
 }
 
 // sealRow builds one real sealed frame v3 at the given position (blobtest's
@@ -204,7 +251,7 @@ func TestAppendAssignsContiguousSeqs(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	seqs, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 3))
+	seqs, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 3))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +260,7 @@ func TestAppendAssignsContiguousSeqs(t *testing.T) {
 	}
 
 	// A second call continues the same run rather than restarting.
-	seqs, err = a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 4, 2))
+	seqs, err = a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 4, 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +281,7 @@ func TestConcurrentAppendsAreGapFreeAndCommitOrderMatchesSeqOrder(t *testing.T) 
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			id := fmt.Sprintf("dev-%d", w)
+			id := fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", 0x100+w)
 			prev := blob.ZeroHash
 			for c := 1; c <= perWriter; c++ {
 				r, h, err := sealRow(u, id, blob.StreamHot, int64(c), prev)
@@ -282,7 +329,7 @@ func TestConcurrentMultiRowAppendsAllocateContiguousBlocks(t *testing.T) {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			id := fmt.Sprintf("dev-%d", w)
+			id := fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", 0x100+w)
 			prev := blob.ZeroHash
 			for b := 0; b < batches; b++ {
 				batch := make([]Row, 0, perBatch)
@@ -399,7 +446,7 @@ func TestNoTransientGapIsEverVisibleToAConcurrentReader(t *testing.T) {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			id := fmt.Sprintf("dev-%d", w)
+			id := fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", 0x100+w)
 			prev := blob.ZeroHash
 			for c := 1; c <= perWriter; c++ {
 				r, h, err := sealRow(u, id, blob.StreamHot, int64(c), prev)
@@ -439,21 +486,21 @@ func TestARolledBackAppendLeavesNoGap(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	first := rowsFor(t, u, "dev-a", blob.StreamHot, 1, 1)
+	first := rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1)
 	if _, err := a.appendRaw(bg, first); err != nil {
 		t.Fatal(err)
 	}
 
 	// Same (writer_id, stream, writer_counter) again: the unique index rejects
 	// it AFTER the seq has been allocated inside the transaction.
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 1)); err == nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1)); err == nil {
 		t.Fatal("expected a duplicate (writer_id, stream, writer_counter) to be rejected")
 	}
 
 	if got := nextSeqOf(t, pool, u); got != 2 {
 		t.Fatalf("the rolled-back append burned a seq: next_seq = %d, want 2", got)
 	}
-	seqs, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 2, 1))
+	seqs, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,13 +515,13 @@ func TestAFailedBatchAppendsNothingAndBurnsNoSeq(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 2)); err != nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 2)); err != nil {
 		t.Fatal(err)
 	}
 	// A three-row batch whose LAST row collides with counter 1. The first two
 	// rows are valid; the batch must still land nothing at all.
-	bad := rowsFor(t, u, "dev-a", blob.StreamHot, 3, 3)
-	bad[2], _ = mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
+	bad := rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 3, 3)
+	bad[2], _ = mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash)
 	if _, err := a.appendRaw(bg, bad); err == nil {
 		t.Fatal("expected the colliding batch to fail")
 	}
@@ -491,8 +538,8 @@ func TestOneCallMaySpanWritersAndCountersAreIndependent(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 
-	first, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
-	second, _ := mustSeal(t, u, "dev-b", blob.StreamHot, 1, blob.ZeroHash)
+	first, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash)
+	second, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, 1, blob.ZeroHash)
 	seqs, err := a.appendRaw(bg, []Row{first, second})
 	if err != nil {
 		t.Fatal(err)
@@ -514,7 +561,7 @@ func TestEnsureSeqRowIsIdempotent(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 2)); err != nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 2)); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := pool.Begin(bg)
@@ -539,7 +586,7 @@ func TestAppendCreatesTheSeqRowWhenItIsMissing(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUserWithoutSeqRow(t, pool)
 	a := &Appender{Pool: pool}
-	seqs, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 2))
+	seqs, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +601,7 @@ func TestSeqIsPerUser(t *testing.T) {
 	u1, u2 := insertUser(t, pool), insertUser(t, pool)
 	for i := int64(1); i <= 3; i++ {
 		for _, u := range []uuid.UUID{u1, u2} {
-			seqs, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, i, 1))
+			seqs, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, i, 1))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -571,7 +618,7 @@ func TestAppendRejectsMixedUsers(t *testing.T) {
 	pool := pgtest.New(t)
 	u1, u2 := insertUser(t, pool), insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	mixed := append(rowsFor(t, u1, "dev-a", blob.StreamHot, 1, 1), rowsFor(t, u2, "dev-a", blob.StreamHot, 1, 1)...)
+	mixed := append(rowsFor(t, u1, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1), rowsFor(t, u2, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1)...)
 	if _, err := a.appendRaw(bg, mixed); err == nil {
 		t.Fatal("expected two user_ids in one call to be rejected")
 	}
@@ -584,7 +631,7 @@ func TestAppendRejectsAnUnknownUser(t *testing.T) {
 	pool := pgtest.New(t)
 	a := &Appender{Pool: pool}
 	ghost := uuid.New()
-	if _, err := a.appendRaw(bg, rowsFor(t, ghost, "dev-a", blob.StreamHot, 1, 1)); err == nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, ghost, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1)); err == nil {
 		t.Fatal("expected an append for a nonexistent user to be rejected")
 	}
 }
@@ -609,7 +656,7 @@ func TestAppendRejectsMalformedRows(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	good, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
+	good, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash)
 
 	mutate := func(f func(r *Row)) []Row {
 		r := good
@@ -664,7 +711,7 @@ func TestMaxSeq(t *testing.T) {
 	if got != 0 {
 		t.Fatalf("MaxSeq = %d before any append, want 0", got)
 	}
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 4)); err != nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 4)); err != nil {
 		t.Fatal(err)
 	}
 	if got, err = a.MaxSeq(bg, u); err != nil {
@@ -679,7 +726,7 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 	before := time.Now().Add(-time.Second)
-	in, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
+	in, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash)
 	if _, err := a.appendRaw(bg, []Row{in}); err != nil {
 		t.Fatal(err)
 	}
@@ -693,7 +740,7 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Seq != 1 || out.Stream != blob.StreamHot || out.WriterID != "dev-a" ||
+	if out.Seq != 1 || out.Stream != blob.StreamHot || out.WriterID != "ios-00000000-0000-4000-8000-00000000000a" ||
 		out.WriterCounter != 1 || out.TypeFlag != TypeFlagEdit || out.SizeBucket != in.SizeBucket {
 		t.Fatalf("row round-tripped wrong: %+v", out)
 	}
@@ -708,7 +755,7 @@ func TestStoredRowRoundTripsAndTheBlobStillOpens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stored blob does not open: %v", err)
 	}
-	if string(plain) != `{"writer":"dev-a","stream":"hot","counter":1}` {
+	if string(plain) != `{"writer":"ios-00000000-0000-4000-8000-00000000000a","stream":"hot","counter":1}` {
 		t.Fatalf("plaintext = %s", plain)
 	}
 }
@@ -718,7 +765,7 @@ func TestCallerSuppliedCreatedAtIsHonoured(t *testing.T) {
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
 	want := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
-	r, _ := mustSeal(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash)
+	r, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, blob.ZeroHash)
 	r.CreatedAt = want
 	if _, err := a.appendRaw(bg, []Row{r}); err != nil {
 		t.Fatal(err)
@@ -738,7 +785,7 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 1)); err != nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -751,7 +798,7 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 	// for every case; once the blob and hash CHECKs existed, those rows would
 	// have been rejected for the wrong reason and the test would still have been
 	// green.
-	base, _ := mustSeal(t, u, "dev-b", blob.StreamHot, 1, blob.ZeroHash)
+	base, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, 1, blob.ZeroHash)
 	type row struct {
 		seq                  int64
 		stream, writer, flag string
@@ -760,7 +807,7 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 		bucket               int
 	}
 	valid := func() row {
-		return row{seq: 2, stream: blob.StreamHot, writer: "dev-b", flag: TypeFlagEdit,
+		return row{seq: 2, stream: blob.StreamHot, writer: "ios-00000000-0000-4000-8000-00000000000b", flag: TypeFlagEdit,
 			counter: 1, blb: base.Blob, bhash: base.BlobHash, phash: base.PrevHash, bucket: base.SizeBucket}
 	}
 	exec := func(r row) error {
@@ -818,9 +865,9 @@ func TestDatabaseConstraintsBackstopTheGoValidation(t *testing.T) {
 		t.Fatalf("a second row at (dev-b, hot, 1) was not refused by op_log_position_uniq")
 	}
 	// A correctly sealed row for a writer the roster does not hold.
-	stray, _ := mustSeal(t, u, "dev-y", blob.StreamHot, 1, blob.ZeroHash)
+	stray, _ := mustSeal(t, u, "ios-00000000-0000-4000-8000-000000000079", blob.StreamHot, 1, blob.ZeroHash)
 	r = valid()
-	r.seq, r.writer = 3, "dev-y"
+	r.seq, r.writer = 3, "ios-00000000-0000-4000-8000-000000000079"
 	r.blb, r.bhash, r.phash, r.bucket = stray.Blob, stray.BlobHash, stray.PrevHash, stray.SizeBucket
 	if _, name := pgErrConstraint(exec(r)); name != "op_log_writer_fk" {
 		t.Fatalf("a row for an unenrolled writer was not refused by op_log_writer_fk")
@@ -849,7 +896,7 @@ func TestAnAbandonedTransactionReturnsItsSeqs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seqs, err := a.appendTx(bg, tx, u, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 3), nil)
+	seqs, err := a.appendTx(bg, tx, u, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 3), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -863,7 +910,7 @@ func TestAnAbandonedTransactionReturnsItsSeqs(t *testing.T) {
 	if got := nextSeqOf(t, pool, u); got != 1 {
 		t.Fatalf("next_seq = %d after a rolled-back allocation, want 1", got)
 	}
-	got, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 1))
+	got, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -880,13 +927,13 @@ func TestACorruptedCounterFailsLoudlyRatherThanOverwritingHistory(t *testing.T) 
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-a", blob.StreamHot, 1, 2)); err != nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 1, 2)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(bg, `DELETE FROM oplog_seq WHERE user_id=$1`, u); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.appendRaw(bg, rowsFor(t, u, "dev-b", blob.StreamHot, 1, 1)); err == nil {
+	if _, err := a.appendRaw(bg, rowsFor(t, u, "ios-00000000-0000-4000-8000-00000000000b", blob.StreamHot, 1, 1)); err == nil {
 		t.Fatal("a reset counter must not be allowed to reuse a committed seq")
 	}
 	// The two original rows are untouched and still contiguous.
@@ -939,7 +986,7 @@ func TestAppendPinsReadCommittedRegardlessOfTheDatabaseDefault(t *testing.T) {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			id := fmt.Sprintf("dev-%d", w)
+			id := fmt.Sprintf("ios-00000000-0000-4000-8000-%012x", 0x100+w)
 			prev := blob.ZeroHash
 			for c := 1; c <= perWriter; c++ {
 				r, h, err := sealRow(u, id, blob.StreamHot, int64(c), prev)
