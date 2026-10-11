@@ -137,7 +137,8 @@
       nixosModules.default = self.nixosModules.hasala;
 
       checks = forAllSystems (
-        system: pkgs: {
+        system: pkgs:
+        {
           hasalad = self.packages.${system}.hasalad;
           # Spec 05 §7.4: the module's rendered tunnel config against the golden
           # file (G1), the structural rules L1–L9, the routing table, and every
@@ -152,6 +153,11 @@
                 treefmt --ci
                 touch $out
               '';
+        }
+        // lib.optionalAttrs (system == "x86_64-linux") {
+          # Spec 05 §14 AT-E*: the module's assertions fire on every misuse, and
+          # the units carry exactly the environment and credentials the specs fix.
+          module-eval = import ./infra/qa/nix/tests/eval.nix { inherit self nixpkgs pkgs; };
         }
       );
 
