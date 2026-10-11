@@ -75,7 +75,7 @@ func isRead(method string) bool {
 func (s *Server) headroomGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.Headroom != nil && !isRead(r.Method) && s.Headroom.Tripped() {
-			s.logf("api: %s %s: refused, the headroom fuse is tripped", r.Method, r.URL.Path)
+			s.logf("api: %s: refused, the headroom fuse is tripped", route(r))
 			// A minute: long enough that a fleet of retrying clients does not
 			// become its own load, short enough that writes resume promptly
 			// once an operator frees space.

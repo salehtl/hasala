@@ -142,8 +142,8 @@ type AccountChallengeResponse struct {
 func (s *Server) mountAccount(mux *http.ServeMux) {
 	// Unconditional: App Review 5.1.1(v) requires in-app account deletion, so
 	// there is no deployment of this server in which the route may be absent.
-	mux.HandleFunc("POST /api/v1/account/challenge", s.requireSession(s.handleAccountChallenge))
-	mux.HandleFunc("DELETE /api/v1/account", s.requireSession(s.handleDeleteAccount))
+	mux.HandleFunc("POST /api/v1/account/challenge", s.requireSessionSuspendedOK(s.handleAccountChallenge))
+	mux.HandleFunc("DELETE /api/v1/account", s.requireSessionSuspendedOK(s.handleDeleteAccount))
 	// account.go: #40, and with the account ceremonies #76 and #67.
 	mux.HandleFunc("GET /api/v1/account", s.requireSessionFrozenOK(s.handleGetAccount))
 	if s.Accounts != nil {

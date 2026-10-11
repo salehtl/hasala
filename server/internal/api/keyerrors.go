@@ -34,7 +34,7 @@ func (s *Server) sessionInfo(w http.ResponseWriter, r *http.Request) (auth.Sessi
 			writeUnauthorized(w)
 			return auth.SessionInfo{}, false
 		}
-		s.logf("api: %s %s: session binding: %v", r.Method, r.URL.Path, err)
+		s.logf("api: %s: session binding: %v", route(r), err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return auth.SessionInfo{}, false
 	}
@@ -53,7 +53,7 @@ func (s *Server) requireBound(w http.ResponseWriter, r *http.Request, info auth.
 	err := s.Pool.QueryRow(r.Context(),
 		`SELECT revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`, info.UserID, info.WriterID).Scan(&live)
 	if err != nil {
-		s.logf("api: %s %s: bound writer: %v", r.Method, r.URL.Path, err)
+		s.logf("api: %s: bound writer: %v", route(r), err)
 		writeErr(w, http.StatusForbidden, "writer_unbound", "")
 		return false
 	}
@@ -142,7 +142,7 @@ var (
 // writeKeyErr maps auth's key, writer and step-up errors (and oplog's upload
 // ones) to spec 02 §6.3. The reason goes to the operator log.
 func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) {
-	s.logf("api: %s %s: %v", r.Method, r.URL.Path, err)
+	s.logf("api: %s: %v", route(r), err)
 	type m struct {
 		target error
 		status int

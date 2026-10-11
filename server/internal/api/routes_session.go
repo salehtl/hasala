@@ -21,9 +21,8 @@ func (s *Server) mountSession(mux *http.ServeMux) {
 	// #15. No step-up, and allowed while the account is suspended: signing out
 	// must never be the thing an operator's pause takes away.
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
-	// #16. Spec 02 §8.2 gates this on step-up `session.logout_all`; until
-	// WS-3's step-up exists it is session-authenticated. It cannot be used to
-	// take anything over: it revokes every session, the caller's own included.
+	// #16, under step-up `session.logout_all` (spec 02 §8.2). It revokes
+	// every session, the caller's own included.
 	mux.HandleFunc("POST /api/v1/auth/logout-all", s.requireSession(s.handleLogoutAll))
 	mux.HandleFunc("GET /api/v1/auth/session", s.requireSession(s.handleGetSession))
 }
@@ -100,9 +99,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleLogoutAll revokes every session of the account, the caller's included,
 // and deletes every APNs token, in one transaction. Writers are NOT revoked:
-// the devices keep their keys and can sign in again (spec 02 §9.3). The
-// security wake to the other devices and the sessions_revoked event arrive
-// with WS-4 and WS-3.
+// the devices keep their keys and can sign in again (spec 02 §9.3). It
+// records sessions_revoked; the security wake to the other devices is WS-4's.
 func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	if !s.AccountPerUser.Allow(userID.String()) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many sign-outs; try again shortly")

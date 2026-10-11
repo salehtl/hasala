@@ -328,6 +328,15 @@ func (s *Server) now() time.Time {
 	return time.Now()
 }
 
+// route is what a log line names a request by: the matched route pattern
+// (spec 02 §20), never the path, which can carry ids.
+func route(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+	return r.Method + " (unmatched)"
+}
+
 func (s *Server) logf(format string, args ...any) {
 	if s.Logf != nil {
 		s.Logf(format, args...)
@@ -510,58 +519,71 @@ type authedHandler func(w http.ResponseWriter, r *http.Request, userID uuid.UUID
 // A failure that is not a rejection — the database is unreachable — is a 500,
 // not a 401.
 func (s *Server) requireSession(h authedHandler) http.HandlerFunc {
-	return s.sessionGate(h, false)
+	return s.sessionGate(h, false, false)
 }
 
-// requireSessionFrozenOK is requireSession for GET /account, step-up begin
-// (account.unfreeze only, checked by the handler) and unfreeze.
+// requireSessionFrozenOK is requireSession for GET /account and unfreeze.
 func (s *Server) requireSessionFrozenOK(h authedHandler) http.HandlerFunc {
-	return s.sessionGate(h, true)
+	return s.sessionGate(h, true, false)
+}
+
+// requireSessionSuspendedOK is requireSession for DELETE /account and its
+// challenge, which a suspended account keeps (spec 02 §9.6, AT-DEL-3).
+func (s *Server) requireSessionSuspendedOK(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, false, true)
+}
+
+// requireSessionForStepUpBegin admits a frozen and a suspended account; the
+// handler then allows account.unfreeze only while frozen and account.delete
+// only while suspended (spec 02 §9.6, §9.8).
+func (s *Server) requireSessionForStepUpBegin(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, true, true)
 }
 
 type sessionCtxKey struct{}
 
-func (s *Server) sessionGate(h authedHandler, frozenOK bool) http.HandlerFunc {
+func (s *Server) sessionGate(h authedHandler, frozenOK, suspendedOK bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r)
 		if !ok {
-			s.logf("api: %s %s: no bearer token", r.Method, r.URL.Path)
+			s.logf("api: %s: no bearer token", route(r))
 			writeUnauthorized(w)
 			return
 		}
 		info, err := s.Sessions.Info(r.Context(), token)
 		if err != nil {
 			if errors.Is(err, auth.ErrSessionAccountDeleted) {
-				s.logf("api: %s %s: session belongs to a deleted account", r.Method, r.URL.Path)
+				s.logf("api: %s: session belongs to a deleted account", route(r))
 				writeAccountDeleted(w)
 				return
 			}
 			if errors.Is(err, auth.ErrSessionInvalid) {
-				s.logf("api: %s %s: session rejected: %v", r.Method, r.URL.Path, err)
+				s.logf("api: %s: session rejected: %v", route(r), err)
 				writeUnauthorized(w)
 				return
 			}
-			s.logf("api: %s %s: resolve session: %v", r.Method, r.URL.Path, err)
+			s.logf("api: %s: resolve session: %v", route(r), err)
 			writeErr(w, http.StatusInternalServerError, "internal", "")
 			return
 		}
 		userID := info.UserID
 		st, err := s.accountStatus(r.Context(), userID)
 		if err != nil {
-			s.logf("api: %s %s: account status for %s: %v", r.Method, r.URL.Path, userID, err)
+			s.logf("api: %s: account status for %s: %v", route(r), userID, err)
 			writeErr(w, http.StatusInternalServerError, "internal", "")
 			return
 		}
 		// A frozen account, or a restricted session, reaches only §9.8's list.
 		if !frozenOK && (st.Frozen || info.Restricted) {
-			s.logf("api: %s %s: refused, account %s is frozen", r.Method, r.URL.Path, userID)
+			s.logf("api: %s: refused, the account is frozen", route(r))
 			writeErr(w, http.StatusForbidden, "account_frozen", "")
 			return
 		}
 		// Suspension (spec 02 §9.6): non-read methods only, so a pause never
-		// looks like data loss. Sign-in is outside this middleware.
-		if !isRead(r.Method) && st.Suspended {
-			s.logf("api: %s %s: refused, account %s is suspended", r.Method, r.URL.Path, userID)
+		// looks like data loss, and account deletion stays open. Sign-in and
+		// logout are outside this middleware.
+		if !isRead(r.Method) && st.Suspended && !suspendedOK {
+			s.logf("api: %s: refused, the account is suspended", route(r))
 			writeAccountSuspended(w)
 			return
 		}
