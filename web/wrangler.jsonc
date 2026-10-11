@@ -23,5 +23,7 @@
   "workers_dev": false,
   "preview_urls": false,
   // Off: request logs would record /i/<code> paths (invite codes must not be logged).
-  "observability": { "enabled": false }
+  "observability": { "enabled": false },
+  // No usage telemetry from wrangler itself.
+  "send_metrics": false
 }

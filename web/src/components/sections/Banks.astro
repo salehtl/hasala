@@ -44,7 +44,7 @@ const byEmail = WAITLIST_MODE === 'email';
       <li class="tile tile--other" data-reveal>
         <div class="tile__text">
           <h3>Bank with someone else?</h3>
-          <p>Tell us which. The most requested go next.</p>
+          <p>{byEmail ? 'Tell us which, by email: the button opens your email app. The most requested go next.' : 'Tell us which. The most requested go next.'}</p>
         </div>
         <form
           class="tellus"

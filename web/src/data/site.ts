@@ -97,7 +97,7 @@ export const VISIBILITY = [
   },
   {
     who: 'Cloudflare, our network provider',
-    sees: 'Your requests on their way to our server, once transport encryption ends: IP address, times, sizes and the still‑sealed data. It also sends our emails to you',
+    sees: 'Your requests on their way to our server, once transport encryption ends: IP address, times, sizes and the still‑sealed data. It also sends our emails to you, and counts visits to this website for us, in totals only',
     never: "What's inside the sealed data",
   },
   {
@@ -115,7 +115,7 @@ export const VISIBILITY = [
 /** How asking for an invite works, by PUBLIC_WAITLIST_MODE (src/lib/env.ts). */
 const ASK_FOR_INVITE =
   WAITLIST_MODE === 'email'
-    ? 'Ask for an invite here. For now, the form opens an email to support@hasala.app for you to send, and we add you to the list.'
+    ? 'Ask for an invite here. For now, the form opens an email to support@hasala.app in your email app; send it, and we add the address you sent it from to the list.'
     : 'Ask for an invite here, then tap Confirm my email in the email we send.';
 
 export const FAQ = [

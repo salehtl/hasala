@@ -15,7 +15,9 @@
  * loaded. With JavaScript the script validates the same way, then opens a
  * pre-filled email to SITE.supportEmail and shows how to finish. Without it,
  * the fields have no names, so submitting sends nothing and only opens
- * /joined, which says to email us.
+ * /joined, which says to email us. There is no confirmation step, so the
+ * address added is the one the email comes from, not the one typed here;
+ * the copy says so.
  */
 import Icon from './Icon.astro';
 import WaitlistCoin from './brand/WaitlistCoin.astro';
@@ -39,7 +41,7 @@ const named = (name: string) => (byEmail ? undefined : name);
   >
     <div class="wl-head">
       <h3 class="wl-title">Request an invite</h3>
-      <p class="wl-sub">Two fields. About ten seconds.</p>
+      <p class="wl-sub">{byEmail ? 'Two fields. The button then opens your email app with the request, ready to send.' : 'Two fields. About ten seconds.'}</p>
     </div>
 
     <div class="field" data-field="email">
@@ -93,7 +95,10 @@ const named = (name: string) => (byEmail ? undefined : name);
     </button>
     <p class="wl-status" role="status" aria-live="polite"></p>
 
-    <p class="wl-fine">We’ll only email you about the beta. <a class="link" href="/privacy">Privacy Policy</a>.</p>
+    <p class="wl-fine">
+      {byEmail ? 'We add the address you send the email from, and only email you about the beta.' : 'We’ll only email you about the beta.'}
+      <a class="link" href="/privacy">Privacy Policy</a>.
+    </p>
   </form>
 
   {
@@ -102,7 +107,8 @@ const named = (name: string) => (byEmail ? undefined : name);
         <div class="wl-head">
           <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Now send the email.</h3>
           <p class="wl-done__text">
-            Your email app should open with a message to <b class="wl-done__strong">{SITE.supportEmail}</b> — send it and we’ll add you to the list.
+            Your email app should open with a message to <b class="wl-done__strong">{SITE.supportEmail}</b>. Send it from the address you want your invite at:
+            that’s the address we add to the list.
           </p>
         </div>
         <dl class="wl-summary">
@@ -401,12 +407,15 @@ const named = (name: string) => (byEmail ? undefined : name);
     border-top: 1px solid var(--neutral-200);
   }
   .wl-summary dt {
+    flex-shrink: 0;
     color: var(--text-secondary);
   }
   .wl-summary dd {
+    min-width: 0;
     margin: 0;
     font-weight: 600;
     text-align: right;
+    overflow-wrap: anywhere;
   }
   .wl-from {
     display: flex;
