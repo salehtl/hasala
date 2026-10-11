@@ -4,6 +4,7 @@
 // and OpAuthor's refusals. Plan figures are pinned end to end by the Maya
 // scenario in CoreProjectionTests.
 import CoreCategorize
+import CoreJSON
 import CorePrimitives
 import CoreReplay
 import CoreTime
@@ -172,5 +173,30 @@ struct CoreDomainTests {
     #expect(ReviewQueue.lane(t) == .duplicate)
     t.annotations["archived"] = Keyed("user", opID: "o")
     #expect(ReviewQueue.lane(t) == nil)
+  }
+
+  @Test("mailbox ingest from a whole payload, decision fields, and the writer checkpoint")
+  func mailboxAndCheckpoint() throws {
+    var a = OpAuthor(ctx())
+    var p = CoreJSON.JSONObject([
+      ("amount_minor", .string("34215")), ("currency", .string("AED")), ("direction", .string("debit")),
+      ("posted_at", .string("2026-10-09T15:12:00.000Z")), ("merchant_raw", .string("CARREFOUR MOE")), ("last4", .string("4412")),
+      ("tier", .string("template")), ("needs_review", .bool(false)), ("entry_method", .string("mailbox")), ("bank", .string("enbd")),
+      ("posted_precision", .string("time")),
+    ])
+    let d = Decision(category: "groceries", source: .dictionary(bundle: "2026.10.11-1", entry: "contains:carrefour"), display: nil, suggested: nil)
+    for (k, v) in OpAuthor.decisionFields(d) { p[k] = v }
+    let id = try a.ingest(payload: p, ingestID: String(repeating: "a", count: 64))
+    try a.writerCheckpoint([CheckpointHead(writerID: w, stream: "hot", counter: "3", hash: String(repeating: "b", count: 64))])
+    let ops = try a.build().ops
+    #expect(ops.map(\.type) == [.txnIngested, .writerCheckpoint])
+    var s = State()
+    try Replay.foldOps(ops, seq: 1, writerID: w, into: &s)
+    #expect(s.anomalies.isEmpty)
+    #expect(s.txns[id]?.categorySource?.kind == .dictionary && s.checkpoints.count == 1)
+    var bad = OpAuthor(ctx())
+    p["currency"] = .string("aed")
+    try bad.ingest(payload: p, ingestID: String(repeating: "c", count: 64))
+    #expect(throws: AuthorError.self) { try bad.build() }
   }
 }

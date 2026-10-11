@@ -94,7 +94,7 @@ public enum Replay {
     try applyBlobOps(ops, seq: seq, writerID: writerID, into: &s)
   }
 
-  private static func advance(to seq: Int64, _ s: inout State) throws(ReplayStop) {
+  static func advance(to seq: Int64, _ s: inout State) throws(ReplayStop) {
     // Strictly increasing, checked against the STATE: one blob is one row.
     guard seq > s.cursors.hot else {
       throw .order("blob at seq \(seq) does not follow \(s.cursors.hot): one blob is one row, one seq")
@@ -318,5 +318,16 @@ extension Replay {
       return error.message
     }
     return nil
+  }
+}
+
+extension Replay {
+  /// A blob the reader set aside (spec 01 §6.6 R7-R10): it still consumes its
+  /// seq, and is listed in `unreadable` with a content-free reason.
+  public static func foldSetAside(
+    seq: Int64, writerID: String, stream: String = "hot", writerCounter: Int64, reason: String, into s: inout State
+  ) throws(ReplayStop) {
+    try advance(to: seq, &s)
+    s.unreadable.append(Unreadable(writerID: writerID, stream: stream, writerCounter: writerCounter, seq: seq, reason: reason))
   }
 }

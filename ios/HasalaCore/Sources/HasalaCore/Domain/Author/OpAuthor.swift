@@ -197,6 +197,32 @@ public struct OpAuthor: Sendable {
     add(superseding ? .txnSuperseded : .txnIngested, entity: ("txn", entityID), ingestID: ingestID, p)
   }
 
+  /// A `txn_ingested` (or `txn_superseded`) whose payload the caller built
+  /// whole, as the Gmail lane does (04 §7.5 step 7e). Returns the entity id
+  /// (minted when not given). The payload is checked like every other op.
+  @discardableResult
+  public mutating func ingest(payload: JSONObject, ingestID: String, superseding: Bool = false, entityID: String? = nil) throws(AuthorError) -> String {
+    let id: String
+    if let entityID { id = entityID } else { id = try newEntityID() }
+    drafts.append((superseding ? .txnSuperseded : .txnIngested, EntityRef(kind: "txn", id: id), nil, ingestID, payload))
+    return id
+  }
+
+  /// The payload fields `category` and `category_source` for a pipeline decision (03c §8.3).
+  public static func decisionFields(_ d: Decision) -> [(String, JSONValue)] {
+    guard let c = d.category else { return [("category", .null), ("category_source", sourceJSON(.none))] }
+    return [("category", .string(c)), ("category_source", sourceJSON(source(d.source)))]
+  }
+
+  /// The writer checkpoint (spec 01 §3.3(c); the sync engine's push step 3):
+  /// the canonical, sorted heads payload.
+  public mutating func writerCheckpoint(_ heads: [CheckpointHead]) throws(AuthorError) {
+    let payload: JSONValue
+    do { payload = try Checkpoint.encodePayload(heads) } catch { throw .invalidOp("writer_checkpoint: \(error)") }
+    guard let o = payload.objectValue else { throw .invalidOp("writer_checkpoint: payload") }
+    drafts.append((.writerCheckpoint, nil, nil, nil, o))
+  }
+
   /// `hex(SHA-256("hasala/v1/manual-ingest" ‖ 0x00 ‖ 16 random bytes))` (03c §1.10).
   public static func manualIngestID(_ random: any RandomSource) throws(AuthorError) -> String {
     let r: Data
@@ -411,7 +437,7 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  static func sourceJSON(_ s: CategorySource) -> JSONValue {
+  public static func sourceJSON(_ s: CategorySource) -> JSONValue {
     var o: [(String, JSONValue)] = [("kind", .string(s.kind.rawValue))]
     if let v = s.ruleID { o.append(("rule_id", .string(v))) }
     if let v = s.bundle { o.append(("bundle", .string(v))) }

@@ -22,6 +22,13 @@ public struct Decision: Sendable, Equatable {
   public let suggested: String?
 
   public static let none = Decision(category: nil, source: .none, display: nil, suggested: nil)
+
+  public init(category: String?, source: DecisionSource, display: String?, suggested: String?) {
+    self.category = category
+    self.source = source
+    self.display = display
+    self.suggested = suggested
+  }
 }
 
 public enum Direction: String, Sendable {

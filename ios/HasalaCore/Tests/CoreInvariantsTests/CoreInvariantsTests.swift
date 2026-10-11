@@ -1,6 +1,9 @@
 // Unit tests for CoreInvariants: a clean fold passes, each broken shape is
 // caught, and the audit compares witnesses.
+import CoreCrypto
 import CoreReplay
+import CoreWire
+import Foundation
 import Testing
 
 @testable import CoreInvariants
@@ -51,5 +54,14 @@ struct CoreInvariantsTests {
     #expect(Invariants.audit(kept: a, refolded: b) == nil)
     b.homeCurrency = "USD"
     #expect(Invariants.audit(kept: a, refolded: b)?.id == "I22_audit_refold")
+  }
+
+  @Test("a decided page folds onto a copy; set-aside rows consume their seq; a newer op halts")
+  func page() throws {
+    let canary = FoldCanary.log()
+    let rows = canary.prefix(5).map { FoldRow(seq: $0.seq, writerID: $0.writerID, counter: $0.seq, outcome: .opened(plaintext: Data(), ops: $0.ops)) }
+    let s = try LedgerFold.page(rows + [FoldRow(seq: 6, writerID: "dev-a", counter: 9, outcome: .setAside(.aeadFailed, alarm: true))], onto: State())
+    #expect(s.cursors.hot == 6 && s.unreadable.map(\.reason) == ["aeadFailed"])
+    #expect(throws: FoldHalt.self) { try LedgerFold.page(rows, onto: s) }
   }
 }
