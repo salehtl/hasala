@@ -112,9 +112,32 @@ The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
 changing that. `/licenses` lists the third-party code and font the built
 site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
-dependency reaches `dist/`. Deploying (`bunx wrangler deploy` from `web/`, Workers Static
-Assets, see `web/wrangler.jsonc`) is done only with the owner's approval;
-neither CI nor an agent deploys.
+dependency reaches `dist/`.
+
+Deploying is done only with the owner's approval, for that deploy; CI never
+deploys, and an agent deploys only when the owner has approved it. The site
+is Workers Static Assets on the `hasala-aasa` Worker, on the zone route
+`hasala.app/*` (`web/wrangler.jsonc`). To deploy:
+
+1. On the QA host, in its checkout of this repository, check out the commit
+   to ship (normally `main`) and enter the devShell.
+2. In `web/`: `bun install --frozen-lockfile`, then `bun run deploy`. It runs
+   `bun run build` (so the CSP and JS-budget checks gate it), then the
+   wrangler pinned in `package.json`, under the devShell's Node.
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` come from the
+   environment, never from a file in this repository.
+3. Verify the live site:
+   - `curl -sI https://hasala.app/`: 200, with `strict-transport-security`,
+     `permissions-policy` and one `content-security-policy` header
+     (`frame-ancestors 'none'`);
+   - `curl -s https://hasala.app/ | grep -c 'http-equiv="content-security-policy"'`: 1;
+   - `curl -sI https://hasala.app/privacy`: 200, and `/privacy/`: a redirect
+     to `/privacy`;
+   - `curl -sI https://hasala.app/i/test`: 200, `cache-control: no-store` and
+     one `referrer-policy: no-referrer`;
+   - `curl -sI https://hasala.app/.well-known/apple-app-site-association`: 200
+     (no redirect), `content-type: application/json`;
+   - `curl -sI https://hasala.app/no-such-page`: 404.
 
 ## Decisions (2026-10-11)
 

@@ -150,6 +150,9 @@
             ++ [
               pkgs.postgresql_17 # initdb/pg_ctl/postgres for internal/pgtest
               pkgs.bun
+              # web/: wrangler (`bun run deploy`) is unreliable under Bun's
+              # runtime; `bun run` starts its `#!/usr/bin/env node` bin with this.
+              pkgs.nodejs_22
               pkgs.sops
               pkgs.gh
               pkgs.nixfmt
@@ -163,6 +166,12 @@
               # Never let `go` fetch a different toolchain than the pinned one.
               GOTOOLCHAIN = "local";
               CGO_ENABLED = "0";
+            }
+            # web/'s `bun run build`: sharp's prebuilt libvips needs libstdc++,
+            # which NixOS (the QA host) has nowhere on the default search path.
+            # Linux only; the darwin shell is untouched.
+            // lib.optionalAttrs (system == "x86_64-linux") {
+              LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
             };
           };
         }
