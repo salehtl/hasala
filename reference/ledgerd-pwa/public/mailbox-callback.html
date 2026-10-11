@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Connecting your mailbox…</title>
+    <!--
+      The connect ceremony's popup landing page (Task 9). It hands the OAuth
+      outcome back to the app over a same-origin BroadcastChannel (mailbox-callback.js)
+      and closes. Served under the app's CSP: the script is external and
+      self-origin (no inline script), and the only style is this one inline
+      block, which style-src 'unsafe-inline' allows.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background: #fcf8f8;
+        color: #131314;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #131314;
+          color: #fcf8f8;
+        }
+      }
+      main {
+        max-width: 22rem;
+        padding: 1.5rem;
+        text-align: center;
+        line-height: 1.5;
+      }
+      p {
+        margin: 0.25rem 0;
+      }
+      .muted {
+        opacity: 0.6;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Finishing connecting your mailbox…</p>
+      <p class="muted">You can close this window.</p>
+    </main>
+    <script src="/mailbox-callback.js"></script>
+  </body>
+</html>

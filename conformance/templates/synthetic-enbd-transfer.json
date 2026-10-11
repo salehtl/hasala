@@ -1,0 +1,379 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with LEDGER_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.transfer.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.transfer.v1",
+    "version": 2,
+    "bank": "enbd",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "emiratesnbd.com"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "body",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "Debit Amount:\\n(?P<ccy>[A-Z]{3} ?)?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})"
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "layouts": [
+          "DD/Mon/YYYY hh:mm A",
+          "DD/Mon/YYYY"
+        ],
+        "patterns": [
+          "Transaction Date:\\n(?P<d>[^\\n]+)"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "Beneficiary Name:\\n(?P<v>[^\\n]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction",
+      "date"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.transfer.v1/timed-date",
+      "source": "SYNTHETIC: the shape all 62 real messages have, stated once explicitly",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/date-only",
+      "source": "SYNTHETIC: v1's strings.Fields(s)[0] fallback, expressed as the second layout. No corpus message takes it: all 62 carry a time",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYKRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T00:00:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/date-with-unparseable-time",
+      "source": "SYNTHETIC: the fallback again, this time because the whole string fails layout 1 and the first token still parses",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMjU6OTkgWFgKRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T00:00:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/date-lowercase-month",
+      "source": "SYNTHETIC: month NAMES fold case in Go's time.Parse and must in the mirror",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvbWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/date-impossible-day",
+      "source": "SYNTHETIC: 31 February: the calendar range check, not a rounded date",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMzEvRmViLzIwMjQgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/no-beneficiary",
+      "source": "SYNTHETIC: merchant is not required; the transaction still extracts",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApUaGFuayB5b3UgZm9yIGJhbmtpbmcgd2l0aCBFbWlyYXRlcyBOQkQuCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/empty-beneficiary-line",
+      "source": "SYNTHETIC: the capture is [^\\n]+, so against an empty line the pattern does not match at all: there is no empty group to report, and merchant is not required, so the transaction still extracts",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRGViaXQgQW1vdW50OgpBRUQgMS4wMApCZW5lZmljaWFyeSBOYW1lOgoKRm9vdGVyCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/beneficiary-with-cr",
+      "source": "SYNTHETIC: [^\\n] keeps \\r in BOTH engines, which a bare . does not",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDEuMDAKQmVuZWZpY2lhcnkgTmFtZToKU09NRQ1CRU5FRklDSUFSWQpUaGFuayB5b3UgZm9yIGJhbmtpbmcgd2l0aCBFbWlyYXRlcyBOQkQuCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME\rBENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/no-date",
+      "source": "SYNTHETIC: date is REQUIRED here (unlike the alert, which dates from the email); this is what a bank format change looks like",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "RnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wMApCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/no-debit-amount",
+      "source": "SYNTHETIC: the amount anchor is what v1 errors on first",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkJlbmVmaWNpYXJ5IE5hbWU6ClNPTUUgQkVORUZJQ0lBUlkKVGhhbmsgeW91IGZvciBiYW5raW5nIHdpdGggRW1pcmF0ZXMgTkJELgo=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/no-currency-prefix",
+      "source": "SYNTHETIC: the ccy group does not participate; default_currency applies",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKMjMsNDU2LjAwCkJlbmVmaWNpYXJ5IE5hbWU6ClNPTUUgQkVORUZJQ0lBUlkKVGhhbmsgeW91IGZvciBiYW5raW5nIHdpdGggRW1pcmF0ZXMgTkJELgo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345600",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/foreign-currency",
+      "source": "SYNTHETIC: the ccy group wins over default_currency",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKVVNEIDEsMjAwLjAwCkJlbmVmaWNpYXJ5IE5hbWU6ClNPTUUgQkVORUZJQ0lBUlkKVGhhbmsgeW91IGZvciBiYW5raW5nIHdpdGggRW1pcmF0ZXMgTkJELgo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "120000",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/foreign-currency-no-space",
+      "source": "SYNTHETIC: v1's amountRe separates the code from the number with `\\s*` — ZERO or more — so this is USD to v1. Version 1 of this template demanded exactly one U+0020, its ccy group did not participate, RE2 re-matched at the digit and default_currency made it AED: a silently wrong amount in a different currency. Version 2 spells it `[A-Z]{3} ?`",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKVVNEMSwyMDAuMDAKQmVuZWZpY2lhcnkgTmFtZToKU09NRSBCRU5FRklDSUFSWQpUaGFuayB5b3UgZm9yIGJhbmtpbmcgd2l0aCBFbWlyYXRlcyBOQkQuCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "120000",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/currency-lowercase",
+      "source": "SYNTHETIC: flags [\"i\"]: the class matches and asciiUpper normalizes it",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKdXNkIDEsMjAwLjAwCkJlbmVmaWNpYXJ5IE5hbWU6ClNPTUUgQkVORUZJQ0lBUlkKVGhhbmsgeW91IGZvciBiYW5raW5nIHdpdGggRW1pcmF0ZXMgTkJELgo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "120000",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/amount-one-decimal-place",
+      "source": "SYNTHETIC: a conversion failure in both, never a rounded number",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDIzLDQ1Ni4wCkJlbmVmaWNpYXJ5IE5hbWU6ClNPTUUgQkVORUZJQ0lBUlkKVGhhbmsgeW91IGZvciBiYW5raW5nIHdpdGggRW1pcmF0ZXMgTkJELgo=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/amount-longer-than-the-bound",
+      "source": "SYNTHETIC: 33 digits before the point. The run is [0-9,]{0,24} for the same reason the alert's is, and the two executors must agree on what the bound DOES",
+      "subject_base64": "TG9jYWwgQmFuayBUcmFuc2Zlcg==",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gRGF0ZToKMTUvTWFyLzIwMjYgMDk6MTUgUE0KRnJvbSBBY2NvdW50OgowMTIqKiozNCoqKjU2CkRlYml0IEFtb3VudDoKQUVEIDEsMjM0LDU2Nyw4OTAsMTIzLDQ1Niw3ODksMDEyLDM0NS42NwpCZW5lZmljaWFyeSBOYW1lOgpTT01FIEJFTkVGSUNJQVJZClRoYW5rIHlvdSBmb3IgYmFua2luZyB3aXRoIEVtaXJhdGVzIE5CRC4K",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-03-15T21:15:00Z",
+        "merchant": "SOME BENEFICIARY",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.transfer.v1/alert-format-body",
+      "source": "SYNTHETIC: the OTHER ENBD format: it carries no Debit Amount block, so this template must extract nothing from it. enbd.alert.v1 and enbd.transfer.v1 share a sender domain and are separated by nothing but their anchors, so the corpus gate's `ambiguous` counter rests on this",
+      "subject_base64": "RW1pcmF0ZXMgTkJEIFRyYW5zYWN0aW9uIGFkdmljZSBmb3IgYWNjb3VudCBlbmRpbmcgd2l0aCA4NjQy",
+      "normalized_body_base64": "QUVEIDEyLDc1MC4wMCBoYXMgYmVlbiB3aXRoZHJhd24gZnJvbSB5b3VyIGFjY291bnQgMDEyWFhYMzRYWFg1Ni4K",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

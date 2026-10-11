@@ -1,0 +1,58 @@
+Hasala
+Copyright 2026 Saleh Lootah
+
+Hasala is licensed under the Functional Source License, Version 1.1, ALv2
+Future License (FSL-1.1-ALv2); see LICENSE.md. The Apache License, Version 2.0
+that each version converts to is in LICENSES/Apache-2.0.txt. The name and marks
+are not licensed; see TRADEMARKS.md.
+
+Third-party material in this repository
+=======================================
+
+Each entry names the files it covers. Licence texts are in LICENSES/.
+
+Pixelarticons
+  Copyright (c) 2019 Gerrit Halfmann
+  https://github.com/halfmage/pixelarticons
+  MIT License (LICENSES/MIT.txt)
+
+  The SVG path data in reference/ledgerd-pwa/src/components/ui/pixelIcons.ts is
+  generated from pixelarticons 2.2.0 by
+  reference/ledgerd-pwa/scripts/generate-pixel-icons.mjs.
+
+BIP-39 English wordlist
+  https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+  BIP-0039 by Marek Palatinus, Pavol Rusnak, Aaron Voisine and Sean Bowe.
+  Copyright (c) 2013-2016 Pavol Rusnak (trezor/python-mnemonic, MIT License)
+
+  Copied verbatim into reference/ledgerd-client/src/crypto/wordlist.ts. The
+  BIP-0039 document carries no licence header; the identical list is
+  distributed under the MIT License (LICENSES/MIT.txt) by the BIP's reference
+  implementation, trezor/python-mnemonic (https://github.com/trezor/python-mnemonic).
+
+Dependencies that are not copied into this repository
+=====================================================
+
+Go modules
+  server/ links the modules listed in server/go.mod and server/go.sum. They are
+  fetched at build time and are not vendored here. Every one is under the MIT,
+  BSD-2-Clause, BSD-3-Clause or Apache-2.0 licence; each module ships its own
+  licence text (and, where it has one, its NOTICE), which a binary
+  distribution must carry. `go-licenses report ./...` in server/ lists them.
+
+npm packages
+  reference/ledgerd-client/ and reference/ledgerd-pwa/ declare their
+  dependencies in their package.json and bun.lock files. They are installed at
+  build time and are not vendored here.
+
+What is not in this repository
+==============================
+
+- The ledgerd PWA's built bundle (server/internal/webui/dist) has been replaced
+  by a placeholder page: Hasala's server does not serve that PWA, and the bundle
+  carried fonts, a SQLite build and libraries this repository does not
+  redistribute.
+- dither-kit (reference/ledgerd-pwa/src/components/dither-kit), which was
+  vendored without a licence, has been removed, as has the ledgerd mascot
+  artwork (reference/ledgerd-pwa/public). reference/ledgerd-pwa is reference
+  material for product logic only and no longer builds on its own.
