@@ -54,4 +54,4 @@ Model         CoreCategorize FoundationModels
 
 # T: test support, never linked by the app.
 TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals
-SoftAuth      CorePrimitives CoreAuth
+SoftAuth      CorePrimitives CoreAuth CryptoKit
