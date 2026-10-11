@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # asc-env.sh: sourced by archive.sh and upload.sh. Resolves the App Store Connect
 # API key from the environment only; nothing about the key is ever committed.
 #

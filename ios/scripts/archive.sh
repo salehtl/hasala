@@ -147,8 +147,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 unzip -q "$IPA" -d "$work"
 app="$work/Payload/Hasala.app"
-fail=0
-check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
+check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fi; }
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$app/Info.plist" 2>/dev/null; }
 ents="$work/ents.plist"
 codesign -d --entitlements - --xml "$app" >"$ents" 2>/dev/null || true
