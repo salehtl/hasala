@@ -57,7 +57,8 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
 - The iOS app (`ios/`, macOS only) builds with Xcode 27 from the system. The
   `Hasala.xcodeproj` is generated from `ios/project.yml` by XcodeGen **2.46.0**
   (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
-  and committed. Tests: `swift test --package-path ios/HasalaKit` (design tokens,
+  and committed. The flake pins that XcodeGen (`nix build .#xcodegen`, on PATH in
+  the darwin devShell); nixpkgs' own 2.44.1 writes a project without resources. Tests: `swift test --package-path ios/HasalaKit` (design tokens,
   money formatting, the Maya mock) and `xcodebuild test -project
   ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
   (unit tests plus the UI smoke test). Design tokens are generated from

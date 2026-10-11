@@ -6,9 +6,10 @@
 #
 # The project needs XcodeGen 2.46.0 exactly (spec 06 §1): 2.46 is the first release
 # that writes synchronized-folder build-file exceptions (Info.plist, entitlements)
-# and a Resources phase for synchronized folders; 2.44.1, which the Nix devShell
-# currently ships, writes neither, so its project builds an app with no asset
-# catalog and no privacy manifest. Set XCODEGEN to pick a binary explicitly.
+# and a Resources phase for synchronized folders; 2.44.1 (nixpkgs 26.05) writes
+# neither, so its project builds an app with no asset catalog and no privacy
+# manifest. The flake pins 2.46.0 (`nix build .#xcodegen`; the darwin devShell
+# puts it on PATH) and CI uses that. Set XCODEGEN to pick a binary explicitly.
 set -euo pipefail
 
 want="2.46.0"

@@ -138,13 +138,22 @@ jobs:
             exit 1
           fi
 
-      - name: Project matches ios/project.yml (when XcodeGen 2.46.0 is present)
-        run: |
-          rc=0; ios/scripts/generate-project.sh --check || rc=$?
-          if [[ $rc -eq 2 ]]; then echo "::notice::XcodeGen 2.46.0 not on this runner; project freshness not checked"; else exit $rc; fi
+      # XcodeGen 2.46.0 from the flake (packages.aarch64-darwin.xcodegen, pinned
+      # by hash): only that one package is built, not the devShell. A missing
+      # or different XcodeGen fails the step (generate-project.sh exits 2).
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
 
-      - name: Build-number vectors
-        run: ios/scripts/tests/build_number_test.sh
+      - name: Project matches ios/project.yml (XcodeGen 2.46.0, AT-01)
+        run: |
+          xcodegen="$(nix build .#xcodegen --no-link --print-out-paths)/bin/xcodegen"
+          XCODEGEN="$xcodegen" ios/scripts/generate-project.sh --check
+
+      - name: Release script tests (build numbers, upload prechecks; offline)
+        run: |
+          ios/scripts/tests/build_number_test.sh
+          ios/scripts/tests/upload_precheck_test.sh
 
       - name: HasalaKit tests (macOS)
         run: swift test --package-path ios/HasalaKit

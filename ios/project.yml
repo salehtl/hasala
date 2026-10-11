@@ -1,9 +1,10 @@
 # XcodeGen source of truth for ios/Hasala.xcodeproj (spec 06 §2.1). The project is
 # generated from this file and committed; regenerate it with
 #
-#   (cd ios && xcodegen generate --spec project.yml)
+#   ios/scripts/generate-project.sh
 #
-# using the XcodeGen from the repository's Nix devShell. Every target root is a
+# which needs XcodeGen 2.46.0, pinned in the flake (`nix build .#xcodegen`; the
+# darwin devShell puts it on PATH). Every target root is a
 # synchronized folder, so adding or removing a Swift file never changes the
 # .pbxproj (spec 04 §1.2). Build settings live in Config/*.xcconfig, not here,
 # except target wiring. Gate A0: the app target only; the widget and the dormant
