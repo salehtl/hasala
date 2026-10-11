@@ -49,10 +49,14 @@ struct OutboxTests {
   func debounce() async throws {
     let store = try LedgerStore.inMemory()
     let fired = Counter()
-    let box = Outbox(store: store, clock: FakeClock(), onAuthored: { fired.bump() })
+    // A wide window, so a slow, busy CI runner still makes both enqueues
+    // inside it; then wait (bounded) for the one trigger, and a while longer
+    // for a second one that must not come.
+    let box = Outbox(store: store, clock: FakeClock(), debounce: .milliseconds(400), onAuthored: { fired.bump() })
     try await box.enqueue([op("a")])
     try await box.enqueue([op("b")])
-    try await Task.sleep(for: .milliseconds(1700))
+    for _ in 0..<100 where fired.value == 0 { try await Task.sleep(for: .milliseconds(50)) }
+    try await Task.sleep(for: .milliseconds(600))
     #expect(fired.value == 1)
   }
 }

@@ -27,12 +27,18 @@ public actor Outbox {
   let store: LedgerStore
   let clock: any CoreTime.Clock
   let onAuthored: @Sendable () async -> Void
+  let debounceWindow: Duration
   private var pendingTrigger: Task<Void, Never>?
 
-  /// `onAuthored` is the coordinator's `run(.authored)`.
-  public init(store: LedgerStore, clock: any CoreTime.Clock, onAuthored: @escaping @Sendable () async -> Void) {
+  /// `onAuthored` is the coordinator's `run(.authored)`. `debounce` is §5.4's
+  /// 1.5 s; tests pass a shorter one.
+  public init(
+    store: LedgerStore, clock: any CoreTime.Clock, debounce: Duration = Outbox.debounce,
+    onAuthored: @escaping @Sendable () async -> Void
+  ) {
     self.store = store
     self.clock = clock
+    self.debounceWindow = debounce
     self.onAuthored = onAuthored
   }
 
@@ -75,8 +81,9 @@ public actor Outbox {
   private func scheduleTrigger() {
     pendingTrigger?.cancel()
     let run = onAuthored
+    let wait = debounceWindow
     pendingTrigger = Task {
-      try? await Task.sleep(for: Self.debounce)
+      try? await Task.sleep(for: wait)
       guard !Task.isCancelled else { return }
       await run()
     }
