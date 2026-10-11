@@ -94,8 +94,10 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   plus `lint.sh`), and on x86_64-linux `module-eval` (every module assertion
   fires on its misuse) and `qa-vm` (needs KVM). On a Mac,
   `nix flake check --no-build --all-systems` evaluates the Linux ones.
-- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
-  `console` (a stub until the console is built) and `version`; configuration
+- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`
+  (`mint [--review | --email]`, `list`, `revoke`), `waitlist`, `email test`,
+  `console` (spec 07's operator console, minimal: waitlist approve, invites,
+  email log) and `version`; configuration
   is `HASALA_*` environment variables over an optional TOML file
   (`server/config.example.toml`). Two Postgres roles: `hasala_migrate` owns the
   schema and is the only role `hasalad migrate` runs as; `hasala_runtime`
