@@ -521,6 +521,16 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (Rep
 		rep.Rows[r.String()] = n
 	}
 
+	// The account's address also sits in rows that never carried its user_id
+	// (spec 02 §15.2 step 3, spec 07 §6.6): the signup code, the waitlist
+	// emails and the invite were sent before the account existed. A queued row
+	// to it is deleted, a sending one is suppressed without its address, a
+	// final one keeps only its hint and tag; and the account's joined waitlist
+	// entry goes now rather than in 30 days.
+	if err := eraseAddress(ctx, tx, users); err != nil {
+		return rep, err
+	}
+
 	// The one statement that matters. Everything else cascades from it, which
 	// is what satisfies the append-only triggers — see the package comment.
 	//
@@ -852,4 +862,24 @@ func verifiedByAny(keys []ed25519.PublicKey, msg, sig []byte) bool {
 		}
 	}
 	return false
+}
+
+// eraseAddress is the plaintext-address half of a purge (spec 07 §6.6).
+func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID) error {
+	for _, q := range []string{
+		`DELETE FROM mail_log WHERE status = 'queued'
+		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now()
+		  WHERE status = 'sending'
+		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL
+		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`DELETE FROM waitlist_entries WHERE state = 'joined'
+		    AND id IN (SELECT waitlist_entry_id FROM invite_codes WHERE redeemed_by = ANY($1))`,
+	} {
+		if _, err := tx.Exec(ctx, q, users); err != nil {
+			return fmt.Errorf("purge: erase the address: %w", err)
+		}
+	}
+	return nil
 }
