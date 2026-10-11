@@ -34,6 +34,17 @@ struct AuthWireTests {
     #expect(URLSessionTransport.classify(.cancelled) == .cancelled)
   }
 
+  @Test("URLSessionTransport: a path that would leave the API origin builds no request")
+  func originOnly() throws {
+    let t = URLSessionTransport(baseURL: URL(string: "https://api.hasala.app")!, clientHeader: "ios/0.1/7")
+    for path in ["//api/v1/mailbox/link", "//evil.example/x", "api/v1/meta", "https://evil.example/x", ""] {
+      #expect(t.urlRequest(for: APIRequest(method: .get, path: path, bearer: "tok")) == nil, "\(path)")
+    }
+    let local = URLSessionTransport(baseURL: URL(string: "http://api.example.invalid:8443")!, clientHeader: "ios/0.1/7")
+    let u = try #require(local.urlRequest(for: APIRequest(method: .get, path: "/api/v1/meta?x=%2F%2Fy")))
+    #expect(u.url?.absoluteString == "http://api.example.invalid:8443/api/v1/meta?x=%2F%2Fy")
+  }
+
   @Test("go-webauthn CredentialCreation and CredentialAssertion options decode")
   func options() throws {
     let creation = #"""

@@ -29,6 +29,8 @@ public struct ProjectionMeta: Sendable, Equatable {
   public var cursorHot: Int64
   public var complete: Bool
   public var projectedAtMs: Int64
+  /// Outbox ops overlaid on this projection (0: it shows only folded rows).
+  public var pendingOps: Int = 0
 }
 
 public enum Projector {
@@ -81,7 +83,8 @@ public enum Projector {
     try db.write { db in
       try ensureSchema(db)
       try db.execute(sql: "UPDATE projection_meta SET value = '0' WHERE key = 'complete'")
-      for t in ProjectionSchema.tables where t != "projection_meta" { try db.execute(sql: "DELETE FROM \(t)") }
+      // Children before parents: `txn_part` and `rule_pattern` reference `txn` and `rule`.
+      for t in ProjectionSchema.tables.reversed() where t != "projection_meta" { try db.execute(sql: "DELETE FROM \(t)") }
       try writeTxns(db, state, categorizer: categorizer, pending: pendingIDs)
       try writeCategories(db, taxonomy)
       try writeRules(db, state, taxonomy: taxonomy)
@@ -91,7 +94,8 @@ public enum Projector {
       try writeNotices(db, state)
       let meta: [(String, String)] = [
         ("projection_version", String(ProjectionSchema.version)), ("fold_print", FoldCanary.foldPrint),
-        ("cursor_hot", String(confirmed.cursors.hot)), ("projected_at", String(projectedAtMs)), ("complete", "1"),
+        ("cursor_hot", String(confirmed.cursors.hot)), ("projected_at", String(projectedAtMs)),
+        ("pending_ops", String(pending.reduce(0) { $0 + $1.count })), ("complete", "1"),
       ]
       for (k, v) in meta {
         try db.execute(sql: "INSERT OR REPLACE INTO projection_meta (key, value) VALUES (?, ?)", arguments: [k, v])
@@ -301,6 +305,15 @@ public enum Projector {
       let args: [(any DatabaseValueConvertible)?] = [r.bill, r.due, r.resolution, r.txn, r.until, r.atSeq]
       try db.execute(
         sql: "INSERT INTO bill_resolution (bill, due, resolution, txn, until, at_seq) VALUES (?,?,?,?,?,?)", arguments: StatementArguments(args))
+    }
+    for c in s.checkins.values {
+      let args: [(any DatabaseValueConvertible)?] = [
+        c.id, c.account, c.asOf, (try? parseInstantMs(c.asOf)) ?? 0, c.balanceMinor, c.source, c.resolution, c.adjustmentMinor,
+        c.void, c.atSeq,
+      ]
+      try db.execute(
+        sql: "INSERT INTO checkin (id, account, as_of, as_of_ms, balance_minor, source, resolution, adjustment_minor, void, at_seq) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        arguments: StatementArguments(args))
     }
   }
 
