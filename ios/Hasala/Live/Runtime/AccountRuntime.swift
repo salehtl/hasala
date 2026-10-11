@@ -106,7 +106,7 @@ final class AccountRuntime {
         sync: { trigger, deadline in
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
-          return out
+          return (out.newData, out.stop)
         },
         mailbox: lane.map { lane -> @Sendable (MailboxTrigger, Int64?) async -> CycleReport in
           { @Sendable trigger, deadlineMs in await lane.cycle(trigger: trigger, deadlineMs: deadlineMs) }

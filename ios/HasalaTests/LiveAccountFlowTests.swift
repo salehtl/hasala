@@ -250,6 +250,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var offline = false
     var deleted = 0
     var lastStepUpAction: String?
+    var reviewAccounts = false
   }
 
   private let lock = NSLock()
@@ -275,6 +276,12 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var offline: Bool {
     get { state.withLock { $0.offline } }
     set { state.withLock { $0.offline = newValue } }
+  }
+
+  /// Every account answers `review_account: true` on #40 (an App Review invite).
+  var reviewAccounts: Bool {
+    get { state.withLock { $0.reviewAccounts } }
+    set { state.withLock { $0.reviewAccounts = newValue } }
   }
 
   func freezeAll(byOperator: Bool) {
@@ -352,6 +359,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
         "user_id": u.id, "status": "active", "has_keys": true, "email": u.email, "display_name": u.name,
         "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": false,
         "frozen": u.frozenBy != nil, "frozen_by": opt(u.frozenBy), "restricted": u.frozenBy != nil,
+        "review_account": s.reviewAccounts,
       ])
     case "GET /api/v1/keys": return ok(u.keys)
     case "GET /api/v1/keys/wraps": return ok(["wraps": [Any]()])

@@ -17,7 +17,7 @@ import Foundation
 /// one upload. A stop that only the account gate can act on (deleted elsewhere, signed
 /// out by the server, frozen, keys gone) is handed to `stopped` and ends the run.
 actor WorkCoordinator {
-  enum Trigger: String, Sendable, CaseIterable {
+  nonisolated enum Trigger: String, Sendable, CaseIterable {
     case launch, foreground, authored, silentPush, bgRefresh, bgProcessing
 
     var sync: SyncTrigger {
@@ -47,7 +47,7 @@ actor WorkCoordinator {
     var strength: Int { self == .authored ? 0 : 1 }
   }
 
-  struct Outcome: Sendable, Equatable {
+  nonisolated struct Outcome: Sendable, Equatable {
     /// Rows stored, ops acknowledged, or mail read (the silent push's `.newData`).
     var newData = false
     /// Why the sync stage stopped early, if it did.
@@ -57,15 +57,28 @@ actor WorkCoordinator {
     var failed: Bool { stop.map { !WorkCoordinator.tolerable($0) } ?? false }
   }
 
+  typealias SyncStage = @Sendable (SyncTrigger, ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
+  typealias MailboxStage = @Sendable (MailboxTrigger, Int64?) async -> CycleReport
+  typealias CommittedStage = @Sendable () async -> Void
+  typealias StoppedStage = @Sendable (SyncStop) async -> Void
+
   /// The stages, as closures over the account's pieces (tests pass their own).
-  struct Stages: Sendable {
-    var sync: @Sendable (_ trigger: SyncTrigger, _ deadline: ContinuousClock.Instant?) async -> RunOutcome
+  nonisolated struct Stages: Sendable {
+    /// The sync engine's run: whether rows were stored or ops acknowledged, and its stop.
+    var sync: @Sendable (_ trigger: SyncTrigger, _ deadline: ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
     /// The Gmail cycle; nil when the build has no Google client.
     var mailbox: (@Sendable (_ trigger: MailboxTrigger, _ deadlineMs: Int64?) async -> CycleReport)?
     /// After every run: the screens reload.
     var committed: @Sendable () async -> Void
     /// A stop only the account gate can act on.
     var stopped: @Sendable (_ stop: SyncStop) async -> Void
+
+    init(sync: @escaping SyncStage, mailbox: MailboxStage?, committed: @escaping CommittedStage, stopped: @escaping StoppedStage) {
+      self.sync = sync
+      self.mailbox = mailbox
+      self.committed = committed
+      self.stopped = stopped
+    }
   }
 
   /// Foreground runs at least this far apart (spec 04 §7.9).

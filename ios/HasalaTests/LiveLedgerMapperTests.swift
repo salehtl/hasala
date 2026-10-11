@@ -1,0 +1,235 @@
+import CoreAuth
+import CoreDomain
+import CoreInvariants
+import CoreOutbox
+import CoreProjection
+import CoreReplay
+import CoreStore
+import CoreSync
+import CoreTime
+import CoreWire
+import Foundation
+import HasalaMocks
+import HasalaModels
+import Testing
+
+@testable import Hasala
+
+/// AT-REV-3: the bundled sample seed, authored as "Use sample data" authors it, folded
+/// (CoreInvariants' `LedgerFold`) and projected (CoreProjection), then mapped by
+/// `LedgerStateMapper`, gives HasalaKit's engines Maya's figures: the Home hero, Plan,
+/// Activity and Bills of the Paper boards that `MayaLedger` reproduces.
+///
+/// The seed is generated from `MayaLedger` (Tools/SampleSeedExport), so a drift in the
+/// export, the fold, the projector or the mapper shows up here as a different figure.
+@MainActor
+@Suite("Live ledger mapper (AT-REV-3)")
+struct LiveLedgerMapperTests {
+  nonisolated struct FixedClock: CoreTime.Clock {
+    let ms: Int64
+    func nowMs() -> Int64 { ms }
+  }
+
+  /// Saturday 10 October 2026, 13:40 in Dubai: the seed's anchor and `MayaLedger.now`.
+  static let anchor: Int64 = 1_791_625_200_000
+  static let user = UserID("6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5")!
+  static let writer = WriterID("ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")!
+
+  /// One enrolled account's pieces in memory, at the anchor.
+  struct Account {
+    let context: SyncContext
+    let projection: ProjectionStore
+    let observer: LedgerPageObserver
+    let outbox: Outbox
+  }
+
+  static func account() throws -> Account {
+    let store = try LedgerStore.inMemory()
+    try store.create(StoreMeta(userID: user, writerID: writer, apiBase: "https://api.hasala.app", keyEpoch: 1, createdAt: anchor))
+    let context = SyncContext(
+      userID: user, writerID: writer, store: store,
+      secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
+      client: AuthClient(transport: MiniHasalad(invite: "")), clock: FixedClock(ms: anchor), random: SystemRandom())
+    let projection = try ProjectionStore.inMemory()
+    let observer = LedgerPageObserver(context: context, projection: projection, dictionary: AccountRuntime.dictionary)
+    let outbox = Outbox(store: store, clock: FixedClock(ms: anchor), debounce: .seconds(3600), onAuthored: {})
+    return Account(context: context, projection: projection, observer: observer, outbox: outbox)
+  }
+
+  /// The seed's blobs, through the observer's gate (a review account, an empty ledger).
+  static func seed(_ a: Account) async throws -> [AuthoredBlob] {
+    try await a.observer.sampleBatches(account: AccountInfo(user_id: user.string, review_account: true))
+  }
+
+  static func context() -> LedgerStateMapper.Context {
+    LedgerStateMapper.Context(
+      today: MayaLedger.now.date,
+      profile: ProfileInfo(displayName: "Maya Rahman", email: "maya@example.com", signIn: .password))
+  }
+
+  /// Seed → fold → project → map: the blobs as the rows of one pulled page.
+  static func foldedState() async throws -> LedgerState {
+    let a = try account()
+    let blobs = try await seed(a)
+    var rows: [FoldRow] = []
+    for (i, b) in blobs.enumerated() {
+      let plaintext = Data(try OpCodec.encodeBlobOps(b.ops))
+      rows.append(FoldRow(seq: Int64(i + 1), writerID: writer.string, counter: Int64(i + 1), outcome: .opened(plaintext: plaintext, ops: b.ops)))
+    }
+    let state = try LedgerFold.page(rows, onto: State())
+    try a.projection.project(
+      state, pending: [], writerID: writer.string, dictionary: AccountRuntime.dictionary, projectedAtMs: anchor)
+    return try LedgerStateMapper.map(a.projection.reader, context: context())
+  }
+
+  // MARK: Home
+
+  @Test func homeHeroAndWidgetsAreMayas() async throws {
+    let live = try await Self.foldedState()
+    let now = MayaLedger.now
+    let got = HomeEngine.snapshot(live, now: now)
+    let want = HomeEngine.snapshot(MayaLedger.state, now: now)
+    #expect(got.hero == want.hero)
+    #expect(got.hero.stats.map(\.value) == [.aed(2_282_45), .aed(8_005_89), .aed(1_039_15)])
+    // Needs you: the review card and AXA three days late (the detector's proposals and
+    // price changes are not ops, so the rail's count may differ; its cards don't).
+    // (A bill's card id is its bill id, which the seed mints afresh.)
+    #expect(got.needsYou.cards.map(\.label) == want.needsYou.cards.map(\.label))
+    #expect(got.needsYou.cards.map(\.figure) == want.needsYou.cards.map(\.figure))
+    #expect(got.needsYou.cards.map(\.subtitle) == want.needsYou.cards.map(\.subtitle))
+    #expect(got.needsYou.subtitle == want.needsYou.subtitle)
+    // Widgets: the bucket pace rows, the next bill, net worth, the trip, the goal, today.
+    func widget(_ s: HomeSnapshot, _ id: String) -> HomeWidget? { s.widgets.first { $0.id == id } }
+    #expect(widget(got, "budgetPace") == widget(want, "budgetPace"))
+    #expect(widget(got, "nextBill") == widget(want, "nextBill"))
+    guard case .today(let gotToday)? = widget(got, "today"), case .today(let wantToday)? = widget(want, "today") else {
+      Issue.record("no today widget")
+      return
+    }
+    #expect(gotToday.summary == wantToday.summary)
+    #expect(gotToday.rows.map(\.merchant) == wantToday.rows.map(\.merchant))
+    #expect(gotToday.rows.map(\.detail) == wantToday.rows.map(\.detail))
+    #expect(gotToday.rows.map(\.amount) == wantToday.rows.map(\.amount))
+    #expect(widget(got, "project.Japan trip") == widget(want, "project.Japan trip"))
+    #expect(widget(got, "goal.Emergency fund") == widget(want, "goal.Emergency fund"))
+    guard case .netWorth(let nw)? = widget(got, "netWorth") else {
+      Issue.record("no net worth widget")
+      return
+    }
+    #expect(nw.total == .aed(227_568_00))
+  }
+
+  // MARK: Plan
+
+  @Test func planIsPlanOctober() async throws {
+    let live = try await Self.foldedState()
+    let got = PlanEngine.snapshot(live, now: MayaLedger.now)
+    let want = PlanEngine.snapshot(MayaLedger.state, now: MayaLedger.now)
+    #expect(got.readyToAssign == .aed(1_000_00))
+    #expect(got.incomeLine == want.incomeLine)
+    #expect(got.split == want.split)
+    #expect(got.startedFrom == want.startedFrom)
+    #expect(got.sections.map(\.bucket) == want.sections.map(\.bucket))
+    #expect(got.sections.map(\.budget) == want.sections.map(\.budget))
+    #expect(got.sections.map(\.left) == want.sections.map(\.left))
+    #expect(got.sections.map(\.done) == want.sections.map(\.done))
+    #expect(got.sections.map { $0.rows.map(\.name) } == want.sections.map { $0.rows.map(\.name) })
+    for (g, w) in zip(got.sections.flatMap(\.rows), want.sections.flatMap(\.rows)) {
+      #expect(g.trailing == w.trailing, "\(w.name)")
+      #expect(g.budget == w.budget && g.spent == w.spent, "\(w.name)")
+      #expect(g.verdict == w.verdict && g.progress == w.progress, "\(w.name)")
+    }
+    #expect(got.projects.map(\.left) == [.aed(7_140_00)])
+    #expect(got.projects.map(\.dates) == want.projects.map(\.dates))
+  }
+
+  // MARK: Activity and Review
+
+  @Test func activityAndReviewAreMayas() async throws {
+    let live = try await Self.foldedState()
+    let now = MayaLedger.now
+    let got = ActivityEngine.snapshot(live, now: now, filter: .all)
+    let want = ActivityEngine.snapshot(MayaLedger.state, now: now, filter: .all)
+    #expect(got.countLine == "26 transactions this month")
+    #expect(got.review?.count == 6)
+    #expect(got.review?.unplanned == .aed(827_28))
+    #expect(got.chips == want.chips)
+    #expect(got.comingUp.map(\.name) == ["DEWA", "AXA Insurance"])
+    #expect(got.days.map(\.title) == want.days.map(\.title))
+    #expect(got.days.map(\.total) == want.days.map(\.total))
+    #expect(got.days.map { $0.rows.map(\.merchant) } == want.days.map { $0.rows.map(\.merchant) })
+    #expect(ReviewEngine.cards(live).count == 6)
+    let dining = ActivityEngine.snapshot(live, now: now, filter: TxnFilter(category: "dining"))
+    #expect(dining.summary?.total == .aed(642_75))
+  }
+
+  // MARK: Bills
+
+  @Test func billsAreMayas() async throws {
+    let live = try await Self.foldedState()
+    let got = BillsEngine.snapshot(live, now: MayaLedger.now)
+    let want = BillsEngine.snapshot(MayaLedger.state, now: MayaLedger.now)
+    #expect(got.next14 == .aed(1_039_15))
+    #expect(got.incomeLine == want.incomeLine)
+    #expect(got.needsALook.map(\.name) == ["AXA Insurance", "du"])
+    #expect(got.needsALook.map(\.kind) == want.needsALook.map(\.kind))
+    #expect(got.upcoming.map(\.name) == want.upcoming.map(\.name))
+    #expect(got.recentlyPaid.map(\.name) == want.recentlyPaid.map(\.name))
+    #expect(got.paidThisMonth == .aed(8_005_89))
+    #expect(got.tracked == want.tracked)
+  }
+
+  // MARK: The app's own path
+
+  /// "Use sample data" as the app runs it, before any upload: the blobs go through the
+  /// outbox and the projection shows them as the pending overlay. Same figures.
+  @Test func theOutboxOverlayShowsTheSameMonth() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let live = try LedgerStateMapper.map(a.projection.reader, context: Self.context())
+    let folded = try await Self.foldedState()
+    let now = MayaLedger.now
+    #expect(HomeEngine.snapshot(live, now: now).hero == HomeEngine.snapshot(folded, now: now).hero)
+    // Every load mints fresh ids (the user category's among them), so compare figures.
+    let (lp, fp) = (PlanEngine.snapshot(live, now: now), PlanEngine.snapshot(folded, now: now))
+    #expect(lp.readyToAssign == fp.readyToAssign)
+    #expect(lp.sections.map(\.left) == fp.sections.map(\.left))
+    #expect(lp.sections.flatMap(\.rows).map(\.trailing) == fp.sections.flatMap(\.rows).map(\.trailing))
+    #expect(BillsEngine.snapshot(live, now: now).next14 == .aed(1_039_15))
+    #expect(live.txns.filter { $0.postedAt.date.yearMonth == MayaLedger.october }.count == 26)
+    // The gate is one-shot: a second load is refused, and nothing more is authored.
+    await #expect(throws: SampleLoadError.self) { _ = try await Self.seed(a) }
+  }
+
+  /// A review swipe through the live store: the card leaves at once, the edit is
+  /// authored as `txn_categorized` into the outbox, and the projection agrees.
+  @Test func aReviewEditIsAuthoredAndReadBack() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "laneb.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    let steam = try #require(store.state.txns.first { $0.merchant == "Steam" && $0.needsReview })
+    let pending = try a.context.store.pendingCount()
+    let token = try store.apply(.categorize(steam.id, "entertainment", learnRule: false, project: nil))
+    #expect(token?.title == "Sorted into Entertainment")
+    #expect(ReviewEngine.cards(store.state).count == 5)
+    // Wait for the background write and the reload.
+    for _ in 0..<100 where try a.context.store.pendingCount() == pending {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(try a.context.store.pendingCount() == pending + 1)
+    let row = try #require(try a.projection.reader.txn(steam.id))
+    #expect(row.category == "entertainment" && !row.needsReview)
+    // Undo writes the old category back.
+    store.undo(try #require(token))
+    for _ in 0..<100 where try a.context.store.pendingCount() == pending + 1 {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(try a.projection.reader.txn(steam.id)?.needsReview == true)
+  }
+}
