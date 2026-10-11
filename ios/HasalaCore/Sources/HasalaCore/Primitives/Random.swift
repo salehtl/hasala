@@ -13,9 +13,13 @@ extension RandomSource {
   /// `count` random bytes.
   public func bytes(_ count: Int) throws(PrimitivesError) -> Data {
     var out = Data(count: count)
-    try out.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) throws(PrimitivesError) in
-      try fill(b)
+    // Data's withUnsafeMutableBytes only rethrows `any Error` before the
+    // Xcode 27 SDK, so the typed error is carried out by hand.
+    var failure: PrimitivesError?
+    out.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) in
+      do throws(PrimitivesError) { try fill(b) } catch { failure = error }
     }
+    if let failure { throw failure }
     return out
   }
 
