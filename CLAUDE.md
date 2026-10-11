@@ -54,6 +54,20 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `scripts/check.sh`'s first step (the real-mail fence) refuses the private
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
   toolchain needed) on every push and pull request before anything else.
+- The iOS app (`ios/`, macOS only) builds with Xcode 27 from the system. The
+  `Hasala.xcodeproj` is generated from `ios/project.yml` by XcodeGen **2.46.0**
+  (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
+  and committed. Tests: `swift test --package-path ios/HasalaKit` (design tokens,
+  money formatting, the Maya mock) and `xcodebuild test -project
+  ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
+  (unit tests plus the UI smoke test). Design tokens are generated from
+  `design/tokens/paper-tokens.json` by `swift ios/tools/tokens/generate.swift`
+  (`--check` in CI). Debug builds run the synthetic Maya scenario
+  (`-HasalaScenario maya|mayaHidden`); Release builds never reach the mocks.
+  `ios/scripts/archive.sh` archives and exports a signed .ipa on the owner's Mac
+  and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
+  from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. CI job `ios` builds
+  and tests unsigned in the simulator; it is not a required check.
 - `nix build .#server` builds `cmd/ledgerd` (the binary keeps that name for
   now), `nix flake check` builds it and checks formatting, `nix fmt` formats
   Nix and Go.

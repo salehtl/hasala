@@ -107,3 +107,79 @@ jobs:
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
+
+  # The iOS app (ios/): token generator freshness, the HasalaKit package tests on
+  # macOS, then a simulator build with the unit and UI smoke tests. Nothing is
+  # signed here (CODE_SIGNING_ALLOWED=NO) and no Apple credential exists in CI;
+  # archives, signing and uploads happen only on the owner's Mac
+  # (ios/scripts/archive.sh, ios/scripts/upload.sh). Not a required check.
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
+
+      - name: Design tokens are generated from design/tokens/paper-tokens.json
+        run: swift ios/tools/tokens/generate.swift --check
+
+      - name: No Swift file references in the project (synchronized folders only)
+        run: |
+          if grep -q 'lastKnownFileType = sourcecode.swift' ios/Hasala.xcodeproj/project.pbxproj; then
+            echo "::error::ios/Hasala.xcodeproj lists Swift files; every target root must be a synchronized folder"
+            exit 1
+          fi
+
+      - name: Project matches ios/project.yml (when XcodeGen 2.46.0 is present)
+        run: |
+          rc=0; ios/scripts/generate-project.sh --check || rc=$?
+          if [[ $rc -eq 2 ]]; then echo "::notice::XcodeGen 2.46.0 not on this runner; project freshness not checked"; else exit $rc; fi
+
+      - name: Build-number vectors
+        run: ios/scripts/tests/build_number_test.sh
+
+      - name: HasalaKit tests (macOS)
+        run: swift test --package-path ios/HasalaKit
+
+      - name: Build and test in the simulator (unsigned)
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          rts = json.load(sys.stdin)["devices"]
+          best = None
+          for rt, devs in rts.items():
+              if ".iOS-" not in rt:
+                  continue
+              ver = tuple(int(x) for x in rt.rsplit(".iOS-", 1)[1].split("-"))
+              if ver < (26,):
+                  continue
+              for d in devs:
+                  if d["name"].startswith("iPhone") and (best is None or ver > best[0]):
+                      best = (ver, d["udid"], d["name"])
+          if best is None:
+              sys.exit("no iPhone simulator with iOS 26 or later")
+          print(best[1])
+          ')"
+          xcrun simctl list devices | grep "$udid"
+          xcodebuild test \
+            -project ios/Hasala.xcodeproj -scheme Hasala \
+            -destination "id=$udid" \
+            -resultBundlePath "$RUNNER_TEMP/Hasala.xcresult" \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-xcresult
+          path: ${{ runner.temp }}/Hasala.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
