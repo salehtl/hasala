@@ -153,16 +153,21 @@ const daysIn = (month: number, year: number): number =>
  * use and which therefore falls back to the arrival time. That defect is ported
  * deliberately: adding a layout changes which messages get a body-derived date,
  * and is a normalizer VERSION bump, not a bug fix.
+ *
+ * Every space in a layout is ` +`, because a space in a Go layout matches a RUN
+ * of spaces in the value (`time.skip` cuts all of them), so Go reads
+ * "Feb  8, 2026 at 12:52 PM" and a single-space pattern did not. The two
+ * executors disagreed on that input until `conformance/norm-dates` pinned it.
  */
 const LAYOUTS: readonly RegExp[] = [
   // Jan 2, 2006 at 3:04 PM
-  /^([A-Za-z]{3}) (\d{1,2}), (\d{4}) at (\d{1,2}):(\d{2}) (AM|PM)$/,
+  /^([A-Za-z]{3}) +(\d{1,2}), +(\d{4}) +at +(\d{1,2}):(\d{2}) +(AM|PM)$/,
   // Mon, Jan 2, 2006 at 3:04 PM
-  /^([A-Za-z]{3}), ([A-Za-z]{3}) (\d{1,2}), (\d{4}) at (\d{1,2}):(\d{2}) (AM|PM)$/,
+  /^([A-Za-z]{3}), +([A-Za-z]{3}) +(\d{1,2}), +(\d{4}) +at +(\d{1,2}):(\d{2}) +(AM|PM)$/,
   // 2 January 2006 at 15:04:05
-  /^(\d{1,2}) ([A-Za-z]+) (\d{4}) at (\d{1,2}):(\d{2}):(\d{2})$/,
+  /^(\d{1,2}) +([A-Za-z]+) +(\d{4}) +at +(\d{1,2}):(\d{2}):(\d{2})$/,
   // 2 January 2006 at 15:04
-  /^(\d{1,2}) ([A-Za-z]+) (\d{4}) at (\d{1,2}):(\d{2})$/,
+  /^(\d{1,2}) +([A-Za-z]+) +(\d{4}) +at +(\d{1,2}):(\d{2})$/,
 ];
 
 /** Builds a naive UTC timestamp, or null when any field is out of range. */
@@ -172,7 +177,12 @@ function makeUTC(year: number, month: number, day: number, hour: number, min: nu
   if (min < 0 || min >= 60) return null;
   if (sec < 0 || sec >= 60) return null;
   if (hour < 0 || hour >= 24) return null;
-  return new Date(Date.UTC(year, month - 1, day, hour, min, sec));
+  // Not `Date.UTC(year, ...)` alone: it maps a year 0-99 to 1900-1999, where
+  // Go's time.Parse reads "0050" as the year 50. setUTCFullYear takes the year
+  // literally. The day was range-checked above, so nothing rolls over.
+  const d = new Date(Date.UTC(2000, 0, 1, hour, min, sec));
+  d.setUTCFullYear(year, month - 1, day);
+  return d;
 }
 
 function applyLayout(idx: number, m: RegExpExecArray): Date | null {

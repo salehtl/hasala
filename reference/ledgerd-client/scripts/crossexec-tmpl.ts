@@ -15,7 +15,7 @@
  *   S=/scratch
  *   HASALA_CORPUS_DB=$S/corpus.db HASALA_CROSSEXEC_OUT=$S/go-templates.jsonl \
  *     go test ./gates/tmpl/ -run TestWriteCrossExecutorTemplates -timeout 20m   # in server/oracle
- *   (cd client && bun run scripts/crossexec-tmpl.ts $S/go-templates.jsonl)
+ *   (cd reference/ledgerd-client && bun run scripts/crossexec-tmpl.ts $S/go-templates.jsonl)
  *
  * Exits non-zero on any disagreement.
  */

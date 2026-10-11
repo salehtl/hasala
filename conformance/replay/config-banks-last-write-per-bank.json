@@ -1,0 +1,129 @@
+{
+  "name": "banks-last-write-per-bank",
+  "group": "config",
+  "note": "bank_declared is last write per bank; active:false retires one; two devices adding different banks both survive.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "banks-last-write-per-bank-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "enbd",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "banks-last-write-per-bank-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "dib",
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "banks-last-write-per-bank-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "enbd",
+            "active": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 3,
+          "type": "bank_declared",
+          "op_id": "banks-last-write-per-bank-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "bank": "adcb",
+            "active": true
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [
+        [
+          "adcb",
+          true
+        ],
+        [
+          "dib",
+          true
+        ],
+        [
+          "enbd",
+          false
+        ]
+      ],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "4"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "0017ebbbe83a9f2ce45240343871037d6e0cff8d3cb31e89c632252ca4feb3ba",
+    "order": {
+      "banks": [
+        "enbd",
+        "dib",
+        "adcb"
+      ],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "0017ebbbe83a9f2ce45240343871037d6e0cff8d3cb31e89c632252ca4feb3ba",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

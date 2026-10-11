@@ -1,0 +1,367 @@
+{
+  "note": "Written by reference/ledgerd-client/scripts/gen-categorize-conformance.ts from the TypeScript oracle (src/categorize); do not hand-edit. See README.md. canonical(), foldCase(), runeLength() (code points) and subjectOf() (canonical, truncated to max_subject_runes code points) of each input.",
+  "schema_version": 1,
+  "max_subject_runes": 512,
+  "vectors": [
+    {
+      "name": "ascii-upper",
+      "input": "CARREFOUR",
+      "expect": {
+        "canonical": "carrefour",
+        "fold_case": "carrefour",
+        "rune_length": 9,
+        "subject": "carrefour"
+      }
+    },
+    {
+      "name": "ascii-mixed-with-digits",
+      "input": "Carrefour City 042",
+      "expect": {
+        "canonical": "carrefour city 042",
+        "fold_case": "carrefour city 042",
+        "rune_length": 18,
+        "subject": "carrefour city 042"
+      }
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "expect": {
+        "canonical": "",
+        "fold_case": "",
+        "rune_length": 0,
+        "subject": ""
+      }
+    },
+    {
+      "name": "whitespace-only",
+      "input": " \t\r\n\u00a0\u3000",
+      "expect": {
+        "canonical": "",
+        "fold_case": " \t\r\n\u00a0\u3000",
+        "rune_length": 6,
+        "subject": ""
+      }
+    },
+    {
+      "name": "collapse-and-trim",
+      "input": "  CARREFOUR \t  Hyper\u00a0\u00a0Market  ",
+      "expect": {
+        "canonical": "carrefour hyper market",
+        "fold_case": "  carrefour \t  hyper\u00a0\u00a0market  ",
+        "rune_length": 30,
+        "subject": "carrefour hyper market"
+      }
+    },
+    {
+      "name": "nel-is-space",
+      "input": "CARREFOUR\u0085HYPER",
+      "expect": {
+        "canonical": "carrefour hyper",
+        "fold_case": "carrefour\u0085hyper",
+        "rune_length": 15,
+        "subject": "carrefour hyper"
+      }
+    },
+    {
+      "name": "every-go-space",
+      "input": "a\tb\nc\u000bd\fe\rf g\u0085h\u00a0i\u1680j\u2000k\u200al\u2028m\u2029n\u202fo\u205fp\u3000q",
+      "expect": {
+        "canonical": "a b c d e f g h i j k l m n o p q",
+        "fold_case": "a\tb\nc\u000bd\fe\rf g\u0085h\u00a0i\u1680j\u2000k\u200al\u2028m\u2029n\u202fo\u205fp\u3000q",
+        "rune_length": 33,
+        "subject": "a b c d e f g h i j k l m n o p q"
+      }
+    },
+    {
+      "name": "zero-width-space-is-not-space",
+      "input": "car\u200bre\u200cfour",
+      "expect": {
+        "canonical": "car\u200bre\u200cfour",
+        "fold_case": "car\u200bre\u200cfour",
+        "rune_length": 11,
+        "subject": "car\u200bre\u200cfour"
+      }
+    },
+    {
+      "name": "bom-is-not-space",
+      "input": "X\ufeffCARREFOUR",
+      "expect": {
+        "canonical": "x\ufeffcarrefour",
+        "fold_case": "x\ufeffcarrefour",
+        "rune_length": 11,
+        "subject": "x\ufeffcarrefour"
+      }
+    },
+    {
+      "name": "mongolian-vowel-separator-is-not-space",
+      "input": "car\u180efour",
+      "expect": {
+        "canonical": "car\u180efour",
+        "fold_case": "car\u180efour",
+        "rune_length": 8,
+        "subject": "car\u180efour"
+      }
+    },
+    {
+      "name": "dotted-capital-i",
+      "input": "\u0130STANBUL",
+      "expect": {
+        "canonical": "istanbul",
+        "fold_case": "istanbul",
+        "rune_length": 8,
+        "subject": "istanbul"
+      }
+    },
+    {
+      "name": "dotless-small-i-stays",
+      "input": "\u0131stanbul",
+      "expect": {
+        "canonical": "\u0131stanbul",
+        "fold_case": "\u0131stanbul",
+        "rune_length": 8,
+        "subject": "\u0131stanbul"
+      }
+    },
+    {
+      "name": "final-sigma-folds-to-sigma",
+      "input": "\u039f\u0394\u039f\u03a3 \u03bf\u03b4\u03bf\u03c2",
+      "expect": {
+        "canonical": "\u03bf\u03b4\u03bf\u03c3 \u03bf\u03b4\u03bf\u03c2",
+        "fold_case": "\u03bf\u03b4\u03bf\u03c3 \u03bf\u03b4\u03bf\u03c2",
+        "rune_length": 9,
+        "subject": "\u03bf\u03b4\u03bf\u03c3 \u03bf\u03b4\u03bf\u03c2"
+      }
+    },
+    {
+      "name": "kelvin-sign",
+      "input": "\u212a-MART",
+      "expect": {
+        "canonical": "k-mart",
+        "fold_case": "k-mart",
+        "rune_length": 6,
+        "subject": "k-mart"
+      }
+    },
+    {
+      "name": "angstrom-sign",
+      "input": "\u212bBERG",
+      "expect": {
+        "canonical": "\u00e5berg",
+        "fold_case": "\u00e5berg",
+        "rune_length": 5,
+        "subject": "\u00e5berg"
+      }
+    },
+    {
+      "name": "sharp-s-stays",
+      "input": "STRA\u00dfE",
+      "expect": {
+        "canonical": "stra\u00dfe",
+        "fold_case": "stra\u00dfe",
+        "rune_length": 6,
+        "subject": "stra\u00dfe"
+      }
+    },
+    {
+      "name": "capital-sharp-s",
+      "input": "STRA\u1e9eE",
+      "expect": {
+        "canonical": "stra\u00dfe",
+        "fold_case": "stra\u00dfe",
+        "rune_length": 6,
+        "subject": "stra\u00dfe"
+      }
+    },
+    {
+      "name": "fullwidth-latin",
+      "input": "\uff23\uff21\uff32\uff32\uff25\uff26\uff2f\uff35\uff32",
+      "expect": {
+        "canonical": "\uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52",
+        "fold_case": "\uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52",
+        "rune_length": 9,
+        "subject": "\uff43\uff41\uff52\uff52\uff45\uff46\uff4f\uff55\uff52"
+      }
+    },
+    {
+      "name": "cyrillic-homoglyph",
+      "input": "\u0421ARREFOUR",
+      "expect": {
+        "canonical": "\u0441arrefour",
+        "fold_case": "\u0441arrefour",
+        "rune_length": 9,
+        "subject": "\u0441arrefour"
+      }
+    },
+    {
+      "name": "greek-capitals",
+      "input": "\u0391\u0392\u0393",
+      "expect": {
+        "canonical": "\u03b1\u03b2\u03b3",
+        "fold_case": "\u03b1\u03b2\u03b3",
+        "rune_length": 3,
+        "subject": "\u03b1\u03b2\u03b3"
+      }
+    },
+    {
+      "name": "armenian-capitals",
+      "input": "\u0531\u0532\u0533",
+      "expect": {
+        "canonical": "\u0561\u0562\u0563",
+        "fold_case": "\u0561\u0562\u0563",
+        "rune_length": 3,
+        "subject": "\u0561\u0562\u0563"
+      }
+    },
+    {
+      "name": "title-case-digraph",
+      "input": "\u01c5ungla",
+      "expect": {
+        "canonical": "\u01c6ungla",
+        "fold_case": "\u01c6ungla",
+        "rune_length": 6,
+        "subject": "\u01c6ungla"
+      }
+    },
+    {
+      "name": "roman-numeral",
+      "input": "\u2160\u2161 STORE",
+      "expect": {
+        "canonical": "\u2170\u2171 store",
+        "fold_case": "\u2170\u2171 store",
+        "rune_length": 8,
+        "subject": "\u2170\u2171 store"
+      }
+    },
+    {
+      "name": "circled-letters",
+      "input": "\u24b6\u24b7\u24b8",
+      "expect": {
+        "canonical": "\u24d0\u24d1\u24d2",
+        "fold_case": "\u24d0\u24d1\u24d2",
+        "rune_length": 3,
+        "subject": "\u24d0\u24d1\u24d2"
+      }
+    },
+    {
+      "name": "arabic",
+      "input": "\u0643\u0627\u0631\u0641\u0648\u0631  \u0627\u0644\u0645\u0631\u0643\u0632",
+      "expect": {
+        "canonical": "\u0643\u0627\u0631\u0641\u0648\u0631 \u0627\u0644\u0645\u0631\u0643\u0632",
+        "fold_case": "\u0643\u0627\u0631\u0641\u0648\u0631  \u0627\u0644\u0645\u0631\u0643\u0632",
+        "rune_length": 14,
+        "subject": "\u0643\u0627\u0631\u0641\u0648\u0631 \u0627\u0644\u0645\u0631\u0643\u0632"
+      }
+    },
+    {
+      "name": "arabic-with-harakat",
+      "input": "\u0643\u064e\u0627\u0631\u0650\u0641\u0648\u0631",
+      "expect": {
+        "canonical": "\u0643\u064e\u0627\u0631\u0650\u0641\u0648\u0631",
+        "fold_case": "\u0643\u064e\u0627\u0631\u0650\u0641\u0648\u0631",
+        "rune_length": 8,
+        "subject": "\u0643\u064e\u0627\u0631\u0650\u0641\u0648\u0631"
+      }
+    },
+    {
+      "name": "arabic-indic-digits",
+      "input": "\u0645\u062d\u0644 \u0661\u0662\u0663",
+      "expect": {
+        "canonical": "\u0645\u062d\u0644 \u0661\u0662\u0663",
+        "fold_case": "\u0645\u062d\u0644 \u0661\u0662\u0663",
+        "rune_length": 7,
+        "subject": "\u0645\u062d\u0644 \u0661\u0662\u0663"
+      }
+    },
+    {
+      "name": "nfd-latin",
+      "input": "CAFE\u0301",
+      "expect": {
+        "canonical": "cafe\u0301",
+        "fold_case": "cafe\u0301",
+        "rune_length": 5,
+        "subject": "cafe\u0301"
+      }
+    },
+    {
+      "name": "nfc-latin",
+      "input": "CAF\u00c9",
+      "expect": {
+        "canonical": "caf\u00e9",
+        "fold_case": "caf\u00e9",
+        "rune_length": 4,
+        "subject": "caf\u00e9"
+      }
+    },
+    {
+      "name": "astral-letters",
+      "input": "\ud801\udc00\ud801\udc01 SHOP",
+      "expect": {
+        "canonical": "\ud801\udc28\ud801\udc29 shop",
+        "fold_case": "\ud801\udc28\ud801\udc29 shop",
+        "rune_length": 7,
+        "subject": "\ud801\udc28\ud801\udc29 shop"
+      }
+    },
+    {
+      "name": "emoji",
+      "input": "COFFEE \u2615 \ud83d\ude00",
+      "expect": {
+        "canonical": "coffee \u2615 \ud83d\ude00",
+        "fold_case": "coffee \u2615 \ud83d\ude00",
+        "rune_length": 10,
+        "subject": "coffee \u2615 \ud83d\ude00"
+      }
+    },
+    {
+      "name": "control-characters-kept",
+      "input": "CAR\u0000\u0007FOUR",
+      "expect": {
+        "canonical": "car\u0000\u0007four",
+        "fold_case": "car\u0000\u0007four",
+        "rune_length": 9,
+        "subject": "car\u0000\u0007four"
+      }
+    },
+    {
+      "name": "subject-at-512-runes",
+      "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expect": {
+        "canonical": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fold_case": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "rune_length": 512,
+        "subject": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "subject-truncated-past-512-runes",
+      "input": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBCDE",
+      "expect": {
+        "canonical": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcde",
+        "fold_case": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcde",
+        "rune_length": 515,
+        "subject": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "subject-truncated-after-collapse",
+      "input": "  C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C ",
+      "expect": {
+        "canonical": "c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c",
+        "fold_case": "  c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c ",
+        "rune_length": 602,
+        "subject": "c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c "
+      }
+    },
+    {
+      "name": "subject-truncation-keeps-astral-whole",
+      "input": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD\ud83d\ude00\ud83d\ude00",
+      "expect": {
+        "canonical": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\ud83d\ude00\ud83d\ude00",
+        "fold_case": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\ud83d\ude00\ud83d\ude00",
+        "rune_length": 513,
+        "subject": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\ud83d\ude00"
+      }
+    }
+  ]
+}

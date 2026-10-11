@@ -1,0 +1,191 @@
+{
+  "name": "unparsed-money-and-home-amount-refused",
+  "group": "fold",
+  "note": "An edit may not give an unparsed row an amount, a currency or a home amount, whoever authored the row.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "unparsed-money-and-home-amount-refused-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": null,
+          "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "unparsed-money-and-home-amount-refused-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "amount_minor": "500",
+            "currency": "AED",
+            "direction": "debit"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "unparsed-money-and-home-amount-refused-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "u1"
+          },
+          "parent_version": 2,
+          "payload": {
+            "amount_home_minor": "500"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "unsupported_edit_field"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "unsupported_edit_field"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "unparsed|ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          [
+            "u1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000u1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "u1",
+            "kind": "txn",
+            "op_id": "unparsed-money-and-home-amount-refused-3",
+            "version": 3,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "u1"
+        ]
+      ],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "u1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "u1",
+            "ingest_id": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 3
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "a58b898a02741ec3dc6ddfa1d7e1f4536fed07e7e1187ab564318d5ba5eca120",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "d62034e63876f3675af3c682e92c7b22674d01e4a038edabf763f3fc9b5f85e3",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "unsupported_edit_field",
+          "detail": "u1: amount_minor, currency, direction cannot be set on an unparsed transaction, whose only surface is the review queue"
+        },
+        {
+          "at_seq": "3",
+          "kind": "unsupported_edit_field",
+          "detail": "u1: amount_home_minor cannot be set on an unparsed transaction, which has no amount to convert"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}
