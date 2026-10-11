@@ -41,6 +41,31 @@ struct BuildInfoTests {
     #expect(throws: BuildInfo.Problem.malformed("HasalaAPIBaseURL")) { try BuildInfo(infoDictionary: d) }
   }
 
+  /// Debug runs may point at a local server through the launch environment.
+  @Test func theDebugOverrideAcceptsHTTPAndHTTPS() throws {
+    #expect(try BuildInfo.debugAPIBaseURLOverride([:]) == nil)
+    #expect(try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "  "]) == nil)
+    let local = try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "http://localhost:8080"])
+    #expect(local?.absoluteString == "http://localhost:8080")
+    let tls = try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "https://api.hasala.app"])
+    #expect(tls?.host() == "api.hasala.app")
+  }
+
+  @Test func theDebugOverrideRejectsAnythingElse() {
+    for bad in ["localhost:8080", "ftp://example.com", "http://", "not a url"] {
+      #expect(throws: BuildInfo.Problem.malformed("HASALA_API_BASE_URL")) {
+        try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": bad])
+      }
+    }
+  }
+
+  /// Without an override the Info.plist value is used.
+  @Test func theAPIBaseURLDefaultsToTheBundle() {
+    if ProcessInfo.processInfo.environment["HASALA_API_BASE_URL"] == nil {
+      #expect(BuildInfo.apiBaseURL() == BuildInfo.current.apiBaseURL)
+    }
+  }
+
   /// `BuildInfo` is not main-actor isolated: background work can read it.
   @Test nonisolated func isReadableOffTheMainActor() async {
     let footer = await Task.detached { BuildInfo.current.footer }.value

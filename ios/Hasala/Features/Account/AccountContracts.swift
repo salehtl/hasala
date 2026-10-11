@@ -176,9 +176,99 @@ struct AccountProfile: Equatable, Sendable {
   }
 }
 
+/// The account actions a build can actually carry out. Screens offer an action (a button,
+/// a row, a link) only when its member is in `AccountService.capabilities`, so a build
+/// never shows a control whose ceremony isn't wired yet.
+///
+/// Not main-actor isolated, so any isolation domain can read and compare it.
+nonisolated struct AccountCapabilities: OptionSet, Sendable {
+  let rawValue: UInt32
+
+  init(rawValue: UInt32) { self.rawValue = rawValue }
+
+  // MARK: Signup (C1, C1-P)
+
+  /// Create an account with a passkey.
+  static let signupPasskey = AccountCapabilities(rawValue: 1 << 0)
+  /// Create an account with a password.
+  static let signupPassword = AccountCapabilities(rawValue: 1 << 1)
+
+  // MARK: Sign in (C2, C2-P, C2b, C2b-P)
+
+  /// Sign in with a passkey.
+  static let signInPasskey = AccountCapabilities(rawValue: 1 << 2)
+  /// Sign in with an email and password.
+  static let signInPassword = AccountCapabilities(rawValue: 1 << 3)
+
+  // MARK: Unlock (C3)
+
+  /// Open this iPhone's sealed data with the 12 words.
+  static let unlockWithPhrase = AccountCapabilities(rawValue: 1 << 4)
+
+  // MARK: Leaving
+
+  /// Sign out of this iPhone, keeping its local data.
+  static let signOut = AccountCapabilities(rawValue: 1 << 5)
+  /// End every session on every device.
+  static let signOutEverywhere = AccountCapabilities(rawValue: 1 << 6)
+  /// Delete the account and everything the server holds for it.
+  static let deleteAccount = AccountCapabilities(rawValue: 1 << 7)
+  /// Remove this iPhone from the account and wipe what it holds locally.
+  static let removeThisIPhone = AccountCapabilities(rawValue: 1 << 8)
+
+  // MARK: Recovery (C9, C4)
+
+  /// Forgot password on a new iPhone, approved from another signed-in iPhone.
+  static let resetPassword = AccountCapabilities(rawValue: 1 << 9)
+  /// Get back in with the 12 words plus an email code, setting a new sign-in method.
+  static let recoverAccess = AccountCapabilities(rawValue: 1 << 10)
+
+  // MARK: Sign-in & security
+
+  /// Replace the 12 words with a new phrase.
+  static let rotatePhrase = AccountCapabilities(rawValue: 1 << 11)
+  /// Add another passkey to the account.
+  static let addPasskey = AccountCapabilities(rawValue: 1 << 12)
+  /// Change the account's email address.
+  static let changeEmail = AccountCapabilities(rawValue: 1 << 13)
+  /// Freeze (and unfreeze) the account.
+  static let freeze = AccountCapabilities(rawValue: 1 << 14)
+  /// Show the 12 words again behind a step-up.
+  static let viewPhrase = AccountCapabilities(rawValue: 1 << 15)
+
+  /// Every action above. The default for services that don't say (the Debug mocks).
+  static let all: AccountCapabilities = [
+    .signupPasskey, .signupPassword,
+    .signInPasskey, .signInPassword,
+    .unlockWithPhrase,
+    .signOut, .signOutEverywhere,
+    .deleteAccount, .removeThisIPhone,
+    .resetPassword, .recoverAccess,
+    .rotatePhrase, .addPasskey, .changeEmail,
+    .freeze, .viewPhrase,
+  ]
+
+  /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, leaving
+  /// (sign out, sign out everywhere, delete, remove this iPhone) and viewing the words.
+  /// Password reset, access recovery, phrase rotation, adding a passkey, changing the
+  /// email and freezing stay hidden.
+  static let beta: AccountCapabilities = [
+    .signupPasskey, .signupPassword,
+    .signInPasskey, .signInPassword,
+    .unlockWithPhrase,
+    .signOut, .signOutEverywhere,
+    .deleteAccount, .removeThisIPhone,
+    .viewPhrase,
+  ]
+}
+
 /// The account surface (spec 04 §6.2's ceremonies at the level of user intents).
 @MainActor
 protocol AccountService: AnyObject {
+  /// Which account actions this service can carry out; screens hide the rest. A
+  /// conformer that doesn't declare it gets `.all` (see the extension below).
+  var capabilities: AccountCapabilities { get }
+
   // MARK: Signup (C1, C1-P)
 
   /// `signup/begin`: the invite, the address and the name.
@@ -254,4 +344,10 @@ protocol AccountService: AnyObject {
   /// throws `.codeMismatch` before any Face ID prompt; then the approval key signs and
   /// `password/reset/approve` is sent.
   func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure)
+}
+
+extension AccountService {
+  /// Everything, so the Debug mocks and test doubles offer every screen unchanged. A
+  /// live service overrides this with only the actions it has wired.
+  var capabilities: AccountCapabilities { .all }
 }
