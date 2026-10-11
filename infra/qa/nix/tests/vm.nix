@@ -97,7 +97,10 @@ in
         after = [ "local-fs.target" ];
         conflicts = [ "shutdown.target" ];
         unitConfig.DefaultDependencies = false;
-        path = [ pkgs.coreutils ];
+        path = [
+          pkgs.coreutils
+          pkgs.openssl
+        ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
@@ -109,7 +112,9 @@ in
           hex() { printf '%s' "hasala-vm-test-$1" | sha256sum | cut -c1-64; }
           printf '%s' "$(hex auth-key)" > "$d/auth-key"
           printf '%s' dummy-email-send-token > "$d/email-token"
-          printf '%s' 'dummy apns key' > "$d/apns.p8"
+          # serve refuses anything but a PKCS#8 EC P-256 key; this one is
+          # throwaway and never reaches APNs (the VM has no egress).
+          openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$d/apns.p8"
           chmod 0400 "$d"/*
         '';
       };
@@ -480,10 +485,17 @@ in
               assert http_code(base + " " + " ".join(ok)) == "200"
               assert http_code(base + " " + " ".join(ok[:2] + ok[3:])) == "403", "no identity header"
               assert http_code(base + " " + " ".join(ok[:2] + ["-H 'X-Webauth-User: someone@else'"] + ok[3:])) == "403"
+              health_url = f"http://127.0.0.1:{CONSOLE_METRICS_PORT}/healthz"
+              health = json.loads(machine.succeed(as_user("alice", f"curl -sf {health_url}")))
+              assert health.get("status") == "ok" and health.get("asc") == "disabled", health
+              assert health.get("tunnel_refusals_24h") == 0, health
               for extra in ["Cf-Connecting-Ip: 192.0.2.1", "Cf-Ray: 0000000000000000-AAA", "CF-Visitor: {}", "Cdn-Loop: cloudflare"]:
                   assert http_code(base + " " + " ".join(ok) + f" -H '{extra}'") == "403", extra
-              health = json.loads(machine.succeed(as_user("alice", f"curl -sf http://127.0.0.1:{CONSOLE_METRICS_PORT}/healthz")))
-              assert health.get("status") == "ok" and health.get("asc") == "disabled", health
+              # Spec 07 §13.3: a Cloudflare header at the console is a tunnel
+              # leak, and /healthz turns 503 for 24 hours so P8 pages.
+              assert http_code(as_user("alice", f"curl --max-time 5 {health_url}")) == "503"
+              health = json.loads(machine.succeed(as_user("alice", f"curl -s {health_url}")))
+              assert health.get("status") == "fail" and health.get("tunnel_refusals_24h") == 4, health
               pid = machine.succeed("systemctl show -P MainPID hasala-console.service").strip()
               machine.fail(f"nsenter -t {pid} -m -- ls /run/credentials/hasalad.service")
           else:

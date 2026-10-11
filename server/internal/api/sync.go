@@ -16,6 +16,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/budget"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // ---------------------------------------------------------------------------
@@ -428,6 +429,9 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 	for i, q := range seqs {
 		out.Seqs[i] = strconv.FormatInt(q, 10)
 	}
+	// Every other device of the account pulls (spec 02 §12.5): a content-free
+	// sync wake, enqueued, never blocking this answer.
+	s.wakeOthers(r.Context(), userID, req.WriterID, pushv2.ReasonSync)
 	writeJSON(w, http.StatusOK, out)
 }
 

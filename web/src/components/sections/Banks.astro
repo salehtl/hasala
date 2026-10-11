@@ -1,10 +1,12 @@
 ---
 import Icon from '../Icon.astro';
-import { BANKS, OTHER_BANKS } from '../../data/site';
-import { API_BASE, TURNSTILE_SITEKEY } from '../../lib/env';
-// "Tell us" posts an anonymous bank vote (POST /api/v1/bank-requests).
+import { BANKS, OTHER_BANKS, SITE } from '../../data/site';
+import { API_BASE, TURNSTILE_SITEKEY, WAITLIST_MODE } from '../../lib/env';
+// "Tell us" posts an anonymous bank vote (POST /api/v1/bank-requests), or in
+// "email" mode (src/lib/env.ts) opens a pre-filled email to SITE.supportEmail.
 // Without JavaScript it falls back to the invite form below, where "Another
 // bank" also records the bank once the address is confirmed.
+const byEmail = WAITLIST_MODE === 'email';
 ---
 
 <section id="banks" class="banks" aria-labelledby="banks-title">
@@ -42,9 +44,17 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../../lib/env';
       <li class="tile tile--other" data-reveal>
         <div class="tile__text">
           <h3>Bank with someone else?</h3>
-          <p>Tell us which. The most requested go next.</p>
+          <p>{byEmail ? 'Tell us which, by email: the button opens your email app. The most requested go next.' : 'Tell us which. The most requested go next.'}</p>
         </div>
-        <form class="tellus" action="/#invite" method="get" data-tell-us data-api={API_BASE} data-astro-reload>
+        <form
+          class="tellus"
+          action="/#invite"
+          method="get"
+          data-tell-us
+          data-api={byEmail ? undefined : API_BASE}
+          data-mail={byEmail ? SITE.supportEmail : undefined}
+          data-astro-reload
+        >
           <div class="tellus__row">
             <label class="sr-only" for="tellus-bank">Your bank</label>
             <span class="select">
@@ -71,11 +81,25 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../../lib/env';
           {TURNSTILE_SITEKEY && <div class="cf-turnstile" data-sitekey={TURNSTILE_SITEKEY} />}
           <p class="tellus__status" id="tellus-status" role="status" aria-live="polite"></p>
         </form>
-        <div class="tellus-done" data-tellus-done hidden>
-          <p class="tellus-done__title" tabindex="-1"><Icon name="check" size={16} stroke={2.2} /><span>Counted. Thank you.</span></p>
-          <p>We count every request without storing who sent it.</p>
-          <a class="link" href="#invite" data-tellus-invite>Want an invite too? Request one</a>
-        </div>
+        {
+          byEmail ? (
+            <div class="tellus-done" data-tellus-done hidden>
+              <p class="tellus-done__title" tabindex="-1"><Icon name="mail" size={16} stroke={2} /><span>Now send the email.</span></p>
+              <p>Your email app should open with a message to {SITE.supportEmail} — send it and we’ll count your bank.</p>
+              <p>Nothing opened? <a class="link" href={`mailto:${SITE.supportEmail}`} data-mailto>Try again</a>, or write to us yourself.</p>
+              <button class="btn btn--subtle tellus-copy" type="button" data-copy={SITE.supportEmail} data-copied="Address copied">
+                <Icon name="copy" size={16} stroke={1.6} /><span>Copy {SITE.supportEmail}</span>
+              </button>
+              <a class="link" href="#invite" data-tellus-invite>Want an invite too? Request one</a>
+            </div>
+          ) : (
+            <div class="tellus-done" data-tellus-done hidden>
+              <p class="tellus-done__title" tabindex="-1"><Icon name="check" size={16} stroke={2.2} /><span>Counted. Thank you.</span></p>
+              <p>We count every request without storing who sent it.</p>
+              <a class="link" href="#invite" data-tellus-invite>Want an invite too? Request one</a>
+            </div>
+          )
+        }
       </li>
     </ul>
   </div>
@@ -247,6 +271,16 @@ import { API_BASE, TURNSTILE_SITEKEY } from '../../lib/env';
   }
   .tellus-done .link {
     align-self: flex-start;
+    font-size: 15px;
+  }
+  .tellus-done p .link {
+    font-size: inherit;
+  }
+  .tellus-copy {
+    --btn-h: 44px;
+    --btn-px: 16px;
+    align-self: flex-start;
+    margin: 4px 0;
     font-size: 15px;
   }
   /* "Another bank" and the thank-you arrive instead of appearing (with

@@ -1,0 +1,7 @@
+{{.BankName}} works with Hasala now
+{{.Greeting}}
+
+{{if .AccountAudience}}You asked us to support {{.BankName}}. Its alerts work in Hasala now. Update Hasala in TestFlight, then turn on {{.BankName}} in Profile › Bank alerts.{{else}}You asked us to support {{.BankName}}. Its alerts work in Hasala now. You're still on the list for the beta, and we'll email your invite when it's ready.{{end}}
+{{if .LeaveURL}}
+Changed your mind? Leave the list: {{.LeaveURL}}
+{{end}}{{template "footer" .}}

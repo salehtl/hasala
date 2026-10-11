@@ -6,10 +6,15 @@
  * with Hasala installed the link opens the app instead (universal link).
  *
  * The invite email links to /i/<CODE>#<LINK_KEY>. The page may show the
- * code, never calls the API, loads nothing from anyone else and sends no
- * referrer. It shows the external-TestFlight steps (testers are invited by
- * email or link, need no App Store Connect account and never see each
- * other) and no "Saved until" line. The older /i#<CODE> form works too.
+ * code, never calls the API and sends no referrer. It runs only its own
+ * code: Cloudflare's edge adds its Web Analytics beacon to every HTML page,
+ * and Web Analytics records paths, so this page's CSP header
+ * (public/_headers) does not admit it, and the router always loads the page
+ * in full (src/scripts/router.ts) so that header applies. Once read, the
+ * code and link key leave the address bar and the history entry. It shows
+ * the external-TestFlight steps (testers are invited by email or link, need
+ * no App Store Connect account and never see each other) and no "Saved
+ * until" line. The older /i#<CODE> form works too.
  */
 import { Picture } from 'astro:assets';
 import Base from '../layouts/Base.astro';
@@ -125,11 +130,14 @@ import { SITE } from '../data/site';
   const norm = (v: string) => v.toUpperCase().replace(/[\s-]/g, '');
   const isCode = (v: string) => /^[A-Z2-7]{24}$/.test(v);
 
-  // Read again on every visit: a client-side navigation lands here without a reload.
+  // Through onPage, like every page script, though the router always loads this page in full.
   onPage((signal) => {
     if (!document.querySelector('[data-code]')) return;
     const fragment = location.hash.slice(1);
     const match = /^\/i\/([^/?#]+)/.exec(location.pathname);
+    // The code and the link key leave the address bar and the history entry
+    // (the router's state stays, so Back and Forward still work).
+    if (location.pathname !== '/i' || location.search || location.hash) history.replaceState(history.state, '', '/i');
     let code = '';
     let linkKey = '';
     try {

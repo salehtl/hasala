@@ -72,8 +72,9 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 	}
 	want := []string{
 		"account_deletion_challenges", "account_key_wraps", "account_keys", "account_limits", "account_refusals",
-		"account_usage", "apns_tokens", "deleted_account_sessions", "goose_db_version", "invite_codes", "key_history",
-		"op_log", "oplog_seq", "sessions", "step_up_challenges", "users",
+		"account_usage", "admin_audit", "apns_tokens", "bank_requests", "banks", "deleted_account_sessions",
+		"goose_db_version", "invite_codes", "key_history", "mail_log", "mailbox_link_challenges", "mailbox_links",
+		"op_log", "oplog_seq", "sessions", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
 	if !slices.Equal(got, want) {
@@ -533,9 +534,10 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 		t.Fatalf("Pending = %d, %v; want 0", n, err)
 	}
 	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
-	// baseline before the first QA deploy): today 00010_keys.
+	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links
+	// and 00021_waitlist_invites_mail.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 10 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 10", latest, err)
+	if err != nil || latest != 21 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 21", latest, err)
 	}
 }

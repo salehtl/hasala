@@ -418,9 +418,9 @@ jobs:
         run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
 
   # The hasala.app website in web/ (Astro + Bun). Not a required check: the
-  # ruleset is the owner's. Lighthouse uses the Node and Chrome that come with
-  # the runner image and keeps its reports in a workflow artifact only (never
-  # temporary-public-storage). Nothing here deploys.
+  # ruleset is the owner's. Lighthouse uses the devShell's Node and the Chrome
+  # that comes with the runner image, and keeps its reports in a workflow
+  # artifact only (never temporary-public-storage). Nothing here deploys.
   web:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web != 'false') }}

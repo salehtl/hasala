@@ -52,6 +52,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/invites"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // Rate-limit budget. The shape of the legitimate traffic is a person signing in:
@@ -74,8 +76,12 @@ const (
 // AAK the device just generated) is bound into the ceremony's challenge:
 // C_reg = SHA256("hasala/v1/register" ‖ 00 ‖ nonce ‖ authority_pubkey) (spec
 // 01 §10.3, D01; spec 02 #3).
+//
+// invite_link_key is optional: the 43-character b64url fragment of the invite
+// link (spec 02 §14.1, `07` §4.4). An addressed invite is refused without it.
 type PasskeyRegisterBeginRequest struct {
 	InviteCode      string `json:"invite_code"`
+	InviteLinkKey   string `json:"invite_link_key,omitempty"`
 	AuthorityPubkey string `json:"authority_pubkey"`
 }
 
@@ -160,7 +166,15 @@ func (s *Server) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Reque
 		writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not base64")
 		return
 	}
-	id, opts, nonce, err := s.Passkeys.BeginRegistration(r.Context(), req.InviteCode, authority)
+	var linkKey []byte
+	if req.InviteLinkKey != "" {
+		linkKey, err = base64.RawURLEncoding.DecodeString(req.InviteLinkKey)
+		if err != nil || len(req.InviteLinkKey) != 43 || len(linkKey) != invites.LinkKeyBytes {
+			writeErr(w, http.StatusBadRequest, "bad_request", "invite_link_key must be 43 b64url characters")
+			return
+		}
+	}
+	id, opts, nonce, err := s.Passkeys.BeginRegistrationLinked(r.Context(), req.InviteCode, linkKey, authority)
 	if err != nil {
 		if errors.Is(err, auth.ErrBadAuthorityKey) {
 			writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not a usable Ed25519 public key")
@@ -279,6 +293,7 @@ func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, 
 		s.writePasskeyAddErr(w, r, "add/finish", err)
 		return
 	}
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, PasskeyAddResponse{CredentialID: b64url(credID)})
 }
 

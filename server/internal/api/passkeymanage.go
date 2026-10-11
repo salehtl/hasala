@@ -83,6 +83,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // PasskeySummary is one enrolled credential, in exactly the five fields
@@ -216,6 +217,7 @@ func (s *Server) handleDeletePasskey(w http.ResponseWriter, r *http.Request, use
 	// should be explicable from it: this is now exactly the removed credential's
 	// sessions plus any this server could not attribute.
 	s.logf("api: delete passkey for %s: removed, revoked %d session(s) it had authenticated", userID, revoked)
+	s.wakeOthers(r.Context(), userID, "", pushv2.ReasonSecurity)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }
