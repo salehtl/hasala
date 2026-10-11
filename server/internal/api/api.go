@@ -85,7 +85,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -264,6 +263,10 @@ type Server struct {
 	// which the response deliberately does not carry. Defaults to log.Printf.
 	Logf func(format string, args ...any)
 
+	// TrustCloudflare is server.trusted_proxy = cloudflare: a loopback peer's
+	// Cf-Connecting-Ip keys the per-IP limiters (spec 02 §16.1, clientip.go).
+	TrustCloudflare bool
+
 	// Now defaults to time.Now and is used only by the default limiters.
 	Now func() time.Time
 }
@@ -287,6 +290,8 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		Appender: &oplog.Appender{Pool: pool},
 		Deletion: &purge.Challenges{Pool: pool, Now: now},
 		Now:      now,
+
+		TrustCloudflare: cfg.Server.TrustedProxy == config.ProxyCloudflare,
 		Meta: Meta{
 			RPID:          cfg.Auth.RPID,
 			MinIOSBuild:   cfg.Server.MinIOSBuild,
@@ -422,7 +427,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	// The box-level fuse wraps EVERYTHING, including the unauthenticated
 	// ceremonies, because a sign-in is a durable write too.
-	return securityHeaders(s.headroomGate(mux))
+	return securityHeaders(s.withClientKey(s.headroomGate(mux)))
 }
 
 // securityHeaders sets spec 02 §6.2's headers on every response. No HSTS
@@ -710,25 +715,4 @@ func parseLimit(r *http.Request, def, max int) (int, error) {
 		n = max
 	}
 	return n, nil
-}
-
-// clientKey is the rate-limit key for an unauthenticated caller: the remote
-// address with the port stripped, so one host cannot get a fresh budget per
-// connection. It is attacker-chosen (there is no proxy in front of this
-// listener today, and no X-Forwarded-For is trusted — trusting one would let
-// any caller pick their own key and defeat the limit entirely), which is why
-// Limiter bounds its key space.
-//
-// BEHIND CLOUDFLARE THIS IS ONE KEY. hasalad listens on loopback behind
-// cloudflared, so every request arrives from 127.0.0.1 and the per-IP limiters
-// degenerate into global ones. Spec 02 §16.1 (clientip.go, WS-3) replaces this
-// with Cf-Connecting-Ip trusted from loopback only (IPv6 keyed by its /64) when
-// server.trusted_proxy = cloudflare; until then nothing here trusts a
-// forwarded-for header, which would let any caller pick its own key.
-func clientKey(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }

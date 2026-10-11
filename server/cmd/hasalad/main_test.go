@@ -213,23 +213,18 @@ func TestMigrateThenOperateAsTheRuntimeRole(t *testing.T) {
 	}
 }
 
-// Until clientip.go (WS-3) keys limits by Cf-Connecting-Ip, a cloudflare
-// deployment's per-IP limits are global, and serve says so at WARN.
-func TestServeWarnsThatTheCloudflareProxyIsNotHonouredYet(t *testing.T) {
+// trusted_proxy = cloudflare is honoured (api/clientip.go, spec 02 §16.1), so
+// serve no longer warns that per-IP limits are global behind the tunnel.
+func TestServeNoLongerWarnsAboutTheCloudflareProxy(t *testing.T) {
 	var buf bytes.Buffer
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	defer slog.SetDefault(prev)
 
 	var cfg config.Config
-	cfg.Server.TrustedProxy = config.ProxyNone
-	logGroups(cfg)
-	if strings.Contains(buf.String(), "not honoured") {
-		t.Fatalf("trusted_proxy = none warned: %s", buf.String())
-	}
 	cfg.Server.TrustedProxy = config.ProxyCloudflare
 	logGroups(cfg)
-	if !strings.Contains(buf.String(), "level=WARN") || !strings.Contains(buf.String(), "ONE global limit") {
-		t.Fatalf("trusted_proxy = cloudflare did not warn: %s", buf.String())
+	if strings.Contains(buf.String(), "global limit") || !strings.Contains(buf.String(), "trusted_proxy=cloudflare") {
+		t.Fatalf("logGroups: %s", buf.String())
 	}
 }

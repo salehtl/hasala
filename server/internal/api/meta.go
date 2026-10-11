@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// meta-ip (spec 02 §16.2): 1/s per client IP, burst 20. Behind Cloudflare it
-// is one key until clientip.go (WS-3) lands; see clientKey.
+// meta-ip (spec 02 §16.2): 1/s per client IP, burst 20; the client IP is
+// clientip.go's key.
 const (
 	metaRate    = 1.0
 	metaBurst   = 20
