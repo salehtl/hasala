@@ -299,3 +299,24 @@ extension State {
     checkpoints = out
   }
 }
+
+extension Replay {
+  /// The payload problem the fold would record as `invalid_payload` for `op`, or
+  /// nil. Authors run it on every op before it enters the outbox (03c §2,
+  /// AT-30): one bad op would cost its whole blob on every device. Causal
+  /// refusals (which depend on what other devices did) are not predicted here.
+  public static func payloadProblem(_ op: Op) -> String? {
+    var scratch = State()
+    let e = LogEntry(op: op, position: OpPosition(seq: 1, index: 0), writerID: "author-check")
+    do {
+      if op.type.isParentFree {
+        try scratch.dispatch(e)
+      } else {
+        _ = try scratch.decodeCausalPayload(e)
+      }
+    } catch {
+      return error.message
+    }
+    return nil
+  }
+}

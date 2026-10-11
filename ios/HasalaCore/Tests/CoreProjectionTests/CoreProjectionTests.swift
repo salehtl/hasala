@@ -1,4 +1,200 @@
-// Unit tests for CoreProjection (owner: WS-10). Placeholder until the module is filled.
+// CoreProjection: the Maya scenario of spec 03a §7 end to end — authored by
+// OpAuthor, folded by CoreReplay, projected into SQLite, read back through
+// LedgerReader and computed by PlanEngine — against the worked example's
+// figures (03a §7.2), plus the projection's own contracts.
+import CoreCategorize
+import CoreDomain
+import CoreReplay
+import CoreTime
+import CoreWire
+import GRDB
 import Testing
 
 @testable import CoreProjection
+
+@Suite("Maya, Sat 10 Oct 2026 (03a §7)")
+struct MayaScenarioTests {
+  static let maya = try! Maya()
+  static let dictionary = try! MerchantDictionary.bundled().get()
+
+  static func projected() throws -> (LedgerReader, PlanEngine) {
+    let db = try Projector.open(path: nil)
+    try Projector.project(maya.state, dictionary: dictionary, projectedAtMs: Maya.nowMs, into: db)
+    let reader = LedgerReader(db)
+    return (reader, try reader.planEngine(month: Maya.october, today: Maya.today, bills: Maya.bills()))
+  }
+
+  @Test("the log folds clean")
+  func foldsClean() {
+    #expect(Self.maya.state.anomalies.isEmpty)
+    #expect(Self.maya.state.forks.isEmpty)
+    #expect(Self.maya.state.unreadable.isEmpty)
+  }
+
+  @Test("plan income, planned, ready to assign, split")
+  func plan() throws {
+    let (_, e) = try Self.projected()
+    let m = Maya.october
+    #expect(e.income(m).total == 2_500_000)
+    #expect(e.planned(m) == 2_400_000)
+    #expect(e.readyToAssign(m) == 100_000)
+    #expect(e.splitShares(m) == [.need: 51, .want: 28, .saving: 21])
+    let b = Dictionary(uniqueKeysWithValues: e.buckets(m).map { ($0.bucket, $0) })
+    #expect(b[.need]?.assigned == 1_235_000 && b[.need]?.spent == 904_080 && b[.need]?.left == 330_920)
+    #expect(b[.want]?.assigned == 665_000 && b[.want]?.spent == 124_754 && b[.want]?.left == 540_246)
+    #expect(e.savingsDone(m))
+  }
+
+  @Test("the everyday hero: 7,417.55 left, on track, about 337 a day")
+  func hero() throws {
+    let (_, e) = try Self.projected()
+    let h = e.hero(Maya.october)
+    #expect(h.budget == 970_000)
+    #expect(h.spent == 228_245)
+    #expect(h.left == 741_755)
+    #expect(h.pace.verdict == .onTrack)
+    #expect(h.pace.allowancePerDay == 33_716)
+    #expect(h.pace.usedPercent == 23 && h.pace.monthPercent == 32)
+    #expect(h.billsPaid == 800_589)
+    #expect(h.billsToCome == 103_915)
+  }
+
+  @Test("category rows: groceries and dining over pace, the run-out days")
+  func rows() throws {
+    let (_, e) = try Self.projected()
+    let rows = Dictionary(uniqueKeysWithValues: e.categoryRows(Maya.october).map { ($0.info.id, $0) })
+    let g = try #require(rows["groceries"])
+    #expect(g.spent == 81_240 && g.left == 138_760 && g.pace.verdict == .overPace && g.pace.projection == 251_844)
+    #expect(g.pace.runOutDay == 28)
+    let d = try #require(rows["dining"])
+    #expect(d.spent == 64_275 && d.left == 95_725 && d.pace.verdict == .overPace)
+    #expect(d.pace.projection == 199_252 && d.pace.allowancePerDay == 4_351 && d.pace.dailyBudget == 5_161)
+    #expect(d.pace.runOutDay == 25 && d.pace.daysEarly == 6)
+    for id in ["transport", "healthcare", "entertainment", "shopping"] { #expect(rows[id]?.pace.verdict == .onTrack, "\(id)") }
+    #expect(rows["travel"]?.spent == 0 && rows["travel"]?.assigned == 250_000)
+    #expect(rows["rent"]?.role == "bills" && rows["subscriptions"]?.spent == 7_799)
+    #expect(rows["debt"] == nil)
+  }
+
+  @Test("the emergency fund: 38,500 of 50,000, 77%, 3,625 a month to January")
+  func goal() throws {
+    let (reader, e) = try Self.projected()
+    let (id, g) = try #require(try reader.goals().first)
+    let p = e.goalProgress(id: id, g, month: Maya.october)
+    #expect(p.progress == 3_850_000 && p.percent == 77 && p.required == 362_500)
+  }
+
+  @Test("the Japan trip: 4,860 spent, 7,140 left, carved out of September")
+  func trip() throws {
+    let (_, e) = try Self.projected()
+    let spent = e.projectSpent(Self.maya.ids["project"]!)
+    #expect(spent == 486_000)
+    #expect(1_200_000 - spent == 714_000)
+    #expect(e.spent(Maya.september, "travel") == 0)
+    #expect(e.spent(Maya.september, "dining") == 148_620)
+  }
+
+  @Test("review: six to sort, AED 827.28 of debits; 26 rows this month")
+  func review() throws {
+    let (reader, _) = try Self.projected()
+    let queue = try reader.review()
+    #expect(queue.count == 6)
+    #expect(queue.filter { $0.direction == "debit" }.reduce(0) { $0 + $1.amountMinor } == 82_728)
+    #expect(try reader.reviewCounts()[.needsReview] == 6)
+    #expect(try reader.activity(month: Maya.october, limit: 100).count == 26)
+  }
+}
+
+@Suite("CoreProjection contracts")
+struct ProjectionContractTests {
+  static let dictionary = try! MerchantDictionary.bundled().get()
+
+  @Test("meta: complete after a projection, current version and fold print")
+  func meta() throws {
+    let db = try Projector.open(path: nil)
+    let reader = LedgerReader(db)
+    #expect(try reader.isUsable() == false)
+    try Projector.project(State(), dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    #expect(try reader.isUsable())
+    #expect(try reader.meta()?.cursorHot == 0)
+    #expect(try reader.taxonomy().ordered.count == 18)
+  }
+
+  @Test("display names: rename beats the dictionary beats prettify; local dates at +04:00")
+  func displayAndDates() throws {
+    let maya = try Maya()
+    var s = maya.state
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let reader = LedgerReader(db)
+    let careem = try #require(try reader.txn(maya.ids["careem"]!))
+    #expect(careem.displayName == "Careem")  // dictionary `d`
+    #expect(careem.localDate == "2026-10-09" && careem.postedAt == "2026-10-09T19:40:00.000Z")
+    let ikea = try #require(try reader.txn(maya.ids["ikea"]!))
+    #expect(ikea.displayName == "IKEA")
+    let rent = try #require(try reader.txn(maya.ids["rent"]!))
+    #expect(rent.displayName == "Al Habtoor Properties")  // prettify
+    // Rename the merchant: every row with its key follows.
+    var a = OpAuthor(maya.context())
+    a.renameMerchant(raw: "TALABAT", to: "Talabat (food)")
+    let blob = try a.build()
+    try Replay.foldOps(blob.ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 2, into: db)
+    #expect(try reader.txn(maya.ids["talabat1"]!)?.displayName == "Talabat (food)")
+    #expect(try reader.txn(maya.ids["talabat2"]!)?.displayName == "Talabat (food)")
+  }
+
+  @Test("the pending overlay marks the rows an outbox op touches, and is rebuilt each time")
+  func pending() throws {
+    let maya = try Maya()
+    let lulu = maya.ids["lulu"]!
+    var a = OpAuthor(maya.context())
+    a.categorize(txnID: lulu, parentVersion: maya.state.txns[lulu]!.version, category: "groceries")
+    let blob = try a.build()
+    let db = try Projector.open(path: nil)
+    try Projector.project(maya.state, pending: [blob.ops], writerID: Maya.writer, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let reader = LedgerReader(db)
+    let row = try #require(try reader.txn(lulu))
+    #expect(row.pending && row.category == "groceries" && row.reviewLane == nil)
+    #expect(try reader.review().count == 5)
+    #expect(try reader.meta()?.cursorHot == maya.state.cursors.hot)
+    try Projector.project(maya.state, dictionary: Self.dictionary, projectedAtMs: 2, into: db)
+    #expect(try reader.txn(lulu)?.pending == false)
+  }
+
+  @Test("splits apportion the home amount; money_line carries the parts")
+  func splits() throws {
+    let maya = try Maya()
+    var s = maya.state
+    let carrefour = maya.ids["carrefour"]!
+    var a = OpAuthor(maya.context())
+    a.split(txnID: carrefour, parentVersion: s.txns[carrefour]!.version, parts: [("groceries", 29_700, nil), ("shopping", 4_515, "Kitchen towels")])
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    #expect(s.anomalies.isEmpty)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let reader = LedgerReader(db)
+    let parts = try reader.parts(carrefour)
+    #expect(parts.map(\.amountHomeMinor) == [29_700, 4_515])
+    let lines = try reader.moneyLines(from: Maya.october.firstDay, to: Maya.october.lastDay).filter { $0.txnID == carrefour }
+    #expect(lines.map(\.category) == ["groceries", "shopping"])
+  }
+
+  @Test("sweep rows exclude user rows from re-filing; query domains come from trust")
+  func sweepAndTrust() throws {
+    let maya = try Maya()
+    let db = try Projector.open(path: nil)
+    try Projector.project(maya.state, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let reader = LedgerReader(db)
+    #expect(try reader.queryDomains() == ["emiratesnbd.com"])
+    let taxonomy = try reader.taxonomy()
+    let c = Categorizer(rules: [], dictionary: Self.dictionary, categories: taxonomy)
+    let (actions, queue) = Sweep.plan(try reader.sweepRows(), c)
+    // Only uncategorized review rows are candidates for re-filing: the dictionary files Lulu,
+    // Dubai Taxi and Apple; Steam and the ATM join the model queue.
+    #expect(Set(actions.map(\.txnID)) == Set(["lulu", "dubaitaxi", "apple"].map { maya.ids[$0]! }))
+    #expect(actions.allSatisfy { $0.needsReview })
+    #expect(Set(queue.map(\.id)) == Set(["steam", "atm"].map { maya.ids[$0]! }))
+    #expect(try reader.knownMailboxMessageIDs(["x"]).isEmpty)
+  }
+}

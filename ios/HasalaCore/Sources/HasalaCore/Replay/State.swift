@@ -29,6 +29,14 @@ public struct Split: Sendable, Equatable, Codable {
   public var category: String
   public var amountMinor: Int64
   public var note: String?
+
+  public init(
+    category: String, amountMinor: Int64, note: String? = nil
+  ) {
+    self.category = category
+    self.amountMinor = amountMinor
+    self.note = note
+  }
 }
 
 /// Who or what decided a transaction's category (03c §3.2.1).
@@ -77,6 +85,16 @@ public struct TxnGates: Sendable, Equatable, Codable {
   public var template: String?
   public var card: String?
   public var forwarded: Bool?
+
+  public init(
+    ar: String? = nil, sender: String? = nil, template: String? = nil, card: String? = nil, forwarded: Bool? = nil
+  ) {
+    self.ar = ar
+    self.sender = sender
+    self.template = template
+    self.card = card
+    self.forwarded = forwarded
+  }
 }
 
 /// A transaction as the client shows it (state.ts `Txn`, plus 03c §11).
@@ -146,12 +164,33 @@ public struct Rule: Sendable, Equatable, Codable {
   /// The create op's canonical `authored_at` (v4 shape); nil for a v3 rule.
   public var createdAt: String?
   public var version: Int64
+
+  public init(
+    shape: Int, patterns: [String], match: String, category: String, priority: Int64, enabled: Bool, removed: Bool, origin: String, createdAt: String? = nil, version: Int64
+  ) {
+    self.shape = shape
+    self.patterns = patterns
+    self.match = match
+    self.category = category
+    self.priority = priority
+    self.enabled = enabled
+    self.removed = removed
+    self.origin = origin
+    self.createdAt = createdAt
+    self.version = version
+  }
 }
 
 public struct BudgetSplit: Sendable, Equatable, Codable {
   public var need: Int64
   public var want: Int64
   public var saving: Int64
+
+  public init(need: Int64, want: Int64, saving: Int64) {
+    self.need = need
+    self.want = want
+    self.saving = saving
+  }
 }
 
 /// A category definition (state.ts `CategoryDef`), v3 shape (`color`) or v4
@@ -167,6 +206,19 @@ public struct CategoryDef: Sendable, Equatable, Codable {
   public var color: String?
   public var icon: String?
   public var active: Bool
+
+  public init(
+    shape: Int, id: String, name: String, kind: String, bucket: String? = nil, color: String? = nil, icon: String? = nil, active: Bool
+  ) {
+    self.shape = shape
+    self.id = id
+    self.name = name
+    self.kind = kind
+    self.bucket = bucket
+    self.color = color
+    self.icon = icon
+    self.active = active
+  }
 }
 
 // MARK: - Bookkeeping
@@ -179,6 +231,17 @@ public struct EntityHead: Sendable, Equatable, Codable {
   public var opID: String
   public var writerID: String
   public var authoredAtMs: Int64
+
+  public init(
+    kind: String, id: String, version: Int64, opID: String, writerID: String, authoredAtMs: Int64
+  ) {
+    self.kind = kind
+    self.id = id
+    self.version = version
+    self.opID = opID
+    self.writerID = writerID
+    self.authoredAtMs = authoredAtMs
+  }
 }
 
 public struct ForkNotice: Sendable, Equatable, Codable {
@@ -187,6 +250,16 @@ public struct ForkNotice: Sendable, Equatable, Codable {
   public var winnerOp: String
   public var loserOp: String
   public var atSeq: Int64
+
+  public init(
+    entityKind: String, entityID: String, winnerOp: String, loserOp: String, atSeq: Int64
+  ) {
+    self.entityKind = entityKind
+    self.entityID = entityID
+    self.winnerOp = winnerOp
+    self.loserOp = loserOp
+    self.atSeq = atSeq
+  }
 }
 
 /// Something the fold refused, recorded rather than dropped. `detail` is
@@ -195,6 +268,14 @@ public struct Anomaly: Sendable, Equatable, Codable {
   public var kind: String
   public var detail: String
   public var atSeq: Int64
+
+  public init(
+    kind: String, detail: String, atSeq: Int64
+  ) {
+    self.kind = kind
+    self.detail = detail
+    self.atSeq = atSeq
+  }
 }
 
 /// A blob that could not be decoded, set aside with a visible warning.
@@ -204,6 +285,16 @@ public struct Unreadable: Sendable, Equatable, Codable {
   public var writerCounter: Int64
   public var seq: Int64
   public var reason: String
+
+  public init(
+    writerID: String, stream: String, writerCounter: Int64, seq: Int64, reason: String
+  ) {
+    self.writerID = writerID
+    self.stream = stream
+    self.writerCounter = writerCounter
+    self.seq = seq
+    self.reason = reason
+  }
 }
 
 public struct CheckpointEntry: Sendable, Equatable, Codable {
@@ -211,6 +302,15 @@ public struct CheckpointEntry: Sendable, Equatable, Codable {
   public var stream: String
   public var counter: Int64
   public var hash: String
+
+  public init(
+    writerID: String, stream: String, counter: Int64, hash: String
+  ) {
+    self.writerID = writerID
+    self.stream = stream
+    self.counter = counter
+    self.hash = hash
+  }
 }
 
 public struct Cursors: Sendable, Equatable, Codable {
@@ -232,6 +332,21 @@ public struct Project: Sendable, Equatable, Codable {
   public var icon: String?
   public var createdAt: String
   public var version: Int64
+
+  public init(
+    name: String, startsOn: String? = nil, endsOn: String? = nil, budgetMinor: Int64? = nil, countInPlan: Bool, status: String, completedOn: String? = nil, icon: String? = nil, createdAt: String, version: Int64
+  ) {
+    self.name = name
+    self.startsOn = startsOn
+    self.endsOn = endsOn
+    self.budgetMinor = budgetMinor
+    self.countInPlan = countInPlan
+    self.status = status
+    self.completedOn = completedOn
+    self.icon = icon
+    self.createdAt = createdAt
+    self.version = version
+  }
 }
 
 public struct GoalSource: Sendable, Equatable, Codable {
@@ -240,6 +355,15 @@ public struct GoalSource: Sendable, Equatable, Codable {
   public var categoryID: String?
   public var since: String?
   public var accountID: String?
+
+  public init(
+    kind: String, categoryID: String? = nil, since: String? = nil, accountID: String? = nil
+  ) {
+    self.kind = kind
+    self.categoryID = categoryID
+    self.since = since
+    self.accountID = accountID
+  }
 }
 
 public struct Goal: Sendable, Equatable, Codable {
@@ -253,6 +377,21 @@ public struct Goal: Sendable, Equatable, Codable {
   public var icon: String?
   public var createdAt: String
   public var version: Int64
+
+  public init(
+    name: String, targetMinor: Int64, targetMonth: String? = nil, source: GoalSource, startingMinor: Int64, status: String, completedOn: String? = nil, icon: String? = nil, createdAt: String, version: Int64
+  ) {
+    self.name = name
+    self.targetMinor = targetMinor
+    self.targetMonth = targetMonth
+    self.source = source
+    self.startingMinor = startingMinor
+    self.status = status
+    self.completedOn = completedOn
+    self.icon = icon
+    self.createdAt = createdAt
+    self.version = version
+  }
 }
 
 // MARK: - Plan (03a §4.1)
@@ -261,6 +400,14 @@ public struct PlanWrite: Sendable, Equatable, Codable {
   public var opID: String
   public var writerID: String
   public var atMs: Int64
+
+  public init(
+    opID: String, writerID: String, atMs: Int64
+  ) {
+    self.opID = opID
+    self.writerID = writerID
+    self.atMs = atMs
+  }
 }
 
 public struct PlanCell: Sendable, Equatable, Codable {
@@ -269,6 +416,16 @@ public struct PlanCell: Sendable, Equatable, Codable {
   public var movesAll: Int64 = 0
   public var movesSinceSet: Int64 = 0
   public var latestSetWrite: PlanWrite?
+
+  public init(
+    latestSet: Int64? = nil, onwardSet: Int64? = nil, movesAll: Int64 = 0, movesSinceSet: Int64 = 0, latestSetWrite: PlanWrite? = nil
+  ) {
+    self.latestSet = latestSet
+    self.onwardSet = onwardSet
+    self.movesAll = movesAll
+    self.movesSinceSet = movesSinceSet
+    self.latestSetWrite = latestSetWrite
+  }
 }
 
 public struct PlanOverwrite: Sendable, Equatable, Codable {
@@ -278,6 +435,17 @@ public struct PlanOverwrite: Sendable, Equatable, Codable {
   public var byOp: String
   public var atSeq: Int64
   public var replacedValue: String
+
+  public init(
+    keyKind: String, key: String, replacedOp: String, byOp: String, atSeq: Int64, replacedValue: String
+  ) {
+    self.keyKind = keyKind
+    self.key = key
+    self.replacedOp = replacedOp
+    self.byOp = byOp
+    self.atSeq = atSeq
+    self.replacedValue = replacedValue
+  }
 }
 
 public struct MoveRecord: Sendable, Equatable, Codable {
@@ -292,6 +460,21 @@ public struct MoveRecord: Sendable, Equatable, Codable {
   public var batchID: String?
   public var undoes: String?
   public var undone: Bool
+
+  public init(
+    opID: String, position: OpPosition, month: String, from: String? = nil, to: String? = nil, amount: Int64, reason: String, batchID: String? = nil, undoes: String? = nil, undone: Bool
+  ) {
+    self.opID = opID
+    self.position = position
+    self.month = month
+    self.from = from
+    self.to = to
+    self.amount = amount
+    self.reason = reason
+    self.batchID = batchID
+    self.undoes = undoes
+    self.undone = undone
+  }
 }
 
 public struct IncomeSource: Sendable, Equatable, Codable {
@@ -302,12 +485,31 @@ public struct IncomeSource: Sendable, Equatable, Codable {
   public var payday: Int64
   public var active: Bool
   public var write: PlanWrite
+
+  public init(
+    id: String, name: String, categoryID: String, amountMinor: Int64, payday: Int64, active: Bool, write: PlanWrite
+  ) {
+    self.id = id
+    self.name = name
+    self.categoryID = categoryID
+    self.amountMinor = amountMinor
+    self.payday = payday
+    self.active = active
+    self.write = write
+  }
 }
 
 public struct PlanRoleRecord: Sendable, Equatable, Codable {
   /// `"everyday"` or `"bills"`.
   public var role: String
   public var write: PlanWrite
+
+  public init(
+    role: String, write: PlanWrite
+  ) {
+    self.role = role
+    self.write = write
+  }
 }
 
 public struct PlanState: Sendable, Equatable, Codable {
@@ -331,6 +533,13 @@ public struct PlanState: Sendable, Equatable, Codable {
 public struct BillCadence: Sendable, Equatable, Codable {
   public var unit: String
   public var every: Int64
+
+  public init(
+    unit: String, every: Int64
+  ) {
+    self.unit = unit
+    self.every = every
+  }
 }
 
 public struct Bill: Sendable, Equatable, Codable {
@@ -351,6 +560,28 @@ public struct Bill: Sendable, Equatable, Codable {
   public var status: String
   public var firstSeq: Int64
   public var version: Int64
+
+  public init(
+    name: String, keys: [String], direction: String, currency: String, amountMode: String, amountMinor: Int64, toleranceBp: Int64? = nil, cadence: BillCadence, anchor: String, start: String, end: String? = nil, category: String? = nil, account: String? = nil, source: String, status: String, firstSeq: Int64, version: Int64
+  ) {
+    self.name = name
+    self.keys = keys
+    self.direction = direction
+    self.currency = currency
+    self.amountMode = amountMode
+    self.amountMinor = amountMinor
+    self.toleranceBp = toleranceBp
+    self.cadence = cadence
+    self.anchor = anchor
+    self.start = start
+    self.end = end
+    self.category = category
+    self.account = account
+    self.source = source
+    self.status = status
+    self.firstSeq = firstSeq
+    self.version = version
+  }
 }
 
 public struct BillResolution: Sendable, Equatable, Codable {
@@ -360,6 +591,17 @@ public struct BillResolution: Sendable, Equatable, Codable {
   public var txn: String?
   public var until: String?
   public var atSeq: Int64
+
+  public init(
+    bill: String, due: String, resolution: String, txn: String? = nil, until: String? = nil, atSeq: Int64
+  ) {
+    self.bill = bill
+    self.due = due
+    self.resolution = resolution
+    self.txn = txn
+    self.until = until
+    self.atSeq = atSeq
+  }
 }
 
 public struct Account: Sendable, Equatable, Codable {
@@ -374,6 +616,22 @@ public struct Account: Sendable, Equatable, Codable {
   public var closedOn: String?
   public var color: String?
   public var firstSeq: Int64
+
+  public init(
+    id: String, name: String, institution: String? = nil, kind: String, inPlan: Bool, currency: String, statementDueDay: Int64? = nil, active: Bool, closedOn: String? = nil, color: String? = nil, firstSeq: Int64
+  ) {
+    self.id = id
+    self.name = name
+    self.institution = institution
+    self.kind = kind
+    self.inPlan = inPlan
+    self.currency = currency
+    self.statementDueDay = statementDueDay
+    self.active = active
+    self.closedOn = closedOn
+    self.color = color
+    self.firstSeq = firstSeq
+  }
 }
 
 public struct CardLink: Sendable, Equatable, Codable {
@@ -383,6 +641,16 @@ public struct CardLink: Sendable, Equatable, Codable {
   public var state: String
   public var account: String?
   public var atSeq: Int64
+
+  public init(
+    bank: String? = nil, last4: String, state: String, account: String? = nil, atSeq: Int64
+  ) {
+    self.bank = bank
+    self.last4 = last4
+    self.state = state
+    self.account = account
+    self.atSeq = atSeq
+  }
 }
 
 public struct Checkin: Sendable, Equatable, Codable {
@@ -395,6 +663,20 @@ public struct Checkin: Sendable, Equatable, Codable {
   public var adjustmentMinor: Int64?
   public var void: Bool
   public var atSeq: Int64
+
+  public init(
+    id: String, account: String, asOf: String, balanceMinor: Int64, source: String, resolution: String? = nil, adjustmentMinor: Int64? = nil, void: Bool, atSeq: Int64
+  ) {
+    self.id = id
+    self.account = account
+    self.asOf = asOf
+    self.balanceMinor = balanceMinor
+    self.source = source
+    self.resolution = resolution
+    self.adjustmentMinor = adjustmentMinor
+    self.void = void
+    self.atSeq = atSeq
+  }
 }
 
 // MARK: - State

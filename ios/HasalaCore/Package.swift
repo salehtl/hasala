@@ -95,7 +95,9 @@ let package = Package(
 
     // L3: the only GRDB users (R6).
     core("CoreStore", "Store", l0 + l1 + l2 + [grdb, ordered]),
-    core("CoreProjection", "Projection", ["CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
+    // L0 and CoreWire too (lower layers): the projector computes local dates
+    // (CoreTime), writes gates JSON (CoreJSON) and folds the pending overlay (CoreWire ops).
+    core("CoreProjection", "Projection", l0 + ["CoreWire", "CoreReplay", "CoreDomain", "CoreCategorize", grdb, ordered]),
 
     // L4
     core("CoreSync", "Sync", l0 + l1 + l2 + l3),
