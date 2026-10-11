@@ -1,7 +1,7 @@
 -- +goose Up
 -- WS-3, keys and writers (spec 02 §5.3; spec 01 §9). Pre-assigned number
--- 00010 of WS-3's range; squashed into 00001_baseline.sql before the first QA
--- deploy, like every migration in 00002–00029.
+-- 00010 of WS-3's range. It is applied as it stands, on top of 00001: the QA
+-- database already runs 00001, so nothing is squashed into the baseline.
 --
 -- What changes:
 --   * account_keys and account_key_wraps replace ledgerd's user_keys and
@@ -24,18 +24,16 @@
 --   * step_up_challenges (spec 02 §8.1).
 --
 -- Two ADD COLUMN ... NOT NULL statements below have no default
--- (webauthn_credentials.attestation_sha256, writers.dak_pubkey). They apply
--- only to empty tables, which holds because no database has been deployed with
--- 00001 yet: the QA database is created from scratch (or this file is squashed
--- into the baseline) before the first deploy. Against a database that already
--- holds credentials or writers this migration fails, on purpose: there is no
--- honest value to backfill.
+-- (webauthn_credentials.attestation_sha256, writers.dak_pubkey), and the
+-- register binding refuses every kind='register' ceremony that lacks the new
+-- columns. They apply only to empty tables: the QA database runs 00001 with no
+-- account, credential, writer or register ceremony in it, and the deploy checks
+-- that before the chain is applied. Against a database that already holds any
+-- of them this migration fails, on purpose: there is no honest value to
+-- backfill.
 --
--- users.email_norm is nullable here and nothing in this tree writes it yet;
--- spec 01 §9 wants it NOT NULL plus email_verified_at. The signup work (spec
--- 02 #43-#45) sets it at account creation and tightens the column. Until
--- then bootstrap refuses every account it cannot bind an address for, so this
--- tree must not be deployed to real users before signup lands.
+-- users.email_norm is nullable here; 00022 (signup, spec 02 #43-#45) sets it
+-- at account creation and makes it NOT NULL.
 
 -- +goose StatementBegin
 DO $$

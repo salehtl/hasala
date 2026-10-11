@@ -16,7 +16,7 @@ import (
 // answered here (spec 01 AT-C9); the guarded route recomputes params_hash from
 // its own request and spends the nonce in the action's transaction.
 func (s *Server) mountStepUp(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/auth/step-up/begin", s.requireSession(s.handleStepUpBegin))
+	mux.HandleFunc("POST /api/v1/auth/step-up/begin", s.requireSessionForStepUpBegin(s.handleStepUpBegin))
 }
 
 // StepUpBeginRequest is #9.
@@ -52,6 +52,23 @@ func (s *Server) handleStepUpBegin(w http.ResponseWriter, r *http.Request, userI
 	}
 	info, ok := s.sessionInfo(w, r)
 	if !ok {
+		return
+	}
+	// A suspended account may begin account.delete and nothing else (spec 02
+	// §9.6); a frozen account or a restricted session, account.unfreeze and
+	// nothing else (§9.8). Both at once: neither.
+	st, err := s.accountStatus(r.Context(), userID)
+	if err != nil {
+		s.writeKeyErr(w, r, err)
+		return
+	}
+	if st.Suspended && keyproto.Action(req.Action) != keyproto.ActionAccountDelete {
+		s.logf("api: %s: refused, the account is suspended", route(r))
+		writeAccountSuspended(w)
+		return
+	}
+	if keyproto.Action(req.Action) != keyproto.ActionAccountUnfreeze && (st.Frozen || info.Restricted) {
+		writeErr(w, http.StatusForbidden, "account_frozen", "")
 		return
 	}
 	b, err := s.StepUp.Begin(r.Context(), userID, info.Hash, info.WriterID,

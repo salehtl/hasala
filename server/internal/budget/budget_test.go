@@ -27,7 +27,7 @@ func newUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	}
 	var id uuid.UUID
 	if err := pool.QueryRow(bg,
-		`INSERT INTO users (idp, idp_sub_hash) VALUES ('passkey', $1) RETURNING id`,
+		`INSERT INTO users (user_handle, created_at, email_norm, email_verified_at, display_name) VALUES ($1, now(), 'u-' || gen_random_uuid() || '@example.test', now(), 'Test User') RETURNING id`,
 		sub).Scan(&id); err != nil {
 		t.Fatal(err)
 	}

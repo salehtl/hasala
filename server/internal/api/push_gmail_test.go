@@ -299,6 +299,18 @@ func TestMailboxLink(t *testing.T) {
 	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", tok2,
 		UnlinkRequest{StepUp: k.stepUp(tok2, keyproto.ActionMailboxUnlink)}), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/mailbox/link", k.token, nil), http.StatusNotFound)
+
+	// Each link and the unlink are auth events with no alert (spec 02 §10.16).
+	var linked, unlinked, alerts int
+	if err := h.pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE kind = 'mailbox_linked'),
+	    count(*) FILTER (WHERE kind = 'mailbox_unlinked') FROM auth_events WHERE user_id = $1`, k.user).
+		Scan(&linked, &unlinked); err != nil {
+		t.Fatal(err)
+	}
+	_ = h.pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE kind = 'alert'`).Scan(&alerts)
+	if linked != 2 || unlinked != 1 || alerts != 0 {
+		t.Fatalf("auth events: %d linked, %d unlinked, %d alerts; want 2, 1, 0", linked, unlinked, alerts)
+	}
 }
 
 func assertNoAddress(t *testing.T, h *harness, addr string) {
@@ -499,7 +511,13 @@ func TestRevokeAndLogoutAllWakeCollectedTokens(t *testing.T) {
 	tok3 := k.enrol(d3)
 	t3 := putToken(h, tok3, 3)
 	wk.take()
-	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token, map[string]any{}), http.StatusNoContent)
+	// It needs a session.logout_all step-up (spec 02 §9.3).
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token, map[string]any{}), http.StatusForbidden)
+	if ws := wk.take(); len(ws) != 0 {
+		t.Fatalf("a refused logout-all woke %+v", ws)
+	}
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token,
+		StepUpOnlyRequest{StepUp: k.stepUp(k.token, keyproto.ActionSessionLogoutAll)}), http.StatusNoContent)
 	if h.countAPNs(k.user) != 0 {
 		t.Fatal("logout-all left tokens")
 	}
@@ -518,8 +536,7 @@ func TestAccountDeletionWakesEveryDevice(t *testing.T) {
 	h.bind(acc.tok, "ios-00000000-0000-4000-8000-000000000206")
 	tk := putToken(h, acc.tok, 5)
 	wk.take()
-	nonce := h.deleteChallenge(t, acc.tok)
-	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusNoContent)
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, h)), http.StatusNoContent)
 	ws := wk.take()
 	if len(ws) != 1 || len(ws[0].tokens) != 1 || ws[0].tokens[0] != tk || ws[0].r != pushv2.ReasonAccountGone {
 		t.Fatalf("deletion wakes %+v", ws)

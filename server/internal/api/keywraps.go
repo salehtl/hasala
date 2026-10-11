@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // KeyWrap is one credential's wrap, as GET returns it.
@@ -104,6 +105,8 @@ func (s *Server) handlePutKeyWrap(w http.ResponseWriter, r *http.Request, userID
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	// A step-up action: the other devices hear of it (spec 02 §8.1 step 6).
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -132,5 +135,6 @@ func (s *Server) handleDeleteKeyWrap(w http.ResponseWriter, r *http.Request, use
 		s.writeKeyErr(w, r, err)
 		return
 	}
+	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	w.WriteHeader(http.StatusNoContent)
 }

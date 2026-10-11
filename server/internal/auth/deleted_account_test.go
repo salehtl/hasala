@@ -16,7 +16,7 @@ import (
 // state that cannot occur: sessions.user_id cascades from users.
 func TestASessionOfADeletedAccountIsDistinguishableFromAnExpiredOne(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-deleted-session"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -57,7 +57,7 @@ func TestASessionOfADeletedAccountIsDistinguishableFromAnExpiredOne(t *testing.T
 // must NOT wipe local data on, and it is the common one.
 func TestAnExpiredSessionIsNotReportedAsADeletedAccount(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-expiry"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -86,7 +86,7 @@ func TestAnUnknownTokenIsNotReportedAsADeletedAccount(t *testing.T) {
 // anyway. Past that point "expired" is true and sufficient.
 func TestTheTombstoneStopsAnsweringOnceTheSessionWouldHaveExpired(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-tombstone-expiry"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -125,7 +125,7 @@ func TestTheTombstoneStopsAnsweringOnceTheSessionWouldHaveExpired(t *testing.T) 
 // will ever run.
 func TestTombstoneExpiryIsDecidedByTheSessionsClock(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-stale"))
+	u := newTestUser(t, pool)
 	// Two hours behind wall time with a one-hour TTL: live by the clock that
 	// decides, an hour dead by Postgres's.
 	c := newSkewedClock(-2 * time.Hour)
@@ -199,7 +199,7 @@ func TestATombstoneOutlivesADisagreementBetweenTheGoAndPostgresClocks(t *testing
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pool := pgtest.New(t)
-			u := mustUpsert(t, pool, testIdentity("sub-skew"))
+			u := newTestUser(t, pool)
 			c := newSkewedClock(tc.skew)
 			s := newSessions(pool, time.Hour, c)
 
@@ -238,12 +238,12 @@ func TestDeletingOneAccountDoesNotReapAnotherAccountsTombstone(t *testing.T) {
 	c := newSkewedClock(-90 * 24 * time.Hour)
 	s := newSessions(pool, time.Hour, c)
 
-	first := mustUpsert(t, pool, testIdentity("sub-reap-first"))
+	first := newTestUser(t, pool)
 	firstTok, err := s.Issue(bgctx, first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := mustUpsert(t, pool, testIdentity("sub-reap-second"))
+	second := newTestUser(t, pool)
 	if _, err := s.Issue(bgctx, second); err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestDeletingOneAccountDoesNotReapAnotherAccountsTombstone(t *testing.T) {
 // subject hash, no address.
 func TestTheTombstoneCarriesNoIdentity(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-anonymous"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 	if _, err := s.Issue(bgctx, u); err != nil {
@@ -341,7 +341,7 @@ func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *tes
 	s := newSessions(pool, time.Hour, c)
 
 	// A, at T0: expires T0+1h.
-	uA := mustUpsert(t, pool, testIdentity("sub-reap-ancient"))
+	uA := newTestUser(t, pool)
 	tokA, err := s.Issue(bgctx, uA)
 	if err != nil {
 		t.Fatal(err)
@@ -349,7 +349,7 @@ func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *tes
 
 	// B, a whole grace period later: expires T0+grace+3h.
 	c.advance(tombstoneGrace + 2*time.Hour)
-	uB := mustUpsert(t, pool, testIdentity("sub-reap-recent"))
+	uB := newTestUser(t, pool)
 	tokB, err := s.Issue(bgctx, uB)
 	if err != nil {
 		t.Fatal(err)
@@ -358,7 +358,7 @@ func TestReapingTombstonesUsesTheSessionsClockAndSparesRowsInsideTheGrace(t *tes
 	// Two hours on: B died an hour ago, A died a grace period and three hours
 	// ago, and C is issued live.
 	c.advance(2 * time.Hour)
-	uC := mustUpsert(t, pool, testIdentity("sub-reap-live"))
+	uC := newTestUser(t, pool)
 	tokC, err := s.Issue(bgctx, uC)
 	if err != nil {
 		t.Fatal(err)

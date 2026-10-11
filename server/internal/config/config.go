@@ -32,6 +32,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/salehtl/hasala/server/internal/headroom"
+	"github.com/salehtl/hasala/server/internal/mail"
 )
 
 // Config is the full configuration surface.
@@ -136,16 +137,18 @@ type AuthConfig struct {
 	RPDisplayName string   `toml:"rp_display_name"`
 	RPOrigins     []string `toml:"rp_origins"`
 	// SessionIdle and SessionMax are spec 02 §9.2's sliding idle limit and
-	// absolute cap (PO-15: 30 and 90 days). Until WS-3 lands the sliding
-	// renewal, a session lives for SessionIdle from issue.
+	// absolute cap (PO-15: 30 and 90 days).
 	SessionIdle time.Duration `toml:"session_idle"`
 	SessionMax  time.Duration `toml:"session_max"`
 	InviteTTL   time.Duration `toml:"invite_ttl"`
 	// PasswordHashConcurrency gates PBKDF2 (spec 02 §16.2), 1–8.
 	PasswordHashConcurrency int `toml:"password_hash_concurrency"`
 	// AuthKeyFile (HASALA_AUTH_KEY_FILE) holds the 32-byte auth_key, 64 hex
-	// (spec 01 §4.11). Never TOML. Loaded by internal/authkeys (WS-3).
+	// (spec 01 §4.11): the pepper, code and tag keys. Never TOML.
 	AuthKeyFile string `toml:"-"`
+	// SaltKeyFile (HASALA_SALT_KEY_FILE) holds the never-rotated salt_key, 64
+	// hex, which keys only the public password salt (review 2 F-04). Never TOML.
+	SaltKeyFile string `toml:"-"`
 }
 
 // HeadroomConfig is the disk fuse (internal/headroom).
@@ -200,7 +203,15 @@ type EmailConfig struct {
 	// WebBaseURL (HASALA_WEB_BASE_URL) is the base of every link in spec 07's
 	// emails. Environment-only.
 	WebBaseURL string `toml:"-"`
+	// APIBaseURL (HASALA_EMAIL_API_BASE_URL) is the Email Service API root,
+	// DefaultEmailAPIBaseURL when empty. A local end-to-end run points it at
+	// a capture server; with trusted_proxy = cloudflare anything but the
+	// default is refused. Environment-only.
+	APIBaseURL string `toml:"-"`
 }
+
+// DefaultEmailAPIBaseURL is the Email Service API root the sender uses.
+const DefaultEmailAPIBaseURL = mail.DefaultBaseURL
 
 // Enabled reports whether either half of the sender is configured.
 func (e EmailConfig) Enabled() bool { return e.CloudflareAccountID != "" || e.APITokenFile != "" }
@@ -262,7 +273,8 @@ type MigrateArgs struct {
 // modeOrder is every mode cmd/hasalad dispatches (spec 02 §18.3, the subset
 // built so far). cmd/hasalad cross-checks its dispatch table against it on
 // every start (checkModeHandlers).
-var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "waitlist", "email", "console", "version"}
+var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "account", "waitlist", "email", "console",
+	"version"}
 
 // Modes returns every mode cmd/hasalad dispatches.
 func Modes() []string {
@@ -416,6 +428,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	integer("HASALA_PASSWORD_HASH_CONCURRENCY", &conc)
 	c.Auth.PasswordHashConcurrency = int(conc)
 	str("HASALA_AUTH_KEY_FILE", &c.Auth.AuthKeyFile)
+	str("HASALA_SALT_KEY_FILE", &c.Auth.SaltKeyFile)
 
 	str("HASALA_HEADROOM_PATH", &c.Headroom.Path)
 	integer("HASALA_HEADROOM_FLOOR_BYTES", &c.Headroom.FloorBytes)
@@ -441,6 +454,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_FREEZE_URL", &c.Email.FreezeURL)
 	str("HASALA_EMAIL_API_TOKEN_FILE", &c.Email.APITokenFile)
 	str("HASALA_WEB_BASE_URL", &c.Email.WebBaseURL)
+	str("HASALA_EMAIL_API_BASE_URL", &c.Email.APIBaseURL)
 	list("HASALA_WEB_ORIGINS", &c.Web.Origins)
 	str("HASALA_WEB_WAITLIST_DONE_URL", &c.Web.DoneURL)
 	integer("HASALA_WAITLIST_MAX", &c.Web.WaitlistMax)
@@ -514,6 +528,7 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 	credDir, _ := lookup("CREDENTIALS_DIRECTORY")
 	for name, path := range map[string]string{
 		"HASALA_AUTH_KEY_FILE":          c.Auth.AuthKeyFile,
+		"HASALA_SALT_KEY_FILE":          c.Auth.SaltKeyFile,
 		"HASALA_APNS_KEY_FILE":          c.APNs.KeyFile,
 		"HASALA_MAILBOX_ROUTE_KEY_FILE": c.Gmail.RouteKeyFile,
 		"HASALA_EMAIL_API_TOKEN_FILE":   c.Email.APITokenFile,
@@ -692,6 +707,18 @@ func (c Config) validateEmail(prod bool) error {
 			return fmt.Errorf("%s is %q: it must be an https URL on hasala.app with no query or fragment", name, raw)
 		}
 	}
+	if e.APIBaseURL != "" {
+		u, err := url.Parse(e.APIBaseURL)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil ||
+			u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("HASALA_EMAIL_API_BASE_URL is %q: it must be an http(s) URL with no query or fragment",
+				e.APIBaseURL)
+		}
+		if prod && e.APIBaseURL != DefaultEmailAPIBaseURL {
+			return fmt.Errorf("HASALA_EMAIL_API_BASE_URL is %q: with trusted_proxy = cloudflare email goes only to %s",
+				e.APIBaseURL, DefaultEmailAPIBaseURL)
+		}
+	}
 	if e.Enabled() {
 		if !cfAccountID.MatchString(e.CloudflareAccountID) {
 			return errors.New("the [email] group is all or nothing: email.cloudflare_account_id " +
@@ -755,8 +782,8 @@ func (c Config) ValidateFor(mode string) error {
 		if c.Headroom.Path == "" {
 			return errors.New("serve needs headroom.path (HASALA_HEADROOM_PATH): the filesystem the disk fuse samples")
 		}
-		if c.Server.TrustedProxy == ProxyCloudflare && c.Auth.AuthKeyFile == "" {
-			return errors.New("serve needs HASALA_AUTH_KEY_FILE with trusted_proxy = cloudflare")
+		if c.Server.TrustedProxy == ProxyCloudflare && (c.Auth.AuthKeyFile == "" || c.Auth.SaltKeyFile == "") {
+			return errors.New("serve needs HASALA_AUTH_KEY_FILE and HASALA_SALT_KEY_FILE with trusted_proxy = cloudflare")
 		}
 	case "console":
 		return c.validateConsole()

@@ -168,9 +168,15 @@ func listInvites(ctx context.Context, env *runEnv, pool *pgxpool.Pool) error {
 			}
 			return "no"
 		}
-		fmt.Fprintf(env.stdout, "%s  %-9s  %-5s  review=%s  created %s  expires %s  mints %d  redeemed=%s  %s\n",
+		// The account an invite created, for `account review` and
+		// `purge-user` (a beta review account is found this way).
+		by := ""
+		if r.RedeemedBy != nil {
+			by = " by=" + r.RedeemedBy.String()
+		}
+		fmt.Fprintf(env.stdout, "%s  %-9s  %-5s  review=%s  created %s  expires %s  mints %d  redeemed=%s%s  %s\n",
 			invites.ShortID(r.ID), r.State, r.Origin, yes(r.Review), r.CreatedAt.UTC().Format(time.RFC3339), expires,
-			r.MintCount, yes(r.Redeemed), r.Note)
+			r.MintCount, yes(r.Redeemed), by, r.Note)
 	}
 	fmt.Fprintf(env.stdout, "%d invite(s), %d still outstanding\n", len(rows), outstanding)
 	return nil

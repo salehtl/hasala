@@ -158,6 +158,10 @@ type Queue struct {
 	// (the transactional lane).
 	Rates     map[Lane]int
 	Retention time.Duration
+	// Bounced, when set, runs in the finalizing transaction of a bounced row
+	// that names an account (spec 02 §14.7: the account's address is marked
+	// undeliverable). It makes no network call.
+	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
 
 	renderers map[string]Renderer
 	stopped   atomic.Bool
@@ -297,20 +301,23 @@ func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Mess
 	if err != nil {
 		return fmt.Errorf("mailq: record %s: %w", e.Kind, err)
 	}
+	row := &Row{ID: id, Kind: e.Kind, Subkind: e.Subkind, Lane: e.Lane, Recipient: e.To, RecipientTag: tag,
+		UserID: e.UserID, EntryID: e.EntryID, InviteID: e.InviteID, BankSlug: e.BankSlug, Params: e.Params, Attempts: 1}
+	if q.Stopped() || q.Sender == nil {
+		q.finalize(ctx, id, lease, e.Kind, row, "", errors.New("mailq: sending is stopped"), true)
+		return errors.New("mailq: sending is stopped")
+	}
 	msg, err := render()
 	if err != nil {
-		q.finalize(ctx, id, lease, e.Kind, nil, "", fmt.Errorf("%w: render", mail.ErrPermanent), true)
+		q.finalize(ctx, id, lease, e.Kind, row, "", fmt.Errorf("%w: render", mail.ErrPermanent), true)
 		return err
 	}
 	msg.To = e.To
-	if q.Stopped() || q.Sender == nil {
-		q.finalize(ctx, id, lease, e.Kind, nil, "", errors.New("mailq: sending is stopped"), true)
-		return errors.New("mailq: sending is stopped")
-	}
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	pid, sendErr := q.Sender.Send(sctx, msg)
 	cancel()
-	q.finalize(ctx, id, lease, e.Kind, nil, pid, sendErr, true)
+	msg = mail.Message{} // the rendered secret is never kept
+	q.finalize(ctx, id, lease, e.Kind, row, pid, sendErr, true)
 	return sendErr
 }
 
@@ -628,12 +635,37 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 			q.stopped.Store(true)
 		}
 	}
-	if _, err := q.Pool.Exec(ctx, sql, args...); err != nil {
+	bounced := errors.Is(sendErr, mail.ErrBounced) && row != nil && row.UserID != nil && q.Bounced != nil
+	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) error {
+		if !bounced {
+			return nil
+		}
+		return q.Bounced(ctx, tx, *row)
+	}); err != nil {
 		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
 	}
 	if sendErr != nil {
 		slog.Warn("mailq: send failed", "mail_kind", kind, "err", clip(sendErr.Error()))
 	}
+}
+
+// finalizeTx runs the finalizing UPDATE and, when it changed the row, then.
+func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then func(pgx.Tx) error) error {
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return err
+	}
+	defer pgtx.Rollback(ctx, tx)
+	tag, err := tx.Exec(ctx, sql, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 1 {
+		if err := then(tx); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // Sweep is spec 07 §2.11's mail rows: retention, redaction of subject-less

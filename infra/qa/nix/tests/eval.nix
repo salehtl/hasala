@@ -29,6 +29,7 @@ let
 
   publicReady = {
     authKeyFile = secret "auth_key";
+    saltKeyFile = secret "salt_key";
     email = {
       cloudflareAccountId = accountId;
       apiTokenFile = secret "email_api_token";
@@ -242,6 +243,14 @@ let
     "tunnel without authKeyFile" = [
       "M12"
       (hasala (tunnelOn // { authKeyFile = null; }))
+    ];
+    "tunnel without saltKeyFile" = [
+      "M12"
+      (hasala (tunnelOn // { saltKeyFile = null; }))
+    ];
+    "saltKeyFile is authKeyFile" = [
+      "M12"
+      (hasala (tunnelOn // { saltKeyFile = secret "auth_key"; }))
     ];
     "passwordHashConcurrency 4" = [
       "M12"
@@ -472,6 +481,7 @@ let
     prefixes: env: lib.filter (k: lib.any (p: lib.hasPrefix p k) prefixes) (lib.attrNames env);
   secretValues = map secret [
     "auth_key"
+    "salt_key"
     "email_api_token"
     "apns_key_p8"
     "mailbox_route_key"
@@ -512,6 +522,7 @@ let
     "HASALA_GMAIL_PUBSUB_SUBSCRIPTION"
     "HASALA_MAILBOX_ROUTE_KEY_FILE"
     "HASALA_AUTH_KEY_FILE"
+    "HASALA_SALT_KEY_FILE"
     "HASALA_EMAIL_CF_ACCOUNT_ID"
     "HASALA_EMAIL_API_TOKEN_FILE"
     "HASALA_EMAIL_FROM"
@@ -593,11 +604,15 @@ let
       hasaladEnv.HASALA_AUTH_KEY_FILE == "%d/auth-key"
     ) "AT-E3 HASALA_AUTH_KEY_FILE is not a credential path"
     ++ check (
+      hasaladEnv.HASALA_SALT_KEY_FILE == "%d/salt-key"
+    ) "AT-E3 HASALA_SALT_KEY_FILE is not a credential path"
+    ++ check (
       credsOf fullSys "hasalad" == [
         "apns-key.p8"
         "auth-key"
         "email-api-token"
         "mailbox-route-key"
+        "salt-key"
         "turnstile-secret"
       ]
     ) "AT-E3 hasalad LoadCredential is ${builtins.toJSON (credsOf fullSys "hasalad")}"

@@ -113,7 +113,7 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 		return Bootstrapped{}, ErrBadWriterID
 	}
 	if b.Writer.Alg != AlgEd25519 {
-		return Bootstrapped{}, fmt.Errorf("%w: writer.alg %q", ErrKeysMalformed, b.Writer.Alg)
+		return Bootstrapped{}, fmt.Errorf("%w: writer.alg is not Ed25519", ErrKeysMalformed)
 	}
 	if b.AuthKind < 0 || b.AuthKind > int(keyproto.AuthKindPassword) {
 		return Bootstrapped{}, fmt.Errorf("%w: auth_kind %d", ErrKeysMalformed, b.AuthKind)
@@ -141,10 +141,14 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 	var (
 		emailNorm *string
 		pending   []byte
+		frozen    bool
 	)
-	if err := k.Pool.QueryRow(ctx, `SELECT email_norm, authority_pubkey_pending FROM users WHERE id = $1`, userID).
-		Scan(&emailNorm, &pending); err != nil {
+	if err := k.Pool.QueryRow(ctx, `SELECT email_norm, authority_pubkey_pending, frozen_at IS NOT NULL FROM users WHERE id = $1`, userID).
+		Scan(&emailNorm, &pending, &frozen); err != nil {
 		return Bootstrapped{}, fmt.Errorf("auth: bootstrap: read account: %w", err)
+	}
+	if frozen {
+		return Bootstrapped{}, ErrAccountFrozen
 	}
 	if b.PRFCredentialID != nil {
 		var mine bool
@@ -276,6 +280,9 @@ func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session Sessio
 		}
 	}
 	if err := insertWriterTx(ctx, tx, userID, b.Writer, now); err != nil {
+		return err
+	}
+	if err := recordEventTx(ctx, tx, nil, userID, AuthEvent{Kind: EventDeviceAdded, WriterID: b.Writer.WriterID}, now); err != nil {
 		return err
 	}
 	if viaPending != nil {

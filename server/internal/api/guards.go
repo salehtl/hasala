@@ -34,6 +34,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/salehtl/hasala/server/internal/auth"
 )
 
 // Fuse is the box-level headroom fuse, as this package needs it.
@@ -76,7 +78,7 @@ func (s *Server) headroomGate(next http.Handler) http.Handler {
 		// per link per hour, skips even that while the fuse is tripped, and a
 		// 503 would only make Pub/Sub retry.
 		if s.Headroom != nil && !isRead(r.Method) && r.URL.Path != "/hooks/gmail/pubsub" && s.Headroom.Tripped() {
-			s.logf("api: %s %s: refused, the headroom fuse is tripped", r.Method, r.URL.Path)
+			s.logf("api: %s: refused, the headroom fuse is tripped", route(r))
 			// A minute: long enough that a fleet of retrying clients does not
 			// become its own load, short enough that writes resume promptly
 			// once an operator frees space.
@@ -102,16 +104,25 @@ func (s *Server) headroomGate(next http.Handler) http.Handler {
 // account is caught earlier by auth.ErrSessionAccountDeleted), but if it happens
 // it is an error rather than "not suspended": a status that cannot be read is
 // not evidence of permission.
-func (s *Server) accountSuspended(ctx context.Context, userID uuid.UUID) (bool, error) {
-	var status string
-	err := s.Pool.QueryRow(ctx, `SELECT status FROM users WHERE id = $1`, userID).Scan(&status)
+func (s *Server) accountStatus(ctx context.Context, userID uuid.UUID) (auth.AccountStatus, error) {
+	var (
+		status string
+		frozen bool
+	)
+	err := s.Pool.QueryRow(ctx, `SELECT status, frozen_at IS NOT NULL FROM users WHERE id = $1`, userID).Scan(&status, &frozen)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, errors.New("api: no users row for a session that resolved")
+			return auth.AccountStatus{}, errors.New("api: no users row for a session that resolved")
 		}
-		return false, err
+		return auth.AccountStatus{}, err
 	}
-	return status == statusSuspended, nil
+	return auth.AccountStatus{Suspended: status == statusSuspended, Frozen: frozen}, nil
+}
+
+// accountSuspended is kept for the deletion lane.
+func (s *Server) accountSuspended(ctx context.Context, userID uuid.UUID) (bool, error) {
+	st, err := s.accountStatus(ctx, userID)
+	return st.Suspended, err
 }
 
 // writeAccountSuspended is the ONE 403 account_suspended this package emits.

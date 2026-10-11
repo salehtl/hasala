@@ -61,7 +61,7 @@ func TestTamperUploadsGetTheirVerdict(t *testing.T) {
 		if _, err := owner.Exec(bg, `DELETE FROM users WHERE id = $1`, u); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(bg, `INSERT INTO users (id, idp, idp_sub_hash) VALUES ($1, 'passkey', $2)`,
+		if _, err := pool.Exec(bg, `INSERT INTO users (id, user_handle, created_at, email_norm, email_verified_at, display_name) VALUES ($1, $2, now(), 'u-' || gen_random_uuid() || '@example.test', now(), 'Test User')`,
 			u, oplogtest.Opaque(32)); err != nil {
 			t.Fatal(err)
 		}

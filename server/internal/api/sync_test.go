@@ -58,9 +58,8 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
 }
 
-// user creates an account for a passkey identity with the given subject, with
-// synthetic account keys (so it can upload). The IdP columns are ledgerd's and
-// survive until the signup work's schema (spec 02 §5.3).
+// user creates an account with synthetic account keys (so it can upload). sub
+// only names it in the test.
 func (h *harness) user(sub string) uuid.UUID {
 	h.t.Helper()
 	u := h.userWithoutKeys(sub)
@@ -71,11 +70,7 @@ func (h *harness) user(sub string) uuid.UUID {
 // userWithoutKeys is an account that has not bootstrapped.
 func (h *harness) userWithoutKeys(sub string) uuid.UUID {
 	h.t.Helper()
-	u, err := auth.UpsertUser(bg, h.pool, auth.Identity{IdP: auth.IdPPasskey, Subject: sub})
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	return u
+	return oplogtest.NewUserWithoutKeys(h.t, h.pool)
 }
 
 func (h *harness) session(u uuid.UUID) string {
@@ -1090,16 +1085,13 @@ func TestUnknownPathOutsideTheAPIIs404JSON(t *testing.T) {
 // spec 02 §2.4, method and path as the table lists them, answers exactly what
 // an unknown path answers, 404 with {"error":"not_found"}, with and without a
 // session. Deleted, not disabled: not a 405, not a 401, not a 403.
-//
-// Two §2.4 rows are NOT here because this build still serves them: PUT
-// /api/v1/keys and POST /api/v1/account/challenge are ledgerd's key
-// publication and deletion-nonce paths, kept until WS-3's bootstrap and
-// step-up replace them (the PR's declared deviations).
 func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
 	retired := []string{
 		"POST /api/v1/auth/exchange",
+		"PUT /api/v1/keys",
+		"POST /api/v1/account/challenge",
 		"GET /api/v1/address",
 		"POST /api/v1/address/challenge",
 		"POST /api/v1/address/rotate",

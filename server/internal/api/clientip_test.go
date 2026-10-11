@@ -33,6 +33,9 @@ func TestClientKeyFor(t *testing.T) {
 		}
 		// Headers nothing may read (fence test 3) change nothing.
 		r.Header.Set("X-Real-Ip", "198.51.100.200")
+		r.Header.Set("X-Forwarded-For", "198.51.100.201")
+		r.Header.Set("True-Client-Ip", "198.51.100.202")
+		r.Header.Set("Forwarded", "for=198.51.100.203")
 		if got := ClientKeyFor(r, c.cloudflare); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}

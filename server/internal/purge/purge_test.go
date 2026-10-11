@@ -60,8 +60,8 @@ func ensureSession(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) []byte {
 		return h
 	}
 	h = randBytes(t, 32)
-	exec(t, pool, `INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
-	               VALUES ($2, $1, now(), now() + interval '1 hour')`, u, h)
+	exec(t, pool, `INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
+	               VALUES ($2, $1, 'login', now(), now(), now() + interval '1 hour')`, u, h)
 	return h
 }
 
@@ -96,10 +96,6 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO writer_challenges (nonce, user_id, issued_at, expires_at)
 		               VALUES ($2, $1, now(), now() + interval '5 minutes')`, u, randBytes(t, 32))
 	},
-	"public.account_deletion_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
-		exec(t, pool, `INSERT INTO account_deletion_challenges (nonce, user_id, issued_at, expires_at)
-		               VALUES ($2, $1, now(), now() + interval '5 minutes')`, u, randBytes(t, 32))
-	},
 	// An APNs token names the device writer and the session that registered
 	// it, so revoking either silences it (spec 02 §9.3).
 	"public.apns_tokens": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
@@ -125,12 +121,6 @@ var seeders = map[string]seeder{
 	"public.bank_requests": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO bank_requests (other_key, other_text, source, user_id, created_at)
 		               VALUES ('some bank', 'Some Bank', 'app', $1, now())`, u)
-	},
-	"public.mail_log": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
-		exec(t, pool, `INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id,
-		                                     params, status, next_attempt_at, created_at)
-		               VALUES ('alert', 'new_passkey', 'transactional', 'someone@example.com', $2, 's•••@example.com', $1,
-		                       '{}', 'queued', now(), now())`, u, randBytes(t, 32))
 	},
 	"public.webauthn_credentials": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		exec(t, pool, `INSERT INTO webauthn_credentials
@@ -187,6 +177,53 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO account_refusals (user_id, day, resource, count)
 		               VALUES ($1, current_date, 'oplog_hot_bytes', 3)`, u)
 	},
+	// The account ceremonies (spec 02 §5.3). A signup ceremony carries the
+	// reserved id with no foreign key (the account does not exist yet), so the
+	// purge's explicit sweep is what erases its plaintext address.
+	"public.signup_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO signup_ceremonies (id, user_id, invite_code_hash, email_norm, email_tag, display_name,
+		                 email_proven, signup_nonce, claimed_at, created_at, expires_at)
+		               VALUES ($2, $1, $3, $4, $5, 'Maya', true, $6, now(), now(), now() + interval '30 minutes')`,
+			u, u.String()+"-signup", randBytes(t, 32), "s-"+u.String()+"@example.test", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.email_codes": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO email_codes (code_id, purpose, email_tag, user_id, ceremony_kind, ceremony_id, code_mac,
+		                 sent, created_at, expires_at)
+		               VALUES (gen_random_uuid(), 'email_verify', $2, $1, 'email_verify', $4, $3, true, now(), now() + interval '10 minutes')`,
+			u, randBytes(t, 32), randBytes(t, 32), u.String())
+	},
+	"public.password_login_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO password_login_ceremonies (id, user_id, email_tag, nonce, created_at, expires_at)
+		               VALUES ($2, $1, $3, $4, now(), now() + interval '5 minutes')`, u, u.String()+"-pl", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.recovery_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO recovery_ceremonies (id, user_id, recover_nonce, code_id, created_at, expires_at)
+		               VALUES ($2, $1, $3, gen_random_uuid(), now(), now() + interval '10 minutes')`, u, u.String()+"-rc", randBytes(t, 32))
+	},
+	"public.password_reset_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO password_reset_ceremonies (id, user_id, email_tag, code_id, reset_nonce, created_at, expires_at)
+		               VALUES ($2, $1, $3, gen_random_uuid(), $4, now(), now() + interval '10 minutes')`,
+			u, u.String()+"-pr", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.email_change_ceremonies": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO email_change_ceremonies (id, user_id, new_email_norm, new_email_tag, new_in_use,
+		                 change_nonce, code_old_id, code_new_id, created_at, expires_at)
+		               VALUES (gen_random_uuid(), $1, $2, $3, false, $4, gen_random_uuid(), gen_random_uuid(), now(), now() + interval '10 minutes')`,
+			u, "n-"+u.String()+"@example.test", randBytes(t, 32), randBytes(t, 32))
+	},
+	"public.freeze_tokens": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO freeze_tokens (token_hash, user_id, trigger_kind, trigger_at, created_at, expires_at)
+		               VALUES ($2, $1, 'new_sign_in', now(), now(), now() + interval '7 days')`, u, randBytes(t, 32))
+	},
+	"public.auth_events": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO auth_events (user_id, kind, at, method) VALUES ($1, 'sign_in_new', now(), 'passkey')`, u)
+	},
+	"public.mail_log": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		exec(t, pool, `INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id, params,
+		                 status, next_attempt_at, created_at)
+		               VALUES ('alert', 'new_passkey', 'transactional', $2, $3, 'm•••@example.test', $1, '{}', 'queued', now(), now())`,
+			u, "a-"+u.String()+"@example.test", randBytes(t, 32))
+	},
 }
 
 func newUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
@@ -194,7 +231,7 @@ func newUser(t *testing.T, pool *pgxpool.Pool, sub string) uuid.UUID {
 	sum := sha256.Sum256([]byte(sub + uuid.NewString()))
 	var u uuid.UUID
 	if err := pool.QueryRow(bg,
-		`INSERT INTO users (idp, idp_sub_hash, created_at) VALUES ('passkey', $1, now()) RETURNING id`,
+		`INSERT INTO users (user_handle, created_at, email_norm, email_verified_at, display_name) VALUES ($1, now(), 'u-' || gen_random_uuid() || '@example.test', now(), 'Test User') RETURNING id`,
 		sum[:]).Scan(&u); err != nil {
 		t.Fatalf("create user %q: %v", sub, err)
 	}
@@ -700,120 +737,10 @@ func TestPurgeIsIdempotentAndReportsAnUnknownUserAsNothingToDo(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The deletion challenge (spec §3.4's key-possession factor)
-// ---------------------------------------------------------------------------
-
-func TestChallengeAuthorizesOnlyAnEnrolledLiveKey(t *testing.T) {
-	pool := pgtest.New(t)
-	u := seedAFullyPopulatedUser(t, pool, "delete-me")
-	c := &Challenges{Pool: pool}
-
-	// The seeded roster key: writers + key_history share it.
-	priv := deviceKey(t, u)
-
-	nonce, err := c.Issue(bg, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := ed25519.Sign(priv, DeletionMessage(nonce, u))
-	if err := c.Authorize(bg, u, nonce, sig); err != nil {
-		t.Fatalf("authorize with an enrolled key: %v", err)
-	}
-
-	// Replay: the nonce is single use.
-	if err := c.Authorize(bg, u, nonce, sig); !errors.Is(err, ErrDeletionRejected) {
-		t.Fatalf("replay = %v, want ErrDeletionRejected", err)
-	}
-}
-
-func TestChallengeRefusesAnUnenrolledKey(t *testing.T) {
-	pool := pgtest.New(t)
-	u := seedAFullyPopulatedUser(t, pool, "delete-me")
-	c := &Challenges{Pool: pool}
-
-	_, stranger, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	nonce, err := c.Issue(bg, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := ed25519.Sign(stranger, DeletionMessage(nonce, u))
-	if err := c.Authorize(bg, u, nonce, sig); !errors.Is(err, ErrDeletionRejected) {
-		t.Fatalf("authorize with an unenrolled key = %v, want ErrDeletionRejected", err)
-	}
-}
-
-func TestChallengeRefusesARevokedKey(t *testing.T) {
-	pool := pgtest.New(t)
-	u := seedAFullyPopulatedUser(t, pool, "delete-me")
-	exec(t, pool, `UPDATE writers SET revoked_at = now() WHERE user_id = $1`, u)
-	c := &Challenges{Pool: pool}
-
-	priv := deviceKey(t, u)
-	nonce, err := c.Issue(bg, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := ed25519.Sign(priv, DeletionMessage(nonce, u))
-	if err := c.Authorize(bg, u, nonce, sig); !errors.Is(err, ErrDeletionRejected) {
-		t.Fatalf("authorize with a revoked key = %v, want ErrDeletionRejected", err)
-	}
-}
-
-func TestChallengeRefusesAnotherAccountsNonce(t *testing.T) {
-	pool := pgtest.New(t)
-	mine := seedAFullyPopulatedUser(t, pool, "mine")
-	theirs := seedAFullyPopulatedUser(t, pool, "theirs")
-	c := &Challenges{Pool: pool}
-
-	nonce, err := c.Issue(bg, theirs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := ed25519.Sign(deviceKey(t, mine), DeletionMessage(nonce, mine))
-	if err := c.Authorize(bg, mine, nonce, sig); !errors.Is(err, ErrDeletionRejected) {
-		t.Fatalf("authorize with another account's nonce = %v, want ErrDeletionRejected", err)
-	}
-}
-
-func TestChallengeRefusesAnExpiredNonce(t *testing.T) {
-	pool := pgtest.New(t)
-	u := seedAFullyPopulatedUser(t, pool, "delete-me")
-	now := time.Now()
-	c := &Challenges{Pool: pool, Now: func() time.Time { return now }}
-
-	nonce, err := c.Issue(bg, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Now = func() time.Time { return now.Add(ChallengeTTL + time.Second) }
-	sig := ed25519.Sign(deviceKey(t, u), DeletionMessage(nonce, u))
-	if err := c.Authorize(bg, u, nonce, sig); !errors.Is(err, ErrDeletionRejected) {
-		t.Fatalf("authorize with an expired nonce = %v, want ErrDeletionRejected", err)
-	}
-}
-
-// A signature made for a writer registration must not delete the account
-// (spec 01 D16). Two independent rails: the nonce comes from a different
-// table, and the message carries its own domain prefix.
-func TestDeletionMessageIsDomainSeparated(t *testing.T) {
-	u := uuid.New()
-	nonce := make([]byte, ChallengeNonceBytes)
-	msg := DeletionMessage(nonce, u)
-	if !strings.HasPrefix(string(msg), "ledger/v2 account-delete\x00") {
-		t.Fatalf("DeletionMessage has no domain prefix: %q", msg[:32])
-	}
-	other := DeletionMessage(nonce, uuid.New())
-	if string(msg) == string(other) {
-		t.Fatal("DeletionMessage does not bind the user id")
-	}
-}
-
-// Spec 07 §6.6: the purge erases the account's address from email-log rows
-// that never carried its user_id, and its joined waitlist entry.
+// Spec 02 §15.2 step 3, AT-DEL-2 (review 2 F-14), spec 07 §6.6: the purge
+// erases the account's address from email-log rows that never carried its
+// user_id, deletes its joined waitlist entry and any signup ceremony holding
+// the address, and leaves other addresses alone.
 func TestPurgeErasesTheAddressFromTheEmailLog(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool, "erase-address")
@@ -821,8 +748,10 @@ func TestPurgeErasesTheAddressFromTheEmailLog(t *testing.T) {
 	tag := randBytes(t, 32)
 	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, next_attempt_at, created_at)
 	               VALUES ('test', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'queued', now(), now())`, tag)
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, lease_until, created_at)
+	               VALUES ('code', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'sending', now() + interval '1 minute', now())`, tag)
 	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, sent_at, final_at, created_at)
-	               VALUES ('test', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'sent', now(), now(), now())`, tag)
+	               VALUES ('code', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'sent', now(), now(), now())`, tag)
 	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, sent_at, final_at, created_at)
 	               VALUES ('test', 'transactional', 'stays@example.com', $1, 's•••@example.com', '{}', 'sent', now(), now(), now())`, randBytes(t, 32))
 	var entry uuid.UUID
@@ -834,13 +763,125 @@ func TestPurgeErasesTheAddressFromTheEmailLog(t *testing.T) {
 	               mint_count, redeemed_at, redeemed_by, closed_at)
 	               VALUES ($1, $2, 'cli', 'redeemed', now(), now(), now() + interval '1 day', 1, now(), $3, now())`,
 		randBytes(t, 32), entry, u)
+	exec(t, pool, `INSERT INTO signup_ceremonies (id, user_id, invite_code_hash, email_norm, email_tag, display_name, email_proven,
+	               signup_nonce, created_at, expires_at)
+	               VALUES ('another-signup', gen_random_uuid(), $1, 'gone@example.com', $2, 'Someone', true, $3, now(), now() + interval '10 minutes')`,
+		randBytes(t, 32), tag, randBytes(t, 32))
+
 	if _, err := Purge(bg, pool, u); err != nil {
 		t.Fatal(err)
 	}
-	var withAddr, rows, entries int
-	_ = pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE recipient = 'gone@example.com'), count(*) FROM mail_log`).Scan(&withAddr, &rows)
+	var withAddr, rows, suppressed, entries, signups int
+	if err := pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE recipient = 'gone@example.com'), count(*),
+	    count(*) FILTER (WHERE status = 'suppressed' AND recipient IS NULL AND error = 'purged') FROM mail_log`).
+		Scan(&withAddr, &rows, &suppressed); err != nil {
+		t.Fatal(err)
+	}
 	_ = pool.QueryRow(bg, `SELECT count(*) FROM waitlist_entries`).Scan(&entries)
-	if withAddr != 0 || rows != 2 || entries != 0 {
-		t.Fatalf("after the purge: %d rows with the address, %d rows, %d entries", withAddr, rows, entries)
+	_ = pool.QueryRow(bg, `SELECT count(*) FROM signup_ceremonies`).Scan(&signups)
+	if withAddr != 0 || rows != 3 || suppressed != 1 || entries != 0 || signups != 0 {
+		t.Fatalf("after the purge: %d rows with the address, %d rows, %d suppressed, %d entries, %d signups",
+			withAddr, rows, suppressed, entries, signups)
+	}
+}
+
+// sumTagger stands in for the server's email tagger.
+type sumTagger struct{}
+
+func (sumTagger) EmailTag(addr string) []byte {
+	h := sha256.Sum256([]byte("tag:" + addr))
+	return h[:]
+}
+
+// Spec 02 §15.2 steps 2 to 4 in serve: the address's codes that belong to no
+// account and a joined waitlist entry found only by its tag are deleted, and
+// the goodbye is queued to the address with no account, after the queued rows
+// to it were deleted. Other addresses' rows stay.
+func TestPurgeWithTheKeyErasesTheTagsAndQueuesTheGoodbye(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "erase-tags")
+	exec(t, pool, `UPDATE users SET email_norm = 'gone@example.com' WHERE id = $1`, u)
+	tag, other := sumTagger{}.EmailTag("gone@example.com"), sumTagger{}.EmailTag("stays@example.com")
+	for _, tg := range [][]byte{tag, other} {
+		exec(t, pool, `INSERT INTO email_codes (code_id, purpose, email_tag, user_id, ceremony_kind, ceremony_id, code_mac,
+		               sent, created_at, expires_at)
+		               VALUES (gen_random_uuid(), 'signup', $1, NULL, 'signup', 'a-signup', $2, true, now(), now() + interval '10 minutes')`,
+			tg, randBytes(t, 32))
+		exec(t, pool, `INSERT INTO waitlist_entries (email_tag, state, source, created_at, updated_at, confirmed_at,
+		               invited_at, joined_at) VALUES ($1, 'joined', 'web', now(), now(), now(), now(), now())`, tg)
+	}
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, params, status, next_attempt_at, created_at)
+	               VALUES ('test', 'transactional', 'gone@example.com', $1, 'g•••@example.com', '{}', 'queued', now(), now())`, tag)
+
+	at := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
+	rep, err := PurgeWith(bg, pool, u, Options{Tagger: sumTagger{}, Goodbye: true, Now: func() time.Time { return at }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.UnownedCodes != 1 || rep.Goodbyes != 1 {
+		t.Fatalf("report: %d unowned codes, %d goodbyes; want 1 and 1", rep.UnownedCodes, rep.Goodbyes)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM email_codes WHERE email_tag = $1`, tag); n != 0 {
+		t.Fatalf("%d of the address's codes survived", n)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM email_codes WHERE email_tag = $1`, other); n != 1 {
+		t.Fatal("another address's code went with it")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM waitlist_entries WHERE email_tag = $1`, tag); n != 0 {
+		t.Fatal("the joined waitlist entry found by its tag survived")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM waitlist_entries WHERE email_tag = $1`, other); n != 1 {
+		t.Fatal("another joined waitlist entry went with it")
+	}
+	var (
+		kind, recipient, status string
+		user                    *uuid.UUID
+		rowTag                  []byte
+		deletedAt               string
+	)
+	if err := pool.QueryRow(bg, `SELECT kind, recipient, status, user_id, recipient_tag, params->>'deleted_at' FROM mail_log`).
+		Scan(&kind, &recipient, &status, &user, &rowTag, &deletedAt); err != nil {
+		t.Fatalf("want exactly the goodbye in the email log: %v", err)
+	}
+	if kind != "deleted" || recipient != "gone@example.com" || status != "queued" || user != nil ||
+		string(rowTag) != string(tag) || deletedAt != at.Format(time.RFC3339Nano) {
+		t.Fatalf("goodbye row: %s %s %s %v %x %s", kind, recipient, status, user, rowTag, deletedAt)
+	}
+}
+
+// The CLI (spec 02 §15.4) holds no key: the tag steps are skipped, the
+// goodbye is queued without a tag (serve's worker fills it in), and a plain
+// Purge (a replay after a restore) queues nothing.
+func TestPurgeWithoutTheKeyStillQueuesTheGoodbye(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "cli-purge")
+	exec(t, pool, `UPDATE users SET email_norm = 'cli@example.com' WHERE id = $1`, u)
+	tag := sumTagger{}.EmailTag("cli@example.com")
+	exec(t, pool, `INSERT INTO email_codes (code_id, purpose, email_tag, user_id, ceremony_kind, ceremony_id, code_mac,
+	               sent, created_at, expires_at)
+	               VALUES (gen_random_uuid(), 'signup', $1, NULL, 'signup', 'a-signup', $2, true, now(), now() + interval '10 minutes')`,
+		tag, randBytes(t, 32))
+	rep, err := PurgeWith(bg, pool, u, Options{Goodbye: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.UnownedCodes != 0 || rep.Goodbyes != 1 {
+		t.Fatalf("report: %d unowned codes, %d goodbyes; want 0 and 1", rep.UnownedCodes, rep.Goodbyes)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM email_codes`); n != 1 {
+		t.Fatal("the CLI deleted a code it cannot tag")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM mail_log WHERE kind = 'deleted' AND recipient = 'cli@example.com'
+	                            AND recipient_tag IS NULL AND user_id IS NULL`); n != 1 {
+		t.Fatal("the CLI's goodbye was not queued")
+	}
+
+	v := newUser(t, pool, "replayed")
+	exec(t, pool, `UPDATE users SET email_norm = 'replayed@example.com' WHERE id = $1`, v)
+	if _, err := Purge(bg, pool, v); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM mail_log WHERE recipient = 'replayed@example.com'`); n != 0 {
+		t.Fatal("a purge without Goodbye queued one")
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/api"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/googlejwt"
+	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
@@ -86,6 +87,23 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 		hook.Audience != "https://api.hasala.app/hooks/gmail/pubsub" || srv.Gmail.IOSClientID != link.Audience {
 		t.Fatalf("verifiers: link %T %+v, hook %T %+v", srv.Gmail.Link, link, srv.Gmail.Hook, hook)
 	}
+	// Without HASALA_SALT_KEY_FILE the account ceremonies stay unmounted.
+	if srv.Accounts != nil {
+		t.Fatal("the account ceremonies were mounted with the auth key alone")
+	}
+	cancel()
+	ex.wait()
+
+	// Both server keys: the account ceremonies are mounted on the same queue.
+	srv = &api.Server{Pool: pool}
+	ctx, cancel = context.WithCancel(context.Background())
+	ex, err = wireExtras(ctx, load(append(env, "HASALA_SALT_KEY_FILE="+write("salt", strings.Repeat("ef", 32)+"\n"))), pool, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Accounts == nil || srv.Accounts.Mail == nil || srv.Accounts.Mail.Queue == nil || srv.Accounts.Keys == nil {
+		t.Fatal("the account ceremonies were not mounted with both keys")
+	}
 	cancel()
 	ex.wait()
 
@@ -131,4 +149,51 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	}
 	cancel()
 	ex.wait()
+}
+
+// HASALA_EMAIL_API_BASE_URL reaches the Cloudflare client (a local run's mail
+// capture); unset, the client talks to Cloudflare; without [email] nothing is
+// sent at all.
+func TestTheSenderFollowsTheEmailGroup(t *testing.T) {
+	tok := filepath.Join(t.TempDir(), "cftoken")
+	if err := os.WriteFile(tok, []byte("test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	load := func(extra ...string) config.Config {
+		t.Helper()
+		env := append([]string{"HASALA_EMAIL_CF_ACCOUNT_ID=" + strings.Repeat("0a", 16), "HASALA_EMAIL_API_TOKEN_FILE=" + tok},
+			extra...)
+		cfg, err := config.LoadEnv("", func(name string) (string, bool) {
+			for _, kv := range env {
+				if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+					return v, true
+				}
+			}
+			return "", false
+		}, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	for _, c := range []struct {
+		extra []string
+		want  string
+	}{
+		{nil, mail.DefaultBaseURL},
+		{[]string{"HASALA_EMAIL_API_BASE_URL=" + mail.DefaultBaseURL}, mail.DefaultBaseURL},
+		{[]string{"HASALA_EMAIL_API_BASE_URL=http://127.0.0.1:18444/client/v4"}, "http://127.0.0.1:18444/client/v4"},
+	} {
+		s, err := newSender(load(c.extra...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cf, ok := s.(*mail.Cloudflare)
+		if !ok || cf.BaseURL != c.want {
+			t.Fatalf("%v: sender %T base %q, want %q", c.extra, s, cf.BaseURL, c.want)
+		}
+	}
+	if s, err := newSender(config.Config{}); err != nil || s != (mail.Unconfigured{}) {
+		t.Fatalf("no [email]: %T %v", s, err)
+	}
 }
