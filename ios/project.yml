@@ -20,6 +20,8 @@ options:
 packages:
   HasalaKit:
     path: HasalaKit
+  HasalaCore:
+    path: HasalaCore
 settings:
   base:
     DEVELOPMENT_TEAM: 8CFG28JHP3
@@ -48,6 +50,54 @@ targets:
         product: HasalaDesign
       - package: HasalaKit
         product: HasalaMocks
+      # Every HasalaCore L0-L4 product and HasalaModel (spec 04 §1.3), never
+      # CoreTestSupport or CoreSoftAuth.
+      - package: HasalaCore
+        product: CorePrimitives
+      - package: HasalaCore
+        product: HasalaText
+      - package: HasalaCore
+        product: CoreJSON
+      - package: HasalaCore
+        product: CoreTime
+      - package: HasalaCore
+        product: CoreMoney
+      - package: HasalaCore
+        product: CoreResources
+      - package: HasalaCore
+        product: CoreWire
+      - package: HasalaCore
+        product: CoreCrypto
+      - package: HasalaCore
+        product: CoreAuth
+      - package: HasalaCore
+        product: CoreNorm
+      - package: HasalaCore
+        product: CoreTemplate
+      - package: HasalaCore
+        product: CoreMail
+      - package: HasalaCore
+        product: CoreReplay
+      - package: HasalaCore
+        product: CoreInvariants
+      - package: HasalaCore
+        product: CoreCategorize
+      - package: HasalaCore
+        product: CoreDomain
+      - package: HasalaCore
+        product: CoreStore
+      - package: HasalaCore
+        product: CoreProjection
+      - package: HasalaCore
+        product: CoreSync
+      - package: HasalaCore
+        product: CoreOutbox
+      - package: HasalaCore
+        product: CoreMailbox
+      - package: HasalaCore
+        product: CoreSignals
+      - package: HasalaCore
+        product: HasalaModel
   HasalaTests:
     type: bundle.unit-test
     platform: iOS

@@ -7,9 +7,32 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		06C0052BE5C91B4404880E4A /* CoreResources in Frameworks */ = {isa = PBXBuildFile; productRef = D0720C28099C287DD50E4D4F /* CoreResources */; };
+		151E619D211EDCF6599F04C5 /* CorePrimitives in Frameworks */ = {isa = PBXBuildFile; productRef = 5D20E694BCA96316109A440F /* CorePrimitives */; };
+		16124AD3AD8C4E6EB70A7E12 /* CoreWire in Frameworks */ = {isa = PBXBuildFile; productRef = 4BE956E3E549FCEE1846BBAA /* CoreWire */; };
 		1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */ = {isa = PBXBuildFile; productRef = 34C3DF8F9E664D62F761D750 /* HasalaModels */; };
 		233C4F4AF054981975026771 /* HasalaDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */; };
 		40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */ = {isa = PBXBuildFile; productRef = D4E305223EA1101548600E38 /* HasalaMocks */; };
+		48ECBA5913A97D89BE69BE07 /* CoreCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = 39F59297A15B967DDD100B2C /* CoreCrypto */; };
+		4C19C24FA157879FD5C51CF2 /* CoreTime in Frameworks */ = {isa = PBXBuildFile; productRef = 8E82DC53338247FECBCD6200 /* CoreTime */; };
+		5DC6D50B4BA004371E877F9D /* CoreDomain in Frameworks */ = {isa = PBXBuildFile; productRef = 77A4DB49FDFF3B7572CCF01C /* CoreDomain */; };
+		680B3D193DEFB000EA061266 /* CoreMoney in Frameworks */ = {isa = PBXBuildFile; productRef = DD946602797ED1818019D47B /* CoreMoney */; };
+		68D5EDD4F6B63B6207A85D72 /* CoreProjection in Frameworks */ = {isa = PBXBuildFile; productRef = C8868BA7E624F3C4B16DA9D6 /* CoreProjection */; };
+		7355846430AA1B5EA2B00D4D /* CoreAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9745C4B104C24D3038E86B85 /* CoreAuth */; };
+		8F5D9B249986A4036726DDF0 /* CoreSync in Frameworks */ = {isa = PBXBuildFile; productRef = BC929A60A8109BCB6AF125DC /* CoreSync */; };
+		96D71AD369BD2ECBCBA15D3D /* CoreMailbox in Frameworks */ = {isa = PBXBuildFile; productRef = 5FFFFB8563C6C1FB0D12283D /* CoreMailbox */; };
+		9C9D3EF50820A1293EA907A1 /* CoreReplay in Frameworks */ = {isa = PBXBuildFile; productRef = D605C62A7FD5D29896C00517 /* CoreReplay */; };
+		A392A8758C7859428F54D66A /* CoreNorm in Frameworks */ = {isa = PBXBuildFile; productRef = F88D00C4BC2E2D2BC688A281 /* CoreNorm */; };
+		A58AC79BCDB34E84004E537A /* CoreOutbox in Frameworks */ = {isa = PBXBuildFile; productRef = 34F6670EB9282B53E16EF030 /* CoreOutbox */; };
+		AB63E7AB4C79DA8457316560 /* CoreSignals in Frameworks */ = {isa = PBXBuildFile; productRef = 798F6F830FD04FCB8597E231 /* CoreSignals */; };
+		AD087BBDE38B821FB8714365 /* CoreCategorize in Frameworks */ = {isa = PBXBuildFile; productRef = 9BD78A8F0471A2E889E92765 /* CoreCategorize */; };
+		B08BB10F61A6E5B2A5EF33A5 /* CoreStore in Frameworks */ = {isa = PBXBuildFile; productRef = 23F8A9B69DCB7E373A86DBD7 /* CoreStore */; };
+		B325B9632C552538DBCF736E /* HasalaModel in Frameworks */ = {isa = PBXBuildFile; productRef = 0EF73753E3DB56E3DCD93D57 /* HasalaModel */; };
+		CCE98AD022B74F8DBAF80415 /* HasalaText in Frameworks */ = {isa = PBXBuildFile; productRef = BA9C1C8857F509FBACB86EEA /* HasalaText */; };
+		E2B53B5A5B48AE4D90CC9643 /* CoreTemplate in Frameworks */ = {isa = PBXBuildFile; productRef = 8F2600A9A70788619D5B584F /* CoreTemplate */; };
+		E38715310C6FF1837BC06B62 /* CoreInvariants in Frameworks */ = {isa = PBXBuildFile; productRef = 032952CF5F61D4CFFE18294F /* CoreInvariants */; };
+		E5911A14773A2AAA431100D1 /* CoreJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 889A5A1A5B3CE0115C3ED09D /* CoreJSON */; };
+		F70634DEC62DC7B5C0E9BBF8 /* CoreMail in Frameworks */ = {isa = PBXBuildFile; productRef = 1F8CA27A65EAA522F86D645D /* CoreMail */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +55,7 @@
 /* Begin PBXFileReference section */
 		0187135A8AD204B6D05A454D /* HasalaUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HasalaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2558017F5B5D3271CE609AB7 /* HasalaKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HasalaKit; path = HasalaKit; sourceTree = SOURCE_ROOT; };
+		6AC0DA4E2D6313E21DBF5E50 /* HasalaCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HasalaCore; path = HasalaCore; sourceTree = SOURCE_ROOT; };
 		6B1A24344278E2914568DEF3 /* Hasala.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hasala.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		80EB6346B66A9649F68EF67D /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		985A440AE226C368D57A3AD3 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -91,6 +115,29 @@
 				1AEB18F899CBEE64D5AA7220 /* HasalaModels in Frameworks */,
 				233C4F4AF054981975026771 /* HasalaDesign in Frameworks */,
 				40AACB4CA42181553FE6F16C /* HasalaMocks in Frameworks */,
+				151E619D211EDCF6599F04C5 /* CorePrimitives in Frameworks */,
+				CCE98AD022B74F8DBAF80415 /* HasalaText in Frameworks */,
+				E5911A14773A2AAA431100D1 /* CoreJSON in Frameworks */,
+				4C19C24FA157879FD5C51CF2 /* CoreTime in Frameworks */,
+				680B3D193DEFB000EA061266 /* CoreMoney in Frameworks */,
+				06C0052BE5C91B4404880E4A /* CoreResources in Frameworks */,
+				16124AD3AD8C4E6EB70A7E12 /* CoreWire in Frameworks */,
+				48ECBA5913A97D89BE69BE07 /* CoreCrypto in Frameworks */,
+				7355846430AA1B5EA2B00D4D /* CoreAuth in Frameworks */,
+				A392A8758C7859428F54D66A /* CoreNorm in Frameworks */,
+				E2B53B5A5B48AE4D90CC9643 /* CoreTemplate in Frameworks */,
+				F70634DEC62DC7B5C0E9BBF8 /* CoreMail in Frameworks */,
+				9C9D3EF50820A1293EA907A1 /* CoreReplay in Frameworks */,
+				E38715310C6FF1837BC06B62 /* CoreInvariants in Frameworks */,
+				AD087BBDE38B821FB8714365 /* CoreCategorize in Frameworks */,
+				5DC6D50B4BA004371E877F9D /* CoreDomain in Frameworks */,
+				B08BB10F61A6E5B2A5EF33A5 /* CoreStore in Frameworks */,
+				68D5EDD4F6B63B6207A85D72 /* CoreProjection in Frameworks */,
+				8F5D9B249986A4036726DDF0 /* CoreSync in Frameworks */,
+				A58AC79BCDB34E84004E537A /* CoreOutbox in Frameworks */,
+				96D71AD369BD2ECBCBA15D3D /* CoreMailbox in Frameworks */,
+				AB63E7AB4C79DA8457316560 /* CoreSignals in Frameworks */,
+				B325B9632C552538DBCF736E /* HasalaModel in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +147,7 @@
 		3F434A001FBD45974A4DF414 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				6AC0DA4E2D6313E21DBF5E50 /* HasalaCore */,
 				2558017F5B5D3271CE609AB7 /* HasalaKit */,
 			);
 			name = Packages;
@@ -181,6 +229,29 @@
 				34C3DF8F9E664D62F761D750 /* HasalaModels */,
 				9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */,
 				D4E305223EA1101548600E38 /* HasalaMocks */,
+				5D20E694BCA96316109A440F /* CorePrimitives */,
+				BA9C1C8857F509FBACB86EEA /* HasalaText */,
+				889A5A1A5B3CE0115C3ED09D /* CoreJSON */,
+				8E82DC53338247FECBCD6200 /* CoreTime */,
+				DD946602797ED1818019D47B /* CoreMoney */,
+				D0720C28099C287DD50E4D4F /* CoreResources */,
+				4BE956E3E549FCEE1846BBAA /* CoreWire */,
+				39F59297A15B967DDD100B2C /* CoreCrypto */,
+				9745C4B104C24D3038E86B85 /* CoreAuth */,
+				F88D00C4BC2E2D2BC688A281 /* CoreNorm */,
+				8F2600A9A70788619D5B584F /* CoreTemplate */,
+				1F8CA27A65EAA522F86D645D /* CoreMail */,
+				D605C62A7FD5D29896C00517 /* CoreReplay */,
+				032952CF5F61D4CFFE18294F /* CoreInvariants */,
+				9BD78A8F0471A2E889E92765 /* CoreCategorize */,
+				77A4DB49FDFF3B7572CCF01C /* CoreDomain */,
+				23F8A9B69DCB7E373A86DBD7 /* CoreStore */,
+				C8868BA7E624F3C4B16DA9D6 /* CoreProjection */,
+				BC929A60A8109BCB6AF125DC /* CoreSync */,
+				34F6670EB9282B53E16EF030 /* CoreOutbox */,
+				5FFFFB8563C6C1FB0D12283D /* CoreMailbox */,
+				798F6F830FD04FCB8597E231 /* CoreSignals */,
+				0EF73753E3DB56E3DCD93D57 /* HasalaModel */,
 			);
 			productName = Hasala;
 			productReference = 6B1A24344278E2914568DEF3 /* Hasala.app */;
@@ -242,6 +313,7 @@
 			mainGroup = D21BE40AB0D056F511C7E382;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				8A1503CEEA6D71201A4EA0F6 /* XCLocalSwiftPackageReference "HasalaCore" */,
 				6919C4AA69B33810CF4D78D5 /* XCLocalSwiftPackageReference "HasalaKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -590,20 +662,116 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = HasalaKit;
 		};
+		8A1503CEEA6D71201A4EA0F6 /* XCLocalSwiftPackageReference "HasalaCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = HasalaCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		032952CF5F61D4CFFE18294F /* CoreInvariants */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreInvariants;
+		};
+		0EF73753E3DB56E3DCD93D57 /* HasalaModel */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaModel;
+		};
+		1F8CA27A65EAA522F86D645D /* CoreMail */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreMail;
+		};
+		23F8A9B69DCB7E373A86DBD7 /* CoreStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreStore;
+		};
 		34C3DF8F9E664D62F761D750 /* HasalaModels */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HasalaModels;
+		};
+		34F6670EB9282B53E16EF030 /* CoreOutbox */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreOutbox;
+		};
+		39F59297A15B967DDD100B2C /* CoreCrypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreCrypto;
+		};
+		4BE956E3E549FCEE1846BBAA /* CoreWire */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreWire;
+		};
+		5D20E694BCA96316109A440F /* CorePrimitives */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CorePrimitives;
+		};
+		5FFFFB8563C6C1FB0D12283D /* CoreMailbox */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreMailbox;
+		};
+		77A4DB49FDFF3B7572CCF01C /* CoreDomain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreDomain;
+		};
+		798F6F830FD04FCB8597E231 /* CoreSignals */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreSignals;
+		};
+		889A5A1A5B3CE0115C3ED09D /* CoreJSON */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreJSON;
+		};
+		8E82DC53338247FECBCD6200 /* CoreTime */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreTime;
+		};
+		8F2600A9A70788619D5B584F /* CoreTemplate */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreTemplate;
+		};
+		9745C4B104C24D3038E86B85 /* CoreAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAuth;
+		};
+		9BD78A8F0471A2E889E92765 /* CoreCategorize */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreCategorize;
 		};
 		9DD2CC7B388FF9B56F75BA2A /* HasalaDesign */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HasalaDesign;
 		};
+		BA9C1C8857F509FBACB86EEA /* HasalaText */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HasalaText;
+		};
+		BC929A60A8109BCB6AF125DC /* CoreSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreSync;
+		};
+		C8868BA7E624F3C4B16DA9D6 /* CoreProjection */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreProjection;
+		};
+		D0720C28099C287DD50E4D4F /* CoreResources */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreResources;
+		};
 		D4E305223EA1101548600E38 /* HasalaMocks */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HasalaMocks;
+		};
+		D605C62A7FD5D29896C00517 /* CoreReplay */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreReplay;
+		};
+		DD946602797ED1818019D47B /* CoreMoney */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreMoney;
+		};
+		F88D00C4BC2E2D2BC688A281 /* CoreNorm */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreNorm;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
