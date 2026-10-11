@@ -56,7 +56,9 @@ listed="$(allow_lines | awk '$1 != "*" { print $1 }' | sort)"
 dups="$(printf '%s\n' "$listed" | uniq -d)"
 [[ -z "$dups" ]] || problem "imports.allow lists a directory twice: $(echo $dups)"
 for d in $dirs; do
-	printf '%s\n' "$listed" | grep -qx "$d" || problem "Sources/HasalaCore/$d/ has no line in imports.allow"
+	# A here-string, not `printf | grep -q`: under pipefail an early match can kill the
+	# writer with SIGPIPE and fail the pipeline.
+	grep -qxF -- "$d" <<<"$listed" || problem "Sources/HasalaCore/$d/ has no line in imports.allow"
 done
 for d in $listed; do
 	[[ -d "$SRC/$d" ]] || problem "imports.allow lists $d, which is not a directory under Sources/HasalaCore"

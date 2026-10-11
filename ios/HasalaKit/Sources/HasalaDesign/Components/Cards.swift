@@ -159,11 +159,20 @@ public struct TxnRow: View {
 
   public var body: some View {
     HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: HSpacing.listRowGap) {
-      HueDisc(hue: row.hue, glyph: row.glyph, size: compact ? 32 : HSpacing.listRowLeadingDisc,
-              iconSize: compact ? 16 : 20)
+      if let monogram = row.monogram {
+        MonogramDisc(monogram, size: compact ? 32 : HSpacing.listRowLeadingDisc)
+      } else {
+        HueDisc(hue: row.hue, glyph: row.glyph, size: compact ? 32 : HSpacing.listRowLeadingDisc,
+                iconSize: compact ? 16 : 20)
+      }
       VStack(alignment: .leading, spacing: 0) {
-        Text(row.merchant).hType(compact ? .subheadline.weight(.semibold) : .rowTitle)
-          .foregroundStyle(HColor.listRowTitle).singleLineAtDefaultTextSize()
+        HStack(spacing: 6) {
+          if row.toReview {
+            Circle().fill(HColor.actionAccent).frame(width: 8, height: 8).accessibilityHidden(true)
+          }
+          Text(row.merchant).hType(compact ? .subheadline.weight(.semibold) : .rowTitle)
+            .foregroundStyle(HColor.listRowTitle).singleLineAtDefaultTextSize()
+        }
         Text(row.detail).font(.custom(HWeight.regular.interFace, size: 13, relativeTo: .footnote))
           .foregroundStyle(HColor.listRowSupporting).singleLineAtDefaultTextSize()
         if typeSize.isAccessibilitySize { amount }
@@ -174,12 +183,46 @@ public struct TxnRow: View {
       }
     }
     .frame(maxWidth: .infinity, minHeight: compact ? 48 : HSpacing.listRowMinHeightTwoLine, alignment: .leading)
-    .accessibilityElement(children: .combine)
+    // One element with one label: a nested amount element would be its own tiny target.
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(spokenLabel)
+  }
+
+  private var spokenLabel: String {
+    let amount = hidden
+      ? "Amount hidden"
+      : (row.isIncome ? "plus " : "") + "\(row.amount.currency) \(MoneyFormat.string(row.amount.minor))"
+    return [row.toReview ? "To review" : nil, row.merchant, row.detail, amount].compactMap { $0 }
+      .joined(separator: ", ")
   }
 
   private var amount: some View {
     MoneyText(row.amount, figure: compact ? .compact : .row, hidden: hidden, hiddenGlyphs: 3,
               color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: row.isIncome ? .income : .none)
+  }
+}
+
+/// A grey disc with a merchant's first letter, for a merchant not sorted yet (Paper "L" for Lulu;
+/// spec 04 §14.6 `MonogramDisc`).
+public struct MonogramDisc: View {
+  let letter: String
+  let size: CGFloat
+
+  public init(_ letter: String, size: CGFloat = HSpacing.listRowLeadingDisc) {
+    self.letter = letter
+    self.size = size
+  }
+
+  public var body: some View {
+    Circle()
+      .fill(HColor.listRowMonogram)
+      .frame(width: size, height: size)
+      .overlay {
+        Text(letter)
+          .font(.custom(HWeight.semibold.interFace, size: size * 0.42))
+          .foregroundStyle(HColor.textPrimary)
+      }
+      .accessibilityHidden(true)
   }
 }
 
