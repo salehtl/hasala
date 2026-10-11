@@ -236,7 +236,7 @@ in
           machine.wait_until_succeeds(f"curl -sf {API}/api/v1/healthz")
           machine.succeed("systemctl is-active hasala.target")
           assert machine.succeed("systemctl show -P Result hasala-migrate.service").strip() == "success"
-          machine.succeed("journalctl -u hasala-migrate -o cat | grep -q 'hasalad migrate: done'")
+          machine.succeed("journalctl -u hasala-migrate -o cat | grep 'hasalad migrate: done' >/dev/null")
 
       with subtest("AT-V2: the API answers on loopback"):
           body = json.loads(machine.succeed(f"curl -sf {API}/api/v1/healthz"))
@@ -247,7 +247,7 @@ in
               local = line.split()[3]
               host = local.rsplit(":", 1)[0]
               assert host in ("127.0.0.1", "[::1]"), f"TCP listener on {local}: {line}"
-          machine.fail("ss -ltnpH | grep -q postgres")
+          machine.fail("ss -ltnpH | grep postgres >/dev/null")
           addr = machine.succeed(
               "ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1"
           ).strip()
@@ -281,7 +281,8 @@ in
               " HASALA_PG_DSN='host=/run/hasala-postgresql dbname=hasala user=hasala_migrate'"
               " HASALA_RP_ID=hasala.app HASALA_RP_ORIGINS=https://hasala.app"
               " HASALA_HEADROOM_PATH=/tmp HASALA_HTTP_LISTEN=127.0.0.1:18471"
-              f" {HASALAD} serve 2>&1; echo exit=$?; false"
+              # The driver runs every command under `set -euo pipefail`.
+              f" {HASALAD} serve 2>&1 || echo exit=$?; false"
           )
           assert "exit=2" in out and "O2" in out, out
 
@@ -293,8 +294,8 @@ in
                   " INSERT INTO canary VALUES ('HASALA-LOG-CANARY')\" -U hasala_migrate",
               )
           )
-          machine.wait_until_succeeds("journalctl -u hasala-postgresql -o cat | grep -q 'violates check constraint'")
-          machine.fail("journalctl -u hasala-postgresql -o cat | grep -q HASALA-LOG-CANARY")
+          machine.wait_until_succeeds("journalctl -u hasala-postgresql -o cat | grep 'violates check constraint' >/dev/null")
+          machine.fail("journalctl -u hasala-postgresql -o cat | grep HASALA-LOG-CANARY >/dev/null")
 
       with subtest("AT-V8: a restart re-runs migrations as a no-op, with no pre-migration dump"):
           runs = lambda: int(machine.succeed("journalctl -u hasala-migrate -o cat | grep -c 'hasalad migrate: done' || true").strip())
@@ -305,20 +306,20 @@ in
           # At least one more run: a console start (and its restarts while it
           # is not built) also pulls hasala-migrate in.
           assert runs() > before, (before, runs())
-          machine.succeed("journalctl -u hasala-backup-premigrate -o cat | grep -q 'no pending migrations'")
-          machine.fail(f"ls {BACKUP_DIR} | grep -q premigrate")
+          machine.succeed("journalctl -u hasala-backup-premigrate -o cat | grep 'no pending migrations' >/dev/null")
+          machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
 
       with subtest("AT-V9: hasala-admin runs each mode in a sandbox, as root only"):
           for mode in ["invite", "purge-user", "verify", "version", "migrate"]:
               machine.succeed(f"hasala-admin {mode} --help")
-          machine.succeed("hasala-admin version | grep -q '^hasalad '")
+          machine.succeed("hasala-admin version | grep '^hasalad ' >/dev/null")
           code = machine.succeed("hasala-admin invite mint --note vm-note-text 2>/dev/null").strip()
           assert re.fullmatch(r"[A-Z2-7]{24}", code), code
-          machine.succeed("hasala-admin migrate --status | grep -q '^pending 0$'")
-          machine.succeed("journalctl -t hasala-admin -o cat | grep -q 'mode=invite by=root'")
+          machine.succeed("hasala-admin migrate --status | grep '^pending 0$' >/dev/null")
+          machine.succeed("journalctl -t hasala-admin -o cat | grep 'mode=invite by=root' >/dev/null")
           # Nowhere in the journal: not from the wrapper, not from systemd's
           # "Started <unit>" line, not from hasalad.
-          machine.fail("journalctl -o cat | grep -q vm-note-text")
+          machine.fail("journalctl -o cat | grep vm-note-text >/dev/null")
           machine.fail("hasala-admin console")
           machine.fail("hasala-admin serve")
           machine.fail(as_user("alice", "hasala-admin version"))
@@ -334,7 +335,7 @@ in
           assert machine.succeed(f"stat -c '%a %U' {BACKUP_DIR}").strip() == "700 hasala-backup"
           machine.fail(f"age -d -i /root/other-identity.txt {dump} > /dev/null")
           machine.succeed(
-              f"age -d -i /root/test-identity.txt {dump} | pg_restore --list | grep -q ' TABLE DATA public op_log '"
+              f"age -d -i /root/test-identity.txt {dump} | pg_restore --list | grep ' TABLE DATA public op_log ' >/dev/null"
           )
           ledger = machine.succeed(f"ls {BACKUP_DIR}/hasala-ledger-*.tar.age").strip()
           machine.succeed(f"age -d -i /root/test-identity.txt {ledger} | tar -tf - > /dev/null")
@@ -375,7 +376,7 @@ in
           assert re.search(r"^CapabilityBoundingSet=$", props, re.M), props
           for net in ["10.0.0.0/8", "192.168.0.0/16", "100.64.0.0/10"]:
               assert net in props, (net, props)
-          machine.succeed("systemctl show -P PrivateNetwork hasala-postgresql.service | grep -qx yes")
+          machine.succeed("systemctl show -P PrivateNetwork hasala-postgresql.service | grep -x yes >/dev/null")
           # The secrets are only ever *_FILE paths into the credentials directory.
           env = machine.succeed("systemctl show -P Environment hasalad.service")
           assert "/run/credentials/hasalad.service/auth-key" in env or "%d/auth-key" in env, env
@@ -411,7 +412,7 @@ in
       with subtest("AT-V17/V18/V19: the console and its kernel rule"):
           machine.wait_until_succeeds(
               "systemctl is-active hasala-console.service"
-              " || journalctl -u hasala-console -o cat | grep -q 'not built yet'"
+              " || journalctl -u hasala-console -o cat | grep 'not built yet' >/dev/null"
           )
           built = machine.execute("systemctl is-active hasala-console.service")[0] == 0
           if not built:
@@ -435,9 +436,9 @@ in
               " -p WorkingDirectory=/var/empty"
               f" $(command -v python3) -m http.server --bind ::1 {CONSOLE_PORT}"
           )
-          machine.wait_until_succeeds(f"ss -ltnH 'sport = :{CONSOLE_PORT}' | grep -q '127.0.0.1:{CONSOLE_PORT}'")
-          machine.wait_until_succeeds(f"ss -ltnH 'sport = :{CONSOLE_PORT}' | grep -qF '[::1]:{CONSOLE_PORT}'")
-          machine.succeed(f"ip6tables -w -S OUTPUT | grep -q -- '-d ::1/128 .*--dport {CONSOLE_PORT} -j hasala-console-out'")
+          machine.wait_until_succeeds(f"ss -ltnH 'sport = :{CONSOLE_PORT}' | grep '127.0.0.1:{CONSOLE_PORT}' >/dev/null")
+          machine.wait_until_succeeds(f"ss -ltnH 'sport = :{CONSOLE_PORT}' | grep -F '[::1]:{CONSOLE_PORT}' >/dev/null")
+          machine.succeed(f"ip6tables -w -S OUTPUT | grep -- '-d ::1/128 .*--dport {CONSOLE_PORT} -j hasala-console-out' >/dev/null")
           url = f"http://127.0.0.1:{CONSOLE_PORT}/"
           url6 = f"http://[::1]:{CONSOLE_PORT}/"
           # The kernel rule: root, a user shell and a DynamicUser service (as
@@ -496,7 +497,7 @@ in
           machine.succeed("install -d -o hasala-pg -g hasala-db -m 700 /var/lib/hasala-postgresql/16")
           machine.succeed("echo 16 > /var/lib/hasala-postgresql/16/PG_VERSION")
           machine.fail("systemctl start hasala-postgresql.service")
-          machine.succeed("journalctl -u hasala-postgresql -o cat | grep -q 'Dump and restore first'")
+          machine.succeed("journalctl -u hasala-postgresql -o cat | grep 'Dump and restore first' >/dev/null")
           machine.succeed("rm -r /var/lib/hasala-postgresql/16")
           machine.succeed("systemctl reset-failed")
           machine.succeed("systemctl start hasala.target")
