@@ -4,6 +4,7 @@
 // figures (03a §7.2), plus the projection's own contracts.
 import CoreCategorize
 import CoreDomain
+import CoreInvariants
 import CoreReplay
 import CoreTime
 import CoreWire
@@ -29,6 +30,7 @@ struct MayaScenarioTests {
     #expect(Self.maya.state.anomalies.isEmpty)
     #expect(Self.maya.state.forks.isEmpty)
     #expect(Self.maya.state.unreadable.isEmpty)
+    #expect(!Invariants.halts(Invariants.check(Self.maya.state)))
   }
 
   @Test("plan income, planned, ready to assign, split")

@@ -2,6 +2,7 @@
 // oracle's state, byte for byte, with diagnostic text blanked (A-21), through
 // the Swift fold at schema 4 (spec 03c acceptance test 2: v4 additions leave
 // every v3 case byte-identical).
+import CoreInvariants
 import CoreJSON
 import CorePrimitives
 import CoreReplay
@@ -129,5 +130,12 @@ struct ReplayConformanceTests {
       try Replay.foldOps(ours[i].ops, seq: ours[i].seq, writerID: ours[i].writerID, into: &s)
     }
     #expect(s.serializedSHA256(blankingDiagnostics: true) == (try c["expect"]!.string("state_sha256")))
+  }
+
+  @Test("every oracle state passes the state-level invariants", arguments: files)
+  func invariants(_ file: String) throws {
+    guard case .state(let s) = try Self.fold(try Fixtures.json("replay/\(file)")) else { return }
+    let hard = Invariants.check(s).filter { $0.severity == .hardStop }
+    #expect(hard.isEmpty, "\(file): \(hard)")
   }
 }
