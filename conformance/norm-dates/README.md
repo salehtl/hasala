@@ -54,7 +54,8 @@ render the same instant the same way.
 ### `instants[]`: `{name, input, expect}`
 
 The wire timestamp grammar (`parseInstantMs` and `canonicalTime` in
-`src/wire/op.ts`, the same rules as `server/internal/oplog/opref`):
+`src/wire/op.ts`; Go's `server/internal/oplog/opref` applies the same rules,
+the zero time aside, see below):
 
 - `expect` is `{"ok": false}` when the string is refused, else
   `{"ok": true, "epoch_ms", "canonical", "utc_day"}`.
@@ -64,7 +65,12 @@ The wire timestamp grammar (`parseInstantMs` and `canonicalTime` in
 - `epoch_ms`: milliseconds since the Unix epoch as a decimal string (it may be
   negative); the fraction is truncated, never rounded.
 - `canonical`: `YYYY-MM-DDTHH:MM:SS.mmmZ` in UTC. A string whose UTC instant
-  would need a year outside 0000-9999, and Go's zero time
-  `0001-01-01T00:00:00Z`, are refused.
+  would need a year outside 0000-9999 is refused.
+- Go's zero time `0001-01-01T00:00:00Z` is refused (`go-zero-time-refused`).
+  The TypeScript oracle refuses it inside `parseInstantMs`; Go's
+  `parseWireTime` accepts it, and opref refuses it one level up, in the op
+  checks that reject a zero `authored_at` or `received_at` (`IsZero`). A port
+  refuses it wherever it parses an instant, as the oracle does. One
+  millisecond later (`year-one`) is accepted everywhere.
 - `utc_day`: the UTC calendar day of `epoch_ms` (`YYYY-MM-DD`), the day the
   duplicate fingerprint keys on (`replay/state.ts` `utcDay`).
