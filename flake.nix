@@ -139,6 +139,10 @@
       checks = forAllSystems (
         system: pkgs: {
           hasalad = self.packages.${system}.hasalad;
+          # Spec 05 §7.4: the module's rendered tunnel config against the golden
+          # file (G1), the structural rules L1–L9, the routing table, and every
+          # negative fixture rejected.
+          ingress-lint = import ./infra/qa/nix/tests/ingress-lint.nix { inherit self nixpkgs pkgs; };
           formatting =
             pkgs.runCommand "hasala-formatting" { nativeBuildInputs = [ (treefmtFor system pkgs) ]; }
               ''
