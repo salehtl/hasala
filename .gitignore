@@ -40,6 +40,8 @@ spike/phase2/
 ios/**/xcuserdata/
 ios/**/DerivedData/
 ios/build/
+ios/**/.build/
+ios/**/.swiftpm/
 *.p8
 *.mobileprovision
 .env
