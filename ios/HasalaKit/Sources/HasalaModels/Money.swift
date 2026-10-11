@@ -92,3 +92,41 @@ public struct Permille: Sendable, Hashable, Comparable, Codable {
 extension Comparable {
   func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
 }
+
+public extension MoneyFormat {
+  /// Parses a typed amount ("297", "45.15", "1,800.5") into minor units without a float
+  /// (spec 04 §14.6 `parseMinorDraft`). Nil for anything else: letters, a second point,
+  /// more than two decimals, a sign, or nothing at all.
+  static func parseMinor(_ draft: String) -> Int64? {
+    var whole: Int64 = 0
+    var fils: Int64 = 0
+    var decimals = -1
+    var digits = 0
+    for ch in draft where ch != "," && ch != " " {
+      if ch == "." {
+        guard decimals < 0 else { return nil }
+        decimals = 0
+        continue
+      }
+      guard let d = ch.wholeNumberValue, ch.isASCII else { return nil }
+      digits += 1
+      if decimals >= 0 {
+        decimals += 1
+        guard decimals <= 2 else { return nil }
+        fils = fils * 10 + Int64(d)
+      } else {
+        guard whole < 100_000_000_000 else { return nil }
+        whole = whole * 10 + Int64(d)
+      }
+    }
+    guard digits > 0 else { return nil }
+    if decimals == 1 { fils *= 10 }
+    return whole * 100 + fils
+  }
+
+  /// The editable form of an amount: "297.00" (no grouping), for a field's first value.
+  static func draft(_ minor: Int64) -> String {
+    let m = minor.magnitude
+    return "\(m / 100)." + (m % 100 < 10 ? "0" : "") + "\(m % 100)"
+  }
+}
