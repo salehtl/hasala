@@ -270,10 +270,15 @@ jobs:
 
       # gitleaks from the flake's pinned nixpkgs (flake.lock), so its version
       # moves only with the lock. --redact: this log is public.
+      # --log-opts HEAD: every commit reachable from what is being checked (on
+      # a pull request, its merge commit: main's history plus the PR's
+      # commits), not gitleaks' default --all, which also scans every other
+      # branch the full fetch brings in. Those are scanned by their own pull
+      # requests; with --all, one branch's findings fail every open PR.
       - name: gitleaks
         run: >-
           nix shell --inputs-from . nixpkgs#gitleaks --command
-          gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .
+          gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
   # The iOS app (ios/): token generator freshness, the HasalaKit package tests on
   # macOS, then a simulator build with the unit and UI smoke tests. Nothing is
