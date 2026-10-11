@@ -302,6 +302,15 @@ public enum Projector {
       try db.execute(
         sql: "INSERT INTO bill_resolution (bill, due, resolution, txn, until, at_seq) VALUES (?,?,?,?,?,?)", arguments: StatementArguments(args))
     }
+    for c in s.checkins.values {
+      let args: [(any DatabaseValueConvertible)?] = [
+        c.id, c.account, c.asOf, (try? parseInstantMs(c.asOf)) ?? 0, c.balanceMinor, c.source, c.resolution, c.adjustmentMinor,
+        c.void, c.atSeq,
+      ]
+      try db.execute(
+        sql: "INSERT INTO checkin (id, account, as_of, as_of_ms, balance_minor, source, resolution, adjustment_minor, void, at_seq) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        arguments: StatementArguments(args))
+    }
   }
 
   private static func writeNotices(_ db: Database, _ s: State) throws {

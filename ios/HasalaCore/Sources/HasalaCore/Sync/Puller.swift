@@ -24,11 +24,23 @@ public struct PulledRow: Sendable, Hashable {
 /// here, before the page is persisted. Throwing (e.g.
 /// `.halted(.inconsistent(...))`) keeps the whole page out.
 ///
-/// TODO(WS-10): CoreReplay's fold and CoreInvariants' incremental set plug in
-/// here; until then the app's projection reads `wire_rows` through
-/// `StoredLog`.
+/// The fold works on a copy: the page's transaction writes the rows, the
+/// cursor and the snapshot change `fold` returns together, and only then does
+/// `pageCommitted` make the copy current (`pageAbandoned` drops it when the
+/// transaction failed). `pullEnded` follows every pull, whatever its outcome:
+/// the observer projects there, once per pull rather than once per page.
+/// `LedgerPageObserver` is the production observer.
 public protocol PageObserver: Sendable {
-  func fold(_ rows: [PulledRow]) async throws(SyncStop)
+  func fold(_ rows: [PulledRow]) async throws(SyncStop) -> FoldSnapshotChange
+  func pageCommitted() async
+  func pageAbandoned() async
+  func pullEnded() async
+}
+
+extension PageObserver {
+  public func pageCommitted() async {}
+  public func pageAbandoned() async {}
+  public func pullEnded() async {}
 }
 
 public struct PullSummary: Sendable, Hashable {
@@ -44,6 +56,17 @@ enum Puller {
   static let pageLimit = 500
 
   static func pull(_ ctx: SyncContext, observer: (any PageObserver)?) async throws(SyncStop) -> PullSummary {
+    do {
+      let summary = try await pages(ctx, observer: observer)
+      await observer?.pullEnded()
+      return summary
+    } catch {
+      await observer?.pullEnded()
+      throw error
+    }
+  }
+
+  static func pages(_ ctx: SyncContext, observer: (any PageObserver)?) async throws(SyncStop) -> PullSummary {
     var summary = PullSummary()
     var emptyIncomplete = 0
     while true {
@@ -178,11 +201,18 @@ enum Puller {
             createdAt: page.rows[i].created_at, blob: r.blob, headSig: r.headSig, disposition: disposition))
         newHeads[w] = Chain.Head(counter: c, hash: bh)
       }
-      if let observer { try await observer.fold(decided) }
+      var snapshot = FoldSnapshotChange.keep
+      if let observer { snapshot = try await observer.fold(decided) }
       let now = ctx.clock.nowMs()
-      try ctx.storeCall { () throws(StoreError) in
-        try ctx.store.persistPage(rows: records, heads: newHeads, cursor: last, at: now)
+      do {
+        try ctx.storeCall { () throws(StoreError) in
+          try ctx.store.persistPage(rows: records, heads: newHeads, cursor: last, at: now, snapshot: snapshot)
+        }
+      } catch {
+        await observer?.pageAbandoned()
+        throw error
       }
+      await observer?.pageCommitted()
       if summary.alarms > 0 {
         try? ctx.store.recordFoldEvent(kind: "integrity_alarm", detail: "aead_failed", at: now)
       }

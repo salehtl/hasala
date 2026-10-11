@@ -325,10 +325,16 @@ public final class LedgerStore: Sendable {
   }
 
   /// §5.2 step 6: the page's rows, the new heads and the cursor, in ONE
-  /// transaction. Heads come from verified bodies only.
-  public func persistPage(rows: [WireRowRecord], heads: [WriterID: Chain.Head], cursor: Int64, at: Int64)
-    throws(StoreError)
-  {
+  /// transaction. Heads come from verified bodies only. `snapshot` is the fold
+  /// snapshot the page's fold produced (§5.3), bound to the row at `cursor`, so
+  /// the snapshot and the cursor commit together.
+  public func persistPage(
+    rows: [WireRowRecord], heads: [WriterID: Chain.Head], cursor: Int64, at: Int64,
+    snapshot: FoldSnapshotChange = .keep
+  ) throws(StoreError) {
+    let tip = rows.last(where: { $0.seq == cursor }).map {
+      Self.boundTip(seq: $0.seq, writerID: $0.writerID, counter: $0.counter, blobHash: $0.blobHash, prevHash: $0.prevHash)
+    }
     try write { db in
       for r in rows {
         try db.execute(
@@ -352,6 +358,7 @@ public final class LedgerStore: Sendable {
       }
       try db.execute(
         sql: "UPDATE sync_state SET cursor_hot = ?, last_pull_at = ? WHERE id = 1", arguments: [cursor, at])
+      try Self.applySnapshot(snapshot, cursor: cursor, tip: tip, at: at, db)
     }
   }
 
