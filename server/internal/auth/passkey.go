@@ -334,10 +334,10 @@ func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string) (st
 // FinishRegistration verifies the authenticator's response and, if it holds up,
 // creates the account.
 //
-// The account, its invite redemption, its oplog counter, its ingest writer AND
-// its first credential all commit together or not at all. That is the same
-// all-or-nothing UpsertUser already guaranteed for the first four, extended to the
-// fifth for the reason the others are in it: an account with no credential is an
+// The account, its invite redemption, its oplog counter AND its first
+// credential all commit together or not at all. That is the same
+// all-or-nothing UpsertUser already guaranteed for the first three, extended
+// to the fourth for the reason the others are in it: an account with no credential is an
 // account nobody can ever sign into, and it would have spent an invite code to
 // get there.
 //

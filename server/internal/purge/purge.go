@@ -1,82 +1,37 @@
-// Package purge deletes an account and everything that references it, and
-// enforces Phase 1's plaintext-retention deadline by doing the same thing on a
-// timer. Spec §3.10.
+// Package purge deletes an account and everything that references it (spec
+// 02 §15), and owns ledgerd's account-deletion challenge until WS-3's step-up
+// replaces it.
 //
-// # What "delete" means, in Phase 1 and after
+// # What "delete" means
 //
-// The spec describes deletion as "crypto-shredding plus purge": destroy the
-// wrapped keys and the ciphertext is already gone, then remove the rows. Phase
-// 1 has no crypto at all — every blob in op_log and quarantine is plaintext —
-// so there is nothing to shred and the purge has to be the whole of it. That is
-// stated rather than assumed, because the two failure modes are opposite: a
-// Phase 3 purge that missed a table leaves ciphertext nobody can open, while a
-// Phase 1 purge that misses one leaves the user's readable financial history in
-// the database after they asked for it to be gone.
-//
-// PHASE 3 CHANGES, concretely: the wrapped-key rows arrive (there are none
-// today), destroying them becomes the step that makes backups inert, and the
-// row deletion below stays exactly as it is. Backups are NOT rewritten in
-// either phase; they age out on their own schedule, and until they do, Phase
-// 1's backups contain plaintext. The consent document says so, and
-// EnforceRetention is what bounds how long that is true for a live account.
+// Every op-log blob is ciphertext the server cannot open; deleting the account
+// deletes the rows that hold it and the wrapped key material, in one
+// transaction. Backups are not rewritten; they age out on their own schedule
+// (spec 02 §15.5, 05 §5.8).
 //
 // # Why the relation list is discovered and not written down
 //
 // A purge is only as good as its least-remembered table. This package asks the
 // database which relations carry a user_id, and iterates THAT — so a table
-// added by a later task is covered the moment it exists, and one that cannot be
-// covered automatically has to be classified by hand before any purge will run
-// at all (see Classify). The alternative — a hand-written list — fails silently
-// and stays wrong until someone notices rows for a deleted account, which is
-// exactly the day it matters.
-//
-// It asks pg_class, NOT information_schema, and that distinction is worth three
-// separate holes: information_schema does not list materialized views at all
-// (spec §5 plans to create one over op_log), a `table_schema = 'public'` filter
-// cannot see `archive.op_log_2026`, and information_schema is privilege-filtered
-// so the non-owner runtime role plan D5 mandates would simply not be shown a
-// relation it lacks rights on. Each of those was a relation that went unpurged
-// AND unreported while Purge returned success. See relationFilter.
-//
-// A materialized view cannot be deleted from, so the purge REFRESHES it once
-// the underlying rows are gone and then re-counts; a view that is still not
-// empty, or that the role may not refresh, refuses the whole purge.
-//
-// Two tables cannot be discovered and are named explicitly:
-//
-//   - dict_submissions (Task 33) is keyed by a salted HMAC of the user id, so
-//     there is no user_id column to find. [dict.Dict.ForgetSubmitter]
-//     recomputes the pseudonym and deletes the matches.
-//   - smtp_rejections (Task 23) is a per-day COUNT of protocol-level refusals
-//     that never resolved a recipient. It is not user-linked and cannot be, so
-//     there is nothing to delete — asserted deliberately, in notUserLinked and
-//     in a test, rather than left as an omission that looks identical to an
-//     oversight.
+// added by a later change is covered the moment it exists, and one that cannot
+// be covered automatically has to be classified by hand before any purge will
+// run at all (see Classify). It asks pg_class, NOT information_schema: the
+// latter does not list materialized views, cannot see other schemas through a
+// `table_schema = 'public'` filter, and is privilege-filtered for the non-owner
+// runtime role. A materialized view cannot be deleted from, so the purge
+// REFRESHES it once the underlying rows are gone and then re-counts.
 //
 // # Ordering, and why it is not arbitrary
 //
 // The deletion itself is ONE statement: DELETE FROM users. Everything else
-// follows through ON DELETE CASCADE, and that is load bearing rather than
-// convenient:
-//
-//   - quarantine has a BEFORE DELETE trigger refusing any removal that no
-//     quarantine_removals record accounts for, with account deletion as its one
-//     documented exemption — detected by the users row already being gone.
-//   - key_history has an append-only trigger with the same exemption, on the
-//     same detection.
-//
-// Both exemptions are reachable only through the cascade, because only the
-// cascade runs after the parent row is invisible to the transaction. A purge
-// that issued its own DELETE against those tables first would be refused by the
-// triggers, which is the correct answer to that question. The sweep below runs
+// follows through ON DELETE CASCADE, and that is load bearing: op_log and
+// key_history are append-only by trigger, writers revoke-once, and each
+// trigger's one exemption is "the users row is already gone", which only the
+// cascade satisfies. The runtime role holds no DELETE on op_log, key_history
+// or writers at all; the cascade runs as the referencing table's owner. A
+// purge that issued its own DELETE against those tables first would be
+// refused, which is the correct answer to that question. The sweep below runs
 // AFTER the cascade for the same reason.
-//
-// op_log is append-only by POLICY, not by constraint, and deleting a user's
-// rows tears a permanent hole in the gap-free seq invariant. For a whole-account
-// purge that is fine — the account is gone, and there is nobody left the
-// invariant is a promise to. It is only fine because the purge is all-or-nothing:
-// everything below runs in one transaction, and a purge that cannot complete
-// rolls back rather than leaving a live user with a holed log.
 package purge
 
 import (
@@ -94,7 +49,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/auth"
-	"github.com/salehtl/hasala/server/internal/dict"
 )
 
 // handledWithoutUserID names the relations that hold per-user rows under some
@@ -107,9 +61,6 @@ import (
 // of every account, waved through by a list that was written about a different
 // object with the same last name.
 var handledWithoutUserID = []string{
-	// Keyed by HMAC-SHA256(server key, pattern || category || user_id).
-	// Purge calls dict.Dict.ForgetSubmitter.
-	"public.dict_submissions",
 	// The account table itself: keyed by `id`, so schema discovery does not see
 	// it. It is deleted by name, and that one statement is what cascades
 	// everything else.
@@ -120,38 +71,6 @@ var handledWithoutUserID = []string{
 // so a purge correctly touches none of them. Every entry is a decision, not an
 // omission.
 var notUserLinked = []string{
-	// Per-day counts of protocol-level refusals that never resolved a
-	// recipient. There is no user to scope a row to; a count is not a record
-	// of a person. See 00006_diagnostics.sql.
-	"public.smtp_rejections",
-	// Operator-published parse templates. Not authored by users and shared by
-	// all of them.
-	"public.templates",
-	// The publish/remove delta channel over public.templates, which devices
-	// poll to learn what changed since their cursor. Every column describes an
-	// OPERATOR action on a shared template — template id, version, action,
-	// timestamp — and none of them names or derives from a user. It survives a
-	// purge for the same reason public.templates does: deleting a row here
-	// would not erase anything about the deleted account, it would tear a hole
-	// in a monotonic sequence every OTHER device reads by. See
-	// 00024_template_publication_log.sql.
-	"public.template_publication_log",
-	// The global merchant dictionary.
-	//
-	// The justification is NOT k-anonymity, and an earlier version of this
-	// comment claimed it was. k gates PUBLICATION, not storage: an entry sits
-	// in this table from its first submission with distinct_submitter_count = 1
-	// and published_at NULL, so a single user's "dr jane-example clinic"
-	// really is here, unpublished, and survives their deletion. What makes that
-	// acceptable is the thing purge actually does — ForgetSubmitter destroys
-	// the only link between the pattern and the person, leaving a merchant
-	// string attributable to nobody. See the concern in the Task 34 fix report
-	// about reaping (distinct_submitter_count = 0 AND published_at IS NULL),
-	// which would remove even the unattributable residue.
-	"public.dict_entries",
-	// Per-bank demand counters from onboarding. A bank name and a count, never
-	// linked to who asked. See 00012_waitlist.sql.
-	"public.waitlist",
 	// Single-use beta invite codes. A row is a code hash, a note in the
 	// operator's words, and — once spent — a `redeemed_by` link to the account
 	// that spent it.
@@ -167,15 +86,13 @@ var notUserLinked = []string{
 	// refuse the whole purge because SET NULL is exactly the silent survival it
 	// guards against — while CASCADE, the action it would demand instead, would
 	// DELETE the row and put a spent code back into circulation. Neither
-	// outcome is wanted, so the table is not user-scoped and says so here. See
-	// 00020_invite_codes.sql.
+	// outcome is wanted, so the table is not user-scoped and says so here.
 	"public.invite_codes",
 	// The deleted-account tombstone: SHA-256 of the session tokens that were
 	// live when an account was deleted, so the devices holding them get a 410
 	// instead of a 401 and can safely wipe. It is WRITTEN BY the deletion, so it
 	// is the one table that must survive one, and it carries no user id, no
-	// subject, no address and nothing derived from them — see
-	// 00021_deleted_account_sessions.sql, which argues the privacy case in full.
+	// subject, no address and nothing derived from them.
 	"public.deleted_account_sessions",
 	// goose's own migration ledger.
 	"public.goose_db_version",
@@ -195,11 +112,6 @@ type Report struct {
 	// a table silently skipped.
 	Rows map[string]int
 
-	// DictSubmissions counts the submitter pseudonyms forgotten. It is separate
-	// because the table is not user-scoped in the schema and cannot be counted
-	// the same way.
-	DictSubmissions int
-
 	// SweptWithoutCascade names tables whose rows survived the cascade and had
 	// to be deleted explicitly. It is not decoration: an entry here means the
 	// table's user_id foreign key is missing ON DELETE CASCADE, so every OTHER
@@ -214,18 +126,13 @@ type Report struct {
 	// nothing else in the system knows about. Spec §5 contemplates one; it
 	// should still be looked at.
 	RefreshedViews []string
-
-	// WithoutConsentRecord is populated by EnforceRetention only: accounts with
-	// no consent row and therefore no recorded retention deadline. They are
-	// NOT purged — see EnforceRetention.
-	WithoutConsentRecord []uuid.UUID
 }
 
 func newReport() Report { return Report{Rows: map[string]int{}} }
 
 // Total is every row this purge removed, across every table.
 func (r Report) Total() int {
-	n := r.DictSubmissions
+	n := 0
 	for _, v := range r.Rows {
 		n += v
 	}
@@ -552,23 +459,18 @@ func checkCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) err
 // live account whose op log has holes in its gap-free seq, which is a corruption
 // the invariant checker will report forever, in exchange for deleting some of
 // the data the user asked to have deleted.
-//
-// d may be nil, or may carry no HMAC key. Without one, the submitter pseudonyms
-// in dict_submissions cannot be recomputed and therefore cannot be proven gone;
-// the purge then proceeds only if that table is empty, and otherwise refuses
-// while naming the missing secret. Silently skipping it would leave an
-// identifier behind that outlives the account it belonged to.
-func Purge(ctx context.Context, pool *pgxpool.Pool, d *dict.Dict, userID uuid.UUID) (Report, error) {
+
+func Purge(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (Report, error) {
 	if pool == nil {
 		return Report{}, errors.New("purge: pool is nil")
 	}
 	if userID == uuid.Nil {
 		return Report{}, errors.New("purge: user id is zero")
 	}
-	return purgeUsers(ctx, pool, d, []uuid.UUID{userID})
+	return purgeUsers(ctx, pool, []uuid.UUID{userID})
 }
 
-func purgeUsers(ctx context.Context, pool *pgxpool.Pool, d *dict.Dict, users []uuid.UUID) (Report, error) {
+func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (Report, error) {
 	rep := newReport()
 	if len(users) == 0 {
 		return rep, nil
@@ -593,25 +495,6 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, d *dict.Dict, users []u
 		return rep, err
 	}
 
-	// The dictionary is the FIRST thing deleted, and the ordering is the whole
-	// argument.
-	//
-	// ForgetSubmitter runs in its own transaction (it recounts each entry it
-	// touches), so it cannot join the one below. One of the two orders has to
-	// be chosen and they fail differently: run it LAST and a failure leaves a
-	// pseudonym for an account that no longer exists — the exact row that
-	// outlives a purge. Run it FIRST and a failure leaves a live user who has
-	// lost some dictionary votes, which is recoverable and costs them nothing
-	// they can see. The second is the smaller wrong. Both pre-flights run above
-	// it so that the common refusals cost nothing at all.
-	for _, u := range users {
-		n, err := forgetSubmitter(ctx, pool, d, u)
-		if err != nil {
-			return rep, err
-		}
-		rep.DictSubmissions += n
-	}
-
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return rep, fmt.Errorf("purge: begin: %w", err)
@@ -628,8 +511,7 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, d *dict.Dict, users []u
 	}
 
 	// The one statement that matters. Everything else cascades from it, which
-	// is what satisfies the quarantine and key_history triggers — see the
-	// package comment.
+	// is what satisfies the append-only triggers — see the package comment.
 	//
 	// RETURNING, so the report names the accounts that were actually deleted
 	// rather than the ones that were asked for. Purging a user that no longer
@@ -751,169 +633,6 @@ func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (in
 	return n, nil
 }
 
-// forgetSubmitter removes the user's dictionary pseudonyms, or explains why it
-// cannot. See Purge's doc comment for why a missing key is a refusal rather
-// than a skip.
-func forgetSubmitter(ctx context.Context, pool *pgxpool.Pool, d *dict.Dict, userID uuid.UUID) (int, error) {
-	if d != nil && len(d.HMACKey) > 0 {
-		n, err := d.ForgetSubmitter(ctx, userID)
-		if err != nil {
-			return 0, fmt.Errorf("purge: forget dictionary submitter: %w", err)
-		}
-		return n, nil
-	}
-	// GLOBAL, not per-user, and it cannot be otherwise: without the key there is
-	// no way to ask "does this account have rows here" — that question IS the
-	// HMAC. So the only sound check is "nobody has any", and the consequence,
-	// stated rather than discovered: a deployment that LOST the key can delete
-	// no account at all while a single submission from anyone remains. That is
-	// fail-closed in the right direction (the alternative is a pseudonym
-	// outliving the account it belongs to) but it is a real operational trap,
-	// and the error names both ways out of it.
-	var n int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM dict_submissions`).Scan(&n); err != nil {
-		return 0, fmt.Errorf("purge: count dict_submissions: %w", err)
-	}
-	if n != 0 {
-		return 0, fmt.Errorf("%w: dict_submissions holds %d submitter identifiers and no "+
-			"LEDGER_DICT_HMAC_KEY is configured, so none of them can be matched to this account "+
-			"— note this count is GLOBAL, because without the key one account's rows are "+
-			"indistinguishable from another's. Restore the key and retry; if it is lost for good, "+
-			"every identifier in that table is already unrecoverable and clearing it (or waiting "+
-			"for dict.ExpireStaleSubmissions) is the only way any account can be deleted again",
-			ErrIncomplete, n)
-	}
-	return 0, nil
-}
-
-// ---------------------------------------------------------------------------
-// Retention
-// ---------------------------------------------------------------------------
-
-// RecordConsent writes (or replaces) a user's signed-consent record: which
-// document, when they signed it, and the instant their plaintext must be gone.
-//
-// One row per user by design — see 00014_account_deletion.sql. Re-consenting
-// under a new document replaces the deadline rather than adding a second one.
-func RecordConsent(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, document string, signedAt, retentionUntil time.Time) error {
-	if pool == nil {
-		return errors.New("purge: pool is nil")
-	}
-	if userID == uuid.Nil {
-		return errors.New("purge: consent: user id is zero")
-	}
-	if !retentionUntil.After(signedAt) {
-		return fmt.Errorf("purge: consent: retention deadline %s is not after the signature %s",
-			retentionUntil.UTC(), signedAt.UTC())
-	}
-	_, err := pool.Exec(ctx, `
-		INSERT INTO user_consent (user_id, document, signed_at, retention_until)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (user_id) DO UPDATE
-		   SET document = EXCLUDED.document,
-		       signed_at = EXCLUDED.signed_at,
-		       retention_until = EXCLUDED.retention_until`,
-		userID, document, signedAt, retentionUntil)
-	if err != nil {
-		return fmt.Errorf("purge: record consent for %s: %w", userID, err)
-	}
-	return nil
-}
-
-// DueForRetention lists the accounts whose retention deadline is at or before
-// cutoff. It is exported so an operator can SEE the list before acting on it —
-// `ledgerd purge-user --retention-due --dry-run` is the same query the real
-// sweep runs, which is what makes the preview trustworthy.
-func DueForRetention(ctx context.Context, pool *pgxpool.Pool, cutoff time.Time) ([]uuid.UUID, error) {
-	if pool == nil {
-		return nil, errors.New("purge: pool is nil")
-	}
-	due, err := scanUUIDs(ctx, pool,
-		`SELECT user_id FROM user_consent WHERE retention_until <= $1 ORDER BY user_id`, cutoff)
-	if err != nil {
-		return nil, fmt.Errorf("purge: scan retention deadlines: %w", err)
-	}
-	return due, nil
-}
-
-// EnforceRetention purges every account whose consent record's retention
-// deadline is at or before cutoff. It is Phase 1's plaintext-retention
-// commitment (spec §5) made operational: the alpha consent document promises
-// the data is gone by a date, and this is what makes the promise true without
-// depending on anyone remembering.
-//
-// Accounts with NO consent record are reported (Report.WithoutConsentRecord)
-// and NOT purged. There are two ways to read a missing row — "this user never
-// agreed to anything, so their data should not be here" and "the row failed to
-// write" — and only one of them survives being wrong. A sweep that deleted on a
-// missing row would convert any bug in the consent-recording path into the
-// destruction of every account it touched; a sweep that reports it costs the
-// operator a look at a list.
-//
-// Each account is purged in its own transaction. One user whose purge fails
-// must not prevent every other overdue account from being deleted, and the
-// error is returned once the sweep has done everything it can — loudly, with
-// the report of what DID happen attached.
-func EnforceRetention(ctx context.Context, pool *pgxpool.Pool, d *dict.Dict, cutoff time.Time) (Report, error) {
-	rep := newReport()
-	if pool == nil {
-		return rep, errors.New("purge: pool is nil")
-	}
-
-	due, err := DueForRetention(ctx, pool, cutoff)
-	if err != nil {
-		return rep, err
-	}
-	rep.WithoutConsentRecord, err = scanUUIDs(ctx, pool, `
-		SELECT u.id FROM users u
-		  LEFT JOIN user_consent c ON c.user_id = u.id
-		 WHERE c.user_id IS NULL
-		 ORDER BY u.id`)
-	if err != nil {
-		return rep, fmt.Errorf("purge: scan accounts with no consent record: %w", err)
-	}
-
-	var failures []error
-	for _, u := range due {
-		one, err := purgeUsers(ctx, pool, d, []uuid.UUID{u})
-		rep.Users = append(rep.Users, one.Users...)
-		rep.DictSubmissions += one.DictSubmissions
-		for tb, n := range one.Rows {
-			rep.Rows[tb] += n
-		}
-		for _, tb := range one.SweptWithoutCascade {
-			if !slices.Contains(rep.SweptWithoutCascade, tb) {
-				rep.SweptWithoutCascade = append(rep.SweptWithoutCascade, tb)
-			}
-		}
-		if err != nil {
-			failures = append(failures, fmt.Errorf("user %s: %w", u, err))
-		}
-	}
-	if len(failures) > 0 {
-		return rep, fmt.Errorf("purge: retention sweep purged %d of %d overdue accounts: %w",
-			len(rep.Users), len(due), errors.Join(failures...))
-	}
-	return rep, nil
-}
-
-func scanUUIDs(ctx context.Context, pool *pgxpool.Pool, sql string, args ...any) ([]uuid.UUID, error) {
-	rows, err := pool.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []uuid.UUID
-	for rows.Next() {
-		var u uuid.UUID
-		if err := rows.Scan(&u); err != nil {
-			return nil, err
-		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
-}
-
 // ---------------------------------------------------------------------------
 // The deletion challenge: spec §3.4's key-possession factor
 // ---------------------------------------------------------------------------
@@ -934,6 +653,11 @@ const (
 	// own prefixes for the same reason: a signature captured from one flow must
 	// be worthless in another, and this is the flow where being wrong is
 	// unrecoverable.
+	//
+	// ledgerd's domain, because this is still ledgerd's message (nonce and
+	// user id). Spec 01 D16 gives hasala/v1/account-delete to the step-up
+	// format WS-3 builds; one domain never names two formats, so the domain
+	// changes with the format.
 	deletionDomain = "ledger/v2 account-delete\x00"
 )
 

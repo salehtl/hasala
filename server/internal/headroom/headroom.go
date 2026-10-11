@@ -6,7 +6,7 @@
 // Per-account budgets multiplied by the number of accounts can still exceed the
 // disk, and Postgres has no native per-role storage quota, so something has to
 // hold the last few gigabytes back. A full filesystem stops Postgres writing,
-// which stops ingest and sync for EVERY user, and it is the one failure that an
+// which stops sync and sign-in for EVERY user, and it is the one failure that an
 // operator cannot fix quickly because the tools they would use — a backup, a
 // dump, a log — all need space themselves.
 //
@@ -39,7 +39,7 @@
 // # This package does not start itself
 //
 // New returns a stopped fuse. Wiring — who calls Start, on which path, with
-// which floor — belongs to cmd/ledgerd, and Tripped is what the API consults per
+// which floor — belongs to cmd/hasalad, and Tripped is what the API consults per
 // request. That separation is what lets a test inject a floor and a sampler and
 // never touch the real disk.
 package headroom

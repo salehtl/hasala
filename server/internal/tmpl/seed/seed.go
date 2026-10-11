@@ -25,7 +25,7 @@
 //
 // internal/tmpl/seed/gen: the JSON in this directory was produced by
 // extracting the anchor literals out of v1's dib.go source — byte-frozen in
-// this repo at internal/v1ref/parse/dib.go — so no anchor in this package has
+// this repo at oracle/v1ref/parse/dib.go — so no anchor in this package has
 // ever passed through a keyboard. A well-meaning spelling fix while copying —
 // `الدفع إلى` for DIB's actual, hamza-less
 // `الدفع الى` — produces a template that compiles, validates, publishes and

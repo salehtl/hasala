@@ -1,8 +1,8 @@
 package api
 
-// The six passkey routes (spec §3.8, Phase 2 Task 4). They are the PWA's whole
-// sign-in surface: WebAuthn replaced Sign in with Apple and Google Sign-In when
-// the product dropped Expo, and with it the App Store rule that required them.
+// The passkey routes, kept from ledgerd as hasala's passkey door until WS-3
+// lands spec 02 §8's sign-in surface (passwords, Google, Apple). ledgerd's
+// ID-token exchange is retired (spec 02 §2).
 //
 //	POST /api/v1/auth/passkey/register/begin   {invite_code}            -> {ceremony_id, options}
 //	POST /api/v1/auth/passkey/register/finish  {ceremony_id, credential} -> {session_token, user_id}
@@ -19,8 +19,8 @@ package api
 //
 // # What these endpoints answer
 //
-// Everything collapses to the package's ONE 401, with a single exception that is
-// the same carve-out the ID-token exchange makes: `403 {"error":"not_invited"}`
+// Everything collapses to the package's ONE 401, with a single exception:
+// `403 {"error":"not_invited"}`
 // when account creation was required and no unredeemed code authorized it. That
 // is a fact about this deployment's policy rather than about the credential, and
 // it is the one thing the person holding the phone needs to know.
@@ -36,8 +36,8 @@ package api
 // disk-growth target, and the sweep that removes expired ceremonies runs on a
 // timer, so the table's steady-state size is set by the mint rate. The two `add`
 // routes are session-authenticated and limited on the same budget, because the
-// limiter runs BEFORE the session is resolved — see requirePasskeySession, and
-// handleExchange for the ordering argument in full.
+// limiter runs BEFORE the session is resolved — see requirePasskeySession and
+// passkeyLimited for the ordering argument.
 
 import (
 	"encoding/base64"
@@ -56,9 +56,8 @@ import (
 // to survive a user who cancels the system dialog three times, and the sustained
 // rate is mean.
 //
-// It is deliberately looser than the challenge budgets (1/minute) and tighter
-// than the sign-in exchange's, because a ceremony costs a row where an exchange
-// costs a signature verification.
+// It is deliberately looser than the challenge budgets (1/minute), because a
+// person dismissing a system prompt is a retry, not an attack.
 const (
 	passkeyPerIPRate   = 0.2 // 12/minute sustained
 	passkeyPerIPBurst  = 12
@@ -98,7 +97,7 @@ type PasskeyAddResponse struct {
 
 // passkeyLimited wraps a handler in the two limiters, in the order that matters:
 // per-IP first, and a global token is spent only by a request that already passed
-// it. See handleExchange — the other order lets one host drain the shared budget
+// it. The other order lets one host drain the shared budget
 // with requests the per-IP limiter was about to refuse anyway, and hold every
 // other client at 429 indefinitely.
 func (s *Server) passkeyLimited(h http.HandlerFunc) http.HandlerFunc {
@@ -207,16 +206,17 @@ func (s *Server) writeBegin(w http.ResponseWriter, r *http.Request, ceremonyID s
 	writeJSON(w, http.StatusOK, PasskeyBeginResponse{CeremonyID: ceremonyID, Options: raw})
 }
 
+// SessionResponse carries a session token, returned exactly once, at the end
+// of a passkey ceremony.
+type SessionResponse struct {
+	SessionToken string `json:"session_token"`
+	UserID       string `json:"user_id"`
+}
+
 // writeSession issues the session a completed sign-in earns, ATTRIBUTED to the
-// credential that just finished the ceremony. It is the same session the
-// ID-token exchange mints, deliberately: a passkey changes how an identity is
-// established and changes nothing about what a session is.
-//
-// credID is the one thing it adds, and it is the whole of 00034's point. Both
+// credential that just finished the ceremony (sessions.credential_id). Both
 // callers — register/finish and login/finish — genuinely know it, because
 // go-webauthn returns the credential it verified and auth returns it upward.
-// The exchange path in sync.go does NOT know one (no credential authenticated
-// it) and calls Sessions.Issue, which records NULL rather than a guess.
 func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, userID uuid.UUID, credID []byte) {
 	token, err := s.Sessions.IssueForCredential(r.Context(), userID, credID)
 	if err != nil {
@@ -224,7 +224,7 @@ func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, userID uui
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
-	writeJSON(w, http.StatusOK, ExchangeResponse{SessionToken: token, UserID: userID.String()})
+	writeJSON(w, http.StatusOK, SessionResponse{SessionToken: token, UserID: userID.String()})
 }
 
 // writePasskeyError is the single translation point, so no handler can invent a

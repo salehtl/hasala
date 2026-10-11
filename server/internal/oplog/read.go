@@ -47,7 +47,7 @@ import (
 // in this file narrows that, and no caller may present a clean pull as evidence
 // that the server served everything.
 
-// ErrUnknownStream is returned for a stream that is neither hot nor cold. It is
+// ErrUnknownStream is returned for any stream but hot. It is
 // its own error because these functions are reached directly from an HTTP query
 // parameter, where "you asked for a stream that does not exist" is a 400 and a
 // database failure is not.
@@ -245,8 +245,8 @@ func StreamMaxSeq(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, str
 }
 
 func checkStream(stream string) error {
-	if stream != blob.StreamHot && stream != blob.StreamCold {
-		return fmt.Errorf("%w: %q, want %q or %q", ErrUnknownStream, stream, blob.StreamHot, blob.StreamCold)
+	if stream != blob.StreamHot {
+		return fmt.Errorf("%w: %q, want %q", ErrUnknownStream, stream, blob.StreamHot)
 	}
 	return nil
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/salehtl/hasala/server/internal/blob"
+	"github.com/salehtl/hasala/server/internal/blob/blobtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -25,15 +26,12 @@ import (
 func sealBody(t *testing.T, u uuid.UUID, writerID, stream string, counter int64, prev [32]byte, body string) (Row, [32]byte) {
 	t.Helper()
 	env := blob.Envelope{UserID: u, Stream: stream, WriterID: writerID, WriterCounter: counter}
-	s, err := blob.PlaintextSealer{}.Seal(env, []byte(body))
+	s, err := blobtest.Seal3(env, 1, blobtest.TestEpochKey, prev, []byte(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := blob.Hash(prev, s)
 	flag := TypeFlagEdit
-	if writerID == IngestWriterID {
-		flag = TypeFlagIngest
-	}
 	return Row{
 		UserID:        u,
 		Stream:        stream,
@@ -387,17 +385,6 @@ func TestChainBreakRollsBackTheWholeBatch(t *testing.T) {
 	}
 }
 
-func TestClientAppendRejectsTheIngestWriter(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-	rows, _ := chainFrom(t, u, IngestWriterID, blob.StreamHot, 1, blob.ZeroHash, 1)
-	if _, err := a.AppendClient(bg, u, IngestWriterID, blob.StreamHot, rows); err == nil {
-		t.Fatal("a client must not be able to append into the ingest writer's chain")
-	}
-	assertGapFree(t, pool, u, 0)
-}
-
 func TestClientAppendRejectsRowsThatDisagreeWithTheCall(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -409,9 +396,9 @@ func TestClientAppendRejectsRowsThatDisagreeWithTheCall(t *testing.T) {
 	if _, err := a.AppendClient(bg, uuid.New(), "dev-a", blob.StreamHot, rows); err == nil {
 		t.Fatal("a row naming another user must be rejected")
 	}
-	// The row-versus-call STREAM disagreement is not asserted here: there are
-	// only two streams, so it can only be tested against cold, which
-	// TestClientAppendRejectsTheColdStream now refuses one check earlier.
+	// The row-versus-call STREAM disagreement is not asserted here: hot is the
+	// only stream, so any other stream named by the call is refused one check
+	// earlier (TestClientAppendRefusesEveryStreamButHot).
 	assertGapFree(t, pool, u, 0)
 }
 
@@ -677,215 +664,6 @@ func TestConcurrentDoubleAppendFromOneWriterIsACleanChainBreak(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AppendIngest: the server computes the chain, per stream
-// ---------------------------------------------------------------------------
-
-func TestIngestChainIsServerComputedAndPerStream(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-
-	for i := 0; i < 3; i++ {
-		seqs, err := a.AppendIngest(bg, u, []IngestBlob{
-			{Stream: blob.StreamHot, Plaintext: []byte(fmt.Sprintf(`{"op":%d}`, i))},
-			{Stream: blob.StreamCold, Plaintext: []byte(fmt.Sprintf(`{"raw":%d}`, i))},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(seqs) != 2 || seqs[1] != seqs[0]+1 {
-			t.Fatalf("delivery %d got seqs %v, want a contiguous pair", i, seqs)
-		}
-	}
-
-	// Not 1..6 interleaved: each stream is its own chain (Decision 13).
-	for _, stream := range []string{blob.StreamHot, blob.StreamCold} {
-		if got := countersOf(t, pool, u, IngestWriterID, stream); !reflect.DeepEqual(got, []int64{1, 2, 3}) {
-			t.Fatalf("%s counters = %v, want [1 2 3]", stream, got)
-		}
-		rows := storedChain(t, pool, u, IngestWriterID, stream)
-		if err := VerifyChain(rows, 0, blob.ZeroHash); err != nil {
-			t.Fatalf("%s chain does not verify from stored bytes: %v", stream, err)
-		}
-	}
-	assertGapFree(t, pool, u, 6)
-}
-
-// The reason AppendIngest takes plaintext rather than a sealed blob: the AAD
-// binds writer_counter, and the counter is not known until the server has taken
-// the counter lock. A caller that sealed first would have to guess, and a wrong
-// guess stores a blob that can never be opened at the position it occupies.
-func TestIngestBlobsOpenAtThePositionTheServerAssigned(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-
-	for i := 0; i < 2; i++ {
-		if _, err := a.AppendIngest(bg, u, []IngestBlob{
-			{Stream: blob.StreamHot, Plaintext: []byte(fmt.Sprintf(`{"op":%d}`, i))},
-			{Stream: blob.StreamCold, Plaintext: []byte(fmt.Sprintf(`{"raw":%d}`, i))},
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, stream := range []string{blob.StreamHot, blob.StreamCold} {
-		for i, r := range storedChain(t, pool, u, IngestWriterID, stream) {
-			plain, err := blob.PlaintextSealer{}.Open(blob.Envelope{
-				UserID: u, Stream: r.Stream, WriterID: r.WriterID, WriterCounter: r.WriterCounter,
-			}, blob.Sealed{Bytes: r.Blob, SizeBucket: r.SizeBucket})
-			if err != nil {
-				t.Fatalf("%s row %d does not open at its own position: %v", stream, i, err)
-			}
-			want := fmt.Sprintf(`{"op":%d}`, i)
-			if stream == blob.StreamCold {
-				want = fmt.Sprintf(`{"raw":%d}`, i)
-			}
-			if string(plain) != want {
-				t.Fatalf("%s row %d = %s, want %s", stream, i, plain, want)
-			}
-		}
-	}
-}
-
-// Two blobs on the SAME stream in one call must chain to each other, not both
-// claim the next counter — the batch advances the head as it is built.
-func TestIngestChainsTwoBlobsOnOneStreamWithinOneCall(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-
-	if _, err := a.AppendIngest(bg, u, []IngestBlob{
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"op":0}`)},
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"op":1}`)},
-		{Stream: blob.StreamCold, Plaintext: []byte(`{"raw":0}`)},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if got := countersOf(t, pool, u, IngestWriterID, blob.StreamHot); !reflect.DeepEqual(got, []int64{1, 2}) {
-		t.Fatalf("hot counters = %v, want [1 2]", got)
-	}
-	if got := countersOf(t, pool, u, IngestWriterID, blob.StreamCold); !reflect.DeepEqual(got, []int64{1}) {
-		t.Fatalf("cold counters = %v, want [1]", got)
-	}
-	rows := storedChain(t, pool, u, IngestWriterID, blob.StreamHot)
-	if err := VerifyChain(rows, 0, blob.ZeroHash); err != nil {
-		t.Fatalf("two hot blobs from one call must chain to each other: %v", err)
-	}
-	// The second row's prev must be the first row's hash, not ZeroHash.
-	if reflect.DeepEqual(rows[1].PrevHash, blob.ZeroHash[:]) {
-		t.Fatal("the second blob in the call links to the genesis instead of the first")
-	}
-}
-
-func TestHotAndColdChainsAreIndependent(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-
-	if _, err := a.AppendIngest(bg, u, []IngestBlob{{Stream: blob.StreamHot, Plaintext: []byte(`{"op":0}`)}}); err != nil {
-		t.Fatal(err)
-	}
-	hotC, hotH, err := a.Head(bg, u, IngestWriterID, blob.StreamHot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	coldC, coldH, err := a.Head(bg, u, IngestWriterID, blob.StreamCold)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hotC != 1 || coldC != 0 || coldH != blob.ZeroHash {
-		t.Fatalf("after one hot append: hot=(%d), cold=(%d,%x)", hotC, coldC, coldH)
-	}
-
-	// A cold append must not move the hot head at all.
-	for i := 0; i < 2; i++ {
-		if _, err := a.AppendIngest(bg, u, []IngestBlob{{Stream: blob.StreamCold, Plaintext: []byte(`{"raw":1}`)}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	gotC, gotH, err := a.Head(bg, u, IngestWriterID, blob.StreamHot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotC != hotC || gotH != hotH {
-		t.Fatalf("cold appends moved the hot head from (%d,%x) to (%d,%x)", hotC, hotH, gotC, gotH)
-	}
-	if c, _, err := a.Head(bg, u, IngestWriterID, blob.StreamCold); err != nil || c != 2 {
-		t.Fatalf("cold head = (%d, %v), want (2, nil)", c, err)
-	}
-}
-
-func TestIngestRejectsCallerAssignedChainFields(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-	cases := []struct {
-		name string
-		b    IngestBlob
-	}{
-		{"unknown stream", IngestBlob{Stream: "warm", Plaintext: []byte(`{}`)}},
-		{"empty stream", IngestBlob{Plaintext: []byte(`{}`)}},
-		{"empty plaintext", IngestBlob{Stream: blob.StreamHot}},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if _, err := a.AppendIngest(bg, u, []IngestBlob{c.b}); err == nil {
-				t.Fatal("expected an error")
-			}
-		})
-	}
-	if got := nextSeqOf(t, pool, u); got != 1 {
-		t.Fatalf("next_seq = %d after only-invalid ingest appends, want 1", got)
-	}
-}
-
-// Concurrent deliveries for one user: the ingest writer's counters must stay
-// contiguous on BOTH streams, which is exactly what the counter lock buys —
-// two deliveries that both read head=N before either commits would collide.
-func TestConcurrentIngestAppendsKeepBothChainsContiguous(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-
-	const deliverers, perDeliverer = 6, 6
-	warmPool(t, pool, deliverers)
-	var wg sync.WaitGroup
-	for d := 0; d < deliverers; d++ {
-		wg.Add(1)
-		go func(d int) {
-			defer wg.Done()
-			for i := 0; i < perDeliverer; i++ {
-				if _, err := a.AppendIngest(bg, u, []IngestBlob{
-					{Stream: blob.StreamHot, Plaintext: []byte(fmt.Sprintf(`{"op":"%d-%d"}`, d, i))},
-					{Stream: blob.StreamCold, Plaintext: []byte(fmt.Sprintf(`{"raw":"%d-%d"}`, d, i))},
-				}); err != nil {
-					t.Errorf("deliverer %d message %d: %v", d, i, err)
-					return
-				}
-			}
-		}(d)
-	}
-	wg.Wait()
-
-	total := deliverers * perDeliverer
-	for _, stream := range []string{blob.StreamHot, blob.StreamCold} {
-		rows := storedChain(t, pool, u, IngestWriterID, stream)
-		if len(rows) != total {
-			t.Fatalf("%s has %d rows, want %d", stream, len(rows), total)
-		}
-		for i, r := range rows {
-			if r.WriterCounter != int64(i+1) {
-				t.Fatalf("%s counter at index %d is %d, want %d", stream, i, r.WriterCounter, i+1)
-			}
-		}
-		if err := VerifyChain(rows, 0, blob.ZeroHash); err != nil {
-			t.Fatalf("%s chain does not verify after concurrent appends: %v", stream, err)
-		}
-	}
-	assertGapFree(t, pool, u, 2*total)
-}
-
-// ---------------------------------------------------------------------------
 // The SQLSTATE 23505 backstop
 // ---------------------------------------------------------------------------
 
@@ -942,12 +720,11 @@ func TestAppliedLookupResolvesSeqsAndSpotsAFork(t *testing.T) {
 // Position binding: a blob must be sealed FOR the position it is stored at
 // ---------------------------------------------------------------------------
 
-// Every row here has a flawless chain — correct counter sequence, correct
+// Every row here has a flawless chain: correct counter sequence, correct
 // prev_hash, correctly recomputed blob_hash. Only the AAD embedded in the frame
 // says otherwise, which is why the chain check alone is not enough and why
-// Row.validate compares it. Without that compare all three are stored, and a
-// device meets them as a set-aside WARNING (blob.ErrSetAside) rather than as
-// anything that stops a sync.
+// Row.validate compares it (and op_log_aad_matches_position backs it up).
+// ledgerd's "sealed for the cold stream" case is gone with the cold stream.
 func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
@@ -973,9 +750,6 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	movedUser, _ := sealBody(t, uuid.New(), "dev-2", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"user"}`)
 	movedUser.UserID = u
 
-	movedStream, _ := sealBody(t, u, "dev-3", blob.StreamCold, 1, blob.ZeroHash, `{"moved":"stream"}`)
-	movedStream.Stream = blob.StreamHot
-
 	movedWriter, _ := sealBody(t, u, "dev-z", blob.StreamHot, 1, blob.ZeroHash, `{"moved":"writer"}`)
 	movedWriter.WriterID = "dev-4"
 
@@ -985,7 +759,6 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	}{
 		{"sealed at counter 7, stored at counter 1", "dev-1", movedCounter},
 		{"sealed for another user", "dev-2", movedUser},
-		{"sealed for the cold stream", "dev-3", movedStream},
 		{"sealed by another writer", "dev-4", movedWriter},
 	}
 	for _, c := range cases {
@@ -994,7 +767,7 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 			// catch this. Without this assertion the test could pass because
 			// the row was malformed in some other way.
 			if err := VerifyChain([]Row{c.row}, 0, blob.ZeroHash); err != nil {
-				t.Fatalf("premise broken — the chain must verify: %v", err)
+				t.Fatalf("premise broken: the chain must verify: %v", err)
 			}
 			if _, err := a.AppendClient(bg, u, c.writer, blob.StreamHot, []Row{c.row}); err == nil {
 				t.Fatal("a blob sealed for a different position must not be stored")
@@ -1003,7 +776,7 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	}
 	assertGapFree(t, pool, u, 0)
 	if got := nextSeqOf(t, pool, u); got != 1 {
-		t.Fatalf("next_seq = %d, want 1 — a rejected row burned a seq", got)
+		t.Fatalf("next_seq = %d, want 1: a rejected row burned a seq", got)
 	}
 
 	// The control: the same payload, sealed where it is actually stored.
@@ -1013,42 +786,15 @@ func TestAppendClientRejectsABlobSealedForAnotherPosition(t *testing.T) {
 	}
 }
 
-// The server seals ingest blobs itself, so this can only fail if the sealer and
-// the row disagree about the position — which is the bug the client-side check
-// above exists to catch, asserted here for the path where the server is the
-// author.
-func TestIngestBlobsAreSealedForTheRowTheyAreStoredIn(t *testing.T) {
-	pool := pgtest.New(t)
-	u := insertUser(t, pool)
-	a := &Appender{Pool: pool}
-	if _, err := a.AppendIngest(bg, u, []IngestBlob{
-		{Stream: blob.StreamHot, Plaintext: []byte(`{"op":0}`)},
-		{Stream: blob.StreamCold, Plaintext: []byte(`{"raw":0}`)},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for _, stream := range []string{blob.StreamHot, blob.StreamCold} {
-		for _, r := range storedChain(t, pool, u, IngestWriterID, stream) {
-			aad, err := blob.EmbeddedAAD(r.Blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := blob.Envelope{UserID: u, Stream: r.Stream, WriterID: r.WriterID, WriterCounter: r.WriterCounter}.AAD()
-			if string(aad) != string(want) {
-				t.Fatalf("stored blob carries AAD %q, want %q", aad, want)
-			}
-		}
-	}
-}
-
 // ---------------------------------------------------------------------------
-// Splices, the cold stream, and the 23505 arm
+// Splices, the one stream, and the 23505 arm
 // ---------------------------------------------------------------------------
 
 // A server that interleaves two writers can keep the counters continuous and
 // recompute every hash honestly, so nothing but the (writer, stream) guard
-// notices. VerifyChain is exported for Task 9 to run over server-supplied rows,
-// which is exactly where this matters.
+// notices. VerifyChain is exported for verify.Structural to run over
+// server-supplied rows, which is exactly where this matters. (ledgerd's
+// two-streams splice went with the cold stream.)
 func TestVerifyChainDetectsRowsSplicedFromTwoChains(t *testing.T) {
 	u := uuid.New()
 	base, head := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 2)
@@ -1057,26 +803,23 @@ func TestVerifyChainDetectsRowsSplicedFromTwoChains(t *testing.T) {
 	if err := VerifyChain(append(append([]Row{}, base...), twoWriters...), 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
 		t.Fatalf("two writers spliced into one chain must break, got %v", err)
 	}
-	twoStreams, _ := chainFrom(t, u, "dev-a", blob.StreamCold, 3, head, 2)
-	if err := VerifyChain(append(append([]Row{}, base...), twoStreams...), 0, blob.ZeroHash); !errors.Is(err, ErrChainBreak) {
-		t.Fatalf("two streams spliced into one chain must break, got %v", err)
-	}
 }
 
-func TestClientAppendRejectsTheColdStream(t *testing.T) {
-	// Invariant I16: cold carries raw bodies from the ingest writer, never ops.
-	// A client-authored cold row would put state on the stream a hot-only
-	// client skips.
+// Hot is the only stream (op_log_stream_is_hot). A call naming any other is a
+// protocol rule, refused before the chain is looked at, and stores nothing.
+func TestClientAppendRefusesEveryStreamButHot(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	a := &Appender{Pool: pool}
-	rows, _ := chainFrom(t, u, "dev-a", blob.StreamCold, 1, blob.ZeroHash, 1)
-	_, err := a.AppendClient(bg, u, "dev-a", blob.StreamCold, rows)
-	if err == nil {
-		t.Fatal("a client must not author cold-stream rows")
-	}
-	if errors.Is(err, ErrChainBreak) {
-		t.Fatalf("refusing the cold stream is a protocol rule, not a chain break: %v", err)
+	rows, _ := chainFrom(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, 1)
+	for _, stream := range []string{"cold", "", "HOT"} {
+		_, err := a.AppendClient(bg, u, "dev-a", stream, rows)
+		if err == nil {
+			t.Fatalf("stream %q must be refused", stream)
+		}
+		if errors.Is(err, ErrChainBreak) {
+			t.Fatalf("refusing stream %q is a protocol rule, not a chain break: %v", stream, err)
+		}
 	}
 	assertGapFree(t, pool, u, 0)
 }
@@ -1108,7 +851,7 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 	}
 
 	// Different bytes at a taken position: an invariant violation, NOT a chain
-	// break — a client must not be hard-stopped by a server-side bug.
+	// break; a client must not be hard-stopped by a server-side bug.
 	forked := append([]Row(nil), rows...)
 	forked[1], _ = sealBody(t, u, "dev-a", blob.StreamHot, 2, blob.ZeroHash, `{"forked":true}`)
 	_, err = a.resolveAppendErr(bg, u, "dev-a", blob.StreamHot, forked, nil, dup)

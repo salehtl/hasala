@@ -43,13 +43,14 @@ import (
 
 // KeyHistoryEntry is one entry of the log, in wire form.
 //
-// PubKey is empty for the keyless ingest writer. It is a distinct value from a
+// PubKey is empty only for an entry that names no key (none is written since
+// ledgerd's keyless ingest writer was retired). It is a distinct value from a
 // key, not a substitute for one: a peer replaying the log must be able to tell
-// "a server-side writer with no key appeared" from "this device's key changed".
+// "a writer with no key appeared" from "this device's key changed".
 type KeyHistoryEntry struct {
 	ID       int64     `json:"id"`
 	WriterID string    `json:"writer_id"`
-	PubKey   string    `json:"pubkey"` // base64; empty for the ingest writer
+	PubKey   string    `json:"pubkey"` // base64; empty only for a keyless entry
 	Event    string    `json:"event"`  // "registered" | "revoked"
 	At       time.Time `json:"at"`
 }
