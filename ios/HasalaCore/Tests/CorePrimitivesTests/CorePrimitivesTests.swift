@@ -424,3 +424,26 @@ enum P256Testing {
 
   static func newSigner() -> Signer { Signer() }
 }
+
+@Suite("CoreLog")
+struct CoreLogTests {
+  @Test("counts and states are public; redacted text goes only to the private part")
+  func render() {
+    let line = CoreLog.render(
+      "pull.done",
+      [.count("frames", 12), .state("phase", "idle"), .redacted("why", "user text"), .count("ms", UInt64.max)])
+    #expect(line.public == "pull.done frames=12 phase=idle ms=\(Int64.max)")
+    #expect(line.redacted == "why=user text")
+    #expect(CoreLog.render("boot", []) == ("boot", ""))
+  }
+
+  @Test("logging at every level is callable from any isolation")
+  func emit() async {
+    let log = CoreLog(category: "CorePrimitivesTests")
+    log.debug("test.debug", .count("n", 1))
+    log.info("test.info")
+    log.notice("test.notice", .state("s", "ok"))
+    await Task.detached { log.error("test.error", .redacted("r", "x")) }.value
+    log.fault("test.fault")
+  }
+}
