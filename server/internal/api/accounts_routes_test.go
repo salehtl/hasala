@@ -32,6 +32,7 @@ func (h *harness) accounts() (*authkeys.Keys, *mail.Fake, *mailq.Queue) {
 	q := mailq.New(h.pool, fake, keys)
 	m := &auth.Mailer{Queue: q, Keys: keys, Async: func(f func()) { f() }}
 	m.Register(q)
+	q.Register("deleted", mailq.DeletedRenderer)
 	h.srv.EnableAccounts(keys, nil, m)
 	// Tests make more device-freeze attempts per writer than the hourly burst.
 	h.srv.DevFreezeWriter = NewLimiter(100, 100, 16, nil)

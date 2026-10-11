@@ -2,9 +2,9 @@
 -- WS-3, accounts and auth (spec 02 §5.3; spec 01 §9). Numbered 00022, after
 -- WS-4's 00020 and 00021, which create spec 07's banks, waitlist_entries,
 -- invite_codes (with the review flag this work reads) and mail_log; this file
--- reuses those tables and creates none of them. Squashed into
--- 00001_baseline.sql before the first QA deploy, like every migration in
--- 00002–00029.
+-- reuses those tables and creates none of them. It is applied as it stands,
+-- on top of 00001, 00010, 00020 and 00021: the QA database already runs
+-- 00001, so nothing is squashed into the baseline any more.
 --
 -- What changes:
 --   * users becomes the email-keyed account of spec 02 D-4: no IdP columns, a
@@ -20,12 +20,14 @@
 --   * new: signup, password-login, recovery, password-reset and email-change
 --     ceremonies; email codes, their pauses and the Postgres-backed counters;
 --     freeze tokens and the session-free device-freeze challenges; auth events;
---     server_meta (the key fingerprints of spec 02 §5.6 O9).
+--     server_meta (the key fingerprints of spec 02 §5.6 O9);
+--   * gone: ledgerd's account_deletion_challenges (spec 02 §2.5): deletion
+--     takes an account.delete step-up now.
 --
--- Every ADD COLUMN ... NOT NULL without a default applies only to empty tables,
--- which holds because no database has been deployed with accounts yet (see
--- 00010's header): against a database that already holds accounts this
--- migration fails, on purpose.
+-- Every ADD COLUMN ... NOT NULL without a default applies only to empty tables:
+-- the QA database runs 00001 with no account in it, and the deploy checks that
+-- before the chain is applied. Against a database that already holds accounts
+-- this migration fails, on purpose.
 
 -- +goose StatementBegin
 DO $$
@@ -354,13 +356,63 @@ CREATE TABLE server_meta (
   CONSTRAINT server_meta_key_is_closed CHECK (key IN ('auth_key_id','salt_key_id'))
 );
 
+-- ── ledgerd's deletion nonce (spec 02 §2.5: replaced by step_up_challenges) ──
+DROP TABLE account_deletion_challenges;
+
 -- The runtime role's DML on these tables comes from 00001's default privileges.
 
 -- +goose Down
--- pgtest only (MigrateDown): back to 00021's shape where the earlier Down
--- statements need it.
+-- pgtest only (MigrateDown, and TestDownTo21IsWhat00021Left): exactly 00021's
+-- shape again. Dropping a column drops the constraints that name it.
+CREATE TABLE account_deletion_challenges (
+  nonce      bytea PRIMARY KEY,
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  issued_at  timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  used_at    timestamptz,
+  CONSTRAINT account_deletion_challenges_nonce_is_256_bits CHECK (octet_length(nonce) = 32)
+);
+CREATE INDEX account_deletion_challenges_expiry_idx ON account_deletion_challenges (expires_at);
 DROP TABLE auth_events, device_freeze_challenges, freeze_tokens, email_change_ceremonies,
   password_reset_ceremonies, recovery_ceremonies, password_login_ceremonies, rate_counters,
   email_code_pauses, email_codes, server_meta;
-ALTER TABLE webauthn_ceremonies DROP COLUMN signup_id;
+ALTER TABLE sessions
+  DROP COLUMN minted_by,
+  DROP COLUMN restricted,
+  DROP COLUMN last_used_at,
+  DROP COLUMN revoked_reason,
+  ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE webauthn_ceremonies
+  DROP COLUMN signup_id,
+  ADD COLUMN invite_code_hash bytea,
+  ADD CONSTRAINT webauthn_ceremonies_register_binding CHECK (
+    (kind = 'register') = (authority_pubkey IS NOT NULL)
+    AND (kind = 'register') = (register_nonce IS NOT NULL)
+    AND (authority_pubkey IS NULL OR octet_length(authority_pubkey) = 32)
+    AND (register_nonce IS NULL OR octet_length(register_nonce) = 32));
 DROP TABLE signup_ceremonies;
+ALTER TABLE users
+  DROP COLUMN user_handle,
+  DROP COLUMN suspended_at,
+  DROP COLUMN email_verified_at,
+  DROP COLUMN email_undeliverable_at,
+  DROP COLUMN reverify_requested_at,
+  DROP COLUMN display_name,
+  DROP COLUMN review_account,
+  DROP COLUMN password_hash,
+  DROP COLUMN password_salt,
+  DROP COLUMN password_version,
+  DROP COLUMN password_set_at,
+  DROP COLUMN password_failures,
+  DROP COLUMN password_paused_until,
+  DROP COLUMN frozen_at,
+  DROP COLUMN freeze_trigger_at,
+  DROP COLUMN frozen_by,
+  DROP COLUMN holder_also_froze,
+  ALTER COLUMN created_at SET DEFAULT now(),
+  ALTER COLUMN email_norm DROP NOT NULL,
+  ADD COLUMN idp text NOT NULL,
+  ADD COLUMN idp_sub_hash bytea NOT NULL,
+  ADD CONSTRAINT users_idp_is_closed CHECK (idp IN ('passkey')),
+  ADD CONSTRAINT users_idp_sub_hash_is_sha256 CHECK (octet_length(idp_sub_hash) = 32),
+  ADD CONSTRAINT users_identity_uniq UNIQUE (idp, idp_sub_hash);
