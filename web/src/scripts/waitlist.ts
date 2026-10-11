@@ -11,6 +11,11 @@
  *
  * Tell us: posts an anonymous vote to PUBLIC_API_BASE/v1/bank-requests and
  * shows "Counted", with the invite form offered as a second step.
+ *
+ * In "email" mode (PUBLIC_WAITLIST_MODE, see src/lib/env.ts; the markup then
+ * carries data-mail instead of data-api), both forms validate the same way
+ * and then, instead of posting, open a pre-filled email to that address in
+ * the visitor's email app and show how to finish if it didn't open.
  */
 import { reducedMotion } from './motion';
 import { onPage } from './page';
@@ -18,7 +23,6 @@ import { bankText, postJson, renderTurnstile, waitText, type ApiAnswer } from '.
 
 type State = 'default' | 'focus' | 'error' | 'success';
 const BANK_NAMES: Record<string, string> = { dib: 'Dubai Islamic Bank', enbd: 'Emirates NBD', other: 'Another bank' };
-const SHARE_URL = 'https://hasala.app/#invite';
 
 const MSG = {
   emailEmpty: 'Enter your email so we can send the invite.',
@@ -39,6 +43,18 @@ function answerText(a: ApiAnswer): { text: string; retry: boolean } {
   return { text: 'Something went wrong on our side.', retry: true };
 }
 
+/** A mailto: URL with a subject and a plain-text body (CRLF line breaks, as RFC 6068 asks). */
+function mailto(to: string, subject: string, lines: string[]): string {
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\r\n'))}`;
+}
+
+/** Points the "Try again" link at the email and opens it in the visitor's email app. */
+function openMail(card: HTMLElement, url: string): void {
+  const again = card.querySelector<HTMLAnchorElement>('[data-mailto]');
+  if (again) again.href = url;
+  window.location.href = url;
+}
+
 export function initWaitlist(): void {
   onPage(setup);
 }
@@ -51,16 +67,18 @@ function setup(signal: AbortSignal): void {
   form.noValidate = true;
   const done = root.querySelector<HTMLElement>('.wl-done')!;
   const coin = root.querySelector<SVGElement>('.wl-coin');
-  const email = form.elements.namedItem('email') as HTMLInputElement;
-  const bank = form.elements.namedItem('bank') as HTMLSelectElement;
-  const other = form.elements.namedItem('otherBank') as HTMLInputElement;
+  // By id: in "email" mode the fields have no names.
+  const email = form.elements.namedItem('wl-email') as HTMLInputElement;
+  const bank = form.elements.namedItem('wl-bank') as HTMLSelectElement;
+  const other = form.elements.namedItem('wl-other') as HTMLInputElement;
   const otherField = form.querySelector<HTMLElement>('[data-field="other"]')!;
-  const honeypot = form.elements.namedItem('website') as HTMLInputElement;
+  const honeypot = form.elements.namedItem('wl-website') as HTMLInputElement;
   const submit = form.querySelector<HTMLButtonElement>('.wl-submit')!;
   const label = submit.querySelector<HTMLElement>('.wl-submit__label')!;
   const spinner = submit.querySelector<HTMLElement>('.spinner')!;
   const status = form.querySelector<HTMLElement>('.wl-status')!;
-  const api = root.dataset.api!;
+  const api = root.dataset.api;
+  const mail = root.dataset.mail;
   const resetTurnstile = renderTurnstile(form, 'waitlist', signal);
   let touched = false;
   let sending = false;
@@ -164,11 +182,11 @@ function setup(signal: AbortSignal): void {
     }
   };
 
-  const showDone = () => {
+  const showDone = (bankShown = BANK_NAMES[bank.value] ?? '') => {
     const addr = email.value.trim();
     done.querySelectorAll('[data-done-email]').forEach((el) => (el.textContent = addr));
-    // The catalog name only, as in the confirmation email.
-    done.querySelector('[data-done-bank]')!.textContent = BANK_NAMES[bank.value] ?? '';
+    // "api": the catalog name only, as in the confirmation email. "email": what the email says.
+    done.querySelector('[data-done-bank]')!.textContent = bankShown;
     form.hidden = true;
     done.hidden = false;
     setState('success');
@@ -194,6 +212,23 @@ function setup(signal: AbortSignal): void {
         showDone();
         return;
       }
+      if (mail) {
+        const typed = bank.value === 'other' ? bankText(other.value) : '';
+        const bankLine = typed ? `Another bank: ${typed}` : (BANK_NAMES[bank.value] ?? '');
+        showDone(bankLine);
+        openMail(
+          done,
+          mailto(mail, 'Hasala invite request', [
+            'Hi Hasala,',
+            '',
+            'Please add me to the waitlist for the Hasala beta.',
+            '',
+            `Email: ${email.value.trim()}`,
+            `Bank: ${bankLine}`,
+          ]),
+        );
+        return;
+      }
       const body: Record<string, string> = { email: email.value.trim(), bank: bank.value, source: 'web', website: '' };
       const name = bank.value === 'other' ? bankText(other.value) : '';
       if (name) body.otherBank = name;
@@ -202,7 +237,7 @@ function setup(signal: AbortSignal): void {
 
       lock(true);
       const slow = window.setTimeout(() => setStatus('Still trying. Check your connection.'), 8000);
-      const answer = await postJson(`${api}/v1/waitlist`, body);
+      const answer = await postJson(`${api!}/v1/waitlist`, body);
       window.clearTimeout(slow);
       lock(false);
       resetTurnstile();
@@ -226,22 +261,25 @@ function setup(signal: AbortSignal): void {
     { signal },
   );
 
-  // Copy link for a friend
-  root.querySelector<HTMLButtonElement>('[data-copy-link]')?.addEventListener(
-    'click',
-    async (e) => {
-      const btn = e.currentTarget as HTMLButtonElement;
-      const text = btn.querySelector('span')!;
-      try {
-        await navigator.clipboard.writeText(SHARE_URL);
-        text.textContent = 'Link copied';
-      } catch {
-        text.textContent = SHARE_URL;
-      }
-      window.setTimeout(() => (text.textContent = 'Copy link for a friend'), 2400);
-    },
-    { signal },
-  );
+  // "Copy link for a friend", or (in "email" mode) "Copy <address>", here and in Tell us.
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    const text = btn.querySelector('span')!;
+    const label = text.textContent;
+    btn.addEventListener(
+      'click',
+      async () => {
+        const value = btn.dataset.copy!;
+        try {
+          await navigator.clipboard.writeText(value);
+          text.textContent = btn.dataset.copied ?? 'Copied';
+        } catch {
+          text.textContent = value;
+        }
+        window.setTimeout(() => (text.textContent = label), 2400);
+      },
+      { signal },
+    );
+  });
 
   // Every "Request an invite" button scrolls here and focuses Email.
   const goToForm = () => {
@@ -346,6 +384,14 @@ function setupTellUs(signal: AbortSignal, toInvite: (bankName: string) => void):
       invalid(null);
       const honeypot = (form.elements.namedItem('website') as HTMLInputElement | null)?.value;
       chosen = bankNameFor(select.value, other.value);
+      if (form.dataset.mail) {
+        // A filled honeypot is a bot: show the same card and open nothing.
+        if (!honeypot) openMail(done, mailto(form.dataset.mail, 'Hasala: please add my bank', ['Hi Hasala,', '', 'Please add my bank to Hasala.', '', `Bank: ${chosen}`]));
+        form.hidden = true;
+        done.hidden = false;
+        done.querySelector<HTMLElement>('.tellus-done__title')?.focus();
+        return;
+      }
       const body: Record<string, string> = { bank: select.value, source: 'web', website: honeypot ?? '' };
       if (name) body.otherBank = name;
       const token = (form.elements.namedItem('cf-turnstile-response') as HTMLInputElement | null)?.value;
