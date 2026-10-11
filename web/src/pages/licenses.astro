@@ -10,10 +10,15 @@ import Icon from '../components/Icon.astro';
 import { SITE } from '../data/site';
 import { THIRD_PARTY, mitLicense } from '../data/licenses';
 import interOfl from '../assets/fonts/Inter-OFL.txt?raw';
+// Verbatim, from the installed packages (relative paths: the packages'
+// export maps don't list their LICENSE files).
+import astroLicense from '../../node_modules/astro/LICENSE?raw';
+import uqrLicense from '../../node_modules/uqr/LICENSE?raw';
 
 const title = 'Third-party licences';
 const description = 'The third-party software the hasala.app website sends to your browser, with the full text of each licence, and how Hasala’s own code is licensed.';
-const textFor = (p: (typeof THIRD_PARTY)[number]) => (p.license === 'OFL-1.1' ? interOfl.trim() : mitLicense(p.copyright).trim());
+const VERBATIM: Record<string, string> = { Inter: interOfl, Astro: astroLicense, uqr: uqrLicense };
+const textFor = (p: (typeof THIRD_PARTY)[number]) => (VERBATIM[p.name] ?? mitLicense(p.copyright)).trim();
 
 const jsonLd = {
   '@context': 'https://schema.org',

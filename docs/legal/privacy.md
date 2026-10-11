@@ -20,8 +20,8 @@ This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), th
 
 - **Your bank emails are read on your iPhone.** Hasala connects to your Gmail with read-only access. Your iPhone fetches only messages from your banks' alert addresses. The emails themselves are never sent to our server.
 - **Your money data is sealed on your iPhone before it syncs.** Your transactions, amounts, merchants, categories, budgets, bills and rules are encrypted on your iPhone before they leave it. Our server can't read them.
-- **Our server still sees some things.** It sees your email address and name, that your account exists, details about your sign-in methods and devices, when you sync and how much sealed data you store, and a keyed hash of your Gmail address with the timing of changes in your mailbox. We list all of it below.
-- **No ads, no data sales, no AI services.** Hasala sorts transactions on your iPhone. Today, nothing is sent to an AI service. If we ever offer an optional, AI-powered feature, it will be off by default, explained before you turn it on, and you can turn it off at any time. Data from your Gmail will never be used to train AI models (see Google API data, below).
+- **Our server still sees some things.** It sees your email address and name, that your account exists, details about your sign-in methods and devices, when you sync and how much sealed data you store, and a keyed hash of your Gmail address with the timing of changes in your mailbox. From that timing it can tell roughly when, and how often, you get bank alerts, though not what they say. We list all of it below.
+- **No ads, no data sales, no AI services.** Hasala sorts transactions on your iPhone. Today, nothing is sent to an AI service. If we ever offer an optional, AI-powered feature, it will be off by default, explained before you turn it on, and you can turn it off at any time. Data from your Gmail will never be used to train AI models (see [Limited Use](#limited-use), below).
 
 ## What stays on your iPhone
 
@@ -31,13 +31,13 @@ Some things never leave your iPhone. Others leave only in sealed form.
 
 - **Your bank alert emails.** Your iPhone downloads them from Gmail, reads them and keeps the details it needs: amount, merchant, date, card, and the Gmail message ID so it can find the email again. The email itself isn't stored in your Hasala data and isn't sent to us.
 - **Your Gmail access token.** The token that lets Hasala read your Gmail is kept in your iPhone's Keychain, on this iPhone only. Our server never receives it.
-- **Your encryption keys.** The keys that open your data are kept in the Keychain on this iPhone only. They aren't included in iCloud or computer backups.
-- **Your 12-word recovery phrase.** It is created on your iPhone and shown to you once. Hasala doesn't store it anywhere, and it is never sent to us.
 - **Your settings for this iPhone.** Examples are notification level, Hide amounts and Face ID lock.
 
 ### Leaves your iPhone only in sealed form
 
-Your transactions, budget and plan sync between your devices through our server. Before anything in them leaves your iPhone, it is encrypted with keys only your devices hold. This covers transactions, amounts, merchants, categories, notes, budgets, bills, accounts, goals, projects and rules. Our server stores this sealed data and passes it to your other devices. It cannot open it.
+- **Your money data.** Your transactions, budget and plan sync between your devices through our server. Before anything in them leaves your iPhone, it is encrypted with keys only your devices hold. This covers transactions, amounts, merchants, categories, notes, budgets, bills, accounts, goals, projects and rules. Our server stores this sealed data and passes it to your other devices. It cannot open it.
+- **Your encryption keys.** The keys that open your data are created on your iPhone and kept in its Keychain, on this iPhone only. They aren't included in iCloud or computer backups. Our server keeps only sealed copies of them, which your passkey or your recovery phrase opens, so that a new iPhone can unlock your data.
+- **Your 12-word recovery phrase.** It is created on your iPhone. Our server keeps a sealed copy it can't open, so that you can view the words again in Hasala with your passkey. We email you each time they're shown. If you sign in with a password only, they can't be shown again, so keep the copy you wrote down.
 
 ### How your iPhone stores it
 
@@ -63,7 +63,8 @@ This is everything our server receives or stores about you, and why.
 | --- | --- |
 | For each passkey: its ID, its public key, the type of authenticator, whether it is backed up, and when it was last used | To check that it's you when you sign in with Face ID. A passkey's private part stays in your passkey manager; we never receive it. |
 | If you set a password: a scrambled form of it, never the password itself. Your iPhone scrambles your password with a deliberately slow, salted function before sending it, and our server stores only a further salted hash of that scrambled form. | To let you sign in with email and password. |
-| Your sealed recovery data: an encrypted copy of your account keys that only your 12-word recovery phrase can open, plus related public keys | So you can get back into your account with your recovery phrase if you lose every device and passkey. |
+| Sealed copies of your account keys: one that only your 12-word recovery phrase can open, one for each passkey that only that passkey can open, plus related public keys | So a new iPhone can unlock your data with your passkey, and so you can get back into your account with your recovery phrase if you lose every device and passkey. |
+| A sealed copy of your recovery phrase, which our server can't open | So you can view your 12 words again in Hasala after confirming with your passkey. We email you each time they're shown. |
 | Sign-in sessions: a one-way hash of each session token, and when it was created, last used and ended | To keep you signed in, and let you sign out on every device. |
 | Security actions and when they happened, such as "Gmail connected at 10:02" or "passkey added" | To protect your account and show you security alerts on your other devices. |
 
@@ -83,6 +84,8 @@ A password never unlocks your data. Only a passkey or your 12-word recovery phra
 | Your sealed data | To sync your transactions, budget and plan between your devices. |
 | When each device syncs, a rough size for each upload, and how much sealed data you store | To keep sync in order, apply storage limits and stop abuse. |
 
+Your iPhone uploads new transactions soon after a bank alert arrives. So our server, and Cloudflare in front of it, can tell roughly when, and how often, you get bank alerts. They can't tell what the alerts say.
+
 ### Gmail connection
 
 | What | Why |
@@ -91,7 +94,7 @@ A password never unlocks your data. Only a passkey or your 12-word recovery phra
 | The timing of changes in your Gmail, such as new mail arriving or mail being read, archived or deleted | To wake Hasala on your iPhone so it can check for new bank alerts. This happens for every change, not only bank alerts. |
 | When your Gmail notification setup next needs renewing | To remind your iPhone to renew it so alerts keep arriving. |
 
-Your Gmail address reaches our server in two moments. The first is when you connect Gmail. The second is each time Google notifies us that something in your Gmail has changed. Our server uses the address to find the right account and then discards it. It stores only the keyed hash and never writes the address to its logs. Because the hash is made from your address, someone holding our secret key could check whether a guessed address matches it.
+Your Gmail address reaches our server in two moments. The first is when you connect Gmail. The second is each time Google notifies us that something in your Gmail has changed. Our server uses the address to find the right account and then discards it. It stores only the keyed hash and never writes the address to its logs. If you also use that address as your Hasala email address, our server already has it, in plain text, as your account address. Because the hash is made from your address, someone holding our secret key could check whether a guessed address matches it.
 
 ### Your IP address
 
@@ -106,9 +109,9 @@ Our server sees the IP address of each request, passed on by Cloudflare. It uses
 
 30 days after an invite is used, expires or is withdrawn, we forget the note, the keyed hash of the address and the link key. An unused invite is then deleted. A used invite stays linked to your account as "invite used" until you delete your account; when you do, the link to your account goes too.
 
-**Your invite.** When we invite you, we add your email address to Hasala's beta on Apple's TestFlight, and Apple emails you an invitation to install it. We don't give Apple your name. Apple's terms apply to your use of TestFlight. TestFlight tells us whether you accepted and installed the beta, and passes us crash reports and any feedback you send through it. Testers never see each other.
+**Your invite.** When we invite you, we add your email address to Hasala's beta on Apple's TestFlight, and Apple emails you an invitation to install it. We don't give Apple your name. Apple's terms apply to your use of TestFlight. TestFlight tells us whether you accepted the invitation and when you install and open the beta. It also sends us crash reports, which don't include your transactions, and any feedback you send through it. Testers never see each other.
 
-**If you'd rather Apple didn't get your address.** Tell us at support@hasala.app before we invite you, and we'll send you TestFlight's public join link instead. We switch that link on only while someone is waiting for it, with a limit on how many people can use it. You then join TestFlight with your own Apple Account, and we give Apple nothing about you; TestFlight shows you to us only as an anonymous tester. You still need your Hasala invite to create an account.
+**If you'd rather Apple didn't get your address.** Tell us at support@hasala.app before we invite you, and we'll send you TestFlight's public join link instead. We switch that link on only while someone is waiting for it, with a limit on how many people can use it. You then join TestFlight with your own Apple Account, and we give Apple nothing about you; TestFlight doesn't tell us who you are. You still need your Hasala invite to create an account.
 
 When you create your Hasala account, we delete your address from the waitlist; your account keeps its own address and the name you give it. If you leave the list or delete your account, we remove you from the TestFlight beta. If you joined with the public link, we can't tell you apart from other link testers, so we close your invite or account instead.
 
@@ -141,7 +144,7 @@ If you tell us your bank on our website without asking for an invite, we count i
 
 - Your bank emails, or any other email in your Gmail.
 - Your amounts, merchants, categories, budget or plan in readable form.
-- Your recovery phrase, encryption keys or Gmail access token.
+- Your recovery phrase or encryption keys in readable form, or your Gmail access token.
 - Your contacts, location, photos or browsing activity.
 
 The app contains no advertising, analytics or crash-reporting tools from other companies.
@@ -161,17 +164,18 @@ We don't sell your data. We don't use it for advertising. We don't use it to dec
 Under the UAE Personal Data Protection Law, we rely on these grounds:
 
 - **Providing the service you asked for.** This covers running your account, sync and push.
-- **Your consent.** This covers connecting Gmail. You give it in Google's permission screen, and you can withdraw it at any time.
-- **Complying with the law, and protecting Hasala and its users.**
+- **Your consent.** This covers connecting Gmail. You give it in Hasala's Gmail step and on Google's permission screen, and you can withdraw it at any time.
+- **Keeping the service secure.** We have a legitimate interest in stopping abuse and protecting your account and other users' accounts.
+- **Complying with the law.**
 
 ## Gmail and Google user data
 
-Hasala asks Google for read-only access to your Gmail (the `gmail.readonly` permission), plus your Gmail address so it can match the connection to your account.
+Hasala asks Google for three permissions: `openid` and `email`, which give Hasala your Gmail address so it can match the connection to your account, and `gmail.readonly`, which gives read-only access to your Gmail.
 
 ### What Hasala does with it
 
 - Your iPhone, not our server, connects to Gmail.
-- Your iPhone asks Gmail only for messages from your banks' alert addresses. The rest of your inbox, including the senders and subjects of other emails, is never downloaded.
+- Your iPhone asks Gmail only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like it's from your bank, Hasala reads just its sender details on your iPhone and then sets it aside.
 - From each bank alert, your iPhone keeps the amount, merchant, date and card, plus the Gmail message ID so you can open the original email later. These become transactions, which are encrypted on your iPhone before they sync.
 - Hasala can't send, delete, label or change your email.
 - At launch, Hasala reads alerts from Dubai Islamic Bank (DIB) and Emirates NBD.
@@ -183,11 +187,20 @@ Hasala's use and transfer to any other app of information received from Google A
 In practice, for data Hasala receives from your Gmail:
 
 1. **Used only for features you can see.** We use it only to find your bank transactions and show them in Hasala, and to let you open the original alert.
-2. **No transfers, except as allowed.** We don't transfer it to anyone, except when needed to provide those features, to comply with the law, or as part of a merger, acquisition or sale of assets, and then only with your explicit consent first. In practice it isn't transferred at all. The raw emails stay on your iPhone, and the details drawn from them leave only as sealed data our server can't open.
+2. **No transfers, except as allowed.** We don't transfer it to anyone, except when needed to provide those features or to comply with the law. If Hasala were part of a merger, acquisition or sale of assets, we would transfer it only with your explicit consent, asked for first. In practice it isn't transferred at all. The raw emails stay on your iPhone, and the details drawn from them leave only as sealed data our server can't open.
 3. **No ads.** We never use or transfer it to serve ads, including personalised, retargeted or interest-based ads.
 4. **No sales, no credit decisions.** We never sell it, and we never use it to decide whether you get credit or a loan.
 5. **No one reads your email.** We don't read it, and the design keeps it out of our reach. The only exception would be if you explicitly agreed to let us look at a specific email, for example to add support for your bank. Even then, you would choose the email and send it to us yourself.
 6. **No AI training.** We don't use it to develop, improve or train AI or machine learning models. Hasala's categorisation runs on your iPhone using Apple's on-device model, and nothing from your Gmail is sent to an AI service.
+
+### Keeping and deleting it
+
+- **Your Gmail access token** is kept in your iPhone's Keychain, on that iPhone only, and is never sent to our server. When you disconnect Gmail, Hasala revokes it at Google and deletes it from the Keychain.
+- **Your bank alert emails** are never stored by Hasala. Your iPhone reads each one and keeps only the details listed above.
+- **Those details** (amount, merchant, date, card and Gmail message ID) are kept in Hasala's encrypted database on your iPhone, protected by iOS data protection, and on our server only in sealed form that we can't open. They stay until you delete them or your account.
+- **Your Gmail address** is kept on our server only as a keyed hash, which is deleted when you disconnect Gmail or delete your account (see [Gmail connection](#gmail-connection)).
+- **Disconnecting Gmail** stops Hasala reading your mail. Transactions it has already brought in stay in Hasala until you delete them.
+- **Deleting your account** erases all of it from our server straight away, and from your iPhones. Encrypted backups that still hold sealed copies expire within 30 days.
 
 ### Google's verification screen
 
@@ -208,7 +221,7 @@ The keys that open your data are created on your iPhone. Your devices hold them,
 
 Some things are not sealed. Our server needs your email address, your name and the account details listed above to run your account, so it can read them.
 
-Hasala will never ask for your recovery phrase in an email, a notification or on a website. Only type it into the Hasala app.
+Hasala will never ask for your recovery phrase, your password or a code in an email, a notification, a phone call or on a website. Only type them into the Hasala app.
 
 If you lose your recovery phrase and every passkey, your account can't be recovered. Not even by us.
 
@@ -224,11 +237,11 @@ We use a small number of service providers. None of them can open your sealed da
 
 | Provider | What they do | What they can see |
 | --- | --- | --- |
-| **Cloudflare** | Network provider in front of our server, and host of the hasala.app website. Encryption in transit ends at Cloudflare, which forwards requests to our server. | The requests between the app and our server, including your IP address, your email address and name when they are sent, and the sealed data. It also sees what you type into the website's forms, such as your email address and bank. Cloudflare cannot open the sealed data. |
+| **Cloudflare** | Network provider in front of our server, and host of the hasala.app website. Encryption in transit ends at Cloudflare, which forwards requests to our server. | The requests between the app and our server, including your IP address, your email address and name when they are sent, and the sealed data. If you use a password, it also sees the scrambled form your iPhone sends when you sign in (see our [Security](/security#what-the-design-doesnt-protect-against) page). It also sees what you type into the website's forms, such as your email address and bank. Cloudflare cannot open the sealed data. |
 | **Cloudflare Email Service** | Delivers the emails we send from no-reply@hasala.app. | Your email address and the content of those emails, such as a verification code. |
 | **Cloudflare R2** | Stores the off-site copy of our encrypted server backups. | Encrypted backup files only. Cloudflare doesn't hold the key to open them. |
 | **Google** | Hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
-| **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | That you installed the beta, push timing, and any feedback or crash reports you choose to send. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
+| **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
 
 We don't use any other service provider that handles your personal data. The waitlist, invites and our admin tool run on our own server.
 
@@ -257,7 +270,7 @@ Our server is located in the United Arab Emirates. Cloudflare, Google and Apple 
 | Invite records | Unused invites expire after 14 days, unless we set a different expiry. 30 days after an invite is used, expires or is withdrawn, its note, address hash and link key are forgotten, and an unused one is deleted. A used invite stays linked to your account until you delete it. |
 | Server logs | Our logs never contain your email address, IP address, tokens or sealed data. They hold technical events and error codes, and your random account ID only when a server error affects your account. They have no fixed period: the oldest entries are removed automatically as the log storage fills up. |
 | Admin records | A record of what we do in our admin tool, such as sending an invite, kept for 400 days. It refers to people only by internal IDs, never by email address or name. |
-| Support emails | As long as we need them to help you. Ask us and we'll delete them sooner. |
+| Support emails | We keep them only as long as we need them to help you, and delete them when you ask. |
 | Waitlist sign-up, not confirmed | 7 days. |
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. |
 | Website bank votes | Kept. They contain nothing that identifies you. |
@@ -293,8 +306,8 @@ Security is built into how Hasala works:
 
 - Data is sealed on your iPhone with modern authenticated encryption, and the server refuses data that isn't sealed.
 - Sign-in with Face ID uses passkeys.
-- Sensitive actions, such as connecting Gmail, adding a device or deleting your account, ask you to confirm it's you again. With a passkey, that's Face ID. If you sign in with a password only, it's your password, entered on an iPhone already added to your account, which also checks your Face ID or passcode.
-- Our server accepts connections only through Cloudflare, and its logs exclude personal data.
+- Sensitive actions, such as connecting Gmail, adding a device, viewing your recovery phrase or deleting your account, ask you to confirm it's you again. With a passkey, that's Face ID. If you sign in with a password only, it's your password, entered on an iPhone already added to your account, which also checks your Face ID or passcode.
+- Our server accepts connections only through Cloudflare, and its logs exclude email addresses, IP addresses, tokens and sealed data.
 - Backups are encrypted, and the key to open them is not kept on the server.
 
 No system is perfectly secure. Our [Security](/security) page explains the design, its limits and how to report a problem.

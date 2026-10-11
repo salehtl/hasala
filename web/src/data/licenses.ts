@@ -5,6 +5,12 @@
  * (`V=1 bun scripts/check-dist.ts` lists each page's files). Build-time-only
  * tools (Astro's compiler, sharp, the sitemap integration) ship nothing and
  * are not listed. The repository's NOTICE file says the same.
+ *
+ * /licenses shows each package's own licence file verbatim where the build
+ * can read it (Inter's OFL, Astro's and uqr's LICENSE); Vite's LICENSE.md
+ * also carries the licences of everything Vite bundles into its own build,
+ * none of which reaches the site, so Vite's entry is the MIT License with
+ * Vite's own copyright line.
  */
 
 /** The MIT License's permission notice, without its copyright line. */
@@ -53,7 +59,11 @@ export const THIRD_PARTY: readonly ThirdParty[] = [
   {
     name: 'Astro',
     use: 'The client-side router that moves between pages without a full reload. It runs on every page.',
-    copyright: ['Copyright (c) 2021 Fred K. Schott'],
+    copyright: [
+      'Copyright (c) 2021 Fred K. Schott',
+      'Parts from SvelteKit: Copyright (c) 2020 SvelteKit contributors',
+      'Parts from Vite: Copyright (c) 2019-present, Yuxi (Evan) You and Vite contributors',
+    ],
     license: 'MIT',
     licenseName: 'MIT License',
     licenseUrl: 'https://spdx.org/licenses/MIT.html',
