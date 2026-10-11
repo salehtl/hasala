@@ -1,0 +1,127 @@
+{
+  "name": "payload-not-an-object",
+  "group": "fold",
+  "note": "A payload that is not a JSON object is an invalid_payload for every op type that reads one.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "payload-not-an-object-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": [
+            "not",
+            "an",
+            "object"
+          ]
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "payload-not-an-object-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": "USD"
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "payload-not-an-object-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": null
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "1",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "invalid_payload"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "0a9bc3d2df8172aff1e018ea10c4c6328b894ce9fb7177cbdfc5b256ded6b729",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "0fbb5b48c03cf27eadd8c24e9512802fa1202dabefc88b3ef5520aa1155f8a34",
+      "anomalies": [
+        {
+          "at_seq": "1",
+          "kind": "invalid_payload",
+          "detail": "txn_ingested payload-not-an-object-1: payload is not a JSON object"
+        },
+        {
+          "at_seq": "2",
+          "kind": "invalid_payload",
+          "detail": "rate_set payload-not-an-object-2: payload is not a JSON object"
+        },
+        {
+          "at_seq": "3",
+          "kind": "invalid_payload",
+          "detail": "home_currency_set payload-not-an-object-3: payload is not a JSON object"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

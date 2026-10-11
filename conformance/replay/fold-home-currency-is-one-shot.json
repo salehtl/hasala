@@ -1,0 +1,171 @@
+{
+  "name": "home-currency-is-one-shot",
+  "group": "fold",
+  "note": "A second home_currency_set, a rate_set and a rate_unset for the home currency are all refused.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "home-currency-is-one-shot-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "home-currency-is-one-shot-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "home-currency-is-one-shot-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED",
+            "rate_micro": "1000000"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_unset",
+          "op_id": "home-currency-is-one-shot-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_unset",
+          "op_id": "home-currency-is-one-shot-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "detail": "",
+          "kind": "home_currency_reset"
+        },
+        {
+          "at_seq": "3",
+          "detail": "",
+          "kind": "rate_set_for_home_currency"
+        },
+        {
+          "at_seq": "4",
+          "detail": "",
+          "kind": "rate_unset_for_home_currency"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "5"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": "AED",
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [
+        [
+          "USD",
+          "2026-06-05T10:00:00.000Z"
+        ]
+      ],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ],
+        [
+          "USD",
+          null
+        ]
+      ],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "dc513ca4345938cfd5e01bd953a214e1b7301e4fe961287dbf5404558d1649be",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "2cbf1b965920cdc06853c3c028c3cb53123e3ccb94783f974430fb7b66f544c5",
+      "anomalies": [
+        {
+          "at_seq": "2",
+          "kind": "home_currency_reset",
+          "detail": "home currency is already AED; home-currency-is-one-shot-2 says USD"
+        },
+        {
+          "at_seq": "3",
+          "kind": "rate_set_for_home_currency",
+          "detail": "home-currency-is-one-shot-3 sets a rate for the home currency AED"
+        },
+        {
+          "at_seq": "4",
+          "kind": "rate_unset_for_home_currency",
+          "detail": "home-currency-is-one-shot-4 unsets the implicit identity rate of AED"
+        }
+      ],
+      "unreadable": []
+    }
+  }
+}

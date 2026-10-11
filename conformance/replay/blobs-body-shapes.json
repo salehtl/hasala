@@ -1,0 +1,186 @@
+{
+  "name": "body-shapes",
+  "group": "blobs",
+  "note": "Absent and null ops are zero ops; a body that is not an object, a missing kind, a non-array ops and an unknown kind are set aside.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":1,\"kind\":\"ops\"}"
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "2",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":null}"
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "3",
+      "body": "[1,2,3]"
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "4",
+      "body": "{\"v\":1,\"ops\":[]}"
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "5",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":{}}"
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "6",
+      "body": "{\"v\":1,\"kind\":\"mystery\",\"ops\":[]}"
+    },
+    {
+      "seq": "7",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "7",
+      "body": "{\"v\":\"1\",\"kind\":\"ops\",\"ops\":[]}"
+    },
+    {
+      "seq": "8",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "8",
+      "body": "{\"v\":0,\"kind\":\"ops\",\"ops\":[]}"
+    },
+    {
+      "seq": "9",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "9",
+      "body": "{\"v\":1.0,\"kind\":\"ops\",\"ops\":[]}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "9"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "3",
+          "stream": "hot",
+          "writer_counter": "3",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "4",
+          "stream": "hot",
+          "writer_counter": "4",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "5",
+          "stream": "hot",
+          "writer_counter": "5",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "6",
+          "stream": "hot",
+          "writer_counter": "6",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "7",
+          "stream": "hot",
+          "writer_counter": "7",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "8",
+          "stream": "hot",
+          "writer_counter": "8",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "9",
+          "stream": "hot",
+          "writer_counter": "9",
+          "writer_id": "dev-a"
+        }
+      ]
+    },
+    "state_sha256": "1fa1b951f3a6964f0cb6b1a647026d7f64013cbe864590cde0ef9e521efcdede",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "c4340370889c23c8ebfd3742785994f3ea58001bae0fb30f8f3b4a4006a31db6",
+      "anomalies": [],
+      "unreadable": [
+        {
+          "seq": "3",
+          "reason": "op blob: body is not a JSON object"
+        },
+        {
+          "seq": "4",
+          "reason": "blob kind is undefined, not \"ops\""
+        },
+        {
+          "seq": "5",
+          "reason": "ops is not an array"
+        },
+        {
+          "seq": "6",
+          "reason": "blob kind is \"mystery\", not \"ops\""
+        },
+        {
+          "seq": "7",
+          "reason": "op blob: version is \"1\""
+        },
+        {
+          "seq": "8",
+          "reason": "op blob: version 0 is not valid"
+        },
+        {
+          "seq": "9",
+          "reason": "op blob: v is written as 1.0, which Go refuses as a non-integer literal"
+        }
+      ]
+    }
+  }
+}

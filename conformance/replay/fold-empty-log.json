@@ -1,0 +1,43 @@
+{
+  "name": "empty-log",
+  "group": "fold",
+  "note": "No ops: the empty state, every configuration field at its default.",
+  "schema_version": 1,
+  "log": [],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "0"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "6f5be3037dc89565bb782b2423f6af52402832bc1c67813498501419507788c1",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "6f5be3037dc89565bb782b2423f6af52402832bc1c67813498501419507788c1",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

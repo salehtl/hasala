@@ -1,0 +1,110 @@
+{
+  "name": "invalid-utf8-body",
+  "group": "blobs",
+  "note": "Invalid UTF-8 is decoded with U+FFFD and then judged as JSON: here it is a valid blob whose merchant carries the replacement character.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body_base64": "eyJ2IjoxLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoxLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiJyYXctMS10eG5faW5nZXN0ZWQiLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDAuMDAwWiIsImVudGl0eSI6eyJraW5kIjoidHhuIiwiaWQiOiJyMSJ9LCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiaW5nZXN0X2lkIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsInBheWxvYWQiOnsiYW1vdW50X21pbm9yIjoiMTAwIiwiY3VycmVuY3kiOiJBRUQiLCJkaXJlY3Rpb24iOiJkZWJpdCIsInBvc3RlZF9hdCI6IjIwMjYtMDYtMDVUMDk6MDA6MDBaIiwibWVyY2hhbnRfcmF3IjoiUv9XIiwibGFzdDQiOiIxIn19XX0="
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "1|100|debit|R\ufffdW|2026-06-05",
+          [
+            "r1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "1"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000r1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "r1",
+            "kind": "txn",
+            "op_id": "raw-1-txn_ingested",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "r1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "r1"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "r1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "100",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "r1",
+            "ingest_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "last4": "1",
+            "mailbox_message_id": null,
+            "merchant_raw": "R\ufffdW",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "f3d0f621870464737c2df6651c12f93ffd959e940be56061952ca9112bde2dc3",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "f3d0f621870464737c2df6651c12f93ffd959e940be56061952ca9112bde2dc3",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

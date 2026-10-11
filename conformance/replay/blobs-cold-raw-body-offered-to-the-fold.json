@@ -1,0 +1,64 @@
+{
+  "name": "cold-raw-body-offered-to-the-fold",
+  "group": "blobs",
+  "note": "A raw_body record is not an ops blob: it is set aside, never folded as state.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "stream": "cold",
+      "writer_counter": "1",
+      "body": "{\"v\":1,\"kind\":\"raw_body\",\"ingest_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"received_at\":\"2026-06-05T09:00:00Z\",\"raw_base64\":\"\"}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "1"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "1",
+          "stream": "cold",
+          "writer_counter": "1",
+          "writer_id": "ingest"
+        }
+      ]
+    },
+    "state_sha256": "f8c81df52ef9c1d60236bb4809c6c7e759a4c16591c1cda1a21960579524d1b1",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "c996414cf65126ccde1b2d1d375c87f017c1fbf7817df253d1f7ac212f5199fa",
+      "anomalies": [],
+      "unreadable": [
+        {
+          "seq": "1",
+          "reason": "blob kind is \"raw_body\", not \"ops\""
+        }
+      ]
+    }
+  }
+}
