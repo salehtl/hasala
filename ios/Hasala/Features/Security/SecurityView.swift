@@ -134,16 +134,21 @@ struct SecurityView: View {
   private func row<T: View>(_ symbol: String, _ title: String, _ detail: String?, tint: Color = HColor.actionAccentSubtle,
                             ink: Color = HColor.actionAccent, titleLabel: String? = nil,
                             @ViewBuilder trailing: () -> T) -> some View {
-    HStack(spacing: 14) {
+    HStack(alignment: .top, spacing: 14) {
       IconDisc(systemImage: symbol, tint: tint, ink: ink)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-          .accessibilityLabel(titleLabel ?? title)
-        if let detail { Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary) }
+      // The action moves under the text when both don't fit (spec 04 §17).
+      ReflowingRow {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
+            .lineLimitAtDefaultTextSize(1)
+            .truncationMode(.middle)
+            .accessibilityLabel(titleLabel ?? title)
+          if let detail { Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary) }
+        }
+        .accessibilityElement(children: .combine)
+      } trailing: {
+        trailing()
       }
-      .accessibilityElement(children: .combine)
-      Spacer(minLength: 8)
-      trailing()
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 12)

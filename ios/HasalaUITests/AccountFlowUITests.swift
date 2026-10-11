@@ -308,14 +308,51 @@ final class AccountFlowUITests: XCTestCase {
     try audit(app)
   }
 
+  /// The signed-out screens and Sign-in & security at `.accessibility3` reflow instead of
+  /// clipping (spec 04 §17).
+  @MainActor
+  func testAccountScreensAtLargeTextSizes() throws {
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-HasalaScenario", "newUser", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL",
+    ]
+    app.launch()
+    XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
+    attach(app, "AX3 · Stories")
+    try audit(app, atLargeText: true)
+    tap(app, "stories.getStarted")
+    XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: 10))
+    attach(app, "AX3 · Welcome")
+    try audit(app, atLargeText: true)
+    tap(app, "welcome.join")
+    XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
+    attach(app, "AX3 · Invite")
+    try audit(app, atLargeText: true)
+
+    let signedIn = XCUIApplication()
+    signedIn.launchArguments = [
+      "-HasalaScenario", "passwordOnly", "-UIPreferredContentSizeCategoryName",
+      "UICTContentSizeCategoryAccessibilityXL",
+    ]
+    signedIn.launch()
+    XCTAssertTrue(el(signedIn, "home.hero.left").waitForExistence(timeout: 15))
+    signedIn.buttons["header.profile"].firstMatch.tap()
+    tap(signedIn, "profile.security")
+    XCTAssertTrue(signedIn.staticTexts["Password only"].waitForExistence(timeout: 10))
+    attach(signedIn, "AX3 · Sign-in & security")
+    try audit(signedIn, atLargeText: true)
+  }
+
   // MARK: - Helpers
 
   /// The system accessibility audit (see SmokeTests for why contrast is not counted
   /// and clipping is checked only at the large sizes).
   @MainActor
-  private func audit(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) throws {
+  private func audit(
+    _ app: XCUIApplication, atLargeText: Bool = false, file: StaticString = #filePath, line: UInt = #line
+  ) throws {
     var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
-    types.remove(.textClipped)
+    if !atLargeText { types.remove(.textClipped) }
     var issues: [String] = []
     try app.performAccessibilityAudit(for: types) { issue in
       // The keyboard and the system bars are not ours.

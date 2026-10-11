@@ -17,9 +17,11 @@ struct InviteCodeView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         LabeledField(label: "Invite code", error: model.inviteHint, focused: focused) {
-          TextField("ABCD-EFGH-IJKL-MNOP-QRST-UVWX", text: $model.inviteText)
+          // Vertical, so the code wraps instead of clipping at large text sizes.
+          TextField("ABCD-EFGH-IJKL-MNOP-QRST-UVWX", text: $model.inviteText, axis: .vertical)
+            .lineLimit(1...3)
             .onChange(of: model.inviteText) { _, new in
-              let formatted = InviteCode.group(InviteCode.normalize(new))
+              let formatted = InviteCode.group(InviteCode.normalize(new.filter { !$0.isNewline }))
               if formatted != new { model.inviteText = formatted }
             }
             .font(.system(.subheadline, design: .monospaced).weight(.semibold))

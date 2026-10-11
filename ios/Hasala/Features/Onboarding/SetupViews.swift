@@ -406,17 +406,25 @@ struct StartingPlanView: View {
   }
 
   private var splitBar: some View {
-    GeometryReader { geo in
-      HStack(spacing: 4) {
-        Capsule().fill(HColor.bucketNeedsStart)
-          .frame(width: max(0, (geo.size.width - 8) * CGFloat(model.plan.needsPercent) / 100))
-        Capsule().fill(HColor.bucketWantsStart)
-          .frame(width: max(0, (geo.size.width - 8) * CGFloat(model.plan.wantsPercent) / 100))
-        Capsule().fill(HColor.bucketSavingsStart)
+    let parts: [(Int, Color)] = [
+      (model.plan.needsPercent, HColor.bucketNeedsInk), (model.plan.wantsPercent, HColor.bucketWantsInk),
+      (model.plan.savingsPercent, HColor.bucketSavingsInk),
+    ]
+    return GeometryReader { geo in
+      HStack(alignment: .top, spacing: 4) {
+        ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+          VStack(alignment: .leading, spacing: 6) {
+            Capsule().fill(part.1.opacity(0.3)).frame(height: 12)
+            Text("\(part.0)%").hType(.footnote.weight(.semibold)).foregroundStyle(part.1)
+          }
+          .frame(width: max(0, (geo.size.width - 8) * CGFloat(part.0) / 100))
+        }
       }
     }
-    .frame(height: 12)
-    .accessibilityHidden(true)
+    .frame(height: 36)
+    .accessibilityElement()
+    .accessibilityLabel(
+      "Needs \(model.plan.needsPercent)%, wants \(model.plan.wantsPercent)%, savings \(model.plan.savingsPercent)%")
   }
 
   private func bucket(_ symbol: String, _ tint: Color, _ ink: Color, _ name: String, _ amount: Int64?, _ text: String)
