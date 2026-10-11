@@ -135,10 +135,17 @@ func (p *pullSlots) release(u uuid.UUID) {
 	}
 }
 
-// pullAdmitted applies pull-user and the concurrency bound; the caller
-// releases the slot when it returns true.
+// pullAdmitted applies the concurrency bound and then pull-user; the caller
+// releases the slot when it returns true. The slot comes first so a pull
+// refused for being the third in flight spends no pull-user token, and a
+// slot the limiter then refuses is given back.
 func (s *Server) pullAdmitted(w http.ResponseWriter, userID uuid.UUID) bool {
-	if !s.PullPerUser.Allow(userID.String()) || !s.pulls.acquire(userID) {
+	if !s.pulls.acquire(userID) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
+		return false
+	}
+	if !s.PullPerUser.Allow(userID.String()) {
+		s.pulls.release(userID)
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
 		return false
 	}

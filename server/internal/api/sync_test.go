@@ -1234,8 +1234,19 @@ func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
 	// pull-user's own budget.
 	h.srv.PullPerUser = NewLimiter(0, 2, 16, time.Now)
 	h.h = h.srv.Handler()
+	// A pull refused for want of a slot spends no pull-user token.
+	if !h.srv.pulls.acquire(u) || !h.srv.pulls.acquire(u) {
+		t.Fatal("two slots were not available")
+	}
+	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusTooManyRequests)
+	h.srv.pulls.release(u)
+	h.srv.pulls.release(u)
 	for i := 0; i < 2; i++ {
 		wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusOK)
 	}
 	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusTooManyRequests)
+	// And a pull the limiter refuses gives its slot back.
+	if n := len(h.srv.pulls.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold slots after a limiter refusal", n)
+	}
 }
