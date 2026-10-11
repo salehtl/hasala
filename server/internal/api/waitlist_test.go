@@ -223,8 +223,32 @@ func TestWaitlistAnswersAreUniform(t *testing.T) {
 	if _, err := h.pool.Exec(bg, `UPDATE users SET email_norm = 'holder@example.com' WHERE id = $1`, u); err != nil {
 		t.Fatal(err)
 	}
+	// An entry in every later state (spec 07 §5.9: one answer for all).
+	entry := func(email, state string) {
+		t.Helper()
+		var norm any = email
+		if state == "joined" {
+			norm = nil
+		}
+		if _, err := h.pool.Exec(bg, `INSERT INTO waitlist_entries (email_tag, email_norm, state, bank_slug, source,
+			created_at, updated_at, confirmed_at, invited_at, joined_at)
+			VALUES ($1, $2, $3, 'enbd', 'web', now(), now(), now(),
+			        CASE WHEN $3 IN ('invited','joined') THEN now() END, CASE WHEN $3 = 'joined' THEN now() END)`,
+			r.tagger.EmailTag(email), norm, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entry("confirmed@example.com", "confirmed")
+	entry("invited@example.com", "invited")
+	entry("joined@example.com", "joined")
+	// Joined, then the account was deleted: the purge removes the entry.
+	entry("gone@example.com", "joined")
+	if _, err := h.pool.Exec(bg, `DELETE FROM waitlist_entries WHERE email_tag = $1`, r.tagger.EmailTag("gone@example.com")); err != nil {
+		t.Fatal(err)
+	}
 	var bodies []string
-	for _, email := range []string{"new@example.com", "new@example.com", "holder@example.com"} {
+	for _, email := range []string{"new@example.com", "new@example.com", "holder@example.com", "confirmed@example.com",
+		"invited@example.com", "joined@example.com", "gone@example.com"} {
 		w := r.post("/api/v1/waitlist", `{"email":"`+email+`","bank":"other","otherBank":"Some Bank","source":"web"}`, nil)
 		wantStatus(t, w, http.StatusAccepted)
 		bodies = append(bodies, w.Body.String())
