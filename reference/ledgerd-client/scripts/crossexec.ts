@@ -13,8 +13,8 @@
  * this is the evidence that the net is in the right place.
  *
  *   S=/scratch
- *   LEDGER_CORPUS_DB=$S/corpus.db LEDGER_CROSSEXEC_OUT=$S/go-corpus.jsonl \
- *     go test ./internal/norm/ -run TestWriteCrossExecutorCorpus -timeout 20m
+ *   HASALA_CORPUS_DB=$S/corpus.db HASALA_CROSSEXEC_OUT=$S/go-corpus.jsonl \
+ *     go test ./gates/norm/ -run TestWriteCrossExecutorCorpus -timeout 20m   # in server/oracle
  *   (cd client && bun run scripts/crossexec.ts $S/go-corpus.jsonl)
  *
  * Exits non-zero on any disagreement.

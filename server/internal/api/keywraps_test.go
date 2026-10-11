@@ -77,7 +77,7 @@ func TestKeyWrapRoundTrips(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
 
 	wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", tok, map[string]any{
 		"credential_id": b64(cred), "wrapped": b64(prfWrap(0x22)), "wrap_version": 1,
@@ -105,7 +105,7 @@ func TestKeyWrapIsReplaceable(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
 
 	for _, fill := range []byte{0x11, 0x22} {
 		wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", tok, map[string]any{
@@ -124,7 +124,7 @@ func TestKeyWrapCanBeDeleted(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
 	wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", tok, map[string]any{
 		"credential_id": b64(cred), "wrapped": b64(prfWrap(1)), "wrap_version": 1,
 	}), http.StatusNoContent)
@@ -148,8 +148,8 @@ func TestKeyWrapsAreScopedToTheCallersAccount(t *testing.T) {
 	h := newHarness(t)
 	alice, bob := h.user("alice"), h.user("bob")
 	aliceTok, bobTok := h.session(alice), h.session(bob)
-	aliceCred := h.credential(alice, []byte("cred-alice"))
-	h.credential(bob, []byte("cred-bob"))
+	aliceCred := h.credential(alice, []byte("cred-alice-0000000"))
+	h.credential(bob, []byte("cred-bob-00000000"))
 
 	wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", aliceTok, map[string]any{
 		"credential_id": b64(aliceCred), "wrapped": b64(prfWrap(0xa1)), "wrap_version": 1,
@@ -200,7 +200,7 @@ func TestKeyWrapsRefuseMalformedSubmissions(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
 
 	for name, body := range map[string]map[string]any{
 		"no credential id":     {"credential_id": "", "wrapped": b64(prfWrap(1)), "wrap_version": 1},
@@ -236,7 +236,7 @@ func TestKeyWrapBoundMatchesTheColumn(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
 	wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", tok, map[string]any{
 		"credential_id": b64(cred), "wrapped": b64(make([]byte, maxKeyWrapBytes)), "wrap_version": 1,
 	}), http.StatusNoContent)
@@ -252,8 +252,8 @@ func TestKeyWrapDiesWithItsCredential(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
-	other := h.credential(u, []byte("cred-alice-2"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
+	other := h.credential(u, []byte("cred-alice-2222222"))
 	for _, c := range [][]byte{cred, other} {
 		wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", tok, map[string]any{
 			"credential_id": b64(c), "wrapped": b64(prfWrap(1)), "wrap_version": 1,
@@ -275,7 +275,7 @@ func TestKeyWrapDiesWithTheAccount(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("alice")
 	tok := h.session(u)
-	cred := h.credential(u, []byte("cred-alice"))
+	cred := h.credential(u, []byte("cred-alice-0000000"))
 	wantStatus(t, h.req(http.MethodPost, "/api/v1/keys/wraps", tok, map[string]any{
 		"credential_id": b64(cred), "wrapped": b64(prfWrap(1)), "wrap_version": 1,
 	}), http.StatusNoContent)

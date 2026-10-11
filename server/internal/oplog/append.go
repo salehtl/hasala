@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,37 +15,29 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
-// Type flags. This is the whole vocabulary of op_log.type_flag, and it is
-// deliberately coarse: spec §2 discloses only that SOMETHING was ingested or
-// edited, never what. The op type itself lives inside the blob, which is
-// plaintext in Phase 1 and ciphertext in Phase 3 — lifting it into a column
-// would put it permanently outside the envelope.
-const (
-	// TypeFlagIngest marks a row the server wrote from inbound mail.
-	TypeFlagIngest = "ingest"
-	// TypeFlagEdit marks a row a client device authored.
-	TypeFlagEdit = "edit"
-)
+// TypeFlagEdit is the whole vocabulary of op_log.type_flag: every row is a
+// device's own encrypted batch (the op_log_type_flag_is_edit CHECK). ledgerd's
+// "ingest" flag marked rows the server authored from inbound mail; the server
+// authors nothing now (spec 02 §2.3, C5). The op type lives inside the
+// ciphertext and must never be lifted into a column.
+const TypeFlagEdit = "edit"
 
 // Row is one op_log row: a sealed blob plus the position it occupies. Seq is
 // assigned by the server and is the ONLY field a caller may not set —
 // appendRows rejects a row that arrives with one, because a caller that
 // believes it can choose its own seq has misunderstood the ordering guarantee.
-// (The ingest writer additionally does not choose its WriterCounter or hashes;
-// see [Appender.AppendIngest].)
 type Row struct {
 	UserID        uuid.UUID
 	Seq           int64  // server-assigned; zero on the way in, populated on reads
-	Stream        string // blob.StreamHot or blob.StreamCold
+	Stream        string // blob.StreamHot
 	WriterID      string
 	WriterCounter int64 // 1-based position within (writer_id, stream)
 	TypeFlag      string
-	Blob          []byte // the framed, bucket-padded bytes from blob.Sealed
+	Blob          []byte // a sealed frame v3, exactly one bucket (blob.LooksSealed)
 	SizeBucket    int
 	BlobHash      []byte // 32 bytes: blob.Hash(prev, sealed)
 	PrevHash      []byte // 32 bytes: the previous blob hash in this (writer, stream) chain
-	// CreatedAt is caller-supplied (ingest sets the received time) and defaults
-	// to now() only when left zero. It is therefore NOT monotone with seq, and
+	// CreatedAt defaults to now() when left zero. It is therefore NOT monotone with seq, and
 	// ordering the log by it instead of by seq is subtly wrong — replay folds by
 	// seq, and nothing else is a total order. Treat it as a diagnostic
 	// timestamp, never as a position.
@@ -57,25 +48,24 @@ type Row struct {
 // and then never read back.
 //
 // AppendClient runs it BEFORE the append transaction opens, so a client's
-// invalid batch cannot even reach the counter. appendTx runs it again after
-// prepare, because AppendIngest's rows are not complete until the server has
-// filled in the counter and hashes. Neither placement can leave a gap: a
-// rollback restores the counter, so a rejected batch consumes nothing either
-// way.
+// invalid batch cannot even reach the counter, and appendTx runs it again
+// inside the transaction, so no future append path can skip it (spec 02
+// §11.2). A rollback restores the counter, so a rejected batch consumes
+// nothing either way.
 func (r Row) validate() error {
 	switch {
 	case r.UserID == uuid.Nil:
 		return errors.New("user_id is zero")
 	case r.Seq != 0:
 		return fmt.Errorf("seq is server-assigned; leave it zero (got %d)", r.Seq)
-	case r.Stream != blob.StreamHot && r.Stream != blob.StreamCold:
-		return fmt.Errorf("stream is %q, want %q or %q", r.Stream, blob.StreamHot, blob.StreamCold)
+	case r.Stream != blob.StreamHot:
+		return fmt.Errorf("stream is %q, want %q", r.Stream, blob.StreamHot)
 	case r.WriterID == "":
 		return errors.New("writer_id is empty")
 	case r.WriterCounter < 1:
 		return fmt.Errorf("writer_counter is %d, and counters are 1-based", r.WriterCounter)
-	case r.TypeFlag != TypeFlagIngest && r.TypeFlag != TypeFlagEdit:
-		return fmt.Errorf("type_flag is %q, want %q or %q", r.TypeFlag, TypeFlagIngest, TypeFlagEdit)
+	case r.TypeFlag != TypeFlagEdit:
+		return fmt.Errorf("type_flag is %q, want %q", r.TypeFlag, TypeFlagEdit)
 	case len(r.Blob) == 0:
 		return errors.New("blob is empty")
 	case len(r.BlobHash) != 32:
@@ -83,10 +73,8 @@ func (r Row) validate() error {
 	case len(r.PrevHash) != 32:
 		return fmt.Errorf("prev_hash is %d bytes, want 32", len(r.PrevHash))
 	}
-	// Every blob is padded to exactly a size bucket by blob.Seal, so a blob
-	// whose length is not a bucket was not produced by the sealer and will not
-	// survive blob.Open. Deriving the check from blob.BucketFor keeps the ladder
-	// in one place instead of copying it here.
+	// Every frame is exactly one size bucket. The size checks run before the
+	// plaintext predicate (spec 01 T18), so a wrong length is named as such.
 	bucket, err := blob.BucketFor(len(r.Blob))
 	if err != nil {
 		return fmt.Errorf("blob is %d bytes: %w", len(r.Blob), err)
@@ -98,24 +86,24 @@ func (r Row) validate() error {
 		return fmt.Errorf("size_bucket is %d but the blob is %d bytes", r.SizeBucket, len(r.Blob))
 	}
 
+	// The plaintext refusal (spec 01 §8.1, F1): the same predicate the upload
+	// handler ran, and the op_log_blob_is_sealed CHECK behind both.
+	if err := blob.LooksSealed(r.Blob); err != nil {
+		return err
+	}
+
 	// The blob must have been sealed FOR the position it is about to occupy.
 	//
 	// Nothing else on the write path checks this. The hash chain does not: a
 	// blob sealed at counter 7, or for a different user entirely, chains
 	// perfectly well at counter 1 — SHA256 does not care what the bytes mean.
 	// Without this check such a row is stored, verifies, and is only caught
-	// later on a device, by blob.Open, as a set-aside WARNING (blob.ErrSetAside)
-	// rather than anything anyone acts on. blob's package doc advertises exactly
-	// this move-detection as a property of the format ("a blob cannot be moved
-	// to another position, stream, writer or user without the move being
-	// detected"); this is where the server makes good on it.
+	// later on a device, as a tamper stop. The op_log_aad_matches_position
+	// CHECK restates it in SQL.
 	//
-	// The server can do this with no key, in Phase 1 and Phase 3 alike, because
-	// the AAD is cleartext framing outside the sealed region. bytes.Equal rather
-	// than a constant-time compare on purpose: both sides are public framing the
-	// caller already supplied, so there is no secret for a timing side channel
-	// to leak. blob.Open's constant-time compare is about matching the shape of
-	// the AEAD that replaces it, which is a different concern.
+	// The server does this with no key, because the AAD is cleartext framing
+	// ahead of the nonce. bytes.Equal rather than a constant-time compare on
+	// purpose: both sides are public framing the caller already supplied.
 	aad, err := blob.EmbeddedAAD(r.Blob)
 	if err != nil {
 		return fmt.Errorf("blob framing is unreadable: %w", err)
@@ -132,17 +120,11 @@ func (r Row) validate() error {
 // Appender writes rows to the op log. It owns the one place a seq is ever
 // allocated.
 //
-// Its two public write paths are [Appender.AppendClient] (a device's own,
-// pre-chained blobs) and [Appender.AppendIngest] (the server's, chained here) —
-// see chain.go. There is deliberately no exported way to append without the
-// chain check.
+// Its one public write path is [Appender.AppendClient] (a device's own,
+// pre-chained, sealed blobs) — see chain.go. There is deliberately no exported
+// way to append without the chain check, and no server author at all.
 type Appender struct {
 	Pool *pgxpool.Pool
-	// Sealer frames the blobs AppendIngest authors. nil means
-	// blob.PlaintextSealer{}, which is Phase 1: plaintext, framed and padded.
-	// Phase 3 swaps this one field for a real HPKE sealer and nothing else in
-	// this package moves.
-	Sealer blob.Sealer
 	// Budget is the per-account admission gate. nil does NOT mean "no budget":
 	// it means a gate over Pool, built on demand by [Appender.budget].
 	//
@@ -189,13 +171,11 @@ func EnsureSeqRow(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 
 // appendRows allocates a contiguous block of seqs for one user and writes rows
 // in the order given, returning the assigned seqs in that same order. Every row
-// must carry the same UserID; rows MAY span streams, because the ingest writer
-// appends one hot and one cold row per message.
+// must carry the same UserID.
 //
 // It is unexported because every append must go through a chain check:
-// [Appender.AppendClient] verifies a device's chain, [Appender.AppendIngest]
-// computes the server's. prepare is what each of those supplies — see
-// [prepareFunc] and the ORDERING RULE on appendTx.
+// [Appender.AppendClient] verifies a device's chain, and prepare is what it
+// supplies — see [prepareFunc] and the ORDERING RULE on appendTx.
 //
 // # Gap-freeness
 //
@@ -244,21 +224,12 @@ func EnsureSeqRow(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 // [isPositionTaken] handles the constraint violation itself as the backstop.
 // See AppendClient's "Idempotent replay" section.
 //
-// [Appender.AppendIngest] is the caller that CANNOT implement this contract, and
-// the omission is deliberate rather than pending. It assigns the counters
-// itself, so a retry after an ambiguous commit picks the NEXT counter and
-// appends a second, perfectly well-chained copy — it never sees 23505 and there
-// is nothing here for it to detect. Ingest idempotency is by ingest identity
-// instead (spec §3.3:67): the pipeline looks up the ingest id before appending.
-// Do not "fix" this by making AppendIngest accept caller-supplied counters; that
-// reintroduces the AAD-versus-counter circularity AppendIngest exists to remove.
-//
 // # Accepted cost
 //
-// The row lock is held across the blob INSERT, so a 1 MB cold blob serialises
-// this one user's inbound SMTP for the duration of that write. It is bounded,
-// per-user, and cheaper than reconstructing gap-freeness elsewhere. This is a
-// deliberate trade, not an oversight — see the plan's Decision 3.
+// The row lock is held across the blob INSERTs, so a large upload serialises
+// this one user's other appends for the duration of that write. It is
+// bounded, per-user, and cheaper than reconstructing gap-freeness elsewhere.
+// This is a deliberate trade, not an oversight (ledgerd's Decision 3).
 func (a *Appender) appendRows(ctx context.Context, rows []Row, prepare prepareFunc) ([]int64, error) {
 	if len(rows) == 0 {
 		// Appending nothing must not touch the counter. Opening a transaction
@@ -312,8 +283,7 @@ func (a *Appender) appendRows(ctx context.Context, rows []Row, prepare prepareFu
 
 // prepareFunc runs inside the append transaction, after allocSeq has taken the
 // user's counter lock and before any row is inserted. It is where the
-// per-(writer, stream) chain is verified (AppendClient) or computed
-// (AppendIngest).
+// per-(writer, stream) chain is verified (AppendClient).
 //
 // It may fill in or check any field of rows in place, but it must NOT change
 // how many rows there are: the seq block is already reserved by the time it
@@ -354,9 +324,9 @@ func (a *Appender) appendTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ro
 			return nil, err
 		}
 	}
-	// Validated after prepare, because AppendIngest's rows are incomplete until
-	// then. A failure here still costs nothing: the rollback restores the
-	// counter, so an invalid batch leaves no hole either way.
+	// Validated again inside the transaction, after prepare, so no append path
+	// can skip LooksSealed (spec 02 §11.2). A failure here still costs nothing:
+	// the rollback restores the counter, so an invalid batch leaves no hole.
 	for i, r := range rows {
 		if err := r.validate(); err != nil {
 			return nil, fmt.Errorf("oplog: append: row %d: %w", i, err)
@@ -365,16 +335,13 @@ func (a *Appender) appendTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ro
 	// Admission, in the one place there is no way to append around.
 	//
 	// It is here rather than at an endpoint on purpose: a ceiling written "per
-	// upload" would cover AppendClient and miss AppendIngest entirely, and
-	// AppendIngest is how trusted mail stores one hot op plus a raw body that
-	// can be a megabyte — the larger of the two paths, reached without ever
-	// passing through handleUpload.
+	// upload" binds only the endpoints that remember to call it, and the next
+	// path that appends would not.
 	//
-	// It runs after allocSeq (the ORDERING RULE above), and after prepare,
-	// because AppendIngest does not know how many bytes it is storing until
-	// prepare has sealed them. Both placements satisfy the rule: the counter
-	// lock is already held, so same-account appends are serialized before the
-	// usage row is touched and no deadlock between two appends is possible.
+	// It runs after allocSeq (the ORDERING RULE above) and after prepare: the
+	// counter lock is already held, so same-account appends are serialized
+	// before the usage row is touched and no deadlock between two appends is
+	// possible.
 	if err := a.admit(ctx, tx, userID, rows); err != nil {
 		return nil, err
 	}
@@ -397,48 +364,21 @@ func (a *Appender) budget() *budget.Gate {
 	return budget.New(a.Pool)
 }
 
-// admit charges this batch's stored bytes to the account, one call per stream
-// the batch touches.
+// admit charges this batch's stored bytes to the account.
 //
 // The bytes counted are len(Blob) — the framed, bucket-padded bytes actually
 // written to the column — because that is what fills the disk and what
-// 00031's backfill and internal/verify's reconciliation both compute
-// (sum(octet_length(blob))). Counting plaintext instead would leave the ledger
-// permanently under the truth by the padding, and Phase 3 would widen the gap.
-//
-// The two resources are charged in sorted name order (cold before hot), the
-// order budget.Admit itself locks a family in, so a batch spanning both streams
-// cannot invert the lock order against a batch that touches only one. In
-// practice the counter lock has already serialized these, and the ordering is
-// kept anyway because it costs a sort of two strings and removes the need to
-// reason about it again.
+// internal/verify's reconciliation computes (sum(octet_length(blob))). There
+// is one stream, so one resource.
 func (a *Appender) admit(ctx context.Context, tx pgx.Tx, userID uuid.UUID, rows []Row) error {
-	bytesFor := map[string]int64{}
+	var n int64
 	for _, r := range rows {
-		bytesFor[resourceForStream(r.Stream)] += int64(len(r.Blob))
+		n += int64(len(r.Blob))
 	}
-	resources := make([]string, 0, len(bytesFor))
-	for res := range bytesFor {
-		resources = append(resources, res)
-	}
-	slices.Sort(resources)
-	g := a.budget()
-	for _, res := range resources {
-		if err := g.Admit(ctx, tx, userID, res, bytesFor[res]); err != nil {
-			return fmt.Errorf("oplog: append: %w", err)
-		}
+	if err := a.budget().Admit(ctx, tx, userID, budget.ResourceOplogHotBytes, n); err != nil {
+		return fmt.Errorf("oplog: append: %w", err)
 	}
 	return nil
-}
-
-// resourceForStream names the ledger resource a stream's bytes are counted to.
-// Row.validate has already rejected any stream that is neither hot nor cold, so
-// this cannot manufacture a resource the account_usage CHECK would refuse.
-func resourceForStream(stream string) string {
-	if stream == blob.StreamCold {
-		return budget.ResourceOplogColdBytes
-	}
-	return budget.ResourceOplogHotBytes
 }
 
 const insertRowSQL = `INSERT INTO op_log

@@ -1,14 +1,23 @@
 // Package pgtest boots a throwaway PostgreSQL cluster for tests. It never
 // touches a system cluster, never binds TCP, and needs no running service.
 //
-// Host requirement: initdb and postgres, found on PATH first. The repo's
-// devShell (flake.nix) provides them; Debian's /usr/lib/postgresql/*/bin is
-// the fallback. See postgresBinDir.
-// Set LEDGER_TEST_POSTGRES_URL to reuse an already-running server instead —
-// scripts/check.sh does exactly that so one cluster serves the whole run,
-// instead of every v2 package (there will be ~20 of them) paying its own
-// initdb. Per-package boot below remains the fallback when that variable is
-// unset, so `go test ./internal/pg/` in isolation still works standalone.
+// Host requirement: initdb and postgres, from $HASALA_TEST_PG_BINDIR, then
+// PATH (the repo's devShell, or Homebrew), then Debian's
+// /usr/lib/postgresql/*/bin. See postgresBinDir.
+// Set HASALA_TEST_POSTGRES_URL to reuse an already-running server instead —
+// scripts/check.sh does exactly that so one cluster serves the whole run.
+// Per-package boot remains the fallback when that variable is unset, so
+// `go test ./internal/pg/` in isolation still works standalone.
+//
+// # Roles (spec 02 §5.2, §5.7)
+//
+// Every cluster gets the production roles: hasala_migrate (owns each test
+// database and its public schema, and applies the migrations) and
+// hasala_runtime (DML only, the session timeouts of the QA host). New returns
+// a pool connected AS hasala_runtime, so every test exercises the runtime
+// grants — the append-only op_log and key_history, the revoke-once writers —
+// exactly as serve does. NewWithOwner also returns the owner's pool, for the
+// few tests that must show what the schema owner can and cannot do.
 package pgtest
 
 import (
@@ -35,6 +44,34 @@ var (
 	dbSeq     atomic.Int64
 )
 
+// EnsureRoles creates hasala_migrate and hasala_runtime on the cluster behind
+// adminDSN if they do not exist yet. It is idempotent and safe to race: test
+// packages sharing one cluster all call it.
+func EnsureRoles(ctx context.Context, admin *pgxpool.Pool) error {
+	const ddl = `DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hasala_migrate') THEN
+    CREATE ROLE hasala_migrate LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hasala_runtime') THEN
+    CREATE ROLE hasala_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+    ALTER ROLE hasala_runtime SET statement_timeout = '15s';
+    ALTER ROLE hasala_runtime SET lock_timeout = '5s';
+    ALTER ROLE hasala_runtime SET idle_in_transaction_session_timeout = '30s';
+  END IF;
+END $$`
+	var err error
+	for attempt := 0; attempt < 10; attempt++ {
+		if _, err = admin.Exec(ctx, ddl); err == nil {
+			return nil
+		}
+		// Two packages creating the same role at once: one wins, the other
+		// sees a unique violation on pg_authid. Retry; the second pass finds it.
+		time.Sleep(time.Duration(50*(attempt+1)) * time.Millisecond)
+	}
+	return fmt.Errorf("pgtest: create roles: %w", err)
+}
+
 // Main boots one cluster for the whole package run and tears it down after.
 func Main(m *testing.M) int {
 	stop, dsn, err := boot()
@@ -50,60 +87,141 @@ func Main(m *testing.M) int {
 		return 1
 	}
 	adminPool = pool
+	if err := EnsureRoles(context.Background(), pool); err != nil {
+		fmt.Fprintf(os.Stderr, "pgtest: %v\n", err)
+		adminPool.Close()
+		stop()
+		return 1
+	}
 	code := m.Run()
 	adminPool.Close()
 	stop()
 	return code
 }
 
-// New returns a pool on a freshly created, fully migrated database that is
-// dropped when the test (and any subtests holding it open) finishes.
+// New returns a pool connected as hasala_runtime on a freshly created
+// database, owned by hasala_migrate and migrated as hasala_migrate. The
+// database is dropped when the test (and any subtests holding it open)
+// finishes.
 func New(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	runtime, _ := NewWithOwner(t)
+	return runtime
+}
+
+// NewOwner returns a pool connected as hasala_migrate, the schema owner, on a
+// freshly created and migrated database.
+func NewOwner(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	_, owner := NewWithOwner(t)
+	return owner
+}
+
+// NewWithOwner returns two pools on one freshly created, migrated database:
+// the runtime role's and the schema owner's.
+func NewWithOwner(t *testing.T) (runtime, owner *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	name := newDatabase(t)
+	owner = openPool(t, dsnFor(adminDSN, pg.RoleMigrate, name))
+	if err := pg.Migrate(ctx, owner); err != nil {
+		t.Fatal(err)
+	}
+	runtime = openPool(t, dsnFor(adminDSN, pg.RoleRuntime, name))
+	return runtime, owner
+}
+
+// NewEmpty creates a database prepared exactly as infra's setup.sql leaves
+// one (spec 02 §5.2) but NOT migrated, and returns the DSNs of the schema
+// owner and of the runtime role on it: what `hasalad migrate` and then
+// `hasalad serve` are pointed at on a fresh host.
+func NewEmpty(t *testing.T) (migrateDSN, runtimeDSN string) {
+	t.Helper()
+	name := newDatabase(t)
+	return dsnFor(adminDSN, pg.RoleMigrate, name), dsnFor(adminDSN, pg.RoleRuntime, name)
+}
+
+// newDatabase creates a database owned by hasala_migrate and does what
+// infra's setup.sql does as the bootstrap superuser (spec 02 §5.2): the
+// schema owned by hasala_migrate, PUBLIC with no rights on the database or
+// the schema, and CONNECT for the runtime role. It is dropped when the test
+// finishes.
+func newDatabase(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
 	name := fmt.Sprintf("t%d_%d", os.Getpid(), dbSeq.Add(1))
-	if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+	if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name+" OWNER hasala_migrate"); err != nil {
 		t.Fatal(err)
 	}
-	// Registered immediately after CREATE succeeds, before Open/Migrate
-	// below can fail — t.Fatal from either of those runs t.Cleanup, but
-	// only for cleanups already registered by that point. Registering this
-	// late (after a successful Open+Migrate, as a first draft of this did)
-	// leaks the database on that narrower failure path too: same class of
-	// bug as never dropping it at all, just a smaller trigger window.
-	var pool *pgxpool.Pool
+	// Registered immediately after CREATE succeeds, before anything below can
+	// fail: t.Fatal runs only the cleanups already registered. Cleanups run
+	// last-registered-first, so every pool opened later is closed before this.
 	t.Cleanup(func() {
-		// Close this test's own pool first (if we got far enough to open
-		// one) so its connections aren't the "other users" DROP DATABASE
-		// complains about. WITH (FORCE) (PG13+) additionally terminates any
-		// connection that isn't ours yet — e.g. one pgxpool hasn't finished
-		// draining, or a helper the test spawned that never called Close.
-		// Without dropping at all, a full `go test ./internal/...` run
-		// leaves hundreds of throwaway databases behind in the shared
-		// cluster.
-		if pool != nil {
-			pool.Close()
-		}
 		if _, err := adminPool.Exec(context.Background(),
 			"DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
 			t.Errorf("pgtest: drop database %s: %v", name, err)
 		}
 	})
-	p, err := pg.Open(ctx, dsnForDatabase(adminDSN, name))
+	su, err := pg.Open(ctx, dsnFor(adminDSN, "", name))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool = p
-	if err := pg.Migrate(ctx, pool); err != nil {
+	defer su.Close()
+	for _, stmt := range []string{
+		"ALTER SCHEMA public OWNER TO hasala_migrate",
+		"REVOKE ALL ON SCHEMA public FROM PUBLIC",
+		"REVOKE ALL ON DATABASE " + name + " FROM PUBLIC",
+		"GRANT CONNECT ON DATABASE " + name + " TO hasala_runtime",
+	} {
+		if _, err := su.Exec(ctx, stmt); err != nil {
+			t.Fatalf("pgtest: %s: %v", stmt, err)
+		}
+	}
+	return name
+}
+
+func openPool(t *testing.T, dsn string) *pgxpool.Pool {
+	t.Helper()
+	p, err := pg.Open(context.Background(), dsn)
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(p.Close)
+	return p
+}
+
+// OpenAs returns a pool connected as role to the same database as p. The role
+// must already exist and be allowed to log in.
+func OpenAs(t *testing.T, p *pgxpool.Pool, role string) *pgxpool.Pool {
+	t.Helper()
+	db := p.Config().ConnConfig.Database
+	pool, err := pg.Open(context.Background(), dsnFor(adminDSN, role, db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
 	return pool
 }
 
-// dsnForDatabase swaps the database name in a DSN of the form produced by
-// boot(): postgres://postgres@/postgres?host=...&port=...&sslmode=disable.
-// The admin DSN always connects to the "postgres" maintenance database, so
-// this replaces the URL path.
+// Superuser returns a pool connected as the cluster's bootstrap superuser to
+// the same database as p. It is for the handful of tests that must show what
+// even a superuser cannot do (an append-only trigger binds every role) or
+// that must set up a hostile schema; nothing else should use it.
+func Superuser(t *testing.T, p *pgxpool.Pool) *pgxpool.Pool {
+	t.Helper()
+	db := p.Config().ConnConfig.Database
+	su, err := pg.Open(context.Background(), dsnFor(adminDSN, "", db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(su.Close)
+	return su
+}
+
+// dsnFor swaps the user (when non-empty) and the database name in a DSN of
+// the form produced by boot(): postgres://postgres@/postgres?host=...&port=...&sslmode=disable.
+// The admin DSN always connects to the "postgres" maintenance database as the
+// bootstrap superuser, so this replaces the URL's user and path.
 //
 // This is NOT the same as pgxpool.ParseConfig + mutating cfg.ConnConfig.Database
 // + cfg.ConnString(): pgx's ConnConfig.ConnString() returns the exact string
@@ -111,20 +229,27 @@ func New(t *testing.T) *pgxpool.Pool {
 // the mutated struct, so that approach silently keeps connecting to
 // "postgres" no matter what Database is set to. Rewriting the URL path
 // directly is what actually changes which database pgx connects to.
-func dsnForDatabase(adminDSN, name string) string {
+func dsnFor(adminDSN, user, name string) string {
 	u, err := url.Parse(adminDSN)
 	if err != nil || u.Scheme == "" {
 		// Fallback for keyword/value DSNs (e.g. "host=... user=... dbname=x"),
-		// which LEDGER_TEST_POSTGRES_URL could in principle be set to. pgx
-		// takes the last "dbname" it sees, so appending one more wins.
-		return adminDSN + " dbname=" + name
+		// which HASALA_TEST_POSTGRES_URL could in principle be set to. pgx
+		// takes the last value it sees for a key, so appending wins.
+		out := adminDSN + " dbname=" + name
+		if user != "" {
+			out += " user=" + user
+		}
+		return out
+	}
+	if user != "" {
+		u.User = url.User(user)
 	}
 	u.Path = "/" + name
 	return u.String()
 }
 
 func boot() (func(), string, error) {
-	if u := os.Getenv("LEDGER_TEST_POSTGRES_URL"); u != "" {
+	if u := os.Getenv("HASALA_TEST_POSTGRES_URL"); u != "" {
 		return func() {}, u, nil
 	}
 	dir, srv, dsn, err := bootCluster(false)
@@ -200,7 +325,7 @@ func bootCluster(detach bool) (dir string, srv *exec.Cmd, dsn string, err error)
 	}
 	// From here on, dir exists on disk. Every early return below on error
 	// must not leak it — found by literally forcing one of these paths
-	// (LEDGER_TEST_PG_USER pointed at a nonexistent user) and finding a
+	// (HASALA_TEST_PG_USER pointed at a nonexistent user) and finding a
 	// stray /tmp/pgtest-* directory afterward, which is exactly the kind of
 	// leak that only shows up after enough failed/flaky boots accumulate.
 	//
@@ -296,6 +421,12 @@ func postgresBinDir() (string, error) {
 		_, err := os.Stat(filepath.Join(dir, "postgres"))
 		return err == nil
 	}
+	if dir := os.Getenv("HASALA_TEST_PG_BINDIR"); dir != "" {
+		if hasPostgres(dir) {
+			return dir, nil
+		}
+		return "", fmt.Errorf("HASALA_TEST_PG_BINDIR=%s holds no postgres binary", dir)
+	}
 	if initdb, err := exec.LookPath("initdb"); err == nil {
 		if dir := filepath.Dir(initdb); hasPostgres(dir) {
 			return dir, nil
@@ -319,7 +450,7 @@ func unprivileged() (*syscall.Credential, error) {
 	if os.Geteuid() != 0 {
 		return nil, nil
 	}
-	name := os.Getenv("LEDGER_TEST_PG_USER")
+	name := os.Getenv("HASALA_TEST_PG_USER")
 	if name == "" {
 		name = "nobody"
 	}

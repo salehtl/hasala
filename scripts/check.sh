@@ -9,9 +9,10 @@
 # request and every push to main, without the private fixtures (see "CI" below).
 #
 # It is ledgerd's scripts/v2-check.sh carried over to the monorepo layout:
-# server/ (the Go module), reference/ledgerd-client/ (the TypeScript client
-# core, the oracle for the Swift port) and conformance/ (the fixtures both
-# executors must agree on). The PWA steps did not come along:
+# server/ (the Go module, and server/oracle/, the separate module that holds
+# the frozen v1 reference packages and the corpus gates), reference/ledgerd-client/
+# (the TypeScript client core, the oracle for the Swift port) and conformance/
+# (the fixtures both executors must agree on). The PWA steps did not come along:
 # reference/ledgerd-pwa/ is reference material and is not built or tested here.
 #
 # In order:
@@ -21,13 +22,15 @@
 #      check-forbidden.sh): grep only, so they run on Linux too. The Swift
 #      build and tests themselves run in CI's `swift` job on a Mac.
 #   1. The Go toolchain is at least server/go.mod's `toolchain` line.
-#   2. The v1ref fence: cmd/ledgerd's build graph never reaches internal/v1ref.
+#   2. The hasalad fences (spec 02 §4.4, cmd/hasalad/fence_test.go): the
+#      server's build graph never reaches the oracle module, the test sealers
+#      or a retired capability, and its source cannot encrypt or decrypt.
+#      Then govulncheck ./cmd/hasalad/... (needs the network).
 #   3. ONE throwaway Postgres cluster for the whole run (unix socket, no TCP),
-#      shared through LEDGER_TEST_POSTGRES_URL and stopped on any exit.
-#   4. go vet ./... and go test ./... in server/.
-#   5. The reference client: typecheck, then bun test (unit tests, the
-#      TypeScript half of every conformance suite, and the e2e round trips,
-#      which compile cmd/ledgerd and drive it against the cluster).
+#      shared through HASALA_TEST_POSTGRES_URL and stopped on any exit.
+#   4. go vet ./... and go test ./... in server/, then in server/oracle/.
+#   5. The reference client: typecheck, then bun test (unit tests and the
+#      TypeScript half of every conformance suite).
 #   6. The conformance suites, by name: each fixture set under conformance/ is
 #      run through both of its executors, and every fixture set must have an
 #      entry here, so a new one cannot land without a runner.
@@ -36,8 +39,8 @@
 #
 # Real bank mail is NOT in this repository. The conformance cases cut from the
 # operator's mailbox (conformance/normalizer/*.json apart from edge-cases.json,
-# conformance/templates/corpus-*.json) and the signed .eml messages under
-# server/internal/origin/testdata live in the private salehtl/hasala-fixtures
+# conformance/templates/corpus-*.json) and the signed .eml messages that were
+# under server/internal/origin/testdata live in the private salehtl/hasala-fixtures
 # repository, under the same paths. Point HASALA_PRIVATE_FIXTURES at a checkout
 # of it to run the tests that read them:
 #
@@ -65,7 +68,7 @@
 #
 # What this does NOT run is the full-corpus cross-executor diff and the corpus-
 # equivalence gate: both need a snapshot of the operator's v1 mailbox
-# (LEDGER_CORPUS_DB), which no checkout has, and those tests skip without it.
+# (HASALA_CORPUS_DB, read only in server/oracle), which no checkout has, and those tests skip without it.
 # The recipes are in the ledgerd design archive, which is not published.
 set -euo pipefail
 
@@ -111,12 +114,15 @@ ci_report() {
 step "real-mail fence"
 leaked="$(
 	cd "$ROOT"
+	# A directory that does not exist (internal/origin and test/e2e were
+	# deleted with the mail path) holds nothing, which is the passing case;
+	# `|| true` keeps find's complaint about it from failing the pipeline.
 	{
-		find conformance/normalizer -type f ! -name edge-cases.json ! -name '.*'
-		find conformance/templates -type f -name 'corpus-*'
-		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*'
-		find server/internal/tmpl/seed/testdata -type f ! -name '.*'
-		find reference/ledgerd-client/test/e2e -type f -name '*.json'
+		find conformance/normalizer -type f ! -name edge-cases.json ! -name '.*' || true
+		find conformance/templates -type f -name 'corpus-*' || true
+		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
+		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
+		find reference/ledgerd-client/test/e2e -type f -name '*.json' || true
 	} 2>/dev/null | sort
 )"
 if [[ -n "$leaked" ]]; then
@@ -179,36 +185,24 @@ else
 	echo "HASALA_PRIVATE_FIXTURES is unset: real-corpus tests will SKIP (this run is not the full gate)"
 fi
 
-# --- 2. product / v1ref dependency-graph fence ---------------------------------
-# internal/v1ref/ holds five FROZEN v1 reference packages (see its README).
-# Product code must never import them. `go list -deps` walks the binary's BUILD
-# graph and never follows a _test.go import, so the three sanctioned test-only
-# imports (internal/norm/corpus_test.go, internal/norm/corpus_probe_test.go,
-# internal/tmpl/seed/corpus_gate_test.go) need no special case.
-#
-# `comm -12` on two sorted lists, not `go list | grep`: under pipefail a grep
-# that finds nothing (the passing case) kills the script, and `|| true` would
-# make the check unable to fail at all. The decision is a string test instead.
-step "v1ref fence"
-module="$(go list -m)"
-product_deps_file="$(mktemp)"
-v1ref_pkgs_file="$(mktemp)"
-go list -deps ./cmd/ledgerd | { grep "^$module/" || true; } | sort >"$product_deps_file"
-go list ./internal/v1ref/... | sort >"$v1ref_pkgs_file"
-fenced_deps="$(comm -12 "$product_deps_file" "$v1ref_pkgs_file")"
-fence_size="$(wc -l <"$product_deps_file")"
-rm -f "$product_deps_file" "$v1ref_pkgs_file"
-if [[ "$fence_size" -eq 0 ]]; then
-	echo "check: go list found no $module packages under cmd/ledgerd; the fence would measure nothing" >&2
-	exit 1
-fi
-if [[ -n "$fenced_deps" ]]; then
-	echo "check: cmd/ledgerd's build graph reaches internal/v1ref, which is FROZEN" >&2
-	echo "reference code for the corpus and import gates only. Package(s):" >&2
-	echo "$fenced_deps" >&2
-	exit 1
-fi
-echo "cmd/ledgerd: $fence_size in-module packages, none in internal/v1ref"
+# --- 2. the hasalad fences ---------------------------------------------------------
+# Spec 02 §4.4. The frozen v1 reference packages and the corpus gates live in
+# server/oracle/, a separate Go module that server/go.mod does not require, so
+# the server's build graph cannot reach them at all; cmd/hasalad/fence_test.go
+# asserts that, and the rest of the fences (no test sealer, no oracle package,
+# no retired capability, no encrypt or decrypt call, no review bypass). They
+# need no database, so they run here, first and by name, before anything slow;
+# step 4 runs them again with everything else.
+step "hasalad fences"
+go test -count=1 -run '^TestFence' ./cmd/hasalad
+
+# --- 2b. no reachable vulnerability in the shipped binary ----------------------------
+# Spec 02 §3.2. Only hasalad's own build graph, at symbol level: a finding in a
+# module it requires but never calls is reported without failing. It reads the
+# Go vulnerability database (vuln.go.dev), so this step needs the network. CI's
+# `vuln` job also scans every package of both modules.
+step "govulncheck ./cmd/hasalad/..."
+govulncheck ./cmd/hasalad/...
 
 # --- 3. one throwaway Postgres cluster -------------------------------------------
 PG_STOP=""
@@ -270,27 +264,28 @@ BOOT_OUT="$(go run ./internal/pgtest/cmd/boot 2>"$PG_LOG")" || {
 	echo "check: failed to boot the postgres cluster (see the error above)" >&2
 	exit 1
 }
-eval "$BOOT_OUT" # sets LEDGER_TEST_POSTGRES_URL and PG_STOP
-export LEDGER_TEST_POSTGRES_URL
+eval "$BOOT_OUT" # sets HASALA_TEST_POSTGRES_URL and PG_STOP
+export HASALA_TEST_POSTGRES_URL
 echo "cluster up (unix socket only; listen_addresses is empty)"
 
 # --- 7 (declared here, used in 4). known failures ---------------------------------
 # Tests that fail for a reason outside this change's reach. Each is skipped BY
 # NAME in step 4 so the rest of the run stays a gate, and re-run on its own in
 # step 7, where it must still fail: the day it passes, the gate fails until the
-# entry is removed, so nothing healthy stays skipped. Format: "package|regexp".
+# entry is removed, so nothing healthy stays skipped. Format:
+# "module dir (under server/)|package|regexp".
 #
-# internal/v1ref/store TestSelectMonthlyTotals is clock-dependent: it seeds
+# oracle/v1ref/store TestSelectMonthlyTotals is clock-dependent: it seeds
 # June 2026 rows and asks SelectMonthlyTotals(3), whose window starts from
 # time.Now(). June left that window on 2026-09-01, so the test fails on every
-# machine from that date on, ledgerd's own checkout included. internal/v1ref is
+# machine from that date on, ledgerd's own checkout included. oracle/v1ref is
 # byte-frozen reference code (see its README), so it is not "fixed" here.
 # (`go test -skip` applies its pattern in every package; each name below is
-# unique in the module, so it skips exactly the one test.)
+# unique in both modules, so it skips exactly the one test.)
 KNOWN_FAILING=(
-	"./internal/v1ref/store|^TestSelectMonthlyTotals\$"
+	"oracle|./v1ref/store|^TestSelectMonthlyTotals\$"
 )
-skip_re="$(printf '%s\n' "${KNOWN_FAILING[@]}" | cut -d'|' -f2 | paste -sd'|' -)"
+skip_re="$(printf '%s\n' "${KNOWN_FAILING[@]}" | cut -d'|' -f3 | paste -sd'|' -)"
 
 # --- 4. go vet and go test -------------------------------------------------------
 # -count=1 defeats the test cache: a cached pass from a previous cluster is not
@@ -300,6 +295,20 @@ go vet -p "$JOBS" ./...
 
 step "go test ./... (known failures skipped by name: $skip_re)"
 go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
+
+# The oracle module (spec 02 §4.3): the frozen v1 reference packages and the
+# corpus gates. Its real-corpus tests are counted with the server's.
+REAL_ORACLE="$(mktemp)"
+step "oracle: go vet ./... and go test ./..."
+(
+	cd oracle
+	go vet -p "$JOBS" ./...
+	go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
+)
+read -r s_ran s_skipped <"$REAL_GO"
+read -r o_ran o_skipped <"$REAL_ORACLE"
+rm -f "$REAL_ORACLE"
+echo "$((s_ran + o_ran)) $((s_skipped + o_skipped))" >"$REAL_GO"
 
 # --- 5. the reference client -------------------------------------------------------
 # No `bun install` here: a gate that mutates the tree to pass is not a gate.
@@ -330,18 +339,22 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 #   crypto  No reader at all. Its consumer (ledgerd's retired app/ bench) was
 #           deleted (see the ledgerd repo-migration inventory, archived).
 #           Listed so the gap stays on screen.
+#   structure  TypeScript only since WS-1: its Go executor was ledgerd's
+#           diagnostics telemetry (internal/diag), retired with it (spec 02 §2).
+#
+# A Go package under ./oracle/ is run from the oracle module.
 CONFORMANCE=(
-	"blob|./internal/oplog|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
+	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
 	"crypto||"
 	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
 	"dict|./internal/dict|src/categorize/conformance.test.ts"
 	"fx||src/replay/fx.test.ts"
-	"import|./internal/v1ref/importer|src/importer/importer.test.ts"
+	"import|./oracle/v1ref/importer|src/importer/importer.test.ts"
 	"normalizer|./internal/norm|src/norm/conformance.test.ts"
-	"op|./internal/oplog|src/wire/op.test.ts"
-	"structure|./internal/diag|src/diag/structure.test.ts"
+	"op|./internal/oplog/opref|src/wire/op.test.ts"
+	"structure||src/diag/structure.test.ts"
 	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"
-	"ts|./internal/oplog|src/wire/blob.test.ts"
+	"ts|./internal/oplog/opref|src/wire/blob.test.ts"
 )
 step "conformance"
 cd "$ROOT"
@@ -365,8 +378,14 @@ for entry in "${CONFORMANCE[@]}"; do
 	IFS='|' read -r set go ts <<<"$entry"
 	printf '  %-11s go: %-28s ts: %s\n' "$set" "${go:-(none)}" "${ts:-(none)}"
 done
+server_pkgs="$(grep -v '^\./oracle/' <<<"$go_pkgs" || true)"
+oracle_pkgs="$(grep '^\./oracle/' <<<"$go_pkgs" | sed 's|^\./oracle/|./|' || true)"
 # shellcheck disable=SC2086 # word splitting is the point: one package/file per word
-(cd server && go test -count=1 -p "$JOBS" $go_pkgs)
+(cd server && go test -count=1 -p "$JOBS" $server_pkgs)
+if [[ -n "$oracle_pkgs" ]]; then
+	# shellcheck disable=SC2086
+	(cd server/oracle && go test -count=1 -p "$JOBS" $oracle_pkgs)
+fi
 # shellcheck disable=SC2086
 (cd reference/ledgerd-client && bun test $(printf './%s ' $ts_files))
 
@@ -376,9 +395,8 @@ done
 step "known failures"
 cd "$ROOT/server"
 for entry in "${KNOWN_FAILING[@]}"; do
-	pkg="${entry%%|*}"
-	re="${entry#*|}"
-	if out="$(go test -count=1 -v -run "$re" "$pkg" 2>&1)"; then
+	IFS='|' read -r mod pkg re <<<"$entry"
+	if out="$(cd "$ROOT/server/$mod" && go test -count=1 -v -run "$re" "$pkg" 2>&1)"; then
 		echo "check: $pkg $re now PASSES; remove it from KNOWN_FAILING in scripts/check.sh" >&2
 		exit 1
 	fi
@@ -402,10 +420,10 @@ if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (real-mail fence, toolchain, fence, go vet, go test, reference client, conformance; real corpus included)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, conformance; real corpus included)"
 	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (real-mail fence, toolchain, fence, go vet, go test, reference client, conformance)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, conformance)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
 	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
 fi
