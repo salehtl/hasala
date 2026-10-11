@@ -7,16 +7,23 @@ import Foundation
 
 /// `AccountService` over CoreSync's ceremonies (spec 04 §6.2): signup (C1, C1-P), the
 /// interrupted C1, sign-in (C2, C2-P, C2b, C2b-P), unlock (C2's PRF, C3), sign-out, and
-/// on Sign-in & security: delete account (#41), sign out everywhere (#16), freeze (#65),
-/// unfreeze (#66) and view your words (#67). The screens are the ones the mocks drive.
+/// on Sign-in & security: delete account (#41), remove this iPhone (#25, #33), sign out
+/// everywhere (#16), freeze (#65), unfreeze (#66) and view your words (#67). The screens
+/// are the ones the mocks drive.
 ///
-/// Not bound yet (they throw `.notInThisBuild`, whose copy says so): forgot password
-/// (C9), access recovery (C4), the approving iPhone, and the passkey, password and
-/// device changes on Sign-in & security — CoreSync has no ceremony for them yet.
-/// TODO(WS-14): bind each as its CoreSync ceremony lands.
+/// `capabilities` is `.beta`: what this TestFlight build carries out end to end. Not in
+/// this build (they throw `.notInThisBuild`, and the screens hide them): forgot password
+/// (C9), access recovery (C4), the approving iPhone, phrase rotation, adding a passkey,
+/// email change, and the other passkey, password and device changes.
 @MainActor
 final class LiveAccountService: AccountService {
   let env: AccountEnvironment
+  /// What the account runtime lends the service: its sync engine (removing this iPhone
+  /// catches up through it) and the step that closes it when this iPhone leaves the
+  /// account. Set by `BootController`.
+  var hooks = LiveAccountHooks()
+
+  var capabilities: AccountCapabilities { .beta }
   private(set) var profile: AccountProfile?
   /// The enrolled account once this iPhone holds keys (sync starts from it).
   private(set) var enrolled: EnrolledAccount?
@@ -273,6 +280,15 @@ final class LiveAccountService: AccountService {
     return p
   }
 
+  /// `GET /account` (#40) as the runtime read it: the name, the address and the sign-in
+  /// method (a relaunch only has the binding, which doesn't say).
+  func noteAccount(_ a: AccountInfo) {
+    guard let b = binding, a.user_id == b.user_id else { return }
+    profile = AccountProfile(
+      displayName: a.display_name ?? b.display_name ?? profile?.displayName ?? "",
+      email: a.email ?? b.email_norm, method: a.has_passkey == true ? .passkey : .password)
+  }
+
   private func refreshProfile() {
     guard let b = binding else { return }
     profile = AccountProfile(displayName: b.display_name ?? "", email: b.email_norm, method: profile?.method ?? .passkey)
@@ -335,16 +351,29 @@ final class LiveAccountService: AccountService {
     do {
       switch action {
       case .deleteAccount:
-        // TODO(WS-12): the holder's Gmail stop and token revoke come first (§4.7 row 4).
+        // TODO(WS-12): the holder's Gmail stop and token revoke come first (§4.7 row 4);
+        // the server drops the link with the account.
         let ctx = try Enrolment.context(env, binding: b)
         try await AccountManagement.deleteAccount(env, ctx: ctx, factor: factor, binding: b)
+        await PushRegistrar.shared.unregister()
         try? env.secrets.deleteSession()
         clearSignedIn()
+        await hooks.left()
+      case .removeDevice(let id) where id == b.writer_id:
+        // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
+        // writer is revoked at its verified head (#25) and the local data is wiped.
+        guard let engine = hooks.engine() else { throw AuthFailure.refused }
+        await PushRegistrar.shared.unregister()
+        try await AccountManagement.removeThisIPhone(env, engine: engine, factor: factor, binding: b)
+        try? env.secrets.deleteSession()
+        clearSignedIn()
+        await hooks.left()
       case .signOutEverywhere:
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
         try await guarded(.sessionLogoutAll, "/api/v1/auth/logout-all", factor: factor, binding: b, action: action)
         try? env.secrets.deleteSession()
         signIn = nil
+        await hooks.left()
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
       case .unfreeze:
@@ -434,6 +463,7 @@ final class LiveAccountService: AccountService {
   func signOut() async {
     await AccountSignIn.signOut(env)
     signIn = nil
+    await hooks.left()
   }
 
   // MARK: Failures
@@ -492,4 +522,13 @@ nonisolated struct StepUpBody: Encodable, Sendable {
 /// #67's answer.
 nonisolated struct PhraseViewAnswer: Decodable, Sendable {
   var phrase_box: String
+}
+
+/// What `BootController` lends the live account service.
+@MainActor
+struct LiveAccountHooks {
+  /// The open account's sync engine, if one is open.
+  var engine: @MainActor () -> SyncEngine? = { nil }
+  /// This iPhone left the account (signed out, removed, deleted): close the runtime.
+  var left: @MainActor () async -> Void = {}
 }

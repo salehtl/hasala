@@ -5,7 +5,7 @@ import Foundation
 /// CoreAuth's passkey seam over `PasskeyAuthenticator` (spec 04 §2.7, §6.1.1): the
 /// ceremonies in CoreSync call it from any context; the system sheet runs on the main
 /// actor. The options come from the server and were checked by the caller (`C_reg`).
-nonisolated struct LivePasskeyProvider: PasskeyProvider {
+nonisolated struct PasskeyProviderAdapter: PasskeyProvider {
   func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> CoreAuth.RawRegistration {
     try await Self.register(options, prfSalt: prfSalt)
   }

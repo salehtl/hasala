@@ -92,7 +92,7 @@ struct LiveAccountFlowTests {
 
     // Killed before unlock. Boot alone can't tell this from an interrupted signup…
     #expect(Boot.decide(Boot.gather(b.env)) == .onboardingKeys)
-    #expect(LiveAccountComposition.initialPhase(b.env) == .checking)
+    #expect(BootController.initialPhase(Boot.decide(Boot.gather(b.env)), finished: { _ in false }) == .checking)
     // …the server's has_keys can.
     let account = b.relaunched()
     let session = AccountSession(services: services(account), phase: .checking)

@@ -1,0 +1,326 @@
+import CoreCategorize
+import CoreDomain
+import CoreMailbox
+import CoreProjection
+import CoreReplay
+import CoreTime
+import Foundation
+import HasalaModels
+
+/// The projection (`projection.sqlite` through `LedgerReader`) as the screens' read model,
+/// HasalaKit's `LedgerState` (spec 04 §15.1-§15.2): categories, accounts, transactions,
+/// the plan, bills, projects, goals and rules at one instant. The screens' engines
+/// (`HomeEngine`, `PlanEngine`, `ActivityEngine`, `BillsEngine`, `ReviewEngine`) run over it
+/// unchanged, so a live account shows the same boards as the Maya mock (AT-REV-3).
+///
+/// Every figure comes from the fold: budgets are CoreDomain's `PlanEngine.assigned`
+/// (carry-forward and moves applied), a bill's next due date is its schedule minus the
+/// resolved occurrences, a balance is the latest check-in. What no op family holds (the
+/// detector's bill proposals, review suggestions, row detail overrides) is left empty.
+nonisolated enum LedgerStateMapper {
+  /// What the projection doesn't hold: who is signed in, the mailbox's health and the
+  /// device's own preferences.
+  struct Context: Sendable {
+    var today: LocalDate
+    var profile: ProfileInfo
+    var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
+    var prefs = DevicePrefs()
+    var skippedReview: Set<TxnID> = []
+  }
+
+  enum MapError: Error { case date }
+
+  /// Display names of the banks the beta reads (card accounts name their bank by id).
+  static let bankNames = RuntimeMailboxLedger.bankNames
+
+  static func map(_ r: LedgerReader, context c: Context) throws -> LedgerState {
+    guard let today = CivilDate(year: c.today.year, month: c.today.month, day: c.today.day) else { throw MapError.date }
+    let month = today.yearMonth
+    let engine = try r.planEngine(month: month, today: today)
+    let taxonomy = try r.taxonomy()
+
+    let categories = taxonomy.ordered.map { category($0, engine: engine) }
+    let resolutions = try r.billResolutions()
+    var billOfTxn: [String: String] = [:]
+    for res in resolutions where res.resolution == "paid" {
+      if let t = res.txn { billOfTxn[t] = res.bill }
+    }
+
+    // Accounts: the latest check-in is the balance (03b §4.6).
+    let cards = try r.cards()
+    let checkins = try r.checkins()
+    let accounts: [HasalaModels.Account] = try r.accounts().filter(\.active).map { a in
+      let card = cards.first { $0.account == a.id && $0.state == "mine" }
+      let balance = checkins.first { $0.account == a.id && !$0.void }?.balanceMinor ?? 0
+      return HasalaModels.Account(
+        id: a.id, name: a.name, shortName: shortName(a), last4: card?.last4, kind: accountKind(a.kind),
+        balance: Money(minor: balance, currency: a.currency), inPlan: a.inPlan, detail: "")
+    }
+
+    // Transactions: every live, parsed row (archived ones too, flagged).
+    let rules = try r.rules()
+    let ruleByID = Dictionary(rules.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var rows = try r.activity(limit: 1_000_000)
+    rows += try r.archived(limit: 1_000_000)
+    var txns: [HasalaModels.Txn] = []
+    txns.reserveCapacity(rows.count)
+    for row in rows {
+      txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
+    }
+
+    // The plan: CoreDomain's assigned budgets around this month, the income sources.
+    var budgets: [String: Money] = [:]
+    let months = [month.adding(months: -1), month, month.adding(months: 1)].compactMap { $0 }
+    for m in months {
+      for info in taxonomy.ordered where info.kind == .spending {
+        let v = engine.assigned(m, info.id)
+        if v != 0 { budgets[HasalaModels.PlanState.key(info.id, YearMonth(m.year, m.month))] = .aed(v) }
+      }
+    }
+    let sources = engine.plan.incomeSources.values.filter(\.active)
+    let split = try r.budgetTemplate()
+    let plan = HasalaModels.PlanState(
+      income: .aed(sources.reduce(Int64(0)) { $0 + $1.amountMinor }), payday: Int(sources.first?.payday ?? 28),
+      startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets)
+
+    // Bills, then each active income source as an income "bill" (Bills › Income).
+    var bills: [HasalaModels.Bill] = []
+    let paidAmount = Dictionary(txns.map { ($0.id, $0.amount) }, uniquingKeysWith: { a, _ in a })
+    for (id, b) in try r.bills() {
+      if let mapped = bill(id: id, b, resolutions: resolutions.filter { $0.bill == id }, today: c.today,
+                           taxonomy: taxonomy, paidAmount: paidAmount)
+      {
+        bills.append(mapped)
+      }
+    }
+    for s in sources {
+      let next = nextPayday(Int(s.payday), after: c.today)
+      bills.append(
+        HasalaModels.Bill(
+          id: "income.\(s.id)", name: s.name, kind: taxonomy.info(s.categoryID)?.name ?? "Income",
+          categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday), nextDue: next))
+    }
+
+    let projects: [HasalaModels.Project] = try r.projects().compactMap { id, p in
+      guard let starts = p.startsOn.flatMap(CivilDate.init(wire:)).map(local) else { return nil }
+      let ends = p.endsOn.flatMap(CivilDate.init(wire:)).map(local) ?? starts
+      return HasalaModels.Project(
+        id: id, name: p.name, glyph: glyph(p.icon ?? "flag"), budget: .aed(p.budgetMinor ?? 0), starts: starts,
+        ends: ends, countInPlan: p.countInPlan, complete: p.status == "completed",
+        startVerb: p.icon == "plane" ? "flies" : "starts")
+    }
+
+    let goals: [HasalaModels.Goal] = try r.goals().compactMap { id, g in
+      guard g.status == "active", let category = g.source.categoryID else { return nil }
+      let by = g.targetMonth.flatMap(CivilMonth.init(wire:)).map { YearMonth($0.year, $0.month) } ?? c.today.yearMonth
+      let progress = engine.goalProgress(id: id, g, month: month)
+      return HasalaModels.Goal(
+        id: id, name: g.name, glyph: glyph(g.icon ?? "jar"), categoryID: category, target: .aed(g.targetMinor),
+        saved: .aed(progress.progress), by: by)
+    }
+
+    let mappedRules: [HasalaModels.Rule] = rules.map { rule in
+      HasalaModels.Rule(
+        id: rule.id, patterns: rule.patterns, match: ruleMatch(rule.match), categoryID: rule.category,
+        enabled: rule.enabled,
+        learnedToday: rule.origin == "learned" && rule.createdAt.flatMap(localDay) == c.today)
+    }
+
+    return LedgerState(
+      categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
+      projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
+      unreadNotifications: 0, netWorth: NetWorthHistory(), skippedReview: c.skippedReview)
+  }
+
+  // MARK: Categories
+
+  static func category(_ info: CategoryInfo, engine: CoreDomain.PlanEngine) -> HasalaModels.Category {
+    let kind: HasalaModels.CategoryKind
+    let bucket: HasalaModels.Bucket
+    let role: CategoryRole
+    switch (info.kind, info.bucket) {
+    case (.spending, .saving?):
+      (kind, bucket, role) = (.spending, .savings, .saving)
+    case (.spending, let b):
+      let isBill = engine.role(info.id) == "bills"
+      (kind, bucket, role) = (.spending, b == .want ? .wants : .needs, isBill ? .bill : .everyday)
+    case (.income, _):
+      (kind, bucket, role) = (.income, .income, .none)
+    case (.excluded, _):
+      (kind, bucket, role) = (.excluded, .other, .none)
+    }
+    return HasalaModels.Category(
+      id: info.id, name: info.name, kind: kind, bucket: bucket, glyph: glyph(info.icon), role: role,
+      archived: !info.active)
+  }
+
+  /// 03c §1.7 icon tokens → HasalaModels' glyphs (the inverse of the seed export's table).
+  static let glyphs: [String: Glyph] = [
+    "house": .rent, "bolt": .utilities, "basket": .groceries, "car": .transport, "cross": .healthcare,
+    "shield_check": .insurance, "fork_knife": .dining, "ticket": .entertainment, "bag": .shopping, "plane": .travel,
+    "repeat": .subscriptions, "jar": .savingsJar, "trend": .investments, "card": .debt, "briefcase": .salary,
+    "laptop": .freelance, "arrows_swap": .transfer, "receipt": .refunds, "flag": .flag, "tag": .tag,
+  ]
+
+  static func glyph(_ icon: String) -> Glyph { glyphs[icon] ?? .tag }
+
+  // MARK: Accounts
+
+  static func accountKind(_ kind: String) -> AccountKind {
+    switch kind {
+    case "credit_card": .credit
+    case "cash": .cash
+    case "investment": .investment
+    default: .current
+    }
+  }
+
+  /// How rows name an account: "Emirates NBD", "DIB card"; otherwise its own name.
+  static func shortName(_ a: CoreReplay.Account) -> String {
+    guard let bank = a.institution, let name = bankNames[bank] else { return a.name }
+    return a.kind == "credit_card" ? "\(name) card" : name
+  }
+
+  // MARK: Transactions
+
+  static func txn(_ row: TxnRow, r: LedgerReader, ruleByID: [String: RuleRow], billID: String?) throws
+    -> HasalaModels.Txn
+  {
+    let date = CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1)
+    let minutes = Int(((row.postedMs + LocalClock.offsetMs) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000)
+    let at = LocalDateTime(date: date, hour: minutes / 60, minute: minutes % 60)
+    var splits: [SplitLine] = []
+    if row.split {
+      splits = try r.parts(row.id).map {
+        SplitLine(id: $0.idx, categoryID: $0.category, amount: Money(minor: $0.amountMinor, currency: row.currency),
+                  note: $0.note ?? "")
+      }
+    }
+    let source: HasalaModels.CategorySource? =
+      switch row.categorySource {
+      case "rule": .rule(pattern: row.categorySourceRef.flatMap { ruleByID[$0]?.patterns.first } ?? "")
+      case "dictionary": .dictionary
+      case "model": .model
+      case "user", "held": .user
+      default: nil
+      }
+    let provenance = row.entryMethod == "mailbox"
+      ? Provenance(
+        title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
+        readAt: "Read automatically at \(at.time)", rawMerchant: row.merchantRaw)
+      : nil
+    return HasalaModels.Txn(
+      id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),
+      direction: row.direction == "credit" ? .in : .out, postedAt: at, accountID: row.effectiveAccountID,
+      categoryID: row.category, categorySource: source, needsReview: row.needsReview, isNewMerchant: row.isNewMerchant,
+      suggestion: nil, note: row.note ?? "", splits: splits,
+      isRefund: row.category == "refunds" || row.refundState != nil,
+      isTransfer: row.category == "transfer" || row.transferState != nil, archived: row.archived != nil,
+      projectID: row.projectID, billID: billID, provenance: provenance,
+      detailOverride: billID != nil ? "monthly bill" : nil)
+  }
+
+  // MARK: Bills
+
+  static func bill(
+    id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], today: LocalDate, taxonomy: TaxonomyView,
+    paidAmount: [String: Money]
+  ) -> HasalaModels.Bill? {
+    guard b.direction == "debit", let anchor = CivilDate(wire: b.anchor).map(local),
+      let start = CivilDate(wire: b.start).map(local)
+    else { return nil }
+    let end = b.end.flatMap(CivilDate.init(wire:)).map(local)
+    let resolved = Dictionary(
+      resolutions.compactMap { r in CivilDate(wire: r.due).map { (local($0), r) } }, uniquingKeysWith: { a, _ in a })
+    let dues = schedule(anchor: anchor, start: start, end: end, unit: b.cadence.unit, every: Int(b.cadence.every),
+                        horizon: today.adding(days: 400))
+    let next = dues.first { d in
+      guard let r = resolved[d] else { return true }
+      switch r.resolution {
+      case "paid", "skipped": return false
+      case "snoozed": return (r.until.flatMap(CivilDate.init(wire:)).map(local) ?? d) < today
+      default: return true
+      }
+    } ?? dues.last ?? anchor
+    let paid = resolved.filter { $0.value.resolution == "paid" }
+    let history = paid.keys.sorted(by: >)
+    // A fixed bill whose latest payment was outside its tolerance shows the new price.
+    var amount = Money(minor: b.amountMinor, currency: b.currency)
+    var priceChangeFrom: Money?
+    if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn, let charged = paidAmount[txn] {
+      let tolerance = b.amountMinor * (b.toleranceBp ?? 0) / 10_000
+      if abs(charged.minor - b.amountMinor) > tolerance {
+        priceChangeFrom = amount
+        amount = charged
+      }
+    }
+    let category = b.category ?? "utilities"
+    return HasalaModels.Bill(
+      id: id, name: b.name, kind: taxonomy.info(category)?.name ?? "Bill", categoryID: category, amount: amount,
+      approximate: b.amountMode == "variable", isIncome: false, usualDay: anchor.day, nextDue: next,
+      accountID: b.account, state: b.status == "active" ? .tracked : .dismissed, priceChangeFrom: priceChangeFrom,
+      history: history)
+  }
+
+  /// The due dates of a bill from `start` to `horizon`, stepping from `anchor` (03b §3.4):
+  /// monthly and yearly dues keep the anchor's day, clamped to short months.
+  static func schedule(anchor: LocalDate, start: LocalDate, end: LocalDate?, unit: String, every: Int, horizon: LocalDate)
+    -> [LocalDate]
+  {
+    let step = max(1, every)
+    func due(_ k: Int) -> LocalDate {
+      switch unit {
+      case "day": return anchor.adding(days: k * step)
+      case "week": return anchor.adding(days: 7 * k * step)
+      case "year": return clamp(anchor.year + k * step, anchor.month, anchor.day)
+      default:
+        let index = anchor.year * 12 + (anchor.month - 1) + k * step
+        return clamp(index / 12, index % 12 + 1, anchor.day)
+      }
+    }
+    var k = 0
+    while due(k) > start, k > -2_000 { k -= 1 }
+    var out: [LocalDate] = []
+    while out.count < 2_000 {
+      let d = due(k)
+      k += 1
+      if d < start { continue }
+      if let end, d > end { break }
+      if d > horizon { break }
+      out.append(d)
+    }
+    return out
+  }
+
+  static func clamp(_ year: Int, _ month: Int, _ day: Int) -> LocalDate {
+    LocalDate(year, month, min(day, CivilCalendar.daysIn(year: year, month: month)))
+  }
+
+  /// The next payday on or after `after` (day clamped to short months).
+  static func nextPayday(_ day: Int, after: LocalDate) -> LocalDate {
+    let this = clamp(after.year, after.month, day)
+    if this >= after { return this }
+    let n = after.yearMonth.next
+    return clamp(n.year, n.month, day)
+  }
+
+  // MARK: Rules
+
+  static func ruleMatch(_ m: String) -> RuleMatch {
+    switch m {
+    case "starts_with": .startsWith
+    case "exact": .exact
+    default: .contains
+    }
+  }
+
+  // MARK: Dates
+
+  static func local(_ d: CivilDate) -> LocalDate { LocalDate(d.year, d.month, d.day) }
+
+  /// The local day of an RFC 3339 instant.
+  static func localDay(_ instant: String) -> LocalDate? {
+    guard let ms = try? parseInstantMs(instant), let d = LocalClock.localDate(ms) else { return nil }
+    return local(d)
+  }
+}
