@@ -41,7 +41,7 @@ Domain        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResource
 
 # L3: the only GRDB importers (R6).
 Store         CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain GRDB OrderedCollections
-Projection    CoreReplay CoreDomain CoreCategorize GRDB OrderedCollections
+Projection    CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreReplay CoreDomain CoreCategorize GRDB OrderedCollections
 
 # L4
 Sync          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection
