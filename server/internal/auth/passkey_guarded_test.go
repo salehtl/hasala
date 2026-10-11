@@ -74,6 +74,7 @@ func (p *Passkeys) deleteCredential(ctx context.Context, userID uuid.UUID, crede
 	}
 	return revoked, nil
 }
+
 // guarded wires the fixture's step-up into its relying party, as
 // api.NewServer does.
 func (f *keyFixture) guarded() *keyFixture {
@@ -92,7 +93,9 @@ func addSig(t *testing.T, d *authtest.Device, nonce []byte, a *authtest.Authenti
 	return ed25519.Sign(d.DWK, m)
 }
 
-func wellFormedWrap(fill byte) []byte { return append([]byte{1, 2}, bytes.Repeat([]byte{fill}, 125)...) }
+func wellFormedWrap(fill byte) []byte {
+	return append([]byte{1, 2}, bytes.Repeat([]byte{fill}, 125)...)
+}
 
 // addOver runs #10 and #11 on token's session with the device's DWK, and
 // answers the new authenticator and AddFinish's outcome.

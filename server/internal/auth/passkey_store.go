@@ -52,9 +52,9 @@ type ceremony struct {
 	// AddNonce binds an add ceremony to the passkey.add step-up that opened
 	// it: PasskeyAddMessage at add/finish signs this nonce (spec 01 §10.7,
 	// D33). Set for kind add only (the CHECK enforces it).
-	AddNonce  []byte
-	ExpiresAt time.Time
-	sessionJSON     []byte
+	AddNonce    []byte
+	ExpiresAt   time.Time
+	sessionJSON []byte
 }
 
 // putCeremony records a ceremony that has just begun, on the pool.
