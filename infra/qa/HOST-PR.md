@@ -102,6 +102,7 @@ in
     };
     mailboxRouteKeyFile = secret "mailbox_route_key";
     authKeyFile = secret "auth_key"; # spec 01 §4.11; generated once, never rotated in the beta
+    saltKeyFile = secret "salt_key"; # spec 01 §4.11; the password salt key: never rotated, never equal to auth_key
     email = {
       cloudflareAccountId = "<CF_ACCOUNT_ID>"; # not secret
       apiTokenFile = secret "email_api_token"; # Email Sending: Edit only
@@ -171,6 +172,7 @@ where a secret would be world-readable.
 secrets."hasala/apns_key_p8"        = { sopsFile = ../secrets/hasala.yaml; key = "hasala/apns_key_p8";        restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/mailbox_route_key"  = { sopsFile = ../secrets/hasala.yaml; key = "hasala/mailbox_route_key";  restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/auth_key"           = { sopsFile = ../secrets/hasala.yaml; key = "hasala/auth_key";           restartUnits = [ "hasalad.service" ]; };
+secrets."hasala/salt_key"           = { sopsFile = ../secrets/hasala.yaml; key = "hasala/salt_key";           restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/email_api_token"    = { sopsFile = ../secrets/hasala.yaml; key = "hasala/email_api_token";    restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/tunnel_credentials" = { sopsFile = ../secrets/hasala.yaml; key = "hasala/tunnel_credentials"; restartUnits = [ "cloudflared-hasala.service" ]; };
 secrets."hasala/backup_rclone_conf" = { sopsFile = ../secrets/hasala.yaml; key = "hasala/backup_rclone_conf"; }; # read per run
@@ -185,12 +187,19 @@ All stay at the sops-nix default (root, 0400). Units receive them only through
 | `apns_key_p8` | `hasalad` | `HASALA_APNS_KEY_FILE=%d/apns-key.p8` |
 | `mailbox_route_key` | `hasalad` | `HASALA_MAILBOX_ROUTE_KEY_FILE=%d/mailbox-route-key` |
 | `auth_key` | `hasalad` | `HASALA_AUTH_KEY_FILE=%d/auth-key` |
+| `salt_key` | `hasalad` | `HASALA_SALT_KEY_FILE=%d/salt-key` |
 | `email_api_token` | `hasalad`, `hasala-email-token-check` | `HASALA_EMAIL_API_TOKEN_FILE=%d/email-api-token` |
 | `tunnel_credentials` | `cloudflared-hasala` | `credentials-file: /run/credentials/cloudflared-hasala.service/tunnel.json` |
 | `backup_rclone_conf` | `hasala-backup-offsite`, `hasala-backup-check` | `rclone --config %d/rclone.conf` |
 
-How the owner generates each value is spec 05 §6.1 (the route key and the auth
-key are generated and encrypted in one pipe and never displayed).
+How the owner generates each value is spec 05 §6.1 (the route key, the auth
+key and the salt key are generated and encrypted in one pipe and never
+displayed). `auth_key` and `salt_key` are two separate 32-byte values (64
+lowercase hex each, for example `openssl rand -hex 32` twice): serve refuses
+equal keys behind Cloudflare, records each key's fingerprint on first start
+and refuses a different key later (spec 02 O9), and the module refuses the
+tunnel without both (M12). The salt key is never rotated: a different one makes
+every password fail.
 
 ### The tunnel (out of band, once, on the owner's Mac)
 

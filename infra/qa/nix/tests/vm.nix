@@ -54,6 +54,7 @@ in
         # disk fuse and refuse every write.
         headroomFloorBytes = 64 * 1024 * 1024;
         authKeyFile = dummy "auth-key";
+        saltKeyFile = dummy "salt-key";
         email = {
           cloudflareAccountId = builtins.substring 0 32 (hex64 "cf-account");
           apiTokenFile = dummy "email-token";
@@ -111,6 +112,7 @@ in
           install -d -m 0700 "$d"
           hex() { printf '%s' "hasala-vm-test-$1" | sha256sum | cut -c1-64; }
           printf '%s' "$(hex auth-key)" > "$d/auth-key"
+          printf '%s' "$(hex salt-key)" > "$d/salt-key"
           printf '%s' dummy-email-send-token > "$d/email-token"
           # serve refuses anything but a PKCS#8 EC P-256 key; this one is
           # throwaway and never reaches APNs (the VM has no egress).
@@ -315,7 +317,7 @@ in
           machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
 
       with subtest("AT-V9: hasala-admin runs each mode in a sandbox, as root only"):
-          for mode in ["invite", "purge-user", "verify", "version", "migrate"]:
+          for mode in ["invite", "account", "email", "purge-user", "verify", "version", "migrate"]:
               machine.succeed(f"hasala-admin {mode} --help")
           machine.succeed("hasala-admin version | grep '^hasalad ' >/dev/null")
           code = machine.succeed("hasala-admin invite mint --note vm-note-text 2>/dev/null").strip()
@@ -371,6 +373,7 @@ in
           machine.fail(f"nsenter -t {pid} -m -- cat /var/lib/neighbour/data")
           machine.fail(f"nsenter -t {pid} -m -- ls /run/credentials/hasala-console.service")
           machine.succeed(f"nsenter -t {pid} -m -- test -r /run/credentials/hasalad.service/auth-key")
+          machine.succeed(f"nsenter -t {pid} -m -- test -r /run/credentials/hasalad.service/salt-key")
           props = machine.succeed(
               "systemctl show hasalad.service -p User -p NoNewPrivileges -p ProtectSystem"
               " -p PrivateDevices -p CapabilityBoundingSet -p IPAddressDeny -p RestrictAddressFamilies"
