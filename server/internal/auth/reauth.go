@@ -88,7 +88,18 @@ func (p *Passkeys) VerifyAssertion(ctx context.Context, userID uuid.UUID, challe
 // account's credentials asserted (a keys.wrap.put step-up requires it to be the
 // wrap's own, spec 01 §10.7).
 func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UUID, challenge, response []byte) ([]byte, error) {
-	if p == nil || p.Pool == nil || p.WA == nil {
+	if p == nil || p.Pool == nil {
+		return nil, errors.New("auth: Passkeys is not configured")
+	}
+	return p.VerifyAssertionCredentialTx(ctx, p.Pool, userID, challenge, response)
+}
+
+// VerifyAssertionCredentialTx is VerifyAssertionCredential with every read
+// and the counter update made through q: a caller that holds a transaction
+// (StepUp.Run, which holds the nonce's row lock) passes it, so the check never
+// needs a second connection while the first waits.
+func (p *Passkeys) VerifyAssertionCredentialTx(ctx context.Context, q dbtx, userID uuid.UUID, challenge, response []byte) ([]byte, error) {
+	if p == nil || p.WA == nil || q == nil {
 		return nil, errors.New("auth: Passkeys is not configured")
 	}
 	if userID == uuid.Nil {
@@ -110,7 +121,7 @@ func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UU
 		return nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
 
-	stored, err := p.credentialByID(ctx, parsed.RawID)
+	stored, err := p.credentialByID(ctx, q, parsed.RawID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +131,7 @@ func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UU
 		// is.
 		return nil, fmt.Errorf("%w: credential belongs to a different account", ErrPasskeyRejected)
 	}
-	byHandle, err := p.userIDForHandle(ctx, stored.UserHandle)
+	byHandle, err := p.userIDForHandle(ctx, q, stored.UserHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +169,7 @@ func (p *Passkeys) VerifyAssertionCredential(ctx context.Context, userID uuid.UU
 	// Recorded on the same terms as a sign-in: the counter never goes backwards
 	// and last_used_at moves regardless, because a synced passkey reports a
 	// permanent zero and "it was used just now" is true anyway.
-	if err := p.touchCredential(ctx, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
+	if err := p.touchCredential(ctx, q, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
 		return nil, err
 	}
 	return cred.ID, nil

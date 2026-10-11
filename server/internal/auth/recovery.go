@@ -149,7 +149,7 @@ func (a *Accounts) RecoverVerify(ctx context.Context, ceremonyID, code, kind str
 		}
 		var session any
 		if kind == MethodPasskey {
-			creds, handle, err := a.Passkeys.credentialsForUser(ctx, userID)
+			creds, handle, err := a.Passkeys.credentialsForUser(ctx, tx, userID)
 			if err != nil {
 				return err
 			}
@@ -276,7 +276,7 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		if err := json.Unmarshal(session, &sd); err != nil {
 			return RecoverFinished{}, refuse("session data")
 		}
-		_, handle, err = a.Passkeys.credentialsForUser(ctx, userID)
+		_, handle, err = a.Passkeys.credentialsForUser(ctx, a.Pool, userID)
 		if err != nil || handle == nil {
 			return RecoverFinished{}, refuse("handle")
 		}

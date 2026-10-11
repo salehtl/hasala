@@ -415,7 +415,7 @@ func (p *Passkeys) FinishLoginResult(ctx context.Context, ceremonyID string, res
 	}
 	var stored storedCredential
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
-		sc, err := p.credentialByID(ctx, rawID)
+		sc, err := p.credentialByID(ctx, p.Pool, rawID)
 		if err != nil {
 			return nil, err
 		}
@@ -435,14 +435,14 @@ func (p *Passkeys) FinishLoginResult(ctx context.Context, ceremonyID string, res
 	if cred.Authenticator.CloneWarning {
 		return LoginResult{}, ErrClonedAuthenticator
 	}
-	byHandle, err := p.userIDForHandle(ctx, stored.UserHandle)
+	byHandle, err := p.userIDForHandle(ctx, p.Pool, stored.UserHandle)
 	if err != nil {
 		return LoginResult{}, err
 	}
 	if byHandle != stored.UserID {
 		return LoginResult{}, fmt.Errorf("%w: credential owner and user handle disagree", ErrPasskeyRejected)
 	}
-	if err := p.touchCredential(ctx, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
+	if err := p.touchCredential(ctx, p.Pool, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
 		return LoginResult{}, err
 	}
 	challenge, err := base64.RawURLEncoding.DecodeString(c.Session.Challenge)
@@ -457,10 +457,11 @@ func (p *Passkeys) FinishLoginResult(ctx context.Context, ceremonyID string, res
 // ---------------------------------------------------------------------------
 
 // beginAdd mints a registration challenge for an account that is ALREADY
-// signed in, so a user can enrol another passkey, and records the ceremony
-// through q with addNonce, the passkey.add step-up nonce the add/finish
-// signature binds (spec 01 §10.7). Only AddBegin (passkey_guarded.go) reaches
-// it from a request, inside that step-up's transaction.
+// signed in, so a user can enrol another passkey, and reads the account's
+// credentials and records the ceremony through q with addNonce, the
+// passkey.add step-up nonce the add/finish signature binds (spec 01 §10.7).
+// Only AddBegin (passkey_guarded.go) reaches it from a request, inside that
+// step-up's transaction, which it never steps outside.
 //
 // It reuses the account's existing handle rather than minting a new one, and that
 // is not an optimisation: the handle IS the subject, so a second handle would
@@ -471,7 +472,7 @@ func (p *Passkeys) FinishLoginResult(ctx context.Context, ceremonyID string, res
 //
 // Existing credentials are sent as exclusions, so an authenticator that is already
 // enrolled says so in the browser instead of minting a duplicate row.
-func (p *Passkeys) beginAdd(ctx context.Context, q execer, userID uuid.UUID, addNonce []byte) (string, *protocol.CredentialCreation, error) {
+func (p *Passkeys) beginAdd(ctx context.Context, q dbtx, userID uuid.UUID, addNonce []byte) (string, *protocol.CredentialCreation, error) {
 	if p.Pool == nil || p.WA == nil {
 		return "", nil, errors.New("auth: Passkeys is not configured")
 	}
@@ -481,7 +482,7 @@ func (p *Passkeys) beginAdd(ctx context.Context, q execer, userID uuid.UUID, add
 	if len(addNonce) != keyproto.NonceSize {
 		return "", nil, errors.New("auth: passkey: beginAdd: the add nonce is not 32 bytes")
 	}
-	creds, handle, err := p.credentialsForUser(ctx, userID)
+	creds, handle, err := p.credentialsForUser(ctx, q, userID)
 	if err != nil {
 		return "", nil, err
 	}
@@ -527,7 +528,7 @@ func (p *Passkeys) verifyAdd(ctx context.Context, ceremonyID string, userID uuid
 	// ceremony was written with, and the account SubjectHash says the handle
 	// names. Agreement is a real check rather than a restatement — a row where
 	// they disagree was written by something that did not go through this file.
-	owner, err := p.userIDForHandle(ctx, c.UserHandle)
+	owner, err := p.userIDForHandle(ctx, p.Pool, c.UserHandle)
 	if err != nil {
 		return created{}, ceremony{}, err
 	}

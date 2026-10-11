@@ -175,7 +175,7 @@ type storedCredential struct {
 // credentialByID looks a credential up by the rawId an assertion carried. It is
 // the login path's entire "who is this": everything else — the handle, the
 // account — hangs off this row.
-func (p *Passkeys) credentialByID(ctx context.Context, credentialID []byte) (storedCredential, error) {
+func (p *Passkeys) credentialByID(ctx context.Context, q querier, credentialID []byte) (storedCredential, error) {
 	var (
 		sc         storedCredential
 		signCount  int64
@@ -183,7 +183,7 @@ func (p *Passkeys) credentialByID(ctx context.Context, credentialID []byte) (sto
 		transports *string
 		be, bs     bool
 	)
-	err := p.Pool.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`SELECT user_id, user_handle, public_key, sign_count, aaguid, transports, backup_eligible, backup_state
 		   FROM webauthn_credentials WHERE credential_id = $1`, credentialID).
 		Scan(&sc.UserID, &sc.UserHandle, &sc.Credential.PublicKey, &signCount, &aaguid, &transports, &be, &bs)
@@ -213,15 +213,15 @@ func (p *Passkeys) credentialByID(ctx context.Context, credentialID []byte) (sto
 
 // credentialsForUser is what the add ceremony excludes, so an authenticator that
 // is already enrolled says so in the browser rather than minting a duplicate.
-func (p *Passkeys) credentialsForUser(ctx context.Context, userID uuid.UUID) ([]webauthn.Credential, []byte, error) {
+func (p *Passkeys) credentialsForUser(ctx context.Context, q dbtx, userID uuid.UUID) ([]webauthn.Credential, []byte, error) {
 	var handle []byte
-	if err := p.Pool.QueryRow(ctx, `SELECT user_handle FROM users WHERE id = $1`, userID).Scan(&handle); err != nil {
+	if err := q.QueryRow(ctx, `SELECT user_handle FROM users WHERE id = $1`, userID).Scan(&handle); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil, nil
 		}
 		return nil, nil, fmt.Errorf("auth: passkey: read user handle: %w", err)
 	}
-	rows, err := p.Pool.Query(ctx,
+	rows, err := q.Query(ctx,
 		`SELECT credential_id FROM webauthn_credentials WHERE user_id = $1 ORDER BY created_at, credential_id`, userID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("auth: passkey: list credentials: %w", err)
@@ -239,6 +239,18 @@ func (p *Passkeys) credentialsForUser(ctx context.Context, userID uuid.UUID) ([]
 		return nil, nil, fmt.Errorf("auth: passkey: list credentials: %w", err)
 	}
 	return creds, handle, nil
+}
+
+// dbtx is what both *pgxpool.Pool and pgx.Tx offer. A helper that reads or
+// writes on behalf of a caller holding a transaction takes one, so the caller
+// passes its transaction: a helper that went to the pool instead would hold a
+// second connection while the first waits on it, and enough concurrent
+// requests exhaust the pool (each holds one connection and waits for a
+// second).
+type dbtx interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // execer is satisfied by both *pgxpool.Pool and pgx.Tx, which is what lets the
@@ -306,8 +318,8 @@ func transportsString(ts []protocol.AuthenticatorTransport) string {
 // last_used_at stayed NULL for ever. Splitting the two facts is the fix: the
 // counter must never go backwards, and "this credential was used just now" is
 // true regardless of what the counter says.
-func (p *Passkeys) touchCredential(ctx context.Context, credentialID []byte, signCount uint32, now time.Time) error {
-	if _, err := p.Pool.Exec(ctx,
+func (p *Passkeys) touchCredential(ctx context.Context, q execer, credentialID []byte, signCount uint32, now time.Time) error {
+	if _, err := q.Exec(ctx,
 		`UPDATE webauthn_credentials
 		    SET sign_count = GREATEST(sign_count, $2), last_used_at = $3
 		  WHERE credential_id = $1`,
@@ -321,9 +333,9 @@ func (p *Passkeys) touchCredential(ctx context.Context, credentialID []byte, sig
 // creating anything.
 //
 // users.user_handle is UNIQUE, so a handle names at most one account.
-func (p *Passkeys) userIDForHandle(ctx context.Context, handle []byte) (uuid.UUID, error) {
+func (p *Passkeys) userIDForHandle(ctx context.Context, q querier, handle []byte) (uuid.UUID, error) {
 	var id uuid.UUID
-	err := p.Pool.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`SELECT id FROM users WHERE user_handle = $1`, handle).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, ErrCredentialUnknown

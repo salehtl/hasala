@@ -382,7 +382,7 @@ func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded) (Proven, fail
 		if s.Passkeys == nil {
 			return Proven{}, nil, fmt.Errorf("%w: no relying party is configured", ErrStepUpFailed)
 		}
-		cred, err := s.Passkeys.VerifyAssertionCredential(ctx, g.UserID, c[:], g.StepUp.Proof.Assertion)
+		cred, err := s.Passkeys.VerifyAssertionCredentialTx(ctx, tx, g.UserID, c[:], g.StepUp.Proof.Assertion)
 		if err != nil {
 			if errors.Is(err, ErrPasskeyRejected) {
 				return Proven{}, nil, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
