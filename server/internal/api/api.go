@@ -241,6 +241,15 @@ type Server struct {
 	// Meta is what GET /api/v1/meta reports (meta.go).
 	Meta Meta
 
+	// Push configures the APNs token routes and the wakes (routes_push.go).
+	Push PushOptions
+	// Gmail, when set, mounts the mailbox link and the Pub/Sub hook
+	// (routes_mailboxlink.go, routes_hooks.go).
+	Gmail *GmailOptions
+	// Web, when set, mounts spec 07's website routes: the waitlist and bank
+	// requests (routes_waitlist.go, routes_bankrequests.go).
+	Web *WebOptions
+
 	// Headroom is the box-level disk fuse (internal/headroom). When it is
 	// tripped every non-read request is refused with a temporary 503 while
 	// reads keep serving — see headroomGate. Nil is no fuse.
