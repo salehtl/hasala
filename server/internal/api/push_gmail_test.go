@@ -299,6 +299,18 @@ func TestMailboxLink(t *testing.T) {
 	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", tok2,
 		UnlinkRequest{StepUp: k.stepUp(tok2, keyproto.ActionMailboxUnlink)}), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/mailbox/link", k.token, nil), http.StatusNotFound)
+
+	// Each link and the unlink are auth events with no alert (spec 02 §10.16).
+	var linked, unlinked, alerts int
+	if err := h.pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE kind = 'mailbox_linked'),
+	    count(*) FILTER (WHERE kind = 'mailbox_unlinked') FROM auth_events WHERE user_id = $1`, k.user).
+		Scan(&linked, &unlinked); err != nil {
+		t.Fatal(err)
+	}
+	_ = h.pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE kind = 'alert'`).Scan(&alerts)
+	if linked != 2 || unlinked != 1 || alerts != 0 {
+		t.Fatalf("auth events: %d linked, %d unlinked, %d alerts; want 2, 1, 0", linked, unlinked, alerts)
+	}
 }
 
 func assertNoAddress(t *testing.T, h *harness, addr string) {

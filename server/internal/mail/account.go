@@ -113,7 +113,10 @@ func AddressInUse(to string) Message {
 			"Hasala account, so nothing has changed. If this was you, sign in to Hasala instead.")}
 }
 
-const notYou = "If this wasn't you, open Hasala on one of your iPhones and freeze your account in Security."
+// notYou points at the screen every build has. The in-app freeze is not in
+// every build (the beta hides it), so the line names the place, not the
+// button (spec 02 §14.6's wording names the freeze).
+const notYou = "If this wasn't you, open Hasala on one of your iPhones and go to Profile › Sign-in & security."
 
 // AlertSubkinds is the closed set of alert subkinds (spec 02 §14.6).
 var AlertSubkinds = []string{

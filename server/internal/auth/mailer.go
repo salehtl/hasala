@@ -224,6 +224,8 @@ const (
 	EventAccountFrozen   = "account_frozen"
 	EventAccountUnfrozen = "account_unfrozen"
 	EventSessionsRevoked = "sessions_revoked"
+	EventMailboxLinked   = "mailbox_linked"
+	EventMailboxUnlinked = "mailbox_unlinked"
 
 	MethodPasskey  = "passkey"
 	MethodPassword = "password"
@@ -259,6 +261,17 @@ func nullStr(s string) any {
 		return nil
 	}
 	return s
+}
+
+// RecordQuietEventTx records an event that sends no alert, in the caller's
+// transaction: the mailbox link and unlink, whose actions the API runs (spec
+// 02 §10.16). An event that carries an alert is refused here; its action
+// records it.
+func RecordQuietEventTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, e AuthEvent, at time.Time) error {
+	if alertSubkind(e) != "" {
+		return fmt.Errorf("auth: %s sends an alert; its action records it", e.Kind)
+	}
+	return recordEventTx(ctx, tx, nil, userID, e, at)
 }
 
 // recordEventTx writes the event and enqueues its alert, both in the

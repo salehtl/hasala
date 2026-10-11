@@ -61,6 +61,14 @@ func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, ne
 	if su == nil {
 		return EmailChangeBegun{}, ErrStepUpRequired
 	}
+	// The new verifier's PBKDF2 runs before the step-up's transaction, so no
+	// connection is held while the gate is waited on (as SetPassword does).
+	var hash, salt []byte
+	if verifierNew != nil {
+		if hash, salt, err = newPasswordHash(ctx, a.Keys, a.Gate, verifierNew); err != nil {
+			return EmailChangeBegun{}, err
+		}
+	}
 	id := uuid.New()
 	nonce, err := randBytes(keyproto.NonceSize)
 	if err != nil {
@@ -74,12 +82,6 @@ func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, ne
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
 			return err
-		}
-		var hash, salt []byte
-		if verifierNew != nil {
-			if hash, salt, err = newPasswordHash(ctx, a.Keys, a.Gate, verifierNew); err != nil {
-				return err
-			}
 		}
 		var inUse bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE email_norm = $1)`, addr).Scan(&inUse); err != nil {

@@ -236,14 +236,19 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 	if err != nil {
 		return SignedIn{}, err
 	}
+	// The account is read on every path, an unknown address's as the nil id
+	// (no row), so the answer's cost does not depend on whether the address
+	// has an account (spec 02 §10.8).
 	var st accountState
 	exists := false
+	target := uuid.Nil
 	if userID != nil && tag2.RowsAffected() == 1 {
-		if st, err = readAccount(ctx, a.Pool, *userID, false); err == nil {
-			exists = true
-		} else if !errors.Is(err, ErrNoSuchAccount) {
-			return SignedIn{}, err
-		}
+		target = *userID
+	}
+	if st, err = readAccount(ctx, a.Pool, target, false); err == nil {
+		exists = true
+	} else if !errors.Is(err, ErrNoSuchAccount) {
+		return SignedIn{}, err
 	}
 	paused := exists && st.PausedUntil != nil && st.PausedUntil.After(now) && boundWriter == ""
 	compare := exists && st.hasPassword() && !paused
@@ -257,6 +262,11 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 			if err := recordPasswordFailure(ctx, a.Pool, st.ID, boundWriter, now); err != nil {
 				return SignedIn{}, err
 			}
+		} else if _, err := a.Pool.Exec(ctx,
+			`UPDATE users SET password_failures = password_failures + 1 WHERE id = $1`, uuid.Nil); err != nil {
+			// The same statement against no row: an absent or paused account's
+			// failure costs what a counted one does.
+			return SignedIn{}, err
 		}
 		return SignedIn{}, fmt.Errorf("%w: wrong, absent or paused", ErrPasswordRejected)
 	}
@@ -320,6 +330,18 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 		}
 		return PasswordSignedUp{}, err
 	}
+	// The invite must still be unspent (spec 02 §10.7.3 step 1: anything
+	// else is code_rejected), checked before the PBKDF2 it would waste. The
+	// redemption in the account transaction stays the gate against a race.
+	var unspent bool
+	if err := a.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM invite_codes WHERE code_hash = $1 AND state = 'active' AND expires_at > $2)`,
+		s.InviteHash, now).Scan(&unspent); err != nil {
+		return PasswordSignedUp{}, fmt.Errorf("auth: password signup: invite: %w", err)
+	}
+	if !unspent {
+		return spend(fmt.Errorf("%w: the invite is spent", ErrCodeRejected))
+	}
 	// 2. Bootstrap checks 3, 5, 6 against the signup.
 	if err := checkPasswordBootstrap(s, verifier, b); err != nil {
 		return spend(err)
@@ -350,6 +372,11 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 	}
 	s = claimed
 	if err := createAccountTx(ctx, tx, s, handle, now); err != nil {
+		if errors.Is(err, ErrNotInvited) {
+			// The invite was redeemed since the check above: #45 answers every
+			// unusable signup alike (§10.7.3 step 1).
+			return PasswordSignedUp{}, fmt.Errorf("%w: the invite is spent", ErrCodeRejected)
+		}
 		return PasswordSignedUp{}, err
 	}
 	if err := setPasswordTx(ctx, tx, s.UserID, hash, salt, a.Keys.Current(), now); err != nil {

@@ -395,3 +395,47 @@ func TestPasswordSignupIsOneAtomicRequest(t *testing.T) {
 	}
 	_ = uuid.Nil
 }
+
+// #45 with an invite another signup already redeemed answers code_rejected
+// (spec 02 §10.7.3 step 1), before the PBKDF2 it would waste, and spends the
+// signup.
+func TestAPasswordSignupOnASpentInviteIsCodeRejected(t *testing.T) {
+	f := newAcctFixture(t)
+	code := f.printedInvite(false)
+	type begun struct {
+		s SignupBegun
+		m *member
+	}
+	var both []begun
+	for _, addr := range []string{newAddr(), newAddr()} {
+		s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: "Maya"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.acct.SignupVerify(bgctx, s.SignupID, f.lastCode(addr)); err != nil {
+			t.Fatal(err)
+		}
+		m := &member{f: f, addr: addr, pw: "correct horse battery staple"}
+		m.s = f.stretch(addr, m.pw)
+		m.acct, m.device = authtest.NewAccount(t, s.UserID), authtest.NewDevice(t)
+		both = append(both, begun{s, m})
+	}
+	first, second := both[0], both[1]
+	if _, err := f.acct.PasswordSignup(bgctx, first.s.SignupID, first.m.s, f.passwordBootstrap(first.m, first.s)); err != nil {
+		t.Fatal(err)
+	}
+	hashes := f.keys.HashCount()
+	_, err := f.acct.PasswordSignup(bgctx, second.s.SignupID, second.m.s, f.passwordBootstrap(second.m, second.s))
+	if !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("a signup on a spent invite: %v, want code_rejected", err)
+	}
+	if f.keys.HashCount() != hashes {
+		t.Fatal("a signup on a spent invite ran a PBKDF2")
+	}
+	if f.count(`SELECT count(*) FROM signup_ceremonies WHERE id = $1 AND claimed_at IS NOT NULL`, second.s.SignupID) != 1 {
+		t.Fatal("the refused signup is still claimable")
+	}
+	if n := countUsers(t, f.pool); n != 1 {
+		t.Fatalf("%d accounts", n)
+	}
+}
