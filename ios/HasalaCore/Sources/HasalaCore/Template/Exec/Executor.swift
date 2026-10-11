@@ -225,7 +225,9 @@ public struct CompiledTemplate: Sendable {
 
   /// Runs the template over one message (its effective subject and normalized text). On
   /// `missing_field` the extraction carries everything that DID extract; on `no_match` it is
-  /// the zero value. Throws only for a state no correct executor reaches (`.definition`).
+  /// the zero value. Throws `.cancelled` when the calling task is cancelled (checked before
+  /// every pattern search), and otherwise only for a state no correct executor reaches
+  /// (`.definition`).
   public func execute(subject: String, normalizedBody: String) throws(TemplateError) -> Extraction {
     if normalizedBody.utf8.count > TemplateBounds.maxBodyBytes { return .zero(.tooLarge) }
     if subject.utf8.count > TemplateBounds.maxSubjectBytes { return .zero(.tooLarge) }
@@ -247,6 +249,8 @@ public struct CompiledTemplate: Sendable {
       }
     } catch RunError.limitExceeded {
       return .zero(.tooLarge)
+    } catch RunError.cancelled {
+      throw .cancelled
     } catch {
       throw .definition("an entry failed to run")
     }
@@ -292,6 +296,7 @@ public struct CompiledTemplate: Sendable {
 
   enum RunError: Error {
     case limitExceeded
+    case cancelled
     case definition
   }
 
@@ -306,6 +311,9 @@ public struct CompiledTemplate: Sendable {
     }
     guard let type = ValueType(x.type) else { throw .definition }
     for re in ce.res {
+      // Each search is bounded by ICU's limit; the run as a whole is bounded by the caller's
+      // deadline, which arrives as cancellation.
+      if Task.isCancelled { throw .cancelled }
       let m: ICURegex.Match?
       do { m = try re.firstMatch(in: src) } catch { throw .limitExceeded }
       guard let m else { continue }
