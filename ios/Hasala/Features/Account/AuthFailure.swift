@@ -39,6 +39,11 @@ enum AuthFailure: Error, Equatable, Sendable {
   case noPasscode
   /// The reset code doesn't match the pending request: nothing was approved.
   case codeMismatch
+  /// A ceremony this build cannot run yet (the live service binds it later).
+  case notInThisBuild
+  /// The server's keys or address differ from this iPhone's after setup (E-04), or a
+  /// server value failed the client's own check: stop, never retry blind.
+  case integrity
 
   /// The copy shown for this failure; nil when nothing is shown.
   var message: String? {
@@ -71,6 +76,9 @@ enum AuthFailure: Error, Equatable, Sendable {
     case .signupExpired: "That took a while, so we started again. Your invite still works."
     case .approvalExpired: "No answer from your other iPhone. Try again, or use your 12 words."
     case .codeMismatch: "That code doesn't match a request. Nothing was approved."
+    case .notInThisBuild: "This isn't in this beta build yet. If you need it now, talk to us at hasala.app/support."
+    case .integrity:
+      "Something didn't match what this iPhone expected, so Hasala stopped to keep your data safe. Nothing was changed. Talk to us at hasala.app/support."
     case .noPasscode:
       "Set a passcode on your iPhone to use Hasala. It protects your data and lets this iPhone confirm it's you."
     }

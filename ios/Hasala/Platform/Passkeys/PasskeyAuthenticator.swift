@@ -39,9 +39,14 @@ final class PasskeyAuthenticator: NSObject {
   private var controller: ASAuthorizationController?
 
   /// Registration (C1 step 7, C4 step 5a, C5): `name` is always "Hasala" (spec 04 §6.1.1).
-  func register(challenge: Data, userID: Data, prfSalt: Data?) async throws(AuthFailure) -> RawRegistration {
+  func register(challenge: Data, userID: Data, excludedCredentials: [Data] = [], prfSalt: Data?)
+    async throws(AuthFailure) -> RawRegistration
+  {
     let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: "Hasala", userID: userID)
     request.userVerificationPreference = .required
+    request.excludedCredentials = excludedCredentials.map {
+      ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0)
+    }
     if let prfSalt {
       request.prf = .inputValues(.init(saltInput1: prfSalt))
     }
