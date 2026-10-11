@@ -58,9 +58,11 @@ public enum Projector {
     guard !pending.isEmpty else { return (state, []) }
     var s = state
     var seq = state.cursors.hot
+    // The outbox's ops are this device's; a missing writer id still overlays.
+    let writer = writerID.isEmpty ? "pending-overlay" : writerID
     for ops in pending {
       seq += 1
-      try? Replay.foldOps(ops, seq: seq, writerID: writerID, into: &s)
+      try? Replay.foldOps(ops, seq: seq, writerID: writer, into: &s)
     }
     var touched: Set<String> = []
     for (id, t) in s.txns where state.txns[id] != t { touched.insert(id) }

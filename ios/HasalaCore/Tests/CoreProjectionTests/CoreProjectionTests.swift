@@ -243,4 +243,45 @@ struct ProjectionContractTests {
     #expect(Set(queue.map(\.id)) == Set(["steam", "atm"].map { maya.ids[$0]! }))
     #expect(try reader.knownMailboxMessageIDs(["x"]).isEmpty)
   }
+
+  @Test("AT-SYNC-6: a warm start (snapshot + the rest) projects exactly what a cold fold does")
+  func warmEqualsCold() throws {
+    let maya = try Maya()
+    // Re-fold Maya's state from its own canonical history: split the ops at a midpoint.
+    var a = OpAuthor(maya.context())
+    a.defineCategory(id: "zz_pets", name: "Pets", kind: .spending, bucket: .want, icon: "paw", active: true)
+    a.defineCategory(id: "aa_gifts", name: "Gifts", kind: .spending, bucket: .want, icon: "gift", active: true)
+    a.declareBank("enbd", active: true)
+    a.declareBank("dib", active: true)
+    let extra = try a.build().ops
+    var cold = maya.state
+    try Replay.foldOps(extra, seq: cold.cursors.hot + 1, writerID: Maya.writer, into: &cold)
+    var b = OpAuthor(maya.context())
+    b.defineCategory(id: "zz_pets", name: "Pets and vets", kind: .spending, bucket: .want, icon: "paw", active: true)
+    let later = try b.build().ops
+    try Replay.foldOps(later, seq: cold.cursors.hot + 1, writerID: Maya.writer, into: &cold)
+
+    var warm = try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: maya.state))).state
+    try Replay.foldOps(extra, seq: warm.cursors.hot + 1, writerID: Maya.writer, into: &warm)
+    let snap = try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: warm))).state
+    warm = snap
+    try Replay.foldOps(later, seq: warm.cursors.hot + 1, writerID: Maya.writer, into: &warm)
+    #expect(warm == cold)
+
+    func dump(_ s: State) throws -> [String] {
+      let db = try Projector.open(path: nil)
+      try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+      return try db.read { db in
+        var out: [String] = []
+        for t in ProjectionSchema.tables {
+          for r in try Row.fetchAll(db, sql: "SELECT * FROM \(t) ORDER BY 1, 2") { out.append("\(t) \(r)") }
+        }
+        return out
+      }
+    }
+    #expect(try dump(warm) == dump(cold))
+    let cats = try LedgerReader(try { let d = try Projector.open(path: nil); try Projector.project(warm, dictionary: Self.dictionary, projectedAtMs: 1, into: d); return d }()).taxonomy()
+    #expect(cats.ordered.suffix(2).map(\.id) == ["zz_pets", "aa_gifts"])
+    #expect(Array(warm.banks.keys) == ["enbd", "dib"])
+  }
 }
