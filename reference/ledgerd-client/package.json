@@ -8,9 +8,11 @@
     "gen-fixtures": "bun run scripts/gen-fixtures.ts",
     "cli": "bun run src/cli/main.ts",
     "gen-fx-conformance": "bun run scripts/gen-fx-conformance.ts",
+    "gen-replay-conformance": "bun run scripts/gen-replay-conformance.ts",
     "gen-authres-conformance": "bun run scripts/gen-authres-conformance.ts",
     "gen-categorize-conformance": "bun run scripts/gen-categorize-conformance.ts",
-    "gen-norm-dates-conformance": "bun run scripts/gen-norm-dates-conformance.ts"
+    "gen-norm-dates-conformance": "bun run scripts/gen-norm-dates-conformance.ts",
+    "gen-oracle-conformance": "bun run gen-replay-conformance && bun run gen-authres-conformance && bun run gen-categorize-conformance && bun run gen-norm-dates-conformance"
   },
   "devDependencies": {
     "typescript": "5.9.2",

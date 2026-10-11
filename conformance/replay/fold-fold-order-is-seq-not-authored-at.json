@@ -1,0 +1,108 @@
+{
+  "name": "fold-order-is-seq-not-authored-at",
+  "group": "fold",
+  "note": "The earlier-authored rate arrives later and is the head.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "fold-order-is-seq-not-authored-at-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "fold-order-is-seq-not-authored-at-2",
+          "authored_at": "2026-06-05T12:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD",
+            "rate_micro": "3672500"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-b",
+      "ops": [
+        {
+          "v": 1,
+          "type": "rate_set",
+          "op_id": "fold-order-is-seq-not-authored-at-3",
+          "authored_at": "2026-06-01T00:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "USD",
+            "rate_micro": "3600000"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": "AED",
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [
+        [
+          "USD",
+          "2026-06-01T00:00:00.000Z"
+        ]
+      ],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ],
+        [
+          "USD",
+          "3600000"
+        ]
+      ],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "083bdb6f2a4153b880c201d52a7968973dbdbbb4be2e61a019a1f2fbd544ffc4",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "083bdb6f2a4153b880c201d52a7968973dbdbbb4be2e61a019a1f2fbd544ffc4",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}
