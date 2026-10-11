@@ -3,8 +3,10 @@
 // is no Worker script: dist/ is the whole site, including
 // /.well-known/apple-app-site-association, _headers and _redirects.
 //
-// Build first (`bun run build`), then deploy with `bunx wrangler deploy` from
-// this directory. Deploying needs the owner's approval.
+// Deploy with `bun run deploy` from this directory: it builds (with the dist
+// checks) and then runs the pinned wrangler (package.json) under Node, with
+// CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment. Only
+// with the owner's approval; see CLAUDE.md, "Website".
 {
   "name": "hasala-aasa",
   "compatibility_date": "2026-10-01",
@@ -15,9 +17,13 @@
     // privacy.html is served at /privacy; /privacy/ redirects to /privacy.
     "html_handling": "drop-trailing-slash"
   },
-  "routes": [{ "pattern": "hasala.app", "custom_domain": true }],
+  // A zone route, not a custom domain: the deploy token cannot manage custom
+  // domains.
+  "routes": [{ "pattern": "hasala.app/*", "zone_name": "hasala.app" }],
   "workers_dev": false,
   "preview_urls": false,
   // Off: request logs would record /i/<code> paths (invite codes must not be logged).
-  "observability": { "enabled": false }
+  "observability": { "enabled": false },
+  // No usage telemetry from wrangler itself.
+  "send_metrics": false
 }

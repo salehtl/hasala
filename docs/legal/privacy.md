@@ -119,7 +119,7 @@ When you create your Hasala account, we delete your address from the waitlist; y
 
 If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. It's deleted with your account.
 
-If you tell us your bank on our website without asking for an invite, we count it. We don't store your email address, your IP address or anything else that identifies you with it.
+If you tell us your bank on our website without asking for an invite, we count it. We don't store your email address, your IP address or anything else that identifies you with it. While the website's forms are handled by email, telling us your bank there opens an email to support@hasala.app in your own email app instead; if you send it, we count the bank and keep the email like any other support email.
 
 ### Things you send us
 
@@ -130,22 +130,24 @@ If you tell us your bank on our website without asking for an invite, we count i
 
 ### The website
 
-**Asking for an invite.** When you ask for an invite at hasala.app, we store your email address, the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), and the dates you asked, confirmed, were invited and joined. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days at most. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list, which deletes your address straight away. If you join Hasala, the bank you told us about moves to your account and stays with it until you delete the account. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
+**Asking for an invite.** While sign-ups are handled by email, the invite form on hasala.app doesn't send anything to us. It opens an email to support@hasala.app in your own email app, with the address and bank you entered, and we receive it only if you send it. We add the address the email comes from, not an address typed into it. We keep that email like any other support email (see [How long we keep data](#how-long-we-keep-data)) and use it only to add you to the waitlist.
 
-**Telling us your bank.** See [Bank requests](#bank-requests) above: a bank you tell us about on the website is only counted.
+Once the form sends sign-ups to our server, we store your email address, the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), and the dates you asked, confirmed, were invited and joined. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days at most. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list, which deletes your address straight away. If you join Hasala, the bank you told us about moves to your account and stays with it until you delete the account. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
+
+**Telling us your bank.** See [Bank requests](#bank-requests) above: a bank you tell us about on the website is only counted. While the forms are handled by email, it reaches us only as an email you choose to send.
 
 **Bot checks.** Our forms can use Cloudflare Turnstile to tell people from bots. When it's switched on, Cloudflare looks at technical details from your browser, including your IP address, to decide; we receive only the answer.
 
 **Emails we send.** We keep a record of each email we send you: what kind it was, the address, when we sent it and whether it was delivered. We never keep what the email said. These records are deleted after 30 days. If you delete your account, they lose your address straight away and keep only a masked form, such as m•••@example.com, until they're deleted. The record of the email confirming the deletion loses your address as soon as that email has gone.
 
-**Cookies and analytics.** The website sets no cookies and loads no analytics or tracking scripts. Its security policy lets it run only its own code, plus Cloudflare Turnstile's while bot checks are on. It remembers, in your browser and only for the open tab, that you've already seen the opening animation; that never leaves your browser.
+**Cookies and analytics.** The website sets no cookies. It counts visits with Cloudflare Web Analytics, which Cloudflare adds to its pages. Web Analytics uses no cookies or other storage in your browser, doesn't fingerprint you and doesn't follow you across other sites. We see only totals, such as visits per page, the sites visitors came from, browser and device types, countries and how fast pages load, never linked to you or to your Hasala account. Invite, freeze and waitlist links are not counted: their addresses carry personal codes, so on those pages (hasala.app/i, /freeze and /waitlist) the website's security policy doesn't let Web Analytics run. The Hasala app itself contains no analytics or tracking tools. Elsewhere, the website's security policy lets it run only its own code and Cloudflare's analytics script, plus Cloudflare Turnstile's while bot checks are on. It remembers, in your browser and only for the open tab, that you've already seen the opening animation; that never leaves your browser.
 
 ### What we don't collect
 
 - Your bank emails, or any other email in your Gmail.
 - Your amounts, merchants, categories, budget or plan in readable form.
 - Your recovery phrase or encryption keys in readable form, or your Gmail access token.
-- Your contacts, location, photos or browsing activity.
+- Your contacts, location, photos or browsing activity on other sites.
 
 The app contains no advertising, analytics or crash-reporting tools from other companies.
 
@@ -156,7 +158,8 @@ We use your data only to:
 - provide Hasala: run your account, sign you in, sync your sealed data and wake your iPhone when new mail arrives;
 - keep Hasala secure: stop abuse, investigate security problems and alert you to changes on your account;
 - send you emails about your account, such as verification, password, security and beta notices;
-- answer your messages; and
+- answer your messages;
+- understand how the website is used, in totals (see [Cookies and analytics](#the-website)); and
 - meet our legal obligations.
 
 We don't sell your data. We don't use it for advertising. We don't use it to decide whether you get credit or a loan. We don't use it to train AI or machine learning models.
@@ -166,6 +169,7 @@ Under the UAE Personal Data Protection Law, we rely on these grounds:
 - **Providing the service you asked for.** This covers running your account, sync and push.
 - **Your consent.** This covers connecting Gmail. You give it in Hasala's Gmail step and on Google's permission screen, and you can withdraw it at any time.
 - **Keeping the service secure.** We have a legitimate interest in stopping abuse and protecting your account and other users' accounts.
+- **Understanding how the website is used.** We have a legitimate interest in counting visits to hasala.app, in totals that are never linked to you, to see which pages help people.
 - **Complying with the law.**
 
 ## Gmail and Google user data
@@ -237,13 +241,13 @@ We use a small number of service providers. None of them can open your sealed da
 
 | Provider | What they do | What they can see |
 | --- | --- | --- |
-| **Cloudflare** | Network provider in front of our server, and host of the hasala.app website. Encryption in transit ends at Cloudflare, which forwards requests to our server. | The requests between the app and our server, including your IP address, your email address and name when they are sent, and the sealed data. If you use a password, it also sees the scrambled form your iPhone sends when you sign in (see our [Security](/security#what-the-design-doesnt-protect-against) page). It also sees what you type into the website's forms, such as your email address and bank. Cloudflare cannot open the sealed data. |
+| **Cloudflare** | Network provider in front of our server, and host of the hasala.app website, where it also counts visits for us with Cloudflare Web Analytics. Encryption in transit ends at Cloudflare, which forwards requests to our server. | The requests between the app and our server, including your IP address, your email address and name when they are sent, and the sealed data. If you use a password, it also sees the scrambled form your iPhone sends when you sign in (see our [Security](/security#what-the-design-doesnt-protect-against) page). It also sees what you send through the website's forms, such as your email address and bank, and, when you visit the website, the pages you open, your IP address and your browser and device type. Web Analytics gives us only totals from these, never linked to you. Cloudflare cannot open the sealed data. |
 | **Cloudflare Email Service** | Delivers the emails we send from no-reply@hasala.app. | Your email address and the content of those emails, such as a verification code. |
 | **Cloudflare R2** | Stores the off-site copy of our encrypted server backups. | Encrypted backup files only. Cloudflare doesn't hold the key to open them. |
 | **Google** | Hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
 
-We don't use any other service provider that handles your personal data. The waitlist, invites and our admin tool run on our own server.
+Emails you send to our @hasala.app addresses (support@, privacy@ and security@), including invite and bank requests while the website's forms are handled by email, arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them like any other support email. Apart from that, we don't use any other service provider that handles your personal data. Invites, our admin tool and, once sign-ups go to our server, the waitlist run on our own server.
 
 ### Our server
 
@@ -273,7 +277,7 @@ Our server is located in the United Arab Emirates. Cloudflare, Google and Apple 
 | Support emails | We keep them only as long as we need them to help you, and delete them when you ask. |
 | Waitlist sign-up, not confirmed | 7 days. |
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. |
-| Website bank votes | Kept. They contain nothing that identifies you. |
+| Website bank votes | Kept as counts, which contain nothing that identifies you. While the website's forms are handled by email, the email you send is kept like any other support email. |
 | Bank requests from the app | Until you delete your account. |
 | Email records | 30 days. We never keep what an email said. |
 | Data on your iPhone | Until you delete your account or use Remove this iPhone. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |
