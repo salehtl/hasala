@@ -142,6 +142,8 @@ struct CoreCategorizeTests {
     let allowed = ModelTier.allowed(TaxonomyV1.builtins)
     final class Hangs: CategoryModel, @unchecked Sendable {
       let calls = Mutex([String: Int]())
+      /// The hung call answered (it never should before the sweep returns).
+      let hangAnswered = Mutex(false)
       let modelTag = "apple-fm/26.1"
       func availability() -> ModelAvailability { .available }
       func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {
@@ -151,12 +153,11 @@ struct CoreCategorizeTests {
         }
         switch subject {
         case "hang forever":
-          // Ignores cancellation and answers a minute late: the tier must not wait for
-          // it. (The bound below is half that, so a busy CI runner's scheduling delay
-          // can't fail the test, while a tier that waited still would.)
+          // Ignores cancellation and answers much later: the tier must not wait for it.
           await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
             DispatchQueue.global().asyncAfter(deadline: .now() + 60) { k.resume() }
           }
+          hangAnswered.withLock { $0 = true }
           return .category("shopping")
         case "overflow once": return n == 1 ? .failed(.contextOverflow) : .category("dining")
         case "overflow twice": return .failed(.contextOverflow)
@@ -170,7 +171,10 @@ struct CoreCategorizeTests {
     let r = await ModelTier.run(
       subjects: ["hang forever", "overflow once", "overflow twice", "spinneys"], model: m, allowed: allowed, context: .foreground, now: { 0 },
       callTimeout: .milliseconds(200))
-    #expect(clock.now - started < .seconds(30))
+    // Load-independent: the sweep returned while the hung call was still
+    // pending (a wall-clock bound on a 200 ms limit is flaky on a busy runner).
+    #expect(!m.hangAnswered.withLock { $0 })
+    #expect(clock.now - started < .seconds(60))
     #expect(r.suggestions == [.init(subject: "overflow once", category: "dining"), .init(subject: "spinneys", category: "groceries")])
     #expect(r.unknown.isEmpty && r.stoppedBy == nil)
     #expect(m.calls.withLock { $0 } == ["hang forever": 1, "overflow once": 2, "overflow twice": 2, "spinneys": 1])
