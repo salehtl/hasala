@@ -4,3 +4,5 @@
 // (spec 04 §1.4). HASALA_MOCKS gates every path into HasalaMocks.
 CODE_SIGN_ENTITLEMENTS = Hasala/Hasala-Debug.entitlements
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG HASALA_MOCKS
+// Links HasalaMocks, which Shared.xcconfig leaves out of every other configuration.
+EXCLUDED_SOURCE_FILE_NAMES =
