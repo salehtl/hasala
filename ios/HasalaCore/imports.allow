@@ -51,7 +51,9 @@ Signals       CoreDomain CoreProjection OrderedCollections
 
 # A: the only FoundationModels importer.
 Model         CoreCategorize FoundationModels
+# A: the Keychain adapter (Security's SecItem API only).
+Keychain      CorePrimitives CoreStore Security
 
 # T: test support, never linked by the app.
-TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals
+TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals CryptoKit
 SoftAuth      CorePrimitives CoreAuth CryptoKit

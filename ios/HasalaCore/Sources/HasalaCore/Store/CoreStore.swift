@@ -1,6 +1,9 @@
-// CoreStore (Store/), spec 04 §2.2. Owner: WS-11. Holds the ledger.sqlite schema (spec 04
-// §4.2), the row store, client state, the in-flight batch, SecretStore and MemorySecretStore,
-// and file protection helpers.
+// CoreStore (Store/), spec 04 §2.2. Owner: WS-11.
 //
-// Placeholder: the target exists so the package graph is fixed on day 1 and the owner never
-// edits Package.swift. Replace this file when the module is filled.
+//   SecretStore.swift    the SecretStore seam, SecretItem (§4.4's mapping), MemorySecretStore
+//   SecretRecords.swift  the session and binding item formats, typed access (Secrets)
+//   LedgerSchema.swift   ledger.sqlite migration "v1" (§4.2)
+//   LedgerStore.swift    the row store, client state, pending ops and the in-flight batch
+//   FileHygiene.swift    file protection and backup exclusion (§4.1)
+//
+// TODO(WS-10): fold_snapshot read/write (§5.3) once CoreReplay's StateSnapshot exists.
