@@ -39,6 +39,9 @@ final class SmokeTests: XCTestCase {
     XCTAssertEqual(hero.label, "Amount hidden")
     XCTAssertFalse(app.staticTexts["7,417.55"].exists)
     attach(app, "Home · Amounts hidden")
+    // Audit the hidden state once the toast has gone by itself (5 s), not while it
+    // animates away mid-audit.
+    XCTAssertTrue(app.descendants(matching: .any)["toast"].waitForNonExistence(timeout: 10))
     try audit(app)
     app.buttons["header.hideAmounts"].firstMatch.tap()
     XCTAssertEqual(hero.label, "AED 7,417.55")
@@ -135,7 +138,8 @@ final class SmokeTests: XCTestCase {
   /// - Clipping at the default size. There the audit can only predict that text "may
   ///   be clipped at larger Dynamic Type sizes" (Paper sets one-line text that the
   ///   layouts let wrap above the default size); `testAccessibilityAtLargeTextSizes`
-  ///   checks clipping at `.accessibility3` itself, where it is decided.
+  ///   checks clipping at `.accessibility3` itself, where it is decided. The system
+  ///   search field is not ours to lay out and is not counted at any size.
   /// - Contrast. The audit samples rendered pixels and fails ink on the grey canvas
   ///   (over 14:1) under the scroll-edge blur and the glass bars, so it cannot gate;
   ///   HasalaKit's ContrastTests checks every text/surface token pair exactly instead.
@@ -152,6 +156,8 @@ final class SmokeTests: XCTestCase {
     if !atLargeText { types.remove(.textClipped) }
     var issues: [String] = []
     try app.performAccessibilityAudit(for: types) { issue in
+      // The system search field (UISearchBarTextField) sizes its own text.
+      if issue.auditType == .textClipped, issue.element?.elementType == .searchField { return true }
       if issue.auditType == .dynamicType, let element = issue.element {
         if element.identifier == "hasala.cappedFigure" { return true }
         if bars.contains(where: { $0.intersects(element.frame) }) { return true }
