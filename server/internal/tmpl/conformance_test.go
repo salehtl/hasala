@@ -42,7 +42,7 @@ import (
 
 const (
 	dialectConformancePath = "../../../conformance/dialect/patterns.json"
-	writeFixturesEnv       = "LEDGER_WRITE_CONFORMANCE"
+	writeFixturesEnv       = "HASALA_WRITE_CONFORMANCE"
 )
 
 type dialectFixture struct {
@@ -321,7 +321,7 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 
 	f := dialectFixture{
 		Note: "Written by internal/tmpl TestWriteDialectConformanceFixtures. " +
-			"Regenerate with LEDGER_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteDialectConformanceFixtures; " +
+			"Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteDialectConformanceFixtures; " +
 			"do not hand-edit. Patterns are plain JSON strings because a human ports the validator from this file; " +
 			"probe inputs and captured text are base64 because they deliberately contain CR, U+2028, U+2029, " +
 			"U+00A0, U+000B and U+FEFF, which is the point of them. `rejected` pins validator parity: the " +
@@ -677,7 +677,7 @@ func measuredDivergences() []engineDivergence {
 
 // TestWriteDialectConformanceFixtures regenerates the committed file.
 //
-//	LEDGER_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteDialectConformanceFixtures
+//	HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteDialectConformanceFixtures
 func TestWriteDialectConformanceFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("set %s=1 to regenerate %s", writeFixturesEnv, dialectConformancePath)
