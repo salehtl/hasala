@@ -191,6 +191,24 @@ func TestSecretFilesMustBePrivate(t *testing.T) {
 	mustLoad(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o400)})
 }
 
+// systemd's LoadCredential= files show 0440 (the ACL mask that grants the
+// unit's user read access): accepted inside $CREDENTIALS_DIRECTORY only, and
+// still refused when other may read them.
+func TestCredentialFilesFromSystemd(t *testing.T) {
+	cred := secretFile(t, 0o440)
+	dir := filepath.Dir(cred)
+	mustLoad(t, env{"HASALA_AUTH_KEY_FILE": cred, "CREDENTIALS_DIRECTORY": dir})
+	mustLoad(t, env{"HASALA_AUTH_KEY_FILE": cred, "CREDENTIALS_DIRECTORY": dir + "/"})
+	wantErr(t, env{"HASALA_AUTH_KEY_FILE": cred}, "no group or other permission")
+	wantErr(t, env{"HASALA_AUTH_KEY_FILE": cred, "CREDENTIALS_DIRECTORY": t.TempDir()}, "no group or other permission")
+	wantErr(t, env{"HASALA_AUTH_KEY_FILE": cred, "CREDENTIALS_DIRECTORY": "relative"}, "no group or other permission")
+	wantErr(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o444), "CREDENTIALS_DIRECTORY": dir}, "no group or other permission")
+	other := secretFile(t, 0o444)
+	wantErr(t, env{"HASALA_AUTH_KEY_FILE": other, "CREDENTIALS_DIRECTORY": filepath.Dir(other)}, "no write or other permission")
+	writable := secretFile(t, 0o460)
+	wantErr(t, env{"HASALA_AUTH_KEY_FILE": writable, "CREDENTIALS_DIRECTORY": filepath.Dir(writable)}, "no write or other permission")
+}
+
 // Behind Cloudflare (the QA host) the production rails apply: mail is
 // required, debug logging is refused, and no secret may arrive as a raw value.
 func TestTheCloudflarePostureIsStricter(t *testing.T) {

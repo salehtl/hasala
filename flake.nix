@@ -117,14 +117,47 @@
             doCheck = false;
             meta.mainProgram = "hasalad";
           };
+          # 05 §4.2: the same PostgreSQL the devShell's test clusters use, so CI
+          # and the QA host run one major and minor.
+          postgresql = pkgs.postgresql_17;
+          # 05 §4.2, R-09: nixos-26.05's cloudflared source and version, compiled
+          # with the Go 1.27 above. It is the only internet-facing process on
+          # the QA host, and 26.05's Go has reachable standard-library advisories.
+          # The ingress lint (infra/qa/cloudflared/lint.sh) and the host run this
+          # same binary.
+          #
+          # Its Linux test suite (nixpkgs skips it on darwin) runs here too, except
+          # seven tests in connection/http2_test.go. Each one uses a zero
+          # golang.org/x/net/http2.Transport{} as the test's stand-in for the edge,
+          # and with Go 1.27 x/net v0.55's NewClientConn dereferences that
+          # transport's nil net/http Transport and panics. That is test-only:
+          # cloudflared serves HTTP/2 to the edge (http2.Server) and never dials
+          # with a bare http2.Transport, and the package's other tests still run.
+          cloudflared =
+            (pkgs.cloudflared.override { buildGoModule = buildGoModuleFor system pkgs; }).overrideAttrs
+              (old: {
+                checkFlags = (old.checkFlags or [ ]) ++ [
+                  "-skip=^(TestFailRegistration|TestGracefulShutdownHTTP2|TestHTTP2ConfigurationSet|TestNoWriteAfterServeHTTPReturns|TestServeControlStream|TestServeHTTP|TestServeTCP_RateLimited)$"
+                ];
+              });
           server = self.packages.${system}.hasalad;
           default = self.packages.${system}.hasalad;
         }
       );
 
+      # services.hasala, the QA backend (spec 05 §5): Hasala's own PostgreSQL,
+      # `hasalad serve` and `hasalad console` on loopback, the tunnel, backups.
+      nixosModules.hasala = import ./infra/qa/nix/module.nix self;
+      nixosModules.default = self.nixosModules.hasala;
+
       checks = forAllSystems (
-        system: pkgs: {
+        system: pkgs:
+        {
           hasalad = self.packages.${system}.hasalad;
+          # Spec 05 §7.4: the module's rendered tunnel config against the golden
+          # file (G1), the structural rules L1–L9, the routing table, and every
+          # negative fixture rejected.
+          ingress-lint = import ./infra/qa/nix/tests/ingress-lint.nix { inherit self nixpkgs pkgs; };
           formatting =
             pkgs.runCommand "hasala-formatting" { nativeBuildInputs = [ (treefmtFor system pkgs) ]; }
               ''
@@ -134,6 +167,14 @@
                 treefmt --ci
                 touch $out
               '';
+        }
+        // lib.optionalAttrs (system == "x86_64-linux") {
+          # Spec 05 §14 AT-E*: the module's assertions fire on every misuse, and
+          # the units carry exactly the environment and credentials the specs fix.
+          module-eval = import ./infra/qa/nix/tests/eval.nix { inherit self nixpkgs pkgs; };
+          # Spec 05 §14 AT-V*: boots the module in a VM. Needs KVM; CI runs it in
+          # its own job (nixos-vm), and the gate job builds every other check.
+          qa-vm = pkgs.testers.runNixOSTest (import ./infra/qa/nix/tests/vm.nix self);
         }
       );
 
