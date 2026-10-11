@@ -189,3 +189,5 @@ If you can't open the app any more and want your account deleted, email privacy@
 Hasala is a small, independent project, so replies can take a few days. We aim to reply within 5 business days.
 
 Please never send us your recovery phrase or your password. We'll never ask for them. If we ask for a sample bank alert to add support for your bank, remove your card and account numbers before you send it.
+
+<!-- throwaway: CI skip-logic proof for #8; never merged -->
