@@ -51,6 +51,8 @@ extension XCTestCase {
     if !atLargeText { types.remove(.textClipped) }
     var issues: [String] = []
     try app.performAccessibilityAudit(for: types) { issue in
+      // The keyboard is the system's, not ours.
+      if let e = issue.element, e.elementType == .key || e.elementType == .keyboard { return true }
       // The system search field (UISearchBarTextField) sizes its own text.
       if issue.auditType == .textClipped, issue.element?.elementType == .searchField { return true }
       if issue.auditType == .dynamicType, let element = issue.element {
