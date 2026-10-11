@@ -181,8 +181,8 @@ func TestMigrateThenOperateAsTheRuntimeRole(t *testing.T) {
 	}
 
 	code, out, msg = hasalad(t, asRuntime, "invite", "mint", "--note", "lifecycle")
-	if code != 0 || strings.TrimSpace(out) == "" {
-		t.Fatalf("invite mint exited %d with %q (%s)", code, out, msg)
+	if code != 0 || !regexp.MustCompile(`^[A-Z2-7]{24}\n$`).MatchString(out) {
+		t.Fatalf("invite mint exited %d with %q (%s), want the bare 24-character code", code, out, msg)
 	}
 	if code, out, msg := hasalad(t, asRuntime, "invite", "list"); code != 0 || !strings.Contains(out, "1 still outstanding") {
 		t.Fatalf("invite list exited %d with %q (%s)", code, out, msg)

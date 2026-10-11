@@ -136,7 +136,9 @@ func runInvite(env *runEnv, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(env.stdout, invites.Display(code))
+	// The bare 24 characters, as ledgerd printed them (spec 07 §14.3:
+	// unchanged behaviour); the app ignores hyphens either way.
+	fmt.Fprintln(env.stdout, code)
 	fmt.Fprintln(env.stderr, "this code is single use, gates ACCOUNT CREATION only, and is not "+
 		"recoverable: it is stored as a hash. Hand it over out of band.")
 	return nil
