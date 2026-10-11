@@ -1,0 +1,190 @@
+---
+import { FOOTER, SITE } from '../data/site';
+import Wordmark from './Wordmark.astro';
+
+const onHome = Astro.url.pathname === '/';
+const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
+---
+
+<footer class="site-footer">
+  <div class="container footer">
+    <div class="footer__top">
+      <div class="footer__brand">
+        <a href="/" aria-label="Hasala home" class="footer__home"><Wordmark id="wm-footer" img class="footer__wordmark" /></a>
+        <p>{SITE.shortDescription}</p>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        {
+          FOOTER.map((col) => (
+            <div class:list={['footer__col', col.title === 'Hasala' && 'footer__col--site']}>
+              <h2 class="footer__title">{col.title}</h2>
+              <ul role="list">
+                {col.links.map((l) => (
+                  <li>
+                    <a href={href(l.href)}>{l.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </nav>
+    </div>
+    <div class="footer__bottom">
+      <p class="footer__meta">
+        <span>© {new Date().getFullYear()} Hasala</span>
+        <span class="footer__sep" aria-hidden="true"></span>
+        <span class="footer__made">Made in the UAE</span>
+        <span class="footer__sep footer__sep--domain" aria-hidden="true"></span>
+        <span class="footer__domain">hasala.app</span>
+      </p>
+      <p class="footer__legal">
+        iPhone and TestFlight are trademarks of Apple Inc. Gmail is a trademark of Google LLC. Hasala is not affiliated with any bank.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    background: var(--white);
+    padding: 40px 0 48px;
+  }
+  .footer {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .footer__top {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .footer__brand {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 360px;
+  }
+  .footer__home {
+    align-self: flex-start;
+    color: var(--text-primary);
+  }
+  .footer__wordmark {
+    width: auto;
+    height: 36px;
+  }
+  .footer__brand p {
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .footer__cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px 24px;
+  }
+  .footer__col--site {
+    display: none;
+  }
+  .footer__title {
+    margin-bottom: 14px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .footer__col ul {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .footer__col a {
+    font-size: 16px;
+    line-height: 20px;
+    transition: color var(--t-hover-out);
+  }
+  .footer__col a:hover {
+    color: var(--accent);
+  }
+  .footer__bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .footer__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .footer__made {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .footer__sep {
+    width: 3px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--neutral-400);
+  }
+  .footer__sep--domain,
+  .footer__domain {
+    display: none;
+  }
+  .footer__legal {
+    color: var(--neutral-500);
+    font-size: 12px;
+    line-height: 18px;
+  }
+  @media (min-width: 1024px) {
+    .site-footer {
+      padding: 72px 0 56px;
+    }
+    .footer {
+      gap: 64px;
+    }
+    .footer__top {
+      flex-direction: row;
+      justify-content: space-between;
+      gap: 48px;
+    }
+    .footer__cols {
+      display: flex;
+      gap: 72px;
+    }
+    .footer__col {
+      width: 140px;
+    }
+    .footer__col--site {
+      display: block;
+    }
+    .footer__col a {
+      font-size: 15px;
+    }
+    .footer__bottom {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .footer__meta {
+      gap: 16px;
+    }
+    .footer__sep--domain,
+    .footer__domain {
+      display: inline-block;
+    }
+    .footer__legal {
+      max-width: 520px;
+      text-align: right;
+    }
+  }
+</style>

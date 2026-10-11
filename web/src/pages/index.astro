@@ -1,0 +1,114 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/sections/Hero.astro';
+import HowItWorks from '../components/sections/HowItWorks.astro';
+import Everyday from '../components/sections/Everyday.astro';
+import Review from '../components/sections/Review.astro';
+import Plan from '../components/sections/Plan.astro';
+import Bills from '../components/sections/Bills.astro';
+import Privacy from '../components/sections/Privacy.astro';
+import Banks from '../components/sections/Banks.astro';
+import Faq from '../components/sections/Faq.astro';
+import Beta from '../components/sections/Beta.astro';
+import { FAQ, SITE } from '../data/site';
+import { HERO_SEEN } from '../lib/inline-scripts.mjs';
+
+const org = { '@id': `${SITE.url}/#organization` };
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      ...org,
+      name: 'Hasala',
+      alternateName: SITE.arabicName,
+      url: SITE.url,
+      logo: { '@type': 'ImageObject', url: `${SITE.url}/icon-512.png`, width: 512, height: 512 },
+      email: SITE.supportEmail,
+      areaServed: { '@type': 'Country', name: 'United Arab Emirates' },
+      contactPoint: [
+        { '@type': 'ContactPoint', contactType: 'customer support', email: SITE.supportEmail, availableLanguage: 'English' },
+        { '@type': 'ContactPoint', contactType: 'privacy', email: SITE.privacyEmail, availableLanguage: 'English' },
+      ],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE.url}/#website`,
+      url: SITE.url,
+      name: 'Hasala',
+      alternateName: [SITE.arabicName, SITE.appStoreName],
+      description: SITE.description,
+      inLanguage: 'en',
+      publisher: org,
+    },
+    {
+      '@type': 'MobileApplication',
+      '@id': `${SITE.url}/#app`,
+      name: SITE.appStoreName,
+      alternateName: ['Hasala', SITE.arabicName],
+      url: SITE.url,
+      description: SITE.description,
+      image: `${SITE.url}${SITE.ogImage}`,
+      applicationCategory: 'FinanceApplication',
+      applicationSubCategory: 'Personal budgeting',
+      operatingSystem: 'iOS 26 or later',
+      softwareVersion: 'Beta (TestFlight)',
+      inLanguage: 'en',
+      countriesSupported: 'AE',
+      isAccessibleForFree: true,
+      featureList: [
+        'Reads bank alert emails from your own Gmail, read-only, on your iPhone',
+        'Supports Dubai Islamic Bank and Emirates NBD email alerts',
+        'Categorizes transactions on the device: your rules, a built-in UAE merchant list, then Apple’s on-device model',
+        'Sets bills aside and shows what is left for everyday spending',
+        '50/30/20 plan with Needs, Wants and Savings buckets',
+        'Finds recurring bills and flags price changes and late bills',
+        'Transactions, budget and plan are end-to-end encrypted on the iPhone before they sync',
+        'Sign in with Face ID (passkey) or email and password; 12-word recovery phrase',
+      ],
+      offers: {
+        '@type': 'Offer',
+        price: 0,
+        priceCurrency: 'AED',
+        availability: 'https://schema.org/LimitedAvailability',
+        description: 'Free during the invite-only TestFlight beta.',
+        url: `${SITE.url}/#invite`,
+      },
+      publisher: org,
+    },
+    {
+      '@type': 'FAQPage',
+      '@id': `${SITE.url}/#faq`,
+      mainEntity: FAQ.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    },
+  ],
+};
+---
+
+<Base
+  title="Know what’s left"
+  description="A private budgeting app for iPhone in the UAE. Hasala reads your bank alert emails on your iPhone and syncs your budget end‑to‑end encrypted. Free beta."
+  path="/"
+  jsonLd={jsonLd}
+>
+  <script is:inline slot="head" set:html={HERO_SEEN} />
+  <Hero />
+  <HowItWorks />
+  <Everyday />
+  <Review />
+  <Plan />
+  <Bills />
+  <Privacy />
+  <Banks />
+  <Faq />
+  <Beta />
+</Base>
+
+<script>
+  import { initMotion } from '../scripts/motion';
+  initMotion();
+</script>

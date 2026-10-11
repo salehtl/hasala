@@ -1,0 +1,17 @@
+---
+/** hasala.app/waitlist/confirm#<token>: the "Confirm my email" link (S-07-3). */
+import Base from '../../layouts/Base.astro';
+import WaitlistLink from '../../components/WaitlistLink.astro';
+---
+
+<Base
+  title="Confirm your email"
+  description="Confirm your email to join the Hasala waitlist."
+  path="/waitlist/confirm"
+  noindex
+  nav="minimal"
+  footer={false}
+  referrer="no-referrer"
+>
+  <WaitlistLink kind="confirm" />
+</Base>

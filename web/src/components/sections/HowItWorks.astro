@@ -1,0 +1,387 @@
+---
+import Icon from '../Icon.astro';
+---
+
+<section id="how-it-works" class="how" aria-labelledby="how-title">
+  <div class="container how__inner">
+    <header class="section-head" data-reveal>
+      <div class="section-head__title">
+        <span class="overline">How it works</span>
+        <h2 id="how-title" class="display-l">Your bank already writes it down. Hasala does the rest.</h2>
+      </div>
+      <p class="intro section-head__intro">A few minutes to set up. No bank login and no statements to upload.</p>
+    </header>
+
+    <ol class="steps" role="list">
+      <li class="step" data-reveal>
+        <div class="step__art" aria-hidden="true">
+          <div class="mailrow">
+            <span class="mailrow__dot"></span>
+            <span class="mailrow__text"><strong>Emirates NBD</strong><span>Purchase of AED 64.50 at TALABAT</span></span>
+            <span class="tag tag--read">Read</span>
+          </div>
+          <div class="mailrow">
+            <span class="mailrow__dot"></span>
+            <span class="mailrow__text"><strong>DIB</strong><span>Card transaction AED 214.30 Lulu</span></span>
+            <span class="tag tag--read">Read</span>
+          </div>
+          <div class="mailrow mailrow--skipped">
+            <span class="mailrow__dot"></span>
+            <span class="mailrow__text"><strong>Weekend plans?</strong><span>From a friend</span></span>
+            <span class="tag">Not fetched</span>
+          </div>
+        </div>
+        <div class="step__copy">
+          <h3 class="step__title"><span class="coin-badge">1</span>Connect Gmail</h3>
+          <p>
+            Sign in with Face ID or a password, then give Hasala read‑only access. Your iPhone fetches only your bank’s alerts; the rest of your inbox is never
+            downloaded.
+          </p>
+        </div>
+      </li>
+
+      <li class="step" data-reveal>
+        <div class="step__art" aria-hidden="true">
+          <div class="txrow">
+            <span class="disc disc--lilac"><Icon name="fork" size={16} stroke={1.5} /></span>
+            <span class="mailrow__text"><strong>Talabat</strong><span>Dining · Wants</span></span>
+            <span class="figure txrow__amt">64.50</span>
+          </div>
+          <div class="txrow">
+            <span class="disc disc--sand"><Icon name="basket" size={16} stroke={1.5} /></span>
+            <span class="mailrow__text"><strong>Lulu Hypermarket</strong><span>Groceries · Needs</span></span>
+            <span class="figure txrow__amt">214.30</span>
+          </div>
+          <div class="txrow">
+            <span class="disc disc--sky"><Icon name="briefcase" size={16} stroke={1.5} /></span>
+            <span class="mailrow__text"><strong>Salary</strong><span>Income</span></span>
+            <span class="figure txrow__amt txrow__amt--in">+25,000.00</span>
+          </div>
+        </div>
+        <div class="step__copy">
+          <h3 class="step__title"><span class="coin-badge">2</span>Sorted on your iPhone</h3>
+          <p>
+            Every alert becomes a transaction, sorted on the phone itself: your rules first, then a built‑in list of UAE merchants, then Apple’s on‑device
+            model. Correct one once and Hasala remembers the merchant.
+          </p>
+        </div>
+      </li>
+
+      <li class="step" data-reveal>
+        <div class="step__art step__art--seal" aria-hidden="true">
+          <div class="seal__plain"><strong>Talabat · Dining</strong><span class="figure">64.50</span></div>
+          <span class="seal__tick"></span>
+          <span class="seal__pill"><span class="seal__lock"><Icon name="lock" size={13} stroke={2} /></span>Sealed with your key</span>
+          <span class="seal__tick"></span>
+          <div class="seal__cipher">
+            <span>8f3a c91e 0b7d 52e4 a6f0 1d9c 77b2</span>
+            <small>What our server stores</small>
+          </div>
+        </div>
+        <div class="step__copy">
+          <h3 class="step__title"><span class="coin-badge">3</span>Sealed, then synced</h3>
+          <p>
+            Before your transactions, budget and plan sync, they’re encrypted on your iPhone with a key only your devices hold. Our server keeps the sealed copy
+            and can’t open it.
+          </p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<style>
+  .how {
+    padding: 24px 0 88px;
+    background: var(--white);
+  }
+  .how__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .steps {
+    display: grid;
+    gap: 12px;
+  }
+  .step {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 20px;
+    border-radius: 32px;
+    background: var(--neutral-100);
+  }
+  .step__art {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 236px;
+    padding: 8px 16px;
+    border-radius: var(--r-card);
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 4%) 0 1px 2px;
+  }
+  .mailrow,
+  .txrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+  }
+  .mailrow + .mailrow,
+  .txrow + .txrow {
+    border-top: 1px solid var(--neutral-200);
+  }
+  .mailrow__dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .mailrow--skipped {
+    opacity: 0.55;
+  }
+  .mailrow--skipped .mailrow__dot {
+    background: var(--neutral-300);
+  }
+  .mailrow__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .mailrow__text strong {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .tag {
+    flex: none;
+    padding: 4px 8px;
+    border-radius: var(--r-pill);
+    background: var(--neutral-100);
+    color: var(--neutral-600);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+  }
+  .tag--read {
+    background: var(--success-surface);
+    color: var(--success);
+  }
+  .txrow__amt {
+    font-size: 16px;
+    line-height: 20px;
+  }
+  .txrow__amt--in {
+    color: var(--money-in);
+  }
+  .step__art--seal {
+    align-items: stretch;
+    gap: 10px;
+    padding: 18px 16px;
+  }
+  .seal__plain {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--neutral-50);
+    box-shadow: var(--neutral-200) 0 0 0 1px inset;
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .seal__plain strong {
+    font-weight: 600;
+  }
+  .seal__plain .figure {
+    font-size: 16px;
+  }
+  .seal__tick {
+    align-self: center;
+    width: 1px;
+    height: 14px;
+    background: var(--neutral-300);
+  }
+  .seal__pill {
+    display: inline-flex;
+    align-self: center;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 6px;
+    border-radius: var(--r-pill);
+    background: linear-gradient(in oklab 180deg, var(--hue-mint-start), var(--hue-mint-end));
+    color: var(--hue-mint-ink);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .seal__lock {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 70%);
+  }
+  .seal__cipher {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--ink-900);
+    color: rgb(255 255 255 / 86%);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .seal__cipher small {
+    color: rgb(255 255 255 / 60%);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+  .step__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .step__title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: var(--t-card-title);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+  .step__copy p {
+    color: var(--text-body);
+    font-size: 16px;
+    line-height: 25px;
+  }
+  @media (min-width: 768px) {
+    .step {
+      padding: 28px;
+      gap: 28px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .how {
+      padding: 120px 0 140px;
+    }
+    .how__inner {
+      gap: 56px;
+    }
+    .section-head__intro {
+      width: 320px;
+    }
+    .steps {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .step__art {
+      height: 236px;
+    }
+  }
+
+  /* Each card plays its micro-story once, as it reveals (.is-in from
+     motion.ts): the alerts arrive and get stamped Read, the rows land and
+     find their category, the plain row is sealed into what the server keeps. */
+  @media (prefers-reduced-motion: no-preference) {
+    .step {
+      --base: calc(var(--i, 0) * 60ms + 200ms);
+    }
+    .mailrow,
+    .txrow,
+    .seal__plain {
+      transition:
+        opacity 320ms var(--ease-out-soft),
+        translate 320ms var(--ease-out-soft);
+      transition-delay: var(--base);
+    }
+    .mailrow:nth-child(2),
+    .txrow:nth-child(2) {
+      transition-delay: calc(var(--base) + 70ms);
+    }
+    .mailrow:nth-child(3),
+    .txrow:nth-child(3) {
+      transition-delay: calc(var(--base) + 140ms);
+    }
+    .tag--read,
+    .txrow .disc {
+      transition:
+        opacity 200ms var(--ease-out-soft),
+        scale 200ms var(--ease-out-soft);
+      transition-delay: calc(var(--base) + 460ms);
+    }
+    .mailrow:nth-child(2) .tag--read {
+      transition-delay: calc(var(--base) + 530ms);
+    }
+    .txrow .disc {
+      transition-duration: 240ms;
+      transition-delay: calc(var(--base) + 160ms);
+    }
+    .txrow:nth-child(2) .disc {
+      transition-delay: calc(var(--base) + 230ms);
+    }
+    .txrow:nth-child(3) .disc {
+      transition-delay: calc(var(--base) + 300ms);
+    }
+    .seal__tick {
+      transform-origin: top;
+      transition: scale 160ms var(--ease-out-soft);
+      transition-delay: calc(var(--base) + 130ms);
+    }
+    .seal__pill + .seal__tick {
+      transition-delay: calc(var(--base) + 350ms);
+    }
+    .seal__pill {
+      transition:
+        opacity 240ms var(--ease-out-soft),
+        scale 240ms var(--ease-out-soft);
+      transition-delay: calc(var(--base) + 220ms);
+    }
+    .seal__cipher {
+      clip-path: inset(0);
+      transition:
+        opacity 200ms var(--ease-out-soft),
+        clip-path 480ms var(--ease-in-out);
+      transition-delay: calc(var(--base) + 440ms);
+    }
+    :global(.js) .step:not(:global(.is-in)) .mailrow,
+    :global(.js) .step:not(:global(.is-in)) .txrow,
+    :global(.js) .step:not(:global(.is-in)) .seal__plain {
+      opacity: 0;
+      translate: 0 8px;
+    }
+    :global(.js) .step:not(:global(.is-in)) .tag--read,
+    :global(.js) .step:not(:global(.is-in)) .txrow .disc {
+      opacity: 0;
+      scale: 0.85;
+    }
+    :global(.js) .step:not(:global(.is-in)) .seal__tick {
+      scale: 1 0;
+    }
+    :global(.js) .step:not(:global(.is-in)) .seal__pill {
+      opacity: 0;
+      scale: 0.94;
+    }
+    :global(.js) .step:not(:global(.is-in)) .seal__cipher {
+      opacity: 0;
+      clip-path: inset(0 100% 0 0);
+    }
+  }
+</style>

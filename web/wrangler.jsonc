@@ -1,0 +1,23 @@
+// hasala.app: the marketing site, served as Workers Static Assets by the
+// existing "hasala-aasa" Worker (which already served the AASA file). There
+// is no Worker script: dist/ is the whole site, including
+// /.well-known/apple-app-site-association, _headers and _redirects.
+//
+// Build first (`bun run build`), then deploy with `bunx wrangler deploy` from
+// this directory. Deploying needs the owner's approval.
+{
+  "name": "hasala-aasa",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    // dist/404.html for anything that is not a file.
+    "not_found_handling": "404-page",
+    // privacy.html is served at /privacy; /privacy/ redirects to /privacy.
+    "html_handling": "drop-trailing-slash"
+  },
+  "routes": [{ "pattern": "hasala.app", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+  // Off: request logs would record /i/<code> paths (spec 07 §4.4: no path logging).
+  "observability": { "enabled": false }
+}

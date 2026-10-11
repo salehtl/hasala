@@ -1,0 +1,369 @@
+---
+import Icon from '../Icon.astro';
+import { BANKS, OTHER_BANKS } from '../../data/site';
+import { API_BASE, TURNSTILE_SITEKEY } from '../../lib/env';
+// "Tell us" posts an anonymous bank vote (spec 07 P4, POST /api/v1/bank-requests).
+// Without JavaScript it falls back to the invite form below, where "Another
+// bank" also records the bank once the address is confirmed.
+---
+
+<section id="banks" class="banks" aria-labelledby="banks-title">
+  <div class="container banks__inner">
+    <header class="section-head" data-reveal>
+      <div class="section-head__title banks__title">
+        <span class="overline">Banks</span>
+        <h2 id="banks-title" class="display-panel">Works with the alerts your bank already sends.</h2>
+      </div>
+      <p class="intro section-head__intro banks__intro">
+        Two UAE banks at launch, with more on the way. Turn on email alerts in your banking app and you’re set.
+      </p>
+    </header>
+
+    <ul class="tiles" role="list">
+      {
+        BANKS.map((b) => (
+          <li class="tile" data-reveal>
+            <div class="tile__top">
+              <span class="tile__logo" aria-hidden="true">
+                {b.short}
+              </span>
+              <span class="chip chip--success">
+                <Icon name="check" size={12} stroke={2.2} />
+                Supported
+              </span>
+            </div>
+            <div class="tile__text">
+              <h3>{b.name}</h3>
+              <p>Card and account email alerts</p>
+            </div>
+          </li>
+        ))
+      }
+      <li class="tile tile--other" data-reveal>
+        <div class="tile__text">
+          <h3>Bank with someone else?</h3>
+          <p>Tell us which. The most requested go next.</p>
+        </div>
+        <form class="tellus" action="/#invite" method="get" data-tell-us data-api={API_BASE} data-astro-reload>
+          <div class="tellus__row">
+            <label class="sr-only" for="tellus-bank">Your bank</label>
+            <span class="select">
+              <select id="tellus-bank" name="bank" required aria-describedby="tellus-status">
+                <option value="" selected disabled>Choose your bank</option>
+                {OTHER_BANKS.map((b) => <option value={b.value}>{b.name}</option>)}
+                <option value="other">Another bank</option>
+              </select>
+              <Icon name="chevron" size={12} stroke={1.6} />
+            </span>
+            <button class="btn btn--subtle tellus__btn" type="submit">
+              <span class="spinner" aria-hidden="true" hidden></span>
+              <span data-label>Tell us</span>
+            </button>
+          </div>
+          <div class="tellus__other" data-tellus-other hidden>
+            <label class="sr-only" for="tellus-other">Which bank?</label>
+            <input id="tellus-other" name="otherBank" type="text" autocomplete="off" maxlength="64" placeholder="Which bank?" aria-describedby="tellus-status" />
+          </div>
+          <div class="hp" aria-hidden="true">
+            <label for="tellus-website">Leave this empty</label>
+            <input id="tellus-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+          {TURNSTILE_SITEKEY && <div class="cf-turnstile" data-sitekey={TURNSTILE_SITEKEY} />}
+          <p class="tellus__status" id="tellus-status" role="status" aria-live="polite"></p>
+        </form>
+        <div class="tellus-done" data-tellus-done hidden>
+          <p class="tellus-done__title" tabindex="-1"><Icon name="check" size={16} stroke={2.2} /><span>Counted. Thank you.</span></p>
+          <p>We count every request without storing who sent it.</p>
+          <a class="link" href="#invite" data-tellus-invite>Want an invite too? Request one</a>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<style>
+  .banks {
+    padding: 88px 0 64px;
+    background: var(--white);
+  }
+  .banks__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .banks__title {
+    max-width: 700px;
+  }
+  .banks__intro {
+    display: none;
+  }
+  .tiles {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tile {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 24px;
+    background: var(--neutral-100);
+  }
+  .tile__top {
+    display: contents;
+  }
+  .tile__top .chip {
+    order: 3;
+    margin-left: auto;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .tile__top .chip :global(.icon) {
+    display: none;
+  }
+  .tile__logo {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 4%) 0 1px 2px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .tile__text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .tile__text h3 {
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 22px;
+  }
+  .tile:not(.tile--other) .tile__text p {
+    display: none;
+  }
+  .tile__text p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .tile--other {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 20px 18px;
+    background: var(--white);
+    border: 1.5px dashed var(--neutral-300);
+  }
+  .tile--other .tile__text h3 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .tellus {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .hp {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .tellus__row {
+    display: flex;
+    gap: 8px;
+  }
+  .tellus[hidden],
+  .tellus__other[hidden],
+  .tellus-done[hidden] {
+    display: none;
+  }
+  .tellus__other input {
+    width: 100%;
+    height: 48px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--neutral-100);
+    box-shadow: rgb(0 0 0 / 6%) 0 0 0 1px inset;
+    color: var(--text-primary);
+    font-size: 15px;
+  }
+  .tellus__other input::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
+  }
+  .tellus__other input[aria-invalid='true'],
+  .select select[aria-invalid='true'] {
+    box-shadow: var(--red-700) 0 0 0 2px inset;
+  }
+  .tellus__status {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .tellus__status:empty {
+    display: none;
+  }
+  .tellus__status[data-tone='error'] {
+    color: var(--error);
+  }
+  .tellus__btn .spinner {
+    border-color: rgb(0 0 0 / 15%);
+    border-top-color: var(--text-primary);
+  }
+  .tellus__btn .spinner[hidden] {
+    display: none;
+  }
+  .tellus-done {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .tellus-done__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--success);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+    outline: none;
+  }
+  .tellus-done .link {
+    align-self: flex-start;
+    font-size: 15px;
+  }
+  /* "Another bank" and the thank-you arrive instead of appearing (with
+     reduced motion: a fade only). */
+  .tellus__other:not([hidden]) {
+    transition:
+      opacity 200ms var(--ease-out-soft),
+      translate 200ms var(--ease-out-soft);
+  }
+  .tellus-done:not([hidden]) {
+    transition:
+      opacity 240ms var(--ease-out-soft),
+      translate 240ms var(--ease-out-soft);
+  }
+  @starting-style {
+    .tellus__other:not([hidden]) {
+      opacity: 0;
+      translate: 0 -6px;
+    }
+    .tellus-done:not([hidden]) {
+      opacity: 0;
+      translate: 0 6px;
+    }
+  }
+  .select {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+  }
+  .select select {
+    width: 100%;
+    height: 48px;
+    padding: 0 36px 0 16px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--neutral-100);
+    color: var(--text-primary);
+    font-size: 15px;
+    appearance: none;
+    cursor: pointer;
+  }
+  .select select:invalid {
+    color: var(--text-secondary);
+  }
+  .select :global(.icon) {
+    position: absolute;
+    right: 14px;
+    top: 18px;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+  .tellus__btn {
+    --btn-h: 48px;
+    --btn-px: 18px;
+    font-size: 15px;
+  }
+
+  @media (min-width: 1024px) {
+    .banks {
+      padding: 140px 0 112px;
+    }
+    .banks__inner {
+      gap: 48px;
+    }
+    .banks__intro {
+      display: block;
+      width: 360px;
+    }
+    .tiles {
+      flex-direction: row;
+      gap: 16px;
+    }
+    .tile {
+      flex: 1 1 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 40px;
+      padding: 28px;
+      border-radius: 28px;
+    }
+    .tile__top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tile__top .chip {
+      margin-left: 0;
+      font-size: 13px;
+      padding: 5px 12px 5px 10px;
+    }
+    .tile__top .chip :global(.icon) {
+      display: block;
+    }
+    .tile__logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      font-size: 17px;
+    }
+    .tile__text h3,
+    .tile--other .tile__text h3 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 28px;
+    }
+    .tile:not(.tile--other) .tile__text p {
+      display: block;
+    }
+    .tile__text p {
+      font-size: 15px;
+      line-height: 22px;
+    }
+    .tile--other {
+      gap: 20px;
+      padding: 28px;
+    }
+  }
+</style>

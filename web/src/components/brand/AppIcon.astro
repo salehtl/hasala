@@ -1,0 +1,38 @@
+---
+/**
+ * The app icon tile: pace-blue square, slot, and the dirham halfway in.
+ * In the hero it is the stage for motion moment A (the coin drops into the
+ * slot); the classes below are what the CSS animates.
+ */
+interface Props {
+  id: string;
+  size?: number;
+  class?: string;
+}
+const { id, size = 84, class: className } = Astro.props;
+---
+
+<svg class:list={['app-icon', className]} width={size} height={size} viewBox="0 0 1024 1024" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id={`${id}-tile`} x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"></stop><stop offset="1" stop-color="#2B4AD2"></stop></linearGradient>
+    <linearGradient id={`${id}-coin`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"></stop><stop offset="1" stop-color="#EBB04A"></stop></linearGradient>
+    <clipPath id={`${id}-clip`}><rect x="-200" y="-200" width="1424" height="832"></rect></clipPath>
+  </defs>
+  <rect class="ai-tile" width="1024" height="1024" rx="230" fill={`url(#${id}-tile)`}></rect>
+  <g transform="translate(512 512) scale(1.1) translate(-512 -512)">
+    <g class="ai-slot">
+      <rect class="ai-plate" x="212" y="576" width="600" height="112" rx="56" fill="#FFFFFF" fill-opacity="0.14"></rect>
+      <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"></rect>
+      <rect x="268" y="648" width="488" height="10" rx="5" fill="#FFFFFF" opacity="0.22"></rect>
+    </g>
+    <g clip-path={`url(#${id}-clip)`}>
+      <g class="ai-coin">
+        <circle cx="512" cy="538.2" r="184" fill="#C98A1E"></circle>
+        <circle cx="512" cy="519.8" r="184" fill={`url(#${id}-coin)`}></circle>
+        <circle cx="512" cy="519.8" r="139.8" fill="none" stroke="#C98A1E" stroke-opacity="0.5" stroke-width="10.1"></circle>
+        <line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"></line>
+        <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"></line>
+      </g>
+    </g>
+  </g>
+</svg>

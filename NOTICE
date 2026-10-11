@@ -30,6 +30,16 @@ BIP-39 English wordlist
   distributed under the MIT License (LICENSES/MIT.txt) by the BIP's reference
   implementation, trezor/python-mnemonic (https://github.com/trezor/python-mnemonic).
 
+Inter
+  Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  SIL Open Font License, Version 1.1 (LICENSES/OFL-1.1.txt; also next to the
+  font as web/src/assets/fonts/Inter-OFL.txt)
+
+  web/src/assets/fonts/inter-latin-opsz-wght.woff2 is the Latin subset of the
+  Inter variable font (opsz and wght axes), vendored from
+  @fontsource-variable/inter 5.3.0. The website (web/) serves it as its only
+  font. "Inter" is not a Reserved Font Name.
+
 Dependencies that are not copied into this repository
 =====================================================
 
@@ -44,6 +54,15 @@ npm packages
   reference/ledgerd-client/ and reference/ledgerd-pwa/ declare their
   dependencies in their package.json and bun.lock files. They are installed at
   build time and are not vendored here.
+
+  The website (web/) and its Lighthouse CI tooling (web/lighthouse/) do the
+  same. The built site (web/dist, not committed) bundles code from two of
+  them into the JavaScript it serves, both under the MIT License
+  (LICENSES/MIT.txt):
+    - astro (Copyright (c) 2021 Fred K. Schott), whose client router runs on
+      every page; https://github.com/withastro/astro
+    - uqr (Copyright (c) Project Nayuki; Copyright (c) 2023 Anthony Fu), the
+      QR code encoder on the invite page; https://github.com/unjs/uqr
 
 What is not in this repository
 ==============================

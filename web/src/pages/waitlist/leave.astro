@@ -1,0 +1,17 @@
+---
+/** hasala.app/waitlist/leave#<token>: the "Leave the list" link (S-07-4). */
+import Base from '../../layouts/Base.astro';
+import WaitlistLink from '../../components/WaitlistLink.astro';
+---
+
+<Base
+  title="Leave the list"
+  description="Leave the Hasala waitlist and delete your address."
+  path="/waitlist/leave"
+  noindex
+  nav="minimal"
+  footer={false}
+  referrer="no-referrer"
+>
+  <WaitlistLink kind="leave" />
+</Base>

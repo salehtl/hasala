@@ -1,0 +1,56 @@
+# Workers Static Assets: response headers by path. The page's script and
+# style hashes live in each page's CSP <meta> (Astro generates them); this
+# header adds what a <meta> policy cannot carry (frame-ancestors) and pins
+# the rest. Both policies are enforced together.
+/*
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'; upgrade-insecure-requests
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), autoplay=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=(), xr-spatial-tracking=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# Pages whose address carries a code or a token (in the path for /i/<code>,
+# in the fragment for the rest): no referrer, ever, and never cached. Each
+# page also carries <meta name="referrer" content="no-referrer">. The "!"
+# lines drop the site-wide value first so only one Referrer-Policy is sent.
+/i
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+/i/*
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+/freeze
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+/waitlist/*
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+
+# Fingerprinted build output: cache for a year.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Stable names: revalidate daily.
+/favicon.ico
+  Cache-Control: public, max-age=86400
+/favicon.svg
+  Cache-Control: public, max-age=86400
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400
+/icon-*
+  Cache-Control: public, max-age=86400
+/brand/*
+  Cache-Control: public, max-age=86400
+/og-image.png
+  Cache-Control: public, max-age=86400
+
+# Apple fetches this through its CDN; it must be JSON, served without a redirect.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600

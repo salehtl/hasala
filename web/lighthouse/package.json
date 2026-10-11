@@ -1,0 +1,8 @@
+{
+  "name": "hasala-web-lighthouse",
+  "private": true,
+  "packageManager": "bun@1.3.13",
+  "devDependencies": {
+    "@lhci/cli": "0.15.1"
+  }
+}

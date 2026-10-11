@@ -1,0 +1,361 @@
+---
+import Icon from '../Icon.astro';
+---
+
+<section class="bills" aria-labelledby="bills-title">
+  <div class="container bills__inner">
+    <div class="bills__copy" data-reveal>
+      <span class="overline bills__overline">Bills</span>
+      <h2 id="bills-title" class="display-panel">Bills that find themselves.</h2>
+      <p class="body-l">
+        Hasala spots what repeats in your history (rent, DEWA, du, the subscription you forgot) and keeps the money aside before it’s due.
+      </p>
+      <ul class="bills__list" role="list">
+        <li><span class="dot bills__dot--new"></span>New bills found from what you already pay</li>
+        <li><span class="dot bills__dot--price"></span>A nudge when a price quietly changes</li>
+        <li><span class="dot bills__dot--late"></span>A heads‑up when one is running late</li>
+      </ul>
+    </div>
+
+    <div class="bills__stage" data-fan aria-hidden="true">
+      <div class="bill bill--late">
+        <div class="bill__head bill__head--rose">
+          <div class="bill__row">
+            <span class="disc disc--white disc--32 bill__icon--rose"><Icon name="shield-plain" size={15} stroke={1.5} /></span>
+            <span class="bill__name">AXA Insurance</span>
+            <span class="bill__chip bill__chip--late"><span class="dot"></span>3 days late</span>
+          </div>
+          <p class="bill__amount"><span>AED</span><b class="figure">550.00</b></p>
+        </div>
+        <p class="bill__note">Car insurance is usually here by the 7th.</p>
+      </div>
+
+      <div class="bill bill--price">
+        <div class="bill__head bill__head--peach">
+          <div class="bill__row">
+            <span class="disc disc--white disc--32 bill__icon--peach"><Icon name="wifi" size={15} stroke={1.5} /></span>
+            <span class="bill__name">du</span>
+            <span class="bill__chip bill__chip--price"><span class="dot"></span>Price change</span>
+          </div>
+          <p class="bill__amount"><span>AED</span><b class="figure">427.90</b></p>
+        </div>
+        <p class="bill__note">Charged 38.90 more than usual on Mon 5 Oct.</p>
+      </div>
+
+      <div class="bill bill--new">
+        <div class="bill__head bill__head--sky">
+          <div class="bill__row">
+            <span class="disc disc--white disc--32 bill__icon--sky"><Icon name="repeat" size={15} stroke={1.5} /></span>
+            <span class="bill__name">Apple.com/bill</span>
+            <span class="bill__chip bill__chip--new"><span class="dot"></span>New bill found</span>
+          </div>
+          <p class="bill__amount"><span>AED</span><b class="figure">14.99</b><em>every month</em></p>
+        </div>
+        <div class="bill__body">
+          <ul class="bill__facts" role="list">
+            <li>Seen 5×</li>
+            <li>Every ~30 days</li>
+            <li class="bill__fact-last">Last on 8 Oct</li>
+          </ul>
+          <div class="bill__actions">
+            <span class="bill__btn bill__btn--primary">Track this bill</span>
+            <span class="bill__btn">Dismiss</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .bills {
+    padding: 88px 0;
+    background: var(--white);
+  }
+  .bills__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .bills__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .bills__overline {
+    color: var(--hue-sand-ink);
+  }
+  .bills__list {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 12px;
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .bills__list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .bills__dot--new {
+    color: var(--accent);
+  }
+  .bills__dot--price {
+    color: var(--pace-over);
+  }
+  .bills__dot--late {
+    color: var(--red-700);
+  }
+
+  .bills__stage {
+    position: relative;
+    height: 500px;
+  }
+  .bill {
+    position: absolute;
+    width: min(320px, 92%);
+    border-radius: 28px;
+    background: var(--white);
+    box-shadow: rgb(20 38 89 / 10%) 0 20px 40px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    transition:
+      rotate 640ms var(--ease-out-soft),
+      translate 640ms var(--ease-out-soft);
+  }
+  .bill--late {
+    left: 8%;
+    top: 0;
+    rotate: 4deg;
+  }
+  .bill--price {
+    left: 2%;
+    top: 128px;
+    rotate: -3deg;
+  }
+  .bill--new {
+    left: 2%;
+    right: 2%;
+    top: 262px;
+    width: auto;
+    box-shadow: rgb(20 38 89 / 16%) 0 28px 56px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+  }
+  .bill[data-folded] {
+    rotate: 4deg;
+    translate: 0 24px;
+    transition: none;
+  }
+  /* The status chips stamp in as the fan settles (only when motion.ts armed
+     the fan below the fold; never with reduced motion). */
+  @media (prefers-reduced-motion: no-preference) {
+    .bill__chip {
+      transform-origin: right center;
+      transition:
+        opacity 220ms var(--ease-out-soft),
+        scale 220ms var(--ease-out-soft);
+    }
+    .bill--late .bill__chip {
+      transition-delay: 480ms;
+    }
+    .bill--price .bill__chip {
+      transition-delay: 600ms;
+    }
+    .bill--new .bill__chip {
+      transition-delay: 720ms;
+    }
+    .bill[data-folded] .bill__chip {
+      opacity: 0;
+      scale: 0.9;
+      transition: none;
+    }
+  }
+  .bill__head {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px;
+  }
+  .bill__head--rose {
+    background: linear-gradient(in oklab 180deg, var(--hue-rose-start), var(--hue-rose-end));
+  }
+  .bill__head--peach {
+    background: linear-gradient(in oklab 180deg, var(--hue-peach-start), var(--hue-peach-end));
+  }
+  .bill__head--sky {
+    background: linear-gradient(in oklab 180deg, var(--hue-sky-start), var(--hue-sky-end));
+  }
+  .bill__icon--rose {
+    color: var(--hue-rose-ink);
+  }
+  .bill__icon--peach {
+    color: var(--hue-peach-ink);
+  }
+  .bill__icon--sky {
+    color: var(--hue-sky-ink);
+  }
+  .bill__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .bill__name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .bill__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+    background: var(--white);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  .bill__chip .dot {
+    width: 6px;
+    height: 6px;
+  }
+  .bill__chip--late {
+    color: var(--red-700);
+  }
+  .bill__chip--price {
+    color: var(--amber-800);
+  }
+  .bill__chip--price .dot {
+    color: var(--pace-over);
+  }
+  .bill__chip--new {
+    color: var(--accent);
+  }
+  .bill__amount {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .bill__amount span {
+    font-family: var(--font-figure);
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .bill__amount b {
+    font-size: 40px;
+    letter-spacing: -0.02em;
+    line-height: 44px;
+  }
+  .bill__amount em {
+    color: var(--neutral-700);
+    font-size: 17px;
+    font-style: normal;
+  }
+  .bill__note {
+    padding: 16px 20px 20px;
+    color: var(--neutral-700);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .bill__body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 20px 20px;
+  }
+  .bill__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .bill__facts li {
+    padding: 5px 10px;
+    border-radius: var(--r-pill);
+    background: var(--neutral-100);
+    color: var(--neutral-700);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .bill__fact-last {
+    display: none;
+  }
+  .bill__actions {
+    display: flex;
+    gap: 8px;
+  }
+  .bill__btn {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    border-radius: var(--r-pill);
+    background: var(--accent-subtle);
+    color: var(--accent);
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .bill__btn--primary {
+    background: var(--accent);
+    color: var(--white);
+  }
+
+  @media (min-width: 640px) {
+    .bill {
+      width: 390px;
+    }
+    .bill--new {
+      width: 420px;
+      right: auto;
+    }
+    .bill__fact-last {
+      display: list-item;
+    }
+  }
+  @media (min-width: 1024px) {
+    .bills {
+      padding: 160px 0;
+    }
+    .bills__inner {
+      flex-direction: row;
+      align-items: center;
+      gap: 80px;
+    }
+    .bills__copy {
+      flex: 0 0 400px;
+      gap: 20px;
+    }
+    .bills__list {
+      display: flex;
+    }
+    .bills__stage {
+      flex: 1;
+      height: 640px;
+    }
+    .bill--late {
+      left: auto;
+      right: 0;
+      top: 10px;
+    }
+    .bill--price {
+      left: 0;
+      top: 196px;
+    }
+    .bill--new {
+      left: auto;
+      right: 10px;
+      top: 372px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .bills__copy {
+      flex-basis: 440px;
+    }
+    .bill--late {
+      right: 10px;
+    }
+  }
+</style>
