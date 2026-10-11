@@ -1,0 +1,257 @@
+---
+/**
+ * The pages behind the links in our waitlist emails (Hasala design archive,
+ * private):
+ *   https://hasala.app/waitlist/confirm#<token>
+ *   https://hasala.app/waitlist/leave#<token>
+ * The token is in the fragment, which no request carries. The script reads
+ * it, removes it from the address bar, and shows one button; only pressing
+ * the button POSTs {token}. Opening the page never acts, so mail link
+ * scanners can't confirm or leave for anyone.
+ */
+import Icon from './Icon.astro';
+import WaitlistCoin from './brand/WaitlistCoin.astro';
+import { SITE } from '../data/site';
+import { API_BASE } from '../lib/env';
+
+interface Props {
+  kind: 'confirm' | 'leave';
+}
+const { kind } = Astro.props;
+const COPY = {
+  confirm: {
+    title: 'Confirm your email',
+    body: 'Tap the button to put this address on the Hasala list.',
+    button: 'Confirm my email',
+    busy: 'Confirming…',
+  },
+  leave: {
+    title: 'Leave the Hasala list?',
+    body: 'We’ll delete your address.',
+    button: 'Leave the list',
+    busy: 'Leaving…',
+  },
+}[kind];
+---
+
+<section class="wlink" data-wlink={kind} data-api={API_BASE}>
+  <div class="wlink__panel" data-state={kind === 'confirm' ? 'focus' : 'default'}>
+    {kind === 'confirm' && <WaitlistCoin id="wlink-coin" />}
+    <div class="wlink__card">
+      <div data-step="ask">
+        <h1 tabindex="-1">{COPY.title}</h1>
+        <p>{COPY.body}</p>
+      </div>
+      <div data-step="done" hidden>
+        {
+          kind === 'confirm' ? (
+            <>
+              <h1 tabindex="-1">You’re on the list.</h1>
+              <p>We’ll email you when your invite is ready. Invites go out in small batches, usually within a few weeks.</p>
+              <p class="wlink__from">
+                <Icon name="mail" size={16} stroke={1.6} />
+                Our emails come from {SITE.mailFrom}. Add it to your contacts so the invite doesn’t land in spam.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 tabindex="-1">Done.</h1>
+              <p>If this link was valid, you’ve left the list and we’ve deleted your address.</p>
+            </>
+          )
+        }
+      </div>
+      <div data-step="expired" hidden>
+        <h1 tabindex="-1">This link has expired.</h1>
+        <p>Ask again at hasala.app and we’ll send a new one.</p>
+        <a class="btn btn--primary" href="/#invite">Request an invite</a>
+      </div>
+
+      <button class="btn btn--primary wlink__btn" type="button" data-wlink-button hidden>
+        <span class="spinner" aria-hidden="true" hidden></span>
+        <span data-label data-idle={COPY.button} data-busy={COPY.busy}>{COPY.button}</span>
+      </button>
+      <p class="wlink__status" role="status" aria-live="polite"></p>
+      <noscript><p class="wlink__status wlink__status--error">This page needs JavaScript to read the link from our email. Turn it on and open the link again.</p></noscript>
+      <a class="wlink__home" href="/" data-wlink-home>Back to the home page</a>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { postJson, waitText } from '../scripts/api';
+  import { onPage } from '../scripts/page';
+
+  // onPage: it runs again whenever the router brings this page back (Back).
+  onPage((signal) => {
+    const root = document.querySelector<HTMLElement>('[data-wlink]');
+    if (!root) return;
+    const kind = root.dataset.wlink as 'confirm' | 'leave';
+    const button = root.querySelector<HTMLButtonElement>('[data-wlink-button]')!;
+    const label = button.querySelector<HTMLElement>('[data-label]')!;
+    const spinner = button.querySelector<HTMLElement>('.spinner')!;
+    const status = root.querySelector<HTMLElement>('.wlink__status')!;
+    const panel = root.querySelector<HTMLElement>('.wlink__panel')!;
+
+    const say = (text: string) => {
+      status.dataset.tone = 'error';
+      status.textContent = text;
+    };
+    const show = (step: 'ask' | 'done' | 'expired') => {
+      root.querySelectorAll<HTMLElement>('[data-step]').forEach((el) => (el.hidden = el.dataset.step !== step));
+      button.hidden = step !== 'ask';
+      status.textContent = '';
+      root.querySelector<HTMLElement>(`[data-step="${step}"] h1`)?.focus();
+    };
+
+    const token = location.hash.slice(1);
+    // The token leaves the address bar; the router's history state stays.
+    history.replaceState(history.state, '', location.pathname);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+      say('This link isn’t complete. Open it again from our email, or copy the whole link into your browser.');
+      return;
+    }
+    button.hidden = false;
+    button.addEventListener(
+      'click',
+      async () => {
+        button.disabled = true;
+        button.style.width = `${button.offsetWidth}px`;
+        spinner.hidden = false;
+        label.textContent = label.dataset.busy!;
+        status.textContent = '';
+        const a = await postJson(`${root.dataset.api}/v1/waitlist/${kind}`, { token });
+        if (signal.aborted) return;
+        button.disabled = false;
+        button.style.width = '';
+        spinner.hidden = true;
+        label.textContent = label.dataset.idle!;
+        if (a.status === 200) {
+          if (kind === 'confirm') panel.dataset.state = 'success';
+          show('done');
+        } else if (kind === 'confirm' && (a.status === 410 || a.status === 400)) {
+          show('expired');
+        } else if (a.status === 400) {
+          say('This link isn’t complete. Open it again from our email, or copy the whole link into your browser.');
+        } else if (a.status === 0) {
+          say('We couldn’t reach Hasala. Check your connection and try again.');
+        } else if (a.status === 429) {
+          say(`Too many tries from here. Try again in ${waitText(a.retryAfter)}.`);
+        } else {
+          say('Something went wrong on our side. Try again in a minute.');
+        }
+      },
+      { signal },
+    );
+  });
+</script>
+
+<style>
+  .wlink {
+    padding: 96px 12px 40px;
+  }
+  .wlink__panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 12px 12px;
+    border-radius: 36px;
+    background: var(--wash-pace);
+  }
+  .wlink__panel :global(.wl-coin) {
+    width: 200px;
+    height: auto;
+    margin-bottom: -8px;
+    overflow: visible;
+  }
+  .wlink__panel :global(.wl-coin .wl-shadow),
+  .wlink__panel :global(.wl-coin .wl-whoosh),
+  .wlink__panel :global(.wl-coin .wl-check),
+  .wlink__panel :global(.wl-coin .wl-lip) {
+    opacity: 0;
+  }
+  .wlink__panel[data-state='success'] :global(.wl-coin .wl-coin-body) {
+    display: none;
+  }
+  .wlink__panel[data-state='success'] :global(.wl-coin .wl-check),
+  .wlink__panel[data-state='success'] :global(.wl-coin .wl-lip) {
+    opacity: 0.9;
+  }
+  .wlink__card {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: min(520px, 100%);
+    padding: 28px 24px;
+    border-radius: 28px;
+    background: var(--white);
+    box-shadow: rgb(11 26 74 / 35%) 0 30px 60px;
+  }
+  .wlink__card [data-step] {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .wlink__card [hidden] {
+    display: none !important;
+  }
+  .wlink__card h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 36px;
+    outline: none;
+  }
+  .wlink__card p {
+    color: var(--text-body);
+    font-size: 16px;
+    line-height: 25px;
+  }
+  .wlink__from {
+    display: flex;
+    gap: 8px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--blue-50);
+    color: var(--blue-800) !important;
+    font-size: 14px !important;
+    line-height: 20px !important;
+  }
+  .wlink__from :global(.icon) {
+    flex: none;
+    margin-top: 2px;
+    color: var(--accent);
+  }
+  .wlink__btn {
+    width: 100%;
+  }
+  .wlink__status {
+    color: var(--text-secondary);
+    font-size: 15px !important;
+    line-height: 22px;
+  }
+  .wlink__status:empty {
+    display: none;
+  }
+  .wlink__status[data-tone='error'],
+  .wlink__status--error {
+    color: var(--error) !important;
+  }
+  .wlink__home {
+    align-self: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  @media (min-width: 768px) {
+    .wlink {
+      padding-top: 140px;
+    }
+    .wlink__card {
+      padding: 32px;
+    }
+  }
+</style>

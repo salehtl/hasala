@@ -1,0 +1,185 @@
+---
+import Icon from '../Icon.astro';
+import WaitlistForm from '../WaitlistForm.astro';
+import { SITE } from '../../data/site';
+---
+
+<section id="invite" class="beta" aria-labelledby="beta-title">
+  <div class="container-wide beta__panel">
+    <div class="beta__glow" aria-hidden="true"></div>
+    <div class="beta__copy" data-reveal>
+      <span class="beta__badge"><span class="dot" aria-hidden="true"></span>Private beta on TestFlight</span>
+      <h2 id="beta-title" class="beta__title">Get an invite.</h2>
+      <p class="beta__lead">
+        We’re letting people in a few at a time, so every bank alert gets read properly. Leave your email and your bank, and we’ll send a TestFlight invite
+        when there’s room.
+      </p>
+      <ul class="beta__reqs" role="list">
+        {
+          SITE.requirements.map((r) => (
+            <li>
+              <Icon name="check" size={16} stroke={1.9} />
+              {r}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <div class="beta__form" data-reveal>
+      <WaitlistForm />
+    </div>
+  </div>
+</section>
+
+<style>
+  .beta {
+    padding: 0 0 40px;
+    background: var(--white);
+  }
+  .beta__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 48px 12px 12px;
+    border-radius: 36px;
+    background: var(--wash-pace);
+    color: var(--white);
+    overflow: clip;
+  }
+  .beta__glow {
+    position: absolute;
+    left: 40%;
+    top: -200px;
+    width: 640px;
+    height: 560px;
+    border-radius: 50%;
+    background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(90.3% 0.003 0.096 / 35%) 0%, oklab(90.3% 0.003 0.096 / 0%) 65%);
+    pointer-events: none;
+  }
+  .beta__copy {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 0 12px;
+  }
+  .beta__badge {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 10px;
+    border-radius: var(--r-pill);
+    background: rgb(255 255 255 / 16%);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .beta__badge .dot {
+    color: var(--gold-100);
+  }
+  .beta__title {
+    font-size: clamp(40px, 27.37px + 3.238vw, 72px);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 1.03;
+  }
+  .beta__lead {
+    color: rgb(255 255 255 / 88%);
+    font-size: clamp(17px, 16.26px + 0.19vw, 19px);
+    line-height: 1.55;
+  }
+  .beta__reqs {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+    color: rgb(255 255 255 / 92%);
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .beta__reqs li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .beta__reqs :global(.icon) {
+    color: var(--gold-100);
+  }
+  .beta__form {
+    position: relative;
+  }
+
+  @media (min-width: 768px) {
+    .beta__panel {
+      padding: 64px 48px 48px;
+      border-radius: var(--r-panel);
+    }
+    .beta__copy {
+      padding: 0;
+    }
+    .beta__reqs {
+      display: flex;
+    }
+    .beta__form {
+      width: min(520px, 100%);
+      align-self: center;
+    }
+  }
+  @media (min-width: 1024px) {
+    .beta {
+      padding-bottom: 72px;
+    }
+    .beta__panel {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 64px;
+      padding: 96px clamp(40px, 5vw, 72px);
+    }
+    .beta__copy {
+      flex: 0 1 520px;
+      gap: 20px;
+    }
+    .beta__lead {
+      line-height: 30px;
+    }
+    .beta__form {
+      flex: 0 0 auto;
+      width: min(520px, 44vw);
+    }
+  }
+
+  /* As the form arrives (scrolled in, not already on screen) the coin drops
+     from above and settles into its slot; the slot's clip swallows the
+     overshoot. Only here, not on /joined or the confirm pages. `translate`
+     composes with the coin's focus lift (transform). SVG user units. */
+  @media (prefers-reduced-motion: no-preference) {
+    .beta__form:global(.is-scrolled-in) :global(.wl-coin-body) {
+      animation: wl-settle 640ms 240ms both;
+    }
+  }
+  @keyframes wl-settle {
+    0% {
+      opacity: 0;
+      translate: 0 -240px;
+      animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
+    }
+    15% {
+      opacity: 1;
+    }
+    50% {
+      translate: 0 40px;
+      animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+    }
+    75% {
+      translate: 0 -12px;
+      animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); /* --ease-in-out: var() is not read inside @keyframes */
+    }
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+</style>

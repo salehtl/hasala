@@ -6,7 +6,7 @@
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac) is not a required check.
+# client core on a Mac) and `web` (the website) are not required checks.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 name: CI
@@ -155,3 +155,51 @@ jobs:
       # check-imports.sh also compares imports.allow with Package.swift.
       - name: Import rules and grep lints
         run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
+
+  # The hasala.app website in web/ (Astro + Bun). Not a required check: the
+  # ruleset is the owner's. Lighthouse uses the Node and Chrome that come with
+  # the runner image and keeps its reports in a workflow artifact only (never
+  # temporary-public-storage). Nothing here deploys.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
+          diagnostic-endpoint: ""
+
+      - name: Install the site's dependencies
+        run: >-
+          nix develop --command bash -c
+          'cd web && bun install --frozen-lockfile && cd lighthouse && bun install --frozen-lockfile'
+
+      - name: astro check
+        run: nix develop --command bash -c 'cd web && bun run check'
+
+      # `bun run build` is astro build followed by scripts/check-dist.ts: one
+      # CSP covering every inline script and style, no style="" attributes,
+      # and the JS budget on / (15 KB gzip).
+      - name: Build, CSP and JS-budget checks
+        run: nix develop --command bash -c 'cd web && bun run build'
+
+      # Serves dist/ on 127.0.0.1 (scripts/serve-dist.ts) and asserts the
+      # category scores in web/lighthouse/lighthouserc.json, mobile and desktop.
+      - name: Lighthouse CI
+        run: nix develop --command web/lighthouse/run.sh "$RUNNER_TEMP/lighthouse"
+
+      - name: Upload the Lighthouse reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lighthouse-reports
+          path: ${{ runner.temp }}/lighthouse
+          if-no-files-found: warn
+          retention-days: 14

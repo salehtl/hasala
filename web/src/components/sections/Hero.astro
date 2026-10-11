@@ -1,0 +1,568 @@
+---
+import { Picture } from 'astro:assets';
+import homeScreen from '../../assets/screens/home-screen.png';
+import AppIcon from '../brand/AppIcon.astro';
+import Icon from '../Icon.astro';
+---
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero__glow hero__glow--dirham" aria-hidden="true"></div>
+  <div class="hero__glow hero__glow--lilac" aria-hidden="true"></div>
+
+  <div class="container hero__inner">
+    <div class="hero__copy">
+      <div class="hero__badge">
+        <span class="hero__icon"><AppIcon id="hero-icon" size={84} /></span>
+        <p class="hero__beta">
+          <span class="hero__beta-label"><span class="dot" aria-hidden="true"></span>Private beta</span>
+          <span class="hero__beta-meta">iPhone · TestFlight · UAE</span>
+        </p>
+      </div>
+
+      <h1 id="hero-title" class="display-xl hero__title">
+        <span class="hero__line">Know what’s left.</span>
+        <span class="hero__line hero__line--muted">Keep it to yourself.</span>
+      </h1>
+
+      <p class="lead hero__lead">
+        Hasala turns your bank alert emails into a calm, honest budget. It sorts every dirham on your iPhone, sets bills aside, and syncs your budget
+        end‑to‑end encrypted, so our server can’t read a single dirham.
+      </p>
+
+      <div class="hero__ctas">
+        <a class="btn btn--primary btn--lg hero__cta" href="#invite" data-invite-cta>
+          Request an invite
+          <span class="btn__disc" aria-hidden="true"><Icon name="arrow-right" size={16} stroke={1.9} /></span>
+        </a>
+        <a class="btn btn--glass btn--lg hero__cta" href="#privacy">
+          <Icon name="lock" size={18} stroke={1.7} />
+          How privacy works
+        </a>
+      </div>
+
+      <ul class="hero__trust" role="list">
+        <li><Icon name="people" size={18} />Face ID passkeys or a password</li>
+        <li><Icon name="mail" size={18} />No bank logins</li>
+        <li><Icon name="shield-check" size={18} />Made in the UAE</li>
+      </ul>
+    </div>
+
+    <div class="hero__stage">
+      <div class="device" data-parallax>
+        <Picture
+          src={homeScreen}
+          formats={['avif', 'webp']}
+          widths={[402, 804]}
+          sizes="402px"
+          width={402}
+          height={884}
+          loading="eager"
+          fetchpriority="high"
+          decoding="async"
+          class="device__screen"
+          alt="Hasala on iPhone: AED 7,417.55 left for everyday spending on day 10 of October, on track at about AED 337 a day, with six transactions to sort and a car insurance bill that looks late."
+        />
+      </div>
+
+      <div class="float float--alert" aria-hidden="true">
+        <div class="float__head">
+          <span class="float__mail"><Icon name="mail" size={13} stroke={1.8} /></span>
+          <span class="float__from">Bank alert · Emirates NBD</span>
+          <span class="float__time">now</span>
+        </div>
+        <p class="float__raw">Purchase of AED 64.50 at TALABAT DXB with card ending 4421</p>
+        <div class="float__rule"></div>
+        <div class="float__tx">
+          <span class="disc disc--lilac"><Icon name="fork" size={16} stroke={1.5} /></span>
+          <span class="float__merchant">
+            <strong>Talabat</strong>
+            <span>Dining · sorted on this iPhone</span>
+          </span>
+          <span class="figure float__amount">64.50</span>
+        </div>
+      </div>
+
+      <div class="float float--sealed" aria-hidden="true">
+        <span class="disc disc--mint disc--40"><Icon name="lock" size={18} stroke={1.7} /></span>
+        <span class="float__sealed-text">
+          <strong>Synced, sealed</strong>
+          <span>Only your devices hold the key</span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="hero__fade" aria-hidden="true"></div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: clip;
+    background: var(--wash-hero);
+  }
+  .hero__glow {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .hero__glow--dirham {
+    width: 640px;
+    height: 640px;
+    left: calc(50% + 100px);
+    top: 180px;
+    background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(90.3% 0.003 0.096 / 55%) 0%, oklab(90.3% 0.003 0.096 / 18%) 38%, oklab(90.3% 0.003 0.096 / 0%) 70%);
+  }
+  .hero__glow--lilac {
+    width: 720px;
+    height: 520px;
+    left: calc(50% - 920px);
+    top: 560px;
+    background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(87.6% 0.027 -0.043 / 55%) 0%, oklab(87.6% 0.027 -0.043 / 0%) 68%);
+  }
+  .hero__inner {
+    position: relative;
+    padding-top: 112px;
+  }
+  .hero__copy {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+  }
+  .hero__badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 24px;
+  }
+  .hero__icon {
+    flex: none;
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    box-shadow: rgb(20 38 89 / 26%) 0 10px 22px;
+  }
+  .hero__icon :global(svg) {
+    width: 100%;
+    height: 100%;
+  }
+  .hero__beta {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .hero__beta-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+  .hero__beta-label .dot {
+    width: 7px;
+    height: 7px;
+    color: var(--accent);
+  }
+  .hero__beta-meta {
+    color: var(--text-secondary);
+  }
+  .hero__title {
+    display: flex;
+    flex-direction: column;
+  }
+  .hero__line {
+    display: block;
+  }
+  .hero__line--muted {
+    color: #5b6b9a;
+  }
+  .hero__lead {
+    max-width: 560px;
+    padding-top: 20px;
+  }
+  .hero__ctas {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 28px;
+  }
+  .hero__cta {
+    --btn-h: 56px;
+    font-size: 17px;
+  }
+  .hero__trust {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 18px;
+    padding-top: 20px;
+    color: var(--text-body);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+  .hero__trust li {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hero__trust :global(.icon) {
+    display: none;
+  }
+
+  /* Phone stage: full-bleed and cropped on small screens */
+  .hero__stage {
+    position: relative;
+    height: 560px;
+    margin: 40px calc(-1 * var(--gutter)) 0;
+    overflow: clip;
+  }
+  .device {
+    position: absolute;
+    left: 40px;
+    top: 40px;
+    width: 418px;
+    padding: 8px;
+    border-radius: 62px;
+    background: #0d0d10;
+    box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
+    will-change: transform;
+  }
+  .device :global(img) {
+    display: block;
+    width: 402px;
+    height: 884px;
+    border-radius: 54px;
+    background: var(--neutral-100);
+  }
+  .float {
+    position: absolute;
+    z-index: 3;
+    background-color: rgb(255 255 255 / 86%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(20 38 89 / 16%) 0 18px 40px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+    transform-origin: 0 0;
+  }
+  .float--alert {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    width: 336px;
+    padding: 16px;
+    border-radius: 24px;
+    rotate: -2deg;
+  }
+  .float__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .float__mail {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--neutral-100);
+    color: var(--neutral-700);
+  }
+  .float__from {
+    flex: 1;
+    color: var(--neutral-700);
+    font-weight: 600;
+  }
+  .float__time {
+    color: var(--text-secondary);
+  }
+  .float__raw {
+    color: var(--neutral-600);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .float__rule {
+    height: 1px;
+    background: var(--neutral-200);
+  }
+  .float__tx {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .float__merchant {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .float__merchant strong {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+  .float__amount {
+    font-size: 18px;
+    line-height: 22px;
+  }
+  .float--sealed {
+    width: max-content;
+    left: 18px;
+    top: 406px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px 12px 12px;
+    border-radius: var(--r-pill);
+    rotate: 3deg;
+  }
+  .float__sealed-text {
+    display: flex;
+    flex-direction: column;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .float__sealed-text strong {
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .hero__fade {
+    position: absolute;
+    inset: auto 0 0;
+    height: 180px;
+    background: linear-gradient(in oklab 180deg, oklab(100% 0 0 / 0%) 0%, oklab(100% 0 0 / 85%) 62%, oklab(100% 0 0) 100%);
+    pointer-events: none;
+    z-index: 4;
+  }
+
+  @media (min-width: 640px) {
+    .hero__ctas {
+      flex-direction: row;
+    }
+    .hero__trust {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .hero {
+      min-height: 1000px;
+    }
+    .hero__inner {
+      min-height: 1000px;
+      padding-top: 188px;
+    }
+    .hero__copy {
+      width: 600px;
+    }
+    .hero__badge {
+      gap: 16px;
+      padding-bottom: 36px;
+    }
+    .hero__icon {
+      width: 84px;
+      height: 84px;
+      border-radius: 19px;
+      box-shadow: rgb(20 38 89 / 28%) 0 14px 30px, rgb(20 38 89 / 12%) 0 2px 6px;
+    }
+    .hero__beta {
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      height: 36px;
+      padding: 0 16px 0 14px;
+      border-radius: var(--r-pill);
+      background: rgb(255 255 255 / 72%);
+      box-shadow: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 4px 12px;
+    }
+    .hero__beta-label {
+      gap: 8px;
+    }
+    .hero__beta-label .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 4px;
+    }
+    .hero__lead {
+      padding-top: 28px;
+      line-height: 31px;
+    }
+    .hero__ctas {
+      gap: 12px;
+      padding-top: 40px;
+    }
+    .hero__cta {
+      --btn-h: 60px;
+      font-size: 18px;
+    }
+    .hero__ctas .btn--primary {
+      padding: 0 22px 0 28px;
+      gap: 12px;
+    }
+    .hero__ctas .btn--glass {
+      padding: 0 26px 0 22px;
+    }
+    .hero__trust {
+      gap: 28px;
+      padding-top: 44px;
+      font-size: 15px;
+    }
+    .hero__trust :global(.icon) {
+      display: block;
+      color: var(--neutral-700);
+    }
+    .hero__stage {
+      position: absolute;
+      top: 150px;
+      right: 36px;
+      width: 418px;
+      height: 900px;
+      margin: 0;
+      overflow: visible;
+      transform: scale(0.8);
+      transform-origin: top right;
+    }
+    .device {
+      left: 0;
+      top: 0;
+    }
+    .float--alert {
+      display: flex;
+      left: -154px;
+      top: 434px;
+    }
+    .float--sealed {
+      left: 284px;
+      top: 570px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .hero__copy {
+      width: 680px;
+    }
+    .hero__stage {
+      transform: none;
+    }
+  }
+
+  /* Motion moment A: the coin drops into the slot while the headline rises
+     (from 150 ms, so the copy is never blank for long) and the stage
+     settles; on large screens the bank alert then turns into a sorted
+     transaction and the "sealed" pill lands, all done by 1.6 s. Pure CSS,
+     so it plays without JS; once per session (html.hero-seen). The
+     keyframes for the icon are in global.css, shared with /i. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html:not(.hero-seen)) .hero__icon :global(.ai-tile),
+    :global(html:not(.hero-seen)) .hero__beta {
+      animation: hero-fade 160ms linear both;
+    }
+    :global(html:not(.hero-seen)) .hero__icon :global(.ai-slot) {
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: hero-slot 760ms linear both;
+    }
+    :global(html:not(.hero-seen)) .hero__icon :global(.ai-plate) {
+      animation: hero-plate 760ms linear both;
+    }
+    :global(html:not(.hero-seen)) .hero__icon :global(.ai-coin) {
+      animation: hero-coin 600ms 160ms both;
+    }
+    :global(html:not(.hero-seen)) .hero__line,
+    :global(html:not(.hero-seen)) .hero__lead,
+    :global(html:not(.hero-seen)) .hero__ctas,
+    :global(html:not(.hero-seen)) .hero__trust {
+      animation: hero-rise 600ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .hero__line {
+      animation-delay: 150ms;
+    }
+    :global(html:not(.hero-seen)) .hero__line--muted {
+      animation-delay: 200ms;
+    }
+    :global(html:not(.hero-seen)) .hero__lead {
+      animation-delay: 250ms;
+    }
+    :global(html:not(.hero-seen)) .hero__ctas {
+      animation-delay: 270ms;
+    }
+    :global(html:not(.hero-seen)) .hero__trust {
+      animation-delay: 320ms;
+    }
+    /* No opacity on the stage: the phone is the largest paint. `translate`
+       composes with the stage's scale(.8) and the parallax transform. */
+    :global(html:not(.hero-seen)) .hero__stage {
+      animation: hero-stage 900ms var(--ease-out-soft) both;
+    }
+  }
+  /* The alert → transaction beat keeps its own spacing (rule +360, row +420,
+     disc +520 after the alert); only its start moved up. */
+  @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+    :global(html:not(.hero-seen)) .float--alert {
+      animation: hero-alert 560ms 560ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .float__rule {
+      transform-origin: left;
+      animation: hero-rule 280ms 920ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .float__tx {
+      animation: hero-tx 360ms 980ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .float__tx .disc {
+      animation: hero-pop 240ms 1080ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .float--sealed {
+      animation: hero-sealed 400ms 1200ms var(--ease-out-soft) both;
+    }
+  }
+  @keyframes hero-rise {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+  }
+  @keyframes hero-stage {
+    from {
+      translate: 0 24px;
+    }
+  }
+  @keyframes hero-alert {
+    from {
+      opacity: 0;
+      translate: -20px 16px;
+      rotate: -6deg;
+    }
+  }
+  @keyframes hero-rule {
+    from {
+      scale: 0 1;
+    }
+  }
+  @keyframes hero-tx {
+    from {
+      opacity: 0;
+      translate: 0 -8px;
+    }
+  }
+  @keyframes hero-pop {
+    from {
+      opacity: 0;
+      scale: 0.85;
+    }
+  }
+  @keyframes hero-sealed {
+    from {
+      opacity: 0;
+      scale: 0.94;
+      translate: 0 8px;
+    }
+  }
+</style>

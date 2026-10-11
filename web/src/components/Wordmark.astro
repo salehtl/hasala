@@ -1,0 +1,38 @@
+---
+/**
+ * The Hasala lockup: the slot mark, "Hasala" and "حصّالة", all outlined, so
+ * neither Inter nor Tajawal has to load for it. Source:
+ * design/icon/hasala-wordmark.svg, with coordinates rounded by
+ * scripts/icons.ts into public/brand/hasala-wordmark.svg.
+ *
+ * Inline (the nav, so it paints with the page) or as an <img> (the footer,
+ * cached). `compact` crops to the mark and "Hasala" at small widths.
+ */
+import raw from '../../public/brand/hasala-wordmark.svg?raw';
+
+interface Props {
+  /** Unique per page: the SVG's gradient and clip ids are prefixed with it. */
+  id: string;
+  img?: boolean;
+  class?: string;
+}
+const { id, img = false, class: className } = Astro.props;
+
+const svg = raw
+  .replace(/<title>[\s\S]*?<\/title>/, '')
+  .replace(/>\s+</g, '><')
+  .replaceAll('hasala-wm-', `${id}-`)
+  .replaceAll('fill="#202023"', 'fill="currentColor"')
+  .replace('fill="#E4E4E7"', 'fill="#BDBDC2"')
+  .replace('<svg ', '<svg aria-hidden="true" focusable="false" ');
+---
+
+{
+  img ? (
+    <img class:list={['wordmark', className]} src="/brand/hasala-wordmark.svg" width="576" height="86" alt="Hasala · حصّالة" loading="lazy" decoding="async" />
+  ) : (
+    <span class:list={['wordmark', className]}>
+      <Fragment set:html={svg} />
+    </span>
+  )
+}

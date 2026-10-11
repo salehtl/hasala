@@ -1,0 +1,129 @@
+---
+/**
+ * After "Freeze my account" (Paper page 14, "Web · hasala.app/freeze · Frozen
+ * (done)"), worded as in the Hasala design archive (private): the server answers the same whether or not the
+ * token was valid, so this never says more than "if this link was valid".
+ */
+import Icon from './Icon.astro';
+---
+
+<div class="frozen">
+  <div class="frozen__badge">
+    <span class="frozen__lock" aria-hidden="true"><Icon name="lock-big" size={30} stroke={1.8} /></span>
+    <p>
+      <b>Your Hasala account</b>
+      <span>Freeze requested</span>
+    </p>
+  </div>
+  <h2 class="frozen__title" tabindex="-1" data-frozen-title>If this link was valid, your account is now frozen.</h2>
+  <p class="frozen__lead">
+    If so, everyone has been signed out, and no one can use your account with a password, reset the password or use the recovery phrase until you confirm it’s
+    you. Your budget stays sealed and nothing is deleted.
+  </p>
+  <ol class="frozen__steps" role="list">
+    <li><span class="frozen__n">1</span><span><b>Open Hasala on your iPhone</b>It shows the account as frozen.</span></li>
+    <li><span class="frozen__n">2</span><span><b>Confirm it’s you to unfreeze</b>With your passkey, or with your password on one of your iPhones.</span></li>
+    <li><span class="frozen__n">3</span><span><b>Lock it down</b>Sign out everywhere, remove what you don’t know, make new words.</span></li>
+  </ol>
+  <p class="frozen__fine">This page never asks for a password, a code or your 12 words. If one does, close it.</p>
+</div>
+
+<style>
+  .frozen {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  .frozen__badge {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .frozen__lock {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(in oklab 160deg, var(--hue-rose-start), var(--hue-rose-end));
+    box-shadow: #fff 0 0 0 4px, rgb(94 31 40 / 14%) 0 10px 24px;
+    color: var(--hue-rose-ink);
+  }
+  .frozen__badge p {
+    display: flex;
+    flex-direction: column;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .frozen__badge b {
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .frozen__title {
+    font-size: clamp(32px, 26.55px + 1.4vw, 48px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.08;
+    outline: none;
+  }
+  .frozen__lead {
+    color: var(--neutral-700);
+    font-size: 17px;
+    line-height: 26px;
+  }
+  .frozen__steps {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 20px;
+    border-radius: 24px;
+    background: var(--white);
+    box-shadow: rgb(20 38 89 / 8%) 0 10px 30px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+  }
+  .frozen__steps li {
+    display: flex;
+    gap: 14px;
+    padding: 18px 0;
+  }
+  .frozen__steps li + li {
+    border-top: 1px solid var(--neutral-200);
+  }
+  .frozen__n {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--neutral-100);
+    font-family: var(--font-figure);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .frozen__steps li > span:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 21px;
+  }
+  .frozen__steps b {
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+  .frozen__fine {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 19px;
+    text-align: center;
+  }
+</style>

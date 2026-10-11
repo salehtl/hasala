@@ -1,0 +1,150 @@
+---
+/**
+ * Where the waitlist form lands without JavaScript: the API answers a
+ * script-free form post with a 303 to HASALA_WEB_WAITLIST_DONE_URL, which
+ * must be https://hasala.app/joined. Success shows "Check
+ * your email" (the list is double opt-in). A validation error comes back as
+ * ?error=<code>; a few lines of script then show what went wrong instead.
+ */
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import WaitlistCoin from '../components/brand/WaitlistCoin.astro';
+import { SITE } from '../data/site';
+---
+
+<Base
+  title="Check your email"
+  description="Confirm your email to join the Hasala waitlist. We'll email you when your TestFlight invite is ready."
+  path="/joined"
+  noindex
+>
+  <section class="joined">
+    <div class="joined__panel" data-state="success">
+      <WaitlistCoin id="joined-coin" />
+      <div class="joined__card" data-joined-ok>
+        <h1>Check your email.</h1>
+        <p>
+          We’ve sent you a link. Tap <b>Confirm my email</b> in it to put your address on the list; it works for 7 days. Invites go out in small batches, usually
+          within a few weeks.
+        </p>
+        <p class="joined__from">
+          <Icon name="mail" size={16} stroke={1.6} />Our emails come from {SITE.mailFrom}. Nothing after a few minutes? Check your spam folder, and add the address to
+          your contacts so the invite doesn’t land there.
+        </p>
+        <a class="btn btn--subtle" href="/">Back to the home page</a>
+        <p class="joined__fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
+      </div>
+      <div class="joined__card" data-joined-error hidden>
+        <h1>That didn’t go through.</h1>
+        <p data-joined-error-text>We couldn’t add you to the list.</p>
+        <a class="btn btn--primary" href="/#invite">Try again</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { onPage } from '../scripts/page';
+
+  const ERRORS: Record<string, string> = {
+    bad_email: 'We couldn’t use that email address. Check it and try again.',
+    bad_bank: 'We couldn’t use that bank. Pick one from the list, or type its name with letters, numbers and spaces.',
+    turnstile_failed: 'We couldn’t check that you’re not a bot. Try again.',
+    rate_limited: 'Too many tries from here. Wait a few minutes, then try again.',
+    waitlist_full: 'The waitlist is full for now. Please try again in a few days.',
+  };
+  onPage(() => {
+    const ok = document.querySelector<HTMLElement>('[data-joined-ok]');
+    const code = new URLSearchParams(location.search).get('error');
+    if (!ok || !code) return;
+    ok.hidden = true;
+    document.querySelector<HTMLElement>('[data-joined-error]')!.hidden = false;
+    document.querySelector<HTMLElement>('[data-joined-error-text]')!.textContent = ERRORS[code] ?? 'Something went wrong on our side. Try again in a minute.';
+    document.querySelector<HTMLElement>('.joined__panel')!.dataset.state = 'error';
+    document.title = 'Hasala · That didn’t go through';
+  });
+</script>
+
+<style>
+  .joined {
+    padding: 96px 12px 40px;
+  }
+  .joined__panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 12px 12px;
+    border-radius: 36px;
+    background: var(--wash-pace);
+  }
+  .joined__panel :global(.wl-coin) {
+    width: 200px;
+    height: auto;
+    margin-bottom: -8px;
+  }
+  .joined__panel :global(.wl-coin-body) {
+    display: none;
+  }
+  .joined__panel :global(.wl-lip) {
+    opacity: 0.9;
+  }
+  .joined__panel :global(.wl-shadow),
+  .joined__panel :global(.wl-whoosh) {
+    display: none;
+  }
+  .joined__panel[data-state='error'] :global(.wl-check),
+  .joined__panel[data-state='error'] :global(.wl-lip) {
+    display: none;
+  }
+  .joined__card[hidden] {
+    display: none;
+  }
+  .joined__card {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: min(520px, 100%);
+    padding: 28px 24px;
+    border-radius: 28px;
+    background: var(--white);
+    box-shadow: rgb(11 26 74 / 35%) 0 30px 60px;
+  }
+  .joined__card h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 36px;
+  }
+  .joined__card p {
+    color: var(--text-body);
+    font-size: 16px;
+    line-height: 25px;
+  }
+  .joined__from {
+    display: flex;
+    gap: 8px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--blue-50);
+    color: var(--blue-800) !important;
+    font-size: 14px !important;
+    line-height: 20px !important;
+  }
+  .joined__from :global(.icon) {
+    flex: none;
+    margin-top: 2px;
+    color: var(--accent);
+  }
+  .joined__fine {
+    color: var(--text-secondary) !important;
+    font-size: 13px !important;
+    text-align: center;
+  }
+  @media (min-width: 768px) {
+    .joined {
+      padding-top: 140px;
+    }
+  }
+</style>
