@@ -36,15 +36,30 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   socket only), the reference client's typecheck and `bun test`, and the
   conformance suites. Once per checkout first:
   `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
-- CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
-  without the private fixtures. Jobs `gate` (`check.sh --fence-only` before
-  anything else, then `nix flake check` and `scripts/check.sh` in the
-  devShell), `vuln` (`govulncheck ./...` in `server/`, failing on anything
-  reachable) and `secrets` (gitleaks over the full history). Keep those job
-  names: required status checks match them by name. A fourth job, `web`,
-  checks the website (see "Website") and is not a required check. `.gitleaks.toml` allowlists
-  known public test vectors only, each scoped to its rule, its files and its
-  exact value; never widen it to pass a real secret.
+- CI is `.github/workflows/ci.yml`, on every pull request and push to `main`
+  (and by hand, `workflow_dispatch`), without the private fixtures. Jobs
+  `gate` (`check.sh --fence-only` before anything else, then
+  `nix flake check` and `scripts/check.sh` in the devShell), `vuln`
+  (`govulncheck ./...` in `server/` and `server/oracle/`, failing on anything
+  reachable) and `secrets` (the real-mail fence, then gitleaks over the full
+  history) are the required checks. Keep those job names: required status
+  checks match them by name. `swift` (HasalaCore on a Mac) and `web` (the
+  website, see "Website") are not required.
+- CI is path-aware on pull requests. Its first job, `changes`, diffs the pull
+  request against its base: `gate` and `vuln` run only if `server/`,
+  `conformance/`, `reference/`, `scripts/`, `infra/`, `.github/`, `flake.nix`,
+  `flake.lock`, `.gitleaks.toml` or any `go.mod`, `go.sum`, `*.go` or `*.nix`
+  changed; `swift` only for `ios/`, `conformance/` or `.github/`; `web` only
+  for `web/`, `docs/legal/`, `.github/`, `flake.nix` or `flake.lock`;
+  `secrets` always runs. Jobs are skipped by a job-level `if:` (a skipped
+  required check counts as passing), never by a workflow-level `paths:` filter
+  (that leaves required checks pending forever), and if `changes` fails every
+  job runs. A push to `main` or a manual run runs every job; a weekly schedule
+  runs `vuln` alone on `main`, because Go advisories land without commits.
+  When a job starts reading a new path, add it to the patterns in `changes`.
+- `.gitleaks.toml` allowlists known public test vectors only, each scoped to
+  its rule, its files and its exact value; never widen it to pass a real
+  secret.
 - Real bank mail is **not** in this repository. The real-mail conformance cases
   and the signed `.eml` fixtures live in the private `salehtl/hasala-fixtures`
   repo under the same paths; set `HASALA_PRIVATE_FIXTURES` to an absolute path
@@ -57,7 +72,8 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   is committed anywhere in this tree, `server/oracle/v1ref` included.
   `scripts/check.sh`'s first step (the real-mail fence) refuses the private
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
-  toolchain needed) on every push and pull request before anything else.
+  toolchain needed) in `secrets` on every push and pull request, and in `gate`
+  before anything else.
 - The iOS app (`ios/`, macOS only) builds with Xcode 27 from the system. The
   `Hasala.xcodeproj` is generated from `ios/project.yml` by XcodeGen **2.46.0**
   (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
