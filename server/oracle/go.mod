@@ -5,9 +5,9 @@ go 1.26.0
 toolchain go1.27.2
 
 require (
-	github.com/salehtl/hasala/server v0.0.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/emersion/go-message v0.18.2
+	github.com/salehtl/hasala/server v0.0.0
 	github.com/xuri/excelize/v2 v2.11.0
 	modernc.org/sqlite v1.52.0
 )
