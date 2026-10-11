@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# check.sh — Hasala's build gate. There is no CI service yet, so this script IS
-# the build: every change ends by running it, from the repo root, through the
-# devShell (it takes Go, Postgres and Bun from flake.nix, never from the host):
+# check.sh — Hasala's build gate. This script IS the build: every change ends by
+# running it, from the repo root, through the devShell (it takes Go, Postgres
+# and Bun from flake.nix, never from the host):
 #
 #   direnv exec . nice -n 10 scripts/check.sh
+#
+# CI (.github/workflows/ci.yml, job `gate`) runs the same script on every pull
+# request and every push to main, without the private fixtures (see "CI" below).
 #
 # It is ledgerd's scripts/v2-check.sh carried over to the monorepo layout:
 # server/ (the Go module), reference/ledgerd-client/ (the TypeScript client
@@ -12,6 +15,8 @@
 # reference/ledgerd-pwa/ is reference material and is not built or tested here.
 #
 # In order:
+#   0. The real-mail fence: no real bank mail has come back into this tree.
+#      It needs no toolchain; `scripts/check.sh --fence-only` runs it alone.
 #   1. The Go toolchain is at least server/go.mod's `toolchain` line.
 #   2. The v1ref fence: cmd/ledgerd's build graph never reaches internal/v1ref.
 #   3. ONE throwaway Postgres cluster for the whole run (unix socket, no TCP),
@@ -46,6 +51,15 @@
 # CHECK_JOBS (default 8) caps go's package parallelism: the QA host is shared with
 # other services, so the gate keeps to about half the machine.
 #
+# CI: under GitHub Actions (GITHUB_ACTIONS=true) every step runs exactly as it
+# does anywhere else, with the same verdicts; only the reporting adapts to a
+# runner whose temp directory dies with the job. On failure the postgres log is
+# printed instead of named, and the closing real-corpus count is also raised as
+# an annotation and written to the job summary, so a run without the private
+# fixtures says so on the pull request, not only at the end of a long log. CI
+# also runs `scripts/check.sh --fence-only` before it installs Nix, so the
+# real-mail fence holds on every push even when the rest cannot build.
+#
 # What this does NOT run is the full-corpus cross-executor diff and the corpus-
 # equivalence gate: both need a snapshot of the operator's v1 mailbox
 # (LEDGER_CORPUS_DB), which no checkout has, and those tests skip without it.
@@ -55,6 +69,62 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JOBS="${CHECK_JOBS:-8}"
 step() { printf '\n== check: %s\n' "$*"; }
+
+FENCE_ONLY=""
+case "$*" in
+"") ;;
+--fence-only) FENCE_ONLY=1 ;;
+*)
+	echo "usage: scripts/check.sh [--fence-only]" >&2
+	exit 2
+	;;
+esac
+
+# GitHub Actions (see "CI" above). ci_report TITLE TEXT raises TEXT as a notice
+# annotation and appends it to the job summary; outside CI it does nothing.
+# TITLE is a workflow-command property, so it must not contain ',' or ':'.
+CI_RUN=""
+if [[ "${GITHUB_ACTIONS:-}" == true ]]; then
+	CI_RUN=1
+fi
+ci_report() {
+	[[ -n "$CI_RUN" ]] || return 0
+	echo "::notice title=$1::$2"
+	if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+		printf '**%s**: %s\n\n' "$1" "$2" >>"$GITHUB_STEP_SUMMARY"
+	fi
+}
+
+# --- 0. real mail stays out of this repository ----------------------------------
+# These paths held the operator's real bank mail (and the expectations derived
+# from it) until the repository went public; they now live only in
+# salehtl/hasala-fixtures. A file reappearing here
+# is real mail one push away from GitHub, so it fails the gate before anything
+# runs. The synthetic families (edge-cases.json, synthetic-*.json, dns.json)
+# are what belongs here. This step needs no fixtures and no toolchain and takes
+# seconds, so it runs first, and `--fence-only` stops right after it: CI runs
+# that on every push and pull request before anything else, so the fence does
+# not depend on the rest of the gate building.
+step "real-mail fence"
+leaked="$(
+	cd "$ROOT"
+	{
+		find conformance/normalizer -type f ! -name edge-cases.json ! -name '.*'
+		find conformance/templates -type f -name 'corpus-*'
+		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*'
+		find server/internal/tmpl/seed/testdata -type f ! -name '.*'
+		find reference/ledgerd-client/test/e2e -type f -name '*.json'
+	} 2>/dev/null | sort
+)"
+if [[ -n "$leaked" ]]; then
+	echo "check: real-mail fixtures are back in the public tree; they belong in salehtl/hasala-fixtures:" >&2
+	echo "$leaked" >&2
+	exit 1
+fi
+echo "no real-mail fixture or private expectation file in the public tree"
+if [[ -n "$FENCE_ONLY" ]]; then
+	exit 0
+fi
 
 cd "$ROOT/server"
 
@@ -78,34 +148,7 @@ if [[ "$(printf '%s\n%s\n' "$want" "$have" | sort -V | head -n1)" != "$want" ]];
 fi
 echo "go $have (floor go$want)"
 
-# --- 1b. real mail stays out of this repository ---------------------------------
-# These paths held the operator's real bank mail (and the expectations derived
-# from it) until the repository went public; they now live only in
-# salehtl/hasala-fixtures. A file reappearing here
-# is real mail one push away from GitHub, so it fails the gate before anything
-# runs. The synthetic families (edge-cases.json, synthetic-*.json, dns.json)
-# are what belongs here. This step needs no fixtures and takes seconds: once the
-# repository is public, a CI workflow will run it on every push and pull
-# request, so the fence does not depend on someone running the whole gate.
-step "real-mail fence"
-leaked="$(
-	cd "$ROOT"
-	{
-		find conformance/normalizer -type f ! -name edge-cases.json ! -name '.*'
-		find conformance/templates -type f -name 'corpus-*'
-		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*'
-		find server/internal/tmpl/seed/testdata -type f ! -name '.*'
-		find reference/ledgerd-client/test/e2e -type f -name '*.json'
-	} 2>/dev/null | sort
-)"
-if [[ -n "$leaked" ]]; then
-	echo "check: real-mail fixtures are back in the public tree; they belong in salehtl/hasala-fixtures:" >&2
-	echo "$leaked" >&2
-	exit 1
-fi
-echo "no real-mail fixture or private expectation file in the public tree"
-
-# --- 1c. the private fixtures, if this run has them -------------------------------
+# --- 1b. the private fixtures, if this run has them -------------------------------
 step "private fixtures (HASALA_PRIVATE_FIXTURES)"
 if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 	if [[ ! -d "$HASALA_PRIVATE_FIXTURES" ]]; then
@@ -174,6 +217,13 @@ cleanup() {
 		rm -f "$PG_LOG"
 	else
 		echo "check: FAILED; the postgres server log is at $PG_LOG" >&2
+		# On a runner that file goes with the job (and with the devShell's
+		# TMPDIR before that), so print it while it still exists.
+		if [[ -n "$CI_RUN" && -s "$PG_LOG" ]]; then
+			echo "::group::postgres server log"
+			cat "$PG_LOG"
+			echo "::endgroup::"
+		fi
 	fi
 }
 trap cleanup EXIT INT TERM
@@ -332,15 +382,18 @@ done
 # --- the real corpus, accounted for -----------------------------------------------
 read -r go_ran go_skipped <"$REAL_GO"
 read -r bun_ran bun_skipped <"$REAL_BUN"
+corpus="go ${go_ran} ran / ${go_skipped} skipped; bun ${bun_ran} ran / ${bun_skipped} skipped"
 echo
-echo "real corpus: go ${go_ran} ran / ${go_skipped} skipped; bun ${bun_ran} ran / ${bun_skipped} skipped"
+echo "real corpus: $corpus"
 if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 	if [[ "$go_skipped" -ne 0 || "$bun_skipped" -ne 0 || "$go_ran" -eq 0 || "$bun_ran" -eq 0 ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (toolchain, real-mail fence, fence, go vet, go test, reference client, conformance; real corpus included)"
+	echo "check: OK (real-mail fence, toolchain, fence, go vet, go test, reference client, conformance; real corpus included)"
+	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (toolchain, real-mail fence, fence, go vet, go test, reference client, conformance)"
+	echo "check: OK (real-mail fence, toolchain, fence, go vet, go test, reference client, conformance)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
+	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
 fi

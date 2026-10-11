@@ -1,0 +1,82 @@
+# gitleaks configuration for the `secrets` CI job (.github/workflows/ci.yml).
+#
+# gitleaks' default rules, plus allowlists for known test vectors and nothing
+# else. Each entry below is scoped three ways, and all three must hold
+# (condition = "AND") for a finding to be dropped:
+#   - targetRules: the one rule that misfires on it (generic-api-key);
+#   - paths:       the exact test files that hold it;
+#   - regexes:     the exact value (matched against the captured secret).
+# A real key added to one of these files, a different value under the same name,
+# or the same value anywhere else is still reported.
+#
+# Adding an entry here needs the same justification as each one below: a value
+# that is public by construction, never a credential that "is only for tests".
+
+[extend]
+useDefault = true
+
+# RFC 8032 section 7.1, TEST 1: the published Ed25519 secret key of the first
+# test vector. The tests check the client's Ed25519 against the RFC's own
+# public key and signature, so the value cannot be swapped for a fresh one.
+[[allowlists]]
+description = "RFC 8032 Ed25519 TEST 1 secret key (published test vector)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^reference/ledgerd-client/src/platform\.test\.ts$''',
+  '''^reference/ledgerd-client/src/platform\.web\.test\.ts$''',
+]
+regexes = ['''^9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60$''']
+
+# A deliberately malformed id_token (header {"alg":"RS256"}, empty claims, the
+# literal signature "sig"). The e2e test sends it to /api/v1/auth/exchange and
+# asserts a 401; it is not signed by anyone and cannot be.
+[[allowlists]]
+description = "Fake, unsigned id_token in the auth-exchange rejection test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^reference/ledgerd-client/test/e2e/roundtrip\.test\.ts$''']
+regexes = ['''^eyJhbGciOiJSUzI1NiJ9\.e30\.sig$''']
+
+# The web-push example application server key (an uncompressed P-256 PUBLIC
+# key, the one the web-push documentation and examples use). It is public by
+# definition: servers hand it to every browser. The tests use it as a
+# syntactically valid VAPID public key / subscription p256dh.
+[[allowlists]]
+description = "web-push example VAPID public key (public key, test value)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^reference/ledgerd-pwa/src/screens/settings/PushNotificationsPanel\.test\.tsx$''',
+  '''^reference/ledgerd-pwa/src/v2/webpush\.test\.ts$''',
+  '''^server/internal/api/webpush_test\.go$''',
+]
+regexes = ['''^BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U$''']
+
+# The 16-byte auth secret of the example push subscription paired with the key
+# above. It belongs to no browser subscription; webpush-go needs a well-formed
+# one to perform the encryption the tests check.
+[[allowlists]]
+description = "web-push example subscription auth value (test subscription)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^server/internal/api/webpush_test\.go$''',
+  '''^server/internal/pushv2/webpush_test\.go$''',
+]
+regexes = ['''^8eDyX_uCN0XRhSbY5hs7Hg$''']
+
+# A patterned, obviously synthetic 32-byte HMAC key (the hex digits counted
+# out: 00112233...99, 00aa...ff, 1122...ff). The dictionary tests fix the key so
+# stored HMACs are reproducible; real keys come from the environment, never
+# from source.
+[[allowlists]]
+description = "Patterned dictionary HMAC test key (0011..eeff)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^server/internal/admin/dict_test\.go$''',
+  '''^server/internal/api/dict_test\.go$''',
+  '''^server/internal/dict/dict_test\.go$''',
+]
+regexes = ['''^0011223344556677889900aabbccddeeff112233445566778899aabbccddeeff$''']

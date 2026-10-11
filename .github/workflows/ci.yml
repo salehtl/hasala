@@ -1,0 +1,109 @@
+# CI for the public tree. It runs WITHOUT the private fixtures
+# (HASALA_PRIVATE_FIXTURES is never set here and no private repository is
+# fetched), so the real-corpus tests skip by name and scripts/check.sh says how
+# many; that is expected. See CLAUDE.md, "Build and test".
+#
+# The job ids below are also their check names (no `name:` override, no
+# matrix): required status checks match `gate`, `vuln` and `secrets` by name,
+# so renaming a job silently drops it from the requirement.
+#
+# Every action is pinned to a full commit SHA, with its release in a comment.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run per pull request (a new push cancels the superseded run); every push
+# to main gets its own group, so no main commit's run is cancelled or dropped.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Before Nix, so it runs on every push even when nothing else can build.
+      # check.sh runs it again as its own first step.
+      - name: Real-mail fence
+        run: scripts/check.sh --fence-only
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
+          diagnostic-endpoint: ""
+
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+      - name: Build the devShell
+        run: nix develop --command true
+
+      - name: Install the reference client's dependencies
+        run: nix develop --command bash -c 'cd reference/ledgerd-client && bun install --frozen-lockfile'
+
+      # The throwaway Postgres runs as the (unprivileged) runner user, inside the
+      # devShell's TMPDIR, on a unix socket only: no service container, no TCP.
+      - name: scripts/check.sh
+        run: nix develop --command scripts/check.sh
+
+  vuln:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
+          diagnostic-endpoint: ""
+
+      # govulncheck exits non-zero when any vulnerability is reachable from the
+      # code (symbol-level, its default); imported-but-unreachable ones are
+      # reported without failing.
+      - name: govulncheck ./...
+        run: nix develop --command bash -c 'cd server && govulncheck ./...'
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every commit, not just the tip: a secret added and then deleted in a
+          # later commit is still published.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+
+      # gitleaks from the flake's pinned nixpkgs (flake.lock), so its version
+      # moves only with the lock. --redact: this log is public.
+      - name: gitleaks
+        run: >-
+          nix shell --inputs-from . nixpkgs#gitleaks --command
+          gitleaks git --config .gitleaks.toml --redact --verbose --no-banner .

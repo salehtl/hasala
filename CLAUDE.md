@@ -28,11 +28,19 @@ standard-library advisories; gopls, govulncheck and golangci-lint are rebuilt
 with it. `server/go.mod`'s `toolchain` line is that security floor, and
 `govulncheck ./...` in `server/` should report nothing reachable.
 
-- `scripts/check.sh` is the gate (there is no CI yet): toolchain floor, v1ref
+- `scripts/check.sh` is the gate: real-mail fence, toolchain floor, v1ref
   fence, `go vet` and `go test` in `server/` against one throwaway Postgres
   (unix socket only), the reference client's typecheck and `bun test`, and the
   conformance suites. Once per checkout first:
   `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
+- CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
+  without the private fixtures. Jobs `gate` (`check.sh --fence-only` before
+  anything else, then `nix flake check` and `scripts/check.sh` in the
+  devShell), `vuln` (`govulncheck ./...` in `server/`, failing on anything
+  reachable) and `secrets` (gitleaks over the full history). Keep those job
+  names: required status checks match them by name. `.gitleaks.toml` allowlists
+  known public test vectors only, each scoped to its rule, its files and its
+  exact value; never widen it to pass a real secret.
 - Real bank mail is **not** in this repository. The real-mail conformance cases
   and the signed `.eml` fixtures live in the private `salehtl/hasala-fixtures`
   repo under the same paths; set `HASALA_PRIVATE_FIXTURES` to an absolute path
@@ -43,9 +51,9 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   real message, account or card number (masked or not), name, amount, date or
   reference here — use synthetic stand-ins. No real transaction amount or date
   is committed anywhere in this tree, `server/internal/v1ref` included.
-  `scripts/check.sh` step 1b (the real-mail fence) refuses the private paths;
-  once the repository is public, a CI workflow will run that fence on every
-  push and pull request (it needs no fixtures).
+  `scripts/check.sh`'s first step (the real-mail fence) refuses the private
+  paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
+  toolchain needed) on every push and pull request before anything else.
 - `nix build .#server` builds `cmd/ledgerd` (the binary keeps that name for
   now), `nix flake check` builds it and checks formatting, `nix fmt` formats
   Nix and Go.
