@@ -24,6 +24,9 @@ const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
 // Cloudflare Web Analytics: Cloudflare's edge injects its beacon script into
 // every HTML page (it is not in dist/), and the beacon reports to
 // cloudflareinsights.com. Cookieless, aggregate only; see the privacy policy.
+// Never on /i, /i/*, /freeze or /waitlist/*: their addresses carry codes and
+// tokens, and Web Analytics records paths. public/_headers gives those pages
+// a CSP header without these two origins (cspUnion below fills it in).
 const CF_ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com';
 const CF_ANALYTICS_REPORT = 'https://cloudflareinsights.com';
 
@@ -66,7 +69,9 @@ export default defineConfig({
       filter: (page) => !NOT_IN_SITEMAP.some((p) => new URL(page).pathname.replace(/\/$/, '') === p),
     }),
     // After the build: every page gets the same CSP, which <ClientRouter /> needs.
-    cspUnion(),
+    // The pages whose address carries a code or a token also get a CSP header
+    // without Web Analytics (public/_headers): it would record their paths.
+    cspUnion({ withoutAnalytics: { token: '%CSP_WITHOUT_ANALYTICS%', drop: [CF_ANALYTICS_SCRIPT, CF_ANALYTICS_REPORT] } }),
   ],
   fonts: [
     {
@@ -96,7 +101,8 @@ export default defineConfig({
         "img-src 'self' data:",
         "font-src 'self'",
         `connect-src 'self' ${API_ORIGIN} ${CF_ANALYTICS_REPORT}${TURNSTILE ? ` ${TURNSTILE_ORIGIN}` : ''}`,
-        `form-action 'self' ${API_ORIGIN}`,
+        // Only the "api" mode invite form posts to the API without JavaScript.
+        `form-action 'self'${WAITLIST_MODE === 'api' ? ` ${API_ORIGIN}` : ''}`,
         `frame-src ${TURNSTILE ? TURNSTILE_ORIGIN : "'none'"}`,
         "manifest-src 'self'",
         "worker-src 'none'",

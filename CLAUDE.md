@@ -114,11 +114,20 @@ same devShell. From `web/`:
 - `bun run check` is `astro check`. `bun run build` writes `dist/` and then
   runs `scripts/check-dist.ts`, which fails the build if any inline script or
   style is not covered by the one CSP every page shares, if any element has a
-  `style=""` attribute, or if `/` loads more than 15 KB of JavaScript (gzip).
+  `style=""` attribute, if `/` loads more than 15 KB of JavaScript (gzip), or
+  if a page whose address carries a code or a token could run Web Analytics
+  (below).
   The CSP (`astro.config.mjs`) also admits Cloudflare Web Analytics, whose
   beacon Cloudflare injects at the edge (it is not in `dist/`); the privacy
   policy describes it. Nothing else third-party, except Turnstile in "api"
-  mode.
+  mode. Web Analytics records paths, so it must never run on `/i`, `/i/*`,
+  `/freeze` or `/waitlist/*`: `public/_headers` gives them a CSP header
+  whose script-src and connect-src are the page's without Web Analytics
+  (the build fills them in, `src/lib/csp-union.mjs`), `src/scripts/router.ts`
+  always loads them in full, and the pages take their code or token out of
+  the address bar. A new page that carries one needs the same: send no
+  referrer (`referrer="no-referrer"` on `Base`) and add it to `_headers` and
+  the router.
 - `bun run preview` (Astro's preview server) or `bun scripts/serve-dist.ts`,
   which serves `dist/` on 127.0.0.1:4321 with the `_headers`, `_redirects`
   and trailing-slash handling of production, and gzip.
@@ -132,8 +141,10 @@ same devShell. From `web/`:
   invite and "Tell us" forms open a pre-filled email to support@hasala.app,
   post nothing and load no Turnstile; without JavaScript the invite form lands
   on `/joined`, which says to email us) or `api` (they post to the API, as
-  designed). Switching to `api` is that one setting, plus dropping the "while
-  sign-ups are handled by email" sentences from `docs/legal/privacy.md`.
+  designed). Switching to `api` is that one setting, plus dropping the
+  sentences in `docs/legal/privacy.md` that say sign-ups and bank requests
+  are handled by email ("while ... handled by email", "once ... our
+  server").
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
@@ -162,6 +173,11 @@ is Workers Static Assets on the `hasala-aasa` Worker, on the zone route
      to `/privacy`;
    - `curl -sI https://hasala.app/i/test`: 200, `cache-control: no-store` and
      one `referrer-policy: no-referrer`;
+   - `curl -s -D- -o /dev/null https://hasala.app/i/test | grep -i '^content-security-policy'`:
+     one line, with `script-src`, `connect-src` and `frame-ancestors 'none'`,
+     and no `cloudflareinsights` (the page's `<meta>` still names it; the
+     browser enforces both, so Web Analytics cannot run). The same for
+     `/freeze` and `/waitlist/confirm`;
    - `curl -sI https://hasala.app/.well-known/apple-app-site-association`: 200
      (no redirect), `content-type: application/json`;
    - `curl -sI https://hasala.app/no-such-page`: 404.
