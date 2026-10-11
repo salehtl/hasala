@@ -137,7 +137,11 @@ func (f *acctFixture) printedInvite(review bool) string {
 // provenSignup is signup/begin with an addressed invite's link.
 func (f *acctFixture) provenSignup(addr, name string) SignupBegun {
 	f.t.Helper()
-	code, lk := f.addressedInvite(addr)
+	norm, err := keyproto.EmailNorm(addr)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	code, lk := f.addressedInvite(norm)
 	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: code, Email: addr, DisplayName: name, InviteLinkKey: lk})
 	if err != nil {
 		f.t.Fatal(err)

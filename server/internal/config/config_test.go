@@ -85,14 +85,14 @@ func TestEveryKeyHasAnEnvironmentName(t *testing.T) {
 		"HASALA_MIN_IOS_BUILD": "42", "HASALA_LOG_LEVEL": "warn",
 		"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app, https://www.hasala.app",
 		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "1h",
-		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key,
+		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key, "HASALA_SALT_KEY_FILE": key,
 		"HASALA_HEADROOM_PATH": "/var/lib/hasala", "HASALA_HEADROOM_FLOOR_BYTES": "5", "HASALA_HEADROOM_INTERVAL": "1m",
 		"HASALA_APNS_ENABLED": "true", "HASALA_APNS_TEAM_ID": "ABCDE12345", "HASALA_APNS_KEY_ID": "KEY1234567",
 		"HASALA_APNS_KEY_FILE": key, "HASALA_APNS_ENVIRONMENTS": "sandbox",
 	})
 	if c.PGDSN == "" || c.MigrateDSN != "m" || c.Server.HTTPListen != "127.0.0.1:8471" || c.Server.MinIOSBuild != 42 ||
 		c.Auth.RPID != "hasala.app" || len(c.Auth.RPOrigins) != 2 || c.Auth.SessionIdle != 24*time.Hour ||
-		c.Auth.PasswordHashConcurrency != 2 || c.Headroom.FloorBytes != 5 || !c.APNs.Enabled ||
+		c.Auth.PasswordHashConcurrency != 2 || c.Auth.SaltKeyFile != key || c.Headroom.FloorBytes != 5 || !c.APNs.Enabled ||
 		strings.Join(c.APNs.AllowedEnvironments, ",") != "sandbox" {
 		t.Fatalf("environment not applied: %+v", c)
 	}
@@ -189,6 +189,8 @@ func TestSecretFilesMustBePrivate(t *testing.T) {
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o640)}, "no group or other permission")
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": filepath.Join(t.TempDir(), "absent")}, "secret file")
 	mustLoad(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o400)})
+	wantErr(t, env{"HASALA_SALT_KEY_FILE": secretFile(t, 0o640)}, "no group or other permission")
+	mustLoad(t, env{"HASALA_SALT_KEY_FILE": secretFile(t, 0o400)})
 }
 
 // systemd's LoadCredential= files show 0440 (the ACL mask that grants the
@@ -261,6 +263,16 @@ func TestModesHaveTheirOwnRequirements(t *testing.T) {
 	c.Headroom.Path = "/var/lib/hasala"
 	if err := c.ValidateFor("serve"); err != nil {
 		t.Fatalf("serve: %v", err)
+	}
+	// Behind Cloudflare serve needs both server keys (review 2 F-04).
+	c.Server.TrustedProxy = ProxyCloudflare
+	c.Auth.AuthKeyFile = "/run/credentials/hasalad.service/auth-key"
+	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "HASALA_SALT_KEY_FILE") {
+		t.Fatalf("serve behind Cloudflare without the salt key: %v", err)
+	}
+	c.Auth.SaltKeyFile = "/run/credentials/hasalad.service/salt-key"
+	if err := c.ValidateFor("serve"); err != nil {
+		t.Fatalf("serve with both keys: %v", err)
 	}
 }
 

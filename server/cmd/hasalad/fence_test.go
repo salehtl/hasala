@@ -375,3 +375,24 @@ func TestFenceNoDataKeyDerivationAndNoRetiredDomain(t *testing.T) {
 		})
 	}
 }
+
+// AT-MAIL-9 (spec 07 §6.1): only internal/mailq calls a mail sender's Send, so
+// every email this server sends has a mail_log row. Any `.Send(` call outside
+// internal/mailq and internal/mail is refused.
+func TestFenceOnlyTheOutboxSendsMail(t *testing.T) {
+	for _, sf := range reachableSources(t) {
+		if sf.pkg == "internal/mailq" || sf.pkg == "internal/mail" {
+			continue
+		}
+		ast.Inspect(sf.file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Send" {
+				t.Errorf("%s calls .Send outside internal/mailq (AT-MAIL-9)", sf.path)
+			}
+			return true
+		})
+	}
+}
