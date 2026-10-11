@@ -184,8 +184,13 @@ public struct NextBillWidgetView: View {
     }
     .smallWidget()
     .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 12))
+    // "Next bill" first, then what the card shows (pill, amount, payee), so nothing
+    // drawn is left out of what VoiceOver reads (spec 04 §17).
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Next bill")
+    .accessibilityLabel { label in
+      Text("Next bill")
+      label
+    }
   }
 }
 
@@ -229,8 +234,8 @@ public struct NetWorthWidgetView: View {
         .padding(.top, 44)
     }
     .widgetChrome(HColor.widgetSurfaceInverse, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 12))
+    // Its own title, total and change, read together; a fixed label would drop the figures.
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Net worth")
   }
 }
 

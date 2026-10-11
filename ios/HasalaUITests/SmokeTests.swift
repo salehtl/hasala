@@ -54,9 +54,6 @@ final class SmokeTests: XCTestCase {
     tabBar.buttons["Activity"].tap()
     XCTAssertTrue(app.descendants(matching: .any)["activity.placeholder"].waitForExistence(timeout: 5))
     try audit(app)
-    tabBar.buttons["Search"].tap()
-    XCTAssertTrue(app.descendants(matching: .any)["search.placeholder"].waitForExistence(timeout: 5))
-    try audit(app)
     tabBar.buttons["Home"].tap()
     XCTAssertTrue(hero.waitForExistence(timeout: 5))
 
@@ -65,6 +62,14 @@ final class SmokeTests: XCTestCase {
     let footer = app.staticTexts["profile.buildFooter"]
     XCTAssertTrue(footer.waitForExistence(timeout: 5))
     XCTAssertTrue(footer.label.hasPrefix("Hasala QA · 0.1.0 ("), footer.label)
+    try audit(app)
+    app.buttons["profile.close"].firstMatch.tap()
+
+    // Search last: on iOS 26 the search tab collapses the bar into one button, so
+    // there is no "Home" tab button to go back with.
+    XCTAssertTrue(tabBar.buttons["Search"].waitForExistence(timeout: 5))
+    tabBar.buttons["Search"].tap()
+    XCTAssertTrue(app.descendants(matching: .any)["search.placeholder"].waitForExistence(timeout: 5))
     try audit(app)
   }
 

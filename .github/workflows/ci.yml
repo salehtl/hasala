@@ -6,12 +6,12 @@
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac), `ios` (the app on a Mac), `web` (the website) and `nixos-vm` (the QA module
-# booted in a NixOS VM) are not required checks.
+# client core on a Mac), `ios` (the app on a Mac), `web` (the website) and
+# `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
 #
 # Path-aware on pull requests, failing closed: the first job, `changes`, lists
-# the files the pull request changes, and `gate`, `vuln`, `swift`, `web` and
-# `nixos-vm` are skipped only when every one of them is on that job's list of
+# the files the pull request changes, and `gate`, `vuln`, `swift`, `ios`, `web`
+# and `nixos-vm` are skipped only when every one of them is on that job's list of
 # paths it does not read. Any other path runs the job, a path nobody
 # anticipated included. `secrets` always runs. Jobs are skipped with a
 # job-level `if:`, never a workflow-level `paths:` filter: a skipped job still
@@ -47,8 +47,8 @@ defaults:
 
 jobs:
   # Which jobs the pull request needs, as outputs `gate` (read by gate and
-  # vuln), `swift`, `web` and `nixos_vm`, each "true" or "false"; any other
-  # event sets all four to "true". The checkout of a pull request is its merge
+  # vuln), `swift`, `ios`, `web` and `nixos_vm`, each "true" or "false"; any
+  # other event sets all of them to "true". The checkout of a pull request is its merge
   # commit (refs/pull/N/merge) and depth 2 fetches both parents, so
   # `git diff HEAD^1 HEAD` is exactly what merging would change on the base as
   # it is now. --no-renames lists both ends of a move, so moving a file out of
@@ -115,8 +115,9 @@ jobs:
           skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
           # swift reads ios/ and conformance/ only.
           skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
-          # ios reads ios/, design/ (the Paper tokens) and the flake (XcodeGen).
-          skip_unless ios "^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$"
+          # ios (the app) reads ios/, design/ (the Paper tokens it is generated
+          # from) and the flake (which pins its XcodeGen).
+          skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$'
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
           skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
           # nixos-vm reads infra/ (the module and the VM test), server/ (the
@@ -302,7 +303,7 @@ jobs:
 
       - name: Select the newest Xcode
         run: |
-          xcode="$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)"
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
           sudo xcode-select -s "$xcode"
           xcodebuild -version
           swift --version
