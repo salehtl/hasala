@@ -212,11 +212,51 @@ struct AccountFlowTests {
     #expect(!(await m.submitRecoveryWords()))
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
+    // The code is kept until the new way to sign in is chosen: `recover/verify` sends
+    // both (spec 04 §6.2 C4 step 3).
+    m.recoverCode = "000000"
+    #expect(m.submitRecoveryCode())
+    #expect(await m.finishRecovery(.passkey) == .codeRejected)
+    #expect(m.failure == .codeWrong(triesLeft: 4))
+    #expect(m.recoverCode.isEmpty)
     m.recoverCode = MockAccountService.emailCode
-    #expect(await m.submitRecoveryCode())
-    #expect(await m.finishRecovery(.passkey))
+    #expect(m.submitRecoveryCode())
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(account.recoveryKind == .passkey)
     m.recoveryDone()
     #expect(outcome == .ready)
+  }
+
+  @Test func recoveryIsBoundToTheVerifiedKind() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(m.submitRecoveryCode())
+    m.newPassword = "a brand new passphrase"
+    m.confirmPassword = "a brand new passphrase"
+    #expect(await m.finishRecovery(.password("a brand new passphrase")) == .done)
+    #expect(account.recoveryKind == .password)
+  }
+
+  @Test func codeTimersComeFromTheSend() async {
+    let account = MockAccountService(existing: .passwordOnly)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    #expect(m.resetCodeSentAt == nil)
+    m.resetEmail = "maya@example.com"
+    #expect(await m.submitResetEmail())
+    let sent = m.resetCodeSentAt
+    #expect(sent != nil)
+    m.resetCodeText = "000000"
+    #expect(!(await m.submitResetCode()))
+    #expect(m.resetCodeSentAt == sent)
+    let t = SignupTicket(id: "s", emailProven: false, email: "m@example.com", displayName: "M",
+                         startedAt: .now.addingTimeInterval(-11 * 60))
+    #expect(t.codeExpired(now: .now))
+    #expect(!t.isExpired(now: .now))
   }
 
   @Test func unlockWithTheWords() async {
@@ -276,11 +316,83 @@ struct AccountFlowTests {
     await m.request(.freeze)
     guard case .frozen = session.phase else { Issue.record("not frozen: \(session.phase)"); return }
     session.leaveFrozen()
-    #expect(session.leftFrozen)
+    #expect(session.leftFrozen == FreezeInfo(by: .holder, when: "just now"))
     await m.request(.addPasskey)
     #expect(m.failure == .frozen)
     await m.request(.deleteAccount)
     #expect(session.phase == .signedOut)
+  }
+
+  @Test func anOperatorFreezeStaysAnOperatorFreeze() async {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .operator)
+    let info = FreezeInfo(by: .operator, when: nil)
+    let session = AccountSession(services: services(account), phase: .frozen(info))
+    session.leaveFrozen()
+    #expect(session.leftFrozen == info)
+    // The banner's wall is the operator's again, never the holder's.
+    session.showFrozenWall()
+    #expect(session.phase == .frozen(info))
+    // Sign-in & security never sends #66 for it.
+    session.leaveFrozen()
+    let m = SecurityModel(session: session)
+    await m.load()
+    await m.request(.unfreeze)
+    #expect(account.frozenInfo == info.with(when: "Sat 11 Oct at 21:20"))
+    #expect(session.leftFrozen == info)
+  }
+
+  @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
+    session.signedIn(.frozen(.operator))
+    #expect(session.phase == .frozen(FreezeInfo(by: .operator, when: nil)))
+  }
+
+  // MARK: Relaunch (spec 04 §6.5)
+
+  @Test func aRelaunchedSignInGoesToUnlockNotToTheKeysStep() async {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.resumeOutcome = .needsUnlock(passkeyCanUnlock: true)
+    let session = AccountSession(services: services(account), phase: .checking)
+    await session.resume()
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: true))
+  }
+
+  @Test func anInterruptedSignupMakesANewPhraseThenOpensSetup() async {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.resumeOutcome = .needsKeys
+    let session = AccountSession(services: services(account), phase: .checking)
+    await session.resume()
+    #expect(session.phase == .needsKeys)
+    let m = SignupModel(account: account)
+    m.startReplacement()
+    #expect(m.replacing)
+    #expect(m.phrase?.words.count == 12)
+    await m.finish()
+    #expect(m.path.isEmpty)  // not before the four words are confirmed
+    confirmPhrase(m)
+    await m.finish()
+    #expect(m.path.last == .accountReady)
+    #expect(m.phrase == nil)
+    session.accountCreated()
+    #expect(session.phase == .onboarding(.bank))
+  }
+
+  @Test func repeatedWordsInThePhraseCheckCanAllBePlaced() {
+    // Positions 1 and 3 hold the same word (about 0.3% of phrases).
+    var words = MockAccountService.phraseWords
+    words[2] = words[0]
+    let phrase = RecoveryPhrase(words: words, confirmPositions: [0, 2, 5, 7])
+    let account = StubPhraseAccount(phrase: phrase)
+    let m = SignupModel(account: account)
+    m.startReplacement()
+    let chips = m.choices
+    #expect(chips.filter { $0 == words[0] }.count == 2)
+    for p in phrase.confirmPositions { m.place(words[p]) }
+    #expect(m.phraseConfirmed)
+    #expect(m.placedChips.compactMap { $0 }.count == 4)
+    #expect(Set(m.placedChips.compactMap { $0 }).count == 4)
   }
 
   @Test func viewingThePhraseIsForPasskeyAccounts() async {
@@ -383,4 +495,74 @@ struct AccountFlowTests {
     m.resume()
     #expect(m.path == [.income])
   }
+}
+
+/// A mock whose phrase is chosen by the test (the phrase check's edge cases).
+@MainActor
+final class StubPhraseAccount: AccountService {
+  let mock = MockAccountService()
+  let phrase: RecoveryPhrase
+  init(phrase: RecoveryPhrase) { self.phrase = phrase }
+
+  func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase { phrase }
+
+  var profile: AccountProfile? { mock.profile }
+  func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
+    async throws(AuthFailure) -> SignupTicket
+  { try await mock.beginSignup(code: code, linkKey: linkKey, email: email, displayName: displayName) }
+  func verifySignupEmail(_ ticket: SignupTicket, code: String) async throws(AuthFailure) {
+    try await mock.verifySignupEmail(ticket, code: code)
+  }
+  func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
+    try await mock.resendSignupCode(ticket)
+  }
+  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) { try await mock.registerPasskey(ticket) }
+  func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
+    async throws(AuthFailure) -> AccountProfile
+  { try await mock.finishAccount(ticket, credential: credential, phrase: phrase) }
+  func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome { try await mock.signInWithPasskey() }
+  func signInWithPassword(email: String, password: String) async throws(AuthFailure) -> SignInOutcome {
+    try await mock.signInWithPassword(email: email, password: password)
+  }
+  func unlockWithPasskey() async throws(AuthFailure) { try await mock.unlockWithPasskey() }
+  func unlockWithPhrase(_ words: [String]) async throws(AuthFailure) { try await mock.unlockWithPhrase(words) }
+  func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome { try await mock.resumeSignedIn() }
+  func finishInterruptedSetup(phrase: RecoveryPhrase) async throws(AuthFailure) -> AccountProfile {
+    try await mock.finishInterruptedSetup(phrase: phrase)
+  }
+  func beginPasswordReset(email: String) async throws(AuthFailure) -> ResetTicket {
+    try await mock.beginPasswordReset(email: email)
+  }
+  func verifyPasswordReset(_ ticket: ResetTicket, code: String) async throws(AuthFailure) -> ResetTicket {
+    try await mock.verifyPasswordReset(ticket, code: code)
+  }
+  func requestResetApproval(_ ticket: ResetTicket, newPassword: String) async throws(AuthFailure) -> ResetTicket {
+    try await mock.requestResetApproval(ticket, newPassword: newPassword)
+  }
+  func pollResetApproval(_ ticket: ResetTicket) async throws(AuthFailure) -> Bool {
+    try await mock.pollResetApproval(ticket)
+  }
+  func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
+    try await mock.beginRecovery(words: words)
+  }
+  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
+    try await mock.verifyRecovery(ticket, code: code, kind: kind)
+  }
+  func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
+    try await mock.finishRecovery(ticket, credential: credential)
+  }
+  func securityState() async throws(AuthFailure) -> SecurityState { try await mock.securityState() }
+  func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
+    try await mock.perform(action, password: password)
+  }
+  func viewRecoveryPhrase() async throws(AuthFailure) -> [String] { try await mock.viewRecoveryPhrase() }
+  func signOut() async { await mock.signOut() }
+  func pendingResetRequest() async -> PendingReset? { await mock.pendingResetRequest() }
+  func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure) {
+    try await mock.approveReset(request, code: code)
+  }
+}
+
+extension FreezeInfo {
+  func with(when: String?) -> FreezeInfo { FreezeInfo(by: by, when: when) }
 }

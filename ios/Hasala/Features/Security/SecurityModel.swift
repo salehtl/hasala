@@ -52,6 +52,8 @@ final class SecurityModel {
       failure = .frozen
       return
     }
+    // The app never attempts #66 for an operator freeze (spec 04 §6.11).
+    if action == .unfreeze, state.frozen?.by != .holder { return }
     if state.hasPasskey {
       await run(action, password: nil)
     } else {
@@ -79,7 +81,9 @@ final class SecurityModel {
       switch action {
       case .freeze:
         session.froze(FreezeInfo(by: .holder, when: "just now"))
-      case .deleteAccount:
+      case .deleteAccount, .signOutEverywhere:
+        // Delete ends the account; sign out everywhere ends this iPhone's session too
+        // (`02` §9.3: every session, the caller's included). Its keys stay here.
         session.signedOut()
         return
       case .unfreeze:
@@ -101,7 +105,6 @@ final class SecurityModel {
     case .changePassword: "Password changed. Your other devices were signed out."
     case .removePassword: "Password removed."
     case .removeDevice: "Device removed."
-    case .signOutEverywhere: "Signed out everywhere else."
     default: nil
     }
   }

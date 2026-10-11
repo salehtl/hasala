@@ -35,6 +35,16 @@ struct WelcomeFlowView: View {
     signup.path = [.welcome, .invite]
   }
 
+  /// After `recover/verify` + `recover/finish`: in, or back to the code when it was refused.
+  private func recoveryResult(_ r: SignInModel.RecoveryResult) {
+    switch r {
+    case .done: signIn.recoveryDone()
+    case .codeRejected:
+      if let i = signup.path.lastIndex(of: .recoverCode) { signup.path.removeSubrange((i + 1)...) }
+    case .failed: break
+    }
+  }
+
   @ViewBuilder private func destination(_ route: WelcomeRoute) -> some View {
     switch route {
     case .welcome:
@@ -77,7 +87,7 @@ struct WelcomeFlowView: View {
     case .forgotCode:
       CodeEntryView(
         email: signIn.resetEmail, steps: (2, 4), code: $signIn.resetCodeText, busy: signIn.busy,
-        failure: signIn.failure, sentAt: .now, onBack: signup.back,
+        failure: signIn.failure, sentAt: signIn.resetCodeSentAt, onBack: signup.back,
         onSubmit: { Task { if await signIn.submitResetCode() { signup.go(.forgotCheck) } } },
         onResend: { Task { _ = await signIn.submitResetEmail() } },
         onChangeEmail: signup.back)
@@ -98,14 +108,14 @@ struct WelcomeFlowView: View {
     case .recoverCode:
       CodeEntryView(
         email: signIn.recovery?.emailHint ?? "your email", steps: (2, 3), code: $signIn.recoverCode,
-        busy: signIn.busy, failure: signIn.failure, sentAt: .now, onBack: signup.back,
-        onSubmit: { Task { if await signIn.submitRecoveryCode() { signup.go(.recoverMethod) } } },
+        busy: signIn.busy, failure: signIn.failure, sentAt: signIn.recoverCodeSentAt, onBack: signup.back,
+        onSubmit: { if signIn.submitRecoveryCode() { signup.go(.recoverMethod) } },
         onResend: { Task { _ = await signIn.submitRecoveryWords() } })
     case .recoverMethod:
       RecoverMethodView(model: signIn, onBack: signup.back, onPassword: { signup.go(.recoverPassword) },
-                        onDone: { signIn.recoveryDone() })
+                        onResult: recoveryResult)
     case .recoverPassword:
-      RecoverPasswordView(model: signIn, onBack: signup.back) { signIn.recoveryDone() }
+      RecoverPasswordView(model: signIn, onBack: signup.back, onResult: recoveryResult)
     case .honestEnd:
       HonestEndView(onBack: signup.back)
     }

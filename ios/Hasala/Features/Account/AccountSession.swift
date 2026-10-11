@@ -10,6 +10,9 @@ final class AccountSession {
   enum Phase: Equatable {
     /// No account on this iPhone: the welcome stories and sign-in.
     case signedOut
+    /// A session from before a relaunch and no keys here: asking the server what's left
+    /// (`resume()`); a failure to reach it stays here with Retry.
+    case checking
     /// Signed in with keys here; setup resumes at the derived step (§6.6).
     case onboarding(OnboardingStep)
     /// Signed in, data sealed here (§6.10).
@@ -25,8 +28,9 @@ final class AccountSession {
 
   let services: AccountServices
   private(set) var phase: Phase
-  /// "Leave it frozen": the app opens with the frozen banner.
-  private(set) var leftFrozen = false
+  /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
+  /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
+  private(set) var leftFrozen: FreezeInfo?
   /// An invite link that arrived while signed out (§13.5), for the invite screen.
   var pendingInvite: InviteLink?
   /// A toast for links that can't act now ("You already have an account").
@@ -45,7 +49,27 @@ final class AccountSession {
     case .ready: phase = .ready
     case .needsUnlock(let p): phase = .needsUnlock(passkeyCanUnlock: p)
     case .needsKeys: phase = .needsKeys
-    case .frozen: phase = .frozen(FreezeInfo(by: .holder, when: nil))
+    case .frozen(let by): phase = .frozen(FreezeInfo(by: by, when: nil))
+    }
+  }
+
+  /// Why the last `resume()` couldn't decide (offline, rate limited).
+  private(set) var resumeFailure: AuthFailure?
+
+  /// `.checking`: the server says whether this account's keys exist (§6.5).
+  func resume() async {
+    guard phase == .checking else { return }
+    do {
+      let outcome = try await account.resumeSignedIn()
+      resumeFailure = nil
+      signedIn(outcome)
+    } catch .offline, .rateLimited {
+      resumeFailure = .offline
+    } catch {
+      // The session is gone or refused: sign in again.
+      resumeFailure = nil
+      await account.signOut()
+      signedOut()
     }
   }
 
@@ -58,22 +82,28 @@ final class AccountSession {
   func setupFinished() { phase = .ready }
 
   func froze(_ info: FreezeInfo) {
-    leftFrozen = false
+    leftFrozen = nil
     phase = .frozen(info)
   }
 
   func leaveFrozen() {
-    leftFrozen = true
+    if case .frozen(let info) = phase { leftFrozen = info }
     phase = .ready
   }
 
+  /// The wall again, from the banner, with the freeze as it was.
+  func showFrozenWall() {
+    guard let info = leftFrozen else { return }
+    froze(info)
+  }
+
   func unfroze() {
-    leftFrozen = false
+    leftFrozen = nil
     phase = .ready
   }
 
   func signedOut() {
-    leftFrozen = false
+    leftFrozen = nil
     phase = .signedOut
   }
 

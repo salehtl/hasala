@@ -280,10 +280,15 @@ struct SecurityView: View {
         .foregroundStyle(HColor.actionDestructive)
         .accessibilityIdentifier("security.signOut")
       LinkButton(title: "Sign out everywhere", identifier: "security.signOutEverywhere") { alert = .signOutEverywhere }
-      if s.frozen != nil {
-        Button("Unfreeze") { Task { await model.request(.unfreeze) } }
-          .buttonStyle(.pill(.primary, fill: true))
-          .accessibilityIdentifier("security.unfreeze")
+      if let frozen = s.frozen {
+        // Only the operator lifts an operator freeze (spec 04 §6.11): no Unfreeze then.
+        if frozen.by == .holder {
+          Button("Unfreeze") { Task { await model.request(.unfreeze) } }
+            .buttonStyle(.pill(.primary, fill: true))
+            .accessibilityIdentifier("security.unfreeze")
+        } else {
+          WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "security.frozenTalk")
+        }
       } else {
         LinkButton(title: "Freeze my account", identifier: "security.freeze") { alert = .freeze }
       }
@@ -329,7 +334,7 @@ struct SecurityView: View {
                    secondaryButton: .cancel())
     case .signOutEverywhere:
       return Alert(title: Text("Sign out everywhere?"),
-                   message: Text("Every other device is signed out. This iPhone stays signed in."),
+                   message: Text("Every device is signed out, this iPhone too. Your data stays on each one; sign in again to carry on."),
                    primaryButton: .destructive(Text("Sign out everywhere")) { Task { await model.request(.signOutEverywhere) } },
                    secondaryButton: .cancel())
     case .freeze:
@@ -348,25 +353,40 @@ struct ConfirmSheet: View {
   @Binding var password: String
   var onConfirm: () -> Void
   var onCancel: () -> Void
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
+    sheet
+      .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+  }
+
+  private var sheet: some View {
     NavigationStack {
-      VStack(alignment: .leading, spacing: 16) {
-        Text(action.explainer).hType(.title2).foregroundStyle(HColor.textPrimary)
-        LabeledField(label: "Current password") {
-          PasswordInput(placeholder: "Your password", text: $password, isNew: false, identifier: "confirm.password")
+      // Scrolls, with Confirm pinned below: at the accessibility text sizes the content
+      // outgrows a medium sheet and Confirm must stay reachable.
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          Text(action.explainer).hType(.title2).foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+          LabeledField(label: "Current password") {
+            PasswordInput(placeholder: "Your password", text: $password, isNew: false, identifier: "confirm.password")
+          }
+          HStack(spacing: 12) {
+            IconDisc(systemImage: "iphone", size: 32)
+            Text("This iPhone signs it too · its own key, never sent").hType(.footnote).foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
-        HStack(spacing: 12) {
-          IconDisc(systemImage: "iphone", size: 32)
-          Text("This iPhone signs it too · its own key, never sent").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        }
-        Spacer()
+        .padding(HSpacing.insetPage)
+      }
+      .safeAreaInset(edge: .bottom) {
         Button("Confirm", action: onConfirm)
           .buttonStyle(.pill(password.isEmpty ? .tertiary : .primary, fill: true))
           .disabled(password.isEmpty)
           .accessibilityIdentifier("confirm.submit")
+          .padding(HSpacing.insetPage)
+          .background(HColor.surfaceSecondary)
       }
-      .padding(HSpacing.insetPage)
       .background(HColor.surfaceSecondary)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
@@ -468,7 +488,6 @@ extension View {
                    password: Binding(get: { model.confirmPassword }, set: { model.confirmPassword = $0 }),
                    onConfirm: { Task { await model.confirm() } },
                    onCancel: { model.confirming = nil })
-        .presentationDetents([.medium])
     }
   }
 }

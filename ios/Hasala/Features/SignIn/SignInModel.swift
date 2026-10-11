@@ -19,6 +19,8 @@ final class SignInModel {
   var resetEmail = ""
   var resetCodeText = ""
   private(set) var reset: ResetTicket?
+  /// When the last reset code was sent (the resend countdown runs from it).
+  private(set) var resetCodeSentAt: Date?
   var newPassword = ""
   var confirmPassword = ""
   private(set) var waiting = false
@@ -26,8 +28,13 @@ final class SignInModel {
   // Recovery
   var phraseText = ""
   private(set) var recovery: RecoveryTicket?
+  private(set) var recoverCodeSentAt: Date?
   var recoverCode = ""
-  var recoverMethod: SignInMethod = .passkey
+  /// The way to sign in `recover/verify` was sent with (`02` #48 binds the ceremony to it).
+  private(set) var verifiedRecoveryKind: SignInMethod?
+  /// The pasteboard's `changeCount` when the phrase field received a paste, so the
+  /// pasteboard is cleared only if it still holds that paste (spec 04 §6.7).
+  var pastedPhraseChangeCount: Int?
 
   init(account: AccountService, onOutcome: @escaping (SignInOutcome) -> Void) {
     self.account = account
@@ -79,6 +86,7 @@ final class SignInModel {
     defer { busy = false }
     do {
       reset = try await account.beginPasswordReset(email: resetEmail)
+      resetCodeSentAt = .now
       failure = nil
       return true
     } catch {
@@ -177,6 +185,9 @@ final class SignInModel {
       defer { busy = false }
       do {
         recovery = try await account.beginRecovery(words: words)
+        recoverCodeSentAt = .now
+        recoverCode = ""
+        verifiedRecoveryKind = nil
         failure = nil
         return true
       } catch {
@@ -186,35 +197,56 @@ final class SignInModel {
     }
   }
 
-  func submitRecoveryCode() async -> Bool {
-    guard let recovery, recoverCode.count == 6 else { return false }
-    busy = true
-    defer { busy = false }
-    do {
-      try await account.verifyRecovery(recovery, code: recoverCode)
-      failure = nil
-      return true
-    } catch {
-      failure = error
-      recoverCode = ""
-      return false
-    }
+  /// The six digits are only kept here: `recover/verify` needs the new way to sign in
+  /// too (spec 04 §6.2 C4 step 3), so it is sent from the method screen.
+  func submitRecoveryCode() -> Bool {
+    guard recovery != nil, recoverCode.count == 6, recoverCode.allSatisfy(\.isASCII), recoverCode.allSatisfy(\.isNumber)
+    else { return false }
+    failure = nil
+    return true
   }
 
-  func finishRecovery(_ credential: NewCredential) async -> Bool {
-    guard let recovery else { return false }
+  enum RecoveryResult: Equatable {
+    case done
+    /// The code was refused: back to the code screen, whose banner says why.
+    case codeRejected
+    case failed
+  }
+
+  /// `recover/verify {code, kind}` (once), then `recover/finish` with the new credential.
+  func finishRecovery(_ credential: NewCredential) async -> RecoveryResult {
+    guard let recovery else { return .failed }
     busy = true
     defer { busy = false }
+    if let kind = verifiedRecoveryKind, kind != credential.method {
+      // The ceremony is bound to the kind it was verified with; its code is spent.
+      failure = .badPhrase("This recovery was started for a \(kind == .passkey ? "passkey" : "password"). Go back to your words to choose again.")
+      return .failed
+    }
+    if verifiedRecoveryKind == nil {
+      do {
+        try await account.verifyRecovery(recovery, code: recoverCode, kind: credential.method)
+        verifiedRecoveryKind = credential.method
+      } catch {
+        failure = error
+        recoverCode = ""
+        switch error {
+        case .codeWrong, .codeExpired: return .codeRejected
+        default: return .failed
+        }
+      }
+    }
     do {
       try await account.finishRecovery(recovery, credential: credential)
       phraseText = ""
+      recoverCode = ""
       newPassword = ""
       confirmPassword = ""
       failure = nil
-      return true
+      return .done
     } catch {
       failure = error
-      return false
+      return .failed
     }
   }
 

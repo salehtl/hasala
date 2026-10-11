@@ -41,8 +41,10 @@ final class ResetApprovalModel {
 
 struct ResetApprovalSheet: View {
   @State private var model: ResetApprovalModel
+  /// "No, that's not me": the presenter opens "Let's lock it down" once this sheet is gone.
   var onNotMe: () -> Void
   @Environment(\.dismiss) private var dismiss
+  @FocusState private var codeFocused: Bool
 
   init(model: ResetApprovalModel, onNotMe: @escaping () -> Void) {
     _model = State(initialValue: model)
@@ -79,6 +81,7 @@ struct ResetApprovalSheet: View {
                   .keyboardType(.asciiCapable)
                   .textInputAutocapitalization(.characters)
                   .autocorrectionDisabled()
+                  .focused($codeFocused)
                   .accessibilityIdentifier("approval.code")
               }
               // TODO(WS-14): the VisionKit QR scanner (spec 04 §6.1.4); typed entry works today.
@@ -87,11 +90,13 @@ struct ResetApprovalSheet: View {
           } footer: {
             BusyButton(title: "Approve with Face ID", busy: model.busy, enabled: model.codeReady,
                        identifier: "approval.approve") {
+              // The keyboard goes first, so the answer (the banner) isn't hidden under it.
+              codeFocused = false
               Task { await model.approve() }
             }
             LinkButton(title: "No, that's not me", identifier: "approval.notMe", role: .destructive) {
-              dismiss()
               onNotMe()
+              dismiss()
             }
           }
         }
@@ -112,7 +117,7 @@ struct LockdownView: View {
         Text("Do these in order. Each one asks you to confirm it's you.")
           .hType(.body).foregroundStyle(HColor.textSecondary)
         VStack(spacing: 0) {
-          step(1, "Sign out everywhere", "Every other device has to sign in again.", "Sign out", "lockdown.signOutAll") {
+          step(1, "Sign out everywhere", "Every device has to sign in again, this one too.", "Sign out", "lockdown.signOutAll") {
             Task { await model.request(.signOutEverywhere) }
           }
           Divider().padding(.leading, 60)

@@ -260,6 +260,8 @@ struct RecoverIntroView: View {
 /// Twelve words typed into one field, with word-list suggestions (Paper "Enter 12 words").
 struct PhraseEntryField: View {
   @Binding var text: String
+  /// The pasteboard's `changeCount` when a paste landed here (nil until one does).
+  @Binding var pastedChangeCount: Int?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -276,6 +278,11 @@ struct PhraseEntryField: View {
         .environment(\.layoutDirection, .leftToRight)
         .accessibilityIdentifier("phraseEntry.field")
         .accessibilityLabel("Your 12 words")
+        .onChange(of: text) { old, new in
+          // A jump of many characters at once is a paste (a suggestion adds one word).
+          // Only `changeCount` is read: reading the contents would show iOS's paste prompt.
+          if new.count - old.count >= 12 { pastedChangeCount = UIPasteboard.general.changeCount }
+        }
       let count = text.split(whereSeparator: \.isWhitespace).count
       HStack {
         Text("\(count) of 12 words").hType(.footnote).foregroundStyle(HColor.textSecondary)
@@ -318,14 +325,15 @@ struct RecoverWordsView: View {
   var body: some View {
     AccountScreen(title: "Enter your 12 words", subtitle: "In order, from your paper.", steps: (1, 3), onBack: onBack) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryField(text: $model.phraseText)
+        PhraseEntryField(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount)
         FailureBanner(failure: model.failure)
       }
     } footer: {
       BusyButton(title: "Continue", busy: model.busy, enabled: !model.phraseText.isEmpty, identifier: "recover.words") {
         Task {
           if await model.submitRecoveryWords() {
-            clearPastedPhrase(model.phraseText)
+            clearPastedPhrase(changeCount: model.pastedPhraseChangeCount)
+            model.pastedPhraseChangeCount = nil
             onNext()
           }
         }
@@ -334,22 +342,22 @@ struct RecoverWordsView: View {
   }
 }
 
-/// After a pasted phrase is accepted, clear the pasteboard if it still holds that text
-/// (spec 04 §6.7).
+/// After a pasted phrase is accepted, clear the pasteboard if it still holds that paste
+/// (spec 04 §6.7). Nothing is read from it: an unchanged `changeCount` means the same
+/// contents, and writing never shows iOS's paste prompt. A typed phrase leaves the
+/// pasteboard alone.
 @MainActor
-func clearPastedPhrase(_ typed: String) {
+func clearPastedPhrase(changeCount: Int?) {
+  guard let changeCount else { return }
   let pb = UIPasteboard.general
-  guard pb.hasStrings, let s = pb.string else { return }
-  if s.trimmingCharacters(in: .whitespacesAndNewlines) == typed.trimmingCharacters(in: .whitespacesAndNewlines) {
-    pb.string = ""
-  }
+  if pb.changeCount == changeCount { pb.items = [] }
 }
 
 struct RecoverMethodView: View {
   @Bindable var model: SignInModel
   var onBack: () -> Void
   var onPassword: () -> Void
-  var onDone: () -> Void
+  var onResult: (SignInModel.RecoveryResult) -> Void
 
   var body: some View {
     AccountScreen(
@@ -364,7 +372,7 @@ struct RecoverMethodView: View {
       }
     } footer: {
       BusyButton(title: "Continue with Face ID", busy: model.busy, identifier: "recover.passkey") {
-        Task { if await model.finishRecovery(.passkey) { onDone() } }
+        Task { onResult(await model.finishRecovery(.passkey)) }
       }
       LinkButton(title: "Use a password instead", identifier: "recover.password", action: onPassword)
     }
@@ -374,7 +382,7 @@ struct RecoverMethodView: View {
 struct RecoverPasswordView: View {
   @Bindable var model: SignInModel
   var onBack: () -> Void
-  var onDone: () -> Void
+  var onResult: (SignInModel.RecoveryResult) -> Void
 
   var body: some View {
     AccountScreen(title: "Create a password", subtitle: "12 characters or more.", steps: (3, 3), onBack: onBack) {
@@ -386,7 +394,7 @@ struct RecoverPasswordView: View {
       }
     } footer: {
       BusyButton(title: "Finish", busy: model.busy, enabled: model.newPasswordReady, identifier: "recover.finish") {
-        Task { if await model.finishRecovery(.password(model.newPassword)) { onDone() } }
+        Task { onResult(await model.finishRecovery(.password(model.newPassword))) }
       }
     }
   }

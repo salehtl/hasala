@@ -203,6 +203,24 @@
       return false
     }
 
+    // MARK: Relaunch
+
+    /// What `resumeSignedIn` answers (the `relaunch*` scenarios).
+    var resumeOutcome: SignInOutcome = .needsUnlock(passkeyCanUnlock: false)
+
+    func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
+      await pause()
+      return resumeOutcome
+    }
+
+    func finishInterruptedSetup(phrase: RecoveryPhrase) async throws(AuthFailure) -> AccountProfile {
+      await pause()
+      existing = .passkey
+      let p = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail, method: .passkey)
+      profile = p
+      return p
+    }
+
     // MARK: Recovery
 
     func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
@@ -212,16 +230,22 @@
       return RecoveryTicket(id: "recover-1", emailHint: "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}.com")
     }
 
-    func verifyRecovery(_ ticket: RecoveryTicket, code: String) async throws(AuthFailure) {
+    /// The kind the ceremony was verified with (`02` #48).
+    private(set) var recoveryKind: SignInMethod?
+
+    func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
       await pause()
       guard code == Self.emailCode else {
         codeTries -= 1
         throw codeTries <= 0 ? .codeExpired : .codeWrong(triesLeft: codeTries)
       }
+      recoveryKind = kind
     }
 
     func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
       await pause()
+      // `recover/finish` refuses a kind other than the verified one (uniformly).
+      guard recoveryKind == credential.method else { throw .refused }
       if case .password(let pw) = credential {
         password = pw
         if existing == .none { existing = .passwordOnly }
@@ -265,7 +289,8 @@
       case .removeDevice(let id):
         security.devices.removeAll { $0.id == id && !$0.isThisDevice }
       case .signOutEverywhere:
-        security.devices = security.devices.filter(\.isThisDevice)
+        // Every session ends, this iPhone's too (`02` §9.3); devices keep their keys.
+        profile = nil
       case .freeze:
         security.frozen = FreezeInfo(by: .holder, when: "today")
       case .unfreeze:

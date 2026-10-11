@@ -30,6 +30,10 @@
     case noPasscode
     /// Signed in; another iPhone asks this one to approve a password reset.
     case resetApproval
+    /// Relaunch after C1 was killed before its bootstrap: a new phrase, then Face ID.
+    case relaunchInterrupted
+    /// Relaunch after a new-iPhone sign-in was killed before unlock.
+    case relaunchSignedIn
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -70,6 +74,10 @@
         account.freezeForScenario(by: by)
         return AccountSession(services: services(account),
                               phase: .frozen(FreezeInfo(by: by, when: "on Sat 11 Oct at 21:20")))
+      case .relaunchInterrupted, .relaunchSignedIn:
+        let account = MockAccountService(existing: .passkey, signedIn: true)
+        account.resumeOutcome = scenario == .relaunchInterrupted ? .needsKeys : .needsUnlock(passkeyCanUnlock: true)
+        return AccountSession(services: services(account), phase: .checking)
       case .setupBank, .reviewAccount:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
                               phase: .onboarding(.bank))

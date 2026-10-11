@@ -37,8 +37,9 @@ enum LiveAccountComposition {
   static func initialPhase(_ env: AccountEnvironment) -> AccountSession.Phase {
     switch Boot.decide(Boot.gather(env)) {
     case .signedOut, .foreignData: return .signedOut
-    case .onboardingKeys: return .needsKeys
-    case .needsUnlock: return .needsUnlock(passkeyCanUnlock: false)
+    // A session without keys here: a sign-in killed before unlock, or C1 killed before
+    // its bootstrap. The server's `has_keys` tells them apart (`AccountSession.resume`).
+    case .onboardingKeys, .needsUnlock: return .checking
     // TODO(WS-14): the signed-out-bound sheet (C2b/C2b-P) and the unenrolled and
     // waiting-for-unlock walls; until then these sign in again from Welcome.
     case .signedOutBound, .unenrolled, .waitingForUnlock: return .signedOut

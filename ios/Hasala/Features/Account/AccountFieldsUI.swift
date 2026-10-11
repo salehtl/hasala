@@ -1,5 +1,6 @@
 import HasalaDesign
 import SwiftUI
+import UIKit
 
 /// Six code boxes over one hidden `.oneTimeCode` field (spec 04 §6.1.4; Paper "Verify
 /// email"). iOS may offer the code from Mail; the user still enters it here.
@@ -57,7 +58,10 @@ struct PasswordInput: View {
   var body: some View {
     HStack(spacing: 8) {
       Group {
-        if visible {
+        if isNew {
+          // SwiftUI's fields can't carry `passwordRules`; a UITextField can.
+          RuledNewPasswordField(placeholder: placeholder, text: $text, secure: !visible, identifier: identifier)
+        } else if visible {
           TextField(placeholder, text: $text)
         } else {
           SecureField(placeholder, text: $text)
@@ -81,6 +85,61 @@ struct PasswordInput: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel(visible ? "Hide password" : "Show password")
+    }
+  }
+}
+
+/// A new-password field that hands iOS Hasala's strong-password rules (spec 04 §6.1.2:
+/// `minlength: 12; maxlength: 128;`), so AutoFill suggests a password the rules accept.
+struct RuledNewPasswordField: UIViewRepresentable {
+  static let rules = "minlength: 12; maxlength: 128;"
+
+  var placeholder: String
+  @Binding var text: String
+  var secure: Bool
+  var identifier: String
+
+  func makeUIView(context: Context) -> UITextField {
+    let f = UITextField()
+    f.placeholder = placeholder
+    f.textContentType = .newPassword
+    f.passwordRules = UITextInputPasswordRules(descriptor: Self.rules)
+    f.autocapitalizationType = .none
+    f.autocorrectionType = .no
+    f.spellCheckingType = .no
+    f.font = .preferredFont(forTextStyle: .body)
+    f.adjustsFontForContentSizeCategory = true
+    f.textColor = .label
+    f.accessibilityIdentifier = identifier
+    f.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    f.setContentHuggingPriority(.defaultHigh, for: .vertical)
+    f.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
+    f.delegate = context.coordinator
+    return f
+  }
+
+  func updateUIView(_ f: UITextField, context: Context) {
+    context.coordinator.text = $text
+    if f.text != text { f.text = text }
+    if f.isSecureTextEntry != secure { f.isSecureTextEntry = secure }
+    f.placeholder = placeholder
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextField, context: Context) -> CGSize? {
+    CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width, height: uiView.intrinsicContentSize.height)
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+  final class Coordinator: NSObject, UITextFieldDelegate {
+    var text: Binding<String>
+    init(text: Binding<String>) { self.text = text }
+
+    @objc func changed(_ f: UITextField) { text.wrappedValue = f.text ?? "" }
+
+    func textFieldShouldReturn(_ f: UITextField) -> Bool {
+      f.resignFirstResponder()
+      return true
     }
   }
 }
@@ -130,7 +189,10 @@ struct NewPasswordBlock: View {
       Divider()
       check("12 or more characters", assessment.longEnough)
       check("Not your name or email", assessment.notPersonal)
-      check("Not a common or leaked password", assessment.notCommon)
+      // TODO(WS-14, spec 04 §4.6): the bundled list is a short starter list; the full
+      // one built by ios/tools/passwords from a public breach list replaces it, and the
+      // copy can then say "leaked" again.
+      check("Not on our list of common passwords", assessment.notCommon)
     }
     .padding(16)
     .listCard()

@@ -38,6 +38,9 @@ struct SignupTicket: Equatable, Sendable {
   var startedAt: Date
 
   func isExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 30 * 60 }
+  /// The email code expires 10 minutes after it was sent (spec 04 §6.1.4); `startedAt`
+  /// is the send, since "Resend code" starts a fresh ceremony.
+  func codeExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 10 * 60 }
 }
 
 /// The 12 words, held in memory for the phrase screens only (spec 04 §6.7).
@@ -56,8 +59,8 @@ enum SignInOutcome: Equatable, Sendable {
   case needsUnlock(passkeyCanUnlock: Bool)
   /// The account was created but its keys never reached the server (C1 interrupted).
   case needsKeys
-  /// The account is frozen (§6.11).
-  case frozen
+  /// The account is frozen (§6.11), by its holder or by the operator.
+  case frozen(FreezeInfo.By)
 }
 
 /// The forgot-password ceremony on a new iPhone (C9, spec 04 §6.2).
@@ -204,6 +207,15 @@ protocol AccountService: AnyObject {
   /// C3: the 12 words open the recovery wrap and enrol this iPhone.
   func unlockWithPhrase(_ words: [String]) async throws(AuthFailure)
 
+  // MARK: Relaunch with a session (§6.5)
+
+  /// A session survives on this iPhone but its keys don't (killed before unlock, or C1
+  /// killed before its bootstrap): what's left, from the server.
+  func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome
+  /// C1 interrupted: publish a NEW phrase made by `makeRecoveryPhrase()` and confirmed
+  /// by the user (step-up `keys.bootstrap`).
+  func finishInterruptedSetup(phrase: RecoveryPhrase) async throws(AuthFailure) -> AccountProfile
+
   // MARK: Forgot password on a new iPhone (C9 side N)
 
   func beginPasswordReset(email: String) async throws(AuthFailure) -> ResetTicket
@@ -217,7 +229,9 @@ protocol AccountService: AnyObject {
   // MARK: Access recovery (C4)
 
   func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket
-  func verifyRecovery(_ ticket: RecoveryTicket, code: String) async throws(AuthFailure)
+  /// `recover/verify {code, kind}`: the code and the new way to sign in go together
+  /// (`02` #48 answers `options` for a passkey or `salt` for a password).
+  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure)
   func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure)
 
   // MARK: Signed in

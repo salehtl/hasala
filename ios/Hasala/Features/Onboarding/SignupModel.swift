@@ -68,10 +68,19 @@ final class SignupModel {
   // Phrase (§6.7)
   private(set) var phrase: RecoveryPhrase?
   var phraseRevealed = false
-  /// The words placed in the four slots, in order of the slots.
-  private(set) var placed: [String?] = [nil, nil, nil, nil]
+  /// The chips (indices into `choices`) placed in the four slots, in order of the slots.
+  /// Chips, not words: two asked positions can hold the same word (spec 04 §6.7).
+  private(set) var placedChips: [Int?] = [nil, nil, nil, nil]
+  /// The words in the four slots.
+  var placed: [String?] {
+    let c = choices
+    return placedChips.map { $0.flatMap { c.indices.contains($0) ? c[$0] : nil } }
+  }
 
   private(set) var ticket: SignupTicket?
+  /// C1 interrupted (spec 04 §6.2): a NEW phrase for an account that exists without
+  /// keys; `finish()` publishes it with step-up `keys.bootstrap` instead of a signup.
+  private(set) var replacing = false
   private(set) var profile: AccountProfile?
   private(set) var passkeyRegistered = false
   var busy = false
@@ -242,10 +251,22 @@ final class SignupModel {
 
   // MARK: Phrase
 
+  /// Starts the replacement phrase of an interrupted C1 (S-07 opens it).
+  func startReplacement() {
+    replacing = true
+    method = .passkey
+    do {
+      try startPhrase()
+      failure = nil
+    } catch {
+      failure = error
+    }
+  }
+
   private func startPhrase() throws(AuthFailure) {
     phrase = try account.makeRecoveryPhrase()
     phraseRevealed = false
-    placed = [nil, nil, nil, nil]
+    placedChips = [nil, nil, nil, nil]
   }
 
   var askedPositions: [Int] { phrase?.confirmPositions ?? [] }
@@ -263,22 +284,30 @@ final class SignupModel {
   var confirmedCount: Int { (0..<4).filter { slotState($0) == .right }.count }
   var phraseConfirmed: Bool { confirmedCount == 4 }
 
-  func isPlaced(_ word: String) -> Bool { placed.contains(word) }
+  func isChipUsed(_ chip: Int) -> Bool { placedChips.contains(chip) }
 
   /// Tapping a chip fills the first empty slot (unless a wrong word is waiting to be
   /// taken back).
+  func placeChip(_ chip: Int) {
+    guard wrongSlot == nil, choices.indices.contains(chip), !isChipUsed(chip),
+      let i = placedChips.firstIndex(where: { $0 == nil })
+    else { return }
+    placedChips[i] = chip
+  }
+
+  /// Places the first unused chip showing `word`.
   func place(_ word: String) {
-    guard wrongSlot == nil, !isPlaced(word), let i = placed.firstIndex(where: { $0 == nil }) else { return }
-    placed[i] = word
+    guard let chip = choices.indices.first(where: { choices[$0] == word && !isChipUsed($0) }) else { return }
+    placeChip(chip)
   }
 
   /// Tapping a filled slot takes its word back.
   func takeBack(_ i: Int) {
-    placed[i] = nil
+    placedChips[i] = nil
   }
 
   func showWordsAgain() {
-    placed = [nil, nil, nil, nil]
+    placedChips = [nil, nil, nil, nil]
     phraseRevealed = false
     if let i = path.lastIndex(of: .phraseShow) { path.removeSubrange((i + 1)...) }
   }
@@ -286,15 +315,19 @@ final class SignupModel {
   /// Publishes the keys (C1 steps 10-16 / C1-P's `password/register`). Nothing reaches
   /// the server before the four words are confirmed.
   func finish() async {
-    guard phraseConfirmed, let ticket, let phrase else { return }
+    guard phraseConfirmed, let phrase, replacing || ticket != nil else { return }
     busy = true
     defer { busy = false }
     let credential: NewCredential = method == .passkey ? .passkey : .password(newPassword)
     do {
-      profile = try await account.finishAccount(ticket, credential: credential, phrase: phrase)
+      if replacing {
+        profile = try await account.finishInterruptedSetup(phrase: phrase)
+      } else if let ticket {
+        profile = try await account.finishAccount(ticket, credential: credential, phrase: phrase)
+      }
       // The phrase leaves memory once it is published.
       self.phrase = nil
-      placed = [nil, nil, nil, nil]
+      placedChips = [nil, nil, nil, nil]
       newPassword = ""
       confirmPassword = ""
       failure = nil

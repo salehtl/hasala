@@ -54,7 +54,6 @@ struct FrozenWall: View {
                        Task { await run(password: password) }
                      },
                      onCancel: { confirming = false })
-          .presentationDetents([.medium])
       }
     }
   }
@@ -82,39 +81,27 @@ struct FrozenWall: View {
   }
 }
 
-/// The banner shown while the account stays frozen ("Leave it frozen").
+/// The banner shown while the account stays frozen ("Leave it frozen"). An operator
+/// freeze offers no Unfreeze anywhere (spec 04 §6.11: the app never attempts #66 for it);
+/// the banner then opens the wall's "Talk to a person".
 struct FrozenBanner: View {
-  var onUnfreeze: () -> Void
+  var by: FreezeInfo.By
+  var onShowWall: () -> Void
 
   var body: some View {
     HStack(spacing: 10) {
       Image(systemName: "snowflake").accessibilityHidden(true)
       Text("Account frozen").hType(.rowTitle)
       Spacer()
-      Button("Unfreeze", action: onUnfreeze).hType(.rowTitle).accessibilityIdentifier("frozenBanner.unfreeze")
+      if by == .holder {
+        Button("Unfreeze", action: onShowWall).hType(.rowTitle).accessibilityIdentifier("frozenBanner.unfreeze")
+      } else {
+        Button("Details", action: onShowWall).hType(.rowTitle).accessibilityIdentifier("frozenBanner.details")
+      }
     }
     .foregroundStyle(HColor.statusInfoForeground)
     .padding(.horizontal, 16)
     .frame(minHeight: 44)
     .background(HColor.statusInfoSurface)
-  }
-}
-
-/// Signed in, but this account's keys never reached our server (an interrupted signup).
-struct NeedsKeysWall: View {
-  var onSignOut: () -> Void
-
-  var body: some View {
-    NavigationStack {
-      AccountScreen(
-        title: "Setup didn't finish",
-        subtitle: "This account was made, but its keys never reached our server. Your invite can't be used again, so talk to us and we'll reset it."
-      ) {
-        Link("Talk to a person", destination: URL(string: "https://hasala.app/support")!)
-          .buttonStyle(.pill(.primary, fill: true))
-      } footer: {
-        LinkButton(title: "Sign out", identifier: "needsKeys.signOut", action: onSignOut)
-      }
-    }
   }
 }

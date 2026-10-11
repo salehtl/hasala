@@ -171,7 +171,7 @@ struct PhraseConfirmView: View {
           StatusLine(text: "That isn't word \(model.askedPositions[w] + 1). Check your paper, then tap the word to take it back.",
                      tone: .error)
         }
-        FlowChips(words: model.choices, isUsed: model.isPlaced) { model.place($0) }
+        FlowChips(words: model.choices, isUsed: model.isChipUsed) { model.placeChip($0) }
         FailureBanner(failure: model.failure)
       }
     } footer: {
@@ -225,24 +225,26 @@ struct PhraseConfirmView: View {
   }
 }
 
-/// Word chips that wrap onto lines.
+/// Word chips that wrap onto lines, by position: a word can appear twice.
 struct FlowChips: View {
   var words: [String]
-  var isUsed: (String) -> Bool
-  var onTap: (String) -> Void
+  var isUsed: (Int) -> Bool
+  var onTap: (Int) -> Void
 
   var body: some View {
     WrapLayout(spacing: 8) {
-      ForEach(words, id: \.self) { w in
-        let used = isUsed(w)
-        Button(w) { onTap(w) }
+      ForEach(Array(words.enumerated()), id: \.offset) { i, w in
+        let used = isUsed(i)
+        // The first chip of a word is `chip.<word>`; a repeat adds its position.
+        let repeated = words[..<i].contains(w)
+        Button(w) { onTap(i) }
           .hType(.rowTitle)
           .foregroundStyle(used ? HColor.textDisabled : HColor.textPrimary)
           .padding(.horizontal, 16)
           .frame(minHeight: 44)
           .background(used ? HColor.appleFillsTertiary : HColor.surfacePrimary, in: Capsule())
           .disabled(used)
-          .accessibilityIdentifier("chip.\(w)")
+          .accessibilityIdentifier(repeated ? "chip.\(w).\(i)" : "chip.\(w)")
       }
     }
     .frame(maxWidth: .infinity)

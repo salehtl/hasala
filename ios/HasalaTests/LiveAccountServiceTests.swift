@@ -7,10 +7,8 @@ import Testing
 /// The live service's failure mapping (spec 04 §6.1.5): each server refusal and
 /// ceremony failure lands on the copy block the screens show.
 ///
-/// The ceremonies themselves are CoreSync's, tested against its FakeServer there. An
-/// app-side run of the shipped view models over that fake is a TODO: linking
-/// CoreTestSupport into HasalaTests makes Xcode build HasalaCore's products dynamically,
-/// and the dynamic variants lose the HasalaICU system-library target.
+/// The ceremonies themselves are CoreSync's, tested against its FakeServer there; the
+/// shipped view models over this service run in `LiveAccountFlowTests`.
 @MainActor
 @Suite("Live account service")
 struct LiveAccountServiceTests {

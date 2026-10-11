@@ -36,6 +36,20 @@ final class AccountFlowUITests: XCTestCase {
     e.tap()
   }
 
+  /// Replaces a text field's whole contents: the cursor goes to the end (a tap can land
+  /// mid-text), then one delete per character.
+  @MainActor
+  private func replaceText(_ app: XCUIApplication, _ id: String, _ text: String) {
+    let e = el(app, id)
+    XCTAssertTrue(e.waitForExistence(timeout: 10), "\(id) is missing")
+    e.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+    let current = (e.value as? String) ?? ""
+    e.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 2))
+    XCTAssertEqual((e.value as? String).map { $0 == (e.placeholderValue ?? "") || $0.isEmpty }, true,
+                   "\(id) was not cleared")
+    e.typeText(text)
+  }
+
   @MainActor
   private func type(_ app: XCUIApplication, _ id: String, _ text: String) {
     let e = el(app, id)
@@ -279,7 +293,13 @@ final class AccountFlowUITests: XCTestCase {
     XCTAssertFalse(el(app, "frozen.unfreeze").exists)
     try audit(app)
     tap(app, "frozen.leave")
-    XCTAssertTrue(el(app, "frozenBanner.unfreeze").waitForExistence(timeout: 10))
+    // The banner keeps the operator's freeze: no Unfreeze there either.
+    XCTAssertTrue(el(app, "frozenBanner.details").waitForExistence(timeout: 10))
+    XCTAssertFalse(el(app, "frozenBanner.unfreeze").exists)
+    tap(app, "frozenBanner.details")
+    XCTAssertTrue(app.staticTexts["We froze your account to protect it. Talk to us to unfreeze it."]
+      .waitForExistence(timeout: 10))
+    XCTAssertFalse(el(app, "frozen.unfreeze").exists)
   }
 
   @MainActor
@@ -291,13 +311,53 @@ final class AccountFlowUITests: XCTestCase {
     type(app, "approval.code", "ABCD EFGH IJKL MNOP")
     tap(app, "approval.approve")
     XCTAssertTrue(app.staticTexts["That code doesn't match a request. Nothing was approved."].waitForExistence(timeout: 10))
-    let field = el(app, "approval.code")
-    field.tap()
-    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 19) + "WMO6 C7ID 7TYM 2M5S")
+    // The keyboard went away on Approve, so the banner above is in view.
+    XCTAssertFalse(app.keyboards.firstMatch.exists)
+    replaceText(app, "approval.code", "WMO6 C7ID 7TYM 2M5S")
     tap(app, "approval.approve")
     XCTAssertTrue(app.staticTexts["Approved"].waitForExistence(timeout: 10))
     tap(app, "approval.done")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  func testNotMeOpensLockdownAfterTheApprovalSheet() throws {
+    let app = launch("resetApproval")
+    XCTAssertTrue(app.staticTexts["Is this you on a new iPhone?"].waitForExistence(timeout: 15))
+    tap(app, "approval.notMe")
+    XCTAssertTrue(app.staticTexts["Let's lock it down"].waitForExistence(timeout: 10))
+    attach(app, "Let's lock it down")
+    try audit(app)
+    tap(app, "lockdown.close")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
+  }
+
+  /// C1 killed before its bootstrap, then relaunched (spec 04 §6.2 "C1 interrupted"):
+  /// a new phrase, the four-word check, then setup at the bank.
+  @MainActor
+  func testRelaunchAfterAnInterruptedSignupMakesNewWords() throws {
+    let app = launch("relaunchInterrupted")
+    XCTAssertTrue(app.staticTexts["This is a new recovery phrase. Throw away any words you wrote down before."]
+      .waitForExistence(timeout: 15))
+    attach(app, "Interrupted setup · new phrase")
+    try audit(app)
+    tap(app, "resume.start")
+    tap(app, "phrase.reveal")
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
+    tap(app, "phrase.written")
+    for w in ["scissors", "category", "army", "camera"] { tap(app, "chip.\(w)") }
+    tap(app, "phrase.confirm")
+    XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
+    tap(app, "ready.continue")
+    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10))
+  }
+
+  /// A new-iPhone sign-in killed before unlock, then relaunched: unlock, not setup.
+  @MainActor
+  func testRelaunchAfterASignInGoesToUnlock() throws {
+    let app = launch("relaunchSignedIn")
+    XCTAssertTrue(el(app, "unlock.passkey").waitForExistence(timeout: 15))
+    XCTAssertFalse(app.staticTexts["This is a new recovery phrase. Throw away any words you wrote down before."].exists)
   }
 
   @MainActor

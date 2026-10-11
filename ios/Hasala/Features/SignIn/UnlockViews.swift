@@ -11,6 +11,7 @@ final class UnlockModel {
   private let onUnlocked: () -> Void
   let passkeyCanUnlock: Bool
   var phraseText = ""
+  var pastedChangeCount: Int?
   var enteringWords = false
   var busy = false
   var failure: AuthFailure?
@@ -46,7 +47,8 @@ final class UnlockModel {
       defer { busy = false }
       do {
         try await account.unlockWithPhrase(words)
-        clearPastedPhrase(phraseText)
+        clearPastedPhrase(changeCount: pastedChangeCount)
+        pastedChangeCount = nil
         phraseText = ""
         failure = nil
         unlocked = true
@@ -115,7 +117,7 @@ struct UnlockView: View {
       onBack: model.passkeyCanUnlock ? { model.enteringWords = false } : nil
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryField(text: $model.phraseText)
+        PhraseEntryField(text: $model.phraseText, pastedChangeCount: $model.pastedChangeCount)
         FailureBanner(failure: model.failure)
         if !model.passkeyCanUnlock {
           LockNote(text: "Your password signed you in. It can't unlock your data: that takes your 12 words.")

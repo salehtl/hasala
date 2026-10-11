@@ -1,0 +1,434 @@
+import CoreAuth
+import CoreCrypto
+import CorePrimitives
+import CoreStore
+import CoreSync
+import CoreTime
+import CryptoKit
+import Foundation
+import Synchronization
+import Testing
+
+@testable import Hasala
+
+/// The shipped view models over `LiveAccountService` and the real CoreSync ceremonies,
+/// against `MiniHasalad` below (spec 04 §15.1). The relaunch cases are what review L1/L2
+/// found missing: a new-iPhone sign-in killed before unlock must come back to Unlock,
+/// and the unlock must work from the Keychain's session alone.
+///
+/// CoreSync's own FakeServer can't be linked here (linking CoreTestSupport makes Xcode
+/// build HasalaCore's products dynamically, which loses the HasalaICU system library),
+/// so `MiniHasalad` is a small in-app fake of `02` §7's password routes: it keeps what
+/// the client sends and answers in `02`'s shapes, and checks no signatures (CoreSync's
+/// FakeServer suites check those).
+@MainActor
+@Suite("Live account flows")
+struct LiveAccountFlowTests {
+  static let invite = "ABCDEFGHIJKLMNOPQRSTUVWX"
+  static let password = "copper lantern quietly 42"
+
+  struct Phone {
+    let env: AccountEnvironment
+    var binding: AccountBinding? { try? env.secrets.binding() }
+
+    init(_ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore()) {
+      env = AccountEnvironment(
+        client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
+        approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+        apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    }
+
+    /// The same Keychain after the app was killed and launched again.
+    func relaunched() -> LiveAccountService { LiveAccountService(env: env) }
+  }
+
+  func services(_ account: AccountService) -> AccountServices {
+    let mailbox = MockMailbox(offersSampleData: false)
+    mailbox.step = .milliseconds(1)
+    return AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
+                           notifications: MockNotificationPermission())
+  }
+
+  /// Signup with a password (C1-P) through `SignupModel`; returns the confirmed words.
+  func signUp(_ phone: Phone, _ server: MiniHasalad) async throws -> [String] {
+    let m = SignupModel(account: phone.relaunched())
+    m.inviteText = Self.invite
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    #expect(m.path.last == .verifyEmail)
+    m.code = try #require(server.lastCode)
+    await m.submitCode()
+    #expect(m.path.last == .method)
+    m.method = .password
+    await m.continueWithMethod()
+    m.newPassword = Self.password
+    m.confirmPassword = Self.password
+    m.submitPassword()
+    let words = try #require(m.phrase?.words)
+    for p in m.askedPositions { m.place(words[p]) }
+    #expect(m.phraseConfirmed)
+    await m.finish()
+    #expect(m.failure == nil)
+    #expect(m.path.last == .accountReady)
+    return words
+  }
+
+  @Test func aSignInKilledBeforeUnlockComesBackToUnlock() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    let words = try await signUp(a, server)
+    #expect(a.binding != nil)
+
+    // A new iPhone signs in: data sealed there.
+    let b = Phone(server)
+    var outcome: SignInOutcome?
+    let signIn = SignInModel(account: b.relaunched()) { outcome = $0 }
+    signIn.email = "maya@example.com"
+    signIn.password = Self.password
+    await signIn.signInWithPassword()
+    #expect(outcome == .needsUnlock(passkeyCanUnlock: false))
+
+    // Killed before unlock. Boot alone can't tell this from an interrupted signup…
+    #expect(Boot.decide(Boot.gather(b.env)) == .onboardingKeys)
+    #expect(LiveAccountComposition.initialPhase(b.env) == .checking)
+    // …the server's has_keys can.
+    let account = b.relaunched()
+    let session = AccountSession(services: services(account), phase: .checking)
+    await session.resume()
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+    #expect(account.profile?.email == "maya@example.com")
+
+    // The words unlock from the Keychain's session alone (no sign-in in this run).
+    var opened = false
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false) { opened = true }
+    unlock.phraseText = words.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(unlock.failure == nil)
+    #expect(unlock.unlocked)
+    unlock.openApp()
+    #expect(opened)
+    #expect(b.binding?.user_id == a.binding?.user_id)
+    #expect(b.binding?.writer_id != a.binding?.writer_id)
+    #expect(Boot.decide(Boot.gather(b.env)) == .restoring)  // in-memory store: bound, never the keys step
+  }
+
+  @Test func anotherAccountsWordsDontUnlockAfterARelaunch() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    let signIn = SignInModel(account: b.relaunched()) { _ in }
+    signIn.email = "maya@example.com"
+    signIn.password = Self.password
+    await signIn.signInWithPassword()
+    let unlock = UnlockModel(account: b.relaunched(), passkeyCanUnlock: false) {}
+    unlock.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(unlock.failure == .phraseMismatch)
+    #expect(!unlock.unlocked)
+  }
+
+  @Test func aFrozenAccountAfterARelaunchShowsWhoFrozeIt() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    let signIn = SignInModel(account: b.relaunched()) { _ in }
+    signIn.email = "maya@example.com"
+    signIn.password = Self.password
+    await signIn.signInWithPassword()
+    server.freezeAll(byOperator: true)
+    let session = AccountSession(services: services(b.relaunched()), phase: .checking)
+    await session.resume()
+    #expect(session.phase == .frozen(FreezeInfo(by: .operator, when: nil)))
+  }
+
+  @Test func offlineAtLaunchWaitsWithRetry() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    let signIn = SignInModel(account: b.relaunched()) { _ in }
+    signIn.email = "maya@example.com"
+    signIn.password = Self.password
+    await signIn.signInWithPassword()
+    server.offline = true
+    let session = AccountSession(services: services(b.relaunched()), phase: .checking)
+    await session.resume()
+    #expect(session.phase == .checking)
+    #expect(session.resumeFailure == .offline)
+    server.offline = false
+    await session.resume()
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+  }
+
+  @Test func deleteAccountRunsOnTheLiveService() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    #expect(m.state?.hasPassword == true)
+    await m.request(.deleteAccount)
+    #expect(m.confirming == .deleteAccount)
+    m.confirmPassword = Self.password
+    await m.confirm()
+    #expect(m.failure == nil)
+    #expect(session.phase == .signedOut)
+    #expect(server.deletedAccounts == 1)
+    #expect(server.lastStepUpAction == "account.delete")
+    #expect(a.binding == nil)
+    #expect(try a.env.secrets.session() == nil)
+  }
+
+  @Test func signOutEverywhereSignsThisIPhoneOutToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let session = AccountSession(services: services(a.relaunched()), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    await m.request(.signOutEverywhere)
+    m.confirmPassword = Self.password
+    await m.confirm()
+    #expect(m.failure == nil)
+    #expect(server.lastStepUpAction == "session.logout_all")
+    #expect(session.phase == .signedOut)
+    #expect(try a.env.secrets.session() == nil)
+    #expect(a.binding != nil)  // keys and writer stay (`02` §9.3)
+  }
+}
+
+// MARK: - The in-app fake
+
+/// A software approval key (the Secure Enclave isn't in the simulator): P-256 with the
+/// SE key's byte formats.
+nonisolated final class SoftDAK: ApprovalKeySigner, Sendable {
+  private let keys = Mutex<[String: P256.Signing.PrivateKey]>([:])
+
+  func create(userID: UserID, writerID: WriterID) async throws(ApprovalKeyError) -> Data {
+    let k = P256.Signing.PrivateKey()
+    keys.withLock { $0[writerID.string] = k }
+    return k.publicKey.x963Representation
+  }
+
+  func publicKeyX963(userID: UserID, writerID: WriterID) throws(ApprovalKeyError) -> Data {
+    guard let k = keys.withLock({ $0[writerID.string] }) else { throw .missing }
+    return k.publicKey.x963Representation
+  }
+
+  func sign(_ message: Data, userID: UserID, writerID: WriterID, reason: String) async throws(ApprovalKeyError) -> Data {
+    guard let k = keys.withLock({ $0[writerID.string] }), let sig = try? k.signature(for: message) else {
+      throw .missing
+    }
+    return sig.rawRepresentation
+  }
+}
+
+/// `02` §7's password-account routes in memory, in `02`'s JSON shapes.
+nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
+  struct User {
+    var id: String
+    var email: String
+    var name: String
+    var verifierHash: Data
+    var keys: [String: Any]
+    var writers: [[String: Any]] = []
+    var frozenBy: String?
+    var deleted = false
+  }
+
+  struct State {
+    var invite: String
+    var signups: [String: (user: String, email: String, name: String, nonce: Data, code: String)] = [:]
+    var users: [String: User] = [:]
+    var sessions: [String: (user: String, writer: String?, revoked: Bool)] = [:]
+    var logins: [String: (email: String, nonce: Data)] = [:]
+    var writerNonces: Set<Data> = []
+    var lastCode: String?
+    var offline = false
+    var deleted = 0
+    var lastStepUpAction: String?
+  }
+
+  private let lock = NSLock()
+  private var _state: State
+
+  init(invite: String) { _state = State(invite: invite) }
+
+  /// Every read and write of the state runs under the lock.
+  private var state: Locked { Locked(owner: self) }
+
+  struct Locked {
+    let owner: MiniHasalad
+    func withLock<T>(_ body: (inout State) -> T) -> T {
+      owner.lock.lock()
+      defer { owner.lock.unlock() }
+      return body(&owner._state)
+    }
+  }
+
+  var lastCode: String? { state.withLock { $0.lastCode } }
+  var deletedAccounts: Int { state.withLock { $0.deleted } }
+  var lastStepUpAction: String? { state.withLock { $0.lastStepUpAction } }
+  var offline: Bool {
+    get { state.withLock { $0.offline } }
+    set { state.withLock { $0.offline = newValue } }
+  }
+
+  func freezeAll(byOperator: Bool) {
+    state.withLock { s in for k in s.users.keys { s.users[k]?.frozenBy = byOperator ? "operator" : "holder" } }
+  }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    if offline { throw .offline(.notConnectedToInternet) }
+    let body = request.body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    return state.withLock { s in handle(&s, "\(request.method.rawValue) \(request.path)", body, request.bearer) }
+  }
+
+  private func handle(_ s: inout State, _ route: String, _ b: [String: Any], _ bearer: String?) -> APIResponse {
+    switch route {
+    case "GET /api/v1/meta": return ok(["log_generation": 1, "min_ios_build": 0])
+    case "POST /api/v1/auth/signup/begin":
+      guard (b["invite_code"] as? String) == s.invite, let email = b["email"] as? String else {
+        return error(403, "not_invited")
+      }
+      let id = token(), n = bytes(32), user = UUID().uuidString.lowercased()
+      s.signups[id] = (user, email, b["display_name"] as? String ?? "", n, "123456")
+      s.lastCode = "123456"
+      return ok([
+        "signup_id": id, "user_id": user, "email_proven": false, "salt": Base64.encode(salt(email)),
+        "nonce": Base64.encode(n), "expires_at": "2026-10-12T00:30:00Z",
+      ])
+    case "POST /api/v1/auth/signup/verify":
+      guard let id = b["signup_id"] as? String, s.signups[id]?.code == b["code"] as? String else {
+        return error(403, "code_rejected")
+      }
+      return APIResponse(status: 204)
+    case "POST /api/v1/auth/password/register":
+      guard let id = b["signup_id"] as? String, let c = s.signups.removeValue(forKey: id),
+        let v = (b["verifier"] as? String).flatMap({ try? Base64.decode($0) }), let boot = b["bootstrap"] as? [String: Any],
+        let w = boot["writer"] as? [String: Any], let wid = w["writer_id"] as? String
+      else { return error(400, "bad_request") }
+      var u = User(
+        id: c.user, email: c.email, name: c.name, verifierHash: Data(SHA256.hash(data: v)),
+        keys: [
+          "format_version": 1, "amk_commitment": boot["amk_commitment"] ?? "", "authority_pubkey": boot["authority_pubkey"] ?? "",
+          "recovery_pubkey": boot["recovery_pubkey"] ?? "", "recovery_wrap": boot["recovery_wrap"] ?? "", "current_epoch": 1,
+        ])
+      u.writers.append(writerRow(wid, w["pubkey"], w["dak_pubkey"], boot["nonce"], boot["registration_sig"], id: 1))
+      s.users[c.user] = u
+      let t = token()
+      s.sessions[t] = (c.user, wid, false)
+      return grant(t, u, writer: wid, status: 201)
+    case "POST /api/v1/auth/password/login/begin":
+      guard let email = (b["email"] as? String).flatMap({ try? EmailNorm.normalize($0) }) else { return error(400, "bad_email") }
+      let id = token(), n = bytes(32)
+      s.logins[id] = (email, n)
+      return ok(["ceremony_id": id, "salt": Base64.encode(salt(email)), "nonce": Base64.encode(n)])
+    case "POST /api/v1/auth/password/login/finish":
+      guard let id = b["ceremony_id"] as? String, let c = s.logins.removeValue(forKey: id),
+        let v = (b["verifier"] as? String).flatMap({ try? Base64.decode($0) }),
+        let u = s.users.values.first(where: { $0.email == c.email && !$0.deleted }),
+        u.verifierHash == Data(SHA256.hash(data: v))
+      else { return error(403, "password_rejected") }
+      let writer = (b["device"] as? [String: Any])?["writer_id"] as? String
+      let t = token()
+      s.sessions[t] = (u.id, writer, false)
+      return grant(t, u, writer: writer)
+    default: break
+    }
+    guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }
+    guard var u = s.users[sess.user], !u.deleted else { return error(410, "account_deleted") }
+    if u.frozenBy != nil, route != "GET /api/v1/account", route != "POST /api/v1/auth/logout" {
+      return error(403, "account_frozen")
+    }
+    switch route {
+    case "GET /api/v1/auth/session":
+      return ok(["user_id": u.id, "writer_id": opt(sess.writer), "restricted": u.frozenBy != nil])
+    case "GET /api/v1/account":
+      return ok([
+        "user_id": u.id, "status": "active", "has_keys": true, "email": u.email, "display_name": u.name,
+        "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": false,
+        "frozen": u.frozenBy != nil, "frozen_by": opt(u.frozenBy), "restricted": u.frozenBy != nil,
+      ])
+    case "GET /api/v1/keys": return ok(u.keys)
+    case "GET /api/v1/keys/wraps": return ok(["wraps": [Any]()])
+    case "POST /api/v1/writers/challenge":
+      let n = bytes(32)
+      s.writerNonces.insert(n)
+      return ok(["nonce": Base64.encode(n)])
+    case "POST /api/v1/writers/register":
+      guard let wid = b["writer_id"] as? String, let n = (b["nonce"] as? String).flatMap({ try? Base64.decode($0) }),
+        s.writerNonces.remove(n) != nil
+      else { return error(400, "bad_signature") }
+      u.writers.append(writerRow(wid, b["pubkey"], b["dak_pubkey"], b["nonce"], b["sig"], id: u.writers.count + 1))
+      s.users[u.id] = u
+      s.sessions[bearer]?.writer = wid
+      return ok(["writer_id": wid], status: 201)
+    case "GET /api/v1/key-history":
+      return ok(["entries": u.writers.map { $0.filter { $0.key != "current" } }])
+    case "GET /api/v1/writers":
+      return ok([
+        "writers": u.writers.map {
+          [
+            "writer_id": $0["writer_id"] ?? "", "alg": "ed25519", "pubkey": $0["pubkey"] ?? "",
+            "dak_pubkey": $0["dak_pubkey"] ?? "", "current": ($0["writer_id"] as? String) == sess.writer,
+          ]
+        }
+      ])
+    case "POST /api/v1/auth/step-up/begin":
+      guard let action = b["action"] as? String, let ph = (b["params_hash"] as? String).flatMap({ try? Hex.decode($0) })
+      else { return error(400, "bad_request") }
+      let n = bytes(32)
+      guard let c = try? StepUp.challenge(nonce: n, action: action, paramsHash: ph) else { return error(400, "bad_request") }
+      s.lastStepUpAction = action
+      return ok(["nonce": Base64.encodeURL(n), "challenge": Base64.encodeURL(c)])
+    case "POST /api/v1/auth/logout":
+      s.sessions[bearer]?.revoked = true
+      return APIResponse(status: 204)
+    case "POST /api/v1/auth/logout-all":
+      guard b["step_up"] != nil else { return error(403, "step_up_required") }
+      for (t, x) in s.sessions where x.user == u.id { s.sessions[t]?.revoked = true }
+      return APIResponse(status: 204)
+    case "DELETE /api/v1/account":
+      guard b["step_up"] != nil, b["sig"] != nil else { return error(400, "bad_request") }
+      s.users[u.id]?.deleted = true
+      s.deleted += 1
+      return APIResponse(status: 204)
+    default:
+      return error(404, "not_found")
+    }
+  }
+
+  private func writerRow(_ id: String, _ pub: Any?, _ dak: Any?, _ nonce: Any?, _ sig: Any?, id n: Int) -> [String: Any] {
+    [
+      "id": String(n), "writer_id": id, "alg": "ed25519", "pubkey": pub ?? "", "dak_pubkey": dak ?? "",
+      "event": "registered", "authorized_by": "authority", "nonce": nonce ?? "", "signature": sig ?? "",
+    ]
+  }
+
+  private func grant(_ t: String, _ u: User, writer: String?, status: Int = 200) -> APIResponse {
+    ok([
+      "session_token": t, "user_id": u.id, "expires_at": "2027-01-09T00:00:00Z", "writer_id": opt(writer),
+      "has_keys": true, "restricted": u.frozenBy != nil,
+    ], status: status)
+  }
+
+  private func salt(_ email: String) -> Data { Data(SHA256.hash(data: Data("s_srv|\(email)".utf8))) }
+  private func bytes(_ n: Int) -> Data { Data((0..<n).map { _ in UInt8.random(in: 0...255) }) }
+  private func token() -> String { Base64.encodeURL(bytes(32)) }
+
+  private func ok(_ v: [String: Any], status: Int = 200) -> APIResponse {
+    let data = (try? JSONSerialization.data(withJSONObject: v)) ?? Data()
+    return APIResponse(status: status, headers: ["Content-Type": "application/json"], body: data)
+  }
+
+  /// JSON null for a missing value.
+  private func opt(_ v: String?) -> Any { v ?? NSNull() }
+
+  private func error(_ status: Int, _ code: String) -> APIResponse {
+    APIResponse(status: status, body: Data(#"{"error":"\#(code)","detail":""}"#.utf8))
+  }
+}

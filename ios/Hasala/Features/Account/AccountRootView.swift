@@ -36,6 +36,9 @@ struct AccountRootView<Main: View>: View {
   @State private var passcodeChecked = 0
   @State private var pendingReset: PendingReset?
   @State private var lockingDown = false
+  /// "No, that's not me" was tapped: the lockdown sheet follows once the approval sheet
+  /// has finished dismissing (two sheets at once drop the second).
+  @State private var lockdownAfterApproval = false
 
   @ViewBuilder private var content: some View {
     let _ = passcodeChecked
@@ -51,6 +54,8 @@ struct AccountRootView<Main: View>: View {
     switch session.phase {
     case .signedOut:
       WelcomeFlowView(session: session)
+    case .checking:
+      BootCheckView(session: session)
     case .onboarding:
       SetupFlowView(model: SetupModel(
         services: session.services,
@@ -68,14 +73,14 @@ struct AccountRootView<Main: View>: View {
           }
         })
     case .needsKeys:
-      NeedsKeysWall { session.signedOut() }
+      InterruptedSetupFlowView(session: session)
     case .frozen(let info):
       FrozenWall(session: session, info: info)
     case .ready:
       main()
         .safeAreaInset(edge: .top, spacing: 0) {
-          if session.leftFrozen {
-            FrozenBanner { session.froze(FreezeInfo(by: .holder, when: nil)) }
+          if let info = session.leftFrozen {
+            FrozenBanner(by: info.by) { session.showFrozenWall() }
           }
         }
         // A password reset another iPhone asked this one to approve (spec 04 §6.12):
@@ -84,9 +89,14 @@ struct AccountRootView<Main: View>: View {
           guard scenePhase == .active, pendingReset == nil else { return }
           pendingReset = await session.account.pendingResetRequest()
         }
-        .sheet(item: $pendingReset) { request in
-          ResetApprovalSheet(model: ResetApprovalModel(account: session.account, request: request)) {
+        .sheet(item: $pendingReset, onDismiss: {
+          if lockdownAfterApproval {
+            lockdownAfterApproval = false
             lockingDown = true
+          }
+        }) { request in
+          ResetApprovalSheet(model: ResetApprovalModel(account: session.account, request: request)) {
+            lockdownAfterApproval = true
           }
         }
         .sheet(isPresented: $lockingDown) {
