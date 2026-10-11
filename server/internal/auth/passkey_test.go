@@ -634,7 +634,7 @@ func TestAddIsRefusedForAnAccountWithNoPasskeyIdentity(t *testing.T) {
 	p := newPasskeys(t, pool)
 	// An Apple account: it has no user handle, so there is nothing to bind a
 	// new credential to without silently minting a second identity.
-	u := mustUpsert(t, pool, appleIdentity("sub-no-passkey"))
+	u := mustUpsert(t, pool, testIdentity("sub-no-passkey"))
 	if _, _, err := p.BeginAdd(bgctx, u); !errors.Is(err, ErrNoPasskeyIdentity) {
 		t.Fatalf("BeginAdd on a non-passkey account: %v, want ErrNoPasskeyIdentity", err)
 	}

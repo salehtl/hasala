@@ -57,7 +57,7 @@ func (h *harness) beginAssert(path, token string) (string, *protocol.CredentialA
 }
 
 // register runs a whole sign-up over HTTP and returns the session it minted.
-func (h *harness) register(code string) (*authtest.Authenticator, ExchangeResponse) {
+func (h *harness) register(code string) (*authtest.Authenticator, SessionResponse) {
 	h.t.Helper()
 	id, opts := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
 		PasskeyRegisterBeginRequest{InviteCode: code})
@@ -66,7 +66,7 @@ func (h *harness) register(code string) (*authtest.Authenticator, ExchangeRespon
 		CeremonyID: id, Credential: a.Create(h.t, opts),
 	})
 	wantStatus(h.t, w, http.StatusOK)
-	return a, decodeJSON[ExchangeResponse](h.t, w)
+	return a, decodeJSON[SessionResponse](h.t, w)
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ func TestPasskeyLoginOverHTTPReturnsASessionForTheSameAccount(t *testing.T) {
 		CeremonyID: id, Credential: a.Assert(t, opts, 5),
 	})
 	wantStatus(t, w, http.StatusOK)
-	out := decodeJSON[ExchangeResponse](t, w)
+	out := decodeJSON[SessionResponse](t, w)
 	if out.UserID != registered.UserID {
 		t.Fatalf("login user_id = %s, registration created %s", out.UserID, registered.UserID)
 	}
@@ -246,14 +246,14 @@ func TestAddPasskeyStoresASecondCredentialForTheSameAccount(t *testing.T) {
 		CeremonyID: lid, Credential: second.Assert(t, lopts, 6),
 	})
 	wantStatus(t, lw, http.StatusOK)
-	if got := decodeJSON[ExchangeResponse](t, lw).UserID; got != session.UserID {
+	if got := decodeJSON[SessionResponse](t, lw).UserID; got != session.UserID {
 		t.Fatalf("the added credential signed in as %s, want %s", got, session.UserID)
 	}
 }
 
 func TestAddPasskeyIsRefusedForAnAccountWithoutOne(t *testing.T) {
 	h := newHarness(t).passkeys()
-	tok := h.session(h.user("apple-only"))
+	tok := h.session(h.user("no-passkey"))
 	w := h.req("POST", "/api/v1/auth/passkey/add/begin", tok, map[string]any{})
 	// A live session, and still refused: this account has no user handle to
 	// bind a credential to, and minting one would be account linking.

@@ -1,8 +1,8 @@
 package budget
 
 // account_refusals has ONE writer, and these are the properties that keep it
-// that way. It used to have two — this package's gate and smtpd's PGStore —
-// with two different day clocks and only one purged-account guard between them.
+// that way. ledgerd once had two (this gate and the SMTP receiver's store) with
+// two different day clocks; the receiver is gone, and the rule stays.
 
 import (
 	"reflect"
@@ -16,12 +16,9 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// CountRefusals is what the SMTP path calls, so it must accept the resources
-// only that path produces. The old allowlist was hard-coded to this package's
-// four ledger resources, which would have rejected every SMTP refusal the
-// moment the two writers were merged — the refusal would then be retried
-// forever out of smtpd's buffer and counted nowhere, which is the silent drop
-// this table exists to prevent.
+// CountRefusals is what the refusal-only paths call (the upload limiter, the
+// headroom fuse, suspension), so it must accept every resource the closed set
+// allows, not only the ledger's.
 func TestCountRefusalsAcceptsEveryResourceTheClosedSetAllows(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool)
@@ -76,15 +73,15 @@ func TestCountRefusalsRefusesWhatItCannotRecord(t *testing.T) {
 		t.Fatal("a resource outside the closed set was accepted; the database would have refused it " +
 			"inside a retry loop instead")
 	}
-	if err := CountRefusals(bg, pool, uuid.Nil, ResourceSMTPDaily, 1); err == nil {
+	if err := CountRefusals(bg, pool, uuid.Nil, ResourceHeadroom, 1); err == nil {
 		t.Fatal("a zero user was accepted")
 	}
-	if err := CountRefusals(bg, nil, u, ResourceSMTPDaily, 1); err == nil {
+	if err := CountRefusals(bg, nil, u, ResourceHeadroom, 1); err == nil {
 		t.Fatal("a nil pool was accepted")
 	}
-	// Zero and negative are no-ops, not errors: smtpd flushes a buffer that can
+	// Zero and negative are no-ops, not errors: a caller flushing a buffer can
 	// legitimately hold nothing for a key.
-	if err := CountRefusals(bg, pool, u, ResourceSMTPDaily, 0); err != nil {
+	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 0); err != nil {
 		t.Fatalf("n = 0 must be a no-op: %v", err)
 	}
 	if got := refusals(t, pool, u); len(got) != 0 {
@@ -102,7 +99,7 @@ func TestARefusalForAPurgedAccountIsSkippedRatherThanFailed(t *testing.T) {
 	if _, err := pool.Exec(bg, `DELETE FROM users WHERE id = $1`, u); err != nil {
 		t.Fatal(err)
 	}
-	if err := CountRefusals(bg, pool, u, ResourceSMTPDaily, 3); err != nil {
+	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 3); err != nil {
 		t.Fatalf("a refusal for a purged account = %v, want it silently skipped", err)
 	}
 	if got := refusals(t, pool, u); len(got) != 0 {
@@ -110,24 +107,24 @@ func TestARefusalForAPurgedAccountIsSkippedRatherThanFailed(t *testing.T) {
 	}
 }
 
-// n accumulates rather than overwriting: smtpd hands over a BATCH of counts,
+// n accumulates rather than overwriting: a caller may hand over a BATCH of counts,
 // and a DO UPDATE SET count = 1 would turn a hundred refusals into one.
 func TestCountRefusalsAccumulates(t *testing.T) {
 	pool := pgtest.New(t)
 	u := newUser(t, pool)
-	if err := CountRefusals(bg, pool, u, ResourceSMTPDaily, 7); err != nil {
+	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 7); err != nil {
 		t.Fatal(err)
 	}
-	if err := CountRefusals(bg, pool, u, ResourceSMTPDaily, 5); err != nil {
+	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 5); err != nil {
 		t.Fatal(err)
 	}
-	if got := refusals(t, pool, u)[ResourceSMTPDaily]; got != 12 {
-		t.Fatalf("account_refusals[smtp_daily] = %d, want 12", got)
+	if got := refusals(t, pool, u)[ResourceHeadroom]; got != 12 {
+		t.Fatalf("account_refusals[headroom] = %d, want 12", got)
 	}
 }
 
 // One day clock, and it is the database's. Both paths — the gate's ceiling
-// refusal and the SMTP one — must land on the same date for the same instant,
+// refusal and a refusal-only one — must land on the same date for the same instant,
 // or "what was declined today" means two different things depending on which
 // wall the account hit.
 func TestBothRefusalPathsShareTheDatabasesDay(t *testing.T) {
@@ -140,8 +137,8 @@ func TestBothRefusalPathsShareTheDatabasesDay(t *testing.T) {
 	if err := admit(t, g, u, ResourceOplogHotBytes, 2); err == nil {
 		t.Fatal("want a refusal")
 	}
-	// The SMTP path, through the same writer.
-	if err := CountRefusals(bg, pool, u, ResourceSMTPDaily, 1); err != nil {
+	// A refusal-only path, through the same writer.
+	if err := CountRefusals(bg, pool, u, ResourceHeadroom, 1); err != nil {
 		t.Fatal(err)
 	}
 

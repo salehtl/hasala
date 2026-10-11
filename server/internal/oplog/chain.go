@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,77 +12,41 @@ import (
 	"github.com/salehtl/hasala/server/internal/blob"
 )
 
-// This file implements the per-(writer_id, stream) hash chains of spec §3.3.
+// This file implements the per-writer hash chains (spec 01 §7).
 //
 // # The rule, frozen
 //
-// For each (writer_id, stream) INDEPENDENTLY:
+// For each (writer_id, stream) INDEPENDENTLY (there is one stream, "hot"):
 //
-//	blob_hash[n] = SHA256(blob_hash[n-1] || blob_bytes[n]),  blob_hash[0] = 32 zero bytes
+//	blob_hash[n] = SHA256(blob_hash[n-1] || frame[n]),  blob_hash[0] = 32 zero bytes
 //
-// The hash covers the STORED bytes — the framed, padded envelope, which is
-// plaintext in Phase 1 and ciphertext in Phase 3 — so the formula does not
-// change when sealing turns on, and anyone holding the stored blob can
-// recompute it, including a server that cannot read it. [blob.Hash] is the one
-// implementation; the TypeScript port mirrors it and
-// TestChainRuleIsPinnedByAGoldenVector pins the bytes both must produce.
+// The hash covers the STORED bytes — the sealed, padded frame — so anyone
+// holding the stored blob can recompute it, including a server that cannot
+// read it. [blob.Hash] is the one implementation; the golden steps in
+// conformance/blob/manifest.json pin the bytes every implementation must
+// produce.
 //
-// # Why per (writer, stream) and not per writer (Decision 13)
+// # What these chains prove, and what they do NOT
 //
-// The ingest writer appends a hot blob and a cold blob for the same email. A
-// single chain per writer would interleave them, so a hot-only pull would see
-// counters 1, 3, 5, … whose prev_hash values point at cold blobs the client
-// deliberately did not fetch. Spec §3.3:70 makes the cold stream lazily synced
-// behind a rolling client-side window, so those gaps are permanent and by
-// design — the client would be unable to tell "I skipped cold on purpose" from
-// "the server dropped an op". Splitting the chain per stream makes the hot
-// chain self-verifying from hot rows alone and confines lazy verification to
-// cold, where spec §3.3:72's per-blob hash list is the mechanism.
+// Every row is authored by a device, over frames sealed under a key the server
+// does not hold (frame v3: the AEAD binds the header and prev_hash), so a
+// server that drops, reorders or splices a device's ops is detected by that
+// device and by the user's other devices. Linkage alone does not prove
+// truncation or a fully re-chained history; those need a pinned head — the
+// device's persisted head and the signed batch heads of spec 01 §7.1 (WS-2).
 //
-// # What these chains prove, and what they do NOT (spec §3.3(b))
-//
-// Read the Phase 1 caveat below before quoting either of these.
-//
-//   - A CLIENT writer's chain is computed on the device, over blobs sealed
-//     under a key the server does not hold. ONCE THAT IS TRUE (Phase 3), the
-//     server cannot forge it, so a server that drops or reorders that device's
-//     ops is detected — by that device, and at sync by the user's other
-//     devices. That is a real integrity claim about the operator.
-//
-//   - The INGEST writer's chain is computed by the server, over material the
-//     server itself sealed. It proves storage and backup integrity — a blob
-//     silently altered or lost after the fact is detectable — and it proves
-//     NOTHING about operator honesty, in any phase. A compromised server can
-//     fabricate a perfectly well-formed ingest chain of transactions that never
-//     happened. Nothing in this file narrows that gap, and no caller may present
-//     a valid ingest chain as evidence that the ingest history is genuine. It is
-//     why the ingest writer has no key (auth.KindIngest) and why the client UI
-//     labels server-ingested provenance distinctly.
-//
-// # What Phase 1 does NOT claim
-//
-// Phase 1 blobs are PLAINTEXT with a zero tag (blob's "What Phase 1 does NOT
-// claim"). There is no DEK yet, so "the server cannot forge a client writer's
-// chain" is a property of the finished system and NOT of what ships today: as
-// built, the server could author a client writer's blobs and chain them
-// flawlessly, and nothing here would notice. The chains are still worth
-// building now, because their shape is what Phase 3 makes unforgeable and
-// because they already detect accidental loss and reordering in storage — but
-// a Phase 1 chain is evidence about mistakes, not about an adversary.
-//
-// What DOES hold in both phases: the chain is computed over the stored bytes,
-// so the formula never changes; and Row.validate binds every blob to the
-// position it is stored at, because the AAD is cleartext framing in both phases
-// (blob.EmbeddedAAD).
+// Row.validate binds every blob to the position it is stored at, because the
+// AAD is cleartext framing (blob.EmbeddedAAD), and refuses anything that does
+// not look sealed (blob.LooksSealed).
 //
 // # Where the roster check lives (deliberately not here)
 //
 // A revoked or unknown writer must not be able to append. That decision needs
-// auth.Writers.Roster, and auth imports this package (auth.UpsertUser calls
+// auth.Writers.Roster, and auth imports this package (account creation calls
 // EnsureSeqRow), so it cannot be made here without an import cycle. It belongs
 // to the sync handler, which authenticates the session anyway; [Appender.AppendClient]
 // therefore assumes its caller has already checked that writerID is a live
-// writer of userID.
+// writer of userID. The op_log_writer_fk foreign key is the database's half.
 
 // ErrChainBreak means a writer's hash chain does not line up: a counter that
 // skips, a prev_hash that does not match the row before it, or a blob_hash that
@@ -97,18 +60,12 @@ import (
 // tampered with your data" warning.
 var ErrChainBreak = errors.New("writer hash chain break")
 
-// IngestWriterID is the fixed writer id of every user's server-side writer.
-// auth.IngestWriterID is defined as this constant so the two cannot drift: the
-// string travels in op_log.writer_id and in every ingest blob's AAD, where a
-// mismatch would strand rows under a writer that has no roster row.
-const IngestWriterID = "ingest"
-
 // The unique key that makes a (writer, stream, counter) position exclusive, and
 // the SQLSTATE a collision on it raises. Named here because two code paths need
 // to recognise exactly this violation and nothing else — see [isPositionTaken].
 const (
 	uniqueViolation    = "23505"
-	positionConstraint = "op_log_user_id_writer_id_stream_writer_counter_key"
+	positionConstraint = "op_log_position_uniq"
 )
 
 // errBatchAlreadyApplied unwinds the append transaction when the batch turns
@@ -276,26 +233,11 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 	if len(rows) == 0 {
 		return nil, nil
 	}
-	if writerID == IngestWriterID {
-		// The ingest writer is the server's own, and the client UI labels its
-		// ops "server-ingested". A device allowed to append here would be
-		// laundering its own ops into that provenance — the same reason
-		// auth.Writers.Register reserves the id.
-		return nil, fmt.Errorf("oplog: append client: %q is the server's own writer and is not client-writable", IngestWriterID)
-	}
-	if stream == blob.StreamCold {
-		// Invariant I16: the cold stream carries raw email bodies and never
-		// ops. Only the ingest writer produces those, so a client-authored cold
-		// row would be an op blob on the stream a hot-only client skips —
-		// exactly the thing that makes "hot-only sync is a COMPLETE
-		// materialization" false.
-		//
-		// The stream PARAMETER still exists rather than being assumed: it is
-		// what makes the position explicit in every AAD and lets a future
-		// client-side cold producer arrive without a signature change. This
-		// check is the thing that would then be revisited — deliberately, and
-		// together with I16.
-		return nil, fmt.Errorf("oplog: append client: the %q stream carries raw bodies from the ingest writer only (invariant I16)", blob.StreamCold)
+	if stream != blob.StreamHot {
+		// The only stream (the op_log_stream_is_hot CHECK). ledgerd's cold
+		// stream carried raw mail from the server's own writer, which no
+		// longer exists.
+		return nil, fmt.Errorf("oplog: append client: stream %q, want %q", stream, blob.StreamHot)
 	}
 
 	// Copied, not mutated in place: a caller's slice is its own, and filling in
@@ -321,9 +263,8 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 			r.TypeFlag = TypeFlagEdit
 		}
 		if r.TypeFlag != TypeFlagEdit {
-			// type_flag is the provenance column. TypeFlagIngest means "the
-			// server wrote this from inbound mail", which a device writer's row
-			// is by definition not.
+			// type_flag has one value: every row is a device's own batch
+			// (ledgerd's server-authored "ingest" rows are retired).
 			return nil, fmt.Errorf("oplog: append client: row %d has type_flag %q, want %q", i, r.TypeFlag, TypeFlagEdit)
 		}
 		if err := r.validate(); err != nil {
@@ -400,119 +341,6 @@ func (a *Appender) resolveAppendErr(ctx context.Context, userID uuid.UUID, write
 	default:
 		return nil, err
 	}
-}
-
-// IngestBlob is one blob the SERVER authors: its plaintext and the stream it
-// belongs to. The counter, the chain hashes and the framing are all computed by
-// AppendIngest.
-//
-// It carries plaintext rather than a sealed blob on purpose. blob.Envelope's
-// AAD binds writer_counter, so the bytes depend on the position — and the
-// position is not known until the append transaction holds the user's counter
-// lock. A caller that sealed first would have to guess its counter, and a wrong
-// guess stores a blob that can never be opened at the position it occupies
-// (blob.ErrAADMismatch), permanently and silently. Sealing inside the
-// transaction removes the guess.
-type IngestBlob struct {
-	Stream    string // blob.StreamHot or blob.StreamCold
-	Plaintext []byte
-	// CreatedAt is the message's received time. Zero means now().
-	CreatedAt time.Time
-}
-
-// AppendIngest appends the server's own blobs under the ingest writer,
-// computing each one's counter and chain hash PER STREAM: a call carrying a hot
-// and a cold blob for the same email gets the next hot counter and the next
-// cold counter, which are two independent numbers and usually not consecutive
-// (Decision 13).
-//
-// What the resulting chain proves is stated at the top of this file and is
-// worth repeating at the call site: it is evidence about storage integrity, not
-// about the operator. A compromised server can produce a flawless ingest chain
-// over transactions that never existed.
-//
-// AppendIngest is NOT idempotent — it cannot be, since it assigns the counters.
-// A redelivered message appended twice becomes two well-chained ops. Dedup is
-// by ingest identity (spec §3.3:67) and belongs to the pipeline, which checks
-// for the ingest id before calling this.
-//
-// Accepted cost: sealing happens inside the append transaction, so gzip of a
-// ~1 MB cold body runs while the user's counter row is locked. That is the same
-// trade appendRows already documents for the blob INSERT — bounded, per-user,
-// and the price of not guessing a counter.
-func (a *Appender) AppendIngest(ctx context.Context, userID uuid.UUID, blobs []IngestBlob) ([]int64, error) {
-	if len(blobs) == 0 {
-		return nil, nil
-	}
-	rows := make([]Row, len(blobs))
-	for i, b := range blobs {
-		if b.Stream != blob.StreamHot && b.Stream != blob.StreamCold {
-			return nil, fmt.Errorf("oplog: append ingest: blob %d has stream %q, want %q or %q", i, b.Stream, blob.StreamHot, blob.StreamCold)
-		}
-		if len(b.Plaintext) == 0 {
-			return nil, fmt.Errorf("oplog: append ingest: blob %d is empty", i)
-		}
-		if len(b.Plaintext) > blob.MaxPlaintext {
-			return nil, fmt.Errorf("oplog: append ingest: blob %d is %d bytes, cap is %d", i, len(b.Plaintext), blob.MaxPlaintext)
-		}
-		rows[i] = Row{
-			UserID:    userID,
-			Stream:    b.Stream,
-			WriterID:  IngestWriterID,
-			TypeFlag:  TypeFlagIngest,
-			CreatedAt: b.CreatedAt,
-		}
-	}
-
-	sealer := a.sealer()
-	prepare := func(ctx context.Context, tx pgx.Tx, rows []Row) error {
-		// One head per stream, advanced as the batch is built, so two rows on
-		// the same stream in one call chain to each other rather than both
-		// claiming the same counter.
-		type head struct {
-			counter int64
-			hash    [32]byte
-		}
-		heads := make(map[string]head, 2)
-		for i := range rows {
-			h, ok := heads[rows[i].Stream]
-			if !ok {
-				c, hh, err := headOf(ctx, tx, userID, IngestWriterID, rows[i].Stream)
-				if err != nil {
-					return err
-				}
-				h = head{counter: c, hash: hh}
-			}
-			counter := h.counter + 1
-			sealed, err := sealer.Seal(blob.Envelope{
-				UserID: userID, Stream: rows[i].Stream, WriterID: IngestWriterID, WriterCounter: counter,
-			}, blobs[i].Plaintext)
-			if err != nil {
-				return fmt.Errorf("oplog: append ingest: seal blob %d: %w", i, err)
-			}
-			hash := blob.Hash(h.hash, sealed)
-			prev := h.hash
-			rows[i].WriterCounter = counter
-			rows[i].Blob = sealed.Bytes
-			rows[i].SizeBucket = sealed.SizeBucket
-			rows[i].PrevHash = prev[:]
-			rows[i].BlobHash = hash[:]
-			heads[rows[i].Stream] = head{counter: counter, hash: hash}
-		}
-		return nil
-	}
-	return a.appendRows(ctx, rows, prepare)
-}
-
-// sealer is the Phase 3 swap point for the ingest path: today it frames,
-// compresses and pads; then it will encrypt to the user's public key. Nothing
-// else in this file changes on that day, because the chain hashes the stored
-// bytes either way.
-func (a *Appender) sealer() blob.Sealer {
-	if a.Sealer != nil {
-		return a.Sealer
-	}
-	return blob.PlaintextSealer{}
 }
 
 // appliedSeqs resolves a batch that appears to have been stored already: it

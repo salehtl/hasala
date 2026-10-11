@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -13,36 +15,33 @@ import (
 // The property every test in this file asserts, stated once: disowning a device
 // stops its notifications.
 //
-// It did not, and the gap was not small. push_tokens carried no link to a
-// writer or a session, Writers.Revoke and both Sessions revocations left it
-// untouched, and the only removal path needed the exact Expo token string —
-// which the user of a stolen, signed-out or handed-on phone does not have. So a
-// device the user had explicitly disowned kept receiving a real-time "New
-// transaction" on its lock screen for the life of the account. The payload
-// carries nothing; the TIMING is a live feed of when that person spends.
+// In ledgerd it once did not: a device the user had explicitly disowned kept
+// receiving a real-time wake for the life of the account. The payload carries
+// nothing; the TIMING is a live feed of when that person spends. The table is
+// now apns_tokens (spec 02 §5.3), bound to the writer and the session that
+// registered it, and every revocation deletes it in its own transaction (spec
+// 02 §9.3, F4).
 //
 // These run in auth rather than in pushv2 because auth owns the revocation
 // transactions, and "the sweep committed with the revocation" is the part that
 // cannot be checked from the other side.
 
-// registerPushToken plants a row the way the retired native push-token API
-// did. That API was removed on 2026-08-10 with the Expo client it served, but
-// push_tokens and this sweep both stay: rows written before the removal are
-// still on the deployed database, and a revoked device must stop being a
-// notification target whether or not anything can create such a row today.
+// registerPushToken plants an APNs token row directly, as WS-4's token route
+// will: one per device writer, bound to the registering session.
 func registerPushToken(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, writerID, sessionToken, token string) {
 	t.Helper()
+	sum := sha256.Sum256([]byte(token))
 	if _, err := pool.Exec(bgctx,
-		`INSERT INTO push_tokens (user_id, token, platform, writer_id, session_hash)
-		 VALUES ($1,$2,'ios',$3,$4)`,
-		u, token, writerID, SessionHash(sessionToken)); err != nil {
+		`INSERT INTO apns_tokens (user_id, writer_id, session_hash, token_hex, environment, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, 'production', now(), now())`,
+		u, writerID, SessionHash(sessionToken), hex.EncodeToString(sum[:])); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func pushTokenCount(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) int {
 	t.Helper()
-	return countRows(t, pool, `SELECT count(*) FROM push_tokens WHERE user_id = $1`, u)
+	return countRows(t, pool, `SELECT count(*) FROM apns_tokens WHERE user_id = $1`, u)
 }
 
 // TestRevokingAWriterStopsThatDevicesNotifications is the stolen-phone case.
@@ -53,7 +52,7 @@ func TestRevokingAWriterStopsThatDevicesNotifications(t *testing.T) {
 	c := newClock()
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
-	u := mustUpsert(t, pool, appleIdentity("sub-push-revoke-writer"))
+	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-writer"))
 
 	stolen, replacement := newDevice(t, "stolen-phone"), newDevice(t, "replacement")
 	mustEnroll(t, w, u, stolen, stolen)
@@ -72,13 +71,13 @@ func TestRevokingAWriterStopsThatDevicesNotifications(t *testing.T) {
 	}
 
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM push_tokens WHERE user_id = $1 AND writer_id = $2`, u, stolen.id); got != 0 {
+		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, stolen.id); got != 0 {
 		t.Fatalf("the revoked device still has %d push token(s): it keeps receiving every transaction", got)
 	}
 	// And only that device. Revocation is not sign-out-everywhere; a user who
 	// retires one phone must not lose notifications on the one in their hand.
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM push_tokens WHERE user_id = $1 AND writer_id = $2`, u, replacement.id); got != 1 {
+		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, replacement.id); got != 1 {
 		t.Fatalf("revoking one device removed the other's push token (%d left)", got)
 	}
 }
@@ -92,8 +91,8 @@ func TestRevokingAWriterLeavesOtherAccountsAlone(t *testing.T) {
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
 
-	a := mustUpsert(t, pool, appleIdentity("sub-push-revoke-a"))
-	b := mustUpsert(t, pool, appleIdentity("sub-push-revoke-b"))
+	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-a"))
+	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-b"))
 	const shared = "iphone"
 
 	da, db := newDevice(t, shared), newDevice(t, shared)
@@ -133,7 +132,7 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 	c := newClock()
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
-	u := mustUpsert(t, pool, appleIdentity("sub-push-revoke-session"))
+	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-session"))
 
 	phone, tablet := newDevice(t, "phone"), newDevice(t, "tablet")
 	mustEnroll(t, w, u, phone, phone)
@@ -154,11 +153,11 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM push_tokens WHERE user_id = $1 AND writer_id = $2`, u, phone.id); got != 0 {
+		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, phone.id); got != 0 {
 		t.Fatalf("the signed-out device still has %d push token(s)", got)
 	}
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM push_tokens WHERE user_id = $1 AND writer_id = $2`, u, tablet.id); got != 1 {
+		`SELECT count(*) FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, u, tablet.id); got != 1 {
 		t.Fatalf("signing out one device stopped another's notifications (%d left)", got)
 	}
 	// Idempotent, and the sweep is not gated on the UPDATE having done work:
@@ -180,8 +179,8 @@ func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 	w := newWriters(pool, c)
 	sessions := newSessions(pool, time.Hour, c)
 
-	a := mustUpsert(t, pool, appleIdentity("sub-push-revoke-all-a"))
-	b := mustUpsert(t, pool, appleIdentity("sub-push-revoke-all-b"))
+	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-a"))
+	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-b"))
 
 	for _, u := range []uuid.UUID{a, b} {
 		d := newDevice(t, "only-device")
@@ -205,7 +204,7 @@ func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 }
 
 // TestSessionHashIsTheStoredForm. The API stores the HASH of the bearer token
-// against a push_tokens row, never the token, so a leaked row names a session
+// against a apns_tokens row, never the token, so a leaked row names a session
 // without being usable as one — and Revoke can only find the row it should if
 // both sides derive the same bytes.
 func TestSessionHashIsTheStoredForm(t *testing.T) {

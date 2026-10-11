@@ -11,23 +11,38 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// seedInterleaved appends n ingest messages, each carrying one hot and one cold
-// blob, so the two streams share one seq space and neither is contiguous in it.
-// It returns nothing: every assertion below reads the rows back.
+// seedInterleaved appends n rounds of one row from dev-a and one from dev-b,
+// so the two writers' chains share one seq space and neither is contiguous in
+// it. It returns nothing: every assertion below reads the rows back.
 func seedInterleaved(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, n int) {
 	t.Helper()
 	a := &Appender{Pool: pool}
 	for i := 0; i < n; i++ {
-		if _, err := a.AppendIngest(bg, u, []IngestBlob{
-			{Stream: blob.StreamHot, Plaintext: []byte(`{"hot":true}`)},
-			{Stream: blob.StreamCold, Plaintext: []byte(`{"cold":true}`)},
-		}); err != nil {
-			t.Fatal(err)
+		for _, w := range []string{"dev-a", "dev-b"} {
+			c, head, err := a.Head(bg, u, w, blob.StreamHot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, _ := chainFrom(t, u, w, blob.StreamHot, c+1, head, 1)
+			if _, err := a.AppendClient(bg, u, w, blob.StreamHot, rows); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }
 
-func TestReadReturnsOneStreamInSeqOrderWithSparseSeqs(t *testing.T) {
+// writerRows keeps one writer's rows, in the order given.
+func writerRows(rows []Row, writer string) []Row {
+	var out []Row
+	for _, r := range rows {
+		if r.WriterID == writer {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func TestReadReturnsTheLogInSeqOrderAndEachChainVerifies(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	seedInterleaved(t, pool, u, 5)
@@ -36,32 +51,27 @@ func TestReadReturnsOneStreamInSeqOrderWithSparseSeqs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 5 {
-		t.Fatalf("read %d hot rows, want 5", len(rows))
+	if len(rows) != 10 {
+		t.Fatalf("read %d rows, want 10", len(rows))
 	}
-	var last int64
 	for i, r := range rows {
-		if r.Stream != blob.StreamHot {
-			t.Fatalf("row %d is on stream %q", i, r.Stream)
-		}
-		if r.Seq <= last {
-			t.Fatalf("row %d has seq %d, which does not follow %d", i, r.Seq, last)
-		}
-		last = r.Seq
-		if r.WriterCounter != int64(i+1) {
-			t.Fatalf("row %d has hot writer_counter %d, want %d", i, r.WriterCounter, i+1)
+		if r.Seq != int64(i+1) {
+			t.Fatalf("row %d has seq %d, want %d", i, r.Seq, i+1)
 		}
 		if len(r.Blob) == 0 || len(r.BlobHash) != 32 || len(r.PrevHash) != 32 {
 			t.Fatalf("row %d came back without its bytes or hashes", i)
 		}
 	}
-	// The whole point of a per-stream cursor: a hot-only pull sees 1,3,5,7,9,
-	// which is NOT a gap (Task 8's per-stream chain is what detects those).
-	if rows[1].Seq-rows[0].Seq != 2 {
-		t.Fatalf("hot seqs %d,%d are contiguous; the fixture is not interleaved", rows[0].Seq, rows[1].Seq)
-	}
-	if err := VerifyChain(rows, 0, blob.ZeroHash); err != nil {
-		t.Fatalf("the hot rows must verify as one chain from genesis: %v", err)
+	// One writer's rows are 1,3,5,7,9 in seq, which is NOT a gap: each chain
+	// is per writer, and each verifies from genesis on its own.
+	for _, w := range []string{"dev-a", "dev-b"} {
+		mine := writerRows(rows, w)
+		if len(mine) != 5 || mine[1].Seq-mine[0].Seq != 2 {
+			t.Fatalf("%s: %d rows; the fixture is not interleaved", w, len(mine))
+		}
+		if err := VerifyChain(mine, 0, blob.ZeroHash); err != nil {
+			t.Fatalf("%s's rows must verify as one chain from genesis: %v", w, err)
+		}
 	}
 }
 
@@ -80,8 +90,8 @@ func TestReadIsScopedToTheUser(t *testing.T) {
 			t.Fatalf("a read for user %s returned a row belonging to %s", a, r.UserID)
 		}
 	}
-	if len(rows) != 3 {
-		t.Fatalf("read %d rows, want 3 — the other user's rows leaked in", len(rows))
+	if len(rows) != 6 {
+		t.Fatalf("read %d rows, want 6 — the other user's rows leaked in", len(rows))
 	}
 }
 
@@ -101,16 +111,16 @@ func TestReadPagesFromTheCursor(t *testing.T) {
 			break
 		}
 		for _, r := range rows {
-			seen = append(seen, r.WriterCounter)
+			seen = append(seen, r.Seq)
 		}
 		after = rows[len(rows)-1].Seq
 	}
-	if len(seen) != 10 {
-		t.Fatalf("paged %d rows, want 10", len(seen))
+	if len(seen) != 20 {
+		t.Fatalf("paged %d rows, want 20", len(seen))
 	}
-	for i, c := range seen {
-		if c != int64(i+1) {
-			t.Fatalf("paged counters %v are not 1..10", seen)
+	for i, q := range seen {
+		if q != int64(i+1) {
+			t.Fatalf("paged seqs %v are not 1..20", seen)
 		}
 	}
 }
@@ -159,7 +169,7 @@ func TestTheByteBudgetIsAppliedByTheDatabaseNotOnlyInGo(t *testing.T) {
 	for _, tc := range []struct {
 		budget int64
 		want   int
-	}{{1, 1}, {bucket, 1}, {2 * bucket, 2}, {100 * bucket, 6}} {
+	}{{1, 1}, {bucket, 1}, {2 * bucket, 2}, {100 * bucket, 12}} {
 		rows, err := pool.Query(bg, readPageSQL, u, blob.StreamHot, int64(0), 100, tc.budget)
 		if err != nil {
 			t.Fatal(err)
@@ -182,13 +192,16 @@ func TestReadAndHashesRejectAnUnknownStream(t *testing.T) {
 	pool := pgtest.New(t)
 	u := insertUser(t, pool)
 	if _, err := Read(bg, pool, u, "warm", 0, 10, 1<<20); err == nil {
-		t.Fatal("Read accepted a stream that is neither hot nor cold")
+		t.Fatal("Read accepted a stream that is not hot")
 	}
 	if _, err := Hashes(bg, pool, u, "warm", 0, 10); err == nil {
-		t.Fatal("Hashes accepted a stream that is neither hot nor cold")
+		t.Fatal("Hashes accepted a stream that is not hot")
 	}
 	if _, err := StreamMaxSeq(bg, pool, u, "warm"); err == nil {
-		t.Fatal("StreamMaxSeq accepted a stream that is neither hot nor cold")
+		t.Fatal("StreamMaxSeq accepted a stream that is not hot")
+	}
+	if _, err := Read(bg, pool, u, "cold", 0, 10, 1<<20); err == nil {
+		t.Fatal("Read accepted ledgerd's retired cold stream")
 	}
 }
 
@@ -197,18 +210,18 @@ func TestHashesCoverEveryRowAndLinkAsAChain(t *testing.T) {
 	u := insertUser(t, pool)
 	seedInterleaved(t, pool, u, 6)
 
-	rows, err := Read(bg, pool, u, blob.StreamCold, 0, 100, 1<<20)
+	rows, err := Read(bg, pool, u, blob.StreamHot, 0, 100, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	hashes, err := Hashes(bg, pool, u, blob.StreamCold, 0, 100)
+	hashes, err := Hashes(bg, pool, u, blob.StreamHot, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(hashes) != len(rows) {
-		t.Fatalf("%d cold hashes for %d cold rows", len(hashes), len(rows))
+		t.Fatalf("%d hashes for %d rows", len(hashes), len(rows))
 	}
-	prev := blob.ZeroHash
+	prev := map[string][32]byte{"dev-a": blob.ZeroHash, "dev-b": blob.ZeroHash}
 	for i, h := range hashes {
 		if h.Seq != rows[i].Seq || h.WriterID != rows[i].WriterID || h.WriterCounter != rows[i].WriterCounter {
 			t.Fatalf("hash %d describes a different row than the log does", i)
@@ -216,13 +229,14 @@ func TestHashesCoverEveryRowAndLinkAsAChain(t *testing.T) {
 		if !bytes.Equal(h.BlobHash, rows[i].BlobHash) {
 			t.Fatalf("hash %d is %x, but the row stores %x", i, h.BlobHash, rows[i].BlobHash)
 		}
-		// The link check a client can run WITHOUT downloading a single cold
-		// body: every entry's prev_hash must be the previous entry's blob_hash,
-		// and the first must be the genesis hash.
-		if !bytes.Equal(h.PrevHash, prev[:]) {
-			t.Fatalf("hash %d links to %x, but the list is at %x", i, h.PrevHash, prev)
+		// The link check a client can run WITHOUT downloading a single body:
+		// within each writer, every entry's prev_hash is the previous entry's
+		// blob_hash, and the first is the genesis hash.
+		p := prev[h.WriterID]
+		if !bytes.Equal(h.PrevHash, p[:]) {
+			t.Fatalf("hash %d links to %x, but %s's list is at %x", i, h.PrevHash, h.WriterID, p)
 		}
-		prev = [32]byte(h.BlobHash)
+		prev[h.WriterID] = [32]byte(h.BlobHash)
 	}
 }
 
@@ -236,8 +250,8 @@ func TestHashesAreScopedToTheUserAndStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hashes) != 4 {
-		t.Fatalf("got %d hot hashes for user a, want 4", len(hashes))
+	if len(hashes) != 8 {
+		t.Fatalf("got %d hashes for user a, want 8", len(hashes))
 	}
 	// seq is per user, so both users own a seq 1: identity has to be tested on
 	// the blob hashes, which differ because the AAD binds the user id.
@@ -257,7 +271,7 @@ func TestHashesAreScopedToTheUserAndStream(t *testing.T) {
 	}
 }
 
-func TestStreamMaxSeqIsPerStreamAndPerUser(t *testing.T) {
+func TestStreamMaxSeqIsPerUser(t *testing.T) {
 	pool := pgtest.New(t)
 	u, other := insertUser(t, pool), insertUser(t, pool)
 	seedInterleaved(t, pool, u, 3)
@@ -267,12 +281,8 @@ func TestStreamMaxSeqIsPerStreamAndPerUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cold, err := StreamMaxSeq(bg, pool, u, blob.StreamCold)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hot != 5 || cold != 6 {
-		t.Fatalf("max seqs are hot=%d cold=%d, want hot=5 cold=6", hot, cold)
+	if hot != 6 {
+		t.Fatalf("max seq is %d, want 6", hot)
 	}
 	empty := insertUser(t, pool)
 	if got, err := StreamMaxSeq(bg, pool, empty, blob.StreamHot); err != nil || got != 0 {

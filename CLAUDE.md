@@ -8,7 +8,8 @@ beta; every deployment is **QA** until a production VPS exists.
 
 | Path | What it is |
 | --- | --- |
-| `server/` | The Go backend (module `github.com/salehtl/hasala/server`), forked from ledgerd at `4b01e36`. Postgres. |
+| `server/` | The Go backend `hasalad` (module `github.com/salehtl/hasala/server`), forked from ledgerd at `4b01e36`. Postgres. |
+| `server/oracle/` | A separate Go module: ledgerd's frozen v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Test-time oracle only; the server's build graph cannot reach it. |
 | `ios/` | The native SwiftUI app and its Swift packages (`HasalaCore` = the ported client core). Not in this tree yet. |
 | `conformance/` | Shared fixtures. Go, the TypeScript reference and Swift must all produce byte-identical output against them. |
 | `reference/ledgerd-client/` | ledgerd's TypeScript client core. **Reference and fixture oracle only** — the Swift port must match it. Not shipped. |
@@ -28,9 +29,10 @@ standard-library advisories; gopls, govulncheck and golangci-lint are rebuilt
 with it. `server/go.mod`'s `toolchain` line is that security floor, and
 `govulncheck ./...` in `server/` should report nothing reachable.
 
-- `scripts/check.sh` is the gate: real-mail fence, toolchain floor, v1ref
-  fence, `go vet` and `go test` in `server/` against one throwaway Postgres
-  (unix socket only), the reference client's typecheck and `bun test`, and the
+- `scripts/check.sh` is the gate: real-mail fence, toolchain floor, the
+  hasalad fences (`server/cmd/hasalad/fence_test.go`), `go vet` and `go test`
+  in `server/` and then `server/oracle/` against one throwaway Postgres (unix
+  socket only), the reference client's typecheck and `bun test`, and the
   conformance suites. Once per checkout first:
   `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
 - CI is `.github/workflows/ci.yml`, on every pull request and push to `main`,
@@ -50,13 +52,21 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   with `scripts/private-fixtures-lock.sh write` and commit both. Never commit a
   real message, account or card number (masked or not), name, amount, date or
   reference here — use synthetic stand-ins. No real transaction amount or date
-  is committed anywhere in this tree, `server/internal/v1ref` included.
+  is committed anywhere in this tree, `server/oracle/v1ref` included.
   `scripts/check.sh`'s first step (the real-mail fence) refuses the private
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
   toolchain needed) on every push and pull request before anything else.
-- `nix build .#server` builds `cmd/ledgerd` (the binary keeps that name for
-  now), `nix flake check` builds it and checks formatting, `nix fmt` formats
-  Nix and Go.
+- `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
+  checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
+  which is byte-frozen).
+- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,
+  `console` (a stub until the console is built) and `version`; configuration
+  is `HASALA_*` environment variables over an optional TOML file
+  (`server/config.example.toml`). Two Postgres roles: `hasala_migrate` owns the
+  schema and is the only role `hasalad migrate` runs as; `hasala_runtime`
+  serves, and every other mode refuses to start as the owner, as a superuser
+  or behind the embedded migrations. Tests boot their own throwaway cluster
+  (`internal/pgtest`; `HASALA_TEST_POSTGRES_URL` reuses one).
 
 ## Decisions (2026-10-11)
 
@@ -76,8 +86,8 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
 - **Auth**: passkeys (RP ID `hasala.app`) + 12-word recovery phrase; invite
   codes; WebAuthn step-up for every auth/key/mailbox management operation.
 - **Outbound mail**: Cloudflare Email Service.
-- **Hosting (QA)**: the QA host behind Cloudflare Tunnel; ledgerd listens on
-  localhost only.
+- **Hosting (QA)**: the QA host behind Cloudflare Tunnel; hasalad listens on
+  loopback only and has no TLS code.
 - Bundle ID `app.hasala.ios`. Google OAuth consent: production, unverified
   (≤100 users).
 
