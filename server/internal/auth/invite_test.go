@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/sha256"
+	"encoding/base32"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -360,7 +361,7 @@ func TestDeletingAnAccountForgetsTheOperatorsNoteAboutThemAndNobodyElses(t *test
 	var redeemedBy *uuid.UUID
 	if err := pool.QueryRow(bgctx,
 		`SELECT redeemed_at, redeemed_by FROM invite_codes WHERE code_hash = $1`,
-		inviteCodeHash(goneCode)).Scan(&redeemedAt, &redeemedBy); err != nil {
+		InviteCodeHash(goneCode)).Scan(&redeemedAt, &redeemedBy); err != nil {
 		t.Fatal(err)
 	}
 	if redeemedAt == nil {
@@ -421,7 +422,7 @@ func TestNoTextTheOperatorWroteAboutADeletedAccountSurvivesInTheInviteRow(t *tes
 		var v *string
 		if err := pool.QueryRow(bgctx,
 			`SELECT `+col+` FROM invite_codes WHERE code_hash = $1`,
-			inviteCodeHash(code)).Scan(&v); err != nil {
+			InviteCodeHash(code)).Scan(&v); err != nil {
 			t.Fatal(err)
 		}
 		if v != nil && strings.Contains(*v, "jane-example") {
@@ -435,7 +436,7 @@ func noteOf(t *testing.T, pool *pgxpool.Pool, code string) string {
 	var note string
 	if err := pool.QueryRow(bgctx,
 		`SELECT coalesce(note, '') FROM invite_codes WHERE code_hash = $1`,
-		inviteCodeHash(code)).Scan(&note); err != nil {
+		InviteCodeHash(code)).Scan(&note); err != nil {
 		t.Fatal(err)
 	}
 	return note
@@ -480,7 +481,7 @@ func noteOf(t *testing.T, pool *pgxpool.Pool, code string) string {
 // package and using something else.
 func TestTheInviteCodeSourceIsCryptoRand(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "invite.go", nil, 0)
+	file, err := parser.ParseFile(fset, "../invites/invites.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,12 +511,12 @@ func TestTheInviteCodeSourceIsCryptoRand(t *testing.T) {
 
 	var mint *ast.FuncDecl
 	for _, d := range file.Decls {
-		if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == "MintInvite" {
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == "NewCode" {
 			mint = fn
 		}
 	}
 	if mint == nil {
-		t.Fatal("invite.go declares no MintInvite")
+		t.Fatal("invites.go declares no NewCode")
 	}
 	found := false
 	ast.Inspect(mint.Body, func(n ast.Node) bool {
@@ -533,7 +534,7 @@ func TestTheInviteCodeSourceIsCryptoRand(t *testing.T) {
 		return true
 	})
 	if !found {
-		t.Fatal("MintInvite never calls rand.Read: crypto/rand is imported and unused for the " +
+		t.Fatal("NewCode never calls rand.Read: crypto/rand is imported and unused for the " +
 			"one value that has to be unpredictable")
 	}
 }
@@ -576,7 +577,7 @@ func TestMintedInviteCodesAreUnguessable(t *testing.T) {
 			t.Fatalf("NormalizeInviteCode(%q) = %q: a minted code is not in the form it is "+
 				"redeemed in", code, NormalizeInviteCode(code))
 		}
-		raw, err := inviteAlphabet.DecodeString(code)
+		raw, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(code)
 		if err != nil {
 			t.Fatalf("minted code %q does not decode as base32: %v", code, err)
 		}
