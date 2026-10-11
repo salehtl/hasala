@@ -342,6 +342,10 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 #   crypto  No reader at all. Its consumer (ledgerd's retired app/ bench) was
 #           deleted (see the ledgerd repo-migration inventory, archived).
 #           Listed so the gap stays on screen.
+#   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests, CI's
+#           swift job, which also re-checks it); Go opens and verifies it once
+#           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
+#           runner on main yet: listed so the gap stays on screen.
 #   authres, categorize, norm-dates, replay
 #           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
 #           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
@@ -364,6 +368,7 @@ CONFORMANCE=(
 	"norm-dates||src/norm/dates-conformance.test.ts"
 	"normalizer|./internal/norm|src/norm/conformance.test.ts"
 	"op|./internal/oplog/opref|src/wire/op.test.ts"
+	"swift||"
 	"replay||src/replay/replay-conformance.test.ts"
 	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"
 	"ts|./internal/oplog/opref|src/wire/blob.test.ts"
