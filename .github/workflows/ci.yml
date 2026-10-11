@@ -52,8 +52,19 @@ jobs:
           use-gha-cache: true
           diagnostic-endpoint: ""
 
-      - name: nix flake check
-        run: nix flake check --print-build-logs
+      # Every check is evaluated, and every check except the NixOS VM test is
+      # built. The VM test needs KVM and minutes; it has its own job below
+      # (nixos-vm), which is not a required check.
+      - name: nix flake check (evaluate everything)
+        run: nix flake check --no-build
+      - name: nix flake check (build every check but hasala-vm)
+        run: |
+          set -euo pipefail
+          checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "hasala-vm" ])' \
+            | jq -r '.[] | ".#checks.x86_64-linux." + .')"
+          echo "$checks"
+          # shellcheck disable=SC2086 # one installable per word
+          nix build --no-link --print-build-logs $checks
 
       - name: Build the devShell
         run: nix develop --command true
@@ -65,6 +76,36 @@ jobs:
       # devShell's TMPDIR, on a unix socket only: no service container, no TCP.
       - name: scripts/check.sh
         run: nix develop --command scripts/check.sh
+
+  # Spec 05 §14 AT-V*: services.hasala booted in a NixOS VM (own Postgres,
+  # migrations, the API on loopback, nothing on 0.0.0.0, the console's kernel
+  # rule and header refusals, encrypted backups). Informational: it is not a
+  # required check, so a slow or flaky runner never blocks a merge.
+  nixos-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Let the NixOS VM test use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          diagnostic-endpoint: ""
+          extra-conf: |
+            system-features = nixos-test benchmark big-parallel kvm
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+          use-gha-cache: true
+          diagnostic-endpoint: ""
+      - name: hasala-vm
+        run: nix build --no-link --print-build-logs .#checks.x86_64-linux.hasala-vm
 
   vuln:
     runs-on: ubuntu-latest

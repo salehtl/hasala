@@ -158,6 +158,9 @@
           # Spec 05 §14 AT-E*: the module's assertions fire on every misuse, and
           # the units carry exactly the environment and credentials the specs fix.
           module-eval = import ./infra/qa/nix/tests/eval.nix { inherit self nixpkgs pkgs; };
+          # Spec 05 §14 AT-V*: boots the module in a VM. Needs KVM; CI runs it in
+          # its own job (nixos-vm), and the gate job builds every other check.
+          hasala-vm = pkgs.testers.runNixOSTest (import ./infra/qa/nix/tests/vm.nix self);
         }
       );
 
