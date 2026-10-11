@@ -37,7 +37,7 @@ func (h *harness) deletable(t *testing.T, note string) *deletable {
 		t.Fatal(err)
 	}
 	priv := h.writer(u, "device-1")
-	h.seedIngest(u, 2)
+	h.seed(u, 2)
 	return &deletable{u: u, tok: out.SessionToken, priv: priv, pk: pk, counter: 1}
 }
 
@@ -182,8 +182,8 @@ func TestDeleteAccountRefusesASessionTokenAlone(t *testing.T) {
 	if err := h.pool.QueryRow(bg, `SELECT count(*) FROM op_log WHERE user_id = $1`, acc.u).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 4 {
-		t.Fatalf("op_log holds %d rows, want the 4 that were seeded", n)
+	if n != 2 {
+		t.Fatalf("op_log holds %d rows, want the 2 that were seeded", n)
 	}
 }
 

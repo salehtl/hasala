@@ -21,7 +21,7 @@ func TestADeletedAccountAnswers410AndAnExpiredSessionStill401(t *testing.T) {
 	tok := h.session(u)
 	wantStatus(t, h.req("GET", "/api/v1/writers", tok, nil), http.StatusOK)
 
-	if _, err := purge.Purge(bg, h.pool, nil, u); err != nil {
+	if _, err := purge.Purge(bg, h.pool, u); err != nil {
 		t.Fatalf("purge: %v", err)
 	}
 
@@ -48,8 +48,8 @@ func TestAnExpiredSessionIsStillA401(t *testing.T) {
 	wantStatus(t, h.req("GET", "/api/v1/writers", tok, nil), http.StatusOK)
 
 	if _, err := h.pool.Exec(bg,
-		`UPDATE sessions SET expires_at = $1 WHERE user_id = $2`,
-		time.Now().Add(-time.Hour), u); err != nil {
+		`UPDATE sessions SET created_at = $1, expires_at = $2 WHERE user_id = $3`,
+		time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour), u); err != nil {
 		t.Fatal(err)
 	}
 	w := h.req("GET", "/api/v1/writers", tok, nil)

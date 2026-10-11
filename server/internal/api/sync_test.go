@@ -21,10 +21,10 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/blob"
-	"github.com/salehtl/hasala/server/internal/config"
+	"github.com/salehtl/hasala/server/internal/blob/blobtest"
 	"github.com/salehtl/hasala/server/internal/oplog"
+	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
-	"github.com/salehtl/hasala/server/internal/tmpl"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -35,73 +35,31 @@ var bg = context.Background()
 // Harness
 // ---------------------------------------------------------------------------
 
-type fakeVerifier struct {
-	mu       sync.Mutex
-	calls    int
-	lastOpts auth.VerifyOpts
-	identity auth.Identity
-	err      error
-}
-
-func (f *fakeVerifier) Verify(_ context.Context, idToken string, opts auth.VerifyOpts) (auth.Identity, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls++
-	f.lastOpts = opts
-	if f.err != nil {
-		return auth.Identity{}, f.err
-	}
-	id := f.identity
-	if id.Subject == "" {
-		id.Subject = "sub-" + idToken
-	}
-	if id.IdP == "" {
-		id.IdP = auth.IdPApple
-	}
-	if id.IssuedAt.IsZero() {
-		// A real verifier ALWAYS reports iat — VerifyOpts.MaxAge refuses a
-		// token that will not say when it was minted — so a fake that left it
-		// zero would make every freshness-checking endpoint (account deletion,
-		// address rotation) untestable except in its refusal path. A test that
-		// wants a stale token sets identity.IssuedAt itself.
-		id.IssuedAt = time.Now()
-	}
-	return id, nil
-}
-
-func (f *fakeVerifier) count() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.calls
-}
-
 type harness struct {
-	t     *testing.T
-	pool  *pgxpool.Pool
-	srv   *Server
-	h     http.Handler
-	apple *fakeVerifier
+	t    *testing.T
+	pool *pgxpool.Pool
+	srv  *Server
+	h    http.Handler
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	pool := pgtest.New(t)
-	apple := &fakeVerifier{}
 	srv := &Server{
-		Pool:      pool,
-		Sessions:  &auth.Sessions{Pool: pool, TTL: time.Hour},
-		Writers:   &auth.Writers{Pool: pool},
-		Appender:  &oplog.Appender{Pool: pool},
-		Templates: &tmpl.Store{Pool: pool},
-		Verifiers: map[string]auth.Verifier{auth.IdPApple: apple},
-		Logf:      func(string, ...any) {},
+		Pool:     pool,
+		Sessions: &auth.Sessions{Pool: pool, TTL: time.Hour},
+		Writers:  &auth.Writers{Pool: pool},
+		Appender: &oplog.Appender{Pool: pool},
+		Logf:     func(string, ...any) {},
 	}
-	return &harness{t: t, pool: pool, srv: srv, h: srv.Handler(), apple: apple}
+	return &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
 }
 
+// user creates an account for a passkey identity with the given subject. The
+// IdP columns are ledgerd's and survive until WS-3's schema (spec 02 §5.3).
 func (h *harness) user(sub string) uuid.UUID {
 	h.t.Helper()
-	u, err := auth.UpsertUser(bg, h.pool, auth.Identity{IdP: auth.IdPApple, Subject: sub})
+	u, err := auth.UpsertUser(bg, h.pool, auth.Identity{IdP: auth.IdPPasskey, Subject: sub})
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -178,38 +136,56 @@ func wantStatus(t *testing.T, w *httptest.ResponseRecorder, want int) {
 	}
 }
 
-// seedIngest appends n messages, each one hot blob plus one cold blob, so the
-// two streams interleave in the single per-user seq space.
-func (h *harness) seedIngest(u uuid.UUID, n int) {
-	h.t.Helper()
-	for i := 0; i < n; i++ {
-		if _, err := h.srv.Appender.AppendIngest(bg, u, []oplog.IngestBlob{
-			{Stream: blob.StreamHot, Plaintext: []byte(fmt.Sprintf(`{"hot":%d}`, i))},
-			{Stream: blob.StreamCold, Plaintext: []byte(fmt.Sprintf(`{"cold":%d}`, i))},
-		}); err != nil {
-			h.t.Fatal(err)
-		}
+// wantError asserts the spec 02 §6.3 error code of a refusal.
+func wantError(t *testing.T, w *httptest.ResponseRecorder, code string) {
+	t.Helper()
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Error != code {
+		t.Fatalf("error code %q, want %q (body %s)", body.Error, code, w.Body.String())
 	}
 }
 
-// sealUpload builds one wire blob for the upload endpoint, sealed at exactly
-// the position it declares.
-func sealUpload(t *testing.T, u uuid.UUID, writerID, stream string, counter int64, prev [32]byte, body string) (UploadBlob, [32]byte) {
+// seed appends n sealed frame v3 rows for the account through the real
+// appender, under a writer named "seed" enrolled for the purpose.
+func (h *harness) seed(u uuid.UUID, n int) {
+	h.t.Helper()
+	var exists bool
+	if err := h.pool.QueryRow(bg,
+		`SELECT EXISTS (SELECT 1 FROM writers WHERE user_id = $1 AND writer_id = 'seed')`, u).Scan(&exists); err != nil {
+		h.t.Fatal(err)
+	}
+	if !exists {
+		oplogtest.NewWriter(h.t, h.pool, u, "seed")
+	}
+	oplogtest.Append(h.t, h.pool, u, "seed", n)
+}
+
+// sealUpload builds one wire blob for the upload endpoint: a frame v3 sealed
+// at exactly the position it declares.
+func sealUpload(t *testing.T, u uuid.UUID, writerID string, counter int64, prev [32]byte, body string) (UploadBlob, [32]byte) {
 	t.Helper()
-	sealed, err := blob.PlaintextSealer{}.Seal(blob.Envelope{
-		UserID: u, Stream: stream, WriterID: writerID, WriterCounter: counter,
-	}, []byte(body))
+	sealed, err := blobtest.Seal3(blob.Envelope{
+		UserID: u, Stream: blob.StreamHot, WriterID: writerID, WriterCounter: counter,
+	}, 1, blobtest.TestEpochKey, prev, []byte(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := blob.Hash(prev, sealed)
+	return wireBlob(counter, prev, sealed.Bytes)
+}
+
+// wireBlob frames arbitrary bytes as an upload blob with honest chain
+// arithmetic, so a refusal can only be about the bytes themselves.
+func wireBlob(counter int64, prev [32]byte, raw []byte) (UploadBlob, [32]byte) {
+	h := blob.Hash(prev, blob.Sealed{Bytes: raw, SizeBucket: len(raw)})
 	return UploadBlob{
 		WriterCounter: strconv.FormatInt(counter, 10),
 		PrevHash:      hex.EncodeToString(prev[:]),
 		BlobHash:      hex.EncodeToString(h[:]),
 		TypeFlag:      oplog.TypeFlagEdit,
-		SizeBucket:    sealed.SizeBucket,
-		Blob:          base64.StdEncoding.EncodeToString(sealed.Bytes),
+		SizeBucket:    len(raw),
+		Blob:          base64.StdEncoding.EncodeToString(raw),
 	}, h
 }
 
@@ -217,7 +193,7 @@ func uploadChain(t *testing.T, u uuid.UUID, writerID string, start int64, prev [
 	t.Helper()
 	out := make([]UploadBlob, 0, n)
 	for i := 0; i < n; i++ {
-		b, h := sealUpload(t, u, writerID, blob.StreamHot, start+int64(i), prev, fmt.Sprintf(`{"op":%d}`, start+int64(i)))
+		b, h := sealUpload(t, u, writerID, start+int64(i), prev, fmt.Sprintf(`{"op":%d}`, start+int64(i)))
 		out = append(out, b)
 		prev = h
 	}
@@ -240,8 +216,8 @@ func countRows(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) int {
 func TestSyncReturnsOnlyTheCallersRows(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
-	h.seedIngest(a, 2)
-	h.seedIngest(b, 3)
+	h.seed(a, 2)
+	h.seed(b, 3)
 
 	got := decodeJSON[PullResponse](t, h.req("GET", "/api/v1/sync?stream=hot", h.session(a), nil))
 	if len(got.Rows) != 2 {
@@ -260,7 +236,7 @@ func TestSyncReturnsOnlyTheCallersRows(t *testing.T) {
 func TestSyncIgnoresAUserIDSuppliedByTheCaller(t *testing.T) {
 	h := newHarness(t)
 	a, b := h.user("a"), h.user("b")
-	h.seedIngest(b, 4)
+	h.seed(b, 4)
 
 	// Every query is scoped by the RESOLVED session user. A user_id in the
 	// request must be inert, not authoritative.
@@ -270,45 +246,36 @@ func TestSyncIgnoresAUserIDSuppliedByTheCaller(t *testing.T) {
 	}
 }
 
-func TestHotOnlyPullIsCompleteForItsStream(t *testing.T) {
+func TestAPullOfTheWholeLogIsCompleteAndVerifiesAsOneChain(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
-	h.seedIngest(u, 10)
+	h.seed(u, 10)
 
 	got := decodeJSON[PullResponse](t, h.req("GET", "/api/v1/sync?stream=hot&limit=100", h.session(u), nil))
 	if len(got.Rows) != 10 {
-		t.Fatalf("pulled %d hot rows, want 10", len(got.Rows))
+		t.Fatalf("pulled %d rows, want 10", len(got.Rows))
 	}
 	if !got.Complete {
 		t.Fatal("a pull that returned the whole stream reported complete=false")
 	}
 	rows := make([]oplog.Row, len(got.Rows))
 	var last int64
-	sparse := false
 	for i, r := range got.Rows {
 		seq := mustInt(t, r.Seq)
 		if seq <= last {
 			t.Fatalf("row %d seq %d does not follow %d", i, seq, last)
-		}
-		if last != 0 && seq != last+1 {
-			sparse = true
 		}
 		last = seq
 		if r.Stream != blob.StreamHot {
 			t.Fatalf("row %d is on stream %q", i, r.Stream)
 		}
 		if got := mustInt(t, r.WriterCounter); got != int64(i+1) {
-			t.Fatalf("row %d has hot writer_counter %d, want %d", i, got, i+1)
+			t.Fatalf("row %d has writer_counter %d, want %d", i, got, i+1)
 		}
 		rows[i] = wireToRow(t, r)
 	}
-	if !sparse {
-		t.Fatal("hot seqs came back contiguous; the interleaved fixture did not take")
-	}
-	// Sparse in the global seq space, contiguous and self-verifying in its own
-	// chain: that is the property a per-stream cursor rests on.
 	if err := oplog.VerifyChain(rows, 0, blob.ZeroHash); err != nil {
-		t.Fatalf("the hot rows must verify as one chain from genesis: %v", err)
+		t.Fatalf("the pulled rows must verify as one chain from genesis: %v", err)
 	}
 	if got.Next != got.Rows[len(got.Rows)-1].Seq {
 		t.Fatalf("next is %q, want the last seq %q", got.Next, got.Rows[len(got.Rows)-1].Seq)
@@ -319,7 +286,7 @@ func TestSyncCursorPagesWithoutGapsWithinAStream(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.seedIngest(u, 250)
+	h.seed(u, 250)
 
 	var counters []int64
 	after := "0"
@@ -351,16 +318,16 @@ func TestSyncCursorPagesWithoutGapsWithinAStream(t *testing.T) {
 	}
 }
 
-func TestHashListCoversEveryColdBlobAndMatchesTheStoredHashes(t *testing.T) {
+func TestHashListCoversEveryBlobAndMatchesTheStoredHashes(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.seedIngest(u, 8)
+	h.seed(u, 8)
 
-	rows := decodeJSON[PullResponse](t, h.req("GET", "/api/v1/sync?stream=cold&limit=100", tok, nil))
-	hashes := decodeJSON[HashesResponse](t, h.req("GET", "/api/v1/sync/hashes?stream=cold&limit=100", tok, nil))
+	rows := decodeJSON[PullResponse](t, h.req("GET", "/api/v1/sync?stream=hot&limit=100", tok, nil))
+	hashes := decodeJSON[HashesResponse](t, h.req("GET", "/api/v1/sync/hashes?stream=hot&limit=100", tok, nil))
 	if len(hashes.Hashes) != len(rows.Rows) {
-		t.Fatalf("%d cold hashes for %d cold rows", len(hashes.Hashes), len(rows.Rows))
+		t.Fatalf("%d hashes for %d rows", len(hashes.Hashes), len(rows.Rows))
 	}
 	prev := hex.EncodeToString(blob.ZeroHash[:])
 	for i, e := range hashes.Hashes {
@@ -388,7 +355,7 @@ func TestAPullTruncatedByTheByteBudgetIsNotComplete(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	tok := h.session(u)
-	h.seedIngest(u, 5)
+	h.seed(u, 5)
 	h.srv.PullByteBudget = 2 * 1024 // two smallest-bucket blobs
 	h.h = h.srv.Handler()
 
@@ -417,12 +384,23 @@ func TestAPullTruncatedByTheByteBudgetIsNotComplete(t *testing.T) {
 	}
 }
 
-func TestPullRejectsAnUnknownStream(t *testing.T) {
+func TestPullHasOneStream(t *testing.T) {
+	// Spec 02 §11.3: `stream` absent means hot, and every other value —
+	// ledgerd's retired cold stream included — is 400 bad_stream.
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
-	wantStatus(t, h.req("GET", "/api/v1/sync?stream=warm", tok, nil), http.StatusBadRequest)
-	wantStatus(t, h.req("GET", "/api/v1/sync", tok, nil), http.StatusBadRequest)
-	wantStatus(t, h.req("GET", "/api/v1/sync/hashes?stream=", tok, nil), http.StatusBadRequest)
+	for _, path := range []string{
+		"/api/v1/sync?stream=warm", "/api/v1/sync?stream=cold",
+		"/api/v1/sync/hashes?stream=cold",
+	} {
+		w := h.req("GET", path, tok, nil)
+		wantStatus(t, w, http.StatusBadRequest)
+		if got := decodeJSON[map[string]any](t, w)["error"]; got != "bad_stream" {
+			t.Fatalf("%s answered error %v, want bad_stream", path, got)
+		}
+	}
+	wantStatus(t, h.req("GET", "/api/v1/sync", tok, nil), http.StatusOK)
+	wantStatus(t, h.req("GET", "/api/v1/sync/hashes?stream=", tok, nil), http.StatusOK)
 }
 
 // ---------------------------------------------------------------------------
@@ -493,31 +471,6 @@ func TestUploadCannotWriteIntoAnotherUsersLog(t *testing.T) {
 	}
 }
 
-func TestUploadRejectsIngestWriterID(t *testing.T) {
-	h := newHarness(t)
-	u := h.user("u")
-	h.writer(u, "dev-a")
-	// The ingest writer must be ON the roster, and the user must own a device
-	// writer too. Without both, a 403 proves nothing: an empty roster makes
-	// writerIsLive answer "no such writer" with the same status, so deleting
-	// the ingest check entirely would still look green. The status is therefore
-	// checked together with the detail that only the ingest check produces.
-	if _, err := h.srv.Writers.EnsureIngestWriter(bg, u); err != nil {
-		t.Fatal(err)
-	}
-	blobs, _ := uploadChain(t, u, oplog.IngestWriterID, 1, blob.ZeroHash, 1)
-	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
-		WriterID: oplog.IngestWriterID, Stream: blob.StreamHot, Blobs: blobs,
-	})
-	wantStatus(t, w, http.StatusForbidden)
-	if !bytes.Contains(w.Body.Bytes(), []byte("the ingest writer is the server's own")) {
-		t.Fatalf("the rejection did not come from the ingest check: %s", w.Body.String())
-	}
-	if n := countRows(t, h.pool, u); n != 0 {
-		t.Fatalf("%d rows were appended under the server's own writer", n)
-	}
-}
-
 func TestUploadRejectsARevokedWriter(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
@@ -550,7 +503,7 @@ func TestUploadRejectsBlobWhoseAADDoesNotMatchTheRow(t *testing.T) {
 
 	// Sealed for counter 5, submitted as counter 1. The bytes are well formed
 	// and the chain arithmetic is honest; only the position is a lie.
-	b, _ := sealUpload(t, u, "dev-a", blob.StreamHot, 5, blob.ZeroHash, `{"moved":true}`)
+	b, _ := sealUpload(t, u, "dev-a", 5, blob.ZeroHash, `{"moved":true}`)
 	b.WriterCounter = "1"
 	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
 		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{b},
@@ -567,7 +520,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	tok := h.session(u)
 	h.writer(u, "dev-a")
 
-	good, _ := sealUpload(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, `{"op":1}`)
+	good, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"op":1}`)
 
 	mismatched := good
 	mismatched.SizeBucket = good.SizeBucket * 2
@@ -605,7 +558,7 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	badVersion := good
 	raw2, _ := base64.StdEncoding.DecodeString(good.Blob)
 	raw2 = append([]byte(nil), raw2...)
-	raw2[0] = blob.Version + 1
+	raw2[0] = blob.Version3 + 1
 	badVersion.Blob = base64.StdEncoding.EncodeToString(raw2)
 	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
 		WriterID: "dev-a", Stream: blob.StreamHot, Blobs: []UploadBlob{badVersion},
@@ -616,17 +569,18 @@ func TestUploadRejectsOversizeAndBadBucket(t *testing.T) {
 	}
 }
 
-func TestUploadRejectsColdStreamFromAClient(t *testing.T) {
+func TestUploadRefusesAnyStreamButHot(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("u")
 	h.writer(u, "dev-a")
-	b, _ := sealUpload(t, u, "dev-a", blob.StreamCold, 1, blob.ZeroHash, `{"raw":true}`)
+	b, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"raw":true}`)
 	w := h.req("POST", "/api/v1/sync", h.session(u), UploadRequest{
-		WriterID: "dev-a", Stream: blob.StreamCold, Blobs: []UploadBlob{b},
+		WriterID: "dev-a", Stream: "cold", Blobs: []UploadBlob{b},
 	})
 	wantStatus(t, w, http.StatusBadRequest)
+	wantError(t, w, "bad_stream")
 	if n := countRows(t, h.pool, u); n != 0 {
-		t.Fatalf("%d client-authored cold rows were stored (invariant I16)", n)
+		t.Fatalf("%d rows were stored on a retired stream", n)
 	}
 }
 
@@ -726,23 +680,21 @@ func TestConcurrentUploadsFromOneWriterProduceOneWinner(t *testing.T) {
 	// passes under implementations that do not actually serialise.
 	pool := pgtest.New(t)
 	warmPool(t, pool, 4)
-	apple := &fakeVerifier{}
 	srv := &Server{
-		Pool:      pool,
-		Sessions:  &auth.Sessions{Pool: pool, TTL: time.Hour},
-		Writers:   &auth.Writers{Pool: pool},
-		Appender:  &oplog.Appender{Pool: pool},
-		Verifiers: map[string]auth.Verifier{auth.IdPApple: apple},
-		Logf:      func(string, ...any) {},
+		Pool:     pool,
+		Sessions: &auth.Sessions{Pool: pool, TTL: time.Hour},
+		Writers:  &auth.Writers{Pool: pool},
+		Appender: &oplog.Appender{Pool: pool},
+		Logf:     func(string, ...any) {},
 	}
-	h := &harness{t: t, pool: pool, srv: srv, h: srv.Handler(), apple: apple}
+	h := &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
 
 	for round := 0; round < 5; round++ {
 		u := h.user(fmt.Sprintf("race-%d", round))
 		tok := h.session(u)
 		h.writer(u, "dev-a")
 		one, _ := uploadChain(t, u, "dev-a", 1, blob.ZeroHash, 1)
-		two, _ := sealUpload(t, u, "dev-a", blob.StreamHot, 1, blob.ZeroHash, `{"other":true}`)
+		two, _ := sealUpload(t, u, "dev-a", 1, blob.ZeroHash, `{"other":true}`)
 
 		var wg sync.WaitGroup
 		codes := make([]int, 2)
@@ -825,12 +777,11 @@ func TestUnknownExpiredAndRevokedSessionsAreIndistinguishable(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
 	srv := &Server{
-		Pool:      pool,
-		Sessions:  &auth.Sessions{Pool: pool, TTL: time.Hour, Now: clock},
-		Writers:   &auth.Writers{Pool: pool, Now: clock},
-		Appender:  &oplog.Appender{Pool: pool},
-		Verifiers: map[string]auth.Verifier{},
-		Logf:      func(string, ...any) {},
+		Pool:     pool,
+		Sessions: &auth.Sessions{Pool: pool, TTL: time.Hour, Now: clock},
+		Writers:  &auth.Writers{Pool: pool, Now: clock},
+		Appender: &oplog.Appender{Pool: pool},
+		Logf:     func(string, ...any) {},
 	}
 	h := &harness{t: t, pool: pool, srv: srv, h: srv.Handler()}
 	u := h.user("u")
@@ -882,9 +833,6 @@ func TestABearerTokenAloneCannotRegisterAWriter(t *testing.T) {
 		Sig:      base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize)),
 	})
 	wantStatus(t, w, http.StatusForbidden)
-	// Device writers, not all of them: every account carries the server's own
-	// `ingest` writer from its first sign-in, and counting it here would turn
-	// "a session enrolled nothing" into an off-by-one nobody could read.
 	roster := decodeJSON[WritersResponse](t, h.req("GET", "/api/v1/writers", tok, nil))
 	var devices int
 	for _, wr := range roster.Writers {
@@ -956,113 +904,56 @@ func TestRosterIsScopedToTheCaller(t *testing.T) {
 	h.writer(a, "dev-a")
 	h.writer(b, "dev-b")
 
-	// Two entries: this account's device, and this account's OWN server-side
-	// writer. `ingest` is per-account rather than global — a shared one would
-	// mean a single chain across users, which is neither what the schema stores
-	// nor what a checkpoint could ever attest — so the scoping claim covers it
-	// exactly as it covers dev-a.
+	// One entry: there is no server-side writer any more (spec 02 §2 retires
+	// ledgerd's per-account `ingest` writer with the mail path).
 	roster := decodeJSON[WritersResponse](t, h.req("GET", "/api/v1/writers", h.session(a), nil))
-	byID := map[string]WriterEntry{}
-	for _, wr := range roster.Writers {
-		byID[wr.WriterID] = wr
+	if len(roster.Writers) != 1 || roster.Writers[0].WriterID != "dev-a" {
+		t.Fatalf("roster for user a is %+v, want dev-a alone", roster.Writers)
 	}
-	if len(roster.Writers) != 2 || byID["dev-a"].WriterID == "" || byID["ingest"].WriterID == "" {
-		t.Fatalf("roster for user a is %+v, want dev-a and ingest", roster.Writers)
+	got := roster.Writers[0]
+	if got.PubKey == "" || got.Kind != auth.KindDevice {
+		t.Fatalf("roster entry is missing its key material or kind: %+v", got)
 	}
-	if _, leaked := byID["dev-b"]; leaked {
-		t.Fatalf("user b's writer leaked into user a's roster: %+v", roster.Writers)
-	}
-	if byID["dev-a"].PubKey == "" || byID["dev-a"].Kind != auth.KindDevice {
-		t.Fatalf("roster entry is missing its key material or kind: %+v", byID["dev-a"])
-	}
-	if byID["dev-a"].RevokedAt != nil {
+	if got.RevokedAt != nil {
 		t.Fatal("a live writer came back with a revoked_at")
 	}
-	// The server's writer holds no key, and the wire must say so rather than
-	// serving an empty string that reads as "we forgot".
-	if byID["ingest"].Kind != auth.KindIngest || byID["ingest"].PubKey != "" {
-		t.Fatalf("ingest roster entry = %+v", byID["ingest"])
-	}
 }
 
 // ---------------------------------------------------------------------------
-// Sign-in exchange
+// Response headers
 // ---------------------------------------------------------------------------
-
-func TestExchangeIssuesASessionForAVerifiedIdentity(t *testing.T) {
-	h := newHarness(t)
-	h.apple.identity = auth.Identity{IdP: auth.IdPApple, Subject: "sub-1"}
-	// Creating an account needs an invite code (Phase 2, Decision 8); signing
-	// in to one that exists does not. See invite_test.go.
-	w := h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{
-		IdP: auth.IdPApple, IDToken: "tok", InviteCode: h.invite("exchange test"),
-	})
-	wantStatus(t, w, http.StatusOK)
-	got := decodeJSON[ExchangeResponse](t, w)
-	if got.SessionToken == "" || got.UserID == "" {
-		t.Fatalf("exchange returned %+v", got)
-	}
-	// The issued token must actually work.
-	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", got.SessionToken, nil), http.StatusOK)
-}
-
-func TestExchangeRejectsEveryBadTokenWithOneIdentical401(t *testing.T) {
-	h := newHarness(t)
-	var answers []string
-	for _, err := range []error{auth.ErrSignature, auth.ErrExpired, auth.ErrAudience, auth.ErrIssuer, auth.ErrNoSubject} {
-		h.apple.err = err
-		w := h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: auth.IdPApple, IDToken: "tok"})
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("%v returned %d, want 401", err, w.Code)
-		}
-		answers = append(answers, w.Body.String())
-	}
-	for i, a := range answers {
-		if a != answers[0] {
-			t.Fatalf("rejection %d answered %q, the first answered %q", i, a, answers[0])
-		}
-	}
-}
-
-func TestUnavailableIdPKeySetIsA503NotA401(t *testing.T) {
-	// A good token must never be reported as invalid because Apple is down:
-	// that sends the user to re-authenticate against a provider that will hand
-	// back another token we still cannot verify.
-	h := newHarness(t)
-	h.apple.err = fmt.Errorf("%w: apple", auth.ErrKeySetUnavailable)
-	w := h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: auth.IdPApple, IDToken: "tok"})
-	wantStatus(t, w, http.StatusServiceUnavailable)
-}
-
-func TestAMisconfiguredVerifierIsNotReportedAsABadToken(t *testing.T) {
-	// auth.ErrNotConfigured means the SERVER has no client ids for this
-	// provider, so no token can be recognized as ours. It wraps ErrTokenRejected
-	// (so the failure mode of a bad config is "nobody can sign in", never
-	// "anybody can"), but reporting it as 401 is the same confusion the 503 on
-	// ErrKeySetUnavailable exists to remove: it tells a user with a perfectly
-	// good token to go and get another one.
-	h := newHarness(t)
-	h.apple.err = auth.ErrNotConfigured
-	w := h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: auth.IdPApple, IDToken: "tok"})
-	wantStatus(t, w, http.StatusServiceUnavailable)
-}
 
 func TestResponsesAreNotCacheable(t *testing.T) {
-	// The exchange response is the one that carries a session bearer token; the
-	// pull response carries the user's op log. Neither may be written to a
+	// The pull response carries the user's op log. It may not be written to a
 	// shared cache, a proxy, or a client's disk cache.
 	h := newHarness(t)
-	w := h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{
-		IdP: auth.IdPApple, IDToken: "tok", InviteCode: h.invite(""),
-	})
-	wantStatus(t, w, http.StatusOK)
-	if got := w.Header().Get("Cache-Control"); got != "no-store" {
-		t.Fatalf("the response carrying a session token has Cache-Control %q, want no-store", got)
-	}
-	tok := decodeJSON[ExchangeResponse](t, w).SessionToken
-	pull := h.req("GET", "/api/v1/sync?stream=hot", tok, nil)
+	pull := h.req("GET", "/api/v1/sync?stream=hot", h.session(h.user("u")), nil)
+	wantStatus(t, pull, http.StatusOK)
 	if got := pull.Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("a pull of the op log has Cache-Control %q, want no-store", got)
+	}
+}
+
+func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
+	// Spec 02 §6.2, on success, on refusal and on the 404 fallback alike.
+	h := newHarness(t)
+	tok := h.session(h.user("u"))
+	for _, w := range []*httptest.ResponseRecorder{
+		h.req("GET", "/api/v1/sync?stream=hot", tok, nil),
+		h.req("GET", "/api/v1/sync?stream=hot", "", nil),
+		h.req("GET", "/nope", "", nil),
+		h.req("GET", "/healthz", "", nil),
+	} {
+		for k, want := range map[string]string{
+			"X-Content-Type-Options":       "nosniff",
+			"Referrer-Policy":              "no-referrer",
+			"Content-Security-Policy":      "default-src 'none'; frame-ancestors 'none'",
+			"Cross-Origin-Resource-Policy": "same-origin",
+		} {
+			if got := w.Header().Get(k); got != want {
+				t.Fatalf("status %d response has %s %q, want %q", w.Code, k, got, want)
+			}
+		}
 	}
 }
 
@@ -1078,146 +969,9 @@ func TestUploadSizeCapsAgree(t *testing.T) {
 	}
 }
 
-func TestExchangeRejectsAnUnknownIdP(t *testing.T) {
-	h := newHarness(t)
-	wantStatus(t, h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: "myspace", IDToken: "tok"}), http.StatusBadRequest)
-	if h.apple.count() != 0 {
-		t.Fatal("an unknown idp reached a verifier")
-	}
-}
-
-func TestIdPVerifiersAreReusedAcrossRequests(t *testing.T) {
-	// The JWKS fetch bound and the herd control that protects it are per
-	// verifier INSTANCE (auth.cachingKeySet). A handler that built its own
-	// verifier would silently restore the unauthenticated outbound amplifier
-	// auth already fixed, and this fake — which the server can only reach
-	// through the map built once at construction — would never be called.
-	h := newHarness(t)
-	for i := 0; i < 5; i++ {
-		h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: auth.IdPApple, IDToken: fmt.Sprintf("tok-%d", i)})
-	}
-	if got := h.apple.count(); got != 5 {
-		t.Fatalf("the process-wide apple verifier saw %d of 5 exchanges", got)
-	}
-}
-
-func TestNewServerBuildsOneVerifierPerProviderAtConstruction(t *testing.T) {
-	pool := pgtest.New(t)
-	srv, err := NewServer(config.Config{Auth: config.AuthConfig{
-		AppleClientIDs:  []string{"com.example.app"},
-		GoogleClientIDs: []string{"123.apps.googleusercontent.com"},
-		SessionTTL:      time.Hour,
-	}}, pool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	apple, google := srv.Verifiers[auth.IdPApple], srv.Verifiers[auth.IdPGoogle]
-	if apple == nil || google == nil {
-		t.Fatalf("NewServer left a provider without a verifier: %+v", srv.Verifiers)
-	}
-	// Building the router (or serving) must not replace them: the JWKS cache,
-	// the attempt limit and the herd control all live on the instance.
-	srv.Handler()
-	srv.Handler()
-	if srv.Verifiers[auth.IdPApple] != apple || srv.Verifiers[auth.IdPGoogle] != google {
-		t.Fatal("a verifier was rebuilt after construction")
-	}
-}
-
-func TestPhase1DoesNotBindANonce(t *testing.T) {
-	// Recorded rather than implemented: the nonce claim is plaintext inside the
-	// token, so binding it only defeats replay when the expected value comes
-	// from server-side state created BEFORE the token existed. Phase 1 has no
-	// such store on the sign-in path, and a half-wired binding would look like
-	// a defence while being none.
-	h := newHarness(t)
-	h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: auth.IdPApple, IDToken: "tok"})
-	h.apple.mu.Lock()
-	defer h.apple.mu.Unlock()
-	if h.apple.lastOpts.Nonce != "" {
-		t.Fatalf("the exchange bound nonce %q; a client-supplied nonce is theatre", h.apple.lastOpts.Nonce)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Rate limits
 // ---------------------------------------------------------------------------
-
-func TestSignInIsRateLimitedPerClient(t *testing.T) {
-	h := newHarness(t)
-	// A RETURNING user, so what is measured is the rate limit and not the
-	// invite gate: the fake verifier maps id_token "tok" to subject "sub-tok".
-	h.user("sub-tok")
-	// No refill during the test: the burst is the whole budget.
-	h.srv.SignInPerIP = NewLimiter(0, 3, 128, time.Now)
-	h.h = h.srv.Handler()
-
-	allowed := 0
-	for i := 0; i < 20; i++ {
-		w := h.req("POST", "/api/v1/auth/exchange", "", ExchangeRequest{IdP: auth.IdPApple, IDToken: "tok"})
-		switch w.Code {
-		case http.StatusOK:
-			allowed++
-		case http.StatusTooManyRequests:
-		default:
-			t.Fatalf("request %d returned %d", i, w.Code)
-		}
-	}
-	if allowed != 3 {
-		t.Fatalf("%d of 20 sign-ins were served, want exactly the burst of 3", allowed)
-	}
-	if h.apple.count() != 3 {
-		t.Fatalf("the verifier ran %d times; a rate-limited request must not reach the provider path", h.apple.count())
-	}
-}
-
-func TestOneClientCannotSpendEveryoneElsesSignInBudget(t *testing.T) {
-	// The global limiter is a backstop against a caller spread across
-	// addresses. If it is consulted FIRST it is spent by requests the per-IP
-	// limiter would have refused anyway, so one host sustaining traffic holds
-	// every other client at 429 — an amplification nuisance traded for a total
-	// sign-in outage, which is exactly what ratelimit.go says it refuses to do.
-	h := newHarness(t)
-	// A returning user, for the reason above: this measures the limiters.
-	h.user("sub-tok")
-	frozen := time.Now()
-	clock := func() time.Time { return frozen }
-	h.srv.SignInPerIP = NewLimiter(0, 3, 128, clock)
-	h.srv.SignInGlobal = NewLimiter(0, 8, 1, clock)
-	h.h = h.srv.Handler()
-
-	body, err := json.Marshal(ExchangeRequest{IdP: auth.IdPApple, IDToken: "tok"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	exchangeFrom := func(addr string) int {
-		r := httptest.NewRequest("POST", "/api/v1/auth/exchange", bytes.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		r.RemoteAddr = addr
-		w := httptest.NewRecorder()
-		h.h.ServeHTTP(w, r)
-		return w.Code
-	}
-
-	noisy := 0
-	for i := 0; i < 40; i++ {
-		if exchangeFrom("198.51.100.7:5000") == http.StatusOK {
-			noisy++
-		}
-	}
-	if noisy != 3 {
-		t.Fatalf("the noisy host was served %d times, want its per-ip burst of 3", noisy)
-	}
-	// It made 40 attempts but may only have spent 3 global tokens: a rejected
-	// request must not consume the shared budget. A fresh client's own burst of
-	// 3 must therefore still be served out of the 8 global tokens.
-	for i := 0; i < 3; i++ {
-		if code := exchangeFrom("203.0.113.9:5000"); code != http.StatusOK {
-			t.Fatalf("a fresh client was answered %d after another host's flood — "+
-				"the global bucket was spent by requests the per-ip limiter refused", code)
-		}
-	}
-}
 
 func TestRegistrationAttemptsAreRateLimited(t *testing.T) {
 	// The challenge cap bounds SUCCESSFUL registrations only. A failed attempt
@@ -1306,6 +1060,45 @@ func TestUnknownAPIPathIs404JSON(t *testing.T) {
 	}
 }
 
+func TestUnknownPathOutsideTheAPIIs404JSON(t *testing.T) {
+	// The catch-all is the whole of what the root serves: there is no web UI
+	// and no console in hasalad (spec 02 §2, F7-1).
+	h := newHarness(t)
+	for _, path := range []string{"/", "/console", "/console/", "/admin", "/index.html"} {
+		w := h.req("GET", path, "", nil)
+		wantStatus(t, w, http.StatusNotFound)
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Fatalf("%s: content-type %q, want application/json", path, ct)
+		}
+	}
+}
+
+func TestRetiredLedgerdRoutesAreGone(t *testing.T) {
+	// Spec 02 §2: the IdP exchange, the mail address, quarantine, samples,
+	// dictionary submissions, templates, Web Push and the mailbox broker are
+	// deleted, not disabled. Each answers what any unknown path answers.
+	h := newHarness(t)
+	tok := h.session(h.user("u"))
+	for _, c := range []struct{ method, path string }{
+		{"POST", "/api/v1/auth/exchange"},
+		{"GET", "/api/v1/address"},
+		{"POST", "/api/v1/address/rotate"},
+		{"GET", "/api/v1/quarantine"},
+		{"POST", "/api/v1/samples"},
+		{"POST", "/api/v1/dictionary/submissions"},
+		{"GET", "/api/v1/templates"},
+		{"GET", "/api/v1/push/vapid"},
+		{"POST", "/api/v1/push/subscriptions"},
+		{"GET", "/api/v1/mailbox"},
+		{"POST", "/api/v1/relay"},
+	} {
+		w := h.req(c.method, c.path, tok, nil)
+		if w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("%s %s answered %d; a retired route must not be served", c.method, c.path, w.Code)
+		}
+	}
+}
+
 func TestWrongMethodIsNotSilentlyRouted(t *testing.T) {
 	h := newHarness(t)
 	tok := h.session(h.user("u"))
@@ -1351,115 +1144,5 @@ func wireToRow(t *testing.T, r Row) oplog.Row {
 		SizeBucket:    r.SizeBucket,
 		BlobHash:      bh,
 		PrevHash:      ph,
-	}
-}
-
-// ---------------------------------------------------------------------------
-// --dev-auth (Task 14)
-// ---------------------------------------------------------------------------
-
-// With cfg.DevAuth set, NewServer installs the dev verifier for BOTH providers
-// and neither real one. That is the safe direction: a deployment that left the
-// flag on cannot sign anybody in with a genuine Apple or Google token, so the
-// mistake is loud rather than invisible.
-func TestNewServerWithDevAuthReplacesEveryVerifier(t *testing.T) {
-	pool := pgtest.New(t)
-	cfg := config.Config{
-		Mail:   config.MailConfig{Domain: "example.test"},
-		Server: config.ServerConfig{HTTPListen: "127.0.0.1:8091"},
-		Auth:   config.AuthConfig{SessionTTL: time.Hour, AppleClientIDs: []string{"com.example.app"}},
-	}
-	if err := cfg.EnableTestOnly(true, ""); err != nil {
-		t.Fatal(err)
-	}
-	srv, err := NewServer(cfg, pool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, idp := range []string{auth.IdPApple, auth.IdPGoogle} {
-		v, ok := srv.Verifiers[idp]
-		if !ok {
-			t.Fatalf("no verifier for %q", idp)
-		}
-		id, err := v.Verify(bg, "dev:alice", auth.VerifyOpts{})
-		if err != nil {
-			t.Fatalf("%s dev verifier rejected dev:alice: %v", idp, err)
-		}
-		if id.Subject != "alice" {
-			t.Fatalf("%s dev verifier gave subject %q", idp, id.Subject)
-		}
-		if _, err := v.Verify(bg, "eyJhbGciOiJSUzI1NiJ9.e30.sig", auth.VerifyOpts{}); err == nil {
-			t.Fatalf("%s dev verifier accepted a JWT-shaped token", idp)
-		}
-	}
-}
-
-// Without the flag, nothing changes: a dev token is just a token that fails.
-func TestNewServerWithoutDevAuthInstallsTheRealVerifiers(t *testing.T) {
-	pool := pgtest.New(t)
-	cfg := config.Config{
-		Mail:   config.MailConfig{Domain: "example.test"},
-		Server: config.ServerConfig{HTTPListen: "127.0.0.1:8091"},
-		Auth:   config.AuthConfig{SessionTTL: time.Hour},
-	}
-	srv, err := NewServer(cfg, pool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := srv.Verifiers[auth.IdPApple].Verify(bg, "dev:alice", auth.VerifyOpts{}); err == nil {
-		t.Fatal("the production Apple verifier accepted a dev token")
-	}
-}
-
-// The end-to-end shape the CLI's `login` drives: a dev token exchanges for a
-// session, and that session resolves to a real account.
-func TestDevAuthExchangeIssuesAWorkingSession(t *testing.T) {
-	pool := pgtest.New(t)
-	srv := &Server{
-		Pool:      pool,
-		Sessions:  &auth.Sessions{Pool: pool, TTL: time.Hour},
-		Writers:   &auth.Writers{Pool: pool},
-		Appender:  &oplog.Appender{Pool: pool},
-		Verifiers: map[string]auth.Verifier{auth.IdPApple: auth.NewDevVerifier(auth.IdPApple)},
-		Logf:      func(string, ...any) {},
-	}
-	h := srv.Handler()
-
-	code, err := auth.MintInvite(bg, pool, "dev-auth test", time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ := json.Marshal(ExchangeRequest{IdP: auth.IdPApple, IDToken: "dev:alice", InviteCode: code})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/auth/exchange", bytes.NewReader(body)))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("exchange = %d %s", rec.Code, rec.Body.String())
-	}
-	var out ExchangeResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if out.SessionToken == "" || out.UserID == "" {
-		t.Fatalf("exchange returned %+v", out)
-	}
-
-	rec = httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/writers", nil)
-	req.Header.Set("Authorization", "Bearer "+out.SessionToken)
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("roster with a dev session = %d %s", rec.Code, rec.Body.String())
-	}
-
-	// The same dev subject is the same account, twice.
-	rec = httptest.NewRecorder()
-	body2, _ := json.Marshal(ExchangeRequest{IdP: auth.IdPApple, IDToken: "dev:alice"})
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/auth/exchange", bytes.NewReader(body2)))
-	var again ExchangeResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &again); err != nil {
-		t.Fatal(err)
-	}
-	if again.UserID != out.UserID {
-		t.Fatalf("dev:alice resolved to %s and then %s", out.UserID, again.UserID)
 	}
 }

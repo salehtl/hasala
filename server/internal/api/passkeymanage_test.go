@@ -204,7 +204,7 @@ func TestTheCurrentMarkerFollowsTheCredentialTheSessionWasMintedWith(t *testing.
 		CeremonyID: id, Credential: second.Assert(h.t, opts, second.Counter+1),
 	})
 	wantStatus(t, w, http.StatusOK)
-	onSecond := decodeJSON[ExchangeResponse](t, w).SessionToken
+	onSecond := decodeJSON[SessionResponse](t, w).SessionToken
 
 	marked := func(token string) []bool {
 		var out []bool
@@ -347,7 +347,7 @@ func TestDeletingAPasskeyEndsOnlyThatPasskeysSessions(t *testing.T) {
 		CeremonyID: id, Credential: second.Assert(t, opts, second.Counter+1),
 	})
 	wantStatus(t, w, http.StatusOK)
-	caller := decodeJSON[ExchangeResponse](t, w).SessionToken
+	caller := decodeJSON[SessionResponse](t, w).SessionToken
 
 	// A session this server cannot attribute, and another account's, which must
 	// be untouched.
@@ -380,7 +380,7 @@ func TestDeletingAPasskeyLeavesTheAccountsOtherDevicesSignedIn(t *testing.T) {
 		CeremonyID: id, Credential: laptopCred.Assert(t, opts, laptopCred.Counter+1),
 	})
 	wantStatus(t, w, http.StatusOK)
-	laptop := decodeJSON[ExchangeResponse](t, w).SessionToken
+	laptop := decodeJSON[SessionResponse](t, w).SessionToken
 
 	// The phone removes its own passkey. It is standing on that credential, so
 	// it signs ITSELF out — and only itself.
@@ -421,7 +421,7 @@ func TestDeletingAPasskeyWhoseIdNeedsEscapingWorks(t *testing.T) {
 	h := newHarness(t).passkeys()
 	u := h.user("escaping")
 	token := h.session(u)
-	awkward := []byte{0xff, 0xff, 0xff, 0xfb, 0xef, 0xbe, 0x01}
+	awkward := []byte{0xff, 0xff, 0xff, 0xfb, 0xef, 0xbe, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b}
 	if enc := base64.StdEncoding.EncodeToString(awkward); !strings.ContainsAny(enc, "+/=") {
 		t.Fatalf("the fixture id %q does not exercise the escaping this test exists for", enc)
 	}

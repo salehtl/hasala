@@ -1,6 +1,10 @@
 package api
 
-// Account deletion: spec §3.10, gated by spec §3.4.
+// routes_account.go: account deletion (spec 02 §4.2, §15; WS-3 owns it and
+// replaces the challenge with step-up `account.delete`, and adds GET
+// /api/v1/account).
+//
+// Account deletion: ledgerd spec §3.10, gated by §3.4.
 //
 // # Why this is in-app and self-service
 //
@@ -8,14 +12,12 @@ package api
 // offer deleting it from inside the app. That is the compliance reason. The
 // product reason is the one on the privacy page: "users own their data" is a
 // claim about what they can take away from us, and deletion is the half that
-// proves it. `ledgerd purge-user` exists for the operator, but an operator-only
+// proves it. `hasalad purge-user` exists for the operator, but an operator-only
 // path is a promise the user has to ask permission to collect on.
 //
 // # Three factors, and the session is the weakest
 //
-// Identical structure to POST /api/v1/address/rotate (addresses.go), for a
-// stronger version of the same reason — a rotation silently ends the user's
-// mail flow; this ends everything, permanently, with no undo:
+// This ends everything, permanently, with no undo:
 //
 //  1. a live session — which account is being talked about, and NOTHING else;
 //  2. a fresh WebAuthn assertion by an enrolled credential of THAT account,
@@ -137,6 +139,13 @@ type AccountChallengeResponse struct {
 	RPID  string `json:"rp_id,omitempty"`
 }
 
+func (s *Server) mountAccount(mux *http.ServeMux) {
+	// Unconditional: App Review 5.1.1(v) requires in-app account deletion, so
+	// there is no deployment of this server in which the route may be absent.
+	mux.HandleFunc("POST /api/v1/account/challenge", s.requireSession(s.handleAccountChallenge))
+	mux.HandleFunc("DELETE /api/v1/account", s.requireSession(s.handleDeleteAccount))
+}
+
 // handleAccountChallenge mints a single-use deletion nonce.
 //
 // Minting is exactly what a session authorizes and nothing more: the nonce is
@@ -244,7 +253,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
-	rep, err := purge.Purge(r.Context(), s.Pool, s.Dict, userID)
+	rep, err := purge.Purge(r.Context(), s.Pool, userID)
 	if err != nil {
 		// LOUD. The purge is all-or-nothing, so this means the account is still
 		// here — and a client that rendered "your account has been deleted"
