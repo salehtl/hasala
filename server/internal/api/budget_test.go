@@ -38,12 +38,12 @@ func TestAnUploadOverTheAccountCeilingIs413AndNot500(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("full")
 	tok := h.session(u)
-	h.writer(u, "w1")
+	h.writer(u, "ios-00000000-0000-4000-8000-000000000207")
 	setOplogCeiling(t, h, 1)
 
-	blobs, _ := uploadChain(t, u, "w1", 1, [32]byte{}, 1)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000207", 1, [32]byte{}, 1)
 	w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-		WriterID: "w1", Stream: "hot", Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-000000000207", Stream: "hot", Blobs: blobs,
 	})
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("an upload over the ceiling: %d %s, want 413", w.Code, w.Body)
@@ -88,15 +88,15 @@ func TestTheCeilingAndTheUploadLimiterAreDifferentAnswers(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("shaped")
 	tok := h.session(u)
-	h.writer(u, "w1")
+	h.writer(u, "ios-00000000-0000-4000-8000-000000000207")
 	// A byte budget of zero refuses before the append; the ceiling is wide
 	// open, so this can only be the limiter.
 	h.srv.SyncUploadBytes = NewLimiter(0, 1, 16, h.srv.now)
 	h.h = h.srv.Handler()
 
-	blobs, _ := uploadChain(t, u, "w1", 1, [32]byte{}, 1)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000207", 1, [32]byte{}, 1)
 	w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-		WriterID: "w1", Stream: "hot", Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-000000000207", Stream: "hot", Blobs: blobs,
 	})
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("the limiter answered %d %s, want 429", w.Code, w.Body)
@@ -116,13 +116,13 @@ func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
 	h := newHarness(t)
 	u := h.user("chained")
 	tok := h.session(u)
-	h.writer(u, "w1")
+	h.writer(u, "ios-00000000-0000-4000-8000-000000000207")
 
 	// A batch that starts above the empty head: a chain break, not a budget
 	// refusal.
-	blobs, _ := uploadChain(t, u, "w1", 5, [32]byte{}, 1)
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-000000000207", 5, [32]byte{}, 1)
 	w := h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{
-		WriterID: "w1", Stream: "hot", Blobs: blobs,
+		WriterID: "ios-00000000-0000-4000-8000-000000000207", Stream: "hot", Blobs: blobs,
 	})
 	if w.Code != http.StatusConflict {
 		t.Fatalf("a chain break answered %d %s, want 409", w.Code, w.Body)

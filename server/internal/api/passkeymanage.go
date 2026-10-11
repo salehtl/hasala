@@ -5,7 +5,12 @@ package api
 // ceremony routes in passkey.go:
 //
 //	GET    /api/v1/auth/passkeys                  -> {passkeys:[{credential_id, created_at, last_used_at, authenticator, current}]}
-//	DELETE /api/v1/auth/passkeys/{credential_id}  -> 204 | 404 not_found | 409 last_passkey
+//	DELETE /api/v1/auth/passkeys/{credential_id}  {step_up} -> 204 | 403 step_up_* | 404 not_found | 409 last_authenticator
+//
+// DELETE needs step-up passkey.delete with T = (credential_id raw) (spec 02
+// #13, §10.5): a stolen session must not be able to remove the owner's
+// passkeys. The id in the path stays ledgerd's standard base64 (URL-escaped),
+// as does the listing's.
 //
 // # Why they are here at all
 //
@@ -18,7 +23,8 @@ package api
 // # The one refusal, and why it is the server's
 //
 // Removing the account's LAST credential is refused with 409
-// {"error":"last_passkey"}. A passkey is the only way in — no password, no reset
+// {"error":"last_authenticator"} (spec 02 §6.3; this tree has no passwords, so
+// the last passkey is the last authenticator). A passkey is the only way in — no password, no reset
 // mail, and the recovery phrase unlocks DATA rather than restoring ACCESS — so
 // the last removal is an unrecoverable lockout. The client also disables the
 // control at one credential, which is honest and is defence in depth; it is NOT
@@ -98,6 +104,12 @@ type PasskeySummary struct {
 	Current bool `json:"current"`
 }
 
+// DeletePasskeyRequest is #13's body: the passkey.delete step-up, T =
+// (credential_id raw).
+type DeletePasskeyRequest struct {
+	StepUp *StepUpWire `json:"step_up"`
+}
+
 // PasskeysResponse answers GET /api/v1/auth/passkeys.
 //
 // An account with no credentials answers 200 with an empty list rather than
@@ -158,17 +170,25 @@ func (s *Server) handleDeletePasskey(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 
-	// The caller's own session, spared from the UNATTRIBUTED sweep only — if it
-	// was minted by the credential being removed, it goes with it. requireSession
-	// has already resolved this token, so the read cannot fail here; push.go
-	// re-extracts it the same way rather than widening authedHandler for two
-	// handlers out of twenty.
-	var keep []byte
-	if tok, ok := bearerToken(r); ok {
-		keep = auth.SessionHash(tok)
+	if !s.AccountPerUser.Allow(userID.String()) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+		return
 	}
-
-	revoked, err := s.Passkeys.DeleteCredential(r.Context(), userID, raw, keep)
+	var req DeletePasskeyRequest
+	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
+		return
+	}
+	su, ok := decodeStepUp(w, req.StepUp)
+	if !ok {
+		return
+	}
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	// The caller's own session is spared from the unattributed sweep (see
+	// auth.deleteCredentialTx); info.Hash is its SessionHash.
+	revoked, err := s.Passkeys.DeletePasskey(r.Context(), info, raw, su)
 	switch {
 	case err == nil:
 	case errors.Is(err, auth.ErrLastPasskey):
@@ -177,19 +197,18 @@ func (s *Server) handleDeletePasskey(w http.ResponseWriter, r *http.Request, use
 		// the rule exists — a client that only shows the code still has
 		// something true to say.
 		s.logf("api: delete passkey for %s: refused, it is the account's last credential", userID)
-		writeErr(w, http.StatusConflict, "last_passkey",
+		writeErr(w, http.StatusConflict, "last_authenticator",
 			"this is the only passkey on the account; removing it would lock you out permanently")
 		return
 	case errors.Is(err, auth.ErrCredentialUnknown):
 		// Not an oracle: a caller can only ever ask about ids under their own
 		// session, and "somebody else's credential" answers identically to "no
-		// such credential" (auth.DeleteCredential returns one sentinel for both).
+		// such credential" (auth.deleteCredentialTx returns one sentinel for both).
 		s.logf("api: delete passkey for %s: no such credential on this account", userID)
 		writeErr(w, http.StatusNotFound, "not_found", "no such passkey on this account")
 		return
 	default:
-		s.logf("api: delete passkey for %s: %v", userID, err)
-		writeErr(w, http.StatusInternalServerError, "internal", "")
+		s.writeKeyErr(w, r, err)
 		return
 	}
 

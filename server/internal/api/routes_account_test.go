@@ -10,7 +10,6 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/google/uuid"
 
-	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/purge"
 )
@@ -36,7 +35,7 @@ func (h *harness) deletable(t *testing.T, note string) *deletable {
 	if err != nil {
 		t.Fatal(err)
 	}
-	priv := h.writer(u, "device-1")
+	priv := h.writer(u, "ios-00000000-0000-4000-8000-000000000206")
 	h.seed(u, 2)
 	return &deletable{u: u, tok: out.SessionToken, priv: priv, pk: pk, counter: 1}
 }
@@ -120,18 +119,13 @@ func (h *harness) accountExists(t *testing.T, u uuid.UUID) bool {
 	return n == 1
 }
 
-// revokeWriter retires a device writer through the real capability path, which
-// is the only way it can happen: a session token cannot revoke anything, and a
-// row edited by hand would not prove the deletion path consults the roster the
-// same way the rest of the system does.
-func (h *harness) revokeWriter(t *testing.T, u uuid.UUID, writerID string, priv ed25519.PrivateKey) {
+// revokeWriter retires a device writer. Revocation itself (step-up, the
+// pinned head, the RevocationMessage) is auth's to test, in writer_test.go;
+// what matters here is that the deletion path reads the roster's revoked
+// state, and the one update the writers guard permits sets exactly that.
+func (h *harness) revokeWriter(t *testing.T, u uuid.UUID, writerID string, _ ed25519.PrivateKey) {
 	t.Helper()
-	nonce, err := h.srv.Writers.Challenge(bg, u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := ed25519.Sign(priv, auth.RevocationMessage(nonce, writerID))
-	if err := h.srv.Writers.Revoke(bg, u, writerID, nonce, sig); err != nil {
+	if _, err := h.pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1 AND writer_id = $2`, u, writerID); err != nil {
 		t.Fatalf("revoke %s: %v", writerID, err)
 	}
 }
@@ -332,7 +326,7 @@ func TestDeleteAccountRefusesASignatureFromAnUnenrolledKey(t *testing.T) {
 func TestDeleteAccountRefusesASignatureFromARevokedKey(t *testing.T) {
 	h := newHarness(t).passkeys()
 	acc := h.deletable(t, "alice")
-	h.revokeWriter(t, acc.u, "device-1", acc.priv)
+	h.revokeWriter(t, acc.u, "ios-00000000-0000-4000-8000-000000000206", acc.priv)
 	nonce := h.deleteChallenge(t, acc.tok)
 
 	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, nonce)), http.StatusForbidden)
