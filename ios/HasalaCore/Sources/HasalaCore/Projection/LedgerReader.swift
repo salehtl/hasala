@@ -301,10 +301,19 @@ public struct LedgerReader: Sendable {
 
   /// `money_line` rows with `local_date` in `[from, to]`.
   public func moneyLines(from: CivilDate, to: CivilDate) throws -> [MoneyLine] {
+    try lines(where: "local_date BETWEEN ? AND ?", [from.wire, to.wire])
+  }
+
+  /// Every line linked to a live project, all months (03c §6.1 roll-ups).
+  public func projectLines() throws -> [MoneyLine] {
+    try lines(where: "project_id IS NOT NULL", [])
+  }
+
+  private func lines(where condition: String, _ arguments: [String]) throws -> [MoneyLine] {
     try db.read { db in
       try Row.fetchAll(
-        db, sql: "SELECT * FROM money_line WHERE local_date BETWEEN ? AND ? ORDER BY posted_ms, txn_id, part_idx",
-        arguments: [from.wire, to.wire]
+        db, sql: "SELECT * FROM money_line WHERE \(condition) ORDER BY posted_ms, txn_id, part_idx",
+        arguments: StatementArguments(arguments)
       ).compactMap { r in
         guard let day = CivilDate(wire: r["local_date"]), let flow = MoneyLine.Flow(rawValue: r["flow"]) else { return nil }
         return MoneyLine(
@@ -358,7 +367,8 @@ public struct LedgerReader: Sendable {
 
   /// A `PlanEngine` for the months around `today` (lines from 2 months before
   /// `month` to the month after, for payday attribution and the September
-  /// comparison chips).
+  /// comparison chips), plus every project-linked line for the project
+  /// roll-ups, which cover all months.
   public func planEngine(month: CivilMonth, today: CivilDate, bills: [BillExpectation] = []) throws -> PlanEngine {
     let from = (month.adding(months: -2) ?? month).firstDay
     let to = (month.adding(months: 1) ?? month).lastDay
@@ -368,7 +378,7 @@ public struct LedgerReader: Sendable {
     let start = since.map { min($0, from) } ?? from
     return PlanEngine(
       plan: try planState(), taxonomy: try taxonomy(), lines: try moneyLines(from: start, to: to), bills: bills,
-      template: try budgetTemplate(), goals: goals, today: today)
+      template: try budgetTemplate(), goals: goals, today: today, projectLines: try projectLines())
   }
 
   /// A goal's lines need its whole window: a `PlanEngine` over all lines from `since`.

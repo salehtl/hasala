@@ -127,4 +127,51 @@ struct CoreCategorizeTests {
     #expect(none.suggestions.isEmpty)
     #expect(ModelTier.cacheKey(subject: "zuma", taxonomyHash: ModelTier.taxonomyHash(allowed), modelTag: fake.modelTag).utf8.count == 64)
   }
+
+  @Test("learned patterns over 128 scalars hide the toggle (03c §5.1)")
+  func learnedTooLong() {
+    #expect(LearnedPattern.propose(merchantRaw: String(repeating: "A", count: 129), category: "groceries") == nil)
+    #expect(LearnedPattern.propose(merchantRaw: String(repeating: "A", count: 128), category: "groceries")?.pattern.unicodeScalars.count == 128)
+    // The overreach guard's exact fallback is the whole subject: too long, nil.
+    let long = "LULU " + String(repeating: "X", count: 200)
+    #expect(LearnedPattern.propose(merchantRaw: long, category: "groceries", userRows: [("LULU EXCHANGE", "shopping")]) == nil)
+  }
+
+  @Test("model tier: a hung call times out and is skipped; a context overflow is retried once")
+  func modelTimeouts() async {
+    let allowed = ModelTier.allowed(TaxonomyV1.builtins)
+    final class Hangs: CategoryModel, @unchecked Sendable {
+      let calls = Mutex([String: Int]())
+      let modelTag = "apple-fm/26.1"
+      func availability() -> ModelAvailability { .available }
+      func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {
+        let n = calls.withLock { c -> Int in
+          c[subject, default: 0] += 1
+          return c[subject]!
+        }
+        switch subject {
+        case "hang forever":
+          // Ignores cancellation and answers late: the tier must not wait for it.
+          await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { k.resume() }
+          }
+          return .category("shopping")
+        case "overflow once": return n == 1 ? .failed(.contextOverflow) : .category("dining")
+        case "overflow twice": return .failed(.contextOverflow)
+        default: return .category("groceries")
+        }
+      }
+    }
+    let m = Hangs()
+    let clock = ContinuousClock()
+    let started = clock.now
+    let r = await ModelTier.run(
+      subjects: ["hang forever", "overflow once", "overflow twice", "spinneys"], model: m, allowed: allowed, context: .foreground, now: { 0 },
+      callTimeout: .milliseconds(200))
+    #expect(clock.now - started < .seconds(5))
+    #expect(r.suggestions == [.init(subject: "overflow once", category: "dining"), .init(subject: "spinneys", category: "groceries")])
+    #expect(r.unknown.isEmpty && r.stoppedBy == nil)
+    #expect(m.calls.withLock { $0 } == ["hang forever": 1, "overflow once": 2, "overflow twice": 2, "spinneys": 1])
+    #expect(ModelTier.Context.foreground.budget.callMs == 6_000)
+  }
 }

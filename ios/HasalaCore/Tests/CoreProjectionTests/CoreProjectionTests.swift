@@ -190,6 +190,23 @@ struct ProjectionContractTests {
     #expect(try reader.txn(maya.ids["talabat2"]!)?.displayName == "Talabat (food)")
   }
 
+  @Test("project roll-ups read every month, not just the plan engine's window (03c §6.1)")
+  func projectAllMonths() throws {
+    var maya = try Maya()
+    let project = maya.ids["project"]!
+    try maya.txn("deposit", "JAPAN TOURS DEPOSIT", 50_000, "2026-03-05", category: "travel")
+    try maya.txn("ryokan", "KYOTO RYOKAN", 120_000, "2026-12-20", category: "travel")
+    for k in ["deposit", "ryokan"] {
+      let id = maya.ids[k]!
+      try maya.commit { a in a.annotate(txnID: id, set: [("project_id", project)]) }
+    }
+    let db = try Projector.open(path: nil)
+    try Projector.project(maya.state, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let e = try LedgerReader(db).planEngine(month: Maya.october, today: Maya.today, bills: Maya.bills())
+    #expect(e.projectSpent(project) == 486_000 + 50_000 + 120_000)
+    #expect(!e.lines.contains { $0.txnID == maya.ids["deposit"]! })
+  }
+
   @Test("the pending overlay marks the rows an outbox op touches, and is rebuilt each time")
   func pending() throws {
     let maya = try Maya()

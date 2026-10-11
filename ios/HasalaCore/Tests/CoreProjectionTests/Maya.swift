@@ -83,9 +83,9 @@ struct Maya {
       let fields: [(String, JSONValue)] = [
         ("amount_minor", .string(String(amount))), ("currency", .string("AED")), ("direction", .string(direction)),
         ("posted_at", .string(Self.posted(day, time))), ("merchant_raw", .string(merchant)), ("last4", .string(last4)),
-        ("tier", .string("template")), ("needs_review", .bool(true)), ("bank", .string(bank)),
+        ("tier", .string("template")), ("needs_review", .bool(true)), ("bank", .string(bank)), ("entry_method", .string("mailbox")),
       ]
-      a.mailboxTxn(entityID: id, ingestID: ingestID, superseding: false, fields: fields, decision: nil)
+      try a.ingest(payload: JSONObject(fields), ingestID: ingestID, entityID: id)
     }
     ids[key] = id
     if let category, !review {
@@ -108,18 +108,21 @@ struct Maya {
     ]
     try commit { a in for (c, v) in budgets { a.setBudget(category: c, month: Self.september, amountMinor: v) } }
 
-    // The trip and the emergency fund.
+    // The trip and the emergency fund (03c §6, through 03a §9's defineProject / defineGoal).
     let project = "01JC0000000000000000000P01"
-    seq += 1
     let goal = "01JC0000000000000000000G01"
-    let defs = """
-      {"v":4,"kind":"ops","ops":[
-      {"v":4,"type":"project_defined","op_id":"01JC0000000000000000000A01","authored_at":"2026-09-01T10:00:00.000Z","entity":{"kind":"project","id":"\(project)"},"parent_version":null,
-       "payload":{"name":"Japan trip","starts_on":"2026-12-14","ends_on":"2026-12-28","budget_minor":"1200000","count_in_plan":false,"status":"active","icon":"plane"}},
-      {"v":4,"type":"goal_defined","op_id":"01JC0000000000000000000A02","authored_at":"2026-09-01T10:00:00.001Z","entity":{"kind":"goal","id":"\(goal)"},"parent_version":null,
-       "payload":{"name":"Emergency fund","target_minor":"5000000","target_month":"2027-01","source":{"kind":"category","category_id":"savings","since":"2026-09-01"},"starting_minor":"3250000","status":"active","icon":"jar"}}]}
-      """
-    try Replay.foldOps(OpCodec.decodeBlobOps(Array(defs.utf8)), seq: seq, writerID: Self.writer, into: &state)
+    try commit { a in
+      try a.defineProject(
+        id: project,
+        OpAuthor.ProjectDraft(
+          name: "Japan trip", startsOn: CivilDate(wire: "2026-12-14"), endsOn: CivilDate(wire: "2026-12-28"), budgetMinor: 1_200_000,
+          icon: "plane"))
+      try a.defineGoal(
+        id: goal,
+        OpAuthor.GoalDraft(
+          name: "Emergency fund", targetMinor: 5_000_000, targetMonth: CivilMonth(year: 2027, month: 1),
+          source: .category(id: "savings", since: CivilDate(wire: "2026-09-01")!), startingMinor: 3_250_000, icon: "jar"))
+    }
     ids["project"] = project
     ids["goal"] = goal
 

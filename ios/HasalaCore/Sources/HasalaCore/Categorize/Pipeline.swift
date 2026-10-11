@@ -159,6 +159,10 @@ public enum LearnedPattern {
   /// scalars, else `(exact, subject)` of ≥ 2, else nil. `userRows` are the
   /// live rows a person categorized: if the pattern would hit one whose
   /// category differs from `category`, fall back to exact (the overreach guard).
+  /// A pattern over `maxScalars` (03c §5.1's rule-pattern limit) is nil: the
+  /// "Always use" toggle is hidden rather than authoring a refused op.
+  public static let maxScalars = 128
+
   public static func propose(merchantRaw: String, category: String, userRows: [(merchantRaw: String, category: String)] = [])
     -> (match: MatchKind, pattern: String)?
   {
@@ -178,12 +182,13 @@ public enum LearnedPattern {
       }
     }
     guard let (match, pattern) = candidate else { return nil }
+    let fits = { (p: String) in p.unicodeScalars.count <= maxScalars }
     if match != .exact {
       let p = PreparedPattern(id: "", pattern: pattern, match: match, category: category, priority: 100)
       if userRows.contains(where: { $0.category != category && Matcher.hits(p, merchantRaw: $0.merchantRaw) }) {
-        return s.unicodeScalars.count >= 2 ? (.exact, s) : nil
+        return s.unicodeScalars.count >= 2 && fits(s) ? (.exact, s) : nil
       }
     }
-    return (match, pattern)
+    return fits(pattern) ? (match, pattern) : nil
   }
 }

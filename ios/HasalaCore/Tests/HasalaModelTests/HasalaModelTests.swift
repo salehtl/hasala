@@ -2,6 +2,7 @@
 // Intelligence; these pin what holds everywhere: the factory answers, and an
 // unavailable model keeps the tier off (rows stay in review).
 import CoreCategorize
+import Foundation
 import Testing
 
 @testable import HasalaModel
@@ -22,5 +23,12 @@ struct HasalaModelTests {
     let a = m.availability()
     #expect([.available, .notEligible, .notEnabled, .notReady, .unsupportedLanguage].contains(a))
     #expect(!m.modelTag.isEmpty)
+  }
+
+  @Test("the model tag follows the OS version (03c §8.6.6)")
+  func tag() {
+    let v = OperatingSystemVersion(majorVersion: 27, minorVersion: 1, patchVersion: 2)
+    #expect(HasalaModelFactory.osModelTag(v) == "apple-fm/27.1")
+    #expect(HasalaModelFactory.osModelTag().hasPrefix("apple-fm/"))
   }
 }

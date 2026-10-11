@@ -166,6 +166,9 @@ public struct PlanEngine: Sendable {
   public let today: CivilDate
   /// Goals (id, record), for auto-assign's goal step.
   public let goals: [(id: String, goal: Goal)]
+  /// Every project-linked line, whatever its month (03c §6.1 `spent_net` covers
+  /// all months); nil reads `lines`.
+  public let projectLines: [MoneyLine]?
 
   /// 03a §6.20 default roles.
   public static let defaultBills: [String] = ["rent", "utilities", "insurance", "subscriptions"]
@@ -173,8 +176,9 @@ public struct PlanEngine: Sendable {
 
   public init(
     plan: PlanState, taxonomy: TaxonomyView, lines: [MoneyLine], bills: [BillExpectation] = [], template: BudgetSplit? = nil,
-    goals: [(id: String, goal: Goal)] = [], today: CivilDate
+    goals: [(id: String, goal: Goal)] = [], today: CivilDate, projectLines: [MoneyLine]? = nil
   ) {
+    self.projectLines = projectLines
     self.plan = plan
     self.taxonomy = taxonomy
     self.lines = lines
@@ -472,9 +476,10 @@ public struct PlanEngine: Sendable {
   // MARK: Projects (03c §6.1 roll-ups, as 03a §6.10 shows them)
 
   /// `spent_net`: confirmed lines linked to the project, flows spend, refund and
-  /// uncategorized_out (debit +, credit −), all months in `lines`.
+  /// uncategorized_out (debit +, credit −), over `projectLines` (every month)
+  /// or, without them, the months in `lines`.
   public func projectSpent(_ projectID: String) -> Int64 {
-    lines.filter {
+    (projectLines ?? lines).filter {
       $0.confirmed && $0.projectID.map { utf8Equal($0, projectID) } == true
         && ($0.flow == .spend || $0.flow == .refund || $0.flow == .uncategorizedOut)
     }.reduce(Int64(0)) { $0 &+ ($1.signedHome ?? 0) }

@@ -19,7 +19,10 @@ import Foundation
   public struct FoundationModelsCategoryModel: CategoryModel {
     public let modelTag: String
 
-    public init(modelTag: String = "apple-fm/26.0") {
+    /// `modelTag` defaults to the running OS's `apple-fm/<major>.<minor>`
+    /// (03c §8.6.6): the on-device model ships with the OS, and the tag is
+    /// part of the `fm_cache` key, so an OS update invalidates the cache.
+    public init(modelTag: String = HasalaModelFactory.osModelTag()) {
       self.modelTag = modelTag
     }
 
@@ -83,6 +86,11 @@ public struct UnavailableCategoryModel: CategoryModel {
 }
 
 public enum HasalaModelFactory {
+  /// `apple-fm/<major>.<minor>` of the running OS (03c §8.6.6).
+  public static func osModelTag(_ v: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> String {
+    "apple-fm/\(v.majorVersion).\(v.minorVersion)"
+  }
+
   /// The device's model, or the unavailable stand-in.
   public static func make() -> any CategoryModel {
     #if canImport(FoundationModels)

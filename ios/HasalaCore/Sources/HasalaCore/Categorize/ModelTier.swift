@@ -10,6 +10,7 @@
 import CorePrimitives
 import Foundation
 import HasalaText
+import Synchronization
 
 public enum ModelAvailability: String, Sendable, Equatable {
   case available, notEligible, notEnabled, notReady, unsupportedLanguage
@@ -142,10 +143,17 @@ public enum ModelTier {
   /// budget. `now` is a millisecond clock for the phase budget. Answers that
   /// are not in the allowed set read as unknown. Returns the suggestions and
   /// the subjects answered `unknown` (to cache for 30 days).
+  ///
+  /// Each call races the per-call limit (03c §8.6.3, 6 s; `callTimeout`
+  /// overrides it in tests): a call still running then is cancelled and its
+  /// row skipped, not cached (§8.6.5). `exceededContextWindowSize` is retried
+  /// once (the model opens a fresh session for every call).
   public static func run(
-    subjects: [String], model: any CategoryModel, allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64
+    subjects: [String], model: any CategoryModel, allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
+    callTimeout: Duration? = nil
   ) async -> (suggestions: [Suggestion], unknown: [String], stoppedBy: ModelFailure?) {
     let budget = context.budget
+    let limit = callTimeout ?? .milliseconds(budget.callMs)
     guard budget.calls > 0, model.availability() == .available, !allowed.isEmpty else { return ([], [], nil) }
     let start = now()
     var seen: Set<String> = []
@@ -155,7 +163,11 @@ public enum ModelTier {
     for subject in subjects where LatinGate.passes(subject) && seen.insert(subject).inserted {
       if calls >= budget.calls || now() - start >= budget.phaseMs { break }
       calls += 1
-      switch await model.suggest(subject: subject, allowed: allowed) {
+      var answer = await suggest(model, subject: subject, allowed: allowed, within: limit)
+      if answer == .failed(.contextOverflow) {
+        answer = await suggest(model, subject: subject, allowed: allowed, within: limit)
+      }
+      switch answer {
       case .category(let id) where allowed.contains(where: { $0.id == id }):
         out.append(Suggestion(subject: subject, category: id))
       case .category, .unknown:
@@ -169,5 +181,64 @@ public enum ModelTier {
       }
     }
     return (out, unknown, nil)
+  }
+
+  /// One model call, cancelled after `limit` (or when the sweep's task is
+  /// cancelled). Returns `.failed(.timeout)` without waiting for a call that
+  /// ignores cancellation.
+  static func suggest(_ model: any CategoryModel, subject: String, allowed: [AllowedCategory], within limit: Duration) async -> ModelAnswer {
+    let race = Race()
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { (k: CheckedContinuation<ModelAnswer, Never>) in
+        race.start(
+          k,
+          call: Task { race.finish(await model.suggest(subject: subject, allowed: allowed)) },
+          timer: Task {
+            try? await Task.sleep(for: limit)
+            race.finish(.failed(.timeout))
+          })
+      }
+    } onCancel: {
+      race.finish(.failed(.timeout))
+    }
+  }
+
+  /// A call against its deadline: the first `finish` resumes the caller and
+  /// cancels both tasks; later ones do nothing.
+  private final class Race: Sendable {
+    private struct Inner {
+      var k: CheckedContinuation<ModelAnswer, Never>?
+      var tasks: [Task<Void, Never>] = []
+      var done: ModelAnswer?
+    }
+    private let inner = Mutex(Inner())
+
+    func start(_ k: CheckedContinuation<ModelAnswer, Never>, call: Task<Void, Never>, timer: Task<Void, Never>) {
+      let early: ModelAnswer? = inner.withLock { i in
+        if let d = i.done { return d }
+        i.k = k
+        i.tasks = [call, timer]
+        return nil
+      }
+      if let early {
+        call.cancel()
+        timer.cancel()
+        k.resume(returning: early)
+      }
+    }
+
+    func finish(_ a: ModelAnswer) {
+      let (k, tasks) = inner.withLock { i -> (CheckedContinuation<ModelAnswer, Never>?, [Task<Void, Never>]) in
+        guard i.done == nil else { return (nil, []) }
+        i.done = a
+        defer {
+          i.k = nil
+          i.tasks = []
+        }
+        return (i.k, i.tasks)
+      }
+      for t in tasks { t.cancel() }
+      k?.resume(returning: a)
+    }
   }
 }
