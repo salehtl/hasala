@@ -69,13 +69,13 @@
       "name": "unknown-match",
       "entry": {
         "pattern": "carrefour",
-        "match": "starts_with",
+        "match": "fuzzy",
         "category": "groceries"
       },
       "expect": {
         "ok": false,
         "defect": {
-          "id": "starts_with carrefour -> groceries",
+          "id": "fuzzy carrefour -> groceries",
           "code": "unknown_match"
         }
       }

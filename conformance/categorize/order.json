@@ -70,6 +70,9 @@
     {
       "name": "input-order-does-not-matter-a",
       "note": "The same rule set as case b, listed in the opposite order: the prepared order and every decision are identical.",
+      "requires": [
+        "regex"
+      ],
       "rules": [
         {
           "id": "r1",
@@ -181,6 +184,9 @@
     {
       "name": "input-order-does-not-matter-b",
       "note": "Case a's rules, reversed.",
+      "requires": [
+        "regex"
+      ],
       "rules": [
         {
           "id": "r4",
@@ -292,6 +298,9 @@
     {
       "name": "kind-order-at-equal-priority",
       "note": "exact before contains before regex at one priority; each later rule is live, as the merchants that only it matches show.",
+      "requires": [
+        "regex"
+      ],
       "rules": [
         {
           "id": "rx",
@@ -867,6 +876,9 @@
     {
       "name": "no-match-and-empty-merchants",
       "note": "Nothing matching is a decision, and an empty or whitespace-only merchant never matches anything.",
+      "requires": [
+        "regex"
+      ],
       "rules": [
         {
           "id": "any",
@@ -940,7 +952,7 @@
     },
     {
       "name": "pattern-and-category-canonicalized",
-      "note": "User exact/contains patterns and every category are canonicalized; a regex pattern is not (its double space can never match a canonical subject), and it runs case-insensitively against the canonical subject.",
+      "note": "User exact/contains patterns and every category are canonicalized.",
       "rules": [
         {
           "id": "padded",
@@ -949,6 +961,72 @@
           "category": "  Groceries  ",
           "priority": 100
         },
+        {
+          "id": "padded-exact",
+          "pattern": " LULU\u00a0 HYPER ",
+          "match": "exact",
+          "category": "GROCERIES",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "padded-exact",
+            "pattern": "lulu hyper",
+            "match": "exact",
+            "category": "groceries",
+            "priority": 100
+          },
+          {
+            "id": "padded",
+            "pattern": "carrefour hyper",
+            "match": "contains",
+            "category": "groceries",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [],
+        "decisions": [
+          {
+            "merchant": "carrefour HYPER deira",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "padded",
+              "pattern": "carrefour hyper",
+              "match": "contains"
+            }
+          },
+          {
+            "merchant": "LULU HYPER",
+            "decision": {
+              "category": "groceries",
+              "source": "rule",
+              "id": "padded-exact",
+              "pattern": "lulu hyper",
+              "match": "exact"
+            }
+          },
+          {
+            "merchant": "LULU HYPERMARKET",
+            "decision": {
+              "category": null,
+              "source": "none"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "regex-pattern-not-canonicalized",
+      "note": "A regex pattern is not canonicalized (its double space can never match a canonical subject); its category is, and it runs case-insensitively against the canonical subject.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
         {
           "id": "regex-mixed-case",
           "pattern": "^Lulu hyper",
@@ -968,13 +1046,6 @@
       "expect": {
         "rules": [
           {
-            "id": "padded",
-            "pattern": "carrefour hyper",
-            "match": "contains",
-            "category": "groceries",
-            "priority": 100
-          },
-          {
             "id": "regex-double-space",
             "pattern": "^spinneys  market",
             "match": "regex",
@@ -992,16 +1063,6 @@
         "entries": [],
         "defects": [],
         "decisions": [
-          {
-            "merchant": "carrefour HYPER deira",
-            "decision": {
-              "category": "groceries",
-              "source": "rule",
-              "id": "padded",
-              "pattern": "carrefour hyper",
-              "match": "contains"
-            }
-          },
           {
             "merchant": "LULU HYPERMARKET",
             "decision": {
@@ -1165,7 +1226,7 @@
         {
           "id": "unknown-match",
           "pattern": "valid",
-          "match": "starts_with",
+          "match": "fuzzy",
           "category": "fine",
           "priority": 100
         },
@@ -1207,6 +1268,80 @@
         {
           "id": "at-max",
           "pattern": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "match": "contains",
+          "category": "fine",
+          "priority": 100
+        }
+      ],
+      "entries": [],
+      "expect": {
+        "rules": [
+          {
+            "id": "at-max",
+            "pattern": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "match": "contains",
+            "category": "fine",
+            "priority": 100
+          },
+          {
+            "id": "ok",
+            "pattern": "valid",
+            "match": "contains",
+            "category": "fine",
+            "priority": 100
+          }
+        ],
+        "entries": [],
+        "defects": [
+          {
+            "id": "unknown-match",
+            "code": "unknown_match"
+          },
+          {
+            "id": "empty-category",
+            "code": "empty_category"
+          },
+          {
+            "id": "multiline-contains",
+            "code": "multiline"
+          },
+          {
+            "id": "multiline-exact-ls",
+            "code": "multiline"
+          },
+          {
+            "id": "empty-pattern",
+            "code": "empty_pattern"
+          },
+          {
+            "id": "too-long",
+            "code": "pattern_too_long"
+          }
+        ],
+        "decisions": [
+          {
+            "merchant": "VALID",
+            "decision": {
+              "category": "fine",
+              "source": "rule",
+              "id": "ok",
+              "pattern": "valid",
+              "match": "contains"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "regex-rule-defects",
+      "note": "Regex rules the dialect or the cost limits refuse, each reported with its code and reasons; the valid contains rule still applies.",
+      "requires": [
+        "regex"
+      ],
+      "rules": [
+        {
+          "id": "ok",
+          "pattern": "valid",
           "match": "contains",
           "category": "fine",
           "priority": 100
@@ -1265,13 +1400,6 @@
       "expect": {
         "rules": [
           {
-            "id": "at-max",
-            "pattern": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
-            "match": "contains",
-            "category": "fine",
-            "priority": 100
-          },
-          {
             "id": "ok",
             "pattern": "valid",
             "match": "contains",
@@ -1288,30 +1416,6 @@
         ],
         "entries": [],
         "defects": [
-          {
-            "id": "unknown-match",
-            "code": "unknown_match"
-          },
-          {
-            "id": "empty-category",
-            "code": "empty_category"
-          },
-          {
-            "id": "multiline-contains",
-            "code": "multiline"
-          },
-          {
-            "id": "multiline-exact-ls",
-            "code": "multiline"
-          },
-          {
-            "id": "empty-pattern",
-            "code": "empty_pattern"
-          },
-          {
-            "id": "too-long",
-            "code": "pattern_too_long"
-          },
           {
             "id": "regex-lookahead",
             "code": "regex_rejected",

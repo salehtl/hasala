@@ -40,7 +40,12 @@ normalization (NFC and NFD forms are different strings).
 
 ## `order.json`
 
-`cases[]`: `{name, note, rules, entries, expect}`
+`cases[]`: `{name, note, requires?, rules, entries, expect}`
+
+- `requires`: present as `["regex"]` exactly when a user rule in the case has
+  `match: "regex"`. Such a case needs a regex rule executor (the template
+  dialect validator, its cost limits and an engine); see "The v4 matcher"
+  below.
 
 - `rules`: user rules `{id, pattern, match, category, priority}` in input order.
 - `entries`: dictionary entries `{pattern, match, category}` in input order.
@@ -69,6 +74,38 @@ dialect suites pin the engine).
   `{ok: false, defect: {id, code}}` (`validateDictEntry`).
 - `lookups`: one synthetic dictionary prepared with no user rules:
   `expect.entries` (match order), `expect.defects`, and a decision per merchant.
+
+## The v4 matcher
+
+This suite pins the **v3** matcher (`rules.ts`), the one the TypeScript oracle
+implements. The Swift port implements the v4 matcher (spec 03c §5.2), which
+extends it. A v4 executor reads the vectors as follows:
+
+- Every rule is a v3 rule as 03c §5.1 says a reader treats one: one
+  alternative (`patterns: [pattern]`), enabled, not removed. Each
+  `expect.rules` entry is that one alternative.
+- Every named category is active. The vectors carry no category table, so the
+  v4 gates `category_unknown` and `category_retired` never fire; categories
+  such as `zeta` or `regex-cat` are just labels here.
+- No direction gate: the vectors have no transaction direction, and every
+  decision is the matcher's, before the pipeline's refund handling.
+- `match_order` is relative: v4 inserts `starts_with` between `exact` and
+  `contains`, which leaves the order of the three v3 kinds unchanged. No
+  vector uses `starts_with`; `unknown-match` uses `fuzzy`, which neither
+  version knows.
+- Priorities are compared as plain integers. The v4 op range (0–1000) bounds
+  what an author writes, not what the matcher compares; the vectors use
+  negative values and `9007199254740991`, which fit `Int64`.
+- A port that does not execute regex rules skips exactly the `order.json`
+  cases with `"requires": ["regex"]`. Every other case has no regex rule and
+  must pass unchanged. Refusing a regex **dictionary** entry
+  (`regex_not_allowed` in `dictionary.json`) needs no engine, so those vectors
+  carry no tag.
+
+Whether a v4 device still executes a v3 regex rule it finds in state is open:
+03c §5.1 keeps such a rule in its v3 shape and §5.2's total order still ranks
+`regex`, while spec 04's module table says the v4 matcher has no regex. The
+tag lets either answer use this suite.
 
 Version note: `pattern_unprintable` (general category C) and the
 alphanumeric test (categories L and N) depend on the Unicode version. Every

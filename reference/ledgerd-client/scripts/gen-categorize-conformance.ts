@@ -117,6 +117,8 @@ export interface PreparedOut {
 export interface OrderCase {
   name: string;
   note: string;
+  /** Present when the case cannot run without a regex rule executor: `["regex"]`. */
+  requires?: string[];
   rules: UserRule[];
   entries: DictEntry[];
   expect: {
@@ -232,14 +234,17 @@ function orderSpecs(): OrderCaseSpec[] {
     },
     {
       name: "pattern-and-category-canonicalized",
-      note: "User exact/contains patterns and every category are canonicalized; a regex pattern is not (its double space can never match a canonical subject), and it runs case-insensitively against the canonical subject.",
-      rules: [
-        r("padded", "  CARREFOUR   Hyper ", "contains", "  Groceries  "),
-        r("regex-mixed-case", "^Lulu hyper", "regex", "GROCERIES"),
-        r("regex-double-space", "^spinneys  market", "regex", "groceries"),
-      ],
+      note: "User exact/contains patterns and every category are canonicalized.",
+      rules: [r("padded", "  CARREFOUR   Hyper ", "contains", "  Groceries  "), r("padded-exact", " LULU\u00a0 HYPER ", "exact", "GROCERIES")],
       entries: [],
-      merchants: ["carrefour HYPER deira", "LULU HYPERMARKET", "LULUHYPER", "SPINNEYS  MARKET"],
+      merchants: ["carrefour HYPER deira", "LULU HYPER", "LULU HYPERMARKET"],
+    },
+    {
+      name: "regex-pattern-not-canonicalized",
+      note: "A regex pattern is not canonicalized (its double space can never match a canonical subject); its category is, and it runs case-insensitively against the canonical subject.",
+      rules: [r("regex-mixed-case", "^Lulu hyper", "regex", "GROCERIES"), r("regex-double-space", "^spinneys  market", "regex", "groceries")],
+      entries: [],
+      merchants: ["LULU HYPERMARKET", "LULUHYPER", "SPINNEYS  MARKET"],
     },
     {
       name: "floors-on-user-rules",
@@ -261,13 +266,22 @@ function orderSpecs(): OrderCaseSpec[] {
       note: "Each refused rule is reported with its code, never silently dropped; the valid one still applies.",
       rules: [
         r("ok", "valid", "contains", "fine"),
-        r("unknown-match", "valid", "starts_with", "fine"),
+        r("unknown-match", "valid", "fuzzy", "fine"),
         r("empty-category", "valid", "contains", "  "),
         r("multiline-contains", "val\nid", "contains", "fine"),
         r("multiline-exact-ls", "val\u2028id", "exact", "fine"),
         r("empty-pattern", " \t ", "contains", "fine"),
         r("too-long", "x".repeat(513), "contains", "fine"),
         r("at-max", "y".repeat(512), "contains", "fine"),
+      ],
+      entries: [],
+      merchants: ["VALID"],
+    },
+    {
+      name: "regex-rule-defects",
+      note: "Regex rules the dialect or the cost limits refuse, each reported with its code and reasons; the valid contains rule still applies.",
+      rules: [
+        r("ok", "valid", "contains", "fine"),
         r("regex-lookahead", "(?=carrefour)x", "regex", "fine"),
         r("regex-backreference", "(carre)\\1", "regex", "fine"),
         r("regex-two-unbounded", "[0-9]+[0-9]+z", "regex", "fine"),
@@ -324,6 +338,7 @@ function orderCases(): OrderCase[] {
     return {
       name: c.name,
       note: c.note,
+      ...(c.rules.some((x) => x.match === "regex") ? { requires: ["regex"] } : {}),
       rules: c.rules,
       entries: c.entries,
       expect: {
@@ -351,7 +366,7 @@ const ENTRY_INPUTS: readonly (readonly [string, DictEntry])[] = [
   ["plain-exact", d("Noon.com", "exact", "shopping")],
   ["canonicalized", d("  Dubai \u00a0 Mall ", "contains", "  shopping  ")],
   ["regex-not-allowed", d("^carrefour", "regex", "groceries")],
-  ["unknown-match", d("carrefour", "starts_with", "groceries")],
+  ["unknown-match", d("carrefour", "fuzzy", "groceries")],
   ["multiline-pattern", d("carre\nfour", "contains", "groceries")],
   ["multiline-category", d("carrefour", "contains", "groc\reries")],
   ["paragraph-separator", d("carre\u2029four", "contains", "groceries")],
