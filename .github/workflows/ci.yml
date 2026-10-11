@@ -84,8 +84,13 @@ jobs:
       # govulncheck exits non-zero when any vulnerability is reachable from the
       # code (symbol-level, its default); imported-but-unreachable ones are
       # reported without failing.
-      - name: govulncheck ./...
+      - name: govulncheck ./... (server)
         run: nix develop --command bash -c 'cd server && govulncheck ./...'
+
+      # server/oracle is a separate Go module (spec 02 §4.3) that the scan above
+      # never reaches; excelize and modernc.org/sqlite live only there.
+      - name: govulncheck ./... (server/oracle)
+        run: nix develop --command bash -c 'cd server/oracle && govulncheck ./...'
 
   secrets:
     runs-on: ubuntu-latest

@@ -22,6 +22,7 @@
 #   2. The hasalad fences (spec 02 §4.4, cmd/hasalad/fence_test.go): the
 #      server's build graph never reaches the oracle module, the test sealers
 #      or a retired capability, and its source cannot encrypt or decrypt.
+#      Then govulncheck ./cmd/hasalad/... (needs the network).
 #   3. ONE throwaway Postgres cluster for the whole run (unix socket, no TCP),
 #      shared through HASALA_TEST_POSTGRES_URL and stopped on any exit.
 #   4. go vet ./... and go test ./... in server/, then in server/oracle/.
@@ -182,6 +183,14 @@ fi
 # step 4 runs them again with everything else.
 step "hasalad fences"
 go test -count=1 -run '^TestFence' ./cmd/hasalad
+
+# --- 2b. no reachable vulnerability in the shipped binary ----------------------------
+# Spec 02 §3.2. Only hasalad's own build graph, at symbol level: a finding in a
+# module it requires but never calls is reported without failing. It reads the
+# Go vulnerability database (vuln.go.dev), so this step needs the network. CI's
+# `vuln` job also scans every package of both modules.
+step "govulncheck ./cmd/hasalad/..."
+govulncheck ./cmd/hasalad/...
 
 # --- 3. one throwaway Postgres cluster -------------------------------------------
 PG_STOP=""
@@ -399,10 +408,10 @@ if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (real-mail fence, toolchain, fence, go vet, go test, reference client, conformance; real corpus included)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, conformance; real corpus included)"
 	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (real-mail fence, toolchain, fence, go vet, go test, reference client, conformance)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, conformance)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
 	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
 fi

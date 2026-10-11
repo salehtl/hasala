@@ -56,7 +56,7 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `scripts/check.sh`'s first step (the real-mail fence) refuses the private
   paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
   toolchain needed) on every push and pull request before anything else.
-- `nix build .#server` builds `cmd/hasalad`, `nix flake check` builds it and
+- `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
   which is byte-frozen).
 - `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`,

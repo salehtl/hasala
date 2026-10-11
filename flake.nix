@@ -94,14 +94,19 @@
 
       packages = forAllSystems (
         system: pkgs: {
-          server = buildGoModuleFor system pkgs {
-            pname = "hasala-server";
+          # Spec 02 §3.1 names it packages.<system>.hasalad; `server` is kept as
+          # an alias for anything that still says .#server.
+          hasalad = buildGoModuleFor system pkgs {
+            pname = "hasalad";
             # Static on purpose: the go-modules fixed-output derivation is named
             # after it, so a per-commit version would re-fetch every module.
             version = "0-unstable";
             src = ./server;
             vendorHash = "sha256-EJnxPJhAvGDTQuroF55AD0KG6RSEZ3oPxh3QOXnc2MA=";
             subPackages = [ "cmd/hasalad" ];
+            # `hasalad version` prints the commit (05 §4.2). ldflags do not reach
+            # the go-modules derivation, so this does not re-fetch modules.
+            ldflags = [ "-X main.version=${self.shortRev or self.dirtyShortRev or "dirty"}" ];
             env.CGO_ENABLED = "0";
             # Not stripped (no `-s -w`), on purpose: `govulncheck -mode=binary`
             # needs the symbol table to tell which packages are linked in. On a
@@ -112,13 +117,14 @@
             doCheck = false;
             meta.mainProgram = "hasalad";
           };
-          default = self.packages.${system}.server;
+          server = self.packages.${system}.hasalad;
+          default = self.packages.${system}.hasalad;
         }
       );
 
       checks = forAllSystems (
         system: pkgs: {
-          server = self.packages.${system}.server;
+          hasalad = self.packages.${system}.hasalad;
           formatting =
             pkgs.runCommand "hasala-formatting" { nativeBuildInputs = [ (treefmtFor system pkgs) ]; }
               ''
