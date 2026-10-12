@@ -120,10 +120,12 @@ public struct EverydayHero: Sendable, Hashable {
   }
 }
 
-/// The big figure on a Needs-you poster: a count ("6 to sort") or an amount.
+/// The big figure on a Needs-you poster: a count ("6 to sort"), an amount, or a word
+/// ("Gmail") when the card is about something with no number.
 public enum PosterFigure: Sendable, Hashable {
   case count(Int, unit: String)
   case money(Money)
+  case word(String)
 }
 
 public struct NeedsYouCard: Sendable, Hashable, Identifiable {

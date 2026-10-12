@@ -37,6 +37,10 @@
     /// Signed in on the App Review demo account (`review_account`), over HasalaMocks'
     /// `mayaSample` ledger: Home says "Sample data".
     case mayaSample
+    /// Signed in after skipping the Gmail step: Home and Profile offer "Connect Gmail".
+    case gmailSkipped
+    /// Signed in; Google wants a new sign-in: Home and Profile offer "Reconnect Gmail".
+    case gmailReconnect
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -61,12 +65,13 @@
     private static func makeSession(for scenario: AuthScenario?) -> AccountSession {
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount)
       mailbox.sortsWithModel = BuildSurface.showsUnfinished
+      mailbox.gmailOffer = scenario == .gmailSkipped ? .connect : scenario == .gmailReconnect ? .reconnect : nil
       func services(_ account: MockAccountService) -> AccountServices {
         AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
                         notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })
       }
       switch scenario {
-      case nil, .passkeyUser:
+      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
@@ -95,7 +100,7 @@
         let by: FreezeInfo.By = scenario == .frozen ? .holder : .operator
         account.freezeForScenario(by: by)
         return AccountSession(services: services(account),
-                              phase: .frozen(FreezeInfo(by: by, when: "on Sat 11 Oct at 21:20")))
+                              phase: .frozen(FreezeInfo(by: by, when: "on Sun 11 Oct at 21:20")))
       case .relaunchInterrupted, .relaunchSignedIn:
         let account = MockAccountService(existing: .passkey, signedIn: true)
         account.resumeOutcome = scenario == .relaunchInterrupted ? .needsKeys : .needsUnlock(passkeyCanUnlock: true)

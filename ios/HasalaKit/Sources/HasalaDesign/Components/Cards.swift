@@ -93,6 +93,8 @@ public struct BriefCard: View {
       case .money(let m):
         MoneyText(m, figure: .large, unit: .unit, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary,
                   unitGap: 5)
+      case .word(let w):
+        Text(w).hFigure(.large).foregroundStyle(HColor.textPrimary)
       }
     }
     .padding(.horizontal, 16)

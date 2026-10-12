@@ -13,6 +13,8 @@ enum SheetRoute: Hashable, Identifiable {
   case budget(CategoryID)
   case moveMoney(to: CategoryID?)
   case profile
+  /// Connect Gmail after setup, from Home's Needs-you card.
+  case connectGmail(GmailOffer)
 
   var id: String {
     switch self {
@@ -20,6 +22,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .budget(let id): "budget.\(id)"
     case .moveMoney(let id): "move.\(id ?? "assign")"
     case .profile: "profile"
+    case .connectGmail(let offer): "gmail.\(offer.rawValue)"
     }
   }
 }
@@ -49,6 +52,8 @@ final class AppModel {
   }
 
   let store: any LedgerStore
+  /// The Gmail lane as setup uses it: what Home and Profile offer for Gmail.
+  @ObservationIgnored let mailbox: (any MailboxConnecting)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
   var tab: AppTab = .home
@@ -62,10 +67,14 @@ final class AppModel {
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<Int, HomeSnapshot>()
 
-  init(store: any LedgerStore, amountsHidden: Bool = false) {
+  init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
     self.store = store
     self.amountsHidden = amountsHidden
+    self.mailbox = mailbox
   }
+
+  /// "Connect Gmail" or "Reconnect Gmail" on Home and Profile, when Gmail needs it.
+  var gmailOffer: GmailOffer? { mailbox?.gmailOffer }
 
   /// What Home draws, recomputed once per ledger change.
   var snapshot: HomeSnapshot {

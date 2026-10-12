@@ -47,7 +47,9 @@ struct LiveAccountServiceTests {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     #expect(a.capabilities == .beta)
     #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverAccess))
-    #expect(a.capabilities.contains(.deleteAccount) && a.capabilities.contains(.removeThisIPhone))
+    #expect(a.capabilities.contains(.deleteAccount))
+    // Sign-in & security has no "Remove this iPhone" row, so the beta doesn't claim it.
+    #expect(!a.capabilities.contains(.removeThisIPhone))
   }
 
   @Test func aPasswordAccountOnTwoIPhonesThenDeleted() async throws {
@@ -215,5 +217,30 @@ struct LiveAccountServiceTests {
     #expect(LiveAccountService.map(.integrityAlarm("keys")) == .integrity)
     #expect(LiveAccountService.map(.api(.transport(.offline(.notConnectedToInternet)))) == .offline)
     #expect(LiveAccountService.map(.noPRF) == .noCredential)
+  }
+
+  /// "View your 12 words" with a passkey that has no PRF says why, not "not in this build".
+  @Test func aPasskeyWithoutPRFSaysItCantShowTheWords() throws {
+    let m = try #require(AuthFailure.passkeyCantShowPhrase.message)
+    #expect(m.contains("12 words") && !m.contains("build"))
+    #expect(AuthFailure.passkeyCantShowPhrase != .notInThisBuild)
+  }
+
+  /// `GET /account`'s freeze: who froze it, and the trigger in the app's +04:00 clock.
+  @Test func theFreezeIsReadFromTheAccount() {
+    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> LiveAccountFields {
+      LiveAccountFields(frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
+    }
+    #expect(LiveAccountService.freeze(fields(frozen: false, by: nil)) == nil)
+    #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator")) == FreezeInfo(by: .operator, when: nil))
+    #expect(LiveAccountService.freeze(fields(frozen: true, by: "holder")) == FreezeInfo(by: .holder, when: nil))
+    // A restricted session reads as frozen even before `frozen` says so; unknown is the holder's.
+    #expect(LiveAccountService.freeze(fields(frozen: false, by: nil, restricted: true))?.by == .holder)
+    #expect(
+      LiveAccountService.freeze(fields(frozen: true, by: "holder", at: "2026-10-11T17:20:05.123456Z"))?.when
+        == "on Sun 11 Oct at 21:20")
+    #expect(LiveAccountService.freezeTime("2026-10-11T22:30:00Z") == "on Mon 12 Oct at 02:30")
+    #expect(LiveAccountService.freezeTime("not a time") == nil)
+    #expect(LiveAccountService.freezeTime(nil) == nil)
   }
 }

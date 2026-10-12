@@ -6,7 +6,8 @@ import Observation
 /// the Gmail lane's connect (Google sign-in, token custody, the `mailbox.link` step-up),
 /// the first scan streams its progress, and the cards found become `card_linked` ops.
 /// On a review account with an empty ledger the step offers "Use sample data" instead
-/// (§6.13), which loads the bundled seed through the outbox.
+/// (§6.13), which loads the bundled seed through the outbox. Home and Profile run the same
+/// connect after setup, when `gmailOffer` says Gmail needs it.
 @MainActor
 @Observable
 final class LiveMailboxConnecting: MailboxConnecting {
@@ -19,6 +20,65 @@ final class LiveMailboxConnecting: MailboxConnecting {
   /// Observed through the runtime: the review flag arrives with `GET /account`.
   var offersSampleData: Bool { runtime()?.offersSampleData ?? false }
 
+  /// Observed through the runtime: the lane's phase is read when the account opens and
+  /// after every run, connect and cards step.
+  var gmailOffer: GmailOffer? { runtime()?.gmailOffer }
+
+  func chosenBanks() -> [SupportedBank] {
+    guard let rt = runtime() else { return [] }
+    return Self.banks(trusted: BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:]))
+  }
+
+  func linkState() async -> OnboardingStep.Facts.Mailbox {
+    guard let lane = runtime()?.lane else { return .unlinked }
+    return BootController.mailboxFact(await lane.status().phase)
+  }
+
+  /// What Home and Profile offer for a lane `phase` (spec 04 §6.6 row 4, §7.4). Nothing
+  /// once the account holds the App Review sample: loading it completed the Gmail step.
+  /// An iPhone without a link offers it only once the server says no other iPhone holds
+  /// one (`serverLink`): connecting there would take Gmail over from that iPhone. A halt
+  /// is offered a reconnect only when signing in to Google again fixes it (`halt`).
+  static func offer(
+    phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?
+  ) -> GmailOffer? {
+    guard !sampleLoaded else { return nil }
+    switch phase {
+    case .unlinked:
+      switch serverLink {
+      case .noLink?, .holder(true, _)?: return .connect
+      case .holder(false, _)?, nil: return nil
+      }
+    case .scanning, .awaitingCards: return .connect
+    case .reconnectRequired: return .reconnect
+    case .halted:
+      // A full account or missing templates aren't fixed by a new Google sign-in.
+      switch halt {
+      case nil, .gmail?, .reconnectRequired?: return .reconnect
+      default: return nil
+      }
+    case .authoringBackfill, .active, .otherDevice: return nil
+    }
+  }
+
+  /// Before a connect from an iPhone without a link, the server's answer asked just now:
+  /// another iPhone holding the link refuses it (connecting would take Gmail over from
+  /// that iPhone), and so does no answer (`nil`, offline), as Home shows no offer then.
+  static func checkTakeover(_ link: MailboxLinkStatus?) throws(SetupFailure) {
+    switch link {
+    case .noLink?, .holder(true, _)?: return
+    case .holder(false, _)?: throw .failed("Gmail is read on your other iPhone.")
+    case nil: throw .failed(message(.offline))
+    }
+  }
+
+  /// The banks whose alert senders are among the `trusted` domains (the bank step's ops).
+  static func banks(trusted: [String]) -> [SupportedBank] {
+    SupportedBank.allCases.filter { bank in
+      GmailLane.senderDomains(bank: bank.rawValue).contains { trusted.contains($0) }
+    }
+  }
+
   private func lane() throws(SetupFailure) -> GmailLane {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lane else { throw .failed("Gmail isn't available in this build.") }
@@ -27,8 +87,15 @@ final class LiveMailboxConnecting: MailboxConnecting {
 
   func connectGmail(banks: [SupportedBank]) async throws(SetupFailure) {
     let lane = try lane()
+    // The offer may be older than another iPhone's link: ask the server again first.
+    if await lane.status().phase == .unlinked, let rt = runtime() {
+      let link = await rt.askServerLink()
+      try Self.checkTakeover(link)
+    }
     switch await lane.connect(backfillDays: 90) {
-    case .connected: return
+    case .connected:
+      // Home and Profile follow the lane's new phase.
+      await runtime()?.refreshMailbox()
     case .cancelled: throw .cancelled
     case .failed(let f): throw .failed(Self.message(f))
     }
@@ -41,7 +108,7 @@ final class LiveMailboxConnecting: MailboxConnecting {
         c.finish()
       }
     }
-    let store = runtime()?.store
+    let rt = runtime()
     return AsyncStream { continuation in
       let job = Task {
         var last = ScanProgress(phase: .downloading, read: 0, total: 0)
@@ -61,7 +128,7 @@ final class LiveMailboxConnecting: MailboxConnecting {
           // Nothing to read yet (no alerts, or offline): the board waits for the cards.
           continuation.yield(ScanProgress(phase: .awaitingCards, read: last.total, total: last.total))
         }
-        await store?.reload()
+        await rt?.refreshMailbox()
         continuation.finish()
       }
       continuation.onTermination = { _ in job.cancel() }
@@ -82,7 +149,7 @@ final class LiveMailboxConnecting: MailboxConnecting {
       CardDecision(card: CardKey(bank: $0.bank.rawValue, last4: $0.last4), state: $0.keep ? .mine : .notMine)
     }
     let report = await lane.confirmCards(decisions)
-    await runtime()?.store.reload()
+    await runtime()?.refreshMailbox()
     if report.haltedOn == .offline { throw .offline }
     let rules = report.sortedBy["rule"] ?? 0
     let dictionary = report.sortedBy["dictionary"] ?? 0

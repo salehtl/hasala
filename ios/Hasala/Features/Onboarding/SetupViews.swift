@@ -47,8 +47,8 @@ struct BankView: View {
     AccountScreen(
       title: "Which bank do you use?",
       subtitle: "Pick yours. Hasala reads only their transaction alerts, nothing else in your mail.",
-      steps: (1, 5),
-      trailing: ("Skip", model.skipBanks)
+      steps: model.steps(1),
+      trailing: model.topAction(skip: model.skipBanks)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         Text("Available now").hType(.overline).foregroundStyle(HColor.textSecondary).padding(.leading, 16)
@@ -136,9 +136,9 @@ struct GmailView: View {
     AccountScreen(
       title: "Read-only Gmail, on your iPhone.",
       subtitle: "Your bank alerts are fetched from Gmail by this iPhone. Our server never receives your emails.",
-      steps: (2, 5),
-      onBack: model.back,
-      trailing: ("Skip", model.skipGmail)
+      steps: model.steps(2),
+      onBack: model.backButton(on: .gmail),
+      trailing: model.topAction(skip: model.skipGmail)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 10) {
@@ -164,11 +164,11 @@ struct GmailView: View {
         BusyButton(title: "Use sample data", busy: model.busy, identifier: "gmail.sample") {
           Task { await model.useSampleData() }
         }
-        BusyButton(title: "Connect Gmail", busy: false, kind: .tertiary, identifier: "gmail.connect") {
+        BusyButton(title: model.connectTitle, busy: false, kind: .tertiary, identifier: "gmail.connect") {
           Task { await model.connectGmail() }
         }
       } else {
-        BusyButton(title: "Connect Gmail", busy: model.busy, identifier: "gmail.connect") {
+        BusyButton(title: model.connectTitle, busy: model.busy, identifier: "gmail.connect") {
           Task { await model.connectGmail() }
         }
         Text("Not on Gmail? Hasala works with Gmail for now.")
@@ -502,8 +502,9 @@ struct CardsView: View {
     AccountScreen(
       title: "Are these your cards?",
       subtitle: "We found these in your bank alerts. Turn off any that aren't yours, like a family member's card, and their alerts are skipped.",
-      steps: (5, 5),
-      onBack: model.back
+      steps: model.steps(5),
+      onBack: model.backButton(on: .cards),
+      trailing: model.topAction(skip: nil)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         if model.scanRunning || model.cards.isEmpty {
@@ -579,7 +580,7 @@ struct ScanResultView: View {
         .listCard()
       }
     } footer: {
-      Button("Continue") { model.path.append(.notifications) }
+      Button("Continue") { model.afterResult() }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("result.continue")
     }
@@ -705,5 +706,56 @@ struct DoneView: View {
       Image(systemName: "checkmark.circle.fill").foregroundStyle(HColor.statusSuccessForeground).accessibilityHidden(true)
       Text(text).hType(.callout).foregroundStyle(HColor.textPrimary).fixedSize(horizontal: false, vertical: true)
     }
+  }
+}
+
+// MARK: - Connect Gmail after setup
+
+/// "Connect Gmail" or "Reconnect Gmail" once setup is done (spec 04 §6.6 row 4, §7.4), from
+/// Home's Needs-you card or the Profile card: setup's own steps through the live Gmail lane
+/// (Google's sign-in, the `mailbox.link` step-up, the first scan and the cards), in a sheet.
+struct GmailConnectSheet: View {
+  let app: AppModel
+  let offer: GmailOffer
+  @Environment(AccountSession.self) private var session: AccountSession?
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    if let session {
+      GmailConnectFlow(
+        model: .connectingGmail(
+          offer, services: session.services, onClose: { dismiss() },
+          onFinished: {
+            dismiss()
+            if offer == .reconnect { app.say("Gmail reconnected") }
+          }))
+    }
+  }
+}
+
+/// The connect's navigation stack: the bank step first only when the account reads no bank.
+private struct GmailConnectFlow: View {
+  @State private var model: SetupModel
+
+  init(model: SetupModel) {
+    _model = State(initialValue: model)
+  }
+
+  var body: some View {
+    NavigationStack(path: $model.path) {
+      Group {
+        if model.startsAtBank { BankView(model: model) } else { GmailView(model: model) }
+      }
+      .navigationDestination(for: SetupRoute.self) { route in
+        switch route {
+        case .gmail: GmailView(model: model)
+        case .cards: CardsView(model: model)
+        case .result: ScanResultView(model: model)
+        case .scan, .income, .plan, .notifications, .done: EmptyView()
+        }
+      }
+    }
+    .interactiveDismissDisabled(model.busy)
+    .task { await model.openConnect() }
   }
 }

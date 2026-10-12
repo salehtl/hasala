@@ -15,13 +15,23 @@ enum SetupRoute: Hashable {
 
 /// Setup state. The steps' facts are what `OnboardingStep.derive` reads; this model keeps
 /// them for the process (the live build reads them back from the projection and prefs).
+///
+/// The same model runs "Connect Gmail" after setup (`connecting`, from Home or Profile):
+/// the bank step only when the account reads no bank yet, then Gmail, then the cards when
+/// the first scan needs them, in a sheet that closes at the end.
 @MainActor
 @Observable
 final class SetupModel {
   private let services: AccountServices
   private let onFinished: () -> Void
+  /// "Close" on a connect after setup (nil in setup itself).
+  @ObservationIgnored private var onClose: (() -> Void)?
   var path: [SetupRoute] = []
   private(set) var facts: OnboardingStep.Facts
+  /// Set when this is a connect after setup rather than setup.
+  let connecting: GmailOffer?
+  /// A connect after setup starts at the bank step (the account reads no bank yet).
+  private(set) var startsAtBank = false
 
   // Bank
   var chosenBanks: Set<SupportedBank> = Set(SupportedBank.allCases)
@@ -48,28 +58,100 @@ final class SetupModel {
   var failure: SetupFailure?
   var displayName: String
 
-  init(services: AccountServices, displayName: String, facts: OnboardingStep.Facts, onFinished: @escaping () -> Void) {
+  init(
+    services: AccountServices, displayName: String, facts: OnboardingStep.Facts, connecting: GmailOffer? = nil,
+    onFinished: @escaping () -> Void
+  ) {
     self.services = services
     self.displayName = displayName
     self.facts = facts
+    self.connecting = connecting
     self.onFinished = onFinished
+  }
+
+  /// "Connect Gmail" or "Reconnect Gmail" after setup. `onFinished` runs when it is done,
+  /// `onClose` when the user closes it first.
+  static func connectingGmail(
+    _ offer: GmailOffer, services: AccountServices, onClose: @escaping () -> Void, onFinished: @escaping () -> Void
+  ) -> SetupModel {
+    let m = SetupModel(
+      services: services, displayName: "", facts: OnboardingStep.Facts(hasSession: true, keysReady: true),
+      connecting: offer, onFinished: onFinished)
+    m.onClose = onClose
+    let banks = services.mailbox.chosenBanks()
+    if banks.isEmpty {
+      m.startsAtBank = true
+    } else {
+      m.chosenBanks = Set(banks)
+      m.facts.banksChosen = true
+    }
+    return m
   }
 
   var step: OnboardingStep { OnboardingStep.derive(facts) }
 
-  /// Routes for the derived step, so a relaunch mid-setup resumes there.
+  /// Routes for the derived step, so a relaunch mid-setup resumes there. A scan cut short
+  /// starts streaming again, so the cards it found reach the cards step.
   func resume() {
     switch step {
     case .bank, .passcode, .account, .keys: path = []
     case .gmail: path = [.gmail]
-    case .scan: path = [.gmail, .scan]
+    case .scan:
+      path = [.gmail, .scan]
+      startScan()
     case .income: path = [.income]
     case .plan: path = [.income, .plan]
-    case .cards: path = [.cards]
+    case .cards:
+      path = [.cards]
+      startScan()
     case .notifications: path = [.notifications]
     case .done: path = [.done]
     case .finished: onFinished()
     }
+  }
+
+  /// A connect after setup opens where the lane is: a first scan whose cards are still to
+  /// confirm goes straight to the cards.
+  func openConnect() async {
+    guard connecting != nil else { return }
+    facts.mailbox = await services.mailbox.linkState()
+    if facts.mailbox == .scanning || facts.mailbox == .awaitingCards {
+      path = [.cards]
+      startScan()
+    }
+  }
+
+  /// Setup's step numbers ("2 of 5"); a connect after setup shows none.
+  func steps(_ n: Int) -> (current: Int, of: Int)? { connecting == nil ? (n, 5) : nil }
+
+  /// The Gmail step's button.
+  var connectTitle: String { (connecting ?? .connect).action }
+
+  /// The Gmail step is the first screen of a connect after setup: nothing to go back to.
+  var gmailIsFirst: Bool { connecting != nil && !path.contains(.gmail) }
+
+  /// The top bar's back button on the Gmail step and the cards: none where a connect after
+  /// setup has nothing to go back to (its first screen, and the cards once connected).
+  func backButton(on route: SetupRoute) -> (() -> Void)? {
+    switch route {
+    case .gmail where gmailIsFirst: nil
+    case .cards where connecting != nil: nil
+    default: { [weak self] in self?.back() }
+    }
+  }
+
+  /// The top bar's text button: setup's "Skip" (when the step has one), or "Close" on a
+  /// connect after setup.
+  func topAction(skip: (() -> Void)?) -> (title: String, action: () -> Void)? {
+    if connecting != nil { return ("Close", { [weak self] in self?.close() }) }
+    return skip.map { ("Skip", $0) }
+  }
+
+  /// "Close" on a connect after setup: the sheet goes, and a scan carries on in the
+  /// background (the Home card brings the cards back).
+  func close() {
+    scanTask?.cancel()
+    (onClose ?? onFinished)()
   }
 
   func back() {
@@ -132,11 +214,24 @@ final class SetupModel {
     defer { busy = false }
     do {
       try await services.mailbox.connectGmail(banks: orderedBanks)
+    } catch {
+      failure = error
+      return
+    }
+    guard connecting != nil else {
       facts.mailbox = .scanning
       startScan()
       go(.scan)
-    } catch {
-      failure = error
+      return
+    }
+    // After setup: a first connect (or a reconnect cut short mid-scan) goes on to the
+    // cards; a reconnect resumes where it stopped and is done.
+    facts.mailbox = await services.mailbox.linkState()
+    if facts.mailbox == .scanning || facts.mailbox == .awaitingCards {
+      startScan()
+      go(.cards)
+    } else {
+      finish()
     }
   }
 
@@ -151,7 +246,7 @@ final class SetupModel {
     do {
       try await services.mailbox.loadSampleData()
       facts.sampleLoaded = true
-      go(.notifications)
+      if connecting != nil { finish() } else { go(.notifications) }
     } catch {
       failure = error
     }
@@ -252,6 +347,11 @@ final class SetupModel {
     } catch {
       failure = error
     }
+  }
+
+  /// "Continue" on the result: setup goes on to notifications; a connect after setup is done.
+  func afterResult() {
+    if connecting != nil { finish() } else { path.append(.notifications) }
   }
 
   // MARK: Notifications (step 9) and done (step 10)

@@ -104,11 +104,12 @@ struct LaunchView: View {
     static func fromLaunchArguments(_ arguments: [String]) -> MockGraph? {
       guard arguments.contains("-HasalaScenario") else { return nil }
       let scenario = Scenario.fromLaunchArguments(arguments)
+      let session = AuthScenario.session(for: AuthScenario.fromLaunchArguments(arguments))
       return MockGraph(
         app: AppModel(
           store: InMemoryLedger(state: scenario.state, now: MayaLedger.now),
-          amountsHidden: scenario.startsWithAmountsHidden),
-        session: AuthScenario.session(for: AuthScenario.fromLaunchArguments(arguments)))
+          amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox),
+        session: session)
     }
   }
 #endif

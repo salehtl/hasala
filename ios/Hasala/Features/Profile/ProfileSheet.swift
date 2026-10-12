@@ -11,12 +11,17 @@ import SwiftUI
 ///
 /// A Release build shows only rows that work (`BuildSurface`): the pages still to come
 /// (bank alerts, accounts, privacy) and the settings with nothing behind them yet (Face ID
-/// lock, notifications) are left out, and account actions follow `capabilities`.
+/// lock, notifications) are left out, and account actions follow `capabilities`. The bank
+/// alerts card offers "Connect Gmail" or "Reconnect Gmail" when Gmail needs it, in every build.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
   @State private var path: [ProfileRoute] = []
   @State private var confirmSignOut = false
+  /// The Gmail connect sheet, over this one.
+  @State private var connecting: GmailOffer?
+  /// Sign-in & security's state, for its row's status; nil until read.
+  @State private var security: SecurityState?
   @Environment(\.dismiss) private var dismiss
   /// Present once the account gate runs; sign out, delete and Sign-in & security need it.
   @Environment(AccountSession.self) private var session: AccountSession?
@@ -71,6 +76,9 @@ struct ProfileSheet: View {
       .navigationDestination(for: ProfileRoute.self) { route in
         ProfilePage(app: app, model: model, route: route)
       }
+      .sheet(item: $connecting) { GmailConnectSheet(app: app, offer: $0) }
+      // Read again each time the profile shows, so a change on Sign-in & security shows.
+      .task { security = try? await session?.account.securityState() }
       .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
         Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
@@ -112,44 +120,80 @@ struct ProfileSheet: View {
   }
 
   /// The bank alerts status. It opens Profile › Bank alerts where that page exists; a
-  /// Release build shows the status alone.
-  @ViewBuilder private var mailboxCard: some View {
-    if unfinished {
-      Button { path.append(.bankAlerts) } label: { mailboxStatus(chevron: true) }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.bankAlerts")
-    } else {
-      mailboxStatus(chevron: false)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("profile.bankAlerts")
+  /// Release build shows the status alone. When Gmail needs connecting or reconnecting, the
+  /// card says so and offers it (spec 04 §7.4).
+  private var mailboxCard: some View {
+    let offer = app.gmailOffer
+    return VStack(alignment: .leading, spacing: 12) {
+      if unfinished {
+        Button { path.append(.bankAlerts) } label: { mailboxStatus(offer, chevron: true) }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("profile.bankAlerts")
+      } else {
+        mailboxStatus(offer, chevron: false)
+          .accessibilityElement(children: .combine)
+          .accessibilityIdentifier("profile.bankAlerts")
+      }
+      if let offer {
+        Button(offer.action) { connecting = offer }
+          .buttonStyle(.pill(.primary, size: .small))
+          .accessibilityIdentifier("profile.connectGmail")
+      }
+    }
+    .padding(16)
+    .background(Self.hue(snap.mailbox.status, offer).gradient,
+                in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+  }
+
+  static func hue(_ status: MailboxHealth.Status, _ offer: GmailOffer?) -> Hue {
+    switch offer {
+    case .connect: return .sky
+    case .reconnect: return .rose
+    case nil: break
+    }
+    switch status {
+    case .working: return .mint
+    case .quiet: return .sand
+    case .reconnect: return .rose
+    case .notConnected: return .sky
     }
   }
 
-  private func mailboxStatus(chevron: Bool) -> some View {
-    let m = snap.mailbox
-    let (title, hue): (String, Hue) = switch m.status {
-    case .working: ("Bank alerts are working", .mint)
-    case .quiet: ("Bank alerts went quiet", .sand)
-    // Without the Bank alerts page the card can't act, so it states the status.
-    case .reconnect: (chevron ? "Reconnect Gmail" : "Gmail needs reconnecting", .rose)
-    case .notConnected: (chevron ? "Connect Gmail" : "Gmail isn't connected", .sky)
+  /// The card's title: what Gmail needs, when it needs something, else the status.
+  static func title(_ status: MailboxHealth.Status, _ offer: GmailOffer?) -> String {
+    if let offer { return offer.status }
+    switch status {
+    case .working: return "Bank alerts are working"
+    case .quiet: return "Bank alerts went quiet"
+    case .reconnect: return GmailOffer.reconnect.status
+    case .notConnected: return GmailOffer.connect.status
     }
+  }
+
+  private func mailboxStatus(_ offer: GmailOffer?, chevron: Bool) -> some View {
+    let m = snap.mailbox
+    let hue = Self.hue(m.status, offer)
     return HStack(spacing: 12) {
       Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
-        .overlay { Image(systemName: m.status == .working ? "checkmark" : "envelope").foregroundStyle(hue.ink) }
+        .overlay {
+          Image(systemName: m.status == .working && offer == nil ? "checkmark" : "envelope").foregroundStyle(hue.ink)
+        }
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 0) {
-        Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-        Text("Last email \(m.lastEmail)").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-        Text(m.banks).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        Text(Self.title(m.status, offer)).hType(.headline).foregroundStyle(HColor.textPrimary)
+        if !m.lastEmail.isEmpty {
+          Text("Last email \(m.lastEmail)").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        }
+        if !m.banks.isEmpty {
+          Text(m.banks).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        }
       }
       Spacer()
       if chevron {
         Image(systemName: "chevron.right").foregroundStyle(HColor.textOnHueSecondary).accessibilityHidden(true)
       }
     }
-    .padding(16)
-    .background(hue.gradient, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+    .contentShape(Rectangle())
   }
 
   private var money: some View {
@@ -198,7 +242,9 @@ struct ProfileSheet: View {
         if session != nil || unfinished {
           Button { path.append(.security) } label: {
             NavRow(title: "Sign-in & security") { RowIcon(systemName: "checkmark.shield") } trailing: {
-              DetailLine(parts: [.status("Protected", .success)], hidden: false)
+              if let status = security.map(Self.securityStatus) {
+                DetailLine(parts: [.status(status.text, status.tone)], hidden: false)
+              }
             }
           }
           .buttonStyle(.plain)
@@ -257,6 +303,12 @@ struct ProfileSheet: View {
         .accessibilityIdentifier("profile.help")
       }
     }
+  }
+
+  /// Sign-in & security's own status (its hero): frozen, a passkey, or a password only.
+  static func securityStatus(_ s: SecurityState) -> (text: String, tone: StatusTone) {
+    if s.frozen != nil { return ("Frozen", .accent) }
+    return s.hasPasskey ? ("Protected", .success) : ("Password only", .warning)
   }
 
   private func settingValue(_ title: String, _ icon: String, _ value: String) -> some View {

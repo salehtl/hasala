@@ -27,7 +27,14 @@ final class AccountRuntime {
   @ObservationIgnored let coordinator: WorkCoordinator
   @ObservationIgnored let lane: GmailLane?
   @ObservationIgnored let mailboxLedger: RuntimeMailboxLedger
+  /// The server's mailbox routes (the Gmail lane's, and the link check below).
+  @ObservationIgnored let mailboxServer: any MailboxServer
   let store: LiveLedgerStore
+
+  /// The account's Gmail link on the server (#37), asked while this iPhone has none: a
+  /// link held by another iPhone means Gmail is read there (spec 04 §6.6's second iPhone,
+  /// §7.4 `other_device`). nil until the server answers; the last answer while offline.
+  private(set) var serverLink: MailboxLinkStatus?
 
   /// `GET /account`'s `review_account` (#40), read live when the account opens: the App
   /// Review demo account, whose ledger is sample data. Until an answer arrives, every
@@ -44,7 +51,7 @@ final class AccountRuntime {
   private init(
     env: AccountEnvironment, binding: AccountBinding, context: SyncContext, projection: ProjectionStore,
     observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator, lane: GmailLane?,
-    mailboxLedger: RuntimeMailboxLedger, store: LiveLedgerStore
+    mailboxLedger: RuntimeMailboxLedger, mailboxServer: any MailboxServer, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -56,6 +63,7 @@ final class AccountRuntime {
     self.coordinator = coordinator
     self.lane = lane
     self.mailboxLedger = mailboxLedger
+    self.mailboxServer = mailboxServer
     self.store = store
   }
 
@@ -64,6 +72,40 @@ final class AccountRuntime {
   /// "Use sample data" is offered on a review account whose ledger holds no
   /// transaction (spec 04 §6.13; plan §2.5). The loader checks both again, live.
   var offersSampleData: Bool { reviewAccount && store.loaded && store.state.txns.isEmpty }
+
+  /// Home's "Connect Gmail" card and the Profile card's action (spec 04 §6.6 row 4, §7.4):
+  /// nothing until the lane's phase and the ledger have been read, and nothing in a build
+  /// without a Google client.
+  var gmailOffer: GmailOffer? {
+    guard lane != nil, store.loaded, let phase = store.mailboxPhase else { return nil }
+    return LiveMailboxConnecting.offer(
+      phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink)
+  }
+
+  /// Reads the Gmail lane's state again (after a connect, the first scan or the cards
+  /// step), so Home and Profile follow it before the next run.
+  func refreshMailbox() async {
+    guard let lane else { return }
+    store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs())
+    await store.reload()
+    await checkServerLink()
+  }
+
+  /// Asks the server for the account's Gmail link after every run while this iPhone has
+  /// none (the lane's cycle never asks then): another iPhone can take the link at any
+  /// time. Offline, the last answer stays until the next run.
+  func checkServerLink() async {
+    guard lane != nil, store.mailboxPhase == .unlinked else { return }
+    _ = await askServerLink()
+  }
+
+  /// `GET /mailbox/link` now: the answer (kept in `serverLink`), or nil when the server
+  /// couldn't be asked.
+  func askServerLink() async -> MailboxLinkStatus? {
+    guard let link = try? await mailboxServer.linkStatus() else { return nil }
+    if serverLink != link { serverLink = link }
+    return link
+  }
 
   /// Opens the account. `enrolled` is the ceremony's freshly enrolled account (its store
   /// is already open); otherwise the store opens from the binding.
@@ -93,12 +135,12 @@ final class AccountRuntime {
     let afterRun = AfterRun()
     let authoring = MailboxAuthoring(observer: observer)
     let mailboxLedger = RuntimeMailboxLedger(engine: engine, observer: observer, outbox: outbox, authoring: authoring)
+    let mailboxServer = HTTPMailboxServer(
+      http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase)
     let lane = GmailLane(
       build: build, secrets: env.secrets, userID: context.userID,
       persistence: LedgerMailboxPersistence(store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() }),
-      ledger: mailboxLedger,
-      server: HTTPMailboxServer(
-        http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase),
+      ledger: mailboxLedger, server: mailboxServer,
       stepUp: LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await PasswordPrompt.ask($0) }),
       categorizer: PipelineCategorizer(projection: projection, dictionary: dictionary),
       presenter: WebAuthenticationPresenter())
@@ -117,8 +159,8 @@ final class AccountRuntime {
         },
         committed: {
           if let lane {
-            let health = LedgerStateMapper.health(await lane.status(), nowMs: context.clock.nowMs())
-            await MainActor.run { store.mailbox = health }
+            let status = await lane.status()
+            await MainActor.run { store.noteMailbox(status, nowMs: context.clock.nowMs()) }
           }
           await store.reload()
           await afterRun.run()
@@ -126,11 +168,16 @@ final class AccountRuntime {
         stopped: stopped))
     box.set(coordinator)
     try await observer.open()
+    if let lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
     await store.reload()
     let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
-      outbox: outbox, coordinator: coordinator, lane: lane, mailboxLedger: mailboxLedger, store: store)
-    afterRun.set { [weak rt] in await rt?.refreshAccountIfUnknown() }
+      outbox: outbox, coordinator: coordinator, lane: lane, mailboxLedger: mailboxLedger, mailboxServer: mailboxServer,
+      store: store)
+    afterRun.set { [weak rt] in
+      await rt?.refreshAccountIfUnknown()
+      await rt?.checkServerLink()
+    }
     return rt
   }
 

@@ -3,6 +3,7 @@ import CoreCrypto
 import CorePrimitives
 import CoreStore
 import CoreSync
+import CoreTime
 import Foundation
 
 /// `AccountService` over CoreSync's ceremonies (spec 04 §6.2): signup (C1, C1-P), the
@@ -14,7 +15,8 @@ import Foundation
 /// `capabilities` is `.beta`: what this TestFlight build carries out end to end. Not in
 /// this build (they throw `.notInThisBuild`, and the screens hide them): forgot password
 /// (C9), access recovery (C4), the approving iPhone, phrase rotation, adding a passkey,
-/// email change, and the other passkey, password and device changes.
+/// email change, and the other passkey, password and device changes. Removing this
+/// iPhone works but isn't offered: Sign-in & security has no row for it yet.
 ///
 /// One account per iPhone: while this iPhone holds an account's data (its binding),
 /// signing up, or signing in to a different address, asks the gate to show the
@@ -178,7 +180,7 @@ final class LiveAccountService: AccountService {
 
   private func outcome(_ r: SignInResult, passkeyCanUnlock: Bool) async -> SignInOutcome {
     signIn = r
-    if r.restricted { return .frozen(await frozenBy(token: r.grant.session_token)) }
+    if r.restricted { return .frozen(await freezeInfo(token: r.grant.session_token)) }
     if !r.hasKeys { return .needsKeys }
     // A bound iPhone whose keys are here opens straight away.
     if let b = binding, b.user_id == r.grant.user_id,
@@ -326,7 +328,7 @@ final class LiveAccountService: AccountService {
       displayName: a.display_name ?? binding?.display_name ?? "", email: a.email ?? binding?.email_norm ?? "",
       method: a.has_passkey == true ? .passkey : .password)
     methodConfirmed = a.has_passkey != nil
-    if a.frozen == true || a.restricted == true { return .frozen(a.frozen_by == "operator" ? .operator : .holder) }
+    if let freeze = Self.freeze(a) { return .frozen(freeze) }
     guard a.has_keys == true else { return .needsKeys }
     let wraps = (try? await env.client.keyWraps(bearer: s.token).wraps.count) ?? 0
     return .needsUnlock(passkeyCanUnlock: wraps > 0)
@@ -410,7 +412,7 @@ final class LiveAccountService: AccountService {
     {
       hasPassword = a.has_password ?? hasPassword
       hasPasskey = a.has_passkey ?? hasPasskey
-      if a.frozen == true { frozen = FreezeInfo(by: a.frozen_by == "operator" ? .operator : .holder, when: nil) }
+      frozen = Self.freeze(a)
     }
     return SecurityState(
       email: b.email_norm, emailVerified: true,
@@ -421,10 +423,37 @@ final class LiveAccountService: AccountService {
       lastSignIn: "on this iPhone", phraseConfirmed: "Confirmed at signup", frozen: frozen)
   }
 
-  /// Who froze the account, from `GET /account` (allowed on a restricted session).
-  private func frozenBy(token: String) async -> FreezeInfo.By {
+  /// Who froze the account and when, from `GET /account` (allowed on a restricted
+  /// session); the holder's, with no time, when the server can't be asked.
+  private func freezeInfo(token: String) async -> FreezeInfo {
     let a = try? await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
-    return a?.frozen_by == "operator" ? .operator : .holder
+    return a.flatMap(Self.freeze) ?? FreezeInfo(by: .holder, when: nil)
+  }
+
+  /// Who froze the account and when, from `GET /account` (#40, which a frozen account may
+  /// still read; spec 04 §6.11). nil when it isn't frozen, or the server can't be asked.
+  func freezeInfo() async -> FreezeInfo? {
+    guard let token = try? env.secrets.session()?.token,
+      let a = try? await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
+    else { return nil }
+    return Self.freeze(a)
+  }
+
+  /// The freeze `GET /account` reports: `frozen_by` names the operator or the holder, and
+  /// `freeze_trigger_at` is shown on the holder's wall.
+  static func freeze(_ a: LiveAccountFields) -> FreezeInfo? {
+    guard a.frozen == true || a.restricted == true else { return nil }
+    return FreezeInfo(by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at))
+  }
+
+  /// "on Sun 11 Oct at 21:20", in the app's fixed local clock (UTC+04:00, 03c §1.5).
+  static func freezeTime(_ instant: String?) -> String? {
+    guard let instant, let ms = try? parseInstantMs(instant) else { return nil }
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(secondsFromGMT: Int(LocalClock.offsetMinutes) * 60)
+    f.dateFormat = "EEE d MMM 'at' HH:mm"
+    return "on " + f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
   }
 
   func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
@@ -477,7 +506,23 @@ final class LiveAccountService: AccountService {
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
       case .unfreeze:
-        try await guarded(.accountUnfreeze, "/api/v1/account/unfreeze", factor: factor, binding: b, action: action)
+        // The app never sends #66 for an operator freeze (spec 04 §6.11): who froze the
+        // account is read first, and again if #66 refuses it (the operator froze it since).
+        if await freezeInfo()?.by == .operator { throw AuthFailure.frozenByOperator }
+        do throws(CeremonyError) {
+          try await guarded(.accountUnfreeze, "/api/v1/account/unfreeze", factor: factor, binding: b, action: action)
+        } catch {
+          if error.failure?.status == 401 {
+            // An operator freeze revokes every session, this one too: as after any
+            // revoked session, this iPhone signs in again, and then shows their wall.
+            try? env.secrets.deleteSession()
+            signIn = nil
+            await hooks.left()
+            throw AuthFailure.sessionEnded
+          }
+          if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw AuthFailure.frozenByOperator }
+          throw error
+        }
       case .addPasskey, .removePasskey, .setPassword, .changePassword, .removePassword, .removeDevice:
         throw AuthFailure.notInThisBuild
       }
@@ -540,7 +585,8 @@ final class LiveAccountService: AccountService {
     } catch let e as AuthFailure {
       throw e
     } catch let e as CeremonyError {
-      if case .noPRF = e { throw .notInThisBuild }
+      // The passkey gave no PRF output, so it has no wrap to open the words with.
+      if case .noPRF = e { throw .passkeyCantShowPhrase }
       throw Self.map(e)
     } catch {
       throw .refused
@@ -622,8 +668,8 @@ final class LiveAccountService: AccountService {
   }
 }
 
-/// The fields of `GET /account` (#40) the app reads, including the freeze's author,
-/// which CoreAuth's `AccountInfo` doesn't carry.
+/// The fields of `GET /account` (#40) the app reads, including the freeze's author and
+/// trigger time, which CoreAuth's `AccountInfo` doesn't carry.
 nonisolated struct LiveAccountFields: Decodable, Sendable {
   var has_keys: Bool?
   var email: String?
@@ -631,6 +677,7 @@ nonisolated struct LiveAccountFields: Decodable, Sendable {
   var has_password: Bool?
   var has_passkey: Bool?
   var frozen: Bool?
+  var freeze_trigger_at: String?
   var frozen_by: String?
   var restricted: Bool?
 }

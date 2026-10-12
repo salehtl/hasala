@@ -339,14 +339,68 @@ struct AccountFlowTests {
     let m = SecurityModel(session: session)
     await m.load()
     await m.request(.unfreeze)
-    #expect(account.frozenInfo == info.with(when: "Sat 11 Oct at 21:20"))
+    #expect(account.frozenInfo == info.with(when: "on Sun 11 Oct at 21:20"))
     #expect(session.leftFrozen == info)
+  }
+
+  /// A wall shown as the holder's (`frozen_by` couldn't be read) never sends #66 for an
+  /// operator freeze: the service refuses it first, and the wall becomes the operator's.
+  @Test func aStaleHolderWallLearnsItIsTheOperators() async {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .operator)
+    let shown = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    let session = AccountSession(services: services(account), phase: .frozen(shown))
+    await #expect(throws: AuthFailure.frozenByOperator) { try await session.unfreeze(password: nil) }
+    #expect(session.phase == .frozen(FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20")))
+    #expect(account.frozenInfo?.by == .operator)
+    // Left frozen with the holder's banner: the banner learns it too.
+    let left = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    left.leaveFrozen()
+    left.learnedOperatorFreeze()
+    #expect(left.leftFrozen == FreezeInfo(by: .operator, when: nil))
+    #expect(left.phase == .ready)
+  }
+
+  @Test func aHolderUnfreezeOpensTheApp() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .holder)
+    let session = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    try await session.unfreeze(password: nil)
+    #expect(session.phase == .ready)
+    #expect(account.frozenInfo == nil)
   }
 
   @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
-    session.signedIn(.frozen(.operator))
+    session.signedIn(.frozen(FreezeInfo(by: .operator, when: nil)))
     #expect(session.phase == .frozen(FreezeInfo(by: .operator, when: nil)))
+    // A holder's wall says when the freeze was triggered.
+    let holder = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    session.signedIn(.frozen(holder))
+    #expect(session.phase == .frozen(holder))
+  }
+
+  /// A run that finds the account frozen again keeps the "Leave it frozen" banner, and an
+  /// unanswered `GET /account` never turns a known operator freeze into the holder's.
+  @Test func aRunFindingTheFreezeKeepsTheBanner() {
+    let op = FreezeInfo(by: .operator, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .frozen(op))
+    session.runFoundFrozen(nil)
+    #expect(session.phase == .frozen(op))
+    session.leaveFrozen()
+    session.runFoundFrozen(nil)
+    #expect(session.phase == .ready)
+    #expect(session.leftFrozen == op)
+    let holder = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .ready)
+    #expect(session.leftFrozen == holder)
+    // Nothing known: the holder's wall.
+    let fresh = AccountSession(services: services(MockAccountService()), phase: .ready)
+    fresh.runFoundFrozen(nil)
+    #expect(fresh.phase == .frozen(FreezeInfo(by: .holder, when: nil)))
   }
 
   // MARK: Relaunch (spec 04 §6.5)
@@ -485,6 +539,89 @@ struct AccountFlowTests {
     await m.continueWithBanks()
     await m.useSampleData()
     #expect(m.step == .notifications)
+  }
+
+  // MARK: Connect Gmail after setup (spec 04 §6.6 row 4, §7.4)
+
+  func connectServices(_ offer: GmailOffer?, banks: [SupportedBank] = SupportedBank.allCases)
+    -> (AccountServices, MockMailbox)
+  {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let mailbox = s.mailbox as! MockMailbox
+    mailbox.gmailOffer = offer
+    mailbox.banks = banks
+    return (s, mailbox)
+  }
+
+  @Test func connectingGmailAfterSetupRunsGmailThenTheCards() async throws {
+    let (s, mailbox) = connectServices(.connect, banks: [.dib])
+    var finished = 0, closed = 0
+    let m = SetupModel.connectingGmail(.connect, services: s, onClose: { closed += 1 }, onFinished: { finished += 1 })
+    #expect(!m.startsAtBank)
+    #expect(m.orderedBanks == [.dib])
+    #expect(m.steps(2) == nil)
+    #expect(m.gmailIsFirst)
+    #expect(m.connectTitle == "Connect Gmail")
+    await m.openConnect()
+    #expect(m.path.isEmpty)
+    await m.connectGmail()
+    #expect(m.path == [.cards])
+    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(m.cards.count == 3)
+    await m.confirmCards()
+    #expect(m.path == [.cards, .result])
+    #expect(mailbox.gmailOffer == nil)
+    #expect(finished == 0)
+    m.afterResult()
+    #expect(finished == 1 && closed == 0)
+  }
+
+  @Test func reconnectingGmailIsDoneOnceGoogleSaysYes() async {
+    let (s, mailbox) = connectServices(.reconnect)
+    var finished = 0
+    let m = SetupModel.connectingGmail(.reconnect, services: s, onClose: {}, onFinished: { finished += 1 })
+    #expect(m.connectTitle == "Reconnect Gmail")
+    await m.connectGmail()
+    #expect(finished == 1)
+    #expect(m.path.isEmpty)
+    #expect(mailbox.gmailOffer == nil)
+  }
+
+  @Test func connectingGmailWithNoBankStartsAtTheBank() async {
+    let (s, _) = connectServices(.connect, banks: [])
+    var closed = 0
+    let m = SetupModel.connectingGmail(.connect, services: s, onClose: { closed += 1 }, onFinished: {})
+    #expect(m.startsAtBank)
+    await m.continueWithBanks()
+    #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib])
+    #expect(m.path == [.gmail])
+    #expect(!m.gmailIsFirst)
+    m.close()
+    #expect(closed == 1)
+  }
+
+  /// Closed during the scan: the Home card opens the cards again, where the scan is.
+  @Test func connectingGmailResumesAtTheCards() async throws {
+    let (s, mailbox) = connectServices(.connect)
+    try await mailbox.connectGmail(banks: [.enbd])
+    let m = SetupModel.connectingGmail(.connect, services: s, onClose: {}, onFinished: {})
+    await m.openConnect()
+    #expect(m.path == [.cards])
+    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(m.cards.count == 3)
+  }
+
+  @Test func setupResumedAtTheCardsStreamsTheScanAgain() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
+    facts.mailbox = .awaitingCards
+    facts.incomeSkipped = true
+    facts.planSkipped = true
+    let m = SetupModel(services: s, displayName: "Maya", facts: facts) {}
+    m.resume()
+    #expect(m.path == [.cards])
+    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(m.cards.count == 3)
   }
 
   @Test func resumesAtTheDerivedStep() {

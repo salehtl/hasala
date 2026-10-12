@@ -17,7 +17,7 @@ struct AccountCapabilitiesTests {
   @Test func betaIsTheAgreedSubset() {
     let hidden: AccountCapabilities = [
       .resetPassword, .recoverAccess, .rotatePhrase, .addPasskey, .changeEmail, .freeze,
-      .removePasskey, .changePassword, .removeDevice,
+      .removePasskey, .changePassword, .removeDevice, .removeThisIPhone,
     ]
     #expect(AccountCapabilities.all.isSuperset(of: .beta))
     #expect(AccountCapabilities.beta.isDisjoint(with: hidden))

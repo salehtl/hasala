@@ -40,8 +40,10 @@ struct FrozenWall: View {
             .listCard()
           }
           FailureBanner(failure: failure)
-          LockNote(text: "Didn't freeze it yourself? Someone may be reading your email. Unfreeze, then check Sign-in & security and change your email's password.",
-                   systemImage: "checkmark.shield")
+          if info.by == .holder {
+            LockNote(text: "Didn't freeze it yourself? Someone may be reading your email. Unfreeze, then check Sign-in & security and change your email's password.",
+                     systemImage: "checkmark.shield")
+          }
           WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "frozen.talk")
         }
       } footer: {
@@ -71,10 +73,12 @@ struct FrozenWall: View {
     busy = true
     defer { busy = false }
     do {
-      try await session.account.perform(.unfreeze, password: password)
-      session.unfroze()
+      try await session.unfreeze(password: password)
     } catch .stepUpFailed {
       failure = .badPhrase("That didn't confirm. A passkey or password added after the freeze can't unfreeze the account.")
+    } catch .frozenByOperator, .sessionEnded {
+      // The session now shows the operator's wall, which says so itself, or Welcome.
+      failure = nil
     } catch {
       failure = error
     }

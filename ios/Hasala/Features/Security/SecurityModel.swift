@@ -111,6 +111,14 @@ final class SecurityModel {
         break
       }
       await load()
+    } catch .frozenByOperator {
+      // Only the operator lifts it: the banner and this page show their freeze instead.
+      session.learnedOperatorFreeze()
+      await load()
+      failure = .frozenByOperator
+    } catch .sessionEnded {
+      // The server ended the session (an operator freeze revokes them all): sign in again.
+      session.signedOut()
     } catch {
       failure = error
     }
