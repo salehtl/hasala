@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # archive.sh: archive Hasala (Release) and export a signed App Store Connect .ipa,
-# on this Mac, with automatic signing (spec 06 §9, §10.1–§10.2). It never uploads;
+# on this Mac: the archive with automatic development signing, the export with manual
+# distribution signing (see below; spec 06 §10.1–§10.2). It never uploads;
 # ios/scripts/upload.sh does that, separately and on purpose.
 #
 #   ASC_KEY_ID=… ASC_ISSUER_ID=… ios/scripts/archive.sh [--allow-dirty] [--allow-branch]
@@ -159,16 +160,19 @@ if ! xcodebuild -exportArchive \
 	>"$OUT/export.log" 2>&1; then
 	echo "archive: xcodebuild -exportArchive failed; the signing errors are:" >&2
 	grep -E 'error:|No profiles|No signing|Provisioning|certificate|Cloud|distribution' "$OUT/export.log" | sort -u | head -40 >&2 || true
-	if grep -q -E "No profiles for|No signing certificate|doesn't include signing certificate|cloud-managed distribution certificates" "$OUT/export.log"; then
+	if grep -qiE "signing certificate|provisioning profile|No profiles for|cloud-managed" "$OUT/export.log"; then
 		cat >&2 <<'HINT'
 archive: the export signs manually (ExportOptions.plist) and needs, on this Mac:
   - an "Apple Distribution" identity for team 8CFG28JHP3 in a keychain on the
     search list (security find-identity -v -p codesigning), and
   - the App Store profile named "Hasala App Store" for app.hasala.ios, made with that
     certificate, installed in ~/Library/Developer/Xcode/UserData/Provisioning Profiles.
-  Create either through the App Store Connect API (POST /v1/certificates with a CSR
-  whose key stays in the keychain; POST /v1/profiles, profileType IOS_APP_STORE),
-  or in the developer portal. When the certificate changes, make a new profile.
+  Create either through the App Store Connect API (POST /v1/certificates,
+  certificateType DISTRIBUTION, with a CSR whose key stays in the keychain;
+  POST /v1/profiles, profileType IOS_APP_STORE), or in the developer portal.
+  When the certificate changes, make a new profile with that certificate and the
+  SAME name, "Hasala App Store", and move the old profile file out of
+  ~/Library/Developer/Xcode/UserData/Provisioning Profiles (one name, one profile).
 The development archive above is fine; only the distribution re-sign failed.
 HINT
 	fi
