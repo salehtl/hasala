@@ -71,7 +71,7 @@ final class ReleaseSurfaceTests: XCTestCase {
   private func tap(_ app: XCUIApplication, _ id: String, timeout: TimeInterval = 10, line: UInt = #line) {
     let e = el(app, id)
     XCTAssertTrue(e.waitForExistence(timeout: timeout), "\(id) is missing", line: line)
-    if !e.isHittable { app.swipeUp() }
+    dragUntilHittable(app, e)
     e.tap()
   }
 
