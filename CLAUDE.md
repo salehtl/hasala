@@ -106,8 +106,16 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `AccountSession.capabilities`; `-HasalaReleaseSurface` gives a Debug run the
   same surface, and `ios/scripts/test-release-surface.sh <simulator udid>` runs
   `ReleaseSurfaceTests` on a Release-configuration simulator build that links the
-  mock. `ios/scripts/privacy-lint.sh` checks required-reason API use against the
-  privacy manifest (archive.sh runs it first).
+  mock. `ios/scripts/archive.sh` (below) runs a gate before it builds anything
+  (exit 13): no `IntegrationStub` left under `ios/`, then
+  `ios/scripts/privacy-lint.sh` (required-reason API use against the privacy
+  manifest).
+  `ios/scripts/check-bundle.sh <.app|.xcarchive|.ipa>` checks what a build carries:
+  no test data, no resource over 5 MB but fonts and the merchant dictionary, and
+  the sample seed equal to `ios/scripts/golden/maya-v1.sha256`, which must equal
+  `SampleManifest.sha256` (update both when the seed is regenerated).
+  inspect-ipa.sh runs it as I6b; its I9 refuses third-party crypto symbols (the
+  export-compliance guard, `docs/decisions/export-compliance.md`).
   `ios/scripts/archive.sh` archives and exports a signed .ipa on the owner's Mac
   and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
   from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. archive.sh inspects
