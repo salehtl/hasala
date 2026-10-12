@@ -25,8 +25,8 @@
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 #
-# Caches (actions/cache): Go's module and build caches in `gate` and `vuln`, and
-# SwiftPM's repository cache in `swift`, `ios` and `ios-ui`. Each is keyed on the
+# Caches (actions/cache): Go's module and build caches in `gate` (`vuln` reads
+# them), and SwiftPM's repository cache in `swift`, `ios` and `ios-ui`. Each is keyed on the
 # files that pin its contents (flake.lock pins Go; go.sum and Package.resolved
 # the dependencies) and saved only when that exact key was missing. A pull
 # request's run saves into its own scope, which main and other pull requests
@@ -185,14 +185,15 @@ jobs:
 
       # Modules and compiled packages of server/ and server/oracle/ (see
       # "Caches" above): without it check.sh compiles every dependency first.
+      # Only this job saves it; `vuln` reads it.
       - name: Go module and build caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
-          restore-keys: go-${{ runner.os }}-
+          key: go-gate-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
+          restore-keys: go-gate-${{ runner.os }}-
 
       # The throwaway Postgres runs as the (unprivileged) runner user, inside the
       # devShell's TMPDIR, on a unix socket only: no service container, no TCP.
@@ -251,16 +252,17 @@ jobs:
           use-gha-cache: true
           diagnostic-endpoint: ""
 
-      # The modules govulncheck loads, and their compiled export data (see
-      # "Caches" above); the same key as `gate`'s.
-      - name: Go module and build caches
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # The modules govulncheck loads, and their compiled export data: `gate`'s
+      # cache (see "Caches" above), read only. Saving here would race `gate`
+      # for the key with a smaller cache.
+      - name: Go module and build caches (gate's, read only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
-          restore-keys: go-${{ runner.os }}-
+          key: go-gate-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
+          restore-keys: go-gate-${{ runner.os }}-
 
       # govulncheck exits non-zero when any vulnerability is reachable from the
       # code (symbol-level, its default); imported-but-unreachable ones are
@@ -389,11 +391,8 @@ jobs:
           nix shell --inputs-from . nixpkgs#shellcheck --command
           shellcheck -S warning ios/scripts/*.sh ios/scripts/tests/*.sh
 
-      # --parallel: the XCTest pass (it has no tests yet) lists and spreads
-      # tests over worker processes instead of launching each test bundle once
-      # more in series; Swift Testing runs in parallel either way.
       - name: HasalaKit tests (macOS)
-        run: swift test --package-path ios/HasalaKit --parallel
+        run: swift test --package-path ios/HasalaKit
 
       # The SwiftPM clones xcodebuild resolves the project's packages from (see
       # "Caches" above).
@@ -495,12 +494,9 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # --parallel: see the HasalaKit step in `ios`. With Xcode 27's SwiftPM,
-      # which builds one test bundle per test target, it is the difference
-      # between one XCTest launch per bundle in series and none.
       - name: swift test
         working-directory: ios/HasalaCore
-        run: swift test --disable-automatic-resolution --parallel
+        run: swift test --disable-automatic-resolution
 
       # `swift test` builds for macOS only. The iOS build is what catches a
       # module that shadows an Apple framework (the reason `CoreText` is
