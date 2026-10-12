@@ -91,6 +91,18 @@ hasala_sha256() {
 	printf '%s\n' "$out"
 }
 
+# hasala_is_macho FILE: true when FILE starts with a Mach-O or universal-binary magic
+# number (either byte order). od's -An -tx1 -N4 mean the same in BSD and GNU od.
+hasala_is_macho() {
+	local magic
+	magic="$(od -An -tx1 -N4 -- "$1" 2>/dev/null)" || return 1
+	magic="${magic//[[:space:]]/}"
+	case "$magic" in
+	cffaedfe | cefaedfe | feedfacf | feedface | cafebabe | cafebabf | bebafeca | bfbafeca) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
 # hasala_absent ERE PATH...: true only when grep read every PATH (a file, or a
 # directory, recursively; binary files are searched as text) and no line matches
 # ERE, i.e. grep exits 1. A match (0) and any error, such as a missing or unreadable

@@ -55,6 +55,6 @@ final class ActivityViewModel: ActivityModel {
   // TODO(spec 04 §16.1 "Add transaction"): AddTransactionSheet (keypad, merchant, category, date,
   // paid with) authoring `txn_ingested` with entry_method manual.
   func addTransaction() {
-    app.say("Adding by hand arrives in a later build", systemImage: "plus")
+    app.say("Adding by hand isn't in this build yet", systemImage: "plus")
   }
 }

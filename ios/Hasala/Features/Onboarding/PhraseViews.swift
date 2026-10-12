@@ -7,10 +7,20 @@ import UIKit
 struct PhraseIntroView: View {
   var model: SignupModel
 
+  /// Getting back in with the words and an emailed code (C4) is only promised when this
+  /// build can do it (`recoverAccess`).
+  private var subtitle: String {
+    let made = "These 12 words were made on this iPhone."
+    let rest = "A password only signs you in. Our server keeps the words only in a locked form it can't open."
+    return model.capabilities.contains(.recoverAccess)
+      ? "\(made) They unlock your data on a new iPhone, even if you lose every device and passkey, once you sign in there with your password or with a code we email you. \(rest)"
+      : "\(made) They unlock your data on a new iPhone once you sign in there. \(rest)"
+  }
+
   var body: some View {
     AccountScreen(
       title: "12 words, your spare key",
-      subtitle: "These 12 words were made on this iPhone. They unlock your data on a new iPhone, even if you lose every device and passkey, once you sign in there with your password or with a code we email you. A password only signs you in. Our server keeps the words only in a locked form it can't open.",
+      subtitle: subtitle,
       steps: (3, 3)
     ) {
       VStack(alignment: .leading, spacing: 18) {

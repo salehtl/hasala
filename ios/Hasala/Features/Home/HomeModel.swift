@@ -16,6 +16,9 @@ protocol HomeModel: AnyObject, Observable {
   func needsYou(_ card: String, primary: Bool) -> HomeRoute?
   /// A widget tap; returns a screen to push, if any.
   func openWidget(_ id: String) -> HomeRoute?
+  /// Whether tapping the widget leads anywhere in this build (`BuildSurface`): a Release
+  /// build doesn't make a widget tappable when its detail screen isn't built yet.
+  func widgetOpens(_ id: String) -> Bool
 }
 
 @MainActor
@@ -65,5 +68,12 @@ final class HomeViewModel: HomeModel {
       // TODO(spec 04 §16.1 "Accounts", "Project detail", §16.2 P4): Accounts, Project and Goal detail.
       return .widget(id)
     }
+  }
+
+  /// The widgets with a built destination: Plan, Activity and Bills.
+  static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "nextBill"]
+
+  func widgetOpens(_ id: String) -> Bool {
+    BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id)
   }
 }
