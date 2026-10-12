@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # The app's simulator tests in CI (.github/workflows/ci.yml, jobs `ios` and
 # `ios-ui`): picks the newest available iPhone simulator with iOS 26 or later,
-# boots it and waits until it has finished booting, then builds the Hasala scheme
-# unsigned and runs its tests there with xcodebuild, passing the remaining
-# arguments through (each job's -only-testing or -skip-testing selectors).
-# Warnings are errors, as in every CI build.
+# builds the Hasala scheme unsigned for testing while that simulator boots, waits
+# until it has finished booting, then runs the tests there (xcodebuild
+# build-for-testing and test-without-building: what `xcodebuild test` does, with
+# the wait between them), passing the remaining arguments through to both (each
+# job's -only-testing or -skip-testing selectors). Warnings are errors, as in
+# every CI build.
 #
 #   ios/scripts/ci-simulator-test.sh RESULT_BUNDLE [XCODEBUILD_ARG...]
 #
@@ -37,12 +39,24 @@ if best is None:
 print(best[1])
 ')"
 xcrun simctl list devices | grep "$udid"
-# Booted and settled (a fresh device's first-boot work included) before anything
-# is installed or launched: an app launch on a simulator that is still settling
-# can time out.
-xcrun simctl bootstatus "$udid" -b
 
-xcodebuild test \
+# The simulator boots during the build, and the tests start only once it has
+# finished booting, its first-boot work (data migration, minutes on a fresh
+# runner) included: an app launch on a simulator still settling can time out.
+xcrun simctl bootstatus "$udid" -b >"$result.boot.log" 2>&1 &
+boot=$!
+xcodebuild build-for-testing \
+	-project "$ios/Hasala.xcodeproj" -scheme Hasala \
+	-destination "id=$udid" \
+	CODE_SIGNING_ALLOWED=NO HASALA_WARNINGS_AS_ERRORS=YES \
+	"$@"
+if ! wait "$boot"; then
+	cat "$result.boot.log"
+	echo "::error::the simulator $udid did not boot"
+	exit 1
+fi
+tail -n 3 "$result.boot.log"
+xcodebuild test-without-building \
 	-project "$ios/Hasala.xcodeproj" -scheme Hasala \
 	-destination "id=$udid" \
 	-resultBundlePath "$result" \
