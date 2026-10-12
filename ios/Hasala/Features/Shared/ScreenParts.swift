@@ -127,10 +127,12 @@ struct DayOverline: View {
   }
 }
 
-/// A two-line navigation row: disc, title over detail, trailing value and chevron.
+/// A two-line navigation row: disc, title over detail, trailing value and chevron. A row
+/// that opens nothing (yet) leaves the chevron out, so it doesn't look tappable.
 struct NavRow<Leading: View, Trailing: View>: View {
   let title: String
   var detail: String?
+  var chevron = true
   @ViewBuilder var leading: Leading
   @ViewBuilder var trailing: Trailing
 
@@ -143,10 +145,12 @@ struct NavRow<Leading: View, Trailing: View>: View {
       }
       Spacer(minLength: 8)
       trailing
-      Image(systemName: "chevron.right")
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundStyle(HColor.listRowChevron)
-        .accessibilityHidden(true)
+      if chevron {
+        Image(systemName: "chevron.right")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(HColor.listRowChevron)
+          .accessibilityHidden(true)
+      }
     }
     .padding(.horizontal, HSpacing.listRowInsetInline)
     .frame(minHeight: detail == nil ? HSpacing.listRowMinHeight : HSpacing.listRowMinHeightTwoLine)
@@ -155,9 +159,10 @@ struct NavRow<Leading: View, Trailing: View>: View {
 }
 
 extension NavRow where Trailing == EmptyView {
-  init(title: String, detail: String? = nil, @ViewBuilder leading: () -> Leading) {
+  init(title: String, detail: String? = nil, chevron: Bool = true, @ViewBuilder leading: () -> Leading) {
     self.title = title
     self.detail = detail
+    self.chevron = chevron
     self.leading = leading()
     self.trailing = EmptyView()
   }
@@ -235,14 +240,17 @@ struct TabScreen<Content: View>: View {
 }
 
 /// The month pill under a large title ("October 2026 ⌄").
-// TODO(spec 04 §16.2 P1): it opens the month picker; one month is shown for now.
+// TODO(spec 04 §16.2 P1): it opens the month picker; one month is shown for now, so a
+// Release build drops the "⌄" that would promise a picker.
 struct MonthPill: View {
   let month: YearMonth
 
   var body: some View {
     HStack(spacing: 4) {
       Text(month.title).hType(.subheadline.weight(.semibold))
-      Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).accessibilityHidden(true)
+      if BuildSurface.showsUnfinished {
+        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).accessibilityHidden(true)
+      }
     }
     .foregroundStyle(HColor.textPrimary)
     .padding(.horizontal, 14)

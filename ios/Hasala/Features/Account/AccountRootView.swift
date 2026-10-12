@@ -64,7 +64,8 @@ struct AccountRootView<Main: View>: View {
         onFinished: { [weak session] in session?.setupFinished() }))
     case .needsUnlock(let passkeyCanUnlock):
       UnlockView(
-        model: UnlockModel(account: session.account, passkeyCanUnlock: passkeyCanUnlock,
+        model: UnlockModel(account: session.account,
+                           passkeyCanUnlock: passkeyCanUnlock && session.capabilities.contains(.signInPasskey),
                            onUnlocked: { [weak session] in session?.unlocked() }),
         onSignOut: {
           Task {
@@ -84,9 +85,9 @@ struct AccountRootView<Main: View>: View {
           }
         }
         // A password reset another iPhone asked this one to approve (spec 04 §6.12):
-        // checked on every foreground.
+        // checked on every foreground, in builds that offer password resets.
         .task(id: scenePhase) {
-          guard scenePhase == .active, pendingReset == nil else { return }
+          guard scenePhase == .active, pendingReset == nil, session.capabilities.contains(.resetPassword) else { return }
           pendingReset = await session.account.pendingResetRequest()
         }
         .sheet(item: $pendingReset, onDismiss: {

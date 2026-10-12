@@ -1,17 +1,189 @@
 import CoreAuth
+import CoreStore
 import CoreSync
+import CoreTime
+import Foundation
 import Testing
 
 @testable import Hasala
 
-/// The live service's failure mapping (spec 04 §6.1.5): each server refusal and
-/// ceremony failure lands on the copy block the screens show.
+/// The live service over CoreSync's real ceremonies, against `MiniHasalad` (the in-app
+/// fake of `02` §7's password routes, see `LiveAccountFlowTests`), and its failure
+/// mapping (spec 04 §6.1.5): each server refusal and ceremony failure lands on the copy
+/// block the screens show.
 ///
-/// The ceremonies themselves are CoreSync's, tested against its FakeServer there; the
-/// shipped view models over this service run in `LiveAccountFlowTests`.
+/// CoreTestSupport's `FakeServer` can't be linked into this target: Xcode then builds
+/// HasalaCore's products dynamically and drops the HasalaICU system library, so the
+/// signature-checking scenarios (writer revocation, sync) stay in HasalaCore's own suites.
 @MainActor
 @Suite("Live account service")
 struct LiveAccountServiceTests {
+  static let invite = "ABCDEFGHIJKLMNOPQRSTUVWX"
+  static let email = "maya@example.com"
+  static let password = "copper lantern quietly 42"
+
+  /// One iPhone: its own Keychain and approval key, the shared server.
+  static func phone(_ server: MiniHasalad) -> AccountEnvironment {
+    AccountEnvironment(
+      client: AuthClient(transport: server), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+  }
+
+  /// C1-P through the service: invite, email code, the words, one `password/register`.
+  static func signUp(_ server: MiniHasalad, _ env: AccountEnvironment) async throws -> (LiveAccountService, [String]) {
+    let a = LiveAccountService(env: env)
+    let ticket = try await a.beginSignup(
+      code: try #require(InviteCode(invite)), linkKey: nil, email: email, displayName: "Maya Rahman")
+    #expect(!ticket.emailProven)
+    try await a.verifySignupEmail(ticket, code: try #require(server.lastCode))
+    let phrase = try a.makeRecoveryPhrase()
+    let profile = try await a.finishAccount(ticket, credential: .password(password), phrase: phrase)
+    #expect(profile == AccountProfile(displayName: "Maya Rahman", email: email, method: .password))
+    return (a, phrase.words)
+  }
+
+  @Test func theBetaOffersWhatItCarriesOut() {
+    let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
+    #expect(a.capabilities == .beta)
+    #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverAccess))
+    #expect(a.capabilities.contains(.deleteAccount) && a.capabilities.contains(.removeThisIPhone))
+  }
+
+  @Test func aPasswordAccountOnTwoIPhonesThenDeleted() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let envA = Self.phone(server)
+    let (a, words) = try await Self.signUp(server, envA)
+    let bindingA = try #require(try envA.secrets.binding())
+    #expect(a.enrolled?.writerID.string == bindingA.writer_id)
+
+    // GET /account carries the review flag the runtime reads (#40); a relaunch learns
+    // the sign-in method from it.
+    server.reviewAccounts = true
+    let token = try #require(try envA.secrets.session()).token
+    let info = try await envA.client.account(bearer: token)
+    #expect(info.review_account == true)
+    let relaunched = LiveAccountService(env: envA)
+    relaunched.noteAccount(info)
+    #expect(relaunched.profile == AccountProfile(displayName: "Maya Rahman", email: Self.email, method: .password))
+
+    // C2-P on a new iPhone: signed in, data sealed; C3 with the words enrols it.
+    let envB = Self.phone(server)
+    let b = LiveAccountService(env: envB)
+    #expect(try await b.signInWithPassword(email: Self.email, password: Self.password) == .needsUnlock(passkeyCanUnlock: false))
+    await #expect(throws: AuthFailure.phraseMismatch) {
+      try await b.unlockWithPhrase(MockAccountService.phraseWords)
+    }
+    try await b.unlockWithPhrase(words)
+    let bindingB = try #require(try envB.secrets.binding())
+    #expect(bindingB.user_id == bindingA.user_id && bindingB.writer_id != bindingA.writer_id)
+
+    // "Remove this iPhone" needs the open account's engine; without one it refuses.
+    await #expect(throws: AuthFailure.refused) {
+      try await b.perform(.removeDevice(id: bindingB.writer_id), password: Self.password)
+    }
+    #expect(try envB.secrets.binding() != nil)
+
+    // Delete on A: step-up account.delete (password + approval key), #41, then a wipe,
+    // and the runtime is told this iPhone left.
+    var left = 0
+    a.hooks = LiveAccountHooks(left: { left += 1 })
+    try await a.perform(.deleteAccount, password: Self.password)
+    #expect(server.lastStepUpAction == "account.delete")
+    #expect(server.deletedAccounts == 1)
+    #expect(try envA.secrets.binding() == nil)
+    #expect(try envA.secrets.session() == nil)
+    #expect(left == 1)
+  }
+
+  @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    var left = 0
+    a.hooks = LiveAccountHooks(left: { left += 1 })
+    await a.signOut()
+    #expect(left == 1)
+    #expect(try env.secrets.session() == nil)
+    #expect(try env.secrets.binding() != nil)  // local data stays (S-26)
+    // C2b-P: the bound writer signs the login nonce; the keys are here.
+    let again = LiveAccountService(env: env)
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  /// One account per iPhone: a signup, or a sign-in to another address, while this
+  /// iPhone holds an account's data opens the "Remove this iPhone's data" wall and
+  /// leaves the binding (and the first account's keys) alone.
+  @Test func aBoundIPhoneAsksToRemoveItsDataBeforeAnotherAccount() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let binding = try #require(try env.secrets.binding())
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    again.hooks = LiveAccountHooks(otherAccountHere: { walls.append($0) })
+    await #expect(throws: AuthFailure.cancelled) {
+      _ = try await again.beginSignup(
+        code: try #require(InviteCode(Self.invite)), linkKey: nil, email: "omar@example.com", displayName: "Omar")
+    }
+    await #expect(throws: AuthFailure.cancelled) {
+      _ = try await again.signInWithPassword(email: "omar@example.com", password: Self.password)
+    }
+    #expect(walls == [Self.email, Self.email])
+    #expect(try env.secrets.binding() == binding)
+    // The bound account's own address (any case) signs in again (C2b-P).
+    #expect(try await again.signInWithPassword(email: "Maya@Example.com", password: Self.password) == .ready)
+    #expect(walls.count == 2)
+  }
+
+  /// §4.7 row 1: an offline sign-out keeps the session item marked `pending_logout`; the
+  /// logout is retried later, and the item goes once the server confirms.
+  @Test func anOfflineSignOutIsFinishedLater() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let token = try #require(try env.secrets.session()).token
+    server.offline = true
+    await a.signOut()
+    #expect(try env.secrets.session()?.pending_logout == true)
+    #expect(await LiveAccountService.retryPendingLogout(env) == token)  // still offline
+    #expect(try env.secrets.session()?.pending_logout == true)
+    server.offline = false
+    #expect(await LiveAccountService.retryPendingLogout(env) == nil)
+    #expect(try env.secrets.session() == nil)
+    await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: token) }
+  }
+
+  @Test func aSignInFinishesAPendingSignOutFirst() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let old = try #require(try env.secrets.session()).token
+    server.offline = true
+    await a.signOut()
+    server.offline = false
+    let again = LiveAccountService(env: env)
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+    let new = try #require(try env.secrets.session())
+    #expect(new.token != old && !new.pending_logout)
+    await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: old) }
+  }
+
+  /// After a relaunch the binding doesn't say how the account signs in: the step-up asks
+  /// `GET /account` rather than assume a passkey.
+  @Test func aRelaunchAsksTheServerHowTheAccountSignsIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let relaunched = LiveAccountService(env: env)
+    relaunched.loadProfile()
+    #expect(relaunched.profile?.method == .passkey)  // the binding's guess
+    #expect(await relaunched.usesPasskey() == false)
+    #expect(relaunched.profile?.method == .password)
+  }
+
   static func refused(_ status: Int, _ code: String) -> CeremonyError {
     .api(.refused(APIFailure(status: status, code: code)))
   }

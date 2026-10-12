@@ -36,6 +36,8 @@ final class SignupModel {
   var path: [WelcomeRoute] = []
 
   // Invite (§6.1.4)
+  /// The code characters entered (`InviteCode.entryCharacters`); the field shows them
+  /// grouped (`InviteCodeEntry.text`).
   var inviteText = "" {
     didSet {
       // Any edit drops a link key: a typed code is never proven by a stale key.
@@ -86,6 +88,9 @@ final class SignupModel {
   var busy = false
   var failure: AuthFailure?
 
+  /// What this build can do (`AccountService.capabilities`); the copy follows it.
+  var capabilities: AccountCapabilities { account.capabilities }
+
   init(account: AccountService) {
     self.account = account
   }
@@ -115,14 +120,20 @@ final class SignupModel {
 
   func applyInviteLink(_ link: InviteLink) {
     linkCode = link.code.value
-    inviteText = link.code.grouped
+    inviteText = link.code.value
     linkKey = link.linkKey
     inviteFromLink = true
     invitePasted = false
   }
 
+  /// The Paste button: a copied code (hyphens and spaces or not) replaces the field, and a
+  /// copied invite link is taken as if it had been opened.
   func paste(_ text: String) {
-    inviteText = InviteCode.group(InviteCode.normalize(text))
+    if let link = InviteLink.parse(pasted: text) {
+      applyInviteLink(link)
+      return
+    }
+    inviteText = InviteCode.entryCharacters(text)
     invitePasted = true
   }
 

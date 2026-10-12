@@ -73,7 +73,11 @@ struct TransactionSheet: View {
       VStack(spacing: 18) {
         hero(d)
         rows(d)
-        if let p = d.provenance { provenance(p, sortedBy: d.sortedBy) }
+        if d.isSample {
+          sampleNote(sortedBy: d.sortedBy)
+        } else if let p = d.provenance {
+          provenance(p, sortedBy: d.sortedBy)
+        }
         actions(d)
       }
       .padding(.horizontal, HSpacing.insetPage)
@@ -217,6 +221,36 @@ struct TransactionSheet: View {
       .padding(16)
       .listCard()
     }
+  }
+
+  /// A row of the App Review sample (its message id is `sample-<n>`): there is no bank
+  /// email to point to, and the sheet says so instead of showing where it was read.
+  private func sampleNote(sortedBy: SortedBy?) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: "info.circle").foregroundStyle(HColor.iconPrimary).frame(width: 24).accessibilityHidden(true)
+        Text("This is sample data. There's no email behind it.")
+          .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("txn.sample")
+        Spacer(minLength: 0)
+      }
+      if let sortedBy {
+        Divider()
+        HStack(alignment: .top, spacing: 12) {
+          Image(systemName: "arrow.triangle.branch").foregroundStyle(HColor.iconPrimary).frame(width: 24)
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(sortedBy.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+            Text(sortedBy.detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          }
+        }
+        .accessibilityElement(children: .combine)
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .listCard()
   }
 
   private func actions(_ d: TransactionDetail) -> some View {

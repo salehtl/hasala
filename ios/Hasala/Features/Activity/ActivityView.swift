@@ -14,7 +14,9 @@ struct ActivityView: View {
 
   var body: some View {
     NavigationStack {
-      TabScreen(app: app, title: "Activity", extra: .add, onExtra: { model.addTransaction() }) {
+      // TODO(spec 04 §16.1 "Add transaction"): until AddTransactionSheet exists, Release has no "+".
+      TabScreen(app: app, title: "Activity", extra: BuildSurface.showsUnfinished ? .add : .none,
+                onExtra: { model.addTransaction() }) {
         ActivityContent(model: model)
       }
       .searchable(

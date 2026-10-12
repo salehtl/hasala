@@ -14,6 +14,9 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaHidden
   /// Review · All caught up: the same ledger with the review queue already sorted.
   case mayaCaughtUp
+  /// The App Review demo account: the same ledger loaded as sample data, so every row read
+  /// from a bank alert carries a `sample-<n>` message id instead of a Gmail one.
+  case mayaSample
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -34,6 +37,13 @@ public enum Scenario: String, Sendable, CaseIterable {
         s.txns[i].categoryID = s.txns[i].suggestion ?? (s.txns[i].direction == .in ? "freelance" : "transfer")
         s.txns[i].categorySource = .user
         s.txns[i].isTransfer = s.txns[i].categoryID == "transfer"
+      }
+    }
+    if self == .mayaSample {
+      var n = 0
+      for i in s.txns.indices where s.txns[i].provenance != nil {
+        n += 1
+        s.txns[i].mailboxMessageID = "sample-\(n)"
       }
     }
     return s

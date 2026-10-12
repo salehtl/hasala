@@ -58,6 +58,41 @@ nonisolated public struct BuildInfo: Sendable, Equatable {
     }
   }()
 
+  /// The API origin this run talks to; the composition root asks here, not `current`.
+  ///
+  /// - Release: `HasalaAPIBaseURL` from Info.plist, which `current` has already required
+  ///   to be https. The launch environment is never read.
+  /// - Debug: the launch environment variable `HASALA_API_BASE_URL` wins when set, so a
+  ///   simulator run can reach a local server (http allowed). A malformed value traps
+  ///   rather than silently falling back to the QA API.
+  public static func apiBaseURL() -> URL {
+    #if DEBUG
+      do {
+        if let url = try debugAPIBaseURLOverride(ProcessInfo.processInfo.environment) {
+          return url
+        }
+      } catch {
+        fatalError("HASALA_API_BASE_URL must be an http(s) URL with a host")
+      }
+    #endif
+    return current.apiBaseURL
+  }
+
+  #if DEBUG
+    /// The Debug-only override from a launch environment: nil when `HASALA_API_BASE_URL`
+    /// is unset or blank; throws `.malformed` unless it is an http or https URL with a host.
+    static func debugAPIBaseURLOverride(_ environment: [String: String]) throws(Problem) -> URL? {
+      let key = "HASALA_API_BASE_URL"
+      guard let raw = environment[key]?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
+        return nil
+      }
+      guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(),
+        scheme == "http" || scheme == "https", let host = url.host(), !host.isEmpty
+      else { throw .malformed(key) }
+      return url
+    }
+  #endif
+
   /// "Hasala QA · 0.1.0 (261011.11530) · 1a2b3c4d5e6f" (spec 06 §15.2).
   public var footer: String {
     "Hasala \(environment.uppercased()) · \(marketingVersion) (\(buildNumber)) · \(gitCommit)"

@@ -44,7 +44,8 @@ final class BillsViewModel: BillsModel {
 
   // TODO(03b §3.3): "Remind me tomorrow" snoozes the occurrence (`bill_occurrence_set` snooze)
   // and plans a local notification (spec 04 §9).
-  func remind(_ bill: BillID) { app.say("Reminders arrive in a later build", systemImage: "bell") }
+  // Debug only: a Release build doesn't show "Remind me" (`BuildSurface`).
+  func remind(_ bill: BillID) { app.say("Reminders aren't in this build yet", systemImage: "bell") }
 
   func acceptAmount(_ bill: BillID) { app.perform(.acceptBillAmount(bill)) }
   func track(_ candidate: String) { app.perform(.trackCandidate(candidate)) }
@@ -176,8 +177,10 @@ private struct AttentionCard: View {
             Button("I paid it") { model.markPaid(item.id) }
               .buttonStyle(.pill(.primary, size: .medium, fill: true))
               .accessibilityIdentifier("bills.paid.\(item.id)")
-            Button("Remind me") { model.remind(item.id) }
-              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+            if BuildSurface.showsUnfinished {
+              Button("Remind me") { model.remind(item.id) }
+                .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+            }
           case .priceChange:
             Button("Accept new amount") { model.acceptAmount(item.id) }
               .buttonStyle(.pill(.primary, size: .medium, fill: true))
