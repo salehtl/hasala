@@ -204,9 +204,14 @@ private struct NeedsYouSection: View {
   let act: (String, Bool) -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
 
+  /// The badge. The rail's count also covers items with no card here (price changes,
+  /// bill candidates), which only the Needs-you list shows; without that list ("See all",
+  /// not in a Release build) the badge counts the cards drawn.
+  private var count: Int { seeAll == nil ? rail.cards.count : rail.count }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      SectionHeader("Needs you", count: rail.count, subtitle: rail.subtitle,
+      SectionHeader("Needs you", count: count, subtitle: rail.subtitle,
                     actionTitle: seeAll == nil ? nil : "See all", action: seeAll)
         .padding(.horizontal, HSpacing.insetPage)
       if typeSize.isAccessibilitySize {

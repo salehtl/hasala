@@ -46,7 +46,8 @@
     /// The session for `scenario`; nil means the Maya scenarios (signed in, ready).
     ///
     /// The mock offers every account action, except on the Release surface
-    /// (`BuildSurface`), where it offers the beta's, as the live service does.
+    /// (`BuildSurface`), where it offers the beta's, as the live service does (and its
+    /// first scan, like the live lane's, sorts nothing with the on-device model).
     @MainActor
     static func session(for scenario: AuthScenario?) -> AccountSession {
       let session = makeSession(for: scenario)
@@ -59,6 +60,7 @@
     @MainActor
     private static func makeSession(for scenario: AuthScenario?) -> AccountSession {
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount)
+      mailbox.sortsWithModel = BuildSurface.showsUnfinished
       func services(_ account: MockAccountService) -> AccountServices {
         AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
                         notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })

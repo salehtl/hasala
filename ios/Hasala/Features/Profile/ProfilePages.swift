@@ -46,7 +46,7 @@ struct HelpPage: View {
         }
         .padding(18)
         .listCard()
-        SupportLink(lead: "Questions, or something not working?", identifier: "help.email")
+        SupportLink(lead: "Questions, or something not working?", identifier: "help.email", web: false)
         WebLink(title: "Help and support", url: "https://hasala.app/support", identifier: "help.support")
         WebLink(title: "Privacy policy", url: "https://hasala.app/privacy", identifier: "help.privacy")
       }
