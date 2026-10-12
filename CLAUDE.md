@@ -46,8 +46,9 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`, then
   gitleaks over the full history) are the required checks. Keep those job
   names: required status checks match them by name. `swift` (HasalaCore on a
-  Mac), `web` (the website, see "Website") and `nixos-vm` (builds
-  `checks.x86_64-linux.qa-vm` with KVM) are not required.
+  Mac), `ios` and `ios-ui` (the app on a Mac, below), `web` (the website, see
+  "Website") and `nixos-vm` (builds `checks.x86_64-linux.qa-vm` with KVM) are
+  not required.
 - CI is path-aware on pull requests and fails closed. Its first job,
   `changes`, lists the pull request's changed paths (`git diff -z`, so any
   file name matches as written), and each of `gate`/`vuln`, `swift`, `web`
@@ -92,7 +93,7 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
   and committed. The flake pins that XcodeGen (`nix build .#xcodegen`, on PATH in
   the darwin devShell); nixpkgs' own 2.44.1 writes a project without resources.
-  Tests: `swift test --package-path ios/HasalaKit` (design tokens, money
+  Tests: `swift test --parallel --package-path ios/HasalaKit` (design tokens, money
   formatting, the Maya mock, text contrast) and `xcodebuild test -project
   ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
   (unit tests, and UI tests that run the accessibility audit at the default
@@ -116,8 +117,13 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   `ios/scripts/tests/devshell_test.sh` runs them again inside the devShell, where
   GNU coreutils come first on PATH. CI job `ios` builds and tests unsigned in
   the simulator and also runs `ios/scripts/tests/run.sh`,
-  `ios/scripts/tests/devshell_test.sh` and shellcheck over `ios/scripts`; it is
-  not a required check.
+  `ios/scripts/tests/devshell_test.sh` and shellcheck over `ios/scripts`; job
+  `ios-ui` runs the two longest UI test classes (`CoreScreensTests`,
+  `SmokeTests`) on a second runner, and `ios` skips exactly those two
+  (`ios/scripts/ci-simulator-test.sh`). Neither is a required check. Use
+  `swift test --parallel` for HasalaCore and HasalaKit: Xcode 27's SwiftPM
+  builds one test bundle per test target, and without it each bundle is
+  launched once more, in series, for an XCTest pass with no tests.
 - `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
   checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
   which is byte-frozen). The infra checks: `ingress-lint` (both systems; the
