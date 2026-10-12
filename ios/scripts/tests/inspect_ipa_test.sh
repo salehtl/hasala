@@ -10,8 +10,9 @@
 # of SIGPIPE, `!` turns the failed pipeline into success); I7 once skipped binary
 # files (grep -I), so a secret in the Mach-O or the binary Info.plist passed; I12 and
 # AT-REV-4 once read only the main binary, so a dev host in Info.plist (where
-# HasalaAPIBaseURL lives) or in a resource passed; an .ipa that unpacks to mode 000
-# once left the inspection's temporary directory behind.
+# HasalaAPIBaseURL lives) or in a resource passed; I12 once searched for dev hosts in
+# lower case only, so http://LOCALHOST:8080 in a resource passed; an .ipa that unpacks
+# to mode 000 once left the inspection's temporary directory behind.
 #
 # Offline and local: Xcode's clang, actool and codesign (ad hoc, no identity, no
 # keychain, no provisioning). The "secrets" are assembled at run time, so this file
@@ -167,6 +168,19 @@ app="$(variant devhost-resource)"
 printf '{"api": "http://127.0.0.1:8080/"}\n' >"$app/endpoints.json"
 seal devhost-resource
 inspect devhost-resource 40
+only_failed "I12 no dev hosts in any file"
+
+# A dev host in capitals in a resource file: the dev-host search ignores case.
+app="$(variant devhost-upper)"
+printf '{"api": "http://LOCALHOST:8080/"}\n' >"$app/endpoints.json"
+if hasala_absent 'localhost' "$app/endpoints.json"; then
+	echo "     (the resource has no lower-case 'localhost'; only a search that ignores case finds it)"
+else
+	echo "FAIL the test's resource has 'localhost' in lower case; this case would not test the case-insensitive search"
+	fail=1
+fi
+seal devhost-upper
+inspect devhost-upper 40
 only_failed "I12 no dev hosts in any file"
 
 # A dev host in a localized .strings resource (a binary plist, the value UTF-16).

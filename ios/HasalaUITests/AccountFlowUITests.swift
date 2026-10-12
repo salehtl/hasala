@@ -403,35 +403,5 @@ final class AccountFlowUITests: XCTestCase {
     try audit(signedIn, atLargeText: true)
   }
 
-  // MARK: - Helpers
-
-  /// The system accessibility audit (see SmokeTests for why contrast is not counted
-  /// and clipping is checked only at the large sizes).
-  @MainActor
-  private func audit(
-    _ app: XCUIApplication, atLargeText: Bool = false, file: StaticString = #filePath, line: UInt = #line
-  ) throws {
-    var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
-    if !atLargeText { types.remove(.textClipped) }
-    var issues: [String] = []
-    try app.performAccessibilityAudit(for: types) { issue in
-      // The keyboard and the system bars are not ours.
-      if let e = issue.element, e.elementType == .key || e.elementType == .keyboard { return true }
-      if issue.auditType == .dynamicType, let e = issue.element, e.identifier == "hasala.cappedFigure" { return true }
-      let element = issue.element.map { "'\($0.label)' [\($0.identifier)] \($0.elementType.rawValue)" }
-      issues.append("\(issue.compactDescription): \(element ?? "no element") — \(issue.detailedDescription)")
-      return true
-    }
-    if !issues.isEmpty {
-      XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
-    }
-  }
-
-  @MainActor
-  private func attach(_ app: XCUIApplication, _ name: String) {
-    let shot = XCTAttachment(screenshot: app.screenshot())
-    shot.name = name
-    shot.lifetime = .keepAlways
-    add(shot)
-  }
+  // Helpers (audit, attach) are the shared ones in UITestSupport.swift.
 }
