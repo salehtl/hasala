@@ -18,6 +18,19 @@
 // grants — the append-only op_log and key_history, the revoke-once writers —
 // exactly as serve does. NewWithOwner also returns the owner's pool, for the
 // few tests that must show what the schema owner can and cannot do.
+//
+// # One migration per test process
+//
+// New, NewOwner and NewWithOwner do not run the migrations for every test. The
+// first of them in a test process builds one template database exactly as a
+// test database used to be built (newDatabase's setup.sql steps, then
+// pg.Migrate as hasala_migrate), closes every connection to it, and from then
+// on each test gets CREATE DATABASE ... TEMPLATE of it, owned by
+// hasala_migrate, with the database-level grants newDatabase makes (they live
+// in pg_database, so a copy does not carry them). The copy is the same schema,
+// grants, triggers and goose_db_version rows, made in a fraction of the time.
+// Nothing ever connects to the template after it is built, and Main drops it.
+// NewEmpty still creates an unmigrated database from scratch.
 package pgtest
 
 import (
@@ -29,6 +42,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -42,6 +56,12 @@ var (
 	adminDSN  string
 	adminPool *pgxpool.Pool // shared for the whole run: CREATE/DROP DATABASE only
 	dbSeq     atomic.Int64
+
+	// The migrated template (see migratedTemplate): built on first use, once
+	// per test process, and dropped by Main after m.Run.
+	tmplOnce sync.Once
+	tmplName string
+	tmplErr  error
 )
 
 // EnsureRoles creates hasala_migrate and hasala_runtime on the cluster behind
@@ -94,6 +114,7 @@ func Main(m *testing.M) int {
 		return 1
 	}
 	code := m.Run()
+	dropTemplate()
 	adminPool.Close()
 	stop()
 	return code
@@ -121,14 +142,76 @@ func NewOwner(t *testing.T) *pgxpool.Pool {
 // the runtime role's and the schema owner's.
 func NewWithOwner(t *testing.T) (runtime, owner *pgxpool.Pool) {
 	t.Helper()
-	ctx := context.Background()
-	name := newDatabase(t)
-	owner = openPool(t, dsnFor(adminDSN, pg.RoleMigrate, name))
-	if err := pg.Migrate(ctx, owner); err != nil {
+	tmpl, err := migratedTemplate()
+	if err != nil {
 		t.Fatal(err)
 	}
+	name := copyDatabase(t, tmpl)
+	owner = openPool(t, dsnFor(adminDSN, pg.RoleMigrate, name))
 	runtime = openPool(t, dsnFor(adminDSN, pg.RoleRuntime, name))
 	return runtime, owner
+}
+
+// migratedTemplate returns the name of this process's migrated template,
+// building it on the first call: a database prepared by prepareDatabase (what
+// newDatabase does for a test) and migrated by pg.Migrate as hasala_migrate,
+// with every connection to it closed again before it is returned, because
+// CREATE DATABASE refuses a template that anyone is connected to.
+func migratedTemplate() (string, error) {
+	tmplOnce.Do(func() {
+		ctx := context.Background()
+		name := fmt.Sprintf("tmpl%d", os.Getpid())
+		if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name+" OWNER hasala_migrate"); err != nil {
+			tmplErr = fmt.Errorf("pgtest: create the migrated template: %w", err)
+			return
+		}
+		tmplName = name // from here on Main drops it, whatever fails below
+		if err := prepareDatabase(ctx, name); err != nil {
+			tmplErr = err
+			return
+		}
+		owner, err := pg.Open(ctx, dsnFor(adminDSN, pg.RoleMigrate, name))
+		if err != nil {
+			tmplErr = fmt.Errorf("pgtest: open the template as the schema owner: %w", err)
+			return
+		}
+		err = pg.Migrate(ctx, owner)
+		owner.Close()
+		if err != nil {
+			tmplErr = fmt.Errorf("pgtest: migrate the template: %w", err)
+		}
+	})
+	return tmplName, tmplErr
+}
+
+// dropTemplate drops this process's template, if it was built.
+func dropTemplate() {
+	if tmplName == "" {
+		return
+	}
+	if _, err := adminPool.Exec(context.Background(), "DROP DATABASE IF EXISTS "+tmplName+" WITH (FORCE)"); err != nil {
+		fmt.Fprintf(os.Stderr, "pgtest: drop the migrated template %s: %v\n", tmplName, err)
+	}
+}
+
+// copyDatabase creates a copy of the template tmpl, owned by hasala_migrate,
+// with the database-level grants prepareDatabase makes (pg_database holds
+// them, so CREATE DATABASE does not copy them; everything inside the database
+// is copied). It is dropped when the test finishes.
+func copyDatabase(t *testing.T, tmpl string) string {
+	t.Helper()
+	ctx := context.Background()
+	name := fmt.Sprintf("t%d_%d", os.Getpid(), dbSeq.Add(1))
+	if _, err := adminPool.Exec(ctx, "CREATE DATABASE "+name+" TEMPLATE "+tmpl+" OWNER hasala_migrate"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dropDatabase(t, name) })
+	for _, stmt := range databaseGrants(name) {
+		if _, err := adminPool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("pgtest: %s: %v", stmt, err)
+		}
+	}
+	return name
 }
 
 // NewEmpty creates a database prepared exactly as infra's setup.sql leaves
@@ -156,28 +239,65 @@ func newDatabase(t *testing.T) string {
 	// Registered immediately after CREATE succeeds, before anything below can
 	// fail: t.Fatal runs only the cleanups already registered. Cleanups run
 	// last-registered-first, so every pool opened later is closed before this.
-	t.Cleanup(func() {
-		if _, err := adminPool.Exec(context.Background(),
-			"DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
-			t.Errorf("pgtest: drop database %s: %v", name, err)
-		}
-	})
-	su, err := pg.Open(ctx, dsnFor(adminDSN, "", name))
-	if err != nil {
+	t.Cleanup(func() { dropDatabase(t, name) })
+	if err := prepareDatabase(ctx, name); err != nil {
 		t.Fatal(err)
 	}
-	defer su.Close()
-	for _, stmt := range []string{
-		"ALTER SCHEMA public OWNER TO hasala_migrate",
-		"REVOKE ALL ON SCHEMA public FROM PUBLIC",
-		"REVOKE ALL ON DATABASE " + name + " FROM PUBLIC",
-		"GRANT CONNECT ON DATABASE " + name + " TO hasala_runtime",
-	} {
-		if _, err := su.Exec(ctx, stmt); err != nil {
-			t.Fatalf("pgtest: %s: %v", stmt, err)
+	return name
+}
+
+// dropDatabase drops a test's database. Its cleanup runs after the test's pools
+// are closed, but a closed connection's backend exits a moment later, and
+// DROP DATABASE waits for the backends still on the database in steps of
+// 100 ms. So it first polls, for at most backendExitWait, until none is left;
+// whatever is still connected after that (a connection the test leaked) is
+// what WITH (FORCE) terminates, exactly as before.
+func dropDatabase(t *testing.T, name string) {
+	t.Helper()
+	ctx := context.Background()
+	for deadline := time.Now().Add(backendExitWait); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		var n int
+		if err := adminPool.QueryRow(ctx,
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = $1", name).Scan(&n); err != nil || n == 0 {
+			break
 		}
 	}
-	return name
+	if _, err := adminPool.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+		t.Errorf("pgtest: drop database %s: %v", name, err)
+	}
+}
+
+// backendExitWait bounds dropDatabase's wait for closed connections' backends.
+const backendExitWait = 250 * time.Millisecond
+
+// prepareDatabase does, as the bootstrap superuser, what infra's setup.sql
+// does to a new database (spec 02 §5.2): the public schema owned by
+// hasala_migrate, PUBLIC with no rights on the schema or the database, and
+// CONNECT for the runtime role.
+func prepareDatabase(ctx context.Context, name string) error {
+	su, err := pg.Open(ctx, dsnFor(adminDSN, "", name))
+	if err != nil {
+		return err
+	}
+	defer su.Close()
+	for _, stmt := range append([]string{
+		"ALTER SCHEMA public OWNER TO hasala_migrate",
+		"REVOKE ALL ON SCHEMA public FROM PUBLIC",
+	}, databaseGrants(name)...) {
+		if _, err := su.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("pgtest: %s: %w", stmt, err)
+		}
+	}
+	return nil
+}
+
+// databaseGrants are prepareDatabase's statements on the database itself,
+// which a copy made with CREATE DATABASE ... TEMPLATE does not inherit.
+func databaseGrants(name string) []string {
+	return []string{
+		"REVOKE ALL ON DATABASE " + name + " FROM PUBLIC",
+		"GRANT CONNECT ON DATABASE " + name + " TO hasala_runtime",
+	}
 }
 
 func openPool(t *testing.T, dsn string) *pgxpool.Pool {
