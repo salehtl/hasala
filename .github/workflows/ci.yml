@@ -455,8 +455,11 @@ jobs:
   # The two longest UI test classes, CoreScreensTests and SmokeTests (about 23 of
   # the UI tests' 34 minutes), on a runner of their own beside `ios`, which skips
   # exactly these two. Each class still runs serially on one simulator, as it
-  # did inside `ios`; the split adds a runner, not concurrency on one. Skipped
-  # exactly when `ios` is. Not a required check.
+  # did inside `ios`; the split adds a runner, not concurrency on one. The unit
+  # tests (HasalaTests, seconds) run here too, first, as they do before the UI
+  # tests in `ios`: their host app is the simulator's first launch, so no UI
+  # test is (a UI test that was once timed out launching the app on a freshly
+  # booted simulator). Skipped exactly when `ios` is. Not a required check.
   ios-ui:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
@@ -483,6 +486,7 @@ jobs:
       - name: Build and test CoreScreensTests and SmokeTests in the simulator (unsigned)
         run: >-
           ios/scripts/ci-simulator-test.sh "$RUNNER_TEMP/Hasala.xcresult"
+          -only-testing:HasalaTests
           -only-testing:HasalaUITests/CoreScreensTests
           -only-testing:HasalaUITests/SmokeTests
 

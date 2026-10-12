@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # The app's simulator tests in CI (.github/workflows/ci.yml, jobs `ios` and
 # `ios-ui`): picks the newest available iPhone simulator with iOS 26 or later,
-# then builds the Hasala scheme unsigned and runs its tests there with xcodebuild,
-# passing the remaining arguments through (each job's -only-testing or
-# -skip-testing selectors). Warnings are errors, as in every CI build.
+# boots it and waits until it has finished booting, then builds the Hasala scheme
+# unsigned and runs its tests there with xcodebuild, passing the remaining
+# arguments through (each job's -only-testing or -skip-testing selectors).
+# Warnings are errors, as in every CI build.
 #
 #   ios/scripts/ci-simulator-test.sh RESULT_BUNDLE [XCODEBUILD_ARG...]
 #
@@ -36,6 +37,10 @@ if best is None:
 print(best[1])
 ')"
 xcrun simctl list devices | grep "$udid"
+# Booted and settled (a fresh device's first-boot work included) before anything
+# is installed or launched: an app launch on a simulator that is still settling
+# can time out.
+xcrun simctl bootstatus "$udid" -b
 
 xcodebuild test \
 	-project "$ios/Hasala.xcodeproj" -scheme Hasala \
