@@ -67,23 +67,29 @@ done
 # --- hard rules on the allow file itself ------------------------------------------
 # allowed_only MODULE DIR...: MODULE may be listed for these directories only.
 BANNED="UIKit SwiftUI AuthenticationServices UserNotifications BackgroundTasks WidgetKit LocalAuthentication Network VisionKit AVFoundation FoundationNetworking"
-hard_rule() { # dir module -> prints a reason when the pair is forbidden outright
+# hard_rule DIR MODULE: sets why to the reason when the pair is forbidden
+# outright, and to "" when it is not. It sets a variable rather than printing,
+# because a $(...) per call forked a subshell for each of the ~700 pairs and
+# imports checked below.
+hard_rule() {
 	local dir="$1" mod="$2" b
+	why=""
 	for b in $BANNED; do
-		[[ "$mod" == "$b" ]] && {
-			echo "$mod is never imported in HasalaCore (spec 04 §2.3)"
-			return
-		}
+		if [[ "$mod" == "$b" ]]; then
+			why="$mod is never imported in HasalaCore (spec 04 §2.3)"
+			return 0
+		fi
 	done
 	case "$mod" in
-	GRDB) [[ "$dir" == Store || "$dir" == Projection ]] || echo "GRDB is for Store and Projection only (spec 04 §2.4 R6)" ;;
-	FoundationModels) [[ "$dir" == Model ]] || echo "FoundationModels is for Model (HasalaModel) only (spec 04 §2.3)" ;;
-	CommonCrypto) [[ "$dir" == Primitives ]] || echo "CommonCrypto is for Primitives (CorePrimitives) only (spec 04 §2.3)" ;;
+	GRDB) [[ "$dir" == Store || "$dir" == Projection ]] || why="GRDB is for Store and Projection only (spec 04 §2.4 R6)" ;;
+	FoundationModels) [[ "$dir" == Model ]] || why="FoundationModels is for Model (HasalaModel) only (spec 04 §2.3)" ;;
+	CommonCrypto) [[ "$dir" == Primitives ]] || why="CommonCrypto is for Primitives (CorePrimitives) only (spec 04 §2.3)" ;;
 	esac
+	return 0
 }
 while read -r dir mods; do
 	for m in $mods; do
-		why="$(hard_rule "$dir" "$m")"
+		hard_rule "$dir" "$m"
 		[[ -z "$why" ]] || problem "imports.allow: $dir lists $m: $why"
 	done
 done < <(allow_lines)
@@ -91,6 +97,15 @@ done < <(allow_lines)
 # --- every import is allowed --------------------------------------------------------
 IMPORT_RE='^[[:space:]]*(@[A-Za-z_]+(\([^)]*\))?[[:space:]]+)*((public|package|internal|fileprivate|private)[[:space:]]+)?import[[:space:]]'
 star="$(allow_lines | awk '$1 == "*" { $1 = ""; print }')"
+# Everything the loop below looks up is computed once, and the loop itself runs
+# no command: it once forked sed, awk and a subshell or two for every import
+# line, a few thousand processes per run. star_mods is " <module> ... " for `*`;
+# pairs is " <dir>/<module> ... " for every other line of imports.allow; and
+# MODULE_RE is the expression `sed -nE 's/.../\7/p'` applied to each line, with
+# the module name in BASH_REMATCH[7].
+star_mods=" $(echo $star) "
+pairs=" $(allow_lines | awk '$1 != "*" { for (i = 2; i <= NF; i++) printf "%s/%s ", $1, $i }')"
+MODULE_RE='^[[:space:]]*(@[A-Za-z_]+(\([^)]*\))?[[:space:]]+)*((public|package|internal|fileprivate|private)[[:space:]]+)?import[[:space:]]+((typealias|struct|class|enum|protocol|let|var|func)[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*).*'
 n_imports=0
 while IFS= read -r hit; do
 	[[ -n "$hit" ]] || continue
@@ -98,21 +113,26 @@ while IFS= read -r hit; do
 	rest="${hit#*:}"
 	line="${rest%%:*}"
 	text="${rest#*:}"
-	mod="$(printf '%s\n' "$text" | sed -nE 's/^[[:space:]]*(@[A-Za-z_]+(\([^)]*\))?[[:space:]]+)*((public|package|internal|fileprivate|private)[[:space:]]+)?import[[:space:]]+((typealias|struct|class|enum|protocol|let|var|func)[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*).*/\7/p')"
+	mod=""
+	if [[ "$text" =~ $MODULE_RE ]]; then
+		mod="${BASH_REMATCH[7]}"
+	fi
 	dir="${file%%/*}"
 	n_imports=$((n_imports + 1))
 	if [[ -z "$mod" ]]; then
 		problem "Sources/HasalaCore/$file:$line: cannot read this import"
 		continue
 	fi
-	why="$(hard_rule "$dir" "$mod")"
+	hard_rule "$dir" "$mod"
 	if [[ -n "$why" ]]; then
 		problem "Sources/HasalaCore/$file:$line: import $mod: $why"
 		continue
 	fi
-	mods="$star $(allow_lines | awk -v d="$dir" '$1 == d { $1 = ""; print }')"
-	case " $(echo $mods) " in
-	*" $mod "*) ;;
+	case "$star_mods" in
+	*" $mod "*) continue ;;
+	esac
+	case "$pairs" in
+	*" $dir/$mod "*) ;;
 	*) problem "Sources/HasalaCore/$file:$line: import $mod is not allowed in $dir/ (ios/HasalaCore/imports.allow)" ;;
 	esac
 done < <(cd "$SRC" && grep -rnE --include='*.swift' "$IMPORT_RE" . | sed 's|^\./||')
