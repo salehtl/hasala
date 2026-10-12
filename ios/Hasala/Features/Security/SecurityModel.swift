@@ -35,6 +35,25 @@ final class SecurityModel {
 
   var isFrozen: Bool { state?.frozen != nil }
 
+  /// The account actions this build can carry out; the screen offers only these.
+  var capabilities: AccountCapabilities { session.capabilities }
+
+  /// "Let's lock it down" (spec 04 §6.12) is a checklist of these steps; a build that can't
+  /// carry them out doesn't offer it (Sign out everywhere and support stay on the page).
+  var offersLockdown: Bool {
+    capabilities.isSuperset(of: [
+      .signOutEverywhere, .removePasskey, .removeDevice, .changePassword, .rotatePhrase, .freeze,
+    ])
+  }
+
+  /// Whether any action Sign-in & security can show is missing from this build, so the
+  /// screen points to support for it instead.
+  var lacksAnAction: Bool {
+    !capabilities.isSuperset(of: [
+      .changeEmail, .addPasskey, .removePasskey, .changePassword, .removeDevice, .rotatePhrase, .freeze,
+    ])
+  }
+
   func load() async {
     do {
       state = try await account.securityState()

@@ -7,6 +7,10 @@
   @MainActor
   final class MockMailbox: MailboxConnecting {
     var offersSampleData: Bool
+    /// Whether the first scan reports alerts sorted by the on-device model. The beta has
+    /// no model tier at ingest (a later sweep), so the Release surface turns this off, as
+    /// the live lane reports none.
+    var sortsWithModel = true
     var total = 268
     var step: Duration = .milliseconds(120)
     private(set) var connected = false
@@ -53,8 +57,10 @@
       try? await Task.sleep(for: .milliseconds(200))
       confirmed = cards
       let kept = cards.filter(\.keep).reduce(0) { $0 + $1.alertCount }
-      return SortSummary(total: kept, byRules: 0, byDictionary: Int(Double(kept) * 0.65), byModel: Int(Double(kept) * 0.21),
-                         toReview: kept - Int(Double(kept) * 0.65) - Int(Double(kept) * 0.21))
+      let dictionary = Int(Double(kept) * 0.65)
+      let model = sortsWithModel ? Int(Double(kept) * 0.21) : 0
+      return SortSummary(total: kept, byRules: 0, byDictionary: dictionary, byModel: model,
+                         toReview: kept - dictionary - model)
     }
 
     func loadSampleData() async throws(SetupFailure) {

@@ -125,7 +125,8 @@ struct LockdownView: View {
                "lockdown.review") {}
           Divider().padding(.leading, 60)
           step(3, "Change your password", "If you have one. Also change it on your email account.",
-               model.state?.hasPassword == true ? "Change" : nil, "lockdown.password") {
+               model.state?.hasPassword == true && model.capabilities.contains(.changePassword) ? "Change" : nil,
+               "lockdown.password") {
             model.editingPassword = true
           }
           Divider().padding(.leading, 60)
@@ -134,9 +135,11 @@ struct LockdownView: View {
         .listCard()
         FailureBanner(failure: model.failure)
         if let notice = model.notice { StatusLine(text: notice, tone: .success) }
-        Button("Freeze my account") { Task { await model.request(.freeze) } }
-          .buttonStyle(.pill(.destructive, fill: true))
-          .accessibilityIdentifier("lockdown.freeze")
+        if model.capabilities.contains(.freeze) {
+          Button("Freeze my account") { Task { await model.request(.freeze) } }
+            .buttonStyle(.pill(.destructive, fill: true))
+            .accessibilityIdentifier("lockdown.freeze")
+        }
         WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "lockdown.talk")
       }
       .padding(HSpacing.insetPage)

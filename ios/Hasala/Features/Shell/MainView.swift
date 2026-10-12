@@ -7,6 +7,9 @@ import SwiftUI
 /// `Tab(role: .search)` draws inline as a fourth tab, with or without
 /// `.tabBarMinimizeBehavior(.never)`, and moving `.searchable` onto the TabView puts a
 /// search field in every tab. Not yet checked on an iOS 26 runtime.
+///
+/// A Release build has no Search tab until the search engine exists (`BuildSurface`);
+/// Activity's own search field finds transactions meanwhile.
 struct MainView: View {
   @State private var app: AppModel
   @State private var home: HomeViewModel
@@ -31,11 +34,20 @@ struct MainView: View {
       Tab("Activity", systemImage: "clock.arrow.circlepath", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
       }
-      Tab(value: AppTab.search, role: .search) {
-        SearchView(app: app)
+      // TODO(spec 04 §13.1): Search with direct answers; Debug keeps the placeholder tab.
+      if BuildSurface.showsUnfinished {
+        Tab(value: AppTab.search, role: .search) {
+          SearchView(app: app)
+        }
       }
     }
     .tabBarMinimizeBehavior(.never)
+    // A main view that appears (again, after signing out and back in) starts with no
+    // sheet or cover from the last time it was on screen.
+    .onAppear {
+      app.sheet = nil
+      app.cover = nil
+    }
     .sheet(item: $app.sheet) { route in
       switch route {
       case .transaction(let id):

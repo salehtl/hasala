@@ -29,6 +29,8 @@
       case passwordOnly
     }
 
+    /// The account actions the mock offers: every one, unless a scenario narrows it.
+    var capabilities: AccountCapabilities = .all
     /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
     /// What the existing account has (the sign-in scenarios).

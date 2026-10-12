@@ -3,7 +3,7 @@ import Observation
 
 /// Pages pushed inside the profile sheet (spec 04 §13.3 `.profile(ProfileRoute?)`).
 enum ProfileRoute: Hashable {
-  case bankAlerts, accounts, bills, rules, security, notifications, privacy, help
+  case bankAlerts, accounts, bills, rules, security, notifications, privacy, help, deleteAccount
 }
 
 /// Profile · Your profile and its settings pages (spec 04 §16.1 "Profile · Your profile" and its page-14 variant, "Profile · Categories and rules";
@@ -18,8 +18,6 @@ protocol ProfileModel: AnyObject, Observable {
   func setFaceIDLock(_ on: Bool)
   func setNotifications(_ level: DevicePrefs.NotificationLevel)
   func setRule(_ id: RuleID, enabled: Bool)
-  func signOut()
-  func deleteAccount()
 }
 
 @MainActor
@@ -53,10 +51,6 @@ final class ProfileViewModel: ProfileModel {
 
   func setRule(_ id: RuleID, enabled: Bool) { app.perform(.setRuleEnabled(id, enabled)) }
 
-  // TODO(spec 04 §6.2, §4.7 row 1; S-26): sign-out alerts and wiping this iPhone's keys
-  // belong to the accounts lane; the button is wired to its confirmation only.
-  func signOut() { app.say("Sign out arrives with accounts", systemImage: "rectangle.portrait.and.arrow.right") }
-
-  // TODO(spec 04 §16.1 "Profile · Delete your account"; S-22): DeleteAccountView.
-  func deleteAccount() { app.say("Deleting an account arrives with accounts", systemImage: "trash") }
+  // Sign out and Delete your account run on the account session (`AccountService`), not
+  // the ledger: see ProfileSheet and DeleteAccountPage.
 }

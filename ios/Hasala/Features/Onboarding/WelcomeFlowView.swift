@@ -75,7 +75,7 @@ struct WelcomeFlowView: View {
       AccountReadyView(profile: signup.profile) { session.accountCreated() }
         .navigationBarBackButtonHidden()
     case .signIn:
-      SignInView(model: signIn, onBack: signup.back,
+      SignInView(model: signIn, capabilities: session.capabilities, onBack: signup.back,
                  onForgot: {
                    signIn.startReset()
                    signup.go(.forgotEmail)

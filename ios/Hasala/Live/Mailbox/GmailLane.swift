@@ -1,33 +1,32 @@
 import CoreMailbox
 import CorePrimitives
+import CoreStore
 import CoreTemplate
 import CoreTime
 import Foundation
-import Synchronization
 
 /// The Gmail lane for one bound account: the MailboxEngine wired to its platform halves
 /// (Keychain, ASWebAuthenticationSession, BGTaskScheduler) and to the account's ports.
 ///
 /// The ports come from the account runtime (spec 04 §3): `persistence` (CoreStore's
-/// mailbox tables in ledger.sqlite), `ledger` (CoreSync/CoreOutbox/CoreDomain), `server`
-/// (`HTTPMailboxServer` over the session transport) and `stepUp` (the auth lane's step-up).
+/// mailbox tables in ledger.sqlite), `ledger` (`RuntimeMailboxLedger` over the account's
+/// sync engine, observer and outbox), `server` (`HTTPMailboxServer` over the session
+/// transport) and `stepUp` (`LiveStepUp`). The refresh token is the account's
+/// `SecretItem.gmailRefresh` in `Secrets`, so every account wipe takes it.
 ///
-/// TODO(WS-13): the WorkCoordinator should own the triggers (§3 "one entry point") and call
-/// `cycle(trigger:deadlineMs:)` as its mailbox stage; until it lands, `installBackgroundWork`
-/// and `foreground()` drive the lane directly.
+/// `WorkCoordinator` owns the triggers (§3 "one entry point"): it calls
+/// `cycle(trigger:deadlineMs:)` as its mailbox stage. The watch topic is the server's
+/// (`GET /meta` `gmail_watch_topic`); with none, `users.watch` is skipped and new mail is
+/// caught by the foreground, background-refresh and silent-push runs.
 nonisolated final class GmailLane: Sendable {
   let engine: MailboxEngine
   let tokens: RefreshingGmailTokenProvider
   let presenter: any GmailAuthSessionPresenter
 
-  /// Minimum spacing of foreground catch-ups (spec 04 §7.9: 5-min timer while active).
-  static let foregroundSpacingMs: Int64 = 5 * 60_000
-  private let lastForeground = Mutex<Int64>(0)
-
   /// nil when the build carries no Google client (the `unset` placeholders, spec 06 §15.2):
   /// "Connect Gmail" is then not offered.
   init?(
-    build: BuildInfo, userID: String, persistence: any MailboxPersistence, ledger: any MailboxLedger,
+    build: BuildInfo, secrets: Secrets, userID: UserID, persistence: any MailboxPersistence, ledger: any MailboxLedger,
     server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
     presenter: any GmailAuthSessionPresenter
   ) {
@@ -37,11 +36,11 @@ nonisolated final class GmailLane: Sendable {
     let oauth = GoogleOAuthClient(config: config, http: google)
     let clock = SystemClock()
     tokens = RefreshingGmailTokenProvider(
-      oauth: oauth, store: KeychainGmailRefreshTokenStore(userID: userID), clock: clock)
+      oauth: oauth, store: SecretsGmailRefreshTokenStore(secrets: secrets, userID: userID), clock: clock)
     let templates = BundledTemplates.load().templates
+    // No build topic: the server's `meta.gmail_watch_topic` is the only one (nil skips the watch).
     engine = MailboxEngine(
-      config: MailboxEngineConfig(
-        grantID: userID, buildTopic: build.gmailPubSubTopic == "unset" ? nil : build.gmailPubSubTopic),
+      config: MailboxEngineConfig(grantID: userID.string, buildTopic: nil),
       oauth: oauth, tokens: tokens, gmailHTTP: google, store: persistence, ledger: ledger, server: server,
       stepUp: stepUp, categorizer: categorizer, templates: templates, clock: clock, random: SystemRandom())
     self.presenter = presenter
@@ -103,38 +102,32 @@ nonisolated final class GmailLane: Sendable {
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
     await engine.runCycle(trigger: trigger, deadlineMs: deadlineMs)
   }
+}
 
-  /// Catch-up on open (spec 04 §7.9 "Foreground"), at most once per 5 minutes.
-  func foreground() async {
-    let now = SystemClock().nowMs()
-    let due = lastForeground.withLock { last -> Bool in
-      guard now - last >= Self.foregroundSpacingMs else { return false }
-      last = now
-      return true
+// MARK: Leaving the account
+
+extension GmailLane {
+  /// The account's Google refresh token on this iPhone, read before the account's secrets
+  /// are wiped; nil when there is none (another iPhone holds Gmail) or it can't be read.
+  static func heldGrant(secrets: Secrets, userID: UserID) -> String? {
+    guard let token = try? SecretsGmailRefreshTokenStore(secrets: secrets, userID: userID).read(), !token.isEmpty else {
+      return nil
     }
-    guard due else { return }
-    _ = await engine.runCycle(trigger: .foreground)
+    return token
   }
 
-  /// Hands BGAppRefreshTask / BGProcessingTask runs to this lane.
-  func installBackgroundWork() {
-    let engine = self.engine
-    BackgroundScheduler.shared.install { kind, deadlineMs in
-      switch kind {
-      case .refresh:
-        _ = await engine.runCycle(trigger: .appRefresh, deadlineMs: deadlineMs)
-      case .processing:
-        // Scan or backfill pages until iOS expires the task (the engine checks cancellation at
-        // each message boundary via its deadline; a cancelled task stops at the next commit).
-        for _ in 0..<50 where !Task.isCancelled {
-          let r = await engine.runCycle(trigger: .processing)
-          if r.completed || r.haltedOn != nil || r.phase == .awaitingCards { break }
-          if r.listed == 0 && r.ops == 0 && r.staged == 0 { break }  // no progress possible now
-        }
-      }
-      let phase = await engine.status().phase
-      return phase == .scanning || phase == .authoringBackfill
+  /// Ends this iPhone's Google grant as the account leaves it (spec 04 §4.7 rows 2–4):
+  /// `users.stop` first when the account itself is going (`stopWatch`), then the refresh
+  /// token is revoked at Google. Best effort, and nothing when the build has no Google
+  /// client. It needs only the token, so it runs after the local wipe as well.
+  static func endGrant(_ refreshToken: String, build: BuildInfo, stopWatch: Bool) async {
+    let config = GmailOAuthConfig(clientID: build.googleClientID, redirectScheme: build.googleRedirectScheme)
+    guard config.isConfigured else { return }
+    let google = URLSessionHTTPExchange.ephemeral()
+    let oauth = GoogleOAuthClient(config: config, http: google)
+    if stopWatch, let grant = try? await oauth.refresh(refreshToken: refreshToken) {
+      try? await GmailClient(http: google, accessToken: grant.accessToken).stop()
     }
-    BackgroundScheduler.shared.scheduleRefresh()
+    try? await oauth.revoke(token: refreshToken)
   }
 }

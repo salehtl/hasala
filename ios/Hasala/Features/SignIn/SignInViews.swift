@@ -8,50 +8,39 @@ import UIKit
 
 struct SignInView: View {
   @Bindable var model: SignInModel
+  /// What this build can do (`AccountSession.capabilities`): a missing sign-in method is
+  /// not offered, and a missing reset or recovery becomes a support email link.
+  var capabilities: AccountCapabilities = .all
   var onBack: () -> Void
   var onForgot: () -> Void
   var onRecover: () -> Void
   var onJoin: () -> Void
 
+  private var passkey: Bool { capabilities.contains(.signInPasskey) }
+  private var password: Bool { capabilities.contains(.signInPassword) }
+
   var body: some View {
     AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", onBack: onBack) {
       VStack(alignment: .leading, spacing: 14) {
-        BusyButton(title: "Sign in with Face ID", busy: model.busy && model.password.isEmpty,
-                   identifier: "signIn.passkey") {
-          Task { await model.signInWithPasskey() }
-        }
-        Text("Uses the passkey in your iCloud Keychain.")
-          .hType(.footnote)
-          .foregroundStyle(HColor.textSecondary)
-          .frame(maxWidth: .infinity)
-        HStack(spacing: 10) {
-          Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
-          Text("or use your email").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
-            .fixedSize()
-          Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
-        }
-        LabeledField(label: "Email") {
-          EmailInput(text: $model.email, identifier: "signIn.email")
-        }
-        VStack(alignment: .leading, spacing: HSpacing.fieldLabelGap) {
-          HStack {
-            Text("Password").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
-            Spacer()
-            InlineTextButton(title: "Forgot password?", identifier: "signIn.forgot", action: onForgot)
+        if passkey {
+          BusyButton(title: "Sign in with Face ID", busy: model.busy && model.password.isEmpty,
+                     identifier: "signIn.passkey") {
+            Task { await model.signInWithPasskey() }
           }
-          PasswordInput(placeholder: "Your password", text: $model.password, isNew: false,
-                        identifier: "signIn.password")
-            .hType(.body)
-            .padding(.leading, HSpacing.fieldInsetInline)
-            .padding(.trailing, 8)
-            .frame(minHeight: HSpacing.fieldMinHeight)
-            .background(HColor.fieldSurfaceOnGrouped,
-                        in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+          Text("Uses the passkey in your iCloud Keychain.")
+            .hType(.footnote)
+            .foregroundStyle(HColor.textSecondary)
+            .frame(maxWidth: .infinity)
         }
-        BusyButton(title: "Sign in with password", busy: model.busy && !model.password.isEmpty, kind: .tertiary,
-                   enabled: model.passwordSignInReady, identifier: "signIn.withPassword") {
-          Task { await model.signInWithPassword() }
+        if passkey && password {
+          HStack(spacing: 10) {
+            Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
+            Text("or use your email").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+              .fixedSize()
+            Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
+          }
         }
+        if password { passwordFields }
         if model.failure == .orphanedPasskey {
           FailureBanner(failure: model.failure)
           HStack {
@@ -61,15 +50,50 @@ struct SignInView: View {
           }
         } else if model.failure == .noCredential {
           FailureBanner(failure: model.failure)
-          Text("Use your email instead.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          if password {
+            Text("Use your email instead.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          }
         } else {
           FailureBanner(failure: model.failure)
         }
-        LinkButton(title: "Can't get in at all? Recover your account", identifier: "signIn.recover", action: onRecover)
-          .padding(.top, 24)
+        if capabilities.contains(.recoverAccess) {
+          LinkButton(title: "Can't get in at all? Recover your account", identifier: "signIn.recover", action: onRecover)
+            .padding(.top, 24)
+        }
+        if !capabilities.isSuperset(of: [.resetPassword, .recoverAccess]) {
+          SupportLink(lead: "Trouble signing in?", identifier: "signIn.support")
+            .padding(.top, capabilities.contains(.recoverAccess) ? 0 : 24)
+        }
       }
     } footer: {
       EmptyView()
+    }
+  }
+
+  @ViewBuilder private var passwordFields: some View {
+    LabeledField(label: "Email") {
+      EmailInput(text: $model.email, identifier: "signIn.email")
+    }
+    VStack(alignment: .leading, spacing: HSpacing.fieldLabelGap) {
+      HStack {
+        Text("Password").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+        Spacer()
+        if capabilities.contains(.resetPassword) {
+          InlineTextButton(title: "Forgot password?", identifier: "signIn.forgot", action: onForgot)
+        }
+      }
+      PasswordInput(placeholder: "Your password", text: $model.password, isNew: false,
+                    identifier: "signIn.password")
+        .hType(.body)
+        .padding(.leading, HSpacing.fieldInsetInline)
+        .padding(.trailing, 8)
+        .frame(minHeight: HSpacing.fieldMinHeight)
+        .background(HColor.fieldSurfaceOnGrouped,
+                    in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+    }
+    BusyButton(title: "Sign in with password", busy: model.busy && !model.password.isEmpty, kind: .tertiary,
+               enabled: model.passwordSignInReady, identifier: "signIn.withPassword") {
+      Task { await model.signInWithPassword() }
     }
   }
 }

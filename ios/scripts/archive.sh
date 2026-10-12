@@ -27,10 +27,12 @@
 #   ios/build/<BUILD>/export/Hasala.ipa
 #   ios/build/<BUILD>/archive.log, export.log, summary.txt
 #
-# Exit codes (spec 06 §10.4; PRECHECK reduced to 10, 11, 14, 16, 21 for Gate A0, §15.2):
+# Exit codes (spec 06 §10.4; PRECHECK reduced to 10, 11, 13, 14, 16, 21 for Gate A0, §15.2):
 #   2 usage, MARKETING_VERSION cannot be read from ios/Config, or HASALA_BUILD_DIR is
 #     set without HASALA_TEST_MODE=1 (see hasala_build_root in release-common.sh)
-#   10 dirty tree   11 branch is not main   14 key or asc.env missing or unsafe
+#   10 dirty tree   11 branch is not main   13 the gate failed: an IntegrationStub is
+#   left under ios/, or privacy-lint.sh failed (spec 06 §5.4: a required-reason API the
+#   privacy manifest doesn't declare)   14 key or asc.env missing or unsafe
 #   16 Xcode is not 27.x   21 build number not newer than the last upload, or
 #   ios/build/<BUILD>/ exists already (a second archive in the same UTC minute)
 #   30 archive failed   31 export failed   40 the exported .ipa failed inspection (§10.3)
@@ -69,7 +71,7 @@ if ! build_root="$(hasala_build_root "$ios")"; then
 	exit 2
 fi
 
-# --- precheck (10, 11, 14, 16, 21) ---------------------------------------------------
+# --- precheck (10, 11, 13, 14, 16, 21) -----------------------------------------------
 trial=()
 # Assigned first, so a git that fails stops here (set -e) instead of reading as clean.
 tree="$(git -C "$repo" status --porcelain)"
@@ -91,6 +93,26 @@ if [[ "$branch" != "main" ]]; then
 		echo "archive: on branch '${branch:-detached HEAD}'; releases are archived from main (or --allow-branch for a local trial)" >&2
 		exit 11
 	fi
+fi
+# The gate (13), before anything is built. First, no IntegrationStub is left under ios/,
+# tracked or not (ignored files aside): the integration contracts' stub bodies throw at
+# run time. ios/scripts names it (this check and its test), so it is not searched.
+stubs_rc=0
+stubs="$(git -C "$repo" grep -l --untracked -e IntegrationStub -- ios ':(exclude)ios/scripts')" || stubs_rc=$?
+if [[ "$stubs_rc" != 1 ]]; then
+	if [[ "$stubs_rc" == 0 ]]; then
+		echo "archive: IntegrationStub is still used under ios/; finish these first:" >&2
+		sed 's/^/  /' <<<"$stubs" >&2
+	else
+		echo "archive: cannot search ios/ for IntegrationStub (git grep exit $stubs_rc)" >&2
+	fi
+	exit 13
+fi
+# Then required-reason APIs against the privacy manifest (spec 06 §5.4): App Store
+# Connect rejects an upload that uses one without declaring it.
+if ! "$here/privacy-lint.sh" >&2; then
+	echo "archive: privacy-lint.sh failed; declare the API in ios/Hasala/PrivacyInfo.xcprivacy or stop using it" >&2
+	exit 13
 fi
 asc_resolve_key || exit 14
 xcode="$(xcodebuild -version 2>/dev/null || true)"

@@ -82,21 +82,26 @@ private struct PlanContent: View {
       .background(Hue.mint.gradient)
       VStack(alignment: .leading, spacing: 12) {
         // Side by side; stacked at the accessibility text sizes (spec 04 §17).
+        // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
         let buttons = Group {
           Button("Assign") { model.moveMoney(to: nil) }
             .buttonStyle(.pill(.primary, size: .medium, fill: true))
             .disabled(snap.readyToAssign.minor <= 0)
             .accessibilityIdentifier("plan.assign")
-          Button("Auto-assign") { model.autoAssign() }
-            .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+          if BuildSurface.showsUnfinished {
+            Button("Auto-assign") { model.autoAssign() }
+              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+          }
         }
         if typeSize.isAccessibilitySize {
           VStack(spacing: 8) { buttons }
         } else {
           HStack(spacing: 8) { buttons }
         }
-        Text("Auto-assign funds targets first, then follows your \(snap.splitName) split.")
-          .hType(.footnote).foregroundStyle(HColor.textSecondary)
+        if BuildSurface.showsUnfinished {
+          Text("Auto-assign funds targets first, then follows your \(snap.splitName) split.")
+            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
       }
       .padding(16)
     }
