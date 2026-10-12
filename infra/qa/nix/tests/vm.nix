@@ -283,9 +283,10 @@ in
           assert json.loads(machine.succeed(hook + " -s")) == {"error": "not_found", "detail": "no such endpoint"}
           meta = json.loads(machine.succeed(f"curl -sf {API}/api/v1/meta"))
           assert meta["gmail_watch_topic"] is None, meta
-          log = machine.succeed("journalctl -u hasalad -o cat")
-          assert "gmail-link" in log and "gmail-push" not in log, log
-          assert "Pub/Sub push is not configured" in log, log
+          # Not `log`: that is the test driver's logger.
+          journal = machine.succeed("journalctl -u hasalad -o cat")
+          assert "gmail-link" in journal and "gmail-push" not in journal, journal
+          assert "Pub/Sub push is not configured" in journal, journal
 
       with subtest("AT-V3: nothing listens on a non-loopback address"):
           for line in machine.succeed("ss -ltnH").splitlines():
