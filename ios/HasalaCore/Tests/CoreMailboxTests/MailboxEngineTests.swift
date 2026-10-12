@@ -166,7 +166,7 @@ let day: Int64 = 86_400_000
     rig.gmail.add(SyntheticMail.dibCard(id: "new1", dateMs: rig.clock.nowMs() - 60_000))
     rig.gmail.historyID = "1001"
     let r = await rig.engine.runCycle(trigger: .silentPush)
-    #expect(r.ops == 1 && r.review == 1 && r.completed)  // card 1234 not confirmed (no scan mail)
+    #expect(r.ops == 1 && r.review == 0 && r.completed)  // a card the ledger does not know files itself
     #expect(await rig.ledger.flushes >= 1)
     let s = await rig.state()
     #expect(s.watermarkMs == rig.clock.nowMs() && s.profileHistoryID == "1001")
