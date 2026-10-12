@@ -34,8 +34,10 @@
 #   5. The reference client: typecheck, then bun test (unit tests and the
 #      TypeScript half of every conformance suite).
 #   6. The conformance suites, by name: each fixture set under conformance/ is
-#      run through both of its executors, and every fixture set must have an
-#      entry here, so a new one cannot land without a runner.
+#      checked through both of its executors, and every fixture set must have an
+#      entry here, so a new one cannot land without a runner. The Go half is
+#      proven from step 4's record (every test of each package ran there), the
+#      TypeScript half runs again.
 #   7. Known failures: tests skipped in 4 by name, each re-run on its own and
 #      required to still fail (see KNOWN_FAILING below).
 #
@@ -236,12 +238,17 @@ PG_LOG="$(mktemp "${TMPDIR:-/tmp}/hasala-check-pg.XXXXXX")"
 REAL_GO="$(mktemp)"
 REAL_BUN="$(mktemp)"
 JUNIT="$(mktemp)"
+# Step 4's `go test -json` streams (server/ and server/oracle/), which step 6
+# checks the conformance packages against, and step 6's `go test -list`.
+GO_RECORD="$(mktemp)"
+ORACLE_RECORD="$(mktemp)"
+GO_LIST="$(mktemp)"
 cleanup() {
 	local status=$?
 	if [[ -n "$PG_STOP" && -x "$PG_STOP" ]]; then
 		"$PG_STOP" || true
 	fi
-	rm -f "$REAL_GO" "$REAL_BUN" "$JUNIT"
+	rm -f "$REAL_GO" "$REAL_BUN" "$JUNIT" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
 	if [[ "$status" -eq 0 ]]; then
 		rm -f "$PG_LOG"
 	else
@@ -317,7 +324,7 @@ step "go vet ./..."
 go vet -p "$JOBS" ./...
 
 step "go test ./... (known failures skipped by name: $skip_re)"
-go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
+go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD" | REALCORPUS_COUNTS="$REAL_GO" bun "$ROOT/scripts/gotest-summary.ts"
 
 # The oracle module (spec 02 §4.3): the frozen v1 reference packages and the
 # corpus gates. Its real-corpus tests are counted with the server's.
@@ -326,7 +333,7 @@ step "oracle: go vet ./... and go test ./..."
 (
 	cd oracle
 	go vet -p "$JOBS" ./...
-	go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
+	go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$ORACLE_RECORD" | REALCORPUS_COUNTS="$REAL_ORACLE" bun "$ROOT/scripts/gotest-summary.ts"
 )
 read -r s_ran s_skipped <"$REAL_GO"
 read -r o_ran o_skipped <"$REAL_ORACLE"
@@ -351,11 +358,20 @@ bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 # --- 6. conformance suites ------------------------------------------------------------
 # Every fixture set under conformance/, with the executors that must agree on
 # it: "set|go packages (in server/)|bun test files (in reference/ledgerd-client/)".
-# Both halves already ran in steps 4 and 5. They run again here by name because
-# this table is the record of which tests make up each contract, so narrowing
-# step 4 or 5 cannot quietly drop one half of a pair, and because every
+# Both halves already ran in steps 4 and 5. They are checked again here by name
+# because this table is the record of which tests make up each contract, so
+# narrowing step 4 or 5 cannot quietly drop one half of a pair, and because every
 # directory under conformance/ must appear here: a new fixture set cannot land
 # without saying what checks it.
+#
+# The Go half is not run a second time (it was the slowest part of this step:
+# internal/api again, for the same verdict against the same cluster). Instead
+# `go test -list` names every test of each package in the table, and
+# scripts/gotest-ran.ts requires each package to have passed in step 4's record
+# and each of those tests to have a result there (pass, or its own skip). A
+# package left out of step 4, or one of its tests that step 4 did not run (a
+# -run, a -skip, a KNOWN_FAILING pattern that also matches it), fails here. The
+# TypeScript half takes about a second and runs again by name.
 #
 # Some sets have fewer than two executors here, on purpose and visibly:
 #   fx      TypeScript only. The FX fold exists only client-side; Go has no reader.
@@ -426,11 +442,12 @@ done
 server_pkgs="$(grep -v '^\./oracle/' <<<"$go_pkgs" || true)"
 oracle_pkgs="$(grep '^\./oracle/' <<<"$go_pkgs" | sed 's|^\./oracle/|./|' || true)"
 # shellcheck disable=SC2086 # word splitting is the point: one package/file per word
-(cd server && go test -count=1 -p "$JOBS" $server_pkgs)
+(cd server && go test -count=1 -p "$JOBS" -json -list . $server_pkgs) >"$GO_LIST"
 if [[ -n "$oracle_pkgs" ]]; then
 	# shellcheck disable=SC2086
-	(cd server/oracle && go test -count=1 -p "$JOBS" $oracle_pkgs)
+	(cd server/oracle && go test -count=1 -p "$JOBS" -json -list . $oracle_pkgs) >>"$GO_LIST"
 fi
+bun "$ROOT/scripts/gotest-ran.ts" "$GO_LIST" "$GO_RECORD" "$ORACLE_RECORD"
 # shellcheck disable=SC2086
 (cd reference/ledgerd-client && bun test $(printf './%s ' $ts_files))
 
