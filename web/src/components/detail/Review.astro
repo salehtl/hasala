@@ -106,7 +106,7 @@ const CARDS = [
                         </span>
                       )}
                     </div>
-                    <h3 class="rcard__merchant">{c.merchant}</h3>
+                    <p class="rcard__merchant">{c.merchant}</p>
                     <span class="rcard__raw">{c.raw}</span>
                     <p class="rcard__amount">
                       <span class="rcard__unit">AED</span>
@@ -147,8 +147,6 @@ const CARDS = [
 
           <div class="review__links" aria-hidden="true">
             <span>Skip for now</span>
-            <i></i>
-            <span><Icon name="mail" size={18} />View bank email</span>
           </div>
         </div>
       </div>
@@ -158,7 +156,8 @@ const CARDS = [
       <div class="review__head">
         <h2 id="review-title" class="display-panel">Reviewing new transactions</h2>
         <p class="body-l">
-          New transactions wait in a short deck. Swipe each one to Want, Need, Save or Transfer. Hasala remembers the merchant, so it won’t ask again.
+          Transactions Hasala can’t sort on its own wait in a short deck. Tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick the
+          category. Hasala remembers the merchant, so it won’t ask again.
         </p>
       </div>
       <ul class="dirs" role="list">
@@ -815,11 +814,6 @@ const CARDS = [
       align-items: center;
       justify-content: center;
       gap: 6px;
-    }
-    .review__links i {
-      width: 1px;
-      height: 20px;
-      background: var(--border-subtle);
     }
   }
 </style>

@@ -32,14 +32,17 @@ import { SITE } from '../../data/site';
     gap: 28px;
     padding: 48px 12px 12px;
     border-radius: 36px;
-    background: var(--wash-pace);
+    /* Until the copy sits beside the form (1024px), it sits on the top of
+       the panel: the gradient starts at --wash-pace's 45% stop and the glow
+       sits higher, so the white text keeps 4.5:1. */
+    background: linear-gradient(in oklab 160deg, oklab(55.6% -0.01 -0.217) 0%, oklab(48% -0.01 -0.211) 100%);
     color: var(--white);
     overflow: clip;
   }
   .beta__glow {
     position: absolute;
     left: 40%;
-    top: -200px;
+    top: -320px;
     width: 640px;
     height: 560px;
     border-radius: 50%;
@@ -60,12 +63,12 @@ import { SITE } from '../../data/site';
     line-height: 1.03;
   }
   .beta__lead {
-    color: rgb(255 255 255 / 88%);
+    color: var(--white);
     font-size: clamp(17px, 16.26px + 0.19vw, 19px);
     line-height: 1.55;
   }
   .beta__needs {
-    color: rgb(255 255 255 / 88%);
+    color: var(--white);
     font-size: 16px;
     line-height: 24px;
   }
@@ -116,8 +119,12 @@ import { SITE } from '../../data/site';
     .beta {
       padding-bottom: 72px;
     }
+    .beta__glow {
+      top: -200px;
+    }
     .beta__panel {
       flex-direction: row;
+      background: var(--wash-pace);
       align-items: center;
       justify-content: space-between;
       gap: 64px;

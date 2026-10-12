@@ -12,7 +12,7 @@ export const SITE = {
   url: 'https://hasala.app',
   tagline: 'A private budgeting app that shows where your money goes.',
   description:
-    "Hasala is a private budgeting app for iPhone in the UAE. It reads your bank's alert emails and shows where your money goes. Your transactions and budget are encrypted on your iPhone, so we can't read them.",
+    "Hasala is a private budgeting app for iPhone in the UAE. It reads your bank's alert emails in Gmail and shows where your money goes. Your transactions and budget are encrypted on your iPhone, so we can't read them.",
   shortDescription: 'Hasala (حصّالة) is Arabic for piggy bank.',
   supportEmail: 'support@hasala.app',
   privacyEmail: 'privacy@hasala.app',
@@ -93,22 +93,22 @@ export const VISIBILITY = [
   { who: 'You', sees: 'Everything, on your own devices', never: null },
   {
     who: 'Hasala, our server',
-    sees: "Your email address and name, that your account exists, the public parts of your sign-in methods (your passkey's public key, or a hash of a password it never sees), your devices' push tokens, when you sync and how much encrypted data you keep, and a keyed hash of your Gmail address with when new mail arrives",
+    sees: 'What it needs to run your account: your email address and name, when you sync, how much encrypted data you keep, and when new mail reaches your Gmail. It also keeps sign‑in and device details: your passkey’s public key or a scrambled form of your password, your devices’ push tokens, and a scrambled form of your Gmail address',
     never: 'Your emails, amounts, merchants, categories, budget or plan',
   },
   {
     who: 'Cloudflare, our network provider',
-    sees: 'Your requests on their way to our server, once transport encryption ends: IP address, times, sizes and the still‑encrypted data. It also sends our emails to you, and counts visits to this website for us, in totals only',
-    never: "What's inside the encrypted data",
+    sees: 'Your requests on their way to our server: your IP address, times, sizes and the still‑encrypted data. It also sends our emails to you, and counts visits to this website for us, in totals only',
+    never: 'What’s inside the encrypted data',
   },
   {
     who: 'Google',
-    sees: "Your email, as it already does, and that you've given Hasala read‑only access",
+    sees: 'Your email, as it already does, and that you’ve given Hasala read‑only access',
     never: 'Your budget, or anything Hasala works out',
   },
   {
     who: 'Apple',
-    sees: "Your email address, because it handles your TestFlight invitation, and that you've installed Hasala. If you use a passkey, it syncs in iCloud Keychain, end‑to‑end encrypted by Apple",
+    sees: 'Your email address, because it handles your TestFlight invitation, and that you’ve installed Hasala. If you use a passkey, it syncs in iCloud Keychain, end‑to‑end encrypted by Apple',
     never: 'Your transactions or your plan',
   },
 ] as const;

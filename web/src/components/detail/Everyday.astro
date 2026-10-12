@@ -1,14 +1,9 @@
----
-import Icon from '../Icon.astro';
----
-
 <section id="left" class="everyday" aria-labelledby="everyday-title">
   <div class="container-wide everyday__panel">
     <div class="everyday__copy" data-reveal>
       <h2 id="everyday-title" class="display-panel">What’s left this month</h2>
       <p class="body-l">
-        Hasala sets your bills aside first, then shows what’s left for everyday spending. The bar shows how fast you’re spending it, so you can tell whether the
-        month is on track.
+        Hasala shows what’s left for everyday spending this month. The bar shows how fast you’re spending it, so you can tell whether the month is on track.
       </p>
       <ul class="legend" role="list">
         <li><span class="legend__fill" aria-hidden="true"></span>What you’ve spent so far</li>
@@ -18,8 +13,7 @@ import Icon from '../Icon.astro';
 
     <figure class="pace" data-reveal data-pace aria-labelledby="pace-caption">
       <figcaption id="pace-caption" class="sr-only">
-        Example: AED 7,417.55 left for everyday spending on day 10 of 31 in October. AED 2,282.45 spent of 9,700.00 for the month, on track. AED 9,045.04
-        already set aside for bills.
+        Example: AED 7,417.55 left for everyday spending on day 10 of 31 in October. AED 2,282.45 spent of 9,700.00 for the month, on track.
       </figcaption>
       <div class="pace__top" aria-hidden="true">
         <div class="pace__row">
@@ -45,27 +39,6 @@ import Icon from '../Icon.astro';
           <span class="pace__scale-month"><small>For the month</small><b class="figure">9,700.00</b></span>
         </div>
         <p class="pace__note">About AED 337 a day keeps you on track until the 31st.</p>
-      </div>
-
-      <div class="pace__bills" aria-hidden="true">
-        <div class="pace__bills-head">
-          <span>Already set aside for bills</span>
-          <span class="pace__bills-sum"><small>AED</small><b class="figure">9,045.04</b></span>
-        </div>
-        <ul class="pace__bill-list" role="list">
-          <li>
-            <span class="disc disc--sand disc--32"><Icon name="home" size={15} stroke={1.5} /></span>
-            <span><b>Rent</b><small class="paid">7,500.00 · paid</small></span>
-          </li>
-          <li>
-            <span class="disc disc--sand disc--32"><Icon name="bolt" size={15} stroke={1.5} /></span>
-            <span><b>DEWA</b><small>~489.15 · Wed</small></span>
-          </li>
-          <li>
-            <span class="disc disc--sand disc--32"><Icon name="wifi" size={15} stroke={1.5} /></span>
-            <span><b>du</b><small class="paid">427.90 · paid</small></span>
-          </li>
-        </ul>
       </div>
     </figure>
   </div>
@@ -242,67 +215,6 @@ import Icon from '../Icon.astro';
     font-size: 16px;
     line-height: 24px;
   }
-  .pace__bills {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding-top: 18px;
-    border-top: 1px solid var(--neutral-200);
-  }
-  .pace__bills-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 22px;
-  }
-  .pace__bills-sum {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-  }
-  .pace__bills-sum small {
-    display: none;
-    color: var(--text-secondary);
-    font-family: var(--font-figure);
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .pace__bills-sum b {
-    font-size: 16px;
-  }
-  .pace__bill-list {
-    display: none;
-    gap: 8px;
-  }
-  .pace__bill-list li {
-    display: flex;
-    flex: 1 1 0;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 16px;
-    background: var(--neutral-100);
-  }
-  .pace__bill-list li > span:last-child {
-    display: flex;
-    flex-direction: column;
-  }
-  .pace__bill-list b {
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 18px;
-  }
-  .pace__bill-list small {
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 16px;
-  }
-  .pace__bill-list small.paid {
-    color: var(--success);
-  }
 
   @media (min-width: 768px) {
     .everyday__panel {
@@ -316,21 +228,6 @@ import Icon from '../Icon.astro';
     }
     .pace__scale {
       display: block;
-    }
-    .pace__bill-list {
-      display: flex;
-    }
-    .pace__bills {
-      padding-top: 24px;
-    }
-    .pace__bills-head {
-      font-size: 16px;
-    }
-    .pace__bills-sum small {
-      display: inline;
-    }
-    .pace__bills-sum b {
-      font-size: 18px;
     }
   }
   @media (min-width: 1024px) {
