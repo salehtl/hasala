@@ -180,7 +180,7 @@ final class LiveAccountService: AccountService {
 
   private func outcome(_ r: SignInResult, passkeyCanUnlock: Bool) async -> SignInOutcome {
     signIn = r
-    if r.restricted { return .frozen(await frozenBy(token: r.grant.session_token)) }
+    if r.restricted { return .frozen(await freezeInfo(token: r.grant.session_token)) }
     if !r.hasKeys { return .needsKeys }
     // A bound iPhone whose keys are here opens straight away.
     if let b = binding, b.user_id == r.grant.user_id,
@@ -328,7 +328,7 @@ final class LiveAccountService: AccountService {
       displayName: a.display_name ?? binding?.display_name ?? "", email: a.email ?? binding?.email_norm ?? "",
       method: a.has_passkey == true ? .passkey : .password)
     methodConfirmed = a.has_passkey != nil
-    if let freeze = Self.freeze(a) { return .frozen(freeze.by) }
+    if let freeze = Self.freeze(a) { return .frozen(freeze) }
     guard a.has_keys == true else { return .needsKeys }
     let wraps = (try? await env.client.keyWraps(bearer: s.token).wraps.count) ?? 0
     return .needsUnlock(passkeyCanUnlock: wraps > 0)
@@ -423,10 +423,11 @@ final class LiveAccountService: AccountService {
       lastSignIn: "on this iPhone", phraseConfirmed: "Confirmed at signup", frozen: frozen)
   }
 
-  /// Who froze the account, from `GET /account` (allowed on a restricted session).
-  private func frozenBy(token: String) async -> FreezeInfo.By {
+  /// Who froze the account and when, from `GET /account` (allowed on a restricted
+  /// session); the holder's, with no time, when the server can't be asked.
+  private func freezeInfo(token: String) async -> FreezeInfo {
     let a = try? await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
-    return a.flatMap(Self.freeze)?.by ?? .holder
+    return a.flatMap(Self.freeze) ?? FreezeInfo(by: .holder, when: nil)
   }
 
   /// Who froze the account and when, from `GET /account` (#40, which a frozen account may
@@ -511,6 +512,14 @@ final class LiveAccountService: AccountService {
         do throws(CeremonyError) {
           try await guarded(.accountUnfreeze, "/api/v1/account/unfreeze", factor: factor, binding: b, action: action)
         } catch {
+          if error.failure?.status == 401 {
+            // An operator freeze revokes every session, this one too: as after any
+            // revoked session, this iPhone signs in again, and then shows their wall.
+            try? env.secrets.deleteSession()
+            signIn = nil
+            await hooks.left()
+            throw AuthFailure.sessionEnded
+          }
           if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw AuthFailure.frozenByOperator }
           throw error
         }

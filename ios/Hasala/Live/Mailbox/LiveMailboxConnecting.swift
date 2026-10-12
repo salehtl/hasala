@@ -37,8 +37,11 @@ final class LiveMailboxConnecting: MailboxConnecting {
   /// What Home and Profile offer for a lane `phase` (spec 04 §6.6 row 4, §7.4). Nothing
   /// once the account holds the App Review sample: loading it completed the Gmail step.
   /// An iPhone without a link offers it only once the server says no other iPhone holds
-  /// one (`serverLink`): connecting there would take Gmail over from that iPhone.
-  static func offer(phase: MailboxPhase, sampleLoaded: Bool, serverLink: MailboxLinkStatus?) -> GmailOffer? {
+  /// one (`serverLink`): connecting there would take Gmail over from that iPhone. A halt
+  /// is offered a reconnect only when signing in to Google again fixes it (`halt`).
+  static func offer(
+    phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?
+  ) -> GmailOffer? {
     guard !sampleLoaded else { return nil }
     switch phase {
     case .unlinked:
@@ -47,8 +50,25 @@ final class LiveMailboxConnecting: MailboxConnecting {
       case .holder(false, _)?, nil: return nil
       }
     case .scanning, .awaitingCards: return .connect
-    case .reconnectRequired, .halted: return .reconnect
+    case .reconnectRequired: return .reconnect
+    case .halted:
+      // A full account or missing templates aren't fixed by a new Google sign-in.
+      switch halt {
+      case nil, .gmail?, .reconnectRequired?: return .reconnect
+      default: return nil
+      }
     case .authoringBackfill, .active, .otherDevice: return nil
+    }
+  }
+
+  /// Before a connect from an iPhone without a link, the server's answer asked just now:
+  /// another iPhone holding the link refuses it (connecting would take Gmail over from
+  /// that iPhone), and so does no answer (`nil`, offline), as Home shows no offer then.
+  static func checkTakeover(_ link: MailboxLinkStatus?) throws(SetupFailure) {
+    switch link {
+    case .noLink?, .holder(true, _)?: return
+    case .holder(false, _)?: throw .failed("Gmail is read on your other iPhone.")
+    case nil: throw .failed(message(.offline))
     }
   }
 
@@ -67,6 +87,11 @@ final class LiveMailboxConnecting: MailboxConnecting {
 
   func connectGmail(banks: [SupportedBank]) async throws(SetupFailure) {
     let lane = try lane()
+    // The offer may be older than another iPhone's link: ask the server again first.
+    if await lane.status().phase == .unlinked, let rt = runtime() {
+      let link = await rt.askServerLink()
+      try Self.checkTakeover(link)
+    }
     switch await lane.connect(backfillDays: 90) {
     case .connected:
       // Home and Profile follow the lane's new phase.

@@ -56,7 +56,7 @@ final class AccountSession {
     case .ready: phase = .ready
     case .needsUnlock(let p): phase = .needsUnlock(passkeyCanUnlock: p)
     case .needsKeys: phase = .needsKeys
-    case .frozen(let by): phase = .frozen(FreezeInfo(by: by, when: nil))
+    case .frozen(let info): phase = .frozen(info)
     }
   }
 
@@ -93,6 +93,20 @@ final class AccountSession {
     phase = .frozen(info)
   }
 
+  /// A run found the account frozen; `info` is `GET /account`'s answer, nil when the
+  /// server couldn't be asked. After "Leave it frozen" the banner stays, with the answer;
+  /// otherwise the wall shows. No answer keeps the freeze as known (an operator's never
+  /// becomes the holder's), and is the holder's when nothing is known.
+  func runFoundFrozen(_ info: FreezeInfo?) {
+    if let left = leftFrozen {
+      leftFrozen = info ?? left
+      return
+    }
+    var known: FreezeInfo?
+    if case .frozen(let shown) = phase { known = shown }
+    froze(info ?? known ?? FreezeInfo(by: .holder, when: nil))
+  }
+
   func leaveFrozen() {
     if case .frozen(let info) = phase { leftFrozen = info }
     phase = .ready
@@ -120,13 +134,17 @@ final class AccountSession {
   }
 
   /// "Unfreeze" on the wall: #66 behind its step-up, then the app. The service refuses an
-  /// operator freeze before any step-up (`.frozenByOperator`); the wall then shows it.
+  /// operator freeze before any step-up (`.frozenByOperator`); the wall then shows it. A
+  /// session the server ended (an operator freeze revokes them all) signs in again.
   func unfreeze(password: String?) async throws(AuthFailure) {
     do {
       try await account.perform(.unfreeze, password: password)
     } catch .frozenByOperator {
       learnedOperatorFreeze()
       throw .frozenByOperator
+    } catch .sessionEnded {
+      signedOut()
+      throw .sessionEnded
     }
     unfroze()
   }

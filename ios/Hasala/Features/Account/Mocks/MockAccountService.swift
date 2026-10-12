@@ -340,7 +340,7 @@
 
     /// Scenario hook: start frozen.
     func freezeForScenario(by: FreezeInfo.By) {
-      security.frozen = FreezeInfo(by: by, when: "Sat 11 Oct at 21:20")
+      security.frozen = FreezeInfo(by: by, when: "on Sun 11 Oct at 21:20")
     }
 
     var frozenInfo: FreezeInfo? { security.frozen }

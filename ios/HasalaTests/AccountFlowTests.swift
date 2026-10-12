@@ -339,7 +339,7 @@ struct AccountFlowTests {
     let m = SecurityModel(session: session)
     await m.load()
     await m.request(.unfreeze)
-    #expect(account.frozenInfo == info.with(when: "Sat 11 Oct at 21:20"))
+    #expect(account.frozenInfo == info.with(when: "on Sun 11 Oct at 21:20"))
     #expect(session.leftFrozen == info)
   }
 
@@ -374,8 +374,33 @@ struct AccountFlowTests {
 
   @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
-    session.signedIn(.frozen(.operator))
+    session.signedIn(.frozen(FreezeInfo(by: .operator, when: nil)))
     #expect(session.phase == .frozen(FreezeInfo(by: .operator, when: nil)))
+    // A holder's wall says when the freeze was triggered.
+    let holder = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    session.signedIn(.frozen(holder))
+    #expect(session.phase == .frozen(holder))
+  }
+
+  /// A run that finds the account frozen again keeps the "Leave it frozen" banner, and an
+  /// unanswered `GET /account` never turns a known operator freeze into the holder's.
+  @Test func aRunFindingTheFreezeKeepsTheBanner() {
+    let op = FreezeInfo(by: .operator, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .frozen(op))
+    session.runFoundFrozen(nil)
+    #expect(session.phase == .frozen(op))
+    session.leaveFrozen()
+    session.runFoundFrozen(nil)
+    #expect(session.phase == .ready)
+    #expect(session.leftFrozen == op)
+    let holder = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .ready)
+    #expect(session.leftFrozen == holder)
+    // Nothing known: the holder's wall.
+    let fresh = AccountSession(services: services(MockAccountService()), phase: .ready)
+    fresh.runFoundFrozen(nil)
+    #expect(fresh.phase == .frozen(FreezeInfo(by: .holder, when: nil)))
   }
 
   // MARK: Relaunch (spec 04 §6.5)

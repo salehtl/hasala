@@ -24,6 +24,9 @@ enum AuthFailure: Error, Equatable, Sendable {
   case frozen
   /// The operator froze the account (`frozen_by`, spec 04 §6.11): only they unfreeze it.
   case frozenByOperator
+  /// The server ended this session (`401`; an operator freeze revokes every session):
+  /// this iPhone is signed out, and signs in again.
+  case sessionEnded
   case stepUpFailed
   /// "View your 12 words" with a passkey that gave no PRF output, so it can't open them.
   case passkeyCantShowPhrase
@@ -70,6 +73,7 @@ enum AuthFailure: Error, Equatable, Sendable {
     case .lastAuthenticator: "This is your only way to sign in. Add a passkey or a password first."
     case .frozen: "Your account is frozen. Confirm it's you to unfreeze it."
     case .frozenByOperator: "We froze your account to protect it. Talk to us to unfreeze it."
+    case .sessionEnded: "You're signed out. Sign in again."
     case .stepUpFailed: "That didn't confirm. Try again."
     case .passkeyCantShowPhrase: "This passkey can't show your 12 words. Use the copy you wrote down."
     case .noDeviceKey:

@@ -48,8 +48,10 @@ struct LiveGateTests {
   /// Home and Profile offer Gmail from the lane's phase (spec 04 §6.6 row 4, §7.4), and
   /// never on an account that loaded the App Review sample (§6.13).
   @Test func theGmailOfferFollowsTheLane() {
-    func offer(_ phase: MailboxPhase, sample: Bool = false, link: MailboxLinkStatus? = .noLink) -> GmailOffer? {
-      LiveMailboxConnecting.offer(phase: phase, sampleLoaded: sample, serverLink: link)
+    func offer(
+      _ phase: MailboxPhase, halt: MailboxHaltCode? = nil, sample: Bool = false, link: MailboxLinkStatus? = .noLink
+    ) -> GmailOffer? {
+      LiveMailboxConnecting.offer(phase: phase, halt: halt, sampleLoaded: sample, serverLink: link)
     }
     #expect(offer(.unlinked) == .connect)
     #expect(offer(.scanning) == .connect)
@@ -67,6 +69,26 @@ struct LiveGateTests {
     #expect(offer(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)) == nil)
     #expect(offer(.unlinked, link: .holder(isThisDevice: true, watchExpiresAtMs: nil)) == .connect)
     #expect(offer(.reconnectRequired, link: nil) == .reconnect)
+    // Only a halt a new Google sign-in fixes is offered a reconnect.
+    #expect(offer(.halted, halt: .gmail) == .reconnect)
+    #expect(offer(.halted, halt: .accountFull) == nil)
+    #expect(offer(.halted, halt: .templatesUnavailable) == nil)
+  }
+
+  /// Another iPhone takes the link after this one was offered "Connect Gmail": the offer
+  /// goes with the next answer, and a connect asks again first and is refused, as it is
+  /// when the server can't be asked.
+  @Test func aLinkTakenElsewhereRefusesTheConnect() throws {
+    let other = MailboxLinkStatus.holder(isThisDevice: false, watchExpiresAtMs: nil)
+    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: .noLink) == .connect)
+    try LiveMailboxConnecting.checkTakeover(.noLink)
+    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: other) == nil)
+    #expect(throws: SetupFailure.failed("Gmail is read on your other iPhone.")) {
+      try LiveMailboxConnecting.checkTakeover(other)
+    }
+    #expect(throws: SetupFailure.failed(LiveMailboxConnecting.message(.offline))) {
+      try LiveMailboxConnecting.checkTakeover(nil)
+    }
   }
 
   /// A connect after setup reads the banks from the bank step's sender trust.

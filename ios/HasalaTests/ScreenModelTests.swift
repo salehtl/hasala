@@ -67,6 +67,7 @@ struct ScreenModelTests {
     #expect(home.needsYou(card.id, primary: false) == nil)
     #expect(app.sheet == nil)
     #expect(!home.snapshot.needsYou.cards.contains { $0.id == "gmail.connect" })
+    #expect(home.snapshot == Maya.home)  // the count and subtitle too
 
     mailbox.gmailOffer = .reconnect
     #expect(home.snapshot.needsYou.cards.first?.title == "Reconnect Gmail")

@@ -30,7 +30,10 @@ final class HomeViewModel: HomeModel {
 
   var snapshot: HomeSnapshot {
     var snap = app.snapshot
-    if let offer = app.gmailOffer { snap.needsYou = offer.adding(to: snap.needsYou) }
+    // A card put off with "Later" leaves the rail's count and subtitle as they were.
+    if let offer = app.gmailOffer, !app.snoozed.contains(offer.cardID) {
+      snap.needsYou = offer.adding(to: snap.needsYou)
+    }
     snap.needsYou.cards.removeAll { app.snoozed.contains($0.id) }
     return snap
   }

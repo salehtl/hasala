@@ -100,7 +100,7 @@
         let by: FreezeInfo.By = scenario == .frozen ? .holder : .operator
         account.freezeForScenario(by: by)
         return AccountSession(services: services(account),
-                              phase: .frozen(FreezeInfo(by: by, when: "on Sat 11 Oct at 21:20")))
+                              phase: .frozen(FreezeInfo(by: by, when: "on Sun 11 Oct at 21:20")))
       case .relaunchInterrupted, .relaunchSignedIn:
         let account = MockAccountService(existing: .passkey, signedIn: true)
         account.resumeOutcome = scenario == .relaunchInterrupted ? .needsKeys : .needsUnlock(passkeyCanUnlock: true)

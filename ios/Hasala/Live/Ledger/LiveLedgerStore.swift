@@ -24,6 +24,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   private(set) var loaded = false
   /// The Gmail lane's phase, once read (spec 04 §7.4); nil before that, or with no lane.
   private(set) var mailboxPhase: MailboxPhase?
+  /// Why the lane halted, read with its phase.
+  private(set) var mailboxHalt: MailboxHaltCode?
   /// The ledger holds the App Review sample (`sample-` message ids, §6.13).
   private(set) var holdsSample = false
 
@@ -67,6 +69,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   func noteMailbox(_ status: MailboxStatus, nowMs: Int64) {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
     if mailboxPhase != status.phase { mailboxPhase = status.phase }
+    if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
   }
 
   /// Reads the projection again (off the main actor) and publishes it. A later reload

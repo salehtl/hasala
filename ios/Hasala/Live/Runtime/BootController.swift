@@ -363,11 +363,12 @@ final class BootController {
       session.signedOut()
     case .frozen:
       // Who froze it decides whether the wall offers Unfreeze (spec 04 §6.11), so it is
-      // read from `GET /account` first. Unknown (offline) shows the holder's wall; its
-      // Unfreeze reads `frozen_by` again before any #66.
-      let info = await account.freezeInfo() ?? FreezeInfo(by: .holder, when: nil)
+      // read from `GET /account` first. Unknown (offline) keeps what the app knew, else
+      // shows the holder's wall; its Unfreeze reads `frozen_by` again before any #66.
+      // After "Leave it frozen" the banner stays.
+      let info = await account.freezeInfo()
       guard session.phase != .signedOut else { return }
-      session.froze(info)
+      session.runFoundFrozen(info)
     case .needsUnlock, .keysRequired:
       await closeRuntime()
       session.signedOut()

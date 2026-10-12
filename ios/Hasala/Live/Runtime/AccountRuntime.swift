@@ -33,7 +33,7 @@ final class AccountRuntime {
 
   /// The account's Gmail link on the server (#37), asked while this iPhone has none: a
   /// link held by another iPhone means Gmail is read there (spec 04 §6.6's second iPhone,
-  /// §7.4 `other_device`). nil until the server answers.
+  /// §7.4 `other_device`). nil until the server answers; the last answer while offline.
   private(set) var serverLink: MailboxLinkStatus?
 
   /// `GET /account`'s `review_account` (#40), read live when the account opens: the App
@@ -78,7 +78,8 @@ final class AccountRuntime {
   /// without a Google client.
   var gmailOffer: GmailOffer? {
     guard lane != nil, store.loaded, let phase = store.mailboxPhase else { return nil }
-    return LiveMailboxConnecting.offer(phase: phase, sampleLoaded: store.holdsSample, serverLink: serverLink)
+    return LiveMailboxConnecting.offer(
+      phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink)
   }
 
   /// Reads the Gmail lane's state again (after a connect, the first scan or the cards
@@ -87,14 +88,23 @@ final class AccountRuntime {
     guard let lane else { return }
     store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs())
     await store.reload()
-    await checkServerLinkIfUnknown()
+    await checkServerLink()
   }
 
-  /// Asks the server for the account's Gmail link once, while this iPhone has none (the
-  /// lane's cycle never asks then); offline, the next run asks again.
-  func checkServerLinkIfUnknown() async {
-    guard lane != nil, serverLink == nil, store.mailboxPhase == .unlinked else { return }
-    serverLink = try? await mailboxServer.linkStatus()
+  /// Asks the server for the account's Gmail link after every run while this iPhone has
+  /// none (the lane's cycle never asks then): another iPhone can take the link at any
+  /// time. Offline, the last answer stays until the next run.
+  func checkServerLink() async {
+    guard lane != nil, store.mailboxPhase == .unlinked else { return }
+    _ = await askServerLink()
+  }
+
+  /// `GET /mailbox/link` now: the answer (kept in `serverLink`), or nil when the server
+  /// couldn't be asked.
+  func askServerLink() async -> MailboxLinkStatus? {
+    guard let link = try? await mailboxServer.linkStatus() else { return nil }
+    if serverLink != link { serverLink = link }
+    return link
   }
 
   /// Opens the account. `enrolled` is the ceremony's freshly enrolled account (its store
@@ -166,7 +176,7 @@ final class AccountRuntime {
       store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
-      await rt?.checkServerLinkIfUnknown()
+      await rt?.checkServerLink()
     }
     return rt
   }

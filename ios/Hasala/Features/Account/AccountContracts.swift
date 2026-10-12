@@ -60,7 +60,7 @@ enum SignInOutcome: Equatable, Sendable {
   /// The account was created but its keys never reached the server (C1 interrupted).
   case needsKeys
   /// The account is frozen (§6.11), by its holder or by the operator.
-  case frozen(FreezeInfo.By)
+  case frozen(FreezeInfo)
 }
 
 /// The forgot-password ceremony on a new iPhone (C9, spec 04 §6.2).
