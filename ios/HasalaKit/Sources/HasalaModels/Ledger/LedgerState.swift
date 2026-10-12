@@ -172,6 +172,10 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var provenance: Provenance?
   /// A row's extra detail in place of the time ("monthly bill").
   public var detailOverride: String?
+  /// The Gmail message the row was read from, when it came from email. The App Review
+  /// sample's rows carry `sample-<n>` instead (CoreDomain `SampleSeed`): no email exists
+  /// behind them.
+  public var mailboxMessageID: String?
 
   public init(
     id: TxnID, merchant: String, place: String? = nil, amount: Money, direction: Direction = .out,
@@ -179,7 +183,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
     isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
-    provenance: Provenance? = nil, detailOverride: String? = nil
+    provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -202,7 +206,11 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.billID = billID
     self.provenance = provenance
     self.detailOverride = detailOverride
+    self.mailboxMessageID = mailboxMessageID
   }
+
+  /// A row of the App Review sample (its message id is `sample-<n>`; Gmail ids are hex).
+  public var isSample: Bool { mailboxMessageID?.hasPrefix("sample-") == true }
 
   /// "Starbucks DIFC".
   public var title: String { place.map { "\(merchant) \($0)" } ?? merchant }

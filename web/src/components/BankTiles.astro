@@ -1,0 +1,120 @@
+---
+/** The supported banks as tiles: on the home page, and on /how-it-works with the alerts each one covers. */
+import { BANKS } from '../data/site';
+import Icon from './Icon.astro';
+
+interface Props {
+  banks?: typeof BANKS;
+  /** Show which alerts Hasala reads from each bank. */
+  detail?: boolean;
+}
+const { banks = BANKS, detail = false } = Astro.props;
+---
+
+<ul class:list={['tiles', detail && 'tiles--detail']} role="list">
+  {
+    banks.map((b) => (
+      <li class="tile" data-reveal>
+        <span class="tile__logo" aria-hidden="true">
+          {b.short}
+        </span>
+        <div class="tile__text">
+          <h3>{b.name}</h3>
+          {detail && <p>Card and account email alerts</p>}
+        </div>
+        <span class="tile__check" aria-hidden="true">
+          <Icon name="check" size={16} stroke={2.2} />
+        </span>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .tiles {
+    display: grid;
+    gap: 10px;
+  }
+  .tile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 24px;
+    background: var(--neutral-100);
+  }
+  .tile__logo {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--white);
+    box-shadow: rgb(0 0 0 / 4%) 0 1px 2px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .tile__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .tile__text h3 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 24px;
+  }
+  .tile__text p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .tile__check {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--success-surface);
+    color: var(--success);
+  }
+  @media (min-width: 768px) {
+    .tiles {
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .tile {
+      gap: 18px;
+      padding: 24px;
+      border-radius: 28px;
+    }
+    .tile__logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      font-size: 16px;
+    }
+    .tile__text h3 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 28px;
+    }
+    /* Beside prose (/how-it-works): narrower, so the names stay on one line. */
+    .tiles--detail .tile {
+      padding: 20px;
+    }
+    .tiles--detail .tile__text h3 {
+      font-size: 18px;
+      line-height: 24px;
+    }
+  }
+</style>

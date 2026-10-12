@@ -9,24 +9,38 @@ import SwiftUI
 /// Home · Default (Paper board): one question first, "am I okay this month?" The
 /// hero shows what is left for everyday spending with its pace, then Needs you,
 /// then the widgets Maya arranges.
+///
+/// A Release build leaves out the controls whose screens aren't built yet (`BuildSurface`):
+/// the bell, "See month", "See all", "Edit", "Add widget", and taps on widgets without a
+/// detail screen. A review account's ledger is sample data, and Home says so.
 struct HomeView: View {
   @Bindable var app: AppModel
   let model: any HomeModel
   @State private var path: [HomeRoute] = []
   @State private var topInset: CGFloat = 0
+  /// Present once the account gate runs; it knows whether this is the review account.
+  @Environment(AccountSession.self) private var session: AccountSession?
 
   private var snapshot: HomeSnapshot { model.snapshot }
   private var hidden: Bool { model.hidden }
+  private var unfinished: Bool { BuildSurface.showsUnfinished }
 
   var body: some View {
     NavigationStack(path: $path) {
       ScrollView {
         VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
-          HeroSection(hero: snapshot.hero, hidden: hidden) { path.append(.insights) }
-          NeedsYouSection(rail: snapshot.needsYou, hidden: hidden, seeAll: { path.append(.needsYou) }) { card, primary in
+          if session?.reviewAccount == true {
+            SampleDataLabel()
+              .padding(.horizontal, HSpacing.insetPage)
+              .padding(.bottom, -12)
+          }
+          HeroSection(hero: snapshot.hero, hidden: hidden, seeMonth: unfinished ? { path.append(.insights) } : nil)
+          NeedsYouSection(rail: snapshot.needsYou, hidden: hidden,
+                          seeAll: unfinished ? { path.append(.needsYou) } : nil) { card, primary in
             if let route = model.needsYou(card, primary: primary) { path.append(route) }
           }
-          WidgetCanvas(widgets: snapshot.widgets, hidden: hidden) { route in
+          WidgetCanvas(widgets: snapshot.widgets, hidden: hidden, editable: unfinished,
+                       opens: model.widgetOpens) { route in
             if case .widget(let id) = route {
               if let next = model.openWidget(id) { path.append(next) }
             } else {
@@ -50,7 +64,8 @@ struct HomeView: View {
       .toolbar {
         MainHeader(
           amountsHidden: hidden,
-          extra: .bell(unread: snapshot.header.unreadNotifications),
+          // TODO(spec 04 §16.2 H3): the notifications list; until then Release has no bell.
+          extra: unfinished ? .bell(unread: snapshot.header.unreadNotifications) : .none,
           avatarInitial: snapshot.header.avatarInitial,
           onToggleAmounts: { app.toggleAmountsHidden() },
           onExtra: { path.append(.notifications) },
@@ -77,7 +92,8 @@ struct HomeView: View {
 private struct HeroSection: View {
   let hero: EverydayHero
   let hidden: Bool
-  let seeMonth: () -> Void
+  /// "See month" (Insights); nil leaves the link out.
+  let seeMonth: (() -> Void)?
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
@@ -160,17 +176,19 @@ private struct HeroSection: View {
 
   /// A 20 pt line of text with a 44 pt target (spec 04 §17): the padding is inside the
   /// button and taken back outside it, so the layout does not move.
-  private var seeMonthButton: some View {
-    Button(action: seeMonth) {
-      Text("See month")
-        .hType(.subheadline.weight(.medium))
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
+  @ViewBuilder private var seeMonthButton: some View {
+    if let seeMonth {
+      Button(action: seeMonth) {
+        Text("See month")
+          .hType(.subheadline.weight(.medium))
+          .padding(.vertical, 12)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(HColor.textOnWashLink)
+      .padding(.vertical, -12)
+      .accessibilityIdentifier("home.seeMonth")
     }
-    .buttonStyle(.plain)
-    .foregroundStyle(HColor.textOnWashLink)
-    .padding(.vertical, -12)
-    .accessibilityIdentifier("home.seeMonth")
   }
 }
 
@@ -181,13 +199,20 @@ private struct HeroSection: View {
 private struct NeedsYouSection: View {
   let rail: NeedsYouRail
   let hidden: Bool
-  let seeAll: () -> Void
+  /// "See all" (the Needs-you list); nil leaves the link out.
+  let seeAll: (() -> Void)?
   let act: (String, Bool) -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
 
+  /// The badge. The rail's count also covers items with no card here (price changes,
+  /// bill candidates), which only the Needs-you list shows; without that list ("See all",
+  /// not in a Release build) the badge counts the cards drawn.
+  private var count: Int { seeAll == nil ? rail.cards.count : rail.count }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      SectionHeader("Needs you", count: rail.count, subtitle: rail.subtitle, actionTitle: "See all", action: seeAll)
+      SectionHeader("Needs you", count: count, subtitle: rail.subtitle,
+                    actionTitle: seeAll == nil ? nil : "See all", action: seeAll)
         .padding(.horizontal, HSpacing.insetPage)
       if typeSize.isAccessibilitySize {
         VStack(spacing: 12) {
@@ -220,6 +245,10 @@ private struct NeedsYouSection: View {
 private struct WidgetCanvas: View {
   let widgets: [HomeWidget]
   let hidden: Bool
+  /// "Edit" and "Add widget" (the widget gallery).
+  let editable: Bool
+  /// Whether a widget's tap leads anywhere; one that doesn't is drawn without a button.
+  let opens: (String) -> Bool
   let open: (HomeRoute) -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -229,13 +258,22 @@ private struct WidgetCanvas: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      SectionHeader("Your widgets", actionTitle: "Edit") { open(.editWidgets) }
+      if editable {
+        SectionHeader("Your widgets", actionTitle: "Edit") { open(.editWidgets) }
+      } else {
+        SectionHeader("Your widgets")
+      }
       ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
         HStack(spacing: 12) {
           ForEach(row) { widget in
-            Button { open(.widget(widget.id)) } label: { HomeWidgetView(widget, hidden: hidden) }
-              .buttonStyle(.plain)
-              .accessibilityIdentifier("widget.\(widget.id)")
+            if opens(widget.id) {
+              Button { open(.widget(widget.id)) } label: { HomeWidgetView(widget, hidden: hidden) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("widget.\(widget.id)")
+            } else {
+              HomeWidgetView(widget, hidden: hidden)
+                .accessibilityIdentifier("widget.\(widget.id)")
+            }
           }
           if row.count == 1, row[0].size == .small, !typeSize.isAccessibilitySize {
             Color.clear.frame(maxWidth: .infinity)
@@ -244,8 +282,10 @@ private struct WidgetCanvas: View {
         // Small widgets fill the row's height (at least 175 pt), so a pair stays even.
         .fixedSize(horizontal: false, vertical: true)
       }
-      AddWidgetTile { open(.editWidgets) }
-        .padding(.top, 12)
+      if editable {
+        AddWidgetTile { open(.editWidgets) }
+          .padding(.top, 12)
+      }
     }
     .padding(.horizontal, HSpacing.insetPage)
   }
@@ -289,6 +329,25 @@ private struct HomeRouteView: View {
     .background(HColor.surfaceSecondary)
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+/// "Sample data" over Home on the App Review demo account (`review_account`, spec 06
+/// §13.4): its month was loaded from the bundled sample, not read from email.
+struct SampleDataLabel: View {
+  var body: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "info.circle").accessibilityHidden(true)
+      Text("Sample data")
+    }
+    .hType(.footnote.weight(.semibold))
+    .foregroundStyle(HColor.chipInfoText)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 4)
+    .background(HColor.chipInfoSurface, in: Capsule())
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("Sample data. This account shows a sample month, not your email.")
+    .accessibilityIdentifier("home.sampleData")
   }
 }
 

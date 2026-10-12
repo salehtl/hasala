@@ -1,5 +1,6 @@
 /**
- * The waitlist form and the Banks "Tell us" form.
+ * The waitlist form ("Request an invite"). It is also how people ask for a
+ * bank Hasala doesn't read yet: "Another bank", then its name.
  *
  * Waitlist: validates on submit, then live once a field has an error; never
  * clears what was typed; errors are red-700 text with an icon, never colour
@@ -9,13 +10,10 @@
  * submission shows the same "Check your email" card: the server answers
  * 202 whether the address is new or already on the list.
  *
- * Tell us: posts an anonymous vote to PUBLIC_API_BASE/v1/bank-requests and
- * shows "Counted", with the invite form offered as a second step.
- *
  * In "email" mode (PUBLIC_WAITLIST_MODE, see src/lib/env.ts; the markup then
- * carries data-mail instead of data-api), both forms validate the same way
- * and then, instead of posting, open a pre-filled email to that address in
- * the visitor's email app and show how to finish if it didn't open.
+ * carries data-mail instead of data-api), the form validates the same way
+ * and then, instead of posting, opens a pre-filled email to that address in
+ * the visitor's email app and shows how to finish if it didn't open.
  */
 import { reducedMotion } from './motion';
 import { onPage } from './page';
@@ -261,7 +259,7 @@ function setup(signal: AbortSignal): void {
     { signal },
   );
 
-  // "Copy link for a friend", or (in "email" mode) "Copy <address>", here and in Tell us.
+  // "Copy link for a friend", or (in "email" mode) "Copy <address>".
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
     const text = btn.querySelector('span')!;
     const label = text.textContent;
@@ -300,136 +298,5 @@ function setup(signal: AbortSignal): void {
     ),
   );
 
-  // A bank chosen in "Tell us" (or carried over by its no-JS fallback) fills in "Another bank" here.
-  const preset = (name: string) => {
-    if (form.hidden) return;
-    bank.value = 'other';
-    other.value = name;
-    showOther();
-  };
-  const params = new URLSearchParams(location.search);
-  if (params.get('bank')) {
-    const fromQuery = bankNameFor(params.get('bank')!, params.get('otherBank') ?? '');
-    preset(fromQuery);
-    history.replaceState(history.state, '', `${location.pathname}${location.hash}`);
-  }
   if (location.hash === '#invite') window.setTimeout(() => email.focus({ preventScroll: true }), 300);
-
-  setupTellUs(signal, (name) => {
-    preset(name);
-    goToForm();
-  });
-}
-
-/** The display name of a catalog slug from the Tell us select, or the typed name. */
-function bankNameFor(slug: string, typed: string): string {
-  if (slug === 'other') return bankText(typed) ?? '';
-  const opt = document.querySelector<HTMLOptionElement>(`#tellus-bank option[value="${CSS.escape(slug)}"]`);
-  return opt?.textContent?.trim() ?? '';
-}
-
-function setupTellUs(signal: AbortSignal, toInvite: (bankName: string) => void): void {
-  const form = document.querySelector<HTMLFormElement>('[data-tell-us]');
-  if (!form) return;
-  form.noValidate = true;
-  const done = form.parentElement!.querySelector<HTMLElement>('[data-tellus-done]')!;
-  const select = form.elements.namedItem('bank') as HTMLSelectElement;
-  const other = form.elements.namedItem('otherBank') as HTMLInputElement;
-  const otherWrap = form.querySelector<HTMLElement>('[data-tellus-other]')!;
-  const status = form.querySelector<HTMLElement>('.tellus__status')!;
-  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
-  const label = submit.querySelector<HTMLElement>('[data-label]')!;
-  const spinner = submit.querySelector<HTMLElement>('.spinner')!;
-  const resetTurnstile = renderTurnstile(form, 'bank_request', signal);
-  let chosen = '';
-
-  const say = (text: string, error = false) => {
-    status.textContent = text;
-    status.dataset.tone = error ? 'error' : 'info';
-  };
-  const invalid = (el: HTMLElement | null) => {
-    select.removeAttribute('aria-invalid');
-    other.removeAttribute('aria-invalid');
-    el?.setAttribute('aria-invalid', 'true');
-  };
-  select.addEventListener(
-    'change',
-    () => {
-      otherWrap.hidden = select.value !== 'other';
-      invalid(null);
-      say('');
-      if (select.value === 'other') other.focus();
-    },
-    { signal },
-  );
-
-  form.addEventListener(
-    'submit',
-    async (e) => {
-      e.preventDefault();
-      if (submit.disabled) return;
-      if (!select.value) {
-        invalid(select);
-        say('Choose your bank first.', true);
-        select.focus();
-        return;
-      }
-      const name = select.value === 'other' ? bankText(other.value) : '';
-      if (select.value === 'other' && !name) {
-        invalid(other);
-        say(name === null ? 'Use letters, numbers and spaces for the bank name.' : 'Type your bank’s name.', true);
-        other.focus();
-        return;
-      }
-      invalid(null);
-      const honeypot = (form.elements.namedItem('website') as HTMLInputElement | null)?.value;
-      chosen = bankNameFor(select.value, other.value);
-      if (form.dataset.mail) {
-        // A filled honeypot is a bot: show the same card and open nothing.
-        if (!honeypot) openMail(done, mailto(form.dataset.mail, 'Hasala: please add my bank', ['Hi Hasala,', '', 'Please add my bank to Hasala.', '', `Bank: ${chosen}`]));
-        form.hidden = true;
-        done.hidden = false;
-        done.querySelector<HTMLElement>('.tellus-done__title')?.focus();
-        return;
-      }
-      const body: Record<string, string> = { bank: select.value, source: 'web', website: honeypot ?? '' };
-      if (name) body.otherBank = name;
-      const token = (form.elements.namedItem('cf-turnstile-response') as HTMLInputElement | null)?.value;
-      if (token) body.turnstileToken = token;
-
-      submit.disabled = true;
-      submit.style.width = `${submit.offsetWidth}px`;
-      spinner.hidden = false;
-      label.textContent = 'Sending…';
-      say('');
-      const answer = await postJson(`${form.dataset.api}/v1/bank-requests`, body);
-      submit.disabled = false;
-      submit.style.width = '';
-      spinner.hidden = true;
-      label.textContent = 'Tell us';
-      resetTurnstile();
-      if (answer.status >= 200 && answer.status < 300) {
-        form.hidden = true;
-        done.hidden = false;
-        done.querySelector<HTMLElement>('.tellus-done__title')?.focus();
-        return;
-      }
-      if (answer.error === 'bad_bank') {
-        invalid(select.value === 'other' ? other : select);
-        say('We couldn’t use that bank name. Check it and try again.', true);
-        return;
-      }
-      say(answerText(answer).text, true);
-    },
-    { signal },
-  );
-
-  done.querySelector<HTMLAnchorElement>('[data-tellus-invite]')?.addEventListener(
-    'click',
-    (e) => {
-      e.preventDefault();
-      toInvite(chosen);
-    },
-    { signal },
-  );
 }

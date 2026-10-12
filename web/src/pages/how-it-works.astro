@@ -1,0 +1,61 @@
+---
+import Detail from '../layouts/Detail.astro';
+import DetailSection from '../components/DetailSection.astro';
+import BankTiles from '../components/BankTiles.astro';
+import AlertArt from '../components/detail/AlertArt.astro';
+import Review from '../components/detail/Review.astro';
+---
+
+<Detail
+  title="How it works"
+  heading="How Hasala works"
+  lead="Hasala reads your bank’s alert emails on your iPhone, turns each one into a transaction and sorts most of them into categories. You confirm the rest."
+  path="/how-it-works"
+>
+  <DetailSection id="gmail" title="Connecting Gmail">
+    <p>
+      You give Hasala read‑only access to your Gmail. Your iPhone asks Gmail only for messages from your bank’s alert senders and reads them on the phone, so
+      the rest of your inbox is never downloaded.
+    </p>
+    <p>
+      Hasala can’t send, change or delete mail. If an email only looks like it came from your bank, Hasala checks just its sender details and sets it aside.
+      Nothing is sent to an AI service.
+    </p>
+    <AlertArt kind="mail" slot="art" />
+  </DetailSection>
+
+  <DetailSection id="banks" title="Before you start" tint>
+    <p>Turn on email alerts in your banking app. Hasala reads card and account alerts from these banks:</p>
+    <BankTiles detail />
+    <p>Use a different bank? <a href="/#invite">Tell us which when you request an invite.</a> It helps us pick the next bank to add.</p>
+  </DetailSection>
+
+  <DetailSection id="sorting" title="How sorting works">
+    <p>Each alert becomes a transaction. Hasala sorts it into a category on your iPhone, in this order:</p>
+    <ol>
+      <li>your own rules;</li>
+      <li>a built‑in list of UAE merchants;</li>
+      <li>Apple’s on‑device model, which reads English merchant names.</li>
+    </ol>
+    <p>You confirm the rest. Correct a merchant once, and Hasala remembers it.</p>
+    <AlertArt kind="sorted" slot="art" />
+  </DetailSection>
+
+  <Review />
+
+  <DetailSection id="sign-in" title="Signing in" tint>
+    <p>Sign in with Face ID, using a passkey, or with your email and a password.</p>
+    <p>
+      A password signs you in but doesn’t unlock your data on a new iPhone. Your passkey or your 12‑word recovery phrase does. See
+      <a href="/how-privacy-works#new-phone">a new or lost phone</a>.
+    </p>
+  </DetailSection>
+
+  <DetailSection id="iphone" title="iPhone and English only, for now">
+    <p>
+      Hasala does its work on the iPhone itself, and its sorting uses Apple’s on‑device model, which reads English merchant names. Starting with one platform
+      and one language lets us get every bank alert right before we promise more.
+    </p>
+    <p>You need an iPhone with iOS 26 or later. The app is in English and in light mode only for now.</p>
+  </DetailSection>
+</Detail>

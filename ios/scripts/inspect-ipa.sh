@@ -205,6 +205,32 @@ no_forbidden_files() {
 	fi
 }
 
+# I9 (AT-11): no third-party cryptography, the guard of the export-compliance answer
+# (spec 06 §6.2): no Mach-O in the payload exports or imports a symbol matching
+# CRYPTO_SYMBOLS. `nm -g` lists both, the external symbols a file defines and the ones it
+# imports (which a stripped binary keeps). Every Mach-O must list, and the main binary
+# must be one of them. OS cryptography (CryptoKit, CommonCrypto's CCKeyDerivationPBKDF,
+# SecureEnclave) matches none of the patterns.
+CRYPTO_SYMBOLS='argon2|sodium|crypto_|EVP_|BoringSSL|mbedtls|wolfSSL|scrypt|bcrypt'
+no_third_party_crypto() {
+	local f main=0
+	[[ -s "$bin" ]] && find "$payload" -type f -print0 >"$work/all-files" && : >"$work/symbols.txt" || return 1
+	while IFS= read -r -d '' f; do
+		hasala_is_macho "$f" || continue
+		[[ "$f" != "$bin" ]] || main=1
+		if ! /usr/bin/xcrun nm -g -- "$f" >"$work/nm.txt" 2>/dev/null; then
+			echo "        nm cannot read ${f#"$payload/"}" >&2
+			return 1
+		fi
+		sed "s|^|${f#"$payload/"}: |" "$work/nm.txt" >>"$work/symbols.txt" || return 1
+	done <"$work/all-files"
+	[[ "$main" == 1 && -s "$work/symbols.txt" ]] || return 1
+	if ! hasala_absent "$CRYPTO_SYMBOLS" "$work/symbols.txt"; then
+		grep -E -e "$CRYPTO_SYMBOLS" -- "$work/symbols.txt" | head -n 10 | sed 's/^/        /' >&2 || true
+		return 1
+	fi
+}
+
 # I8: nothing links JavaScriptCore (the load commands must list libSystem, or the
 # listing is not one).
 no_javascriptcore() {
@@ -254,11 +280,16 @@ check "I1 no ?mode=developer domain" eval 'valid_plist "$ents" && hasala_absent 
 check "I1 entitlements equal golden/app.release.entitlements.plist" ents_match_golden
 check "I5 PrivacyInfo.xcprivacy valid; collects exactly UserID, DeviceID, EmailAddress, Name, OtherFinancialInfo" privacy_manifest_ok
 check "I6 no mail, fixtures, databases or keys" no_forbidden_files
+# I6b: the sample seed is the committed one and synthetic, and nothing else in the app is
+# test data or an oversized resource (check-bundle.sh, which names what failed on stderr).
+bundle_ok() { "$here/check-bundle.sh" "$app" >/dev/null; }
+check "I6b sample seed is golden/maya-v1.sha256; no test data or oversized resources (check-bundle.sh)" bundle_ok
 # I7, I12 and AT-REV-4 read every file (see in_no_file): the Mach-Os, Info.plist,
 # Assets.car and every other resource, and every plist as XML. Only I12's dev-host
 # search ignores case: a host name is the same host in capitals.
 check "I7 no secrets in any file" in_no_file "GOCSPX-|BEGIN (EC |RSA )?PRIVATE KEY|AuthKey_|HASALA_[A-Z_]*KEY="
 check "I8 no JavaScriptCore" no_javascriptcore
+check "I9 no third-party crypto symbols in any Mach-O" no_third_party_crypto
 check "I10 icon compiled" icon_compiled
 check "I11 minos 26.0" minos_26
 check "I12 no dev hosts in any file, in any case" in_no_file_i "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"

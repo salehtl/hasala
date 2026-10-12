@@ -88,6 +88,9 @@ final class SignupModel {
   var busy = false
   var failure: AuthFailure?
 
+  /// What this build can do (`AccountService.capabilities`); the copy follows it.
+  var capabilities: AccountCapabilities { account.capabilities }
+
   init(account: AccountService) {
     self.account = account
   }
