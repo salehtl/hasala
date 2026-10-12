@@ -171,8 +171,19 @@ type APNsConfig struct {
 	KeyFile string `toml:"-"`
 }
 
-// GmailConfig is the Gmail Pub/Sub hook and mailbox link (spec 02 §13; WS-4).
-// All or nothing: none of it leaves those routes unmounted.
+// GmailConfig is the Gmail mailbox link and its Pub/Sub push (spec 02 §13;
+// WS-4). It is two parts, each all or nothing:
+//
+//   - the link: ios_client_id (the audience of the app's Google ID token) and
+//     the route key. It mounts the mailbox-link routes (#34–#38).
+//   - the push: the four pubsub_* values, only together with the link. It
+//     mounts the Pub/Sub hook (#39), reports pubsub_topic as /meta's
+//     gmail_watch_topic, lets #36 record watches and runs the renewal nudge.
+//
+// The link alone is a working mailbox link with no wakes: /meta's
+// gmail_watch_topic stays null, so the app never calls users.watch and fetches
+// mail when it is opened or refreshed in the background. Neither part leaves
+// #34–#39 unmounted.
 type GmailConfig struct {
 	IOSClientID          string `toml:"ios_client_id"`
 	PubSubTopic          string `toml:"pubsub_topic"`
@@ -183,10 +194,14 @@ type GmailConfig struct {
 	RouteKeyFile string `toml:"-"`
 }
 
-// Enabled reports whether any of the group is configured.
-func (g GmailConfig) Enabled() bool {
-	return g.IOSClientID != "" || g.PubSubTopic != "" || g.PubSubSubscription != "" ||
-		g.PubSubAudience != "" || g.PubSubServiceAccount != "" || g.RouteKeyFile != ""
+// LinkEnabled reports whether any of the link part is configured; a loaded
+// Config has either both of its values or neither.
+func (g GmailConfig) LinkEnabled() bool { return g.IOSClientID != "" || g.RouteKeyFile != "" }
+
+// PushEnabled reports whether any of the push part is configured; a loaded
+// Config has either all four of its values, and the link, or none of them.
+func (g GmailConfig) PushEnabled() bool {
+	return g.PubSubTopic != "" || g.PubSubSubscription != "" || g.PubSubAudience != "" || g.PubSubServiceAccount != ""
 }
 
 // EmailConfig is outbound mail through Cloudflare Email Service (spec 02
@@ -630,29 +645,49 @@ func (c Config) validateAPNs() error {
 	return nil
 }
 
+// validateGmail is GmailConfig's rule set: the link part both or neither, the
+// push part all or none and only with the link, then each value's shape.
 func (c Config) validateGmail() error {
 	g := c.Gmail
-	if !g.Enabled() {
-		return nil
+	missing := func(group map[string]string) string {
+		var out []string
+		for name, v := range group {
+			if v == "" {
+				out = append(out, name)
+			}
+		}
+		return strings.Join(sortedCopy(out), ", ")
 	}
-	missing := []string{}
-	for name, v := range map[string]string{
-		"gmail.ios_client_id (HASALA_GOOGLE_IOS_CLIENT_ID)":            g.IOSClientID,
-		"gmail.pubsub_topic (HASALA_GMAIL_PUBSUB_TOPIC)":               g.PubSubTopic,
-		"gmail.pubsub_subscription (HASALA_GMAIL_PUBSUB_SUBSCRIPTION)": g.PubSubSubscription,
-		"gmail.pubsub_audience (HASALA_GMAIL_PUBSUB_AUDIENCE)":         g.PubSubAudience,
-		"gmail.pubsub_service_account (HASALA_GMAIL_PUBSUB_SA_EMAIL)":  g.PubSubServiceAccount,
-		"HASALA_MAILBOX_ROUTE_KEY_FILE":                                g.RouteKeyFile,
-	} {
-		if v == "" {
-			missing = append(missing, name)
+	if g.LinkEnabled() {
+		if m := missing(map[string]string{
+			"gmail.ios_client_id (HASALA_GOOGLE_IOS_CLIENT_ID)": g.IOSClientID,
+			"HASALA_MAILBOX_ROUTE_KEY_FILE":                     g.RouteKeyFile,
+		}); m != "" {
+			return fmt.Errorf("the [gmail] mailbox link needs gmail.ios_client_id and HASALA_MAILBOX_ROUTE_KEY_FILE together; missing: %s", m)
 		}
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("the [gmail] group is all or nothing; missing: %s", strings.Join(sortedCopy(missing), ", "))
+	if g.PushEnabled() {
+		if m := missing(map[string]string{
+			"gmail.pubsub_topic (HASALA_GMAIL_PUBSUB_TOPIC)":               g.PubSubTopic,
+			"gmail.pubsub_subscription (HASALA_GMAIL_PUBSUB_SUBSCRIPTION)": g.PubSubSubscription,
+			"gmail.pubsub_audience (HASALA_GMAIL_PUBSUB_AUDIENCE)":         g.PubSubAudience,
+			"gmail.pubsub_service_account (HASALA_GMAIL_PUBSUB_SA_EMAIL)":  g.PubSubServiceAccount,
+		}); m != "" {
+			return fmt.Errorf("the [gmail] Pub/Sub push settings are all or nothing; missing: %s", m)
+		}
+		if !g.LinkEnabled() {
+			return errors.New("the [gmail] Pub/Sub push needs the mailbox link: set gmail.ios_client_id " +
+				"(HASALA_GOOGLE_IOS_CLIENT_ID) and HASALA_MAILBOX_ROUTE_KEY_FILE too")
+		}
+	}
+	if !g.LinkEnabled() {
+		return nil
 	}
 	if !strings.HasSuffix(g.IOSClientID, ".apps.googleusercontent.com") {
 		return fmt.Errorf("gmail.ios_client_id %q is not a Google client id", g.IOSClientID)
+	}
+	if !g.PushEnabled() {
+		return nil
 	}
 	if !strings.HasPrefix(g.PubSubTopic, "projects/") || !strings.Contains(g.PubSubTopic, "/topics/") {
 		return fmt.Errorf("gmail.pubsub_topic %q: want projects/<P>/topics/<t>", g.PubSubTopic)

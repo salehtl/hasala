@@ -33,6 +33,7 @@ public struct HTTPMailboxServer: MailboxServer {
       let code = o?["error"]?.stringValue ?? ""
       if res.status == 404 && code == "no_link" { throw .noLink }
       if res.status == 409 && code == "not_holder" { throw .notHolder }
+      if res.status == 409 && code == "no_watch_topic" { throw .noWatchTopic }
       throw .refused(res.status, String(code.prefix(64)))
     }
     return o ?? JSONObject()

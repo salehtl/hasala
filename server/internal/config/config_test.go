@@ -72,7 +72,7 @@ func TestDefaultsAreSpec02s(t *testing.T) {
 		t.Errorf("apns defaults = %+v", c.APNs)
 	}
 	if c.Email.From != "no-reply@hasala.app" || c.Email.FromName != "Hasala" || c.Email.FreezeURL != "https://hasala.app/freeze" ||
-		c.Email.WebBaseURL != "https://hasala.app" || c.Email.Enabled() || c.Gmail.Enabled() {
+		c.Email.WebBaseURL != "https://hasala.app" || c.Email.Enabled() || c.Gmail.LinkEnabled() || c.Gmail.PushEnabled() {
 		t.Errorf("email/gmail defaults = %+v / %+v", c.Email, c.Gmail)
 	}
 }
@@ -172,25 +172,75 @@ func TestTheOptionalGroupsAreAllOrNothing(t *testing.T) {
 	wantErr(t, env{"HASALA_APNS_ENABLED": "true"}, "team_id")
 	wantErr(t, env{"HASALA_APNS_ENABLED": "true", "HASALA_APNS_TEAM_ID": "ABCDE12345", "HASALA_APNS_KEY_ID": "KEY1234567"}, "HASALA_APNS_KEY_FILE")
 	wantErr(t, env{"HASALA_APNS_ENVIRONMENTS": "staging"}, "production or sandbox")
-	// Gmail: one value without the rest.
-	wantErr(t, env{"HASALA_GMAIL_PUBSUB_TOPIC": "projects/p/topics/t"}, "all or nothing")
-	gmail := env{
-		"HASALA_GOOGLE_IOS_CLIENT_ID":      "1-abc.apps.googleusercontent.com",
-		"HASALA_GMAIL_PUBSUB_TOPIC":        "projects/p/topics/t",
-		"HASALA_GMAIL_PUBSUB_SUBSCRIPTION": "projects/p/subscriptions/s",
-		"HASALA_GMAIL_PUBSUB_AUDIENCE":     "https://api.hasala.app/hooks/gmail/pubsub",
-		"HASALA_GMAIL_PUBSUB_SA_EMAIL":     "push@p.iam.gserviceaccount.com",
-		"HASALA_MAILBOX_ROUTE_KEY_FILE":    key,
-	}
-	if c := mustLoad(t, gmail); !c.Gmail.Enabled() {
-		t.Fatal("a complete [gmail] group is not enabled")
-	}
+	// Gmail: TestTheGmailGroupIsALinkAndAnOptionalPush.
 	// Email: account id without the token, and a bad account id.
 	wantErr(t, env{"HASALA_EMAIL_CF_ACCOUNT_ID": strings.Repeat("a", 32)}, "API_TOKEN_FILE")
 	wantErr(t, env{"HASALA_EMAIL_CF_ACCOUNT_ID": "nothex", "HASALA_EMAIL_API_TOKEN_FILE": key}, "32 lowercase hex")
 	wantErr(t, env{"HASALA_EMAIL_FROM": "no-reply@example.test"}, "hasala.app")
 	wantErr(t, env{"HASALA_FREEZE_URL": "http://hasala.app/freeze"}, "https URL on hasala.app")
 	wantErr(t, env{"HASALA_WEB_BASE_URL": "https://evil.test"}, "https URL on hasala.app")
+}
+
+// The [gmail] group is two parts: the mailbox link (the iOS client id and the
+// route key, both or neither) and the Pub/Sub push (four values, all or none,
+// and only with the link). The link alone is a valid configuration.
+func TestTheGmailGroupIsALinkAndAnOptionalPush(t *testing.T) {
+	key := secretFile(t, 0o600)
+	link := env{
+		"HASALA_GOOGLE_IOS_CLIENT_ID":   "1-abc.apps.googleusercontent.com",
+		"HASALA_MAILBOX_ROUTE_KEY_FILE": key,
+	}
+	push := env{
+		"HASALA_GMAIL_PUBSUB_TOPIC":        "projects/p/topics/t",
+		"HASALA_GMAIL_PUBSUB_SUBSCRIPTION": "projects/p/subscriptions/s",
+		"HASALA_GMAIL_PUBSUB_AUDIENCE":     "https://api.hasala.app/hooks/gmail/pubsub",
+		"HASALA_GMAIL_PUBSUB_SA_EMAIL":     "push@p.iam.gserviceaccount.com",
+	}
+	merge := func(es ...env) env {
+		out := env{}
+		for _, e := range es {
+			for k, v := range e {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	without := func(e env, k string) env {
+		out := merge(e)
+		delete(out, k)
+		return out
+	}
+
+	// The link alone: mounted, with no push.
+	if c := mustLoad(t, link); !c.Gmail.LinkEnabled() || c.Gmail.PushEnabled() {
+		t.Fatalf("link only: link %v push %v", c.Gmail.LinkEnabled(), c.Gmail.PushEnabled())
+	}
+	// Both parts.
+	if c := mustLoad(t, merge(link, push)); !c.Gmail.LinkEnabled() || !c.Gmail.PushEnabled() {
+		t.Fatalf("link and push: link %v push %v", c.Gmail.LinkEnabled(), c.Gmail.PushEnabled())
+	}
+
+	// Half a link, with or without the push.
+	wantErr(t, without(link, "HASALA_MAILBOX_ROUTE_KEY_FILE"), "missing: HASALA_MAILBOX_ROUTE_KEY_FILE")
+	wantErr(t, without(link, "HASALA_GOOGLE_IOS_CLIENT_ID"), "missing: gmail.ios_client_id")
+	wantErr(t, merge(without(link, "HASALA_MAILBOX_ROUTE_KEY_FILE"), push), "missing: HASALA_MAILBOX_ROUTE_KEY_FILE")
+
+	// Partial push settings are refused, each one named, with the link or without.
+	for k := range push {
+		wantErr(t, merge(link, without(push, k)), k)
+		wantErr(t, merge(link, env{k: push[k]}), "all or nothing")
+		wantErr(t, env{k: push[k]}, "all or nothing")
+	}
+	// The whole push without the link.
+	wantErr(t, push, "needs the mailbox link")
+	wantErr(t, merge(push, without(link, "HASALA_GOOGLE_IOS_CLIENT_ID")), "missing: gmail.ios_client_id")
+
+	// Shapes.
+	wantErr(t, merge(link, env{"HASALA_GOOGLE_IOS_CLIENT_ID": "not-a-client"}), "not a Google client id")
+	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_TOPIC": "t"}), "pubsub_topic")
+	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_SUBSCRIPTION": "projects/p/topics/t"}), "pubsub_subscription")
+	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_AUDIENCE": "http://api.hasala.app/hooks/gmail/pubsub"}), "pubsub_audience")
+	wantErr(t, merge(link, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": secretFile(t, 0o640)}), "no group or other permission")
 }
 
 func TestSecretFilesMustBePrivate(t *testing.T) {

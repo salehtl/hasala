@@ -334,6 +334,53 @@ let day: Int64 = 86_400_000
     #expect(await quiet.engine.status().watchActive == false)
   }
 
+  /// A server whose Pub/Sub push is turned on after the app read a null topic: the topic is read
+  /// again once per holder-check interval, and the next due cycle watches and reports.
+  @Test func aTopicTheServerGainsLaterIsWatchedWithoutARelaunch() async {
+    let rig = Rig()
+    await rig.server.setTopic(nil)
+    await rig.connectAndActivate()
+    #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
+    let reads = await rig.server.topicReads
+    #expect(reads == 1)
+
+    await rig.server.setTopic("projects/synthetic/topics/hasala-gmail-test")
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.server.topicReads == reads)  // inside the interval: the null topic stands
+    #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
+
+    rig.clock.advance(MailboxEngineConfig(grantID: "x").holderCheckIntervalMs)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.server.topicReads == reads + 1)
+    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
+    #expect(await rig.server.watches == [Rig.t0 + 7 * day])
+    #expect(await rig.engine.status().watchActive)
+  }
+
+  /// Route 36's `409 no_watch_topic`: the server turned its Pub/Sub push off after the app read
+  /// the topic. The watch nobody relays is stopped, no live watch is shown, and the topic is read
+  /// again (null now), so no further watch is made.
+  @Test func aWatchTheServerNoLongerRelaysIsStoppedAndTheTopicReadAgain() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    #expect(await rig.server.watches == [Rig.t0 + 7 * day])
+    #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
+
+    await rig.server.setTopic(nil)
+    await rig.server.setWatchRefusal(.noWatchTopic)
+    rig.clock.advance(5 * day)  // the watch is due for renewal (inside the 3-day window)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(rig.gmail.requests.filter { $0.path.hasSuffix("/watch") }.count == 2)
+    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
+    #expect(await rig.state().watchExpiresAtMs == nil)
+    #expect(await rig.engine.status().watchActive == false)
+
+    let reads = await rig.server.topicReads
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.server.topicReads == reads + 1)
+    #expect(rig.gmail.requests.filter { $0.path.hasSuffix("/watch") }.count == 2)
+  }
+
   @Test func noTrustedSenderListsNothing() async {
     let rig = Rig()
     await rig.ledger.setTrust([:])

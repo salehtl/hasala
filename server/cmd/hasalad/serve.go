@@ -145,8 +145,12 @@ func logGroups(cfg config.Config) {
 	if cfg.APNs.Enabled {
 		on = append(on, "apns")
 	}
-	if cfg.Gmail.Enabled() {
-		on = append(on, "gmail")
+	// The [gmail] group's two parts: the mailbox link, and its Pub/Sub push.
+	if cfg.Gmail.LinkEnabled() {
+		on = append(on, "gmail-link")
+	}
+	if cfg.Gmail.PushEnabled() {
+		on = append(on, "gmail-push")
 	}
 	if cfg.Email.Enabled() {
 		on = append(on, "email")
