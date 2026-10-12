@@ -58,6 +58,22 @@ let libraries = [
 ]
 let unitTested = libraries.filter { $0 != "CoreResources" && $0 != "CoreTestSupport" }
 
+/// What a `<Module>Tests` target links besides its own module. Only these five
+/// use CoreTestSupport's fakes; CoreSoftAuthTests reads CoreCrypto's vectors.
+/// The rest link their module alone. CoreTestSupport depends on every layer
+/// (GRDB included), so a unit-test target that declared it could not start
+/// compiling until the whole graph had built, and recompiled whenever anything
+/// in L3 or L4 changed. A test that starts using the fakes (or another module
+/// outside its own module's dependencies) adds that module here.
+let testDependencies: [String: [Target.Dependency]] = [
+  "CoreDomain": ["CoreTestSupport"],
+  "CoreProjection": ["CoreTestSupport", "CoreInvariants"],
+  "CoreSync": ["CoreTestSupport"],
+  "CoreOutbox": ["CoreTestSupport"],
+  "CoreMailbox": ["CoreTestSupport"],
+  "CoreSoftAuth": ["CoreCrypto"],
+]
+
 let package = Package(
   name: "HasalaCore",
   platforms: [.iOS(.v26), .macOS(.v26)],
@@ -129,7 +145,10 @@ let package = Package(
 
     .testTarget(
       name: "HasalaCoreConformanceTests",
-      dependencies: l0 + l1 + l2 + l3 + l4 + ["HasalaModel", "CoreTestSupport", "CoreSoftAuth"],
+      // What its files import, and no more: none of them needs L3, L4 or
+      // CoreTestSupport, so this target builds beside them, not after them.
+      dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate"]
+        + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreSoftAuth"],
       path: "Tests/HasalaCoreConformanceTests"),
     .testTarget(
       name: "HasalaCoreE2ETests",
@@ -141,7 +160,7 @@ let package = Package(
   ]
     + unitTested.map { name in
       .testTarget(
-        name: "\(name)Tests", dependencies: [.byName(name: name), "CoreTestSupport"],
+        name: "\(name)Tests", dependencies: [.byName(name: name)] + (testDependencies[name] ?? []),
         path: "Tests/\(name)Tests")
     },
   swiftLanguageModes: [.v6]

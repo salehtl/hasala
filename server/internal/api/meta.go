@@ -18,9 +18,10 @@ const (
 type MetaResponse struct {
 	RPID        string `json:"rp_id"`
 	MinIOSBuild int    `json:"min_ios_build"`
-	// GmailWatchTopic is null whenever the mailbox-link routes (§7 #34–39)
-	// are not mounted, so a device never tries to link a mailbox this server
-	// cannot serve.
+	// GmailWatchTopic is the Pub/Sub topic a device watches its mailbox on,
+	// and null whenever the hook (§7 #39) is not mounted: with no topic the
+	// app skips users.watch, so it never makes a watch this server cannot
+	// relay. The mailbox link (#34–#38) may be mounted either way.
 	GmailWatchTopic *string `json:"gmail_watch_topic"`
 	// LogGeneration is the integer in HASALA_LOG_GENERATION_FILE (§15.5): a
 	// device that sees it rise was restored under, and says so instead of
@@ -30,13 +31,11 @@ type MetaResponse struct {
 	ServerTime string `json:"server_time"`
 }
 
-// Meta is the configuration GET /api/v1/meta reports. NewServer fills it.
+// Meta is the configuration GET /api/v1/meta reports. NewServer fills it;
+// gmail_watch_topic comes from Server.Gmail.Push instead.
 type Meta struct {
 	RPID        string
 	MinIOSBuild int
-	// GmailWatchTopic stays empty (null on the wire) until WS-4 mounts the
-	// mailbox-link routes; it is set from gmail.pubsub_topic then.
-	GmailWatchTopic string
 	// LogGeneration is ≥ 1; zero is reported as 1 (an absent file).
 	LogGeneration int
 }
@@ -54,9 +53,11 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	if gen < 1 {
 		gen = 1
 	}
+	// The topic comes with the hook's own configuration, so a topic is never
+	// offered without the hook that relays its notices.
 	var topic *string
-	if s.Meta.GmailWatchTopic != "" {
-		t := s.Meta.GmailWatchTopic
+	if p := s.gmailPush(); p != nil && p.Topic != "" {
+		t := p.Topic
 		topic = &t
 	}
 	writeJSON(w, http.StatusOK, MetaResponse{

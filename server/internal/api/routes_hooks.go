@@ -36,11 +36,13 @@ const (
 	hookMaxRows      = 10
 )
 
+// mountHooks mounts the hook only with the Pub/Sub push; a mailbox link alone
+// leaves it to the catch-all 404.
 func (s *Server) mountHooks(mux *http.ServeMux) {
-	if s.Gmail == nil {
+	g := s.gmailPush()
+	if g == nil {
 		return
 	}
-	g := s.Gmail
 	if g.HookPerIP == nil {
 		g.HookPerIP = NewLimiter(hookIPRate, hookIPBurst, hookIPMaxKeys, s.now)
 	}
@@ -54,7 +56,7 @@ func (s *Server) mountHooks(mux *http.ServeMux) {
 }
 
 func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
-	g := s.Gmail
+	g := s.Gmail.Push
 	g.Counters.Pushes.Add(1)
 	ctx, cancel := context.WithTimeout(r.Context(), hookDeadline)
 	defer cancel()
@@ -90,7 +92,7 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 5: Pub/Sub's own service account, verified.
-	if claims.Email != g.PushServiceAccount || !claims.EmailVerified {
+	if claims.Email != g.ServiceAccount || !claims.EmailVerified {
 		g.Counters.Forbidden.Add(1)
 		writeErr(w, http.StatusForbidden, "forbidden", "")
 		return
@@ -107,7 +109,7 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	addrHMAC := g.RouteKey.AddressHMAC(n.EmailAddress)
+	addrHMAC := s.Gmail.RouteKey.AddressHMAC(n.EmailAddress)
 	n = gmailpush.Notice{}
 	// 8b: per mailbox, so an outsider's watch cannot spend a holder's budget.
 	if !g.HookLink.Allow(hex.EncodeToString(addrHMAC)) {
@@ -118,7 +120,7 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	// 9: route.
 	rows, err := s.Pool.Query(ctx,
 		`SELECT user_id, holder_writer_id FROM mailbox_links WHERE address_hmac = $1 AND route_key_id = $2 LIMIT $3`,
-		addrHMAC, g.RouteKey.KeyID(), hookMaxRows)
+		addrHMAC, s.Gmail.RouteKey.KeyID(), hookMaxRows)
 	if err != nil {
 		s.logf("api: gmail hook: route: %v", err)
 		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")

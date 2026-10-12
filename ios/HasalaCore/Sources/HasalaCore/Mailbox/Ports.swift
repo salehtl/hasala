@@ -66,6 +66,9 @@ public enum MailboxServerError: Error, Sendable, Equatable {
   case notHolder
   /// 404 `no_link`.
   case noLink
+  /// 409 `no_watch_topic` from route 36: the server relays no wakes (no Pub/Sub push, so
+  /// `meta.gmail_watch_topic` is null) and records no watch.
+  case noWatchTopic
   /// Any other refusal (status and the server's content-free code).
   case refused(Int, String)
 }
@@ -77,7 +80,8 @@ public protocol MailboxServer: Sendable {
   func linkChallenge() async throws(MailboxServerError) -> String
   /// `PUT /api/v1/mailbox/link {id_token, step_up}` (route 35).
   func putLink(idToken: String, stepUp: JSONValue) async throws(MailboxServerError) -> MailboxLinkStatus
-  /// `PUT /api/v1/mailbox/link/watch {expires_at}` (route 36; holder only).
+  /// `PUT /api/v1/mailbox/link/watch {expires_at}` (route 36; holder only; `.noWatchTopic`
+  /// when the server has no topic).
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError)
   /// `DELETE /api/v1/mailbox/link {step_up}` (route 38).
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError)

@@ -42,7 +42,11 @@ enabled = false
 topic = "app.hasala.ios"
 allowed_environments = ["production", "sandbox"]
 
-# [gmail] is all or nothing: all five values plus HASALA_MAILBOX_ROUTE_KEY_FILE.
+# [gmail] is two parts. The mailbox link: ios_client_id together with
+# HASALA_MAILBOX_ROUTE_KEY_FILE; alone, it mounts the link and offers no watch
+# topic, so the app fetches mail without wakes. The Pub/Sub push: the four
+# pubsub_* values, all or none, and only with the link; it mounts the hook and
+# offers pubsub_topic as /meta's gmail_watch_topic.
 # [gmail]
 # ios_client_id = "000000000000-example.apps.googleusercontent.com"
 # pubsub_topic = "projects/example-project/topics/example-topic"

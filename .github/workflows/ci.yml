@@ -6,12 +6,13 @@
 # The job ids below are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac), `ios` (the app on a Mac), `web` (the website) and
+# client core on a Mac), `ios` and `ios-ui` (the app on a Mac; `ios-ui` runs the
+# two longest UI test classes beside `ios`), `web` (the website) and
 # `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
 #
 # Path-aware on pull requests, failing closed: the first job, `changes`, lists
-# the files the pull request changes, and `gate`, `vuln`, `swift`, `ios`, `web`
-# and `nixos-vm` are skipped only when every one of them is on that job's list of
+# the files the pull request changes, and `gate`, `vuln`, `swift`, `ios`, `ios-ui`,
+# `web` and `nixos-vm` are skipped only when every one of them is on that job's list of
 # paths it does not read. Any other path runs the job, a path nobody
 # anticipated included. `secrets` always runs. Jobs are skipped with a
 # job-level `if:`, never a workflow-level `paths:` filter: a skipped job still
@@ -23,6 +24,17 @@
 # on main's head.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
+#
+# Caches (actions/cache): Go's module and build caches in `gate` (`vuln` reads
+# them), and SwiftPM's repository cache in `swift`, `ios` and `ios-ui`. Each is keyed on the
+# files that pin its contents (flake.lock pins Go; go.sum and Package.resolved
+# the dependencies) and saved only when that exact key was missing. Scoping is
+# what keeps a cache trustworthy: a pull request's run saves only into its own
+# scope and reads main's, never another pull request's, and main reads only its
+# own. Go's build cache is content-addressed (an entry is reused only for
+# byte-identical inputs and toolchain); SwiftPM checks out the revision
+# Package.resolved pins, from the cached clone or the network alike; and
+# check.sh still runs every Go test with -count=1, so no test result is cached.
 name: CI
 
 on:
@@ -153,23 +165,66 @@ jobs:
 
       # Every check is evaluated, and every check except the NixOS VM test is
       # built. The VM test needs KVM and minutes; it has its own job below
-      # (nixos-vm), which is not a required check.
-      - name: nix flake check (evaluate everything)
-        run: nix flake check --no-build
-      - name: nix flake check (build every check but qa-vm)
+      # (nixos-vm), which is not a required check. The two are independent Nix
+      # runs, each mostly one evaluation thread, so they run side by side: each
+      # one's output is printed in its own group once both have finished, and
+      # the step fails if either failed.
+      - name: nix flake check (evaluate everything; build every check but qa-vm)
         run: |
           set -euo pipefail
           checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "qa-vm" ])' \
             | jq -r '.[] | ".#checks.x86_64-linux." + .')"
           echo "$checks"
+          logs="$RUNNER_TEMP/nix-check-logs"
+          mkdir -p "$logs"
+          # bg LOG COMMAND...: COMMAND in the background, its output and time in LOG.
+          bg() {
+            local log="$1"
+            shift
+            (
+              start=$SECONDS rc=0
+              "$@" >"$log" 2>&1 || rc=$?
+              echo "(exit $rc after $((SECONDS - start)) s)" >>"$log"
+              exit "$rc"
+            ) &
+          }
+          bg "$logs/evaluate" nix flake check --no-build
+          evaluate=$!
           # shellcheck disable=SC2086 # one installable per word
-          nix build --no-link --print-build-logs $checks
+          bg "$logs/build" nix build --no-link --print-build-logs $checks
+          build=$!
+          failed=0
+          for run in "evaluate:$evaluate:nix flake check --no-build" "build:$build:nix build of every check but qa-vm"; do
+            IFS=: read -r log pid what <<<"$run"
+            rc=0
+            wait "$pid" || rc=$?
+            echo "::group::$what (exit $rc)"
+            cat "$logs/$log"
+            echo "::endgroup::"
+            if [[ "$rc" != 0 ]]; then
+              echo "::error::$what failed (exit $rc)"
+              failed=1
+            fi
+          done
+          exit "$failed"
 
       - name: Build the devShell
         run: nix develop --command true
 
       - name: Install the reference client's dependencies
         run: nix develop --command bash -c 'cd reference/ledgerd-client && bun install --frozen-lockfile'
+
+      # Modules and compiled packages of server/ and server/oracle/ (see
+      # "Caches" above): without it check.sh compiles every dependency first.
+      # Only this job saves it; `vuln` reads it.
+      - name: Go module and build caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-gate-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
+          restore-keys: go-gate-${{ runner.os }}-
 
       # The throwaway Postgres runs as the (unprivileged) runner user, inside the
       # devShell's TMPDIR, on a unix socket only: no service container, no TCP.
@@ -227,6 +282,18 @@ jobs:
           use-flakehub: false
           use-gha-cache: true
           diagnostic-endpoint: ""
+
+      # The modules govulncheck loads, and their compiled export data: `gate`'s
+      # cache (see "Caches" above), read only. Saving here would race `gate`
+      # for the key with a smaller cache.
+      - name: Go module and build caches (gate's, read only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-gate-${{ runner.os }}-${{ hashFiles('flake.lock', 'server/go.sum', 'server/oracle/go.sum') }}
+          restore-keys: go-gate-${{ runner.os }}-
 
       # govulncheck exits non-zero when any vulnerability is reachable from the
       # code (symbol-level, its default); imported-but-unreachable ones are
@@ -288,7 +355,8 @@ jobs:
   # The iOS app (ios/): token generator freshness, the release-script tests (with
   # the system's tools and again inside the Nix devShell, where GNU coreutils come
   # first on PATH) and shellcheck, the HasalaKit package tests on macOS, then a
-  # simulator build with the unit and UI smoke tests. Nothing is signed for
+  # simulator build with the unit tests and every UI test class but the two that
+  # `ios-ui` runs on a runner of its own. Nothing is signed for
   # distribution here (CODE_SIGNING_ALLOWED=NO; the script tests sign a synthetic
   # app ad hoc) and no Apple credential exists in CI; archives, signing and uploads
   # happen only on the owner's Mac (ios/scripts/archive.sh, ios/scripts/upload.sh).
@@ -357,37 +425,76 @@ jobs:
       - name: HasalaKit tests (macOS)
         run: swift test --package-path ios/HasalaKit
 
+      # The SwiftPM clones xcodebuild resolves the project's packages from (see
+      # "Caches" above).
+      - name: SwiftPM repository cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      # The unit tests and every UI test class except the two `ios-ui` runs:
+      # -skip-testing names those two, so a class added later runs here. The
+      # script fails a run that executed no test.
       - name: Build and test in the simulator (unsigned)
-        run: |
-          udid="$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          rts = json.load(sys.stdin)["devices"]
-          best = None
-          for rt, devs in rts.items():
-              if ".iOS-" not in rt:
-                  continue
-              ver = tuple(int(x) for x in rt.rsplit(".iOS-", 1)[1].split("-"))
-              if ver < (26,):
-                  continue
-              for d in devs:
-                  if d["name"].startswith("iPhone") and (best is None or ver > best[0]):
-                      best = (ver, d["udid"], d["name"])
-          if best is None:
-              sys.exit("no iPhone simulator with iOS 26 or later")
-          print(best[1])
-          ')"
-          xcrun simctl list devices | grep "$udid"
-          xcodebuild test \
-            -project ios/Hasala.xcodeproj -scheme Hasala \
-            -destination "id=$udid" \
-            -resultBundlePath "$RUNNER_TEMP/Hasala.xcresult" \
-            CODE_SIGNING_ALLOWED=NO HASALA_WARNINGS_AS_ERRORS=YES
+        run: >-
+          ios/scripts/ci-simulator-test.sh "$RUNNER_TEMP/Hasala.xcresult"
+          -skip-testing:HasalaUITests/CoreScreensTests
+          -skip-testing:HasalaUITests/SmokeTests
 
       - name: Keep the test report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-xcresult
+          path: ${{ runner.temp }}/Hasala.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The two longest UI test classes, CoreScreensTests and SmokeTests (about 23 of
+  # the UI tests' 34 minutes), on a runner of their own beside `ios`, which skips
+  # exactly these two. Each class still runs serially on one simulator, as it
+  # did inside `ios`; the split adds a runner, not concurrency on one. The unit
+  # tests (HasalaTests, seconds) run here too, first, as they do before the UI
+  # tests in `ios`: their host app is the simulator's first launch, so no UI
+  # test is (a UI test that was once timed out launching the app on a freshly
+  # booted simulator). Skipped exactly when `ios` is. Not a required check.
+  ios-ui:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: SwiftPM repository cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build and test CoreScreensTests and SmokeTests in the simulator (unsigned)
+        run: >-
+          ios/scripts/ci-simulator-test.sh "$RUNNER_TEMP/Hasala.xcresult"
+          -only-testing:HasalaTests
+          -only-testing:HasalaUITests/CoreScreensTests
+          -only-testing:HasalaUITests/SmokeTests
+
+      - name: Keep the test report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-ui-xcresult
           path: ${{ runner.temp }}/Hasala.xcresult
           retention-days: 7
           if-no-files-found: ignore
@@ -415,21 +522,32 @@ jobs:
       - name: Toolchain
         run: sw_vers && xcodebuild -version && swift --version
 
+      - name: SwiftPM repository cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      # Each test target declares what it imports (Package.swift links
+      # CoreTestSupport only where a test uses it), and the import check makes an
+      # undeclared import an error here too, not only under explicit module builds.
       - name: swift test
         working-directory: ios/HasalaCore
-        run: swift test --disable-automatic-resolution
+        run: swift test --disable-automatic-resolution --explicit-target-dependency-import-check error
 
       # `swift test` builds for macOS only. The iOS build is what catches a
       # module that shadows an Apple framework (the reason `CoreText` is
-      # `HasalaText`) or code that only compiles on the Mac.
+      # `HasalaText`) or code that only compiles on the Mac. One xcodebuild for
+      # both destinations: the same products as one run per destination, with
+      # one package resolution and build description instead of two.
       - name: Build for iOS (simulator and device)
         working-directory: ios/HasalaCore
-        run: |
-          for dest in 'generic/platform=iOS Simulator' 'generic/platform=iOS'; do
-            xcodebuild -scheme HasalaCore-Package -destination "$dest" \
-              -derivedDataPath "$RUNNER_TEMP/dd" -disableAutomaticPackageResolution \
-              -quiet build
-          done
+        run: >-
+          xcodebuild -scheme HasalaCore-Package
+          -destination 'generic/platform=iOS Simulator' -destination 'generic/platform=iOS'
+          -derivedDataPath "$RUNNER_TEMP/dd" -disableAutomaticPackageResolution
+          -quiet build
 
       # The import allowlist, AT-C11 and the grep lints run in `gate` and `secrets` too; here
       # check-imports.sh also compares imports.allow with Package.swift.
