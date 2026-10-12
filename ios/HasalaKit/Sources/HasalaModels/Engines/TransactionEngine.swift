@@ -47,6 +47,8 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var archived: Bool
   public var needsReview: Bool
   public var project: String?
+  /// A row of the App Review sample: no bank email is behind it.
+  public var isSample: Bool = false
 }
 
 public struct SplitLineModel: Sendable, Hashable, Identifiable {
@@ -103,7 +105,7 @@ public enum TransactionEngine {
       amount: t.amount, isIncome: t.direction == .in, meta: meta, category: c.map(CategoryOption.init),
       pace: pace, account: s.account(t.accountID)?.label, note: t.note, provenance: t.provenance,
       sortedBy: sortedBy, splits: splits, isRefund: t.isRefund, isTransfer: t.isTransfer, archived: t.archived,
-      needsReview: t.needsReview, project: s.project(t.projectID)?.name
+      needsReview: t.needsReview, project: s.project(t.projectID)?.name, isSample: t.isSample
     )
   }
 

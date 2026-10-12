@@ -12,7 +12,9 @@
 # AT-REV-4 once read only the main binary, so a dev host in Info.plist (where
 # HasalaAPIBaseURL lives) or in a resource passed; I12 once searched for dev hosts in
 # lower case only, so http://LOCALHOST:8080 in a resource passed; an .ipa that unpacks
-# to mode 000 once left the inspection's temporary directory behind.
+# to mode 000 once left the inspection's temporary directory behind. I6b (the sample
+# seed, through check-bundle.sh) and I9 (third-party crypto symbols, imported or
+# exported, in any Mach-O) each get a case that breaks them.
 #
 # Offline and local: Xcode's clang, actool and codesign (ad hoc, no identity, no
 # keychain, no provisioning). The "secrets" are assembled at run time, so this file
@@ -46,6 +48,10 @@ compile "$tpl/Hasala" "$work/main.c"
 	--app-icon AppIcon --output-partial-info-plist "$work/partial.plist" \
 	"$ios/Hasala/Resources/Assets.xcassets" >"$work/actool.log" 2>&1
 cp "$ios/Hasala/PrivacyInfo.xcprivacy" "$tpl/"
+# HasalaCore's resource bundle with the committed sample seed (I6b).
+seed_dir="$tpl/HasalaCore_CoreResources.bundle/sample"
+mkdir -p "$seed_dir"
+cp "$ios/HasalaCore/Sources/HasalaCore/Resources/sample/maya-v1.json" "$seed_dir/"
 for kv in "CFBundleExecutable string Hasala" "CFBundleIdentifier string app.hasala.ios" \
 	"CFBundleVersion string $build" "CFBundleShortVersionString string $marketing" \
 	"HasalaGitCommit string $commit" "ITSAppUsesNonExemptEncryption bool false" \
@@ -281,7 +287,89 @@ app="$(variant mail)"
 echo "From: nobody" >"$app/sample.eml"
 seal mail
 inspect mail 40
-only_failed "I6 no mail, fixtures, databases or keys"
+only_failed "I6 no mail, fixtures, databases or keys" "I6b sample seed is golden/maya-v1.sha256"
+
+# --- I6b: the sample seed and the bundle's content (check-bundle.sh) ------------------------
+seed="HasalaCore_CoreResources.bundle/sample/maya-v1.json"
+app="$(variant seed-missing)"
+rm "$app/$seed"
+seal seed-missing
+inspect seed-missing 40
+only_failed "I6b sample seed is golden/maya-v1.sha256"
+
+app="$(variant seed-changed)"
+printf ' ' >>"$app/$seed"
+seal seed-changed
+inspect seed-changed 40
+only_failed "I6b sample seed is golden/maya-v1.sha256"
+grep -q 'not golden/maya-v1.sha256' "$work/out" && echo "ok   ...and says the hash differs" || {
+	echo "FAIL ...the output does not say the seed's hash differs"
+	fail=1
+}
+
+# A seed with a real-looking address and a Gmail message id: not synthetic.
+app="$(variant seed-real)"
+printf '{"format":"hasala.sample","ops":[{"payload":{"message_id":"18c2f3a4b5d6e7f8","from":"%s@%s"}}]}\n' \
+	someone example.com >"$app/$seed"
+seal seed-real
+inspect seed-real 40
+only_failed "I6b sample seed is golden/maya-v1.sha256"
+for why in "an email address" "is not a placeholder" "looks like a Gmail message id"; do
+	grep -q "$why" "$work/out" && echo "ok   ...says: $why" || {
+		echo "FAIL ...the output does not say '$why'"
+		sed 's/^/     /' "$work/out"
+		fail=1
+	}
+done
+
+# A resource over 5 MB that is not code, a font or the merchant dictionary.
+app="$(variant large-resource)"
+head -c 5000001 /dev/zero >"$app/big.bin"
+seal large-resource
+inspect large-resource 40
+only_failed "I6b sample seed is golden/maya-v1.sha256"
+
+# A conformance directory: I6 and I6b both refuse it.
+app="$(variant conformance)"
+mkdir -p "$app/conformance"
+echo '{}' >"$app/conformance/case.json"
+seal conformance
+inspect conformance 40
+only_failed "I6 no mail, fixtures, databases or keys" "I6b sample seed is golden/maya-v1.sha256"
+
+# --- I9: third-party crypto symbols, exported or imported, in any Mach-O ----------------------
+# Exported by the main binary.
+app="$(variant crypto-export)"
+printf 'int crypto_box_keypair(void) { return 0; }\nint main(void) { return crypto_box_keypair(); }\n' >"$work/export.c"
+compile "$app/Hasala" "$work/export.c" -Wl,-exported_symbol,_crypto_box_keypair -Wl,-exported_symbol,_main
+seal crypto-export
+inspect crypto-export 40
+only_failed "I9 no third-party crypto symbols"
+
+# Imported by the main binary from a library the payload doesn't even carry.
+app="$(variant crypto-import)"
+mkdir -p "$work/libevp"
+printf 'int EVP_EncryptInit(void) { return 0; }\n' >"$work/libevp/evp.c"
+compile "$work/libevp/libevp.dylib" "$work/libevp/evp.c" -dynamiclib -install_name @rpath/libevp.dylib
+printf 'int EVP_EncryptInit(void);\nint main(void) { return EVP_EncryptInit(); }\n' >"$work/import.c"
+compile "$app/Hasala" "$work/import.c" -L"$work/libevp" -levp
+seal crypto-import
+inspect crypto-import 40
+only_failed "I9 no third-party crypto symbols"
+
+# Exported by a library in Frameworks/.
+app="$(variant crypto-dylib)"
+mkdir -p "$app/Frameworks"
+printf 'int argon2id_hash_raw(void) { return 0; }\n' >"$work/argon.c"
+compile "$app/Frameworks/libargon2.dylib" "$work/argon.c" -dynamiclib -install_name @rpath/libargon2.dylib
+seal crypto-dylib
+inspect crypto-dylib 40
+only_failed "I9 no third-party crypto symbols"
+grep -q 'Frameworks/libargon2.dylib' "$work/out" && echo "ok   ...and names the library" || {
+	echo "FAIL ...the output does not name Frameworks/libargon2.dylib"
+	sed 's/^/     /' "$work/out"
+	fail=1
+}
 
 # --- I1: entitlements ------------------------------------------------------------------------
 variant unsigned >/dev/null

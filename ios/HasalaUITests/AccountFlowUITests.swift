@@ -32,7 +32,7 @@ final class AccountFlowUITests: XCTestCase {
   private func tap(_ app: XCUIApplication, _ id: String, timeout: TimeInterval = 10) {
     let e = el(app, id)
     XCTAssertTrue(e.waitForExistence(timeout: timeout), "\(id) is missing")
-    if !e.isHittable { app.swipeUp() }
+    dragUntilHittable(app, e)
     e.tap()
   }
 

@@ -35,6 +35,10 @@ final class AccountSession {
   var pendingInvite: InviteLink?
   /// A toast for links that can't act now ("You already have an account").
   var notice: String?
+  /// The signed-in account is the App Review demo account (`review_account` on
+  /// `GET /account`), so its ledger is sample data. Set by the runtime once the account
+  /// is known; false until then and after signing out.
+  var reviewAccount = false
 
   init(services: AccountServices, phase: Phase) {
     self.services = services
@@ -42,6 +46,9 @@ final class AccountSession {
   }
 
   var account: AccountService { services.account }
+
+  /// The account actions this build can carry out (the service's); screens hide the rest.
+  var capabilities: AccountCapabilities { account.capabilities }
 
   /// After a sign-in ceremony.
   func signedIn(_ outcome: SignInOutcome) {
@@ -104,6 +111,7 @@ final class AccountSession {
 
   func signedOut() {
     leftFrozen = nil
+    reviewAccount = false
     phase = .signedOut
   }
 

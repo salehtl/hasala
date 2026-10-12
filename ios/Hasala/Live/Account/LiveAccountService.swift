@@ -7,17 +7,32 @@ import Foundation
 
 /// `AccountService` over CoreSync's ceremonies (spec 04 §6.2): signup (C1, C1-P), the
 /// interrupted C1, sign-in (C2, C2-P, C2b, C2b-P), unlock (C2's PRF, C3), sign-out, and
-/// on Sign-in & security: delete account (#41), sign out everywhere (#16), freeze (#65),
-/// unfreeze (#66) and view your words (#67). The screens are the ones the mocks drive.
+/// on Sign-in & security: delete account (#41), remove this iPhone (#25, #33), sign out
+/// everywhere (#16), freeze (#65), unfreeze (#66) and view your words (#67). The screens
+/// are the ones the mocks drive.
 ///
-/// Not bound yet (they throw `.notInThisBuild`, whose copy says so): forgot password
-/// (C9), access recovery (C4), the approving iPhone, and the passkey, password and
-/// device changes on Sign-in & security — CoreSync has no ceremony for them yet.
-/// TODO(WS-14): bind each as its CoreSync ceremony lands.
+/// `capabilities` is `.beta`: what this TestFlight build carries out end to end. Not in
+/// this build (they throw `.notInThisBuild`, and the screens hide them): forgot password
+/// (C9), access recovery (C4), the approving iPhone, phrase rotation, adding a passkey,
+/// email change, and the other passkey, password and device changes.
+///
+/// One account per iPhone: while this iPhone holds an account's data (its binding),
+/// signing up, or signing in to a different address, asks the gate to show the
+/// "Remove this iPhone's data" wall instead (spec 04 §4.4, §6.5 `foreignData`), so a
+/// second account can never strand the first one's keys and token here.
 @MainActor
 final class LiveAccountService: AccountService {
   let env: AccountEnvironment
+  /// Ends the Google grant when the account leaves this iPhone (nil in tests).
+  let build: BuildInfo?
+  /// What the account runtime and the gate lend the service. Set by `BootController`.
+  var hooks = LiveAccountHooks()
+
+  var capabilities: AccountCapabilities { .beta }
   private(set) var profile: AccountProfile?
+  /// `profile.method` came from the server or a ceremony in this process, not the
+  /// binding alone (which doesn't say how the account signs in).
+  private var methodConfirmed = false
   /// The enrolled account once this iPhone holds keys (sync starts from it).
   private(set) var enrolled: EnrolledAccount?
 
@@ -26,20 +41,36 @@ final class LiveAccountService: AccountService {
   private var registered: RegisteredPasskey?
   private var signIn: SignInResult?
 
-  init(env: AccountEnvironment) {
+  /// Reads nothing: the Keychain may be read only once the fresh-install purge is done
+  /// (spec 04 §4.4, R-03). The gate calls `loadProfile()` then.
+  init(env: AccountEnvironment, build: BuildInfo? = nil) {
     self.env = env
-    if let b = try? env.secrets.binding() {
-      profile = AccountProfile(displayName: b.display_name ?? "", email: b.email_norm, method: .passkey)
-    }
+    self.build = build
+  }
+
+  /// The profile from the binding, after the fresh-install purge (a relaunch).
+  func loadProfile() {
+    guard let b = binding else { return }
+    profile = AccountProfile(displayName: b.display_name ?? "", email: b.email_norm, method: .passkey)
+    methodConfirmed = false
   }
 
   private var binding: AccountBinding? { try? env.secrets.binding() }
+
+  /// This iPhone holds `b`'s data: the gate shows the "Remove this iPhone's data" wall,
+  /// and the screen that asked stays as it is (`.cancelled` shows nothing).
+  private func otherAccountHere(_ b: AccountBinding) -> AuthFailure {
+    hooks.otherAccountHere(b.email_norm)
+    return .cancelled
+  }
 
   // MARK: Signup
 
   func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
     async throws(AuthFailure) -> SignupTicket
   {
+    if let b = binding { throw otherAccountHere(b) }
+    await Self.retryPendingLogout(env)
     do {
       let s = try await AccountCreation.beginSignup(
         env, inviteCode: code.value, email: email, displayName: displayName, inviteLinkKey: linkKey)
@@ -139,6 +170,7 @@ final class LiveAccountService: AccountService {
     signup = nil
     let p = AccountProfile(displayName: s.displayName, email: s.emailNorm, method: credential.method)
     profile = p
+    methodConfirmed = true
     return p
   }
 
@@ -158,27 +190,70 @@ final class LiveAccountService: AccountService {
   }
 
   func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome {
+    let stale = await Self.retryPendingLogout(env)
+    let bound = binding
     do {
-      let r = try await AccountSignIn.withPasskey(env, bound: binding, wantPRF: true)
+      let r = try await AccountSignIn.withPasskey(env, bound: bound, wantPRF: true)
       profile = AccountProfile(displayName: binding?.display_name ?? "", email: binding?.email_norm ?? "",
                                method: .passkey)
+      methodConfirmed = true
+      Self.logOutLater(stale, env)
       return await outcome(r, passkeyCanUnlock: r.assertion?.prfFirst != nil)
     } catch {
-      if error.failureClass == .rejected, binding == nil { throw .orphanedPasskey }
+      if error.failureClass == .rejected {
+        // Unbound: the server no longer knows this passkey (the beta was reset). Bound:
+        // the passkey is another account's, or this iPhone's account is gone; either way
+        // only removing this iPhone's data lets a sign-in proceed.
+        guard let bound else { throw .orphanedPasskey }
+        throw otherAccountHere(bound)
+      }
       throw Self.map(error)
     }
   }
 
   func signInWithPassword(email: String, password: String) async throws(AuthFailure) -> SignInOutcome {
+    let bound = binding
+    if let bound, let typed = try? EmailNorm.normalize(email), typed != bound.email_norm {
+      throw otherAccountHere(bound)
+    }
+    let stale = await Self.retryPendingLogout(env)
     do {
-      let r = try await AccountSignIn.withPassword(env, email: email, password: password, bound: binding)
+      let r = try await AccountSignIn.withPassword(env, email: email, password: password, bound: bound)
       profile = AccountProfile(displayName: binding?.display_name ?? "", email: r.emailNorm ?? email,
                                method: .password)
+      methodConfirmed = true
+      Self.logOutLater(stale, env)
       // TODO(WS-14): offer the passkey unlock when GET /keys/wraps lists a PRF wrap (K34).
       return await outcome(r, passkeyCanUnlock: false)
     } catch {
       throw Self.map(error)
     }
+  }
+
+  // MARK: Pending sign-out (spec 04 §4.7 row 1)
+
+  /// A sign-out that couldn't reach the server kept the session item with
+  /// `pending_logout`; its `POST /auth/logout` is retried here (at launch, on foreground,
+  /// and before any sign-in writes a new session item over it). On `204` or `401` the
+  /// item goes. Returns the token when the server still couldn't be reached, so a sign-in
+  /// that replaces the item can try it once more.
+  @discardableResult
+  static func retryPendingLogout(_ env: AccountEnvironment) async -> String? {
+    guard let s = try? env.secrets.session(), s.pending_logout else { return nil }
+    do {
+      try await env.client.logout(bearer: s.token)
+    } catch {
+      if error.failure?.status != 401 { return s.token }
+    }
+    // Only the record that was retried: a sign-in may have replaced it meanwhile.
+    if let now = try? env.secrets.session(), now.token == s.token { try? env.secrets.deleteSession() }
+    return nil
+  }
+
+  /// One more try for a stranded session's logout, after a sign-in replaced its item.
+  private static func logOutLater(_ token: String?, _ env: AccountEnvironment) {
+    guard let token else { return }
+    Task { try? await env.client.logout(bearer: token) }
   }
 
   /// The account this iPhone is signed in to: the sign-in of this run, or after a
@@ -250,6 +325,7 @@ final class LiveAccountService: AccountService {
     profile = AccountProfile(
       displayName: a.display_name ?? binding?.display_name ?? "", email: a.email ?? binding?.email_norm ?? "",
       method: a.has_passkey == true ? .passkey : .password)
+    methodConfirmed = a.has_passkey != nil
     if a.frozen == true || a.restricted == true { return .frozen(a.frozen_by == "operator" ? .operator : .holder) }
     guard a.has_keys == true else { return .needsKeys }
     let wraps = (try? await env.client.keyWraps(bearer: s.token).wraps.count) ?? 0
@@ -271,6 +347,28 @@ final class LiveAccountService: AccountService {
                            email: b?.email_norm ?? profile?.email ?? "", method: .passkey)
     profile = p
     return p
+  }
+
+  /// `GET /account` (#40) as the runtime read it: the name, the address and the sign-in
+  /// method (a relaunch only has the binding, which doesn't say).
+  func noteAccount(_ a: AccountInfo) {
+    guard let b = binding, a.user_id == b.user_id else { return }
+    profile = AccountProfile(
+      displayName: a.display_name ?? b.display_name ?? profile?.displayName ?? "",
+      email: a.email ?? b.email_norm, method: a.has_passkey == true ? .passkey : .password)
+    methodConfirmed = true
+  }
+
+  /// Whether a step-up proves with a passkey (else the password and the approval key).
+  /// After a relaunch the binding doesn't say, so `GET /account` is asked first; a
+  /// step-up needs the server anyway.
+  func usesPasskey() async -> Bool {
+    if !methodConfirmed, let token = try? env.secrets.session()?.token,
+      let a = try? await env.client.account(bearer: token)
+    {
+      noteAccount(a)
+    }
+    return profile?.method == .passkey
   }
 
   private func refreshProfile() {
@@ -335,16 +433,47 @@ final class LiveAccountService: AccountService {
     do {
       switch action {
       case .deleteAccount:
-        // TODO(WS-12): the holder's Gmail stop and token revoke come first (§4.7 row 4).
-        let ctx = try Enrolment.context(env, binding: b)
-        try await AccountManagement.deleteAccount(env, ctx: ctx, factor: factor, binding: b)
-        try? env.secrets.deleteSession()
-        clearSignedIn()
+        // §4.7 row 4. The open account's own context (no second store on the same
+        // files), with its work held, so nothing runs while the store is wiped. The
+        // holder's Google grant is read now and ended once the deletion went through
+        // (users.stop, then the revoke), so a cancelled step-up keeps Gmail working; the
+        // server drops the link with the account.
+        let ctx = try hooks.context() ?? Enrolment.context(env, binding: b)
+        let grant = GmailLane.heldGrant(secrets: env.secrets, userID: ctx.userID)
+        await hooks.pause()
+        do {
+          try await AccountManagement.deleteAccount(env, ctx: ctx, factor: factor, binding: b)
+        } catch {
+          await hooks.resume()
+          throw error
+        }
+        // The server dropped the push token with the account.
+        PushRegistrar.shared.forget()
+        leftThisIPhone(grant: grant, stopWatch: true)
+        await hooks.left()
+      case .removeDevice(let id) where id == b.writer_id:
+        // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
+        // writer is revoked at its verified head (#25) and the local data is wiped. A
+        // cancelled or failed step-up registers for wakes again.
+        guard let engine = hooks.engine() else { throw AuthFailure.refused }
+        let grant = b.userID.flatMap { GmailLane.heldGrant(secrets: env.secrets, userID: $0) }
+        await hooks.pause()
+        await PushRegistrar.shared.unregister()
+        do {
+          try await AccountManagement.removeThisIPhone(env, engine: engine, factor: factor, binding: b)
+        } catch {
+          PushRegistrar.shared.register(env: env, userID: b.user_id)
+          await hooks.resume()
+          throw error
+        }
+        leftThisIPhone(grant: grant, stopWatch: false)
+        await hooks.left()
       case .signOutEverywhere:
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
         try await guarded(.sessionLogoutAll, "/api/v1/auth/logout-all", factor: factor, binding: b, action: action)
         try? env.secrets.deleteSession()
         signIn = nil
+        await hooks.left()
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
       case .unfreeze:
@@ -429,11 +558,33 @@ final class LiveAccountService: AccountService {
     signIn = nil
     enrolled = nil
     profile = nil
+    methodConfirmed = false
+  }
+
+  /// The account's data left this iPhone (deleted, removed): the session item, what the
+  /// iPhone noted about the account, and this iPhone's Google grant (ended at Google
+  /// in the background; `users.stop` only when the account itself is gone).
+  private func leftThisIPhone(grant: String?, stopWatch: Bool) {
+    try? env.secrets.deleteSession()
+    LocalAccountData.forget()
+    clearSignedIn()
+    if let grant, let build { Task { await GmailLane.endGrant(grant, build: build, stopWatch: stopWatch) } }
+  }
+
+  /// Forgets everything held in memory for the account (the gate erased this iPhone's data).
+  func forgetAll() {
+    clearSignedIn()
+    signup = nil
+    keys?.wipe()
+    keys = nil
+    registered = nil
+    inviteCode = nil
   }
 
   func signOut() async {
     await AccountSignIn.signOut(env)
     signIn = nil
+    await hooks.left()
   }
 
   // MARK: Failures
@@ -492,4 +643,22 @@ nonisolated struct StepUpBody: Encodable, Sendable {
 /// #67's answer.
 nonisolated struct PhraseViewAnswer: Decodable, Sendable {
   var phrase_box: String
+}
+
+/// What `BootController` lends the live account service.
+@MainActor
+struct LiveAccountHooks {
+  /// The open account's sync engine, if one is open.
+  var engine: @MainActor () -> SyncEngine? = { nil }
+  /// The open account's sync context, if one is open.
+  var context: @MainActor () -> SyncContext? = { nil }
+  /// Holds the open account's work (and waits for a run in flight) before a deletion or
+  /// a removal wipes its store; `resume` undoes it when that didn't happen.
+  var pause: @MainActor () async -> Void = {}
+  var resume: @MainActor () async -> Void = {}
+  /// This iPhone left the account (signed out, removed, deleted): close the runtime.
+  var left: @MainActor () async -> Void = {}
+  /// This iPhone holds the data of the account at this address, and a signup or a
+  /// sign-in to another account was asked for: show the "Remove this iPhone's data" wall.
+  var otherAccountHere: @MainActor (_ email: String?) -> Void = { _ in }
 }

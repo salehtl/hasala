@@ -68,7 +68,7 @@ struct BankView: View {
             .accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 2) {
             Text("Another bank?").hType(.headline).foregroundStyle(HColor.textPrimary)
-            Text(model.bankRequestSent ? "Thanks. We'll email you when it's ready." : "Coming soon. Tell us yours.")
+            Text(model.bankRequestSent ? "Thanks. We'll email you when it's ready." : "Not listed? Tell us yours.")
               .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           }
           Spacer()
@@ -153,7 +153,7 @@ struct GmailView: View {
         }
         .padding(18)
         .listCard()
-        Text("Google's permission screen still asks to let Hasala read your email, because Gmail offers nothing narrower. To catch new alerts quickly, our server is told when new mail arrives, never what it says.")
+        Text(Self.permissionNote)
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -177,6 +177,15 @@ struct GmailView: View {
           .frame(minHeight: 28)
       }
     }
+  }
+
+  /// Gmail push (the server told when new mail arrives) is off in this build, so a Release
+  /// build says how new alerts are really caught: when the app opens, and in the background.
+  static var permissionNote: String {
+    let scope = "Google's permission screen still asks to let Hasala read your email, because Gmail offers nothing narrower."
+    return BuildSurface.showsUnfinished
+      ? scope + " To catch new alerts quickly, our server is told when new mail arrives, never what it says."
+      : scope + " This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
   }
 
   private func check(_ text: String, ok: Bool) -> some View {
@@ -235,7 +244,7 @@ struct ScanView: View {
           stage("Left the rest of your inbox alone", done: model.scan != nil, running: false)
           stage("Sorting, right here", done: !(model.scan?.isRunning ?? true),
                 running: model.scan?.phase == .sorting,
-                detail: "Your rules first, then a UAE merchant list, then Apple's on-device model. Anything unsure waits for you. Nothing goes to an AI service.")
+                detail: Self.sortingDetail)
           stage("Seal everything before it syncs", done: false, running: false)
         }
         .padding(18)
@@ -247,6 +256,14 @@ struct ScanView: View {
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("scan.setUpPlan")
     }
+  }
+
+  /// The on-device model tier (Foundation Models) is a later sweep, not part of this build's
+  /// sorting, so a Release build doesn't name it.
+  static var sortingDetail: String {
+    BuildSurface.showsUnfinished
+      ? "Your rules first, then a UAE merchant list, then Apple's on-device model. Anything unsure waits for you. Nothing goes to an AI service."
+      : "Your rules first, then a UAE merchant list. Anything unsure waits for you. Nothing goes to an AI service."
   }
 
   private func stage(_ text: String, done: Bool, running: Bool, detail: String? = nil) -> some View {
@@ -550,7 +567,9 @@ struct ScanResultView: View {
         VStack(alignment: .leading, spacing: 12) {
           Text("How they were sorted").hType(.overline).foregroundStyle(HColor.textSecondary)
           row(HColor.actionAccent, "UAE merchant list", s.byDictionary)
-          row(HColor.blue300, "Apple's on-device model", s.byModel)
+          if BuildSurface.showsUnfinished || s.byModel > 0 {
+            row(HColor.blue300, "Apple's on-device model", s.byModel)
+          }
           row(HColor.amber300, "Waiting for your swipe", s.toReview)
           Divider()
           Text("From now on your own rules go first. Nothing was sent to an AI service.")
@@ -582,10 +601,20 @@ struct ScanResultView: View {
 struct NotificationsStepView: View {
   @Bindable var model: SetupModel
 
+  /// This build writes no notifications yet (`CoreSignals` is empty; the owner kept the
+  /// step, plan §7), so a Release build says so before the system asks (Guideline 5.1.1).
+  /// Nor can it change the Lock Screen choice later (Profile has no Notifications row), so
+  /// it doesn't offer one: notes show no amounts or names.
+  private var subtitle: String {
+    BuildSurface.showsUnfinished
+      ? "A short note when a transaction lands, a bill is due or a budget reaches 80%."
+      : "For a short note when a transaction lands, a bill is due or a budget reaches 80%. This beta doesn't send them yet. Allow them now, or later in Settings."
+  }
+
   var body: some View {
     AccountScreen(
       title: "A nudge when money moves.",
-      subtitle: "A short note when a transaction lands, a bill is due or a budget reaches 80%."
+      subtitle: subtitle
     ) {
       VStack(spacing: 14) {
         VStack(spacing: 10) {
@@ -608,18 +637,23 @@ struct NotificationsStepView: View {
                     in: RoundedRectangle(cornerRadius: 32, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Lock Screen preview: \(model.showDetails ? "amount and merchant shown" : "New transaction")")
-        Text("What your Lock Screen shows by default").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        Toggle(isOn: $model.showDetails) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Show amounts and merchants").hType(.headline).foregroundStyle(HColor.textPrimary)
-            Text("Off by default, so a glance at your Lock Screen shows no amounts or names.")
-              .hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
+        if BuildSurface.showsUnfinished {
+          Text("What your Lock Screen shows by default").hType(.footnote).foregroundStyle(HColor.textSecondary)
+          Toggle(isOn: $model.showDetails) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Show amounts and merchants").hType(.headline).foregroundStyle(HColor.textPrimary)
+              Text("Off by default, so a glance at your Lock Screen shows no amounts or names.")
+                .hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
+            }
           }
+          .tint(HColor.actionAccent)
+          .padding(16)
+          .listCard()
+          .accessibilityIdentifier("notifications.details")
+        } else {
+          Text("Your Lock Screen shows no amounts or names.").hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .accessibilityIdentifier("notifications.lockScreen")
         }
-        .tint(HColor.actionAccent)
-        .padding(16)
-        .listCard()
-        .accessibilityIdentifier("notifications.details")
         LockNote(text: "Hasala writes its notifications on this iPhone. Our server only sends a silent signal to wake the app. It never sends what a notification says.")
       }
     } footer: {

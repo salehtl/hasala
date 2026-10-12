@@ -41,6 +41,33 @@ struct BuildInfoTests {
     #expect(throws: BuildInfo.Problem.malformed("HasalaAPIBaseURL")) { try BuildInfo(infoDictionary: d) }
   }
 
+  #if DEBUG
+    /// Debug runs may point at a local server through the launch environment.
+    @Test func theDebugOverrideAcceptsHTTPAndHTTPS() throws {
+      #expect(try BuildInfo.debugAPIBaseURLOverride([:]) == nil)
+      #expect(try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "  "]) == nil)
+      let local = try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "http://localhost:8080"])
+      #expect(local?.absoluteString == "http://localhost:8080")
+      let tls = try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": "https://api.hasala.app"])
+      #expect(tls?.host() == "api.hasala.app")
+    }
+
+    @Test func theDebugOverrideRejectsAnythingElse() {
+      for bad in ["localhost:8080", "ftp://example.com", "http://", "not a url"] {
+        #expect(throws: BuildInfo.Problem.malformed("HASALA_API_BASE_URL")) {
+          try BuildInfo.debugAPIBaseURLOverride(["HASALA_API_BASE_URL": bad])
+        }
+      }
+    }
+  #endif
+
+  /// Without an override the Info.plist value is used.
+  @Test func theAPIBaseURLDefaultsToTheBundle() {
+    if ProcessInfo.processInfo.environment["HASALA_API_BASE_URL"] == nil {
+      #expect(BuildInfo.apiBaseURL() == BuildInfo.current.apiBaseURL)
+    }
+  }
+
   /// `BuildInfo` is not main-actor isolated: background work can read it.
   @Test nonisolated func isReadableOffTheMainActor() async {
     let footer = await Task.detached { BuildInfo.current.footer }.value
@@ -60,5 +87,18 @@ struct BuildInfoTests {
     #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") == nil)
     #expect(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") == nil)
     #expect(Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy") != nil)
+  }
+
+  /// The Google iOS client is filled in, its redirect scheme is the reversed client id
+  /// (Gmail's redirect URI is `<scheme>:/oauth2redirect`), and the Pub/Sub topic is not in
+  /// the build: the server's `GET /meta` names it.
+  @Test func theBundleCarriesTheGoogleClient() throws {
+    let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
+    let suffix = ".apps.googleusercontent.com"
+    #expect(info.googleClientID.hasSuffix(suffix))
+    let id = info.googleClientID.dropLast(suffix.count)
+    #expect(!id.isEmpty)
+    #expect(info.googleRedirectScheme == "com.googleusercontent.apps.\(id)")
+    #expect(info.gmailPubSubTopic == "unset")
   }
 }

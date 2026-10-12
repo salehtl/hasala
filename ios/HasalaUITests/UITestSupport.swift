@@ -20,6 +20,24 @@ extension XCTestCase {
     return false
   }
 
+  /// Drags the page up until `element` is hittable, at most `limit` times; for a tap on
+  /// a row below the fold. Not `swipeUp()`: a fling leaves the page coasting after the
+  /// gesture, and a tap that lands while it still moves can only stop the scroll, leaving
+  /// the row unopened (seen at large text sizes on a slow CI runner). Each drag rests
+  /// before the finger lifts, so the page stops where it was dragged, and starts
+  /// mid-screen, above where a keyboard sits. Returns whether the element is hittable.
+  @MainActor
+  @discardableResult
+  func dragUntilHittable(_ app: XCUIApplication, _ element: XCUIElement, limit: Int = 8) -> Bool {
+    for _ in 0..<limit {
+      if element.isHittable { return true }
+      let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+      from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
+    }
+    return element.isHittable
+  }
+
   /// Runs the system accessibility audit on what is on screen and reports every issue
   /// it finds there in one failure, naming the element. Not counted:
   ///

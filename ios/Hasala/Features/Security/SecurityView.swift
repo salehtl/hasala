@@ -44,12 +44,10 @@ struct SecurityView: View {
           FailureBanner(failure: model.failure)
           section("Email") { emailCard(s) }
           if s.hasPasskey { section("Passkeys", footer: "A passkey signs you in and unlocks your data. iCloud Keychain keeps it on all your Apple devices.") { passkeys(s) } }
-          else { section("Passkeys", footer: "A passkey would make sign-in one glance, and it can unlock your data on a new iPhone.") { addPasskeyRow } }
+          else if can(.addPasskey) { section("Passkeys", footer: "A passkey would make sign-in one glance, and it can unlock your data on a new iPhone.") { addPasskeyRow } }
           section("Password", footer: passwordFooter(s)) { passwordCard(s) }
           section("Devices") { devices(s) }
-          section("Recovery phrase", footer: s.hasPasskey
-            ? "We can't see or reset your words. Viewing them emails you; new words replace the old ones everywhere."
-            : "Your recovery phrase can't be shown again on this account. Keep the copy you wrote down.") { phrase(s) }
+          section("Recovery phrase", footer: phraseFooter(s)) { phrase(s) }
           footerActions(s)
         } else if model.failure != nil {
           FailureBanner(failure: model.failure)
@@ -86,6 +84,9 @@ struct SecurityView: View {
   }
 
 
+  /// Whether this build offers `action` (spec: only actions in `capabilities` are shown).
+  private func can(_ action: AccountCapabilities) -> Bool { model.capabilities.contains(action) }
+
   // MARK: Sections
 
   private func hero(_ s: SecurityState) -> some View {
@@ -106,7 +107,9 @@ struct SecurityView: View {
           ? "Your account is frozen. Confirm it's you to unfreeze it."
           : protected
             ? "Passkey and 12 words are set. Last sign-in \(s.lastSignIn)."
-            : "Your 12 words are set. A passkey would make sign-in one glance.")
+            : can(.addPasskey)
+              ? "Your 12 words are set. A passkey would make sign-in one glance."
+              : "Your password and 12 words are set. Last sign-in \(s.lastSignIn).")
           .hType(.subheadline)
           .foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
@@ -158,9 +161,12 @@ struct SecurityView: View {
   private func emailCard(_ s: SecurityState) -> some View {
     row("envelope", s.email, s.emailVerified ? "Verified · codes and alerts" : "Not verified yet",
         titleLabel: "Email address \(s.email)") {
-      Button("Change") { model.failure = .badPhrase("Changing your email arrives in a later build.") }
-        .buttonStyle(.pill(.secondary, size: .small))
-        .accessibilityIdentifier("security.changeEmail")
+      // TODO(spec 04 §6.9, C6): the email-change ceremony; the capability stays off until it exists.
+      if can(.changeEmail) {
+        Button("Change") { model.failure = .notInThisBuild }
+          .buttonStyle(.pill(.secondary, size: .small))
+          .accessibilityIdentifier("security.changeEmail")
+      }
     }
   }
 
@@ -168,16 +174,16 @@ struct SecurityView: View {
     Group {
       ForEach(s.passkeys) { p in
         row("person.badge.key", p.provider, p.detail) {
-          if s.passkeys.count > 1 || s.hasPassword {
+          if can(.removePasskey), s.passkeys.count > 1 || s.hasPassword {
             Button("Remove", role: .destructive) { alert = .removePasskey(p) }
               .hType(.rowTitle)
               .foregroundStyle(HColor.actionDestructive)
               .accessibilityIdentifier("security.removePasskey.\(p.id)")
           }
         }
-        Divider().padding(.leading, 70)
+        if can(.addPasskey) || p.id != s.passkeys.last?.id { Divider().padding(.leading, 70) }
       }
-      addPasskeyRow
+      if can(.addPasskey) { addPasskeyRow }
     }
   }
 
@@ -201,29 +207,45 @@ struct SecurityView: View {
   private func passwordFooter(_ s: SecurityState) -> String {
     s.hasPasskey
       ? "A password never unlocks your data. On a new iPhone you'd still need a passkey or your 12 words."
-      : "It's your only way to sign in, so it can't be removed until you add a passkey. It never unlocks your data."
+      : can(.addPasskey)
+        ? "It's your only way to sign in, so it can't be removed until you add a passkey. It never unlocks your data."
+        : "It's your only way to sign in. It never unlocks your data."
+  }
+
+  private func phraseFooter(_ s: SecurityState) -> String {
+    guard s.hasPasskey else {
+      return "Your recovery phrase can't be shown again on this account. Keep the copy you wrote down."
+    }
+    return can(.rotatePhrase)
+      ? "We can't see or reset your words. Viewing them emails you; new words replace the old ones everywhere."
+      : "We can't see or reset your words. Viewing them emails you."
   }
 
   private func passwordCard(_ s: SecurityState) -> some View {
     Group {
       if let changed = s.passwordChanged {
         row("ellipsis.rectangle", "Password", changed, tint: HColor.surfaceSecondary, ink: HColor.iconPrimary) {
-          Button("Change") { model.editingPassword = true }
-            .buttonStyle(.pill(.secondary, size: .small))
-            .accessibilityIdentifier("security.changePassword")
+          if can(.changePassword) {
+            Button("Change") { model.editingPassword = true }
+              .buttonStyle(.pill(.secondary, size: .small))
+              .accessibilityIdentifier("security.changePassword")
+          }
         }
-        if s.hasPasskey {
+        if s.hasPasskey, can(.changePassword) {
           Divider().padding(.leading, 70)
           LinkButton(title: "Remove password", identifier: "security.removePassword", role: .destructive) {
             alert = .removePassword
           }
         }
       } else {
-        row("ellipsis.rectangle", "No password", "Optional. Signs you in where Face ID can't.",
+        row("ellipsis.rectangle", "No password",
+            can(.changePassword) ? "Optional. Signs you in where Face ID can't." : "You sign in with your passkey.",
             tint: HColor.surfaceSecondary, ink: HColor.iconPrimary) {
-          Button("Set one") { model.editingPassword = true }
-            .buttonStyle(.pill(.secondary, size: .small))
-            .accessibilityIdentifier("security.setPassword")
+          if can(.changePassword) {
+            Button("Set one") { model.editingPassword = true }
+              .buttonStyle(.pill(.secondary, size: .small))
+              .accessibilityIdentifier("security.setPassword")
+          }
         }
       }
     }
@@ -236,7 +258,7 @@ struct SecurityView: View {
           ink: d.isThisDevice ? HColor.statusSuccessForeground : HColor.iconPrimary) {
         if d.isThisDevice {
           StatusLine(text: "You", tone: .success)
-        } else {
+        } else if can(.removeDevice) {
           Button("Remove", role: .destructive) { alert = .removeDevice(d) }
             .hType(.rowTitle)
             .foregroundStyle(HColor.actionDestructive)
@@ -248,7 +270,7 @@ struct SecurityView: View {
 
   private func phrase(_ s: SecurityState) -> some View {
     Group {
-      if s.hasPasskey {
+      if s.hasPasskey, can(.viewPhrase) {
         Button {
           Task { await model.viewPhrase() }
         } label: {
@@ -260,48 +282,59 @@ struct SecurityView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("security.viewPhrase")
-        Divider().padding(.leading, 70)
       } else {
         row("doc.text", "Recovery phrase", s.phraseConfirmed, tint: HColor.huePeachStart, ink: HColor.huePeachInk) {
           EmptyView()
         }
-        Divider().padding(.leading, 70)
       }
-      LinkButton(title: "Make new words", identifier: "security.newWords") {
-        model.failure = .badPhrase("Making new words arrives in a later build. Keep your current paper safe.")
+      // TODO(spec 04 §6.2 C7): the rotation ceremony; the capability stays off until it exists.
+      if can(.rotatePhrase) {
+        Divider().padding(.leading, 70)
+        LinkButton(title: "Make new words", identifier: "security.newWords") { model.failure = .notInThisBuild }
       }
     }
   }
 
   private func footerActions(_ s: SecurityState) -> some View {
     VStack(spacing: 6) {
-      Button("Sign out of this iPhone", role: .destructive) { alert = .signOut }
-        .buttonStyle(.pill(.tertiary, fill: true))
-        .foregroundStyle(HColor.actionDestructive)
-        .accessibilityIdentifier("security.signOut")
-      LinkButton(title: "Sign out everywhere", identifier: "security.signOutEverywhere") { alert = .signOutEverywhere }
+      if can(.signOut) {
+        Button("Sign out of this iPhone", role: .destructive) { alert = .signOut }
+          .buttonStyle(.pill(.tertiary, fill: true))
+          .foregroundStyle(HColor.actionDestructive)
+          .accessibilityIdentifier("security.signOut")
+      }
+      if can(.signOutEverywhere) {
+        LinkButton(title: "Sign out everywhere", identifier: "security.signOutEverywhere") { alert = .signOutEverywhere }
+      }
       if let frozen = s.frozen {
         // Only the operator lifts an operator freeze (spec 04 §6.11): no Unfreeze then.
-        if frozen.by == .holder {
+        if frozen.by == .holder, can(.freeze) {
           Button("Unfreeze") { Task { await model.request(.unfreeze) } }
             .buttonStyle(.pill(.primary, fill: true))
             .accessibilityIdentifier("security.unfreeze")
         } else {
           WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "security.frozenTalk")
         }
-      } else {
+      } else if can(.freeze) {
         LinkButton(title: "Freeze my account", identifier: "security.freeze") { alert = .freeze }
       }
-      NavigationLink {
-        LockdownView(model: model)
-      } label: {
-        Text("Something not right? Lock it down")
-          .hType(.button)
-          .foregroundStyle(HColor.textLink)
-          .frame(maxWidth: .infinity, minHeight: 44)
+      if model.offersLockdown {
+        NavigationLink {
+          LockdownView(model: model)
+        } label: {
+          Text("Something not right? Lock it down")
+            .hType(.button)
+            .foregroundStyle(HColor.textLink)
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .accessibilityIdentifier("security.lockdown")
       }
-      .accessibilityIdentifier("security.lockdown")
-      LinkButton(title: "Delete your account", identifier: "security.delete", role: .destructive) { deleting = true }
+      if can(.deleteAccount) {
+        LinkButton(title: "Delete your account", identifier: "security.delete", role: .destructive) { deleting = true }
+      }
+      if model.lacksAnAction {
+        SupportLink(lead: "Need a change that isn't here?", identifier: "security.support")
+      }
       Text(s.hasPasskey ? "Changes here ask for Face ID first." : "Changes here ask for your password, and this iPhone signs them too.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
@@ -426,6 +459,8 @@ struct PasswordEditSheet: View {
 
 /// Delete your account (Paper "Sign-in & security · Delete your account"; copy S-22).
 struct DeleteAccountView: View {
+  /// Why the last attempt didn't go through, shown above the button.
+  var failure: AuthFailure? = nil
   var onDelete: () -> Void
   @State private var confirming = false
 
@@ -446,6 +481,7 @@ struct DeleteAccountView: View {
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
+        FailureBanner(failure: failure)
       }
       .padding(HSpacing.insetPage)
     }

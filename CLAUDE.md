@@ -100,8 +100,23 @@ with it. `server/go.mod`'s `toolchain` line is that security floor, and
   and `.accessibility3` text sizes). Design tokens are generated from
   `design/tokens/paper-tokens.json` by `swift ios/tools/tokens/generate.swift`
   (`--check` in CI). Debug builds run the synthetic Maya scenario
-  (`-HasalaScenario maya|mayaHidden`); Release builds do not link HasalaMocks
+  (`-HasalaScenario maya|mayaHidden|mayaSample`); Release builds do not link HasalaMocks
   (`ios/Config/Shared.xcconfig` excludes it from every configuration but Debug).
+  Release shows only what works (`BuildSurface`: no placeholder screens or
+  controls without a screen) and only the account actions in
+  `AccountSession.capabilities`; `-HasalaReleaseSurface` gives a Debug run the
+  same surface, and `ios/scripts/test-release-surface.sh <simulator udid>` runs
+  `ReleaseSurfaceTests` on a Release-configuration simulator build that links the
+  mock. `ios/scripts/archive.sh` (below) runs a gate before it builds anything
+  (exit 13): no `IntegrationStub` left under `ios/`, then
+  `ios/scripts/privacy-lint.sh` (required-reason API use against the privacy
+  manifest).
+  `ios/scripts/check-bundle.sh <.app|.xcarchive|.ipa>` checks what a build carries:
+  no test data, no resource over 5 MB but fonts and the merchant dictionary, and
+  the sample seed equal to `ios/scripts/golden/maya-v1.sha256`, which must equal
+  `SampleManifest.sha256` (update both when the seed is regenerated).
+  inspect-ipa.sh runs it as I6b; its I9 refuses third-party crypto symbols (the
+  export-compliance guard, `docs/decisions/export-compliance.md`).
   `ios/scripts/archive.sh` archives and exports a signed .ipa on the owner's Mac
   and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
   from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. archive.sh inspects
@@ -174,14 +189,14 @@ same devShell. From `web/`:
 - PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
   `web/.env.example`; they are public and baked into the build.
   `PUBLIC_WAITLIST_MODE` is `email` (the default, until the API is live: the
-  invite and "Tell us" forms open a pre-filled email to support@hasala.app,
-  post nothing and load no Turnstile; without JavaScript the invite form lands
-  on `/joined`, which says to email us) or `api` (they post to the API, as
-  designed). Switching to `api` is that one setting, plus dropping the
-  sentences in `docs/legal/privacy.md` and `docs/legal/support.md` that say
-  sign-ups and bank requests are handled by email ("while ... handled by
-  email", "once ... our server"), and restoring support.md's **Confirm my
-  email** / **Leave the list** steps.
+  invite form, which is also where people name a bank we don't read yet,
+  opens a pre-filled email to support@hasala.app, posts nothing and loads no
+  Turnstile; without JavaScript it lands on `/joined`, which says to email
+  us) or `api` (it posts to the API, as designed). Switching to `api` is that
+  one setting, plus dropping the sentences in `docs/legal/privacy.md` and
+  `docs/legal/support.md` that say sign-ups are handled by email ("while ...
+  handled by email", "once ... our server"), and restoring support.md's
+  **Confirm my email** / **Leave the list** steps.
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before

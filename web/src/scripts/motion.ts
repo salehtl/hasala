@@ -1,9 +1,9 @@
 /**
  * The page's small dynamic layer ("13 · Dynamic layer"): scroll-linked
- * reveals (B), the pace bar (C), phone parallax, the bills fan and the
- * privacy arrows. Nothing loops, nothing moves while text is being read, and
- * everything has a still version: with reduced motion the page is simply
- * shown in its final state.
+ * reveals (B), the pace bar (C), phone parallax and the privacy arrows.
+ * Nothing loops, nothing moves while text is being read, and everything has
+ * a still version: with reduced motion the page is simply shown in its final
+ * state.
  */
 import { onPage, observe } from './page';
 
@@ -137,24 +137,12 @@ function parallax(signal: AbortSignal) {
 }
 
 /**
- * The bills stack fans out from 4° to its final angles as it enters (the
- * status chips stamp in after it, in CSS). The privacy diagram draws left to
- * right, card, arrow, card, 100 ms apart; then data-play sends a token down
- * each arrow and drops the sealed coin into the server's slot (CSS).
+ * The privacy diagram draws left to right, card, arrow, card, 100 ms apart;
+ * then data-play sends a token down each arrow and drops the sealed coin into
+ * the server's slot (CSS).
  */
 function stages(signal: AbortSignal) {
   if (reducedMotion()) return;
-  const fan = document.querySelector<HTMLElement>('[data-fan]');
-  if (fan && fan.getBoundingClientRect().top > innerHeight) {
-    const cards = [...fan.querySelectorAll<HTMLElement>('.bill')];
-    cards.forEach((c) => c.setAttribute('data-folded', ''));
-    once(signal, [fan], 0.25, () =>
-      cards.forEach((c, i) => {
-        c.style.transitionDelay = `${i * 60}ms`;
-        c.removeAttribute('data-folded');
-      }),
-    );
-  }
   const diagram = document.querySelector<HTMLElement>('[data-diagram]');
   if (diagram && diagram.getBoundingClientRect().top > innerHeight) {
     const items = [...diagram.children] as HTMLElement[];

@@ -1,0 +1,57 @@
+---
+/** "More on …" with an arrow: how a short home-page section points to its detail page. */
+import Icon from './Icon.astro';
+
+interface Props {
+  href: string;
+  /** On a dark panel (the navy privacy band). */
+  onDark?: boolean;
+  class?: string;
+}
+const { href, onDark = false, class: className } = Astro.props;
+---
+
+<a class:list={['more-link', onDark && 'more-link--dark', className]} href={href}>
+  <slot />
+  <Icon name="arrow-right" size={16} stroke={1.9} />
+</a>
+
+<style>
+  .more-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-link);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+    transition:
+      color var(--t-hover-out),
+      text-decoration-color var(--t-hover-out);
+  }
+  .more-link:hover {
+    color: var(--blue-700);
+    text-decoration-color: currentColor;
+    transition-duration: var(--t-hover-in);
+  }
+  .more-link--dark,
+  .more-link--dark:hover {
+    color: var(--white);
+  }
+  .more-link--dark :global(.icon) {
+    color: var(--blue-300);
+  }
+  .more-link :global(.icon) {
+    transition: translate var(--t-hover-out) var(--ease-out-soft);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .more-link:hover :global(.icon) {
+      translate: 3px 0;
+      transition-duration: 200ms;
+    }
+  }
+</style>
