@@ -25,17 +25,23 @@ extension XCTestCase {
   /// gesture, and a tap that lands while it still moves can only stop the scroll, leaving
   /// the row unopened (seen at large text sizes on a slow CI runner). Each drag rests
   /// before the finger lifts, so the page stops where it was dragged, and starts
-  /// mid-screen, above where a keyboard sits. Returns whether the element is hittable.
+  /// mid-screen, above where a keyboard sits. Fails the test, at the caller's line, when
+  /// the element never becomes hittable, so the tap that follows isn't blamed for it.
+  /// Returns whether the element is hittable.
   @MainActor
   @discardableResult
-  func dragUntilHittable(_ app: XCUIApplication, _ element: XCUIElement, limit: Int = 8) -> Bool {
+  func dragUntilHittable(
+    _ app: XCUIApplication, _ element: XCUIElement, limit: Int = 8, file: StaticString = #filePath, line: UInt = #line
+  ) -> Bool {
     for _ in 0..<limit {
       if element.isHittable { return true }
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
       from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
     }
-    return element.isHittable
+    let hittable = element.isHittable
+    XCTAssertTrue(hittable, "\(element) is not hittable after \(limit) drags", file: file, line: line)
+    return hittable
   }
 
   /// Runs the system accessibility audit on what is on screen and reports every issue

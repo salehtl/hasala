@@ -79,7 +79,9 @@ struct BuildInfoTests {
   @Test func theBundleIsComplete() throws {
     let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
     #expect(info.environment == "qa")
-    #expect(info.apiBaseURL.host() == "api.hasala.app")
+    // The exact origin, as inspect-ipa.sh's endpoint guard checks it: https, no port or path.
+    #expect(Bundle.main.object(forInfoDictionaryKey: "HasalaAPIBaseURL") as? String == "https://api.hasala.app")
+    #expect(info.apiBaseURL.absoluteString == "https://api.hasala.app")
     #expect(info.marketingVersion == "0.2.0")
     #expect(Bundle.main.object(forInfoDictionaryKey: "ITSAppUsesNonExemptEncryption") as? Bool == false)
     #expect(Bundle.main.bundleIdentifier == "app.hasala.ios")

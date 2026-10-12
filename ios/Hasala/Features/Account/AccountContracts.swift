@@ -93,7 +93,7 @@ struct PendingReset: Identifiable, Equatable, Sendable {
 struct FreezeInfo: Equatable, Sendable {
   enum By: Equatable, Sendable { case holder, `operator` }
   var by: By
-  /// Already formatted for display ("Sat 11 Oct at 21:20"), or nil when unknown.
+  /// Already formatted for display ("on Sun 11 Oct at 21:20"), or nil when unknown.
   var when: String?
 }
 
@@ -256,16 +256,16 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   ]
 
   /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, leaving
-  /// (sign out, sign out everywhere, delete, remove this iPhone) and viewing the words.
-  /// Password reset, access recovery, phrase rotation, adding or removing a passkey,
-  /// setting or changing the password, removing another device, changing the email and
-  /// freezing stay hidden.
+  /// (sign out, sign out everywhere, delete) and viewing the words. Password reset, access
+  /// recovery, phrase rotation, adding or removing a passkey, setting or changing the
+  /// password, removing this or another device, changing the email and freezing stay
+  /// hidden. (The service can remove this iPhone, but Sign-in & security has no row for it.)
   static let beta: AccountCapabilities = [
     .signupPasskey, .signupPassword,
     .signInPasskey, .signInPassword,
     .unlockWithPhrase,
     .signOut, .signOutEverywhere,
-    .deleteAccount, .removeThisIPhone,
+    .deleteAccount,
     .viewPhrase,
   ]
 }

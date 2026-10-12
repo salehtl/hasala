@@ -71,10 +71,12 @@ struct FrozenWall: View {
     busy = true
     defer { busy = false }
     do {
-      try await session.account.perform(.unfreeze, password: password)
-      session.unfroze()
+      try await session.unfreeze(password: password)
     } catch .stepUpFailed {
       failure = .badPhrase("That didn't confirm. A passkey or password added after the freeze can't unfreeze the account.")
+    } catch .frozenByOperator {
+      // The session now shows the operator's wall, which says so itself.
+      failure = nil
     } catch {
       failure = error
     }

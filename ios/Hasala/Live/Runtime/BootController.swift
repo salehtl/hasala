@@ -249,14 +249,10 @@ final class BootController {
         return nil
       }
       var facts = Self.facts(rt)
-      if let lane = rt.lane { facts.mailbox = Self.mailboxFact(await lane.status().phase) }
-      guard self.openingID == id else {
-        await rt.close()
-        return nil
-      }
+      if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
       self.opening = nil
       self.runtime = rt
-      self.app = AppModel(store: rt.store)
+      self.app = AppModel(store: rt.store, mailbox: self.services.mailbox)
       self.generation += 1
       self.setupFacts = facts
       rt.onAccount = { [weak self, weak rt] info in
@@ -366,7 +362,12 @@ final class BootController {
       try? env.account.secrets.deleteSession()
       session.signedOut()
     case .frozen:
-      session.froze(FreezeInfo(by: .holder, when: nil))
+      // Who froze it decides whether the wall offers Unfreeze (spec 04 §6.11), so it is
+      // read from `GET /account` first. Unknown (offline) shows the holder's wall; its
+      // Unfreeze reads `frozen_by` again before any #66.
+      let info = await account.freezeInfo() ?? FreezeInfo(by: .holder, when: nil)
+      guard session.phase != .signedOut else { return }
+      session.froze(info)
     case .needsUnlock, .keysRequired:
       await closeRuntime()
       session.signedOut()

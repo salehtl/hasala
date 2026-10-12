@@ -111,6 +111,11 @@ final class SecurityModel {
         break
       }
       await load()
+    } catch .frozenByOperator {
+      // Only the operator lifts it: the banner and this page show their freeze instead.
+      session.learnedOperatorFreeze()
+      await load()
+      failure = .frozenByOperator
     } catch {
       failure = error
     }

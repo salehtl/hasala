@@ -144,6 +144,48 @@ struct LiveAccountFlowTests {
     #expect(session.phase == .frozen(FreezeInfo(by: .operator, when: nil)))
   }
 
+  /// The app never sends #66 for an operator freeze (spec 04 §6.11): `frozen_by` is read
+  /// first, and no step-up is asked for.
+  @Test func anOperatorFreezeIsNeverSentToUnfreeze() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    server.freezeAll(byOperator: true)
+    let account = a.relaunched()
+    #expect(await account.freezeInfo() == FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20"))
+    await #expect(throws: AuthFailure.frozenByOperator) {
+      try await account.perform(.unfreeze, password: Self.password)
+    }
+    #expect(server.unfreezeCalls == 0)
+    #expect(server.lastStepUpAction != "account.unfreeze")
+  }
+
+  /// A holder's freeze unfreezes; an operator freeze that lands between the read and #66
+  /// is read again when #66 refuses it, and the wall becomes the operator's.
+  @Test func aHolderUnfreezesAndALateOperatorFreezeShowsOnTheWall() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    server.freezeAll(byOperator: false)
+    let account = a.relaunched()
+    #expect(await account.freezeInfo() == FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20"))
+
+    server.operatorFreezesBeforeUnfreeze = true
+    let stale = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    await #expect(throws: AuthFailure.frozenByOperator) { try await stale.unfreeze(password: Self.password) }
+    #expect(server.unfreezeCalls == 1)
+    #expect(stale.phase == .frozen(FreezeInfo(by: .operator, when: nil)))
+
+    server.operatorFreezesBeforeUnfreeze = false
+    server.freezeAll(byOperator: false)
+    let session = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    try await session.unfreeze(password: Self.password)
+    #expect(session.phase == .ready)
+    #expect(server.unfreezeCalls == 2)
+    #expect(server.lastStepUpAction == "account.unfreeze")
+    #expect(await account.freezeInfo() == nil)
+  }
+
   @Test func offlineAtLaunchWaitsWithRetry() async throws {
     let server = MiniHasalad(invite: Self.invite)
     _ = try await signUp(Phone(server), server)
@@ -237,6 +279,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var keys: [String: Any]
     var writers: [[String: Any]] = []
     var frozenBy: String?
+    var freezeTriggerAt: String?
     var deleted = false
   }
 
@@ -252,6 +295,10 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var deleted = 0
     var lastStepUpAction: String?
     var reviewAccounts = false
+    /// #66 calls, refused ones included.
+    var unfreezeCalls = 0
+    /// The operator freezes the account just before #66 runs (a stale `frozen_by`).
+    var operatorFreezesBeforeUnfreeze = false
   }
 
   private let lock = NSLock()
@@ -274,6 +321,11 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var lastCode: String? { state.withLock { $0.lastCode } }
   var deletedAccounts: Int { state.withLock { $0.deleted } }
   var lastStepUpAction: String? { state.withLock { $0.lastStepUpAction } }
+  var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
+  var operatorFreezesBeforeUnfreeze: Bool {
+    get { state.withLock { $0.operatorFreezesBeforeUnfreeze } }
+    set { state.withLock { $0.operatorFreezesBeforeUnfreeze = newValue } }
+  }
   var offline: Bool {
     get { state.withLock { $0.offline } }
     set { state.withLock { $0.offline = newValue } }
@@ -285,8 +337,14 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     set { state.withLock { $0.reviewAccounts = newValue } }
   }
 
+  /// Freezes every account, triggered at 21:20 on Sun 11 Oct 2026 in the app's clock.
   func freezeAll(byOperator: Bool) {
-    state.withLock { s in for k in s.users.keys { s.users[k]?.frozenBy = byOperator ? "operator" : "holder" } }
+    state.withLock { s in
+      for k in s.users.keys {
+        s.users[k]?.frozenBy = byOperator ? "operator" : "holder"
+        s.users[k]?.freezeTriggerAt = "2026-10-11T17:20:05.123456Z"
+      }
+    }
   }
 
   func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
@@ -349,7 +407,12 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     }
     guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }
     guard var u = s.users[sess.user], !u.deleted else { return error(410, "account_deleted") }
-    if u.frozenBy != nil, route != "GET /api/v1/account", route != "POST /api/v1/auth/logout" {
+    // A frozen account reaches only `02` §9.8's list.
+    let whileFrozen = [
+      "GET /api/v1/account", "POST /api/v1/auth/logout", "POST /api/v1/auth/step-up/begin",
+      "POST /api/v1/account/unfreeze",
+    ]
+    if u.frozenBy != nil, !whileFrozen.contains(route) {
       return error(403, "account_frozen")
     }
     switch route {
@@ -359,7 +422,8 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       return ok([
         "user_id": u.id, "status": "active", "has_keys": true, "email": u.email, "display_name": u.name,
         "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": false,
-        "frozen": u.frozenBy != nil, "frozen_by": opt(u.frozenBy), "restricted": u.frozenBy != nil,
+        "frozen": u.frozenBy != nil, "frozen_by": opt(u.frozenBy), "freeze_trigger_at": opt(u.freezeTriggerAt),
+        "restricted": u.frozenBy != nil,
         "review_account": s.reviewAccounts,
       ])
     case "GET /api/v1/keys": return ok(u.keys)
@@ -400,6 +464,16 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     case "POST /api/v1/auth/logout-all":
       guard b["step_up"] != nil else { return error(403, "step_up_required") }
       for (t, x) in s.sessions where x.user == u.id { s.sessions[t]?.revoked = true }
+      return APIResponse(status: 204)
+    case "POST /api/v1/account/unfreeze":
+      // #66: refused while the operator froze the account (nothing consumed).
+      guard b["step_up"] != nil else { return error(403, "step_up_required") }
+      s.unfreezeCalls += 1
+      if s.operatorFreezesBeforeUnfreeze { s.users[u.id]?.frozenBy = "operator" }
+      guard let by = s.users[u.id]?.frozenBy else { return error(400, "bad_request") }
+      if by == "operator" { return error(403, "account_frozen") }
+      s.users[u.id]?.frozenBy = nil
+      s.users[u.id]?.freezeTriggerAt = nil
       return APIResponse(status: 204)
     case "DELETE /api/v1/account":
       guard b["step_up"] != nil, b["sig"] != nil else { return error(400, "bad_request") }

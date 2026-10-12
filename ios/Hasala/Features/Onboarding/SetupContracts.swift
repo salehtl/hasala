@@ -84,9 +84,43 @@ struct SortSummary: Equatable, Sendable {
   var sortedThemselves: Int { byRules + byDictionary + byModel }
 }
 
+/// What Home and Profile offer for Gmail once setup is done: "Connect Gmail" when the Gmail
+/// step was skipped or its cards step is still to do (spec 04 §6.6 row 4), "Reconnect Gmail"
+/// when Google wants a new sign-in or the lane stopped (§7.4).
+enum GmailOffer: String, Identifiable, Sendable {
+  case connect
+  case reconnect
+
+  var id: String { rawValue }
+
+  /// The action's title.
+  var action: String {
+    switch self {
+    case .connect: "Connect Gmail"
+    case .reconnect: "Reconnect Gmail"
+    }
+  }
+
+  /// What the Profile card says.
+  var status: String {
+    switch self {
+    case .connect: "Gmail isn't connected"
+    case .reconnect: "Gmail needs reconnecting"
+    }
+  }
+}
+
 /// The Gmail link and first scan, implemented by the Gmail lane (spec 04 §7.4, §7.7).
 @MainActor
 protocol MailboxConnecting: AnyObject {
+  /// Home's Needs-you card and the Profile card's action, once setup is done; nil when
+  /// Gmail works, the lane's state isn't known yet, the build has no Google client, or
+  /// the account loaded the App Review sample (§6.13, which completes the Gmail step).
+  var gmailOffer: GmailOffer? { get }
+  /// The banks the account reads (its sender-trust ops), for a connect after setup.
+  func chosenBanks() -> [SupportedBank]
+  /// The lane's state, as setup's facts name it.
+  func linkState() async -> OnboardingStep.Facts.Mailbox
   /// Runs Google's sign-in (read-only scope), the `mailbox.link` step-up and the first
   /// listing for `banks`' senders. Throws `.cancelled` when the user closes Google's sheet.
   func connectGmail(banks: [SupportedBank]) async throws(SetupFailure)

@@ -1,3 +1,4 @@
+import CoreMailbox
 import CoreProjection
 import CoreTime
 import Foundation
@@ -21,12 +22,17 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   private(set) var revision = 0
   /// The projection has been read at least once.
   private(set) var loaded = false
+  /// The Gmail lane's phase, once read (spec 04 §7.4); nil before that, or with no lane.
+  private(set) var mailboxPhase: MailboxPhase?
+  /// The ledger holds the App Review sample (`sample-` message ids, §6.13).
+  private(set) var holdsSample = false
 
   @ObservationIgnored let reader: LedgerReader
   @ObservationIgnored private let author: LedgerEditAuthor?
   @ObservationIgnored private let clock: @MainActor () -> LocalDateTime
   @ObservationIgnored var profile: ProfileInfo
-  @ObservationIgnored var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
+  /// Bank alerts' health for the next reload (`noteMailbox`).
+  @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored private var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var nextToken = 1
@@ -57,6 +63,12 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     return LocalDateTime(d.year, d.month, d.day, minutes / 60, minutes % 60)
   }
 
+  /// The Gmail lane's status: its health shows from the next reload, its phase at once.
+  func noteMailbox(_ status: MailboxStatus, nowMs: Int64) {
+    mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
+    if mailboxPhase != status.phase { mailboxPhase = status.phase }
+  }
+
   /// Reads the projection again (off the main actor) and publishes it. A later reload
   /// that finishes first wins; an older one is dropped.
   func reload() async {
@@ -73,6 +85,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     state = mapped
     now = today
     loaded = true
+    let sample = mapped.txns.contains(where: \.isSample)
+    if holdsSample != sample { holdsSample = sample }
     revision += 1
   }
 

@@ -22,7 +22,11 @@ enum AuthFailure: Error, Equatable, Sendable {
   case rateLimited
   case lastAuthenticator
   case frozen
+  /// The operator froze the account (`frozen_by`, spec 04 §6.11): only they unfreeze it.
+  case frozenByOperator
   case stepUpFailed
+  /// "View your 12 words" with a passkey that gave no PRF output, so it can't open them.
+  case passkeyCantShowPhrase
   case noDeviceKey
   case offline
   /// The local RK check failed: real words, another account (S-15).
@@ -65,7 +69,9 @@ enum AuthFailure: Error, Equatable, Sendable {
     case .rateLimited: "Too many tries. Try again in 15 minutes."
     case .lastAuthenticator: "This is your only way to sign in. Add a passkey or a password first."
     case .frozen: "Your account is frozen. Confirm it's you to unfreeze it."
+    case .frozenByOperator: "We froze your account to protect it. Talk to us to unfreeze it."
     case .stepUpFailed: "That didn't confirm. Try again."
+    case .passkeyCantShowPhrase: "This passkey can't show your 12 words. Use the copy you wrote down."
     case .noDeviceKey:
       "This iPhone can't confirm yet. Changes need your password plus the key of an iPhone where your data is open."
     case .offline: "Try again in a moment."

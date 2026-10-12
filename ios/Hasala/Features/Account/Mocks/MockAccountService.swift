@@ -267,6 +267,8 @@
     func perform(_ action: SecurityAction, password given: String?) async throws(AuthFailure) {
       await pause()
       if security.frozen != nil, action != .unfreeze, action != .deleteAccount { throw .frozen }
+      // As the live service: an operator freeze is refused before any step-up.
+      if action == .unfreeze, security.frozen?.by == .operator { throw .frozenByOperator }
       // The step-up: a passkey account asserts (always succeeds here); a password-only
       // account proves the password with this iPhone's key.
       if !security.hasPasskey {

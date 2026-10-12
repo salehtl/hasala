@@ -1,12 +1,20 @@
 #if HASALA_MOCKS
   import Foundation
+  import Observation
 
   /// The Gmail lane's stand-in for Debug scenarios and UI tests: a connect that always
   /// succeeds, a first scan of 268 synthetic alerts that runs in about two seconds, and
   /// the three cards of Paper's "Are these your cards?" (synthetic last-four digits).
+  /// `gmailOffer` starts the Home and Profile Gmail actions (the `gmailSkipped` and
+  /// `gmailReconnect` scenarios); a connect, or the cards step, ends it.
   @MainActor
+  @Observable
   final class MockMailbox: MailboxConnecting {
     var offersSampleData: Bool
+    var gmailOffer: GmailOffer?
+    /// The banks the account reads.
+    var banks: [SupportedBank] = SupportedBank.allCases
+    private(set) var link: OnboardingStep.Facts.Mailbox = .unlinked
     /// Whether the first scan reports alerts sorted by the on-device model. The beta has
     /// no model tier at ingest (a later sweep), so the Release surface turns this off, as
     /// the live lane reports none.
@@ -21,9 +29,20 @@
       self.offersSampleData = offersSampleData
     }
 
+    func chosenBanks() -> [SupportedBank] { banks }
+
+    func linkState() async -> OnboardingStep.Facts.Mailbox { link }
+
     func connectGmail(banks: [SupportedBank]) async throws(SetupFailure) {
       try? await Task.sleep(for: .milliseconds(300))
       connected = true
+      // A reconnect picks up where the lane stopped; a first connect scans.
+      if gmailOffer == .reconnect {
+        link = .linked
+        gmailOffer = nil
+      } else {
+        link = .scanning
+      }
     }
 
     func firstScan() -> AsyncStream<ScanProgress> {
@@ -56,6 +75,8 @@
     func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> SortSummary {
       try? await Task.sleep(for: .milliseconds(200))
       confirmed = cards
+      link = .linked
+      gmailOffer = nil
       let kept = cards.filter(\.keep).reduce(0) { $0 + $1.alertCount }
       let dictionary = Int(Double(kept) * 0.65)
       let model = sortsWithModel ? Int(Double(kept) * 0.21) : 0
@@ -66,6 +87,7 @@
     func loadSampleData() async throws(SetupFailure) {
       try? await Task.sleep(for: .milliseconds(300))
       sampleLoaded = true
+      gmailOffer = nil
     }
   }
 

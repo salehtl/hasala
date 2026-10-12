@@ -104,7 +104,9 @@ struct SecurityView: View {
           .hType(.title2)
           .foregroundStyle(frozen ? HColor.statusInfoForeground : protected ? HColor.statusSuccessForeground : HColor.statusWarningForeground)
         Text(frozen
-          ? "Your account is frozen. Confirm it's you to unfreeze it."
+          ? (s.frozen?.by == .operator
+            ? "We froze your account to protect it. Talk to us to unfreeze it."
+            : "Your account is frozen. Confirm it's you to unfreeze it.")
           : protected
             ? "Passkey and 12 words are set. Last sign-in \(s.lastSignIn)."
             : can(.addPasskey)

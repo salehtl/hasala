@@ -45,6 +45,37 @@ struct LiveGateTests {
     #expect(BootController.mailboxFact(.active) == .linked)
   }
 
+  /// Home and Profile offer Gmail from the lane's phase (spec 04 §6.6 row 4, §7.4), and
+  /// never on an account that loaded the App Review sample (§6.13).
+  @Test func theGmailOfferFollowsTheLane() {
+    func offer(_ phase: MailboxPhase, sample: Bool = false, link: MailboxLinkStatus? = .noLink) -> GmailOffer? {
+      LiveMailboxConnecting.offer(phase: phase, sampleLoaded: sample, serverLink: link)
+    }
+    #expect(offer(.unlinked) == .connect)
+    #expect(offer(.scanning) == .connect)
+    #expect(offer(.awaitingCards) == .connect)
+    #expect(offer(.reconnectRequired) == .reconnect)
+    #expect(offer(.halted) == .reconnect)
+    for phase in [MailboxPhase.authoringBackfill, .active, .otherDevice] {
+      #expect(offer(phase) == nil)
+    }
+    for phase in MailboxPhase.allCases {
+      #expect(offer(phase, sample: true) == nil)
+    }
+    // No link here: offered only once the server says no other iPhone reads Gmail.
+    #expect(offer(.unlinked, link: nil) == nil)
+    #expect(offer(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)) == nil)
+    #expect(offer(.unlinked, link: .holder(isThisDevice: true, watchExpiresAtMs: nil)) == .connect)
+    #expect(offer(.reconnectRequired, link: nil) == .reconnect)
+  }
+
+  /// A connect after setup reads the banks from the bank step's sender trust.
+  @Test func theBanksComeFromTheTrustedSenders() {
+    #expect(LiveMailboxConnecting.banks(trusted: []) == [])
+    #expect(LiveMailboxConnecting.banks(trusted: ["dib.ae"]) == [.dib])
+    #expect(LiveMailboxConnecting.banks(trusted: GmailLane.senderDomains(bank: "enbd") + ["dib.ae"]) == [.enbd, .dib])
+  }
+
   /// Bank alerts names each bank by its templates' sender domains (Emirates NBD's is
   /// emiratesnbd.com, which doesn't contain "enbd").
   @Test func bankAlertsNameTheirBank() {

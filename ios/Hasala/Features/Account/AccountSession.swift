@@ -109,6 +109,28 @@ final class AccountSession {
     phase = .ready
   }
 
+  /// The server says the operator froze the account: the wall, or the banner after "Leave
+  /// it frozen", shows the operator's freeze from now on (no Unfreeze, spec 04 §6.11).
+  func learnedOperatorFreeze() {
+    if case .frozen(let info) = phase {
+      phase = .frozen(FreezeInfo(by: .operator, when: info.when))
+    } else if let info = leftFrozen {
+      leftFrozen = FreezeInfo(by: .operator, when: info.when)
+    }
+  }
+
+  /// "Unfreeze" on the wall: #66 behind its step-up, then the app. The service refuses an
+  /// operator freeze before any step-up (`.frozenByOperator`); the wall then shows it.
+  func unfreeze(password: String?) async throws(AuthFailure) {
+    do {
+      try await account.perform(.unfreeze, password: password)
+    } catch .frozenByOperator {
+      learnedOperatorFreeze()
+      throw .frozenByOperator
+    }
+    unfroze()
+  }
+
   func signedOut() {
     leftFrozen = nil
     reviewAccount = false
