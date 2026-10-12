@@ -41,6 +41,76 @@ struct InviteCode: Equatable, Hashable, Sendable {
     }
     return out
   }
+
+  /// What the invite field keeps of typed or pasted text: upper-cased, with spaces, line
+  /// breaks, hyphens and other dashes, and invisible format and control characters
+  /// dropped. Anything else stays, so a character no code holds (`1`, `0`, `#`) is shown
+  /// and `SignupModel.inviteHint` says so.
+  static func entryCharacters(_ raw: String) -> String {
+    var out = String.UnicodeScalarView()
+    for s in raw.uppercased().unicodeScalars {
+      switch s.properties.generalCategory {
+      case .dashPunctuation, .format, .control, .spaceSeparator, .lineSeparator, .paragraphSeparator: continue
+      default: if s != "\u{2212}" { out.append(s) }  // U+2212 MINUS SIGN is a dash too
+      }
+    }
+    return String(out)
+  }
+}
+
+/// The invite field's state, derived from the code characters alone (spec 04 §6.1.4).
+///
+/// Every edit, typed, pasted or deleted, is applied to the characters, never to the
+/// grouped text, and the text and the caret are then rebuilt from them. Typed characters
+/// can never come out reordered, however fast they arrive and wherever a hyphen lands.
+struct InviteCodeEntry: Equatable, Sendable {
+  /// The code characters (`InviteCode.entryCharacters`): upper-cased, no separators.
+  private(set) var characters: String
+  /// The caret, as the number of `characters` before it.
+  private(set) var caret: Int
+
+  /// `raw`'s characters, with the caret at the end.
+  init(_ raw: String = "") {
+    characters = InviteCode.entryCharacters(raw)
+    caret = characters.count
+  }
+
+  /// What the field shows: `ABCD-EFGH-IJKL-…`.
+  var text: String { InviteCode.group(characters) }
+
+  /// The caret's UTF-16 offset in `text` (what `UITextView.selectedRange` takes): right
+  /// after the character before it, never after a hyphen.
+  var textCaret: Int { InviteCode.group(String(characters.prefix(caret))).utf16.count }
+
+  /// UIKit's edit of the shown text `shown`: `range` (UTF-16 offsets into `shown`)
+  /// replaced by `replacement`. `forward` is a forward delete (the caret was at the start
+  /// of `range`, not its end).
+  ///
+  /// The characters before `range`, then those of `replacement`, then those after it: so
+  /// keys land in the order they were typed, a paste in the order it was copied. Deleting
+  /// only a hyphen deletes the character next to it instead, as Delete would in a field
+  /// without hyphens; otherwise Delete just after a hyphen would do nothing.
+  static func edit(_ shown: String, range: NSRange, replacement: String, forward: Bool = false) -> InviteCodeEntry {
+    let ns = shown as NSString
+    // UIKit's range, held to the text rather than trusted.
+    let lower = range.location == NSNotFound ? ns.length : min(max(range.location, 0), ns.length)
+    let upper = min(lower + max(range.length, 0), ns.length)
+    var before = InviteCode.entryCharacters(ns.substring(to: lower))
+    var after = InviteCode.entryCharacters(ns.substring(from: upper))
+    let removed = InviteCode.entryCharacters(ns.substring(with: NSRange(location: lower, length: upper - lower)))
+    let inserted = InviteCode.entryCharacters(replacement)
+    if inserted.isEmpty, upper > lower, removed.isEmpty {
+      if forward {
+        if !after.isEmpty { after.removeFirst() }
+      } else if !before.isEmpty {
+        before.removeLast()
+      }
+    }
+    var entry = InviteCodeEntry()
+    entry.characters = before + inserted + after
+    entry.caret = (before + inserted).count
+    return entry
+  }
 }
 
 /// `https://hasala.app/i/<CODE>#<LINK_KEY>` (spec 04 §13.5's four rules).
@@ -71,6 +141,13 @@ struct InviteLink: Equatable, Sendable {
         ("A"..."Z").contains($0) || ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" || $0 == "-"
       }
     return InviteLink(code: code, linkKey: keyOK ? fragment : nil)
+  }
+
+  /// Pasted text that is an invite link and nothing else (surrounding white space aside),
+  /// held to the same rules as a link that opens the app.
+  static func parse(pasted text: String) -> InviteLink? {
+    guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+    return parse(url)
   }
 }
 
