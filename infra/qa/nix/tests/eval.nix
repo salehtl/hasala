@@ -234,6 +234,14 @@ let
       "M8b"
       (hasala gmailPush)
     ];
+    "Pub/Sub service account not a service account email" = [
+      "M8b"
+      (hasala (
+        lib.recursiveUpdate (gmailLink // gmailPush) {
+          gmail.pubsubServiceAccount = "push@test-project.gserviceaccount.com";
+        }
+      ))
+    ];
     "database listen_addresses" = [
       "M9"
       (hasala { database.settings.listen_addresses = "*"; })

@@ -240,6 +240,18 @@ func TestTheGmailGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_TOPIC": "t"}), "pubsub_topic")
 	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_SUBSCRIPTION": "projects/p/topics/t"}), "pubsub_subscription")
 	wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_AUDIENCE": "http://api.hasala.app/hooks/gmail/pubsub"}), "pubsub_audience")
+	for _, sa := range []string{
+		"push",                                // no domain
+		"@p.iam.gserviceaccount.com",          // no name
+		"push@p.gserviceaccount.com",          // not a service account domain
+		"push@.iam.gserviceaccount.com",       // no project
+		"push@p.iam.gserviceaccount.com.evil", // suffix not at the end
+		"a@b@p.iam.gserviceaccount.com",       // two '@'
+		"push @p.iam.gserviceaccount.com",     // whitespace
+	} {
+		wantErr(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_SA_EMAIL": sa}), "pubsub_service_account")
+	}
+	mustLoad(t, merge(link, push, env{"HASALA_GMAIL_PUBSUB_SA_EMAIL": "service-1@gcp-sa-pubsub.iam.gserviceaccount.com"}))
 	wantErr(t, merge(link, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": secretFile(t, 0o640)}), "no group or other permission")
 }
 

@@ -357,6 +357,22 @@ let day: Int64 = 86_400_000
     #expect(await rig.engine.status().watchActive)
   }
 
+  /// A clock that jumps back after a null topic was read does not postpone the re-read until it
+  /// catches up: the next cycle reads the topic again.
+  @Test func aBackwardsClockJumpDoesNotPostponeTheTopicReRead() async {
+    let rig = Rig()
+    await rig.server.setTopic(nil)
+    await rig.connectAndActivate()
+    let reads = await rig.server.topicReads
+    #expect(reads == 1)
+
+    await rig.server.setTopic("projects/synthetic/topics/hasala-gmail-test")
+    rig.clock.advance(-day)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.server.topicReads == reads + 1)
+    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
+  }
+
   /// Route 36's `409 no_watch_topic`: the server turned its Pub/Sub push off after the app read
   /// the topic. The watch nobody relays is stopped, no live watch is shown, and the topic is read
   /// again (null now), so no further watch is made.

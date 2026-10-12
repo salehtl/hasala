@@ -710,7 +710,7 @@ in
     gmail = {
       pubsubTopic = nullStr "projects/<P>/topics/<topic>; offered to the app as the watch topic. Part of the Pub/Sub push (M8b).";
       pubsubAudience = nullStr "The push subscription's OIDC audience (the hook URL). Part of the Pub/Sub push (M8b).";
-      pubsubServiceAccount = nullStr "The push subscription's service account email. Part of the Pub/Sub push (M8b).";
+      pubsubServiceAccount = nullStr "The push subscription's service account email (<name>@<P>.iam.gserviceaccount.com); the hook refuses a push token whose email differs. Part of the Pub/Sub push (M8b).";
       pubsubSubscription = nullStr "projects/<P>/subscriptions/<name>. Part of the Pub/Sub push (M8b).";
     };
     mailboxRouteKeyFile = secretPath "The mailbox route key (64 lowercase hex); with google.iosClientId it is the [gmail] mailbox link (M8a).";
@@ -1002,8 +1002,16 @@ in
             )
             "the [gmail] mailbox link is google.iosClientId (a Google client id, <n>-<x>.apps.googleusercontent.com) and mailboxRouteKeyFile, both or neither."
           )
-          (a "M8b" (allOrNone gmailPushValues && (gmailPushOn -> gmailLinkOn))
-            "the [gmail] Pub/Sub push (gmail.pubsubTopic, pubsubAudience, pubsubServiceAccount, pubsubSubscription) is all or nothing, and needs the mailbox link (M8a)."
+          (a "M8b"
+            (
+              allOrNone gmailPushValues
+              && (gmailPushOn -> gmailLinkOn)
+              && (
+                cfg.gmail.pubsubServiceAccount == null
+                || matches "[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com" cfg.gmail.pubsubServiceAccount
+              )
+            )
+            "the [gmail] Pub/Sub push (gmail.pubsubTopic, pubsubAudience, pubsubServiceAccount, pubsubSubscription) is all or nothing, needs the mailbox link (M8a), and pubsubServiceAccount is <name>@<P>.iam.gserviceaccount.com."
           )
           (a "M9" (!lib.any pgLib.forbiddenSetting (lib.attrNames cfg.database.settings))
             "database.settings may not set listen_addresses, unix_socket_*, hba_file, ident_file or any log_* key."

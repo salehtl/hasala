@@ -317,7 +317,10 @@ func (s *Server) handleLinkWatch(w http.ResponseWriter, r *http.Request, userID 
 	// gmail_watch_topic is null) and no watch to record. The app skips
 	// users.watch without a topic, so it never sends this; one that read a
 	// topic before the push was turned off stops its watch, forgets the topic
-	// and reads /meta again.
+	// and reads /meta again. It is checked before the body, the binding and
+	// the holder on purpose (spec 02 route 36): the answer depends only on this
+	// server's configuration, which /meta already makes public, so a
+	// non-holder learns nothing from no_watch_topic, and nothing is written.
 	if s.Gmail.Push == nil {
 		writeErr(w, http.StatusConflict, "no_watch_topic", "this server relays no Gmail wakes")
 		return

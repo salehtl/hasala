@@ -1061,8 +1061,11 @@ public actor MailboxEngine {
 
   func renewWatch(_ gmail: GmailClient, _ state: inout MailboxState, now: Int64) async {
     // Read once; a null topic again every holder-check interval, so a server whose Pub/Sub push
-    // is turned on later is watched without a relaunch.
-    let readTopic = topic.map { $0 == nil && now - topicReadAtMs >= config.holderCheckIntervalMs } ?? true
+    // is turned on later is watched without a relaunch. A clock that went back since the last
+    // read counts as due, so a backwards jump never postpones the re-read.
+    let readTopic = topic.map {
+      $0 == nil && (now < topicReadAtMs || now - topicReadAtMs >= config.holderCheckIntervalMs)
+    } ?? true
     if readTopic {
       do {
         let t = try await server.watchTopic()

@@ -698,7 +698,22 @@ func (c Config) validateGmail() error {
 	if u, err := url.Parse(g.PubSubAudience); err != nil || u.Scheme != "https" || u.Host == "" {
 		return fmt.Errorf("gmail.pubsub_audience %q: want the https URL of the hook", g.PubSubAudience)
 	}
+	// The hook compares the push token's email with this value exactly, so a
+	// typo would quietly refuse every push with 403.
+	if !isServiceAccountEmail(g.PubSubServiceAccount) {
+		return fmt.Errorf("gmail.pubsub_service_account %q: want <name>@<P>.iam.gserviceaccount.com", g.PubSubServiceAccount)
+	}
 	return nil
+}
+
+// isServiceAccountEmail reports whether s has the shape of a Google Cloud
+// service account's email: one '@', a non-empty name, and a domain that is a
+// project under iam.gserviceaccount.com.
+func isServiceAccountEmail(s string) bool {
+	const suffix = ".iam.gserviceaccount.com"
+	name, domain, ok := strings.Cut(s, "@")
+	return ok && name != "" && !strings.ContainsAny(s, " \t\r\n") && !strings.Contains(domain, "@") &&
+		len(domain) > len(suffix) && strings.HasSuffix(domain, suffix)
 }
 
 func (c Config) validateWeb() error {
