@@ -21,6 +21,8 @@ struct LiveE2EEnvironment {
   let stateDir: URL
   /// A review invite minted for this run (E1 signs up with it).
   let invite: String?
+  /// Which of the run's simulators this is, "A" or "B".
+  let device: String
 
   static func current() throws -> LiveE2EEnvironment {
     let env = ProcessInfo.processInfo.environment
@@ -38,7 +40,8 @@ struct LiveE2EEnvironment {
     }
     return LiveE2EEnvironment(
       api: api, mailDir: URL(fileURLWithPath: mail, isDirectory: true),
-      stateDir: URL(fileURLWithPath: state, isDirectory: true), invite: value("HASALA_E2E_INVITE"))
+      stateDir: URL(fileURLWithPath: state, isDirectory: true), invite: value("HASALA_E2E_INVITE"),
+      device: value("HASALA_E2E_DEVICE") ?? "A")
   }
 }
 
@@ -72,13 +75,15 @@ struct CapturedMail: Decodable {
   let text: String
 }
 
-/// The figures the Maya sample shows on every device (Lane A's `expectMayaSample`:
-/// 26 October transactions, 6 to review, 8 bills, the "Japan trip" project).
+/// The figures the Maya sample shows on every device: Lane A's `expectMayaSample` (26
+/// October transactions, 6 to review, 8 bills, the "Japan trip" project) as the screens
+/// word them. Bills counts the salary too, so its row says 9 tracked, as it does over
+/// HasalaMocks' MayaLedger.
 enum MayaSample {
   static let transactions = "26 transactions this month"
   static let toSort = "6 to sort"
   static let afterOneSorted = "5 to sort"
-  static let bills = "8 tracked"
+  static let bills = "9 tracked"
   static let project = "Japan trip"
 }
 
@@ -189,6 +194,40 @@ class LiveE2ECase: XCTestCase {
     return false
   }
 
+  /// The setup's notification step, answered "Allow notifications" and then "Allow" on
+  /// the system's alert (drawn by SpringBoard or in the app's process). A tap that lands
+  /// while the step is still sliding in is lost, so the button is tapped again until the
+  /// alert shows.
+  @MainActor
+  func allowNotifications(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    let button = el(app, "notifications.allow")
+    XCTAssertTrue(button.waitForExistence(timeout: 90), "the notification step did not open", file: file, line: line)
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    var lastTap = Date.distantPast
+    let deadline = Date().addingTimeInterval(40)
+    repeat {
+      for host in [springboard, app] {
+        let allow = host.buttons["Allow"].firstMatch
+        if allow.exists {
+          allow.tap()
+          return
+        }
+      }
+      if el(app, "done.home").exists { return }
+      if button.exists, button.isHittable, Date().timeIntervalSince(lastTap) > 5 {
+        button.tap()
+        lastTap = Date()
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    } while Date() < deadline
+    attach(app, "No permission alert")
+    let tree = XCTAttachment(string: springboard.debugDescription + "\n\n" + app.debugDescription)
+    tree.name = "Hierarchies without a permission alert"
+    tree.lifetime = .keepAlways
+    add(tree)
+    XCTFail("the system permission alert did not appear", file: file, line: line)
+  }
+
   /// Waits until one of `ids` exists and returns it, or nil after `timeout`.
   @MainActor
   func waitForAny(_ app: XCUIApplication, _ ids: [String], timeout: TimeInterval) -> String? {
@@ -233,11 +272,13 @@ class LiveE2ECase: XCTestCase {
     XCTFail("Home did not open within \(Int(timeout)) s", file: file, line: line)
   }
 
-  /// Signs out of this iPhone from the profile ("Sign out" and its confirmation).
+  /// Signs out of this iPhone from Profile › Sign-in & security ("Sign out of this
+  /// iPhone" and its confirmation), the sign-out every build wires to the account.
   @MainActor
   func signOut(_ app: XCUIApplication) {
     app.buttons["header.profile"].firstMatch.tap()
-    tap(app, "profile.signOut")
+    tap(app, "profile.security")
+    tap(app, "security.signOut", timeout: 20)
     let confirm = app.alerts.buttons["Sign out"].firstMatch
     XCTAssertTrue(confirm.waitForExistence(timeout: 10), "the sign-out confirmation did not appear")
     confirm.tap()
@@ -309,6 +350,21 @@ class LiveE2ECase: XCTestCase {
       throw LiveE2EError("no \(accountURL.path): test01_pathB creates the account the later tests use")
     }
     return try JSONDecoder().decode(LiveE2EAccount.self, from: data)
+  }
+
+  /// Records whether this simulator was left signed in, so a later test can tell a
+  /// wipe it caused from a device that was never signed in (E5).
+  func markSignedIn(_ on: Bool) throws {
+    let url = e2e.stateDir.appendingPathComponent("signed-in-\(e2e.device)")
+    if on {
+      try Data("yes\n".utf8).write(to: url, options: .atomic)
+    } else {
+      try? FileManager.default.removeItem(at: url)
+    }
+  }
+
+  var wasLeftSignedIn: Bool {
+    FileManager.default.fileExists(atPath: e2e.stateDir.appendingPathComponent("signed-in-\(e2e.device)").path)
   }
 
   /// The capture's files so far, so a wait can ignore the emails sent before a step.

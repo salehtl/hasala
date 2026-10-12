@@ -23,7 +23,8 @@ final class LiveE2ETests: LiveE2ECase {
 
   /// E1 on A, path B (spec §2.5): a review invite, about you, the emailed code, a
   /// password, the 12 words read off the screen and four of them checked, ENBD, "Use
-  /// sample data", the end of setup, then Maya's month on Home, Activity, Bills and Plan.
+  /// sample data", notifications allowed, then Maya's month on Home, Activity, Bills and
+  /// Plan, and Home's "Sample data" label.
   @MainActor
   func test01_pathB() throws {
     let invite = try XCTUnwrap(e2e.invite, "the harness passes a review invite (HASALA_E2E_INVITE)")
@@ -86,7 +87,13 @@ final class LiveE2ETests: LiveE2ECase {
                   "no 'Use sample data': the review flag (#40 review_account) did not reach setup")
     attach(app, "Gmail · sample offered")
     sample.tap()
+
+    // Notifications: Allow (the reviewer taps "Not now"; either finishes setup). Allowing
+    // is what lets A receive E3's push: the simulator delivers only a push with visible
+    // content, and only to an app the user allowed (see ios/scripts/e2e/wake.apns).
+    allowNotifications(app)
     driveToHome(app)
+    try markSignedIn(true)
     attach(app, "Home")
 
     assertMayaFigures(app)
@@ -111,6 +118,7 @@ final class LiveE2ETests: LiveE2ECase {
     tap(app, "unlock.submit")
     tap(app, "unlock.open", timeout: 120)
     driveToHome(app)
+    try markSignedIn(true)
 
     assertMayaFigures(app)
     continueAfterFailure = false
@@ -135,7 +143,9 @@ final class LiveE2ETests: LiveE2ECase {
 
   /// E3 on A: the session survived the relaunch (Keychain), sign out, sign in again with
   /// the password (C2b-P: this iPhone is still bound, so no words and the data is kept),
-  /// then a silent push makes B's sorted card show here.
+  /// then a push (`simctl push`, content-available) runs the coordinator's wake, and B's
+  /// sorted card shows here. The sign-in's own pull may already have brought it; the
+  /// push must be accepted and leave the figures right.
   @MainActor
   func test03_rebind() throws {
     let account = try loadAccount()
@@ -144,6 +154,7 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertEqual(first, "home.hero.left", "A relaunched signed out: its session did not survive in the Keychain")
     signOut(app)
     XCTAssertTrue(el(app, "stories.signIn").waitForExistence(timeout: 30), "sign-out did not reach the stories")
+    try markSignedIn(false)
 
     signInWithPassword(app, account)
     let back = waitForAny(app, ["home.hero.left", "unlock.words", "phraseEntry.field", "notifications.notNow"],
@@ -151,6 +162,7 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(back == "home.hero.left" || back == "notifications.notNow",
                   "signing in again on a bound iPhone asked for \(back ?? "nothing") instead of opening the kept data")
     driveToHome(app)
+    try markSignedIn(true)
     attach(app, "Signed in again")
 
     try requestWake()
@@ -187,6 +199,7 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Delete · confirm it's you")
     tap(app, "confirm.submit")
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 60), "deleting did not end on the stories")
+    try markSignedIn(false)
     attach(app, "Deleted")
   }
 
@@ -194,10 +207,14 @@ final class LiveE2ETests: LiveE2ECase {
   /// shows the stories.
   @MainActor
   func test05_deletedElsewhere() throws {
+    // Only meaningful on a device that still holds the account: one that was never
+    // signed in shows the stories anyway.
+    XCTAssertTrue(wasLeftSignedIn, "A was not left signed in by test01_pathB / test03_rebind")
     let app = launchLive()
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 90),
                   "A did not wipe itself after the account was deleted elsewhere")
     attach(app, "Deleted elsewhere")
+    try markSignedIn(false)
     app.terminate()
     // Nothing is left to open: a second launch also starts signed out.
     let again = launchLive()

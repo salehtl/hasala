@@ -32,7 +32,11 @@
 # processes, so the test runner can read and write them): the emailed codes
 # ($TMP/mail/*.json), the account E1 creates ($TMP/state/account.json), and wake
 # requests ($TMP/state/wake-request, answered with `simctl push <sim> app.hasala.ios
-# ios/scripts/e2e/wake.apns` and $TMP/state/wake-sent).
+# ios/scripts/e2e/wake.apns` and $TMP/state/wake-sent). The iOS 27 simulator refuses a
+# content-available-only push (UNErrorDomain 1401, "no user visible content") and any
+# push to an app without notification permission (2003), so wake.apns carries an alert
+# besides content-available, and E1 allows notifications. hasalad's real wakes stay
+# content-free.
 #
 # Signing (HASALA_E2E_SIGNING):
 #   adhoc (default)  CODE_SIGN_IDENTITY=- with CODE_SIGNING_REQUIRED=YES, manual style,
@@ -347,6 +351,7 @@ for t in "${TESTS[@]}"; do
 		TEST_RUNNER_HASALA_E2E_DEVICE="$which" \
 		"$XCODEBUILD" test-without-building -xctestrun "$XCTESTRUN" -destination "id=$sim" \
 		-only-testing:"HasalaUITests/LiveE2ETests/$t" -resultBundlePath "$TMP/results/$t.xcresult" \
+		-collect-test-diagnostics never \
 		>"$TMP/results/$t.log" 2>&1 || status=$?
 	# A skipped test exits 0 too; it counts as a failure here, since this harness set
 	# everything the tests need.
