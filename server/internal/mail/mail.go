@@ -1,7 +1,8 @@
 // Package mail is the outbound email abstraction (spec 02 §14.4, spec 07
 // §6.1): a Message, the Sender interface, the error classes the queue acts
 // on, the Cloudflare Email Service client, Unconfigured for a server without
-// email, and a Fake for tests.
+// email, a Fake for tests, and spec 02 §14.6's plain-text account emails
+// (account.go). Spec 07's templated kinds render in internal/mailq.
 //
 // Only internal/mailq calls Sender.Send (spec 07 F7-5), so every email passes
 // through the email log. Nothing here logs a recipient, subject or body.
@@ -57,6 +58,8 @@ type Fake struct {
 	Err error
 	// ErrFor, when set, decides per message.
 	ErrFor func(Message) error
+	// Max, when positive, keeps only the newest Max messages.
+	Max int
 }
 
 // Send records m.
@@ -72,7 +75,11 @@ func (f *Fake) Send(_ context.Context, m Message) (string, error) {
 		}
 	}
 	f.sent = append(f.sent, m)
-	return "fake-" + itoa(len(f.sent)), nil
+	n := len(f.sent)
+	if f.Max > 0 && len(f.sent) > f.Max {
+		f.sent = append([]Message(nil), f.sent[len(f.sent)-f.Max:]...)
+	}
+	return "fake-" + itoa(n), nil
 }
 
 // Sent returns a copy of every recorded message.
@@ -80,6 +87,17 @@ func (f *Fake) Sent() []Message {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]Message(nil), f.sent...)
+}
+
+// To is every recorded message to one recipient, oldest first.
+func (f *Fake) To(addr string) []Message {
+	var out []Message
+	for _, m := range f.Sent() {
+		if m.To == addr {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // Reset forgets the recorded messages.

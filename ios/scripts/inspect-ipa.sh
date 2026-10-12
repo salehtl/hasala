@@ -17,7 +17,8 @@
 # bad arguments. Every check fails closed: a tool that fails or a file that is missing
 # counts as a failure, never as "nothing found". No tool is piped into grep; its output
 # goes to a file that grep reads (see hasala_absent in release-common.sh). The content
-# checks (I7, I12, AT-REV-4) read every file in the Payload, not only the main binary.
+# checks (I7, I12, AT-REV-4) read every file in the Payload, not only the main binary;
+# what they cannot see is listed at in_no_file below.
 # Offline, no key; macOS tools by absolute path, so it also runs in the Nix devShell.
 set -euo pipefail
 
@@ -89,11 +90,23 @@ plist_text() {
 if ! plist_text; then rm -rf -- "$plists"; fi
 # in_no_file ERE: no line of any file in the Payload (each file's own bytes, binaries
 # included: the Mach-Os, Assets.car, every resource) and of no plist's XML matches ERE.
-# Not found by any search of the bytes: a Swift string literal of 15 UTF-8 bytes or
-# fewer, which the compiler keeps inside instructions; hence the exact
-# HasalaAPIBaseURL check of I12.
+# in_no_file_i ERE: the same, in any case (ASCII letters); I12's dev-host search.
+#
+# Limits. Apart from each plist's XML, these searches read bytes as they are stored,
+# so they do not find:
+#   - a Swift string literal of 15 UTF-8 bytes or fewer, which the compiler keeps
+#     inside instructions;
+#   - text that a file other than a plist holds as UTF-16 (a UTF-16 .txt or .json
+#     resource, say): only a plist is converted (to XML, which is UTF-8);
+#   - anything compressed: a zip, gzip or LZFSE resource, or compressed data in
+#     Assets.car. Nothing is unpacked but the .ipa itself.
+# So a dev host can hide from I12's search, and the endpoint guard is I12's exact
+# HasalaAPIBaseURL check, not the search.
 in_no_file() {
 	[[ -d "$app" && -d "$plists" ]] && hasala_absent "$1" "$payload" "$plists"
+}
+in_no_file_i() {
+	[[ -d "$app" && -d "$plists" ]] && hasala_absent_i "$1" "$payload" "$plists"
 }
 
 # plist_get FILE KEY: prints a top-level string, integer or boolean (true/false).
@@ -242,12 +255,13 @@ check "I1 entitlements equal golden/app.release.entitlements.plist" ents_match_g
 check "I5 PrivacyInfo.xcprivacy valid; collects exactly UserID, DeviceID, EmailAddress, Name, OtherFinancialInfo" privacy_manifest_ok
 check "I6 no mail, fixtures, databases or keys" no_forbidden_files
 # I7, I12 and AT-REV-4 read every file (see in_no_file): the Mach-Os, Info.plist,
-# Assets.car and every other resource, and every plist as XML.
+# Assets.car and every other resource, and every plist as XML. Only I12's dev-host
+# search ignores case: a host name is the same host in capitals.
 check "I7 no secrets in any file" in_no_file "GOCSPX-|BEGIN (EC |RSA )?PRIVATE KEY|AuthKey_|HASALA_[A-Z_]*KEY="
 check "I8 no JavaScriptCore" no_javascriptcore
 check "I10 icon compiled" icon_compiled
 check "I11 minos 26.0" minos_26
-check "I12 no dev hosts in any file" in_no_file "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"
+check "I12 no dev hosts in any file, in any case" in_no_file_i "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"
 check "I12 HasalaAPIBaseURL is $RELEASE_API_BASE_URL" is "$info" HasalaAPIBaseURL "$RELEASE_API_BASE_URL"
 # Release links no HasalaMocks (spec 04 §1.4): no mock module, scenario or persona.
 check "AT-REV-4 no mock data (HasalaMocks) in any file" in_no_file "HasalaMocks|HasalaScenario|Maya Rahman"

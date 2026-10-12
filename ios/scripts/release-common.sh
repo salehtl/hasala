@@ -100,10 +100,24 @@ hasala_sha256() {
 # exits at the first match, the writer dies of SIGPIPE (141), the pipeline fails and
 # `! ...` turns that into a pass. Write the tool's output to a file and pass the file.
 hasala_absent() {
-	local re="$1" rc=0
-	shift
-	(($# > 0)) || return 1
-	LC_ALL=C grep -r -a -q -E -e "$re" -- "$@" || rc=$?
+	hasala_grep_absent -E "$@"
+}
+
+# hasala_absent_i ERE PATH...: as hasala_absent, but a line matches ERE in any case
+# (grep -i; under LC_ALL=C that folds the ASCII letters only). For inspect-ipa.sh's
+# dev-host search (I12), where http://LOCALHOST:8080 is as much a dev host as
+# http://localhost:8080.
+hasala_absent_i() {
+	hasala_grep_absent -iE "$@"
+}
+
+# hasala_grep_absent GREP-FLAGS ERE PATH...: the one grep behind hasala_absent and
+# hasala_absent_i.
+hasala_grep_absent() {
+	(($# > 2)) || return 1
+	local flags="$1" re="$2" rc=0
+	shift 2
+	LC_ALL=C grep -r -a -q "$flags" -e "$re" -- "$@" || rc=$?
 	[[ "$rc" == 1 ]]
 }
 

@@ -7,6 +7,7 @@
 //	verify structural|usage [--user U] [--repair] [--json]
 //	purge-user <uuid> --confirm <uuid> [--dry-run]
 //	invite mint [--note T] [--ttl D] [--review | --email A] | list | revoke <id>
+//	account review <uuid> on|off --confirm <uuid>
 //	waitlist                                counts by state and bank
 //	email test <address>                    queue one test email
 //	console                                 the operator console (spec 07 §8; not built yet)
@@ -51,6 +52,7 @@ var modeHandlers = map[string]func(env *runEnv, args []string) error{
 	"verify":     runVerify,
 	"purge-user": runPurgeUser,
 	"invite":     runInvite,
+	"account":    runAccount,
 	"waitlist":   runWaitlist,
 	"email":      runEmail,
 	"console":    runConsole,

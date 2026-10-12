@@ -71,7 +71,7 @@ func TestRevokingASessionStopsThatDevicesNotifications(t *testing.T) {
 	pool := pgtest.New(t)
 	c := newClock()
 	sessions := newSessions(pool, time.Hour, c)
-	u := mustUpsert(t, pool, testIdentity("sub-push-revoke-session"))
+	u := newTestUser(t, pool)
 
 	phone, tablet := plantWriter(t, pool, u), plantWriter(t, pool, u)
 
@@ -115,8 +115,8 @@ func TestSignOutEverywhereStopsEveryDevicesNotifications(t *testing.T) {
 	c := newClock()
 	sessions := newSessions(pool, time.Hour, c)
 
-	a := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-a"))
-	b := mustUpsert(t, pool, testIdentity("sub-push-revoke-all-b"))
+	a := newTestUser(t, pool)
+	b := newTestUser(t, pool)
 
 	for _, u := range []uuid.UUID{a, b} {
 		d := plantWriter(t, pool, u)

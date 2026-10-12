@@ -1,6 +1,6 @@
 // Package purge deletes an account and everything that references it (spec
-// 02 §15), and owns ledgerd's account-deletion challenge until WS-3's step-up
-// replaces it.
+// 02 §15). Who may ask for it is the caller's business: the API's #41 checks
+// an account.delete step-up and a writer's signature, the CLI is the operator.
 //
 // # What "delete" means
 //
@@ -36,19 +36,16 @@ package purge
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
 	"time"
 
-	"filippo.io/edwards25519"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/salehtl/hasala/server/internal/auth"
+	"github.com/salehtl/hasala/server/internal/mailq"
 )
 
 // handledWithoutUserID names the relations that hold per-user rows under some
@@ -96,11 +93,19 @@ var notUserLinked = []string{
 	"public.deleted_account_sessions",
 	// goose's own migration ledger.
 	"public.goose_db_version",
+	// The account ceremonies' keyless tables (spec 02 §5.3, §15.3): pauses and
+	// counters keyed by an email_tag or a writer hash and swept within a day;
+	// device-freeze nonces, which name a writer id and no account; the key
+	// fingerprints.
+	"public.email_code_pauses",
+	"public.rate_counters",
+	"public.device_freeze_challenges",
+	"public.server_meta",
 	// Spec 07 §2.12: the bank catalog, and the waitlist with its tokens. An
 	// entry is an address that has not become an account (or, once joined, a
 	// tag with no address); the account's own joined entry and its mail rows
-	// are erased by the purge's address match (spec 02 §15.2 step 3, TODO for
-	// full parity), and the 30-day sweep deletes joined entries regardless.
+	// are erased by eraseAddress below, and the 30-day sweep deletes joined
+	// entries regardless.
 	"public.banks",
 	"public.waitlist_entries",
 	"public.waitlist_tokens",
@@ -137,6 +142,14 @@ type Report struct {
 	// nothing else in the system knows about. Spec §5 contemplates one; it
 	// should still be looked at.
 	RefreshedViews []string
+
+	// UnownedCodes is how many email codes to the account's address that
+	// belonged to no account (a signup's, a reset's) the purge deleted by
+	// their tag (spec 02 §15.2 step 2). Always 0 without a Tagger.
+	UnownedCodes int
+
+	// Goodbyes is how many `deleted` emails the purge queued (step 4).
+	Goodbyes int
 }
 
 func newReport() Report { return Report{Rows: map[string]int{}} }
@@ -472,16 +485,37 @@ func checkCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) err
 // the data the user asked to have deleted.
 
 func Purge(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (Report, error) {
+	return PurgeWith(ctx, pool, userID, Options{})
+}
+
+// Options are what the purging process holds beyond the database (spec 02
+// §15.2, §15.4).
+type Options struct {
+	// Tagger computes email_tag under the server's auth key. serve has one;
+	// the CLI and the console do not, and skip step 2 (the address's codes
+	// that belong to no account) and step 3's tag clause on joined waitlist
+	// entries. Those rows expire within 70 minutes and 30 days on their own.
+	Tagger mailq.Tagger
+	// Goodbye queues the `deleted` email to the account's address (step 4).
+	// The API and `purge-user` set it; a purge replayed after a restore does
+	// not.
+	Goodbye bool
+	// Now dates the goodbye; nil is time.Now.
+	Now func() time.Time
+}
+
+// PurgeWith is Purge with the steps that need more than the database.
+func PurgeWith(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, opts Options) (Report, error) {
 	if pool == nil {
 		return Report{}, errors.New("purge: pool is nil")
 	}
 	if userID == uuid.Nil {
 		return Report{}, errors.New("purge: user id is zero")
 	}
-	return purgeUsers(ctx, pool, []uuid.UUID{userID})
+	return purgeUsers(ctx, pool, []uuid.UUID{userID}, opts)
 }
 
-func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (Report, error) {
+func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts Options) (Report, error) {
 	rep := newReport()
 	if len(users) == 0 {
 		return rep, nil
@@ -522,12 +556,12 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (Rep
 	}
 
 	// The account's address also sits in rows that never carried its user_id
-	// (spec 02 §15.2 step 3, spec 07 §6.6): the signup code, the waitlist
-	// emails and the invite were sent before the account existed. A queued row
-	// to it is deleted, a sending one is suppressed without its address, a
-	// final one keeps only its hint and tag; and the account's joined waitlist
-	// entry goes now rather than in 30 days.
-	if err := eraseAddress(ctx, tx, users); err != nil {
+	// (spec 02 §15.2 steps 2 and 3, spec 07 §6.6, review 2 F-14): the signup
+	// code and the invite were sent before the account existed, and another
+	// account's notice may name it. The plaintext matches run for every
+	// caller, the tag matches only where the auth key is held, and then the
+	// goodbye is queued (step 4), all before the account row goes.
+	if err := eraseAddress(ctx, tx, users, opts, &rep); err != nil {
 		return rep, err
 	}
 
@@ -654,232 +688,84 @@ func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (in
 	return n, nil
 }
 
-// ---------------------------------------------------------------------------
-// The deletion challenge: spec §3.4's key-possession factor
-// ---------------------------------------------------------------------------
-
-const (
-	// ChallengeNonceBytes is the nonce width, pinned by a CHECK constraint.
-	ChallengeNonceBytes = 32
-	// ChallengeTTL is how long a deletion nonce is worth anything. Short: the
-	// client obtains one and signs it in the same user gesture.
-	ChallengeTTL = 5 * time.Minute
-	// challengeRetention is how long past expiry a spent nonce is kept before
-	// the opportunistic sweep removes it. What refuses a replay is used_at on
-	// the row, not the row's absence, so this only bounds table size.
-	challengeRetention = 24 * time.Hour
-
-	// deletionDomain separates this signature from every other one a device key
-	// makes. auth.RegistrationMessage and addresses.RotationMessage carry their
-	// own prefixes for the same reason: a signature captured from one flow must
-	// be worthless in another, and this is the flow where being wrong is
-	// unrecoverable.
-	//
-	// ledgerd's domain, because this is still ledgerd's message (nonce and
-	// user id). Spec 01 D16 gives hasala/v1/account-delete to the step-up
-	// format WS-3 builds; one domain never names two formats, so the domain
-	// changes with the format.
-	deletionDomain = "ledger/v2 account-delete\x00"
-)
-
-// ErrDeletionRejected is every authorization failure this package produces:
-// unknown nonce, spent nonce, expired nonce, a nonce belonging to another
-// account, a signature from an unenrolled or revoked key. They are one error on
-// purpose — the HTTP layer answers all of them identically, and a caller that
-// could tell them apart would learn whether a nonce exists and which factor it
-// still needs.
-var ErrDeletionRejected = errors.New("purge: deletion not authorized")
-
-// DeletionMessage is what a device key signs to authorize deleting an account:
-// a domain prefix, the nonce, and the account id.
+// eraseAddress is spec 02 §15.2 steps 2 to 4 for the accounts being purged:
+//   - step 2, with a Tagger: the email codes to the address that belong to no
+//     account (a signup's, a reset's) are deleted by their tag;
+//   - step 3: a queued mail_log row to the address is deleted, one being sent
+//     is suppressed without it, a final one keeps only its hint and tag; the
+//     account's joined waitlist entries go, found through the invite it
+//     redeemed and, with a Tagger, by the address's tag; a signup or
+//     email-change ceremony holding the address goes;
+//   - step 4, with Goodbye: the `deleted` email is queued to the address, with
+//     no account (the row must outlive it), and loses the address when its
+//     send is final (mailq, O-17).
 //
-// The encoding is unambiguous by construction: the prefix is fixed, the nonce
-// is always ChallengeNonceBytes (checked before this is ever called), and the
-// user id is a 36-character UUID string. Nothing here has a variable-length
-// tail that could be re-split.
-func DeletionMessage(nonce []byte, userID uuid.UUID) []byte {
-	msg := make([]byte, 0, len(deletionDomain)+len(nonce)+1+36)
-	msg = append(msg, deletionDomain...)
-	msg = append(msg, nonce...)
-	msg = append(msg, 0x00)
-	msg = append(msg, userID.String()...)
-	return msg
-}
-
-// Challenges mints and spends the single-use nonces that authorize a deletion.
-type Challenges struct {
-	Pool *pgxpool.Pool
-	// Now defaults to time.Now. One clock decides both minting and expiry, so
-	// the boundary is testable.
-	Now func() time.Time
-}
-
-func (c *Challenges) now() time.Time {
-	if c.Now != nil {
-		return c.Now()
+// It matches the account's current address only. An earlier address (before
+// an email change) stays in final mail_log rows that never carried the
+// account's id until the 30-day log sweep.
+func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Options, rep *Report) error {
+	type account struct {
+		id   uuid.UUID
+		addr string
+		tag  []byte
 	}
-	return time.Now()
-}
-
-// Issue mints a nonce. Obtaining one is exactly what a session token
-// authorizes and nothing more: the nonce is worthless without a signature from
-// an enrolled device key, and worthless again once spent.
-func (c *Challenges) Issue(ctx context.Context, userID uuid.UUID) ([]byte, error) {
-	if c.Pool == nil {
-		return nil, errors.New("purge: challenges: pool is nil")
-	}
-	if userID == uuid.Nil {
-		return nil, errors.New("purge: challenges: user id is zero")
-	}
-	nonce := make([]byte, ChallengeNonceBytes)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("purge: challenge: read random: %w", err)
-	}
-	now := c.now()
-	if _, err := c.Pool.Exec(ctx,
-		`INSERT INTO account_deletion_challenges (nonce, user_id, issued_at, expires_at)
-		 VALUES ($1,$2,$3,$4)`, nonce, userID, now, now.Add(ChallengeTTL)); err != nil {
-		return nil, fmt.Errorf("purge: challenge for user %s: %w", userID, err)
-	}
-	// Opportunistic, and a failure here is a housekeeping miss rather than a
-	// security event.
-	_, _ = c.Pool.Exec(ctx,
-		`DELETE FROM account_deletion_challenges WHERE expires_at < $1`, now.Add(-challengeRetention))
-	return nonce, nil
-}
-
-// Authorize spends a nonce and verifies the signature over
-// DeletionMessage(nonce, userID) under one of the account's enrolled, live
-// device keys.
-//
-// The nonce is spent by the ATTEMPT, not by the success, and before the
-// signature is looked at: otherwise one challenge would buy unlimited signature
-// guesses.
-//
-// There is no bootstrap path, by the same argument addresses.RotateAuthorized
-// makes: an account with no live device key cannot delete itself through this
-// endpoint. That is a locked door rather than a bug — the alternative is that a
-// stolen session token destroys a life's financial history — and the operator
-// path (ledgerd purge-user) exists for the user who has genuinely lost every
-// device.
-func (c *Challenges) Authorize(ctx context.Context, userID uuid.UUID, nonce, sig []byte) error {
-	if c.Pool == nil {
-		return errors.New("purge: challenges: pool is nil")
-	}
-	switch {
-	case userID == uuid.Nil:
-		return fmt.Errorf("%w: user id is zero", ErrDeletionRejected)
-	case len(nonce) != ChallengeNonceBytes:
-		return fmt.Errorf("%w: nonce is %d bytes, want %d", ErrDeletionRejected, len(nonce), ChallengeNonceBytes)
-	case len(sig) != ed25519.SignatureSize:
-		return fmt.Errorf("%w: signature is %d bytes, want %d", ErrDeletionRejected, len(sig), ed25519.SignatureSize)
-	}
-	if err := c.consume(ctx, userID, nonce); err != nil {
-		return err
-	}
-	keys, err := liveDeviceKeys(ctx, c.Pool, userID)
+	rows, err := tx.Query(ctx, `SELECT id, email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL ORDER BY id`, users)
 	if err != nil {
-		return err
+		return fmt.Errorf("purge: read the address: %w", err)
 	}
-	if !verifiedByAny(keys, DeletionMessage(nonce, userID), sig) {
-		return fmt.Errorf("%w: no enrolled device key verifies this signature", ErrDeletionRejected)
-	}
-	return nil
-}
-
-// consume spends a challenge atomically and exactly once. Same single UPDATE as
-// auth.Writers.consumeChallenge and addresses.consumeChallenge: a test-and-set
-// on one row identified by primary key, so two concurrent attempts on the same
-// nonce serialize on that row's lock and the loser matches nothing.
-func (c *Challenges) consume(ctx context.Context, userID uuid.UUID, nonce []byte) error {
-	var expires time.Time
-	err := c.Pool.QueryRow(ctx,
-		`UPDATE account_deletion_challenges SET used_at = $3
-		  WHERE nonce = $1 AND user_id = $2 AND used_at IS NULL
-		 RETURNING expires_at`, nonce, userID, c.now()).Scan(&expires)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: no unspent challenge for this account matches that nonce", ErrDeletionRejected)
-	}
+	accts, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (account, error) {
+		var a account
+		err := r.Scan(&a.id, &a.addr)
+		return a, err
+	})
 	if err != nil {
-		return fmt.Errorf("purge: consume deletion challenge: %w", err)
+		return fmt.Errorf("purge: read the address: %w", err)
 	}
-	// Expiry in Go against the injected clock, so an expired challenge is still
-	// CONSUMED rather than left on the table for unlimited retries.
-	if !c.now().Before(expires) {
-		return fmt.Errorf("%w: challenge expired", ErrDeletionRejected)
-	}
-	return nil
-}
-
-// liveDeviceKeys returns the keys that may authorize a deletion today: enrolled
-// device writers that have not been revoked. A revoked device must not be able
-// to delete the account, or revocation would mean nothing.
-func liveDeviceKeys(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) ([]ed25519.PublicKey, error) {
-	roster, err := (&auth.Writers{Pool: pool}).Roster(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("purge: read writer roster for user %s: %w", userID, err)
-	}
-	var keys []ed25519.PublicKey
-	for _, w := range roster {
-		if w.Live() && w.PubKey != nil {
-			keys = append(keys, ed25519.PublicKey(w.PubKey))
+	var tags [][]byte
+	if opts.Tagger != nil {
+		for i := range accts {
+			accts[i].tag = opts.Tagger.EmailTag(accts[i].addr)
+			tags = append(tags, accts[i].tag)
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM email_codes WHERE user_id IS NULL AND email_tag = ANY($1::bytea[])`, tags)
+		if err != nil {
+			return fmt.Errorf("purge: delete the address's codes: %w", err)
+		}
+		rep.UnownedCodes = int(tag.RowsAffected())
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM waitlist_entries WHERE state = 'joined' AND email_tag = ANY($1::bytea[])`, tags); err != nil {
+			return fmt.Errorf("purge: erase the address: %w", err)
 		}
 	}
-	return keys, nil
-}
-
-// usableKey rejects a public key under which a valid signature would prove
-// possession of nothing.
-//
-// A length check is not enough. The Ed25519 identity point and the other
-// small-order points are valid encodings under which crypto/ed25519 accepts a
-// fixed 64-byte forgery for EVERY message — nobody needs a private key to write
-// those bytes down. A writer enrolled with one would be a writer whose account
-// any session holder could delete.
-//
-// auth.checkPublicKey screens keys at enrollment, so a roster key reaching here
-// has already passed this. It is repeated for the same reason
-// addresses.usableKey repeats it: those helpers are unexported, and a key read
-// back OUT of the roster — planted by a repair script, or enrolled before that
-// screen existed — must not authorize anything either. The three copies cannot
-// drift into disagreement because the test is a fixed mathematical fact rather
-// than a policy: multiply by the cofactor, reject the identity.
-func usableKey(pub ed25519.PublicKey) bool {
-	if len(pub) != ed25519.PublicKeySize {
-		return false
-	}
-	p, err := new(edwards25519.Point).SetBytes(pub)
-	if err != nil {
-		return false
-	}
-	return new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) != 1
-}
-
-func verifiedByAny(keys []ed25519.PublicKey, msg, sig []byte) bool {
-	for _, k := range keys {
-		if usableKey(k) && ed25519.Verify(k, msg, sig) {
-			return true
-		}
-	}
-	return false
-}
-
-// eraseAddress is the plaintext-address half of a purge (spec 07 §6.6).
-func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID) error {
+	const addrs = `(SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`
 	for _, q := range []string{
-		`DELETE FROM mail_log WHERE status = 'queued'
-		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
-		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now()
-		  WHERE status = 'sending'
-		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
-		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL
-		    AND recipient IN (SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`,
+		`DELETE FROM mail_log WHERE status = 'queued' AND recipient IN ` + addrs,
+		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now(), error = 'purged'
+		  WHERE status = 'sending' AND recipient IN ` + addrs,
+		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL AND recipient IN ` + addrs,
 		`DELETE FROM waitlist_entries WHERE state = 'joined'
 		    AND id IN (SELECT waitlist_entry_id FROM invite_codes WHERE redeemed_by = ANY($1))`,
+		`DELETE FROM signup_ceremonies WHERE email_norm IN ` + addrs,
+		`DELETE FROM email_change_ceremonies WHERE new_email_norm IN ` + addrs,
 	} {
 		if _, err := tx.Exec(ctx, q, users); err != nil {
 			return fmt.Errorf("purge: erase the address: %w", err)
 		}
+	}
+	if !opts.Goodbye {
+		return nil
+	}
+	now := time.Now
+	if opts.Now != nil {
+		now = opts.Now
+	}
+	q := mailq.New(nil, nil, opts.Tagger)
+	for _, a := range accts {
+		if _, err := q.EnqueueTx(ctx, tx, mailq.Enqueue{Kind: "deleted", Lane: mailq.LaneTransactional, To: a.addr,
+			Tag: a.tag, Params: map[string]any{"deleted_at": now().UTC().Format(time.RFC3339Nano)}}); err != nil {
+			return fmt.Errorf("purge: queue the goodbye: %w", err)
+		}
+		rep.Goodbyes++
 	}
 	return nil
 }

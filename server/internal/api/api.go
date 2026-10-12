@@ -81,6 +81,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -96,7 +97,6 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/oplog"
-	"github.com/salehtl/hasala/server/internal/purge"
 )
 
 // Request-shaping limits. They bound what one caller can make the server hold
@@ -199,11 +199,10 @@ type Server struct {
 	StepUp      *auth.StepUp
 	AccountKeys *auth.AccountKeys
 
-	// Deletion owns ledgerd's account-deletion challenge lane until WS-3's
-	// step-up replaces it. NEVER nil and ALWAYS mounted: App Review 5.1.1(v)
-	// requires in-app deletion. Handler fills it in when a Server was built
-	// field-by-field.
-	Deletion *purge.Challenges
+	// Accounts owns signup, passwords, recovery, resets, email change and
+	// freeze (spec 02 §10.4, §10.7–§10.13). Nil means those routes are NOT
+	// mounted: they need the server's key files (spec 01 §4.11).
+	Accounts *auth.Accounts
 
 	// Passkeys is the WebAuthn relying party. Nil means the passkey routes are
 	// NOT MOUNTED: a deployment that has not been told its own domain
@@ -236,6 +235,16 @@ type Server struct {
 	SyncUploadBytes *Limiter
 	// MetaPerIP is GET /api/v1/meta's meta-ip.
 	MetaPerIP *Limiter
+	// The account routes' limiters (spec 02 §16.2). Sign-in uses PasskeyPerIP
+	// and PasskeyGlobal, which are signin-ip and signin-global.
+	RecoverPerIP    *Limiter
+	CodePerIP       *Limiter
+	ResetPerIP      *Limiter
+	FreezePerIP     *Limiter
+	FreezeGlobal    *Limiter
+	DevFreezeIP     *Limiter
+	DevFreezeWriter *Limiter
+	DevFreezeGlobal *Limiter
 
 	// Meta is what GET /api/v1/meta reports (meta.go).
 	Meta Meta
@@ -245,9 +254,13 @@ type Server struct {
 	// Gmail, when set, mounts the mailbox link and the Pub/Sub hook
 	// (routes_mailboxlink.go, routes_hooks.go).
 	Gmail *GmailOptions
-	// Web, when set, mounts spec 07's website routes: the waitlist and bank
-	// requests (routes_waitlist.go, routes_bankrequests.go).
+	// Web, when set, mounts spec 07's website routes: the waitlist and the
+	// anonymous bank request (routes_waitlist.go, routes_bankrequests.go).
+	// The app's signed-in bank request is mounted either way.
 	Web *WebOptions
+	// BankUser is the signed-in bank request's per-account limiter (spec 07
+	// §5.9); Handler fills it in (Web.BankUser when set).
+	BankUser *Limiter
 
 	// Headroom is the box-level disk fuse (internal/headroom). When it is
 	// tripped every non-read request is refused with a temporary 503 while
@@ -288,7 +301,6 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		Sessions: &auth.Sessions{Pool: pool, TTL: cfg.Auth.SessionIdle},
 		Writers:  &auth.Writers{Pool: pool},
 		Appender: &oplog.Appender{Pool: pool},
-		Deletion: &purge.Challenges{Pool: pool, Now: now},
 		Now:      now,
 
 		TrustCloudflare: cfg.Server.TrustedProxy == config.ProxyCloudflare,
@@ -311,6 +323,7 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	s.Writers.StepUp = s.StepUp
 	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
+	s.Sessions.Max = cfg.Auth.SessionMax
 	return s, nil
 }
 
@@ -319,6 +332,15 @@ func (s *Server) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+// route is what a log line names a request by: the matched route pattern
+// (spec 02 §20), never the path, which can carry ids.
+func route(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+	return r.Method + " (unmatched)"
 }
 
 func (s *Server) logf(format string, args ...any) {
@@ -359,9 +381,6 @@ func (s *Server) Handler() http.Handler {
 	if s.MetaPerIP == nil {
 		s.MetaPerIP = NewLimiter(metaRate, metaBurst, metaMaxKeys, s.now)
 	}
-	if s.Deletion == nil {
-		s.Deletion = &purge.Challenges{Pool: s.Pool, Now: s.now}
-	}
 	if s.StepUpPerUser == nil {
 		s.StepUpPerUser = NewLimiter(stepUpRate, stepUpBurst, stepUpMaxKeys, s.now)
 	}
@@ -386,6 +405,7 @@ func (s *Server) Handler() http.Handler {
 	if s.PullByteBudget <= 0 {
 		s.PullByteBudget = pullByteBudget
 	}
+	s.defaultAccountLimiters()
 
 	mux := http.NewServeMux()
 	// Unauthenticated and unconditional. See health.go for why it pings the
@@ -489,76 +509,88 @@ func (s *Server) mountSync(mux *http.ServeMux) {
 type authedHandler func(w http.ResponseWriter, r *http.Request, userID uuid.UUID)
 
 // requireSession resolves the bearer token and hands the handler the user id it
-// names.
+// names; the whole session is in the request's context (sessionInfo). It
+// refuses a frozen account and a restricted session (403 account_frozen,
+// spec 02 §9.8); requireSessionFrozenOK is for the few routes §9.8 admits.
 //
-// EVERY rejection — absent header, wrong scheme, unknown token, expired token,
-// revoked token — produces the identical 401: same status, same body, same
-// headers. auth returns distinct sentinels for these on purpose (they are
-// useful in a log, and "expired" or "revoked" confirms the token was once real
-// where "unknown" does not), and telling them apart in a RESPONSE is an oracle.
-// The reason goes to the operator log instead.
+// EVERY rejection — absent header, wrong scheme, unknown token, expired, idle
+// or revoked token — produces the identical 401. auth returns distinct
+// sentinels (useful in a log); telling them apart in a RESPONSE is an oracle.
+// The one deliberate exception is a deleted account's token: 410
+// account_deleted, the only wipe signal.
 //
 // A failure that is not a rejection — the database is unreachable — is a 500,
-// not a 401: reporting infrastructure trouble as "your credential is invalid"
-// sends a user off to re-authenticate for no reason.
+// not a 401.
 func (s *Server) requireSession(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, false, false)
+}
+
+// requireSessionFrozenOK is requireSession for GET /account and unfreeze.
+func (s *Server) requireSessionFrozenOK(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, true, false)
+}
+
+// requireSessionSuspendedOK is requireSession for DELETE /account and its
+// challenge, which a suspended account keeps (spec 02 §9.6, AT-DEL-3).
+func (s *Server) requireSessionSuspendedOK(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, false, true)
+}
+
+// requireSessionForStepUpBegin admits a frozen and a suspended account; the
+// handler then allows account.unfreeze only while frozen and account.delete
+// only while suspended (spec 02 §9.6, §9.8).
+func (s *Server) requireSessionForStepUpBegin(h authedHandler) http.HandlerFunc {
+	return s.sessionGate(h, true, true)
+}
+
+type sessionCtxKey struct{}
+
+func (s *Server) sessionGate(h authedHandler, frozenOK, suspendedOK bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r)
 		if !ok {
-			s.logf("api: %s %s: no bearer token", r.Method, r.URL.Path)
+			s.logf("api: %s: no bearer token", route(r))
 			writeUnauthorized(w)
 			return
 		}
-		userID, err := s.Sessions.Resolve(r.Context(), token)
+		info, err := s.Sessions.Info(r.Context(), token)
 		if err != nil {
-			// Checked BEFORE the collapse below, which it wraps. This is the
-			// one rejection that is deliberately distinguishable, and it has to
-			// be: a client may only wipe its local ledger on "there is nothing
-			// to sign in to", never on "sign in again". Wiping on a 401 would
-			// fire on every routine token expiry and destroy an offline user's
-			// outbox, so the two must not be the same answer.
-			//
-			// It is not an oracle: it is a fact about an account that no longer
-			// exists, offered only to a caller who already holds that account's
-			// session token. See auth.ErrSessionAccountDeleted and the
-			// deleted_account_sessions table.
 			if errors.Is(err, auth.ErrSessionAccountDeleted) {
-				s.logf("api: %s %s: session belongs to a deleted account", r.Method, r.URL.Path)
+				s.logf("api: %s: session belongs to a deleted account", route(r))
 				writeAccountDeleted(w)
 				return
 			}
 			if errors.Is(err, auth.ErrSessionInvalid) {
-				// The reason is logged, never returned.
-				s.logf("api: %s %s: session rejected: %v", r.Method, r.URL.Path, err)
+				s.logf("api: %s: session rejected: %v", route(r), err)
 				writeUnauthorized(w)
 				return
 			}
-			s.logf("api: %s %s: resolve session: %v", r.Method, r.URL.Path, err)
+			s.logf("api: %s: resolve session: %v", route(r), err)
 			writeErr(w, http.StatusInternalServerError, "internal", "")
 			return
 		}
-		// Suspension (design P3). Non-read methods only: a suspended account's
-		// devices keep pulling, listing and comparing hashes, deliberately, so
-		// a pause never looks like data loss. Sign-in is outside this
-		// middleware and stays open for the same reason — a read-only device
-		// still needs a session. See guards.go.
-		if !isRead(r.Method) {
-			suspended, err := s.accountSuspended(r.Context(), userID)
-			if err != nil {
-				// Not a 403. "We could not read your status" is infrastructure
-				// trouble, and answering it as a suspension would tell a user
-				// their account was paused by an operator who did nothing.
-				s.logf("api: %s %s: account status for %s: %v", r.Method, r.URL.Path, userID, err)
-				writeErr(w, http.StatusInternalServerError, "internal", "")
-				return
-			}
-			if suspended {
-				s.logf("api: %s %s: refused, account %s is suspended", r.Method, r.URL.Path, userID)
-				writeAccountSuspended(w)
-				return
-			}
+		userID := info.UserID
+		st, err := s.accountStatus(r.Context(), userID)
+		if err != nil {
+			s.logf("api: %s: account status for %s: %v", route(r), userID, err)
+			writeErr(w, http.StatusInternalServerError, "internal", "")
+			return
 		}
-		h(w, r, userID)
+		// A frozen account, or a restricted session, reaches only §9.8's list.
+		if !frozenOK && (st.Frozen || info.Restricted) {
+			s.logf("api: %s: refused, the account is frozen", route(r))
+			writeErr(w, http.StatusForbidden, "account_frozen", "")
+			return
+		}
+		// Suspension (spec 02 §9.6): non-read methods only, so a pause never
+		// looks like data loss, and account deletion stays open. Sign-in and
+		// logout are outside this middleware.
+		if !isRead(r.Method) && st.Suspended && !suspendedOK {
+			s.logf("api: %s: refused, the account is suspended", route(r))
+			writeAccountSuspended(w)
+			return
+		}
+		h(w, r.WithContext(context.WithValue(r.Context(), sessionCtxKey{}, info)), userID)
 	}
 }
 

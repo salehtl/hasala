@@ -1,8 +1,9 @@
 package main
 
 // wire.go builds what serve runs beside the API: the APNs dispatcher, the
-// Gmail link and hook, the email queue and its worker, and spec 07's website
-// routes, each from its own configuration group, plus their sweeps.
+// Gmail link and hook, the account ceremonies (with the server keys), the one
+// email queue and its worker, and spec 07's website routes, each from its own
+// configuration group, plus their sweeps.
 
 import (
 	"context"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/api"
+	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/gmailpush"
@@ -36,6 +38,30 @@ func readSecret(name, path string) (string, error) {
 		return "", refusal{fmt.Errorf("%s: %w", name, err)}
 	}
 	return string(b), nil
+}
+
+// newSender is the [email] group's sender: Cloudflare Email Service, at
+// HASALA_EMAIL_API_BASE_URL when set (config refuses a non-default base
+// behind Cloudflare: it is a local end-to-end run's capture server), or
+// mail.Unconfigured without the group.
+func newSender(cfg config.Config) (mail.Sender, error) {
+	if !cfg.Email.Enabled() {
+		slog.Warn("hasalad serve: the [email] group is not configured: every email fails and the waitlist routes are not mounted")
+		return mail.Unconfigured{}, nil
+	}
+	tok, err := readSecret("HASALA_EMAIL_API_TOKEN_FILE", cfg.Email.APITokenFile)
+	if err != nil {
+		return nil, err
+	}
+	cf, err := mail.NewCloudflare(cfg.Email.CloudflareAccountID, strings.TrimSpace(tok), cfg.Email.From)
+	if err != nil {
+		return nil, refusal{err}
+	}
+	if cfg.Email.APIBaseURL != "" && cfg.Email.APIBaseURL != mail.DefaultBaseURL {
+		cf.BaseURL = cfg.Email.APIBaseURL
+		slog.Warn("hasalad serve: email goes to a non-default API base (HASALA_EMAIL_API_BASE_URL); local runs only")
+	}
+	return cf, nil
 }
 
 // extras is what wireExtras started; stop waits for its goroutines.
@@ -110,25 +136,27 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	// ends `failed` in the log rather than `sent`, and the website routes are
 	// not mounted: a sign-up whose confirmation can never arrive is worse than
 	// no form.
-	var sender mail.Sender
-	if cfg.Email.Enabled() {
-		tok, err := readSecret("HASALA_EMAIL_API_TOKEN_FILE", cfg.Email.APITokenFile)
-		if err != nil {
-			return nil, err
-		}
-		cf, err := mail.NewCloudflare(cfg.Email.CloudflareAccountID, strings.TrimSpace(tok), cfg.Email.From)
-		if err != nil {
-			return nil, refusal{err}
-		}
-		sender = cf
-	} else {
-		sender = mail.Unconfigured{}
-		slog.Warn("hasalad serve: the [email] group is not configured: every email fails and the waitlist routes are not mounted")
+	sender, err := newSender(cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	// The auth key's email_tag is what the waitlist and the queue key on.
+	// The server keys (spec 01 §4.11). Both files mount the account
+	// ceremonies (signup, passwords, recovery, resets, email change, freeze);
+	// the auth key alone still gives the waitlist and the queue their
+	// email_tag. Both derive K_tag identically, so the tags agree.
+	keys, err := loadAuthKeys(cfg)
+	if err != nil {
+		return nil, refusal{err}
+	}
 	var tagger mailq.Tagger
-	if cfg.Auth.AuthKeyFile != "" {
+	switch {
+	case keys != nil:
+		if err := checkKeyIDs(ctx, pool, keys); err != nil {
+			return nil, refusal{err}
+		}
+		tagger = keys
+	case cfg.Auth.AuthKeyFile != "":
 		raw, err := readSecret("HASALA_AUTH_KEY_FILE", cfg.Auth.AuthKeyFile)
 		if err != nil {
 			return nil, err
@@ -144,15 +172,44 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		tagger = t
 	}
 
+	// One queue, one worker and one log for every email this server sends.
 	q := mailq.New(pool, sender, tagger)
 	q.Rates = map[mailq.Lane]int{mailq.LaneWaitlist: int(cfg.Web.RateWaitlist), mailq.LaneBulk: int(cfg.Web.RateBulk)}
 	q.Retention = cfg.Web.LogRetention
 	q.Register("test", mailq.TestRenderer)
+	q.Register("deleted", mailq.DeletedRenderer)
 	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true})
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
 	wl.Register(q)
+	if keys != nil {
+		logf := func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) }
+		mailer := &auth.Mailer{Queue: q, Keys: keys, FreezeURL: cfg.Email.FreezeURL, Logf: logf}
+		mailer.Register(q)
+		gate := authkeys.NewGate(cfg.Auth.PasswordHashConcurrency, authkeys.DefaultGateQueue, authkeys.DefaultGateWait)
+		srv.EnableAccounts(keys, gate, mailer)
+		a := srv.Accounts
+		ex.done = append(ex.done,
+			startSweepEvery(ctx, "account ceremony sweep", ceremonySweepInterval, func(ctx context.Context) (string, error) {
+				n, err := a.SweepCeremonies(ctx)
+				if err != nil || n == 0 {
+					return "", err
+				}
+				return fmt.Sprintf("swept %d expired ceremony(s)", n), nil
+			}),
+			startSweep(ctx, "account sweep", func(ctx context.Context) (string, error) {
+				n, err := a.SweepHourly(ctx)
+				if err != nil || n == 0 {
+					return "", err
+				}
+				return fmt.Sprintf("swept %d row(s)", n), nil
+			}),
+		)
+	} else {
+		slog.Warn("hasalad serve: HASALA_AUTH_KEY_FILE and HASALA_SALT_KEY_FILE are not both set: " +
+			"signup, password, recovery, reset, email-change and freeze routes are NOT mounted")
+	}
 	if tagger != nil {
 		if cfg.Email.Enabled() {
 			srv.Web = &api.WebOptions{Waitlist: wl, Origins: cfg.Web.Origins, DoneURL: cfg.Web.DoneURL}

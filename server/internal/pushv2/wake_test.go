@@ -195,8 +195,8 @@ func TestDispatcherResolvesTokensAndForgetsGoneOnes(t *testing.T) {
 		oplogtest.NewWriter(t, pool, user, writer)
 		var hash []byte
 		if err := pool.QueryRow(bg,
-			`INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
-			 VALUES (sha256($1::bytea), $2, now(), now() + interval '1 hour') RETURNING token_hash`,
+			`INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
+			 VALUES (sha256($1::bytea), $2, 'login', now(), now(), now() + interval '1 hour') RETURNING token_hash`,
 			[]byte(writer), user).Scan(&hash); err != nil {
 			t.Fatal(err)
 		}

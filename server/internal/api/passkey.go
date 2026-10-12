@@ -52,7 +52,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/auth"
-	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -77,11 +76,10 @@ const (
 // C_reg = SHA256("hasala/v1/register" ‖ 00 ‖ nonce ‖ authority_pubkey) (spec
 // 01 §10.3, D01; spec 02 #3).
 //
-// invite_link_key is optional: the 43-character b64url fragment of the invite
-// link (spec 02 §14.1, `07` §4.4). An addressed invite is refused without it.
+// signup_id names a signup that #43/#44 proved (spec 02 §10.7): the invite,
+// its address binding and its link key were checked there.
 type PasskeyRegisterBeginRequest struct {
-	InviteCode      string `json:"invite_code"`
-	InviteLinkKey   string `json:"invite_link_key,omitempty"`
+	SignupID        string `json:"signup_id"`
 	AuthorityPubkey string `json:"authority_pubkey"`
 }
 
@@ -166,21 +164,13 @@ func (s *Server) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Reque
 		writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not base64")
 		return
 	}
-	var linkKey []byte
-	if req.InviteLinkKey != "" {
-		linkKey, err = base64.RawURLEncoding.DecodeString(req.InviteLinkKey)
-		if err != nil || len(req.InviteLinkKey) != 43 || len(linkKey) != invites.LinkKeyBytes {
-			writeErr(w, http.StatusBadRequest, "bad_request", "invite_link_key must be 43 b64url characters")
-			return
-		}
-	}
-	id, opts, nonce, err := s.Passkeys.BeginRegistrationLinked(r.Context(), req.InviteCode, linkKey, authority)
+	id, opts, nonce, err := s.Passkeys.BeginRegistration(r.Context(), req.SignupID, authority)
 	if err != nil {
 		if errors.Is(err, auth.ErrBadAuthorityKey) {
 			writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not a usable Ed25519 public key")
 			return
 		}
-		s.writePasskeyError(w, r, "register/begin", err)
+		s.writePasskeyError(w, r, err)
 		return
 	}
 	raw, err := json.Marshal(opts)
@@ -197,12 +187,13 @@ func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Requ
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
-	userID, credID, err := s.Passkeys.FinishRegistration(r.Context(), req.CeremonyID, req.Credential)
+	out, err := s.Passkeys.FinishRegistrationSession(r.Context(), req.CeremonyID, req.Credential, s.Sessions)
 	if err != nil {
-		s.writePasskeyError(w, r, "register/finish", err)
+		s.writePasskeyError(w, r, err)
 		return
 	}
-	s.writeSession(w, r, userID, credID)
+	writeJSON(w, http.StatusCreated, SessionMintResponse{SessionToken: out.Session.Token, UserID: out.UserID.String(),
+		ExpiresAt: out.Session.ExpiresAt.UTC()})
 }
 
 func (s *Server) handlePasskeyLoginBegin(w http.ResponseWriter, r *http.Request) {
@@ -211,23 +202,60 @@ func (s *Server) handlePasskeyLoginBegin(w http.ResponseWriter, r *http.Request)
 	// `{}` and a client that posts nothing are both correct here.
 	id, opts, err := s.Passkeys.BeginLogin(r.Context())
 	if err != nil {
-		s.writePasskeyError(w, r, "login/begin", err)
+		s.writePasskeyError(w, r, err)
 		return
 	}
 	s.writeBegin(w, r, id, opts)
 }
 
 func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
-	var req PasskeyFinishRequest
+	var req PasskeyLoginFinishRequest
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
-	userID, credID, err := s.Passkeys.FinishLogin(r.Context(), req.CeremonyID, req.Credential)
-	if err != nil {
-		s.writePasskeyError(w, r, "login/finish", err)
+	device, ok := decodeDevice(w, req.Device)
+	if !ok {
 		return
 	}
-	s.writeSession(w, r, userID, credID)
+	out, err := s.accounts().PasskeyLoginFinish(r.Context(), req.CeremonyID, req.Credential, device)
+	if err != nil {
+		s.writePasskeyError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, signInResponse(out))
+}
+
+// PasskeyLoginFinishRequest is #6's body.
+type PasskeyLoginFinishRequest struct {
+	CeremonyID string          `json:"ceremony_id"`
+	Credential json.RawMessage `json:"credential"`
+	Device     *DeviceWire     `json:"device"`
+}
+
+// DeviceWire is a sign-in's {writer_id, sig}: the DWK over SessionBindMessage.
+type DeviceWire struct {
+	WriterID string `json:"writer_id"`
+	Sig      string `json:"sig"` // b64, 64 bytes
+}
+
+func decodeDevice(w http.ResponseWriter, d *DeviceWire) (*auth.DeviceBinding, bool) {
+	if d == nil {
+		return nil, true
+	}
+	sig, ok := b64Field(w, d.Sig, "device.sig")
+	if !ok {
+		return nil, false
+	}
+	return &auth.DeviceBinding{WriterID: d.WriterID, Sig: sig}, true
+}
+
+// accounts is the account service, or a bare one (no keys, no mail) for the
+// passkey sign-in when the account ceremonies are not enabled.
+func (s *Server) accounts() *auth.Accounts {
+	if s.Accounts != nil {
+		return s.Accounts
+	}
+	return &auth.Accounts{Pool: s.Pool, Sessions: s.Sessions, Passkeys: s.Passkeys, StepUp: s.StepUp, Now: s.Now}
 }
 
 func (s *Server) handlePasskeyAddBegin(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
@@ -252,7 +280,7 @@ func (s *Server) handlePasskeyAddBegin(w http.ResponseWriter, r *http.Request, u
 	}
 	id, opts, err := s.Passkeys.AddBegin(r.Context(), info, su)
 	if err != nil {
-		s.writePasskeyAddErr(w, r, "add/begin", err)
+		s.writePasskeyAddErr(w, r, err)
 		return
 	}
 	s.writeBegin(w, r, id, opts)
@@ -290,7 +318,7 @@ func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, 
 	}
 	credID, err := s.Passkeys.AddFinish(r.Context(), info, add)
 	if err != nil {
-		s.writePasskeyAddErr(w, r, "add/finish", err)
+		s.writePasskeyAddErr(w, r, err)
 		return
 	}
 	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
@@ -300,9 +328,9 @@ func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, 
 // writePasskeyAddErr answers the add routes: a ceremony rejection is the
 // package's one 401 (writePasskeyError), and everything else (step-up, writer
 // binding, a bad signature, a malformed wrap) is spec 02 §6.3's code.
-func (s *Server) writePasskeyAddErr(w http.ResponseWriter, r *http.Request, step string, err error) {
+func (s *Server) writePasskeyAddErr(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, auth.ErrPasskeyRejected) {
-		s.writePasskeyError(w, r, step, err)
+		s.writePasskeyError(w, r, err)
 		return
 	}
 	s.writeKeyErr(w, r, err)
@@ -314,32 +342,11 @@ func (s *Server) writePasskeyAddErr(w http.ResponseWriter, r *http.Request, step
 func (s *Server) writeBegin(w http.ResponseWriter, r *http.Request, ceremonyID string, opts any) {
 	raw, err := json.Marshal(opts)
 	if err != nil {
-		s.logf("api: %s %s: marshal ceremony options: %v", r.Method, r.URL.Path, err)
+		s.logf("api: %s: marshal ceremony options: %v", route(r), err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
 	writeJSON(w, http.StatusOK, PasskeyBeginResponse{CeremonyID: ceremonyID, Options: raw})
-}
-
-// SessionResponse carries a session token, returned exactly once, at the end
-// of a passkey ceremony.
-type SessionResponse struct {
-	SessionToken string `json:"session_token"`
-	UserID       string `json:"user_id"`
-}
-
-// writeSession issues the session a completed sign-in earns, ATTRIBUTED to the
-// credential that just finished the ceremony (sessions.credential_id). Both
-// callers — register/finish and login/finish — genuinely know it, because
-// go-webauthn returns the credential it verified and auth returns it upward.
-func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, userID uuid.UUID, credID []byte) {
-	token, err := s.Sessions.IssueForCredential(r.Context(), userID, credID)
-	if err != nil {
-		s.logf("api: %s %s: issue session: %v", r.Method, r.URL.Path, err)
-		writeErr(w, http.StatusInternalServerError, "internal", "")
-		return
-	}
-	writeJSON(w, http.StatusOK, SessionResponse{SessionToken: token, UserID: userID.String()})
 }
 
 // writePasskeyError is the single translation point, so no handler can invent a
@@ -351,17 +358,7 @@ func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, userID uui
 // not a rejection (the database is unreachable) is a 500, on the same reasoning
 // requireSession applies: reporting infrastructure trouble as "your credential is
 // invalid" sends a user off to re-authenticate for no reason.
-func (s *Server) writePasskeyError(w http.ResponseWriter, r *http.Request, step string, err error) {
-	switch {
-	case errors.Is(err, auth.ErrNotInvited):
-		s.logf("api: passkey %s: not invited", step)
-		writeErr(w, http.StatusForbidden, "not_invited", "")
-	case errors.Is(err, auth.ErrPasskeyRejected):
-		// The reason is logged, never returned.
-		s.logf("api: passkey %s: rejected: %v", step, err)
-		writeUnauthorized(w)
-	default:
-		s.logf("api: passkey %s: %v", step, err)
-		writeErr(w, http.StatusInternalServerError, "internal", "")
-	}
+func (s *Server) writePasskeyError(w http.ResponseWriter, r *http.Request, err error) {
+	s.writeKeyErr(w, r, err) // which logs the route and the reason, once
+
 }

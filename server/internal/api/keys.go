@@ -94,6 +94,29 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, userID 
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
 	}
+	b, ok := decodeBootstrap(w, req)
+	if !ok {
+		return
+	}
+	su, ok := decodeStepUp(w, req.StepUp)
+	if !ok {
+		return
+	}
+	b.StepUp = su
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	out, err := s.AccountKeys.Bootstrap(r.Context(), info, b)
+	if err != nil {
+		s.writeKeyErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, BootstrapResponse{WriterID: out.WriterID, CurrentEpoch: out.CurrentEpoch})
+}
+
+// decodeBootstrap decodes the §10.1 fields (everything but step_up).
+func decodeBootstrap(w http.ResponseWriter, req BootstrapRequest) (auth.Bootstrap, bool) {
 	b := auth.Bootstrap{FormatVersion: req.FormatVersion, AuthKind: req.AuthKind}
 	for _, f := range []struct {
 		dst   *[]byte
@@ -115,7 +138,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, userID 
 	} {
 		v, ok := b64Field(w, f.value, f.name)
 		if !ok {
-			return
+			return auth.Bootstrap{}, false
 		}
 		*f.dst = v
 	}
@@ -123,27 +146,13 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, userID 
 	if req.PRFWrap != nil {
 		cred, ok := b64urlField(w, req.PRFWrap.CredentialID, "prf_wrap.credential_id")
 		if !ok {
-			return
+			return auth.Bootstrap{}, false
 		}
 		wrap, ok := b64Field(w, req.PRFWrap.Wrap, "prf_wrap.wrap")
 		if !ok {
-			return
+			return auth.Bootstrap{}, false
 		}
 		b.PRFCredentialID, b.PRFWrap, b.PRFWrapVersion = cred, wrap, req.PRFWrap.WrapVersion
 	}
-	su, ok := decodeStepUp(w, req.StepUp)
-	if !ok {
-		return
-	}
-	b.StepUp = su
-	info, ok := s.sessionInfo(w, r)
-	if !ok {
-		return
-	}
-	out, err := s.AccountKeys.Bootstrap(r.Context(), info, b)
-	if err != nil {
-		s.writeKeyErr(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, BootstrapResponse{WriterID: out.WriterID, CurrentEpoch: out.CurrentEpoch})
+	return b, true
 }

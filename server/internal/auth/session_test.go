@@ -6,33 +6,29 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
+// newSessions is a store whose idle window and absolute cap are both ttl.
 func newSessions(pool *pgxpool.Pool, ttl time.Duration, c *clock) *Sessions {
-	return &Sessions{Pool: pool, TTL: ttl, Now: c.now}
+	return &Sessions{Pool: pool, TTL: ttl, Max: ttl, Now: c.now}
 }
 
-func mustUpsert(t *testing.T, pool *pgxpool.Pool, id Identity) uuid.UUID {
+// newTestUser creates an account row (and its oplog_seq row) the way the
+// fixtures of every package do.
+func newTestUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
-	u, err := UpsertUser(bgctx, pool, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return u
+	return oplogtest.NewUserWithoutKeys(t, pool)
 }
-
-func testIdentity(sub string) Identity { return Identity{IdP: IdPPasskey, Subject: sub} }
 
 // ---------------------------------------------------------------------------
 // Session tokens
@@ -40,7 +36,7 @@ func testIdentity(sub string) Identity { return Identity{IdP: IdPPasskey, Subjec
 
 func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-clear"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -78,7 +74,7 @@ func TestSessionTokenIsNeverStoredInTheClear(t *testing.T) {
 // shrink that.
 func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-entropy"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -104,7 +100,7 @@ func TestIssuedTokensAreDistinctAnd32BytesOfEntropy(t *testing.T) {
 
 func TestExpiredSessionIsRejected(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-expiry"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Minute, c)
 
@@ -124,14 +120,85 @@ func TestExpiredSessionIsRejected(t *testing.T) {
 	// Every rejection reason must also satisfy the general predicate, so a
 	// caller can write one check and not accidentally admit a revoked or
 	// expired session by matching only the unknown-token case.
-	if !errors.Is(err, ErrSessionInvalid) {
-		t.Fatal("ErrSessionExpired must wrap ErrSessionInvalid")
+	if !errors.Is(err, ErrSessionInvalid) || !errors.Is(ErrSessionIdle, ErrSessionInvalid) {
+		t.Fatal("ErrSessionExpired and ErrSessionIdle must wrap ErrSessionInvalid")
+	}
+}
+
+// Spec 02 §9.2: the idle window slides with use (at most one write per
+// session-hour) up to the absolute cap, which nothing extends.
+func TestSessionsSlideUpToTheirAbsoluteCap(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newTestUser(t, pool)
+	c := newClock()
+	s := &Sessions{Pool: pool, TTL: 30 * 24 * time.Hour, Max: 90 * 24 * time.Hour, Now: c.now}
+	tok, err := s.Issue(bgctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := c.now()
+	// Used every 20 days: it never idles out, until the 90-day cap.
+	for i := 0; i < 4; i++ {
+		c.advance(20 * 24 * time.Hour)
+		info, err := s.Info(bgctx, tok)
+		if err != nil {
+			t.Fatalf("day %d: %v", 20*(i+1), err)
+		}
+		if !info.LastUsedAt.Equal(c.now()) {
+			t.Fatalf("last_used_at did not move: %v", info.LastUsedAt)
+		}
+		if !info.ExpiresAt.Equal(created.Add(90 * 24 * time.Hour)) {
+			t.Fatalf("the cap moved: %v", info.ExpiresAt)
+		}
+	}
+	c.advance(11 * 24 * time.Hour) // day 91
+	if _, err := s.Resolve(bgctx, tok); !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("past the cap: %v, want ErrSessionExpired", err)
+	}
+
+	// One write per session-hour.
+	tok2, _ := s.Issue(bgctx, u)
+	i1, _ := s.Info(bgctx, tok2)
+	c.advance(30 * time.Minute)
+	i2, _ := s.Info(bgctx, tok2)
+	if !i2.LastUsedAt.Equal(i1.LastUsedAt) {
+		t.Fatal("a use within the hour moved last_used_at")
+	}
+	// Unused for 30 days: dead.
+	c.advance(30 * 24 * time.Hour)
+	if _, err := s.Resolve(bgctx, tok2); !errors.Is(err, ErrSessionIdle) {
+		t.Fatalf("idle 30 days: %v, want ErrSessionIdle", err)
+	}
+}
+
+// Every revocation says why (spec 02 §9.3): logout, writer, others.
+func TestRevocationsRecordTheirReason(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newTestUser(t, pool)
+	c := newClock()
+	s := newSessions(pool, time.Hour, c)
+	a, _ := s.Issue(bgctx, u)
+	b, _ := s.Issue(bgctx, u)
+	if err := s.Revoke(bgctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeAllForUser(bgctx, u); err != nil {
+		t.Fatal(err)
+	}
+	for tok, want := range map[string]string{a: "logout", b: "others"} {
+		var got string
+		if err := pool.QueryRow(bgctx, `SELECT revoked_reason FROM sessions WHERE token_hash = $1`, SessionHash(tok)).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("reason %q, want %q", got, want)
+		}
 	}
 }
 
 func TestRevokedSessionIsRejected(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-revoke"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -174,7 +241,7 @@ func TestRevokedSessionIsRejected(t *testing.T) {
 
 func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-unknown"))
+	u := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 	if _, err := s.Issue(bgctx, u); err != nil {
@@ -196,8 +263,8 @@ func TestResolveRejectsUnknownAndEmptyTokens(t *testing.T) {
 // It must not touch another user's sessions.
 func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 	pool := pgtest.New(t)
-	mine := mustUpsert(t, pool, testIdentity("sub-mine"))
-	theirs := mustUpsert(t, pool, testIdentity("sub-theirs"))
+	mine := newTestUser(t, pool)
+	theirs := newTestUser(t, pool)
 	c := newClock()
 	s := newSessions(pool, time.Hour, c)
 
@@ -229,7 +296,7 @@ func TestRevokeAllForUserRevokesOnlyThatUser(t *testing.T) {
 
 func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
 	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-config"))
+	u := newTestUser(t, pool)
 	c := newClock()
 
 	if _, err := (&Sessions{Pool: pool, TTL: 0, Now: c.now}).Issue(bgctx, u); err == nil {
@@ -242,183 +309,3 @@ func TestIssueRejectsAnUnusableConfiguration(t *testing.T) {
 		t.Fatal("the zero user id must be rejected")
 	}
 }
-
-// ---------------------------------------------------------------------------
-// UpsertUser
-// ---------------------------------------------------------------------------
-
-// the oplog appender's ON CONFLICT path is documented as dead code in steady state
-// because the counter row is created WITH the user. That claim is only true if
-// this function actually does it, in the same transaction.
-func TestUpsertUserCreatesTheUserAndItsOplogSeqRowTogether(t *testing.T) {
-	pool := pgtest.New(t)
-	u := mustUpsert(t, pool, testIdentity("sub-new"))
-	if u == uuid.Nil {
-		t.Fatal("returned the zero uuid")
-	}
-
-	var users, seqRows int
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM users WHERE id = $1`, u).Scan(&users); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM oplog_seq WHERE user_id = $1`, u).Scan(&seqRows); err != nil {
-		t.Fatal(err)
-	}
-	if users != 1 || seqRows != 1 {
-		t.Fatalf("users=%d oplog_seq=%d, want 1 and 1", users, seqRows)
-	}
-}
-
-func TestUpsertUserNeverStoresTheRawSubject(t *testing.T) {
-	pool := pgtest.New(t)
-	const sub = "001234.deadbeefcafe.0001"
-	u := mustUpsert(t, pool, testIdentity(sub))
-
-	var idp string
-	var hash []byte
-	err := pool.QueryRow(bgctx, `SELECT idp, idp_sub_hash FROM users WHERE id = $1`, u).Scan(&idp, &hash)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if idp != IdPPasskey {
-		t.Fatalf("idp = %q", idp)
-	}
-	if bytes.Contains(hash, []byte(sub)) {
-		t.Fatal("the users table contains the raw IdP subject")
-	}
-	if !bytes.Equal(hash, SubjectHash(IdPPasskey, sub)) {
-		t.Fatalf("stored %x, want SubjectHash %x", hash, SubjectHash(IdPPasskey, sub))
-	}
-}
-
-// Every sign-in after the first calls this. It must return the same user, and
-// — the failure that would actually hurt — must not reset the op-log counter,
-// which would hand the next append a seq that already exists.
-func TestUpsertUserIsIdempotentAndDoesNotResetTheSeqCounter(t *testing.T) {
-	pool := pgtest.New(t)
-	id := testIdentity("sub-repeat")
-	first := mustUpsert(t, pool, id)
-
-	if _, err := pool.Exec(bgctx, `UPDATE oplog_seq SET next_seq = 42 WHERE user_id = $1`, first); err != nil {
-		t.Fatal(err)
-	}
-
-	second := mustUpsert(t, pool, id)
-	if second != first {
-		t.Fatalf("second sign-in produced a different user: %s then %s", first, second)
-	}
-
-	var next int64
-	if err := pool.QueryRow(bgctx, `SELECT next_seq FROM oplog_seq WHERE user_id = $1`, first).Scan(&next); err != nil {
-		t.Fatal(err)
-	}
-	if next != 42 {
-		t.Fatalf("next_seq = %d after a repeat sign-in, want 42 (the counter was reset)", next)
-	}
-
-	var users int
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM users`).Scan(&users); err != nil {
-		t.Fatal(err)
-	}
-	if users != 1 {
-		t.Fatalf("users = %d, want 1", users)
-	}
-}
-
-// The same person tapping "Sign in" on two devices at once, or a client
-// retrying a slow request, races two first-logins for one identity.
-func TestUpsertUserIsSafeUnderConcurrentFirstLogin(t *testing.T) {
-	pool := pgtest.New(t)
-	id := testIdentity("sub-race")
-
-	const n = 8
-	ids := make([]uuid.UUID, n)
-	errs := make([]error, n)
-	var wg sync.WaitGroup
-	start := make(chan struct{})
-	// pgxpool opens connections lazily, so without this the goroutines are
-	// staggered by connection setup and may barely overlap. Replacing
-	// UpsertUser's `INSERT ... ON CONFLICT DO NOTHING` + fallback SELECT with a
-	// SELECT-then-INSERT TOCTOU is the mutation this test exists to catch:
-	// warmed, it fails 8 of 8 runs here; unwarmed, whether it fails at all is
-	// load- and machine-dependent (it failed 8 of 8 on this box but survived 3
-	// of 8 for a reviewer on another). Warming removes the dependence on luck
-	// rather than fixing a specific number. Every single-shot concurrency test
-	// in this package wants it; see warmPool in writer_test.go.
-	warmPool(t, pool, n)
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			<-start
-			ids[i], errs[i] = UpsertUser(bgctx, pool, id)
-		}(i)
-	}
-	close(start)
-	wg.Wait()
-
-	for i, err := range errs {
-		if err != nil {
-			t.Fatalf("goroutine %d: %v", i, err)
-		}
-	}
-	for i := 1; i < n; i++ {
-		if ids[i] != ids[0] {
-			t.Fatalf("concurrent first logins produced two users: %s and %s", ids[0], ids[i])
-		}
-	}
-	var users, seqRows int
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM users`).Scan(&users); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM oplog_seq`).Scan(&seqRows); err != nil {
-		t.Fatal(err)
-	}
-	if users != 1 || seqRows != 1 {
-		t.Fatalf("users=%d oplog_seq=%d, want 1 and 1", users, seqRows)
-	}
-}
-
-// ledgerd's IdPs are retired (spec 02 §2.3): neither UpsertUser nor a direct
-// INSERT can create an 'apple' or 'google' user any more.
-func TestTheRetiredIdentityProvidersAreRefused(t *testing.T) {
-	pool := pgtest.New(t)
-	for _, idp := range []string{"apple", "google"} {
-		if _, err := UpsertUser(bgctx, pool, Identity{IdP: idp, Subject: "x"}); err == nil {
-			t.Fatalf("UpsertUser accepted idp %q", idp)
-		}
-		_, err := pool.Exec(bgctx, `INSERT INTO users (idp, idp_sub_hash) VALUES ($1, $2)`, idp, SubjectHash(idp, "x"))
-		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) || pgErr.ConstraintName != "users_idp_is_closed" {
-			t.Fatalf("INSERT with idp %q answered %v, want users_idp_is_closed", idp, err)
-		}
-	}
-}
-
-func TestUpsertUserRejectsAnUnusableIdentity(t *testing.T) {
-	pool := pgtest.New(t)
-	cases := map[string]Identity{
-		"empty idp":     {IdP: "", Subject: "x"},
-		"unknown idp":   {IdP: "facebook", Subject: "x"},
-		"retired idp":   {IdP: "apple", Subject: "x"},
-		"empty subject": {IdP: IdPPasskey, Subject: ""},
-	}
-	for name, id := range cases {
-		t.Run(name, func(t *testing.T) {
-			if _, err := UpsertUser(bgctx, pool, id); err == nil {
-				t.Fatalf("UpsertUser(%+v) succeeded", id)
-			}
-		})
-	}
-	var users int
-	if err := pool.QueryRow(bgctx, `SELECT count(*) FROM users`).Scan(&users); err != nil {
-		t.Fatal(err)
-	}
-	if users != 0 {
-		t.Fatalf("users = %d after only-invalid upserts", users)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// The ingest writer exists from the first sign-in
-// ---------------------------------------------------------------------------

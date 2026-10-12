@@ -58,23 +58,17 @@ func (h *harness) beginAssert(path, token string) (string, *protocol.CredentialA
 	return out.CeremonyID, &opts
 }
 
-// register runs a whole sign-up over HTTP and returns the session it minted.
-func (h *harness) register(code string) (*authtest.Authenticator, SessionResponse) {
-	h.t.Helper()
-	return h.registerLinked(code, "")
-}
-
-// registerLinked is register with the invite link's key (an addressed invite
-// needs it).
-func (h *harness) registerLinked(code, linkKey string) (*authtest.Authenticator, SessionResponse) {
+// register runs a whole passkey sign-up over HTTP for a proven signup id and
+// returns the session it minted.
+func (h *harness) register(signupID string) (*authtest.Authenticator, SessionResponse) {
 	h.t.Helper()
 	id, opts := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: code, InviteLinkKey: linkKey, AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
+		PasskeyRegisterBeginRequest{SignupID: signupID, AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	a := authtest.New(h.t)
 	w := h.req("POST", "/api/v1/auth/passkey/register/finish", "", PasskeyFinishRequest{
 		CeremonyID: id, Credential: a.Create(h.t, opts),
 	})
-	wantStatus(h.t, w, http.StatusOK)
+	wantStatus(h.t, w, http.StatusCreated)
 	return a, decodeJSON[SessionResponse](h.t, w)
 }
 
@@ -122,13 +116,15 @@ func TestPasskeyRegistrationOverHTTPMintsASessionForANewAccount(t *testing.T) {
 	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", out.SessionToken, nil), http.StatusOK)
 }
 
-func TestPasskeyRegistrationWithoutAnInviteIsNotInvited(t *testing.T) {
+// register/begin needs a signup that an invite opened and an address proved
+// (spec 02 #3): an unknown one is the uniform code_rejected.
+func TestPasskeyRegistrationWithoutASignupIsRefused(t *testing.T) {
 	h := newHarness(t).passkeys()
 	w := h.req("POST", "/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: "NOTACODE", AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
+		PasskeyRegisterBeginRequest{SignupID: "NOTASIGNUP", AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	wantStatus(t, w, http.StatusForbidden)
-	if got := w.Body.String(); got != `{"error":"not_invited"}` {
-		t.Fatalf("body = %s, want the byte-identical not_invited answer", got)
+	if got := w.Body.String(); got != `{"error":"code_rejected"}` {
+		t.Fatalf("body = %s, want the uniform code_rejected answer", got)
 	}
 	if n := h.countUsers(t); n != 0 {
 		t.Fatalf("%d accounts created without an invite", n)
@@ -140,9 +136,9 @@ func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T)
 	// Two ceremonies begun against two codes; the credential built for one is
 	// presented against the other's id.
 	idA, optsA := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: h.invite("a"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
+		PasskeyRegisterBeginRequest{SignupID: h.invite("a"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	idB, _ := h.beginCreate("/api/v1/auth/passkey/register/begin", "",
-		PasskeyRegisterBeginRequest{InviteCode: h.invite("b"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
+		PasskeyRegisterBeginRequest{SignupID: h.invite("b"), AuthorityPubkey: b64(authtest.AuthorityPub(h.t))})
 	if idA == idB {
 		t.Fatal("two ceremonies share an id")
 	}
@@ -151,7 +147,7 @@ func TestPasskeyRegistrationFinishWithAMismatchedCeremonyIsRefused(t *testing.T)
 		CeremonyID: idB, Credential: a.Create(t, optsA),
 	})
 	// The challenge in ceremony B is not the one the authenticator signed.
-	wantStatus(t, w, http.StatusUnauthorized)
+	wantStatus(t, w, http.StatusForbidden)
 	if n := h.countUsers(t); n != 0 {
 		t.Fatalf("%d accounts, want 0", n)
 	}
@@ -162,9 +158,9 @@ func TestPasskeyFinishWithAnUnknownCeremonyIsRefused(t *testing.T) {
 	w := h.req("POST", "/api/v1/auth/passkey/login/finish", "", PasskeyFinishRequest{
 		CeremonyID: "not-a-ceremony", Credential: json.RawMessage(`{}`),
 	})
-	wantStatus(t, w, http.StatusUnauthorized)
-	if got := w.Body.String(); got != `{"error":"unauthorized"}` {
-		t.Fatalf("body = %s, want the one 401 this package emits", got)
+	wantStatus(t, w, http.StatusForbidden)
+	if got := w.Body.String(); got != `{"error":"passkey_rejected"}` {
+		t.Fatalf("body = %s, want the uniform passkey_rejected (spec 02 §6.3)", got)
 	}
 }
 

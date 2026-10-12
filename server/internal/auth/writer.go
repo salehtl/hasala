@@ -110,6 +110,8 @@ func (w Writer) Live() bool { return w.RevokedAt.IsZero() }
 // Writers owns writer registration, revocation and the key-history log.
 type Writers struct {
 	Pool *pgxpool.Pool
+	// Mail receives the device_removed alert; nil records events without mail.
+	Mail *Mailer
 	// StepUp verifies the writer.revoke step-up.
 	StepUp *StepUp
 	// Now defaults to time.Now; one clock decides minting and expiry.
@@ -189,7 +191,7 @@ func (r Registration) checkShape() error {
 		return ErrBadWriterID
 	}
 	if r.Alg != AlgEd25519 {
-		return fmt.Errorf("%w: alg %q", ErrWriterMalformed, r.Alg)
+		return fmt.Errorf("%w: alg is not Ed25519", ErrWriterMalformed)
 	}
 	if err := keyproto.CheckEd25519PublicKey(r.PubKey); err != nil {
 		return fmt.Errorf("%w: pubkey: %v", ErrWriterMalformed, err)
@@ -269,6 +271,9 @@ func (w *Writers) Register(ctx context.Context, userID uuid.UUID, sessionHash []
 		return ErrTooManyDevices
 	}
 	if err := insertWriterTx(ctx, tx, userID, r, w.now()); err != nil {
+		return err
+	}
+	if err := recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceAdded, WriterID: r.WriterID}, w.now()); err != nil {
 		return err
 	}
 	if err := bindSessionTx(ctx, tx, sessionHash, userID, r.WriterID); err != nil {
@@ -374,7 +379,8 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			return err
 		}
 		if counter != r.FinalCounter || !bytes.Equal(head, r.FinalHead) {
-			return fmt.Errorf("%w: the head is (%d, %x)", ErrHeadMoved, counter, head)
+			// The error is logged: the counter, never the head hash (spec 02 §20).
+			return fmt.Errorf("%w: the writer's counter is %d", ErrHeadMoved, counter)
 		}
 		var (
 			signerKey  []byte
@@ -403,11 +409,19 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			return fmt.Errorf("auth: append key history (revoked %s): %w", r.WriterID, err)
 		}
 		if _, err := tx.Exec(ctx,
-			`UPDATE sessions SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
+			`UPDATE sessions SET revoked_at = $3, revoked_reason = 'writer'
+			  WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
 			userID, r.WriterID, now); err != nil {
 			return fmt.Errorf("auth: revoke the writer's sessions: %w", err)
 		}
-		return forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, r.WriterID)
+		if err := forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, r.WriterID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND approved_by_writer = $2 AND consumed_at IS NULL`,
+			userID, r.WriterID); err != nil {
+			return fmt.Errorf("auth: revoke: drop the writer's pending approvals: %w", err)
+		}
+		return recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceRemoved, WriterID: r.WriterID}, now)
 	})
 }
 

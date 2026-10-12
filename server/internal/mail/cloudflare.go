@@ -69,6 +69,9 @@ type cfResponse struct {
 // Send posts one message. The error carries the class, the HTTP status and the
 // provider's numeric code, never the provider's body (it echoes addresses).
 func (c *Cloudflare) Send(ctx context.Context, m Message) (string, error) {
+	if m.To == "" || strings.ContainsAny(m.To, "\r\n,; ") || strings.ContainsAny(m.Subject, "\r\n") {
+		return "", fmt.Errorf("%w: a message has one plain recipient and a one-line subject", ErrPermanent)
+	}
 	body, err := json.Marshal(cfRequest{To: m.To, From: c.from, Subject: m.Subject, Text: m.Text, HTML: m.HTML})
 	if err != nil {
 		return "", fmt.Errorf("%w: encode", ErrPermanent)

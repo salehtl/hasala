@@ -1,56 +1,22 @@
 package auth
 
-// Passkeys: WebAuthn as a THIRD identity provider, behind the Verifier/Identity/
-// SubjectHash seam this package already had.
+// Passkeys: the WebAuthn ceremonies (spec 02 §7 #3–#6, #10–#13; spec 01
+// §10.3, §10.7). RP ID hasala.app, user verification required in every
+// ceremony, discoverable credentials.
 //
-// # What changed, and what deliberately did not
+// # The handle a passkey names
 //
-// v2's auth was built for Sign in with Apple and Google Sign-In because the Expo
-// client had to satisfy App Store rule 4.8. The product dropped Expo for a PWA,
-// that rule went with it, and the decision was taken to drop third-party IdPs
-// entirely in favour of passkeys. What did NOT change: sessions, the invite gate,
-// writer enrolment, the key-history log, and the shape of an Identity. A passkey
-// ceremony ends by producing `Identity{IdP: "passkey", Subject: ...}` and handing
-// it to the same UpsertUser* path an ID token would have, which is why none of
-// those files needed touching.
+// Every account has a user handle (users.user_handle): 32 bytes from
+// crypto/rand, minted at signup and stored on every credential the account
+// enrols. A discoverable credential returns it in each assertion, so sign-in
+// needs no identifier; the credential row is looked up by its id and the
+// handle is a tripwire that must name the same account.
 //
-// # There is no Verifier implementation here, on purpose
+// # What a passkey proves
 //
-// [Verifier] takes a token string and answers with an Identity. A WebAuthn
-// ceremony is two round trips with server-side state in the middle, so it does
-// not fit that signature and pretending it did would mean smuggling a ceremony id
-// through a parameter named idToken. The seam this reuses is the one BELOW the
-// verifier — Identity, SubjectHash, UpsertUserInvited* — and that is the seam
-// that matters, because it is the one every downstream table hangs off.
-//
-// # The identity a passkey names
-//
-// A user handle: 32 bytes from crypto/rand, minted once at registration, stored
-// on every credential the account enrols. The Identity's Subject is its base64url
-// form, so `users.idp_sub_hash` is SHA-256("v2|passkey|" + base64url(handle)).
-//
-// That is what makes username-less sign-in work. A DISCOVERABLE credential
-// returns the handle inside the assertion, so the server learns whose account is
-// being signed into from the authenticator's own signed response rather than from
-// anything the page typed — which is why [protocol.ResidentKeyRequirementRequired]
-// below is not a preference but the mechanism.
-//
-// SubjectHash's "|" separator is not injective for arbitrary inputs and is safe
-// only because the IdP vocabulary is closed and contains no "|". That argument was
-// re-checked before "passkey" was added to it: the value contains no "|", and
-// base64url's alphabet cannot produce one either. See SubjectHash's doc.
-//
-// # What a passkey proves, and what it does not
-//
-// A passkey assertion proves possession of a private key the authenticator holds
-// and (with user verification) that somebody unlocked it. It is a strictly better
-// sign-in credential than an ID token: there is no bearer token to capture and
-// replay, because the challenge is server-minted, single-use, and signed over.
-//
-// It proves nothing about the WRITER keys. Spec §3.4's rules are unchanged: a
-// session — however it was obtained — still does not authorize enrolling a writer,
-// deleting the account, or rotating the inbound address. Those need proof of key
-// possession, and a passkey is not one of the keys they mean.
+// Possession of a key the authenticator holds, unlocked by its owner (UV). It
+// proves nothing about the writer keys: a session, however it was obtained,
+// never enrols a writer or changes an authenticator on its own (spec 02 §8).
 
 import (
 	"context"
@@ -64,11 +30,10 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/keyproto"
+	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
 // CeremonyTTL is how long a begun ceremony may be finished within.
@@ -148,6 +113,8 @@ type Passkeys struct {
 	// StepUp verifies the passkey.add and passkey.delete step-ups (spec 02
 	// #10, #13). Nil refuses those routes; api.NewServer wires it.
 	StepUp *StepUp
+	// Mail receives the new-passkey alert; nil records events without mail.
+	Mail *Mailer
 	// Now defaults to time.Now. Ceremony expiry is evaluated against THIS clock
 	// and never against Postgres's, so one clock decides both when a ceremony
 	// was minted and when it dies (see 00022's note on the two-clock defect).
@@ -269,86 +236,37 @@ func (u passkeyUser) WebAuthnDisplayName() string { return u.rpName }
 
 func (u passkeyUser) WebAuthnCredentials() []webauthn.Credential { return u.credentials }
 
-// handleSubject is the one definition of "the subject a handle names". Every
-// SubjectHash call in this package goes through it, so the encoding cannot drift
-// between the row that is written at registration and the lookup that resolves an
-// assertion.
-func handleSubject(handle []byte) string {
-	return base64.RawURLEncoding.EncodeToString(handle)
-}
-
-// passkeyIdentity is the Identity a handle names.
-func passkeyIdentity(handle []byte, now time.Time) Identity {
-	return Identity{IdP: IdPPasskey, Subject: handleSubject(handle), IssuedAt: now}
-}
+// passkeyUserName is user.name and user.displayName in every registration:
+// never the address (spec 02 §10.7.2), so the passkey sheet shows "Hasala".
+const passkeyUserName = "Hasala"
 
 // ---------------------------------------------------------------------------
-// Registration: a new account
+// Registration: a new account (C1, spec 02 §10.7.2)
 // ---------------------------------------------------------------------------
 
-// BeginRegistration mints a user handle and a challenge for a NEW account.
-//
-// The invite code is taken here and SPENT at finish, in the transaction that
-// creates the account (see FinishRegistration). Two round trips is what forces
-// that split: the code arrives before the credential exists, and redeeming it
-// early would mark a code spent for an account a user then abandoned at the
-// biometric prompt.
-//
-// A code that is already spent, or is not a code at all, is refused HERE as well
-// as at finish. That is a deliberate, documented oracle: it tells a caller whether
-// a code is live before they touch their sensor. It reveals nothing they could not
-// learn by completing the ceremony and reading the 403, it saves a user from
-// authenticating into a refusal, and both paths are behind the same per-IP rate
-// limiter. The check is NOT the gate — the redemption at finish is, and it is the
-// one that is atomic.
-func (p *Passkeys) BeginRegistration(ctx context.Context, inviteCode string, authorityPub []byte) (string, *protocol.CredentialCreation, []byte, error) {
-	return p.BeginRegistrationLinked(ctx, inviteCode, nil, authorityPub)
-}
-
-// BeginRegistrationLinked is BeginRegistration with the invite link's key (32
-// raw bytes from the link's fragment, or nil). This ceremony carries no
-// address, so it cannot apply spec 02 §14.1's binding by comparing tags; it
-// applies it by possession instead: an ADDRESSED invite (one with email_tag)
-// opens only with its link key, which only the email to that address carries
-// (invites.RedeemableWithoutAddress). The code alone sits in the link's path,
-// where link scanners and the CDN can see it, so it must not be enough.
-//
-// The gate is here, not at finish: a ceremony exists only for a code that
-// passed it, and the code_hash and link_key_hash of an invite are minted
-// together, so the invite finish redeems is the one whose key was shown. The
-// one gap is an unaddressed invite that gains a tag in the minutes between
-// begin and finish (mailq tags a queued CLI invite at send); its holder had
-// the code before it was addressed.
-func (p *Passkeys) BeginRegistrationLinked(ctx context.Context, inviteCode string, linkKey, authorityPub []byte) (string, *protocol.CredentialCreation, []byte, error) {
+// BeginRegistration is register/begin (#3): the signup must be verified or
+// proven, unexpired and unclaimed (else ErrCodeRejected); a proven address
+// already in use is ErrEmailInUse. The ceremony binds the AAK public key:
+// C_reg = SHA256("hasala/v1/register" ‖ 00 ‖ nonce ‖ authority_pubkey) is the
+// WebAuthn challenge. It answers the ceremony id, the options and the nonce.
+func (p *Passkeys) BeginRegistration(ctx context.Context, signupID string, authorityPub []byte) (string, *protocol.CredentialCreation, []byte, error) {
 	if p.Pool == nil || p.WA == nil {
 		return "", nil, nil, errors.New("auth: Passkeys is not configured")
 	}
-	// The authority key is screened before anything is written: a small-order
-	// key would make every later AAK signature forgeable, and binding it into
-	// the ceremony would make the forgery the account's authority.
 	if err := keyproto.CheckEd25519PublicKey(authorityPub); err != nil {
 		return "", nil, nil, fmt.Errorf("%w: %v", ErrBadAuthorityKey, err)
 	}
-	hash := InviteCodeHash(inviteCode)
-	if len(hash) == 0 {
-		return "", nil, nil, ErrNotInvited
-	}
-	spendable, err := invites.RedeemableWithoutAddress(ctx, p.Pool, hash, linkKey, time.Now())
+	s, err := readySignup(ctx, p.Pool, signupID, p.now())
 	if err != nil {
-		return "", nil, nil, fmt.Errorf("auth: passkey: check invite: %w", err)
+		return "", nil, nil, err
 	}
-	if !spendable {
-		return "", nil, nil, ErrNotInvited
+	if err := addressFree(ctx, p.Pool, s); err != nil {
+		return "", nil, nil, err
 	}
-
 	handle := make([]byte, userHandleBytes)
 	if _, err := rand.Read(handle); err != nil {
 		return "", nil, nil, fmt.Errorf("auth: passkey: mint user handle: %w", err)
 	}
-	// C_reg binds the authority key into this UV ceremony (spec 01 §10.3 step
-	// 5, D01): the registration the user approves with Face ID is over a
-	// challenge that names the key that will sign the bootstrap, so a session
-	// thief cannot bootstrap its own keys (DEV-2).
 	nonce := make([]byte, keyproto.NonceSize)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", nil, nil, fmt.Errorf("auth: passkey: mint register nonce: %w", err)
@@ -357,7 +275,7 @@ func (p *Passkeys) BeginRegistrationLinked(ctx context.Context, inviteCode strin
 	if err != nil {
 		return "", nil, nil, err
 	}
-	user := passkeyUser{handle: handle, rpName: p.WA.Config.RPDisplayName}
+	user := passkeyUser{handle: handle, rpName: passkeyUserName}
 	opts, session, err := p.WA.BeginRegistration(user, func(o *protocol.PublicKeyCredentialCreationOptions) {
 		o.Challenge = protocol.URLEncodedBase64(creg[:])
 	})
@@ -369,7 +287,7 @@ func (p *Passkeys) BeginRegistrationLinked(ctx context.Context, inviteCode strin
 		return "", nil, nil, err
 	}
 	if err := p.putCeremony(ctx, ceremony{
-		ID: id, Kind: ceremonyRegister, UserHandle: handle, Session: *session, InviteHash: hash,
+		ID: id, Kind: ceremonyRegister, UserHandle: handle, Session: *session, SignupID: signupID,
 		AuthorityPubkey: authorityPub, RegisterNonce: nonce,
 	}); err != nil {
 		return "", nil, nil, err
@@ -377,90 +295,76 @@ func (p *Passkeys) BeginRegistrationLinked(ctx context.Context, inviteCode strin
 	return id, opts, nonce, nil
 }
 
-// FinishRegistration verifies the authenticator's response and, if it holds up,
-// creates the account.
-//
-// The account, its invite redemption, its oplog counter AND its first
-// credential all commit together or not at all. That is the same
-// all-or-nothing UpsertUser already guaranteed for the first three, extended
-// to the fourth for the reason the others are in it: an account with no credential is an
-// account nobody can ever sign into, and it would have spent an invite code to
-// get there.
-//
-// It is one transaction because the first version was not, and the difference was
-// not theoretical. That version committed the account (and the redemption) and
-// then inserted the credential separately, compensating on failure with a
-// `DELETE FROM users`. Since invite_codes.redeemed_by is ON DELETE SET NULL and
-// 00023's trigger clears the note, what the compensation left behind was a code
-// marked redeemed, pointing at nobody, with the operator's own note about whose
-// it was destroyed: a beta tester with a silently dead code and an operator with
-// no way to work out which one to reissue. See upsertUser's inTx parameter.
+// Registered is what register/finish creates.
+type Registered struct {
+	UserID       uuid.UUID
+	CredentialID []byte
+	Session      Minted // zero when no Sessions was given
+}
+
+// FinishRegistration is register/finish without a session (fixtures).
 func (p *Passkeys) FinishRegistration(ctx context.Context, ceremonyID string, response []byte) (uuid.UUID, []byte, error) {
+	r, err := p.FinishRegistrationSession(ctx, ceremonyID, response, nil)
+	return r.UserID, r.CredentialID, err
+}
+
+// FinishRegistrationSession is register/finish (#4): the attestation (UV,
+// C_reg, origin) is verified, then ONE transaction claims the signup and
+// creates the account under the reserved id, the credential with its
+// attestation hash, the invite redemption and the join hook, the pending
+// authority key, and (with sessions) the register session.
+func (p *Passkeys) FinishRegistrationSession(ctx context.Context, ceremonyID string, response []byte, sessions *Sessions) (Registered, error) {
 	if p.Pool == nil || p.WA == nil {
-		return uuid.Nil, nil, errors.New("auth: Passkeys is not configured")
+		return Registered{}, errors.New("auth: Passkeys is not configured")
 	}
 	c, err := p.claimCeremony(ctx, ceremonyID, ceremonyRegister)
 	if err != nil {
-		return uuid.Nil, nil, err
+		return Registered{}, err
 	}
-	user := passkeyUser{handle: c.UserHandle, rpName: p.WA.Config.RPDisplayName}
+	user := passkeyUser{handle: c.UserHandle, rpName: passkeyUserName}
 	made, err := p.createCredential(user, c, response)
 	if err != nil {
-		return uuid.Nil, nil, err
+		return Registered{}, err
 	}
-	cred, attestation := made.Credential, made.AttestationSHA256
-
-	now := p.now().UTC()
-	userID, err := p.createAccountWithCredential(ctx, storedCredential{
-		UserHandle:        c.UserHandle,
-		Credential:        *cred,
-		AttestationSHA256: attestation,
-	}, c.InviteHash, c.AuthorityPubkey, now)
+	now := p.now()
+	tx, err := pgtx.BeginReadCommitted(ctx, p.Pool)
 	if err != nil {
-		return uuid.Nil, nil, err
+		return Registered{}, fmt.Errorf("auth: register: begin: %w", err)
 	}
-	return userID, cred.ID, nil
-}
-
-// createAccountWithCredential creates the account and stores its first
-// credential in ONE transaction — the account's own, entered through
-// upsertUser's inTx hook.
-//
-// There is no compensating delete here and there must not be one: a rollback
-// un-spends the invite code, and a `DELETE FROM users` does not (redeemed_by is
-// ON DELETE SET NULL, and 00023's trigger clears the note as well). See
-// FinishRegistration.
-func (p *Passkeys) createAccountWithCredential(ctx context.Context, sc storedCredential, inviteHash, authorityPub []byte, now time.Time) (uuid.UUID, error) {
-	// ErrNotInvited passes through unwrapped: the HTTP layer keys its one
-	// distinguishable rejection on it.
-	return upsertUser(ctx, p.Pool, passkeyIdentity(sc.UserHandle, now), &inviteHash,
-		func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
-			sc.UserID = userID
-			if err := insertCredential(ctx, tx, sc, now); err != nil {
-				return err
-			}
-			// users.authority_pubkey_pending (spec 01 §10.3 step 8): the key the
-			// UV ceremony bound; bootstrap needs no step-up when it presents this
-			// key and this credential's attestation hash, and clears it.
-			if _, err := tx.Exec(ctx, `UPDATE users SET authority_pubkey_pending = $2 WHERE id = $1`, userID, authorityPub); err != nil {
-				return fmt.Errorf("auth: passkey: record the pending authority key: %w", err)
-			}
-			return nil
-		})
+	defer pgtx.Rollback(ctx, tx)
+	s, err := claimSignupTx(ctx, tx, c.SignupID, now)
+	if err != nil {
+		return Registered{}, err
+	}
+	if err := createAccountTx(ctx, tx, s, c.UserHandle, now); err != nil {
+		return Registered{}, err
+	}
+	if err := insertCredential(ctx, tx, storedCredential{UserID: s.UserID, UserHandle: c.UserHandle,
+		Credential: *made.Credential, AttestationSHA256: made.AttestationSHA256}, now); err != nil {
+		return Registered{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET authority_pubkey_pending = $2 WHERE id = $1`, s.UserID, c.AuthorityPubkey); err != nil {
+		return Registered{}, fmt.Errorf("auth: register: record the pending authority key: %w", err)
+	}
+	out := Registered{UserID: s.UserID, CredentialID: made.Credential.ID}
+	if sessions != nil {
+		if out.Session, err = sessions.IssueTx(ctx, tx, Mint{UserID: s.UserID, MintedBy: MintedRegister,
+			CredentialID: made.Credential.ID}); err != nil {
+			return Registered{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Registered{}, fmt.Errorf("auth: register: commit: %w", err)
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
 // Login: an existing account, named by nobody
 // ---------------------------------------------------------------------------
 
-// BeginLogin mints a challenge for a DISCOVERABLE login: no user, no credential
-// list, no username.
-//
-// The empty allowCredentials list is the whole point. The server does not know
-// who is signing in and does not ask; the authenticator picks a credential for
-// this RP id and returns the user handle with it. An allow-list would require the
-// page to identify the account first, which is the step passkeys exist to remove —
-// and would make this endpoint an enumeration oracle for which accounts exist.
+// BeginLogin is login/begin (#5): a discoverable-credential assertion, no
+// account named.
 func (p *Passkeys) BeginLogin(ctx context.Context) (string, *protocol.CredentialAssertion, error) {
 	if p.Pool == nil || p.WA == nil {
 		return "", nil, errors.New("auth: Passkeys is not configured")
@@ -479,80 +383,73 @@ func (p *Passkeys) BeginLogin(ctx context.Context) (string, *protocol.Credential
 	return id, opts, nil
 }
 
-// FinishLogin verifies an assertion and answers with the account it names.
-//
-// It creates NOTHING. An assertion from a credential this deployment has never
-// enrolled is a rejection, not a first sign-in: the invite gate is on the
-// registration ceremony, and a login path that could mint an account would be a
-// way straight past it.
+// LoginResult is a verified passkey sign-in.
+type LoginResult struct {
+	UserID       uuid.UUID
+	CredentialID []byte
+	// Challenge is the ceremony's 32 raw challenge bytes, which a
+	// SessionBindMessage signs (spec 02 §9.4).
+	Challenge []byte
+}
+
+// FinishLogin is FinishLoginResult's two-value form.
 func (p *Passkeys) FinishLogin(ctx context.Context, ceremonyID string, response []byte) (uuid.UUID, []byte, error) {
+	r, err := p.FinishLoginResult(ctx, ceremonyID, response)
+	return r.UserID, r.CredentialID, err
+}
+
+// FinishLoginResult verifies login/finish's assertion (UV required, clone
+// refused) and resolves the account from the database by the credential id,
+// cross-checked against the handle. It mints no session.
+func (p *Passkeys) FinishLoginResult(ctx context.Context, ceremonyID string, response []byte) (LoginResult, error) {
 	if p.Pool == nil || p.WA == nil {
-		return uuid.Nil, nil, errors.New("auth: Passkeys is not configured")
+		return LoginResult{}, errors.New("auth: Passkeys is not configured")
 	}
 	c, err := p.claimCeremony(ctx, ceremonyID, ceremonyLogin)
 	if err != nil {
-		return uuid.Nil, nil, err
+		return LoginResult{}, err
 	}
 	parsed, err := protocol.ParseCredentialRequestResponseBytes(response)
 	if err != nil {
-		return uuid.Nil, nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+		return LoginResult{}, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
 	}
-
-	// Resolved from the DATABASE by the credential id the assertion carried, and
-	// cross-checked against the handle. Doing it in this order matters: the
-	// handle is a value the caller supplied, so it may not be the thing an
-	// account is looked up by — otherwise anyone who has seen a handle could
-	// present any credential against it.
 	var stored storedCredential
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
-		sc, err := p.credentialByID(ctx, rawID)
+		sc, err := p.credentialByID(ctx, p.Pool, rawID)
 		if err != nil {
 			return nil, err
 		}
 		stored = sc
-		return passkeyUser{
-			handle:      sc.UserHandle,
-			credentials: []webauthn.Credential{sc.Credential},
-			rpName:      p.WA.Config.RPDisplayName,
-		}, nil
+		return passkeyUser{handle: sc.UserHandle, credentials: []webauthn.Credential{sc.Credential}, rpName: passkeyUserName}, nil
 	}
-	// The library checks that the assertion's userHandle equals the user's
-	// WebAuthnID, so a credential presented under somebody else's handle is
-	// refused there.
 	cred, err := p.WA.ValidateDiscoverableLogin(handler, c.Session, parsed)
 	if err != nil {
 		if errors.Is(err, ErrCredentialUnknown) {
-			return uuid.Nil, nil, ErrCredentialUnknown
+			return LoginResult{}, ErrCredentialUnknown
 		}
-		return uuid.Nil, nil, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+		return LoginResult{}, fmt.Errorf("%w: %v", ErrPasskeyRejected, err)
+	}
+	if !parsed.Response.AuthenticatorData.Flags.HasUserVerified() {
+		return LoginResult{}, fmt.Errorf("%w: user verification flag is clear", ErrPasskeyRejected)
 	}
 	if cred.Authenticator.CloneWarning {
-		// go-webauthn RECORDS this and leaves the policy to the RP. The policy
-		// is: refuse. A counter that does not advance means the key exists in two
-		// places, and there is no benign reading of that for a credential whose
-		// whole job is to be the only way into an account. The stored counter is
-		// left where it was — see touchCredential, which will not move it
-		// backwards either.
-		return uuid.Nil, nil, ErrClonedAuthenticator
+		return LoginResult{}, ErrClonedAuthenticator
 	}
-
-	// The tripwire: the credential row's account must be the account the HANDLE
-	// names. The two are derived independently — one from a foreign key, one from
-	// SubjectHash — so agreement is a real check rather than a restatement, and a
-	// disagreement means a row was written by something that did not go through
-	// this file.
-	byHandle, err := p.userIDForHandle(ctx, stored.UserHandle)
+	byHandle, err := p.userIDForHandle(ctx, p.Pool, stored.UserHandle)
 	if err != nil {
-		return uuid.Nil, nil, err
+		return LoginResult{}, err
 	}
 	if byHandle != stored.UserID {
-		return uuid.Nil, nil, fmt.Errorf("%w: credential owner and user handle disagree", ErrPasskeyRejected)
+		return LoginResult{}, fmt.Errorf("%w: credential owner and user handle disagree", ErrPasskeyRejected)
 	}
-
-	if err := p.touchCredential(ctx, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
-		return uuid.Nil, nil, err
+	if err := p.touchCredential(ctx, p.Pool, cred.ID, cred.Authenticator.SignCount, p.now().UTC()); err != nil {
+		return LoginResult{}, err
 	}
-	return stored.UserID, cred.ID, nil
+	challenge, err := base64.RawURLEncoding.DecodeString(c.Session.Challenge)
+	if err != nil || len(challenge) != keyproto.NonceSize {
+		return LoginResult{}, fmt.Errorf("auth: passkey: the login challenge is not 32 bytes")
+	}
+	return LoginResult{UserID: stored.UserID, CredentialID: cred.ID, Challenge: challenge}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -560,10 +457,11 @@ func (p *Passkeys) FinishLogin(ctx context.Context, ceremonyID string, response 
 // ---------------------------------------------------------------------------
 
 // beginAdd mints a registration challenge for an account that is ALREADY
-// signed in, so a user can enrol another passkey, and records the ceremony
-// through q with addNonce, the passkey.add step-up nonce the add/finish
-// signature binds (spec 01 §10.7). Only AddBegin (passkey_guarded.go) reaches
-// it from a request, inside that step-up's transaction.
+// signed in, so a user can enrol another passkey, and reads the account's
+// credentials and records the ceremony through q with addNonce, the
+// passkey.add step-up nonce the add/finish signature binds (spec 01 §10.7).
+// Only AddBegin (passkey_guarded.go) reaches it from a request, inside that
+// step-up's transaction, which it never steps outside.
 //
 // It reuses the account's existing handle rather than minting a new one, and that
 // is not an optimisation: the handle IS the subject, so a second handle would
@@ -574,7 +472,7 @@ func (p *Passkeys) FinishLogin(ctx context.Context, ceremonyID string, response 
 //
 // Existing credentials are sent as exclusions, so an authenticator that is already
 // enrolled says so in the browser instead of minting a duplicate row.
-func (p *Passkeys) beginAdd(ctx context.Context, q execer, userID uuid.UUID, addNonce []byte) (string, *protocol.CredentialCreation, error) {
+func (p *Passkeys) beginAdd(ctx context.Context, q dbtx, userID uuid.UUID, addNonce []byte) (string, *protocol.CredentialCreation, error) {
 	if p.Pool == nil || p.WA == nil {
 		return "", nil, errors.New("auth: Passkeys is not configured")
 	}
@@ -584,14 +482,14 @@ func (p *Passkeys) beginAdd(ctx context.Context, q execer, userID uuid.UUID, add
 	if len(addNonce) != keyproto.NonceSize {
 		return "", nil, errors.New("auth: passkey: beginAdd: the add nonce is not 32 bytes")
 	}
-	creds, handle, err := p.credentialsForUser(ctx, userID)
+	creds, handle, err := p.credentialsForUser(ctx, q, userID)
 	if err != nil {
 		return "", nil, err
 	}
 	if len(handle) == 0 {
 		return "", nil, ErrNoPasskeyIdentity
 	}
-	user := passkeyUser{handle: handle, credentials: creds, rpName: p.WA.Config.RPDisplayName}
+	user := passkeyUser{handle: handle, credentials: creds, rpName: passkeyUserName}
 	opts, session, err := p.WA.BeginRegistration(user,
 		webauthn.WithExclusions(webauthn.Credentials(creds).CredentialDescriptors()))
 	if err != nil {
@@ -630,14 +528,14 @@ func (p *Passkeys) verifyAdd(ctx context.Context, ceremonyID string, userID uuid
 	// ceremony was written with, and the account SubjectHash says the handle
 	// names. Agreement is a real check rather than a restatement — a row where
 	// they disagree was written by something that did not go through this file.
-	owner, err := p.userIDForHandle(ctx, c.UserHandle)
+	owner, err := p.userIDForHandle(ctx, p.Pool, c.UserHandle)
 	if err != nil {
 		return created{}, ceremony{}, err
 	}
 	if owner != userID || c.UserID == nil || *c.UserID != userID {
 		return created{}, ceremony{}, fmt.Errorf("%w: this ceremony belongs to a different account", ErrPasskeyRejected)
 	}
-	user := passkeyUser{handle: c.UserHandle, rpName: p.WA.Config.RPDisplayName}
+	user := passkeyUser{handle: c.UserHandle, rpName: passkeyUserName}
 	made, err := p.createCredential(user, c, response)
 	if err != nil {
 		return created{}, ceremony{}, err

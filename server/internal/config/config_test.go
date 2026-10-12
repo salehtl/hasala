@@ -85,14 +85,14 @@ func TestEveryKeyHasAnEnvironmentName(t *testing.T) {
 		"HASALA_MIN_IOS_BUILD": "42", "HASALA_LOG_LEVEL": "warn",
 		"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app, https://www.hasala.app",
 		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "1h",
-		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key,
+		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key, "HASALA_SALT_KEY_FILE": key,
 		"HASALA_HEADROOM_PATH": "/var/lib/hasala", "HASALA_HEADROOM_FLOOR_BYTES": "5", "HASALA_HEADROOM_INTERVAL": "1m",
 		"HASALA_APNS_ENABLED": "true", "HASALA_APNS_TEAM_ID": "ABCDE12345", "HASALA_APNS_KEY_ID": "KEY1234567",
 		"HASALA_APNS_KEY_FILE": key, "HASALA_APNS_ENVIRONMENTS": "sandbox",
 	})
 	if c.PGDSN == "" || c.MigrateDSN != "m" || c.Server.HTTPListen != "127.0.0.1:8471" || c.Server.MinIOSBuild != 42 ||
 		c.Auth.RPID != "hasala.app" || len(c.Auth.RPOrigins) != 2 || c.Auth.SessionIdle != 24*time.Hour ||
-		c.Auth.PasswordHashConcurrency != 2 || c.Headroom.FloorBytes != 5 || !c.APNs.Enabled ||
+		c.Auth.PasswordHashConcurrency != 2 || c.Auth.SaltKeyFile != key || c.Headroom.FloorBytes != 5 || !c.APNs.Enabled ||
 		strings.Join(c.APNs.AllowedEnvironments, ",") != "sandbox" {
 		t.Fatalf("environment not applied: %+v", c)
 	}
@@ -156,6 +156,14 @@ func TestValuesAreValidated(t *testing.T) {
 	wantErr(t, env{"HASALA_RP_ID": "https://hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app"}, "bare domain")
 	wantErr(t, env{"HASALA_RP_ID": "hasala.app"}, "rp_origins is empty")
 	wantErr(t, env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "hasala.app"}, "absolute origin")
+	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "100h"}, "HASALA_EMAIL_LOG_RETENTION")
+	wantErr(t, env{"HASALA_EMAIL_LOG_RETENTION": "2161h"}, "HASALA_EMAIL_LOG_RETENTION")
+	if c := mustLoad(t, env{"HASALA_EMAIL_LOG_RETENTION": "168h"}); c.Web.LogRetention != 168*time.Hour {
+		t.Fatalf("HASALA_EMAIL_LOG_RETENTION not applied: %v", c.Web.LogRetention)
+	}
+	if c := mustLoad(t, env{}); c.Web.LogRetention != 720*time.Hour {
+		t.Fatalf("the email log's default retention is %v, want 720h", c.Web.LogRetention)
+	}
 }
 
 func TestTheOptionalGroupsAreAllOrNothing(t *testing.T) {
@@ -189,6 +197,8 @@ func TestSecretFilesMustBePrivate(t *testing.T) {
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o640)}, "no group or other permission")
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": filepath.Join(t.TempDir(), "absent")}, "secret file")
 	mustLoad(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o400)})
+	wantErr(t, env{"HASALA_SALT_KEY_FILE": secretFile(t, 0o640)}, "no group or other permission")
+	mustLoad(t, env{"HASALA_SALT_KEY_FILE": secretFile(t, 0o400)})
 }
 
 // systemd's LoadCredential= files show 0440 (the ACL mask that grants the
@@ -233,6 +243,20 @@ func TestTheCloudflarePostureIsStricter(t *testing.T) {
 	wantErr(t, prod(env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "http://hasala.app"}), "https")
 	// The same raw value is tolerated off Cloudflare (local runs and tests).
 	mustLoad(t, env{"HASALA_SOMETHING_TOKEN": "raw"})
+	// HASALA_EMAIL_API_BASE_URL (a local run's mail capture): behind
+	// Cloudflare only the default is accepted; off it, any http(s) root.
+	capture := "http://127.0.0.1:18444/client/v4"
+	wantErr(t, prod(env{"HASALA_EMAIL_API_BASE_URL": capture}), "HASALA_EMAIL_API_BASE_URL")
+	wantErr(t, prod(env{"HASALA_EMAIL_API_BASE_URL": DefaultEmailAPIBaseURL + "/"}), "HASALA_EMAIL_API_BASE_URL")
+	if c := mustLoad(t, prod(env{"HASALA_EMAIL_API_BASE_URL": DefaultEmailAPIBaseURL})); c.Email.APIBaseURL != DefaultEmailAPIBaseURL {
+		t.Fatalf("the default base: %q", c.Email.APIBaseURL)
+	}
+	if c := mustLoad(t, env{"HASALA_EMAIL_API_BASE_URL": capture}); c.Email.APIBaseURL != capture {
+		t.Fatalf("a local capture base: %q", c.Email.APIBaseURL)
+	}
+	for _, bad := range []string{"ftp://127.0.0.1/x", "127.0.0.1:18444", "http://u:p@127.0.0.1/x", "http://127.0.0.1/x?y=1"} {
+		wantErr(t, env{"HASALA_EMAIL_API_BASE_URL": bad}, "HASALA_EMAIL_API_BASE_URL")
+	}
 }
 
 func TestModesHaveTheirOwnRequirements(t *testing.T) {
@@ -261,6 +285,16 @@ func TestModesHaveTheirOwnRequirements(t *testing.T) {
 	c.Headroom.Path = "/var/lib/hasala"
 	if err := c.ValidateFor("serve"); err != nil {
 		t.Fatalf("serve: %v", err)
+	}
+	// Behind Cloudflare serve needs both server keys (review 2 F-04).
+	c.Server.TrustedProxy = ProxyCloudflare
+	c.Auth.AuthKeyFile = "/run/credentials/hasalad.service/auth-key"
+	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "HASALA_SALT_KEY_FILE") {
+		t.Fatalf("serve behind Cloudflare without the salt key: %v", err)
+	}
+	c.Auth.SaltKeyFile = "/run/credentials/hasalad.service/salt-key"
+	if err := c.ValidateFor("serve"); err != nil {
+		t.Fatalf("serve with both keys: %v", err)
 	}
 }
 
@@ -320,7 +354,7 @@ func TestTheConsoleConfigurationIsChecked(t *testing.T) {
 
 func TestModesAreAdvertised(t *testing.T) {
 	got := strings.Join(Modes(), ",")
-	for _, m := range []string{"serve", "migrate", "verify", "purge-user", "invite", "console", "version"} {
+	for _, m := range []string{"serve", "migrate", "verify", "purge-user", "invite", "account", "console", "version"} {
 		if !strings.Contains(","+got+",", ","+m+",") {
 			t.Errorf("Modes() = %s lacks %s", got, m)
 		}

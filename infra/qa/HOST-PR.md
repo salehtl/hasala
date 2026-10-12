@@ -102,6 +102,7 @@ in
     };
     mailboxRouteKeyFile = secret "mailbox_route_key";
     authKeyFile = secret "auth_key"; # spec 01 §4.11; generated once, never rotated in the beta
+    saltKeyFile = secret "salt_key"; # spec 01 §4.11; the password salt key: never rotated, never equal to auth_key
     email = {
       cloudflareAccountId = "<CF_ACCOUNT_ID>"; # not secret
       apiTokenFile = secret "email_api_token"; # Email Sending: Edit only
@@ -171,6 +172,7 @@ where a secret would be world-readable.
 secrets."hasala/apns_key_p8"        = { sopsFile = ../secrets/hasala.yaml; key = "hasala/apns_key_p8";        restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/mailbox_route_key"  = { sopsFile = ../secrets/hasala.yaml; key = "hasala/mailbox_route_key";  restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/auth_key"           = { sopsFile = ../secrets/hasala.yaml; key = "hasala/auth_key";           restartUnits = [ "hasalad.service" ]; };
+secrets."hasala/salt_key"           = { sopsFile = ../secrets/hasala.yaml; key = "hasala/salt_key";           restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/email_api_token"    = { sopsFile = ../secrets/hasala.yaml; key = "hasala/email_api_token";    restartUnits = [ "hasalad.service" ]; };
 secrets."hasala/tunnel_credentials" = { sopsFile = ../secrets/hasala.yaml; key = "hasala/tunnel_credentials"; restartUnits = [ "cloudflared-hasala.service" ]; };
 secrets."hasala/backup_rclone_conf" = { sopsFile = ../secrets/hasala.yaml; key = "hasala/backup_rclone_conf"; }; # read per run
@@ -185,12 +187,19 @@ All stay at the sops-nix default (root, 0400). Units receive them only through
 | `apns_key_p8` | `hasalad` | `HASALA_APNS_KEY_FILE=%d/apns-key.p8` |
 | `mailbox_route_key` | `hasalad` | `HASALA_MAILBOX_ROUTE_KEY_FILE=%d/mailbox-route-key` |
 | `auth_key` | `hasalad` | `HASALA_AUTH_KEY_FILE=%d/auth-key` |
+| `salt_key` | `hasalad` | `HASALA_SALT_KEY_FILE=%d/salt-key` |
 | `email_api_token` | `hasalad`, `hasala-email-token-check` | `HASALA_EMAIL_API_TOKEN_FILE=%d/email-api-token` |
 | `tunnel_credentials` | `cloudflared-hasala` | `credentials-file: /run/credentials/cloudflared-hasala.service/tunnel.json` |
 | `backup_rclone_conf` | `hasala-backup-offsite`, `hasala-backup-check` | `rclone --config %d/rclone.conf` |
 
-How the owner generates each value is spec 05 §6.1 (the route key and the auth
-key are generated and encrypted in one pipe and never displayed).
+How the owner generates each value is spec 05 §6.1 (the route key, the auth
+key and the salt key are generated and encrypted in one pipe and never
+displayed). `auth_key` and `salt_key` are two separate 32-byte values (64
+lowercase hex each, for example `openssl rand -hex 32` twice): serve refuses
+equal keys behind Cloudflare, records each key's fingerprint on first start
+and refuses a different key later (spec 02 O9), and the module refuses the
+tunnel without both (M12). The salt key is never rotated: a different one makes
+every password fail.
 
 ### The tunnel (out of band, once, on the owner's Mac)
 
@@ -228,6 +237,57 @@ for u in hasalad cloudflared-hasala; do
   bin=$(systemctl show -P ExecStart "$u" | grep -o '/nix/store/[^ ;]*/bin/[a-z]*' | head -1)
   nix run nixpkgs#go -- version -m "$bin" | head -1
 done
+```
+
+## Bumping a running QA host to the accounts release
+
+The QA host already runs `services.hasala` at a release whose database has
+only `00001_baseline.sql`. The accounts release applies `00010`, `00020`,
+`00021` and `00022` on top of it, in one `hasala-migrate` run, and it needs one
+new secret, `salt_key` (above: `modules/sops.nix`, `secrets/hasala.yaml` and
+`saltKeyFile`), in the same host PR as the `flake.lock` bump.
+
+**Pre-flight, before the bump, on the running host.** `00010` adds NOT NULL
+columns with no default to `webauthn_credentials` and `writers` and refuses any
+`register` or `add` ceremony without its new columns; `00022` adds NOT NULL
+columns to `users` and `sessions`. Any such row makes `hasala-migrate` fail
+part-way and leaves `hasalad` down (the pre-migration dump is taken first, so
+nothing is lost). Check, as the schema owner, with the PostgreSQL 17 client
+(`psql`, for example from `nix shell nixpkgs#postgresql_17`):
+
+```sh
+sudo -u hasala-migrate psql --no-psqlrc -h /run/hasala-postgresql -d hasala -U hasala_migrate -Atc "
+  SELECT (SELECT count(*) FROM users)                                       AS users,
+         (SELECT count(*) FROM sessions)                                    AS sessions,
+         (SELECT count(*) FROM writers)                                     AS writers,
+         (SELECT count(*) FROM webauthn_credentials)                        AS credentials,
+         (SELECT count(*) FROM webauthn_ceremonies WHERE kind <> 'login')   AS ceremonies"
+# want: 0|0|0|0|0
+```
+
+If any count is not 0, clear it with the **old** binary, still deployed:
+
+```sh
+# every account (sessions, writers and credentials go with it)
+sudo -u hasala-migrate psql --no-psqlrc -h /run/hasala-postgresql -d hasala -U hasala_migrate -Atc "SELECT id FROM users"
+sudo hasala-admin purge-user <ACCOUNT_ID> --confirm <ACCOUNT_ID>    # once per id
+# ceremonies live 5 minutes and belong to no account yet
+sudo -u hasala-migrate psql --no-psqlrc -h /run/hasala-postgresql -d hasala -U hasala_migrate -Atc "DELETE FROM webauthn_ceremonies"
+```
+
+Then run the check again: all five must be 0 before the bump is merged. Do
+nothing on the host between the check and the activation that could create an
+account (the API is not open to testers before this release).
+
+**After the activation**, besides PR B's verification:
+
+```sh
+systemctl show -P Result hasala-migrate                      # success
+journalctl -u hasala-migrate -o cat | grep 00022             # OK 00022_accounts.sql
+journalctl -u hasalad -o cat | grep 'NOT mounted'            # nothing: both key files reached serve
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"invite_code":"ABCDEFGHIJKLMNOPQRSTUVWX","email":"probe@example.com","display_name":"Probe"}' \
+  http://127.0.0.1:8471/api/v1/auth/signup/begin             # {"error":"not_invited"}, not a 404
 ```
 
 ## PR C: "hasala: operator console (tailnet only)"

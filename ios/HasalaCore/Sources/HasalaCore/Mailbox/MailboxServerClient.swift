@@ -10,10 +10,13 @@ public struct HTTPMailboxServer: MailboxServer {
   let http: any HTTPExchange
   let base: String
 
-  /// `base` is the API origin, e.g. `https://api.hasala.app`.
+  /// `base` is the API origin, e.g. `https://api.hasala.app` (a trailing "/"
+  /// is dropped, so paths never start with "//").
   public init(http: any HTTPExchange, base: String) {
     self.http = http
-    self.base = base
+    var b = Substring(base)
+    while b.hasSuffix("/") { b = b.dropLast() }
+    self.base = String(b)
   }
 
   func call(_ method: HTTPRequest.Method, _ path: String, body: JSONValue?) async throws(MailboxServerError)

@@ -30,8 +30,16 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
 
   deinit { session.invalidateAndCancel() }
 
+  /// The request for `r`, or nil when `r.path` would leave `baseURL`'s origin:
+  /// it must be an absolute path ("/" and not "//", which a URL resolver reads
+  /// as a new host), and the resolved URL must keep the scheme, host and port,
+  /// so the session's bearer only ever goes to the API.
   public func urlRequest(for r: APIRequest) -> URLRequest? {
-    guard let url = URL(string: r.path, relativeTo: baseURL) else { return nil }
+    let lead = Array(r.path.utf8.prefix(2))
+    guard lead.first == 0x2F, lead.count == 1 || lead[1] != 0x2F,
+      let url = URL(string: r.path, relativeTo: baseURL)?.absoluteURL,
+      url.scheme == baseURL.scheme, url.host == baseURL.host, url.port == baseURL.port
+    else { return nil }
     var u = URLRequest(url: url)
     u.httpMethod = r.method.rawValue
     u.setValue(clientHeader, forHTTPHeaderField: "Hasala-Client")

@@ -122,13 +122,7 @@ func Date(t time.Time) string { return t.In(uae).Format("Monday 2 January") }
 
 // Greeting is "Hi {first}," for a display name, else "Hi,". The first name is
 // the stored name up to its first space.
-func Greeting(displayName string) string {
-	first, _, _ := strings.Cut(strings.TrimSpace(displayName), " ")
-	if first == "" {
-		return "Hi,"
-	}
-	return "Hi " + first + ","
-}
+func Greeting(displayName string) string { return mail.Greeting(displayName) }
 
 // EnqueueTest queues the operator's test email (`hasalad email test`).
 func EnqueueTest(ctx context.Context, tx pgx.Tx, q *Queue, address string) (int64, error) {
@@ -146,4 +140,18 @@ var TestRenderer = RenderFunc(func(_ context.Context, _ pgx.Tx, row Row) (mail.M
 		return mail.Message{}, err
 	}
 	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text}, nil
+})
+
+// DeletedRenderer renders the `deleted` kind, the goodbye a purge queues
+// (spec 02 §15.2 step 4): the address and the time of the deletion, nothing
+// else. The row names no account, because the account is gone by the time it
+// is sent.
+var DeletedRenderer = RenderFunc(func(_ context.Context, _ pgx.Tx, row Row) (mail.Message, error) {
+	at := row.CreatedAt
+	if s, ok := row.Params["deleted_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+			at = t
+		}
+	}
+	return mail.Deleted(row.Recipient, at), nil
 })

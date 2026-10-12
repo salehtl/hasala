@@ -20,6 +20,9 @@ import (
 // already validated the token, so a failure here is a 401 on a token that
 // expired in between, or a 500.
 func (s *Server) sessionInfo(w http.ResponseWriter, r *http.Request) (auth.SessionInfo, bool) {
+	if info, ok := r.Context().Value(sessionCtxKey{}).(auth.SessionInfo); ok {
+		return info, true
+	}
 	token, ok := bearerToken(r)
 	if !ok {
 		writeUnauthorized(w)
@@ -31,7 +34,7 @@ func (s *Server) sessionInfo(w http.ResponseWriter, r *http.Request) (auth.Sessi
 			writeUnauthorized(w)
 			return auth.SessionInfo{}, false
 		}
-		s.logf("api: %s %s: session binding: %v", r.Method, r.URL.Path, err)
+		s.logf("api: %s: session binding: %v", route(r), err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return auth.SessionInfo{}, false
 	}
@@ -50,7 +53,7 @@ func (s *Server) requireBound(w http.ResponseWriter, r *http.Request, info auth.
 	err := s.Pool.QueryRow(r.Context(),
 		`SELECT revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`, info.UserID, info.WriterID).Scan(&live)
 	if err != nil {
-		s.logf("api: %s %s: bound writer: %v", r.Method, r.URL.Path, err)
+		s.logf("api: %s: bound writer: %v", route(r), err)
 		writeErr(w, http.StatusForbidden, "writer_unbound", "")
 		return false
 	}
@@ -127,6 +130,10 @@ func b64urlField(w http.ResponseWriter, value, field string) ([]byte, bool) {
 	return b, true
 }
 
+// b64std decodes standard base64; an error yields nil, which every caller
+// treats as a failed proof.
+func b64std(v string) ([]byte, error) { return base64.StdEncoding.DecodeString(v) }
+
 var (
 	b64    = base64.StdEncoding.EncodeToString
 	b64url = base64.RawURLEncoding.EncodeToString
@@ -135,7 +142,7 @@ var (
 // writeKeyErr maps auth's key, writer and step-up errors (and oplog's upload
 // ones) to spec 02 §6.3. The reason goes to the operator log.
 func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) {
-	s.logf("api: %s %s: %v", r.Method, r.URL.Path, err)
+	s.logf("api: %s: %v", route(r), err)
 	type m struct {
 		target error
 		status int
@@ -145,7 +152,6 @@ func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) 
 		{auth.ErrStepUpRequired, http.StatusForbidden, "step_up_required"},
 		{auth.ErrStepUpFailed, http.StatusForbidden, "step_up_failed"},
 		{auth.ErrStepUpBadRequest, http.StatusBadRequest, "bad_request"},
-		{auth.ErrStepUpUnsupported, http.StatusBadRequest, "bad_request"},
 		{auth.ErrWriterUnbound, http.StatusForbidden, "writer_unbound"},
 		{auth.ErrKeysRequired, http.StatusForbidden, "keys_required"},
 		{oplog.ErrKeysRequired, http.StatusForbidden, "keys_required"},
@@ -165,11 +171,45 @@ func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) 
 		{auth.ErrKeysExist, http.StatusConflict, "keys_exist"},
 		{auth.ErrNoKeys, http.StatusNotFound, "no_keys"},
 		{auth.ErrBadAuthorityKey, http.StatusBadRequest, "bad_request"},
+		// The account ceremonies (spec 02 §6.3).
+		{auth.ErrCodeRejected, http.StatusForbidden, "code_rejected"},
+		{auth.ErrRateLimited, http.StatusTooManyRequests, "rate_limited"},
+		{auth.ErrEmailInUse, http.StatusConflict, "email_in_use"},
+		{auth.ErrNotInvited, http.StatusForbidden, "not_invited"},
+		{auth.ErrPasswordRejected, http.StatusForbidden, "password_rejected"},
+		{auth.ErrRecoveryRefused, http.StatusForbidden, "recovery_refused"},
+		{auth.ErrResetRefused, http.StatusForbidden, "reset_refused"},
+		{auth.ErrNotApproved, http.StatusConflict, "not_approved"},
+		{auth.ErrFreezeRefused, http.StatusForbidden, "freeze_refused"},
+		{auth.ErrAccountFrozen, http.StatusForbidden, "account_frozen"},
+		{auth.ErrConflict, http.StatusConflict, "conflict"},
+		{auth.ErrLastAuthenticator, http.StatusConflict, "last_authenticator"},
+		{auth.ErrLastPasskey, http.StatusConflict, "last_authenticator"},
+		{auth.ErrBadEmail, http.StatusBadRequest, "bad_email"},
+		{auth.ErrBadRequest, http.StatusBadRequest, "bad_request"},
+		{auth.ErrNoSuchAccount, http.StatusNotFound, "not_found"},
+		{auth.ErrPasskeyRejected, http.StatusForbidden, "passkey_rejected"},
 	} {
 		if errors.Is(err, x.target) {
+			if x.status == http.StatusTooManyRequests {
+				w.Header().Set("Retry-After", "60")
+			}
 			writeErr(w, x.status, x.code, "")
 			return
 		}
+	}
+	switch {
+	case errors.Is(err, auth.ErrBadName):
+		detail := "display_name: characters"
+		if errors.Is(err, auth.ErrBadNameLength) {
+			detail = "display_name: length"
+		}
+		writeErr(w, http.StatusBadRequest, "bad_name", detail)
+		return
+	case errors.Is(err, auth.ErrUnavailable):
+		w.Header().Set("Retry-After", "2")
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
 	}
 	writeErr(w, http.StatusInternalServerError, "internal", "")
 }

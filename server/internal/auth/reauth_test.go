@@ -13,7 +13,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
-// challengeBytes is a server-minted nonce of the width purge.Challenges uses.
+// challengeBytes is a server-minted challenge of a step-up's width.
 // It is generated rather than fixed so no test can pass by matching a constant
 // that also appears in the code under test.
 func challengeBytes(t *testing.T) []byte {

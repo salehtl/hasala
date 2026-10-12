@@ -26,14 +26,14 @@ func randomBody(t *testing.T, n int) []byte {
 // console into the API's own tests.
 func (h *harness) suspend(u uuid.UUID) {
 	h.t.Helper()
-	if _, err := h.pool.Exec(bg, `UPDATE users SET status = 'suspended' WHERE id = $1`, u); err != nil {
+	if _, err := h.pool.Exec(bg, `UPDATE users SET status = 'suspended', suspended_at = now() WHERE id = $1`, u); err != nil {
 		h.t.Fatalf("suspend %s: %v", u, err)
 	}
 }
 
 func (h *harness) resume(u uuid.UUID) {
 	h.t.Helper()
-	if _, err := h.pool.Exec(bg, `UPDATE users SET status = 'active' WHERE id = $1`, u); err != nil {
+	if _, err := h.pool.Exec(bg, `UPDATE users SET status = 'active', suspended_at = NULL WHERE id = $1`, u); err != nil {
 		h.t.Fatalf("resume %s: %v", u, err)
 	}
 }

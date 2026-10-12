@@ -313,9 +313,12 @@ type Redeemed struct {
 
 // RedeemTx spends the invite inside the account-creation transaction (spec 02
 // §14.1): exactly one row moves active → redeemed, else ErrNotInvited and the
-// caller rolls the whole account back. Two transactions presenting one code
-// serialize on the row; the loser's predicate fails after the winner commits.
-func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash []byte, userID uuid.UUID, now time.Time) (Redeemed, error) {
+// caller rolls the whole account back. An addressed invite redeems only for
+// the account whose address has its tag (emailTag, the new account's
+// email_tag); a nil emailTag redeems only an unaddressed invite. Two
+// transactions presenting one code serialize on the row; the loser's
+// predicate fails after the winner commits.
+func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID uuid.UUID, now time.Time) (Redeemed, error) {
 	if len(codeHash) == 0 {
 		return Redeemed{}, ErrNotInvited
 	}
@@ -323,7 +326,8 @@ func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash []byte, userID uuid.UUID,
 	err := tx.QueryRow(ctx,
 		`UPDATE invite_codes SET state = 'redeemed', redeemed_at = $1, redeemed_by = $2, closed_at = $1
 		  WHERE code_hash = $3 AND state = 'active' AND expires_at > $1
-		  RETURNING id, waitlist_entry_id, review`, now, userID, codeHash).Scan(&r.InviteID, &r.EntryID, &r.Review)
+		    AND (email_tag IS NULL OR email_tag = $4)
+		  RETURNING id, waitlist_entry_id, review`, now, userID, codeHash, emailTag).Scan(&r.InviteID, &r.EntryID, &r.Review)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Redeemed{}, ErrNotInvited
 	}
@@ -331,45 +335,6 @@ func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash []byte, userID uuid.UUID,
 		return Redeemed{}, fmt.Errorf("invites: redeem: %w", err)
 	}
 	return r, nil
-}
-
-// Redeemable reports whether a code hash names a redeemable invite now (the
-// passkey ceremony's early check; RedeemTx is the authority).
-func Redeemable(ctx context.Context, q Querier, codeHash []byte, now time.Time) (bool, error) {
-	if len(codeHash) == 0 {
-		return false, nil
-	}
-	var ok bool
-	err := q.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM invite_codes WHERE code_hash = $1 AND state = 'active' AND expires_at > $2)`,
-		codeHash, now).Scan(&ok)
-	return ok, err
-}
-
-// RedeemableWithoutAddress is the passkey ceremony's gate, which has no
-// address to bind (spec 02 §14.1's binding): the code must be redeemable, and
-// an ADDRESSED invite (email_tag set: every console invite and every `invite
-// mint --email`) is accepted only with its link key, which only the email to
-// that address carries. A code alone (typed, pasted, or the link's path
-// without its fragment) opens an unaddressed invite only. linkKey may be nil.
-func RedeemableWithoutAddress(ctx context.Context, q Querier, codeHash, linkKey []byte, now time.Time) (bool, error) {
-	if len(codeHash) == 0 {
-		return false, nil
-	}
-	var tag, lkh []byte
-	err := q.QueryRow(ctx,
-		`SELECT email_tag, link_key_hash FROM invite_codes WHERE code_hash = $1 AND state = 'active' AND expires_at > $2`,
-		codeHash, now).Scan(&tag, &lkh)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("invites: redeemable: %w", err)
-	}
-	if tag == nil {
-		return true, nil
-	}
-	return linkKey != nil && LinkKeyMatches(linkKey, lkh), nil
 }
 
 // Sweep runs spec 07 §2.11's invite sweeps: expiry (an expired invite's entry
