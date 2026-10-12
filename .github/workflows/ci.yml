@@ -28,13 +28,13 @@
 # Caches (actions/cache): Go's module and build caches in `gate` (`vuln` reads
 # them), and SwiftPM's repository cache in `swift`, `ios` and `ios-ui`. Each is keyed on the
 # files that pin its contents (flake.lock pins Go; go.sum and Package.resolved
-# the dependencies) and saved only when that exact key was missing. A pull
-# request's run saves into its own scope, which main and other pull requests
-# never read. Neither can change a verdict: Go's build cache is content-addressed
-# (an entry is reused only for byte-identical inputs and toolchain) and its
-# module cache is verified against go.sum; SwiftPM checks out the revision
-# Package.resolved pins, from the cached clone or the network alike. check.sh
-# still runs every Go test with -count=1, so no test result is ever cached.
+# the dependencies) and saved only when that exact key was missing. Scoping is
+# what keeps a cache trustworthy: a pull request's run saves only into its own
+# scope and reads main's, never another pull request's, and main reads only its
+# own. Go's build cache is content-addressed (an entry is reused only for
+# byte-identical inputs and toolchain); SwiftPM checks out the revision
+# Package.resolved pins, from the cached clone or the network alike; and
+# check.sh still runs every Go test with -count=1, so no test result is cached.
 name: CI
 
 on:
@@ -525,9 +525,12 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      # Each test target declares what it imports (Package.swift links
+      # CoreTestSupport only where a test uses it), and the import check makes an
+      # undeclared import an error here too, not only under explicit module builds.
       - name: swift test
         working-directory: ios/HasalaCore
-        run: swift test --disable-automatic-resolution
+        run: swift test --disable-automatic-resolution --explicit-target-dependency-import-check error
 
       # `swift test` builds for macOS only. The iOS build is what catches a
       # module that shadows an Apple framework (the reason `CoreText` is
@@ -546,56 +549,6 @@ jobs:
       # check-imports.sh also compares imports.allow with Package.swift.
       - name: Import rules and grep lints
         run: ios/scripts/check-imports.sh && ios/scripts/check-forbidden.sh
-
-  # TEMPORARY (ci/test-speedup measurement, removed before merge): paired timings on
-  # one runner of (a) HasalaCore's clean test build with main's Package.swift and
-  # with this branch's, and (b) the iOS build as two xcodebuilds and as one.
-  zz-measure:
-    needs: changes
-    runs-on: macos-26
-    timeout-minutes: 60
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-      - name: Clean HasalaCore test build, main's manifest vs this branch's
-        run: |
-          set -euo pipefail
-          base="$RUNNER_TEMP/base-core"
-          cp -R ios/HasalaCore "$base"
-          git show HEAD^1:ios/HasalaCore/Package.swift >"$base/Package.swift"
-          git diff --stat HEAD^1 HEAD -- ios/HasalaCore/Package.swift
-          (cd ios/HasalaCore && swift package resolve --disable-automatic-resolution >/dev/null)
-          (cd "$base" && swift package resolve --disable-automatic-resolution >/dev/null)
-          for round in 1 2; do
-            for side in main branch; do
-              dir=ios/HasalaCore; [[ $side == main ]] && dir="$base"
-              (cd "$dir" && swift package clean)
-              start=$SECONDS
-              (cd "$dir" && swift build --build-tests --disable-automatic-resolution >"$RUNNER_TEMP/build-$side-$round.log" 2>&1)
-              echo "MEASURE clean test build, $side manifest, round $round: $((SECONDS - start)) s ($(tail -1 "$RUNNER_TEMP/build-$side-$round.log"))"
-            done
-          done
-      - name: iOS build, two xcodebuilds vs one
-        working-directory: ios/HasalaCore
-        run: |
-          set -euo pipefail
-          for round in 1 2; do
-            start=$SECONDS
-            for dest in 'generic/platform=iOS Simulator' 'generic/platform=iOS'; do
-              xcodebuild -scheme HasalaCore-Package -destination "$dest" \
-                -derivedDataPath "$RUNNER_TEMP/dd-two-$round" -disableAutomaticPackageResolution -quiet build
-            done
-            echo "MEASURE iOS build as two xcodebuilds, round $round: $((SECONDS - start)) s"
-            start=$SECONDS
-            xcodebuild -scheme HasalaCore-Package \
-              -destination 'generic/platform=iOS Simulator' -destination 'generic/platform=iOS' \
-              -derivedDataPath "$RUNNER_TEMP/dd-one-$round" -disableAutomaticPackageResolution -quiet build
-            echo "MEASURE iOS build as one xcodebuild, round $round: $((SECONDS - start)) s"
-          done
 
   # The hasala.app website in web/ (Astro + Bun). Not a required check: the
   # ruleset is the owner's. Lighthouse uses the devShell's Node and the Chrome

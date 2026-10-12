@@ -10,10 +10,11 @@
 // unless, for every package in LIST: it lists at least one test, a RECORD has the
 // package passing, and every listed test has a result there, pass or skip (a
 // t.Skip of its own, such as a real-corpus test without the private fixtures).
-// So a package left out of step 4, or a test of one that step 4 did not run (a
-// -run, a -skip, a KNOWN_FAILING entry that matches it), fails here just as a
-// second run of it would have. Benchmarks are listed but never run by go test,
-// so they are not counted.
+// So a package left out of step 4, or a top-level test of one that step 4 did not
+// run (a -run, a -skip, a KNOWN_FAILING entry that matches it), fails here just
+// as a second run of it would have. Subtests are not listed by `go test -list`;
+// check.sh refuses a KNOWN_FAILING pattern that could skip one (a "/" in it).
+// Benchmarks are listed but never run by go test, so they are not counted.
 
 type Event = { Action: string; Package?: string; Test?: string; Output?: string };
 

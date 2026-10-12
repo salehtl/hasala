@@ -239,7 +239,10 @@ REAL_GO="$(mktemp)"
 REAL_BUN="$(mktemp)"
 JUNIT="$(mktemp)"
 # Step 4's `go test -json` streams (server/ and server/oracle/), which step 6
-# checks the conformance packages against, and step 6's `go test -list`.
+# checks the conformance packages against, and step 6's `go test -list`. Step 6
+# relies on step 4 running every test exactly as a run of its own would (only
+# -count=1 and the KNOWN_FAILING -skip, which names top-level tests): a flag
+# there that makes tests skip themselves, such as -short, would pass unseen.
 GO_RECORD="$(mktemp)"
 ORACLE_RECORD="$(mktemp)"
 GO_LIST="$(mktemp)"
@@ -303,7 +306,10 @@ echo "cluster up (unix socket only; listen_addresses is empty)"
 # NAME in step 4 so the rest of the run stays a gate, and re-run on its own in
 # step 7, where it must still fail: the day it passes, the gate fails until the
 # entry is removed, so nothing healthy stays skipped. Format:
-# "module dir (under server/)|package|regexp".
+# "module dir (under server/)|package|regexp". The regexp names top-level tests
+# only (no "/"): step 6 proves the conformance packages' tests ran in step 4 from
+# `go test -list`, which lists top-level tests, so a subtest skipped here would
+# go unseen there. A pattern with a slash fails the gate below.
 #
 # oracle/v1ref/store TestSelectMonthlyTotals is clock-dependent: it seeds
 # June 2026 rows and asks SelectMonthlyTotals(3), whose window starts from
@@ -316,6 +322,10 @@ KNOWN_FAILING=(
 	"oracle|./v1ref/store|^TestSelectMonthlyTotals\$"
 )
 skip_re="$(printf '%s\n' "${KNOWN_FAILING[@]}" | cut -d'|' -f3 | paste -sd'|' -)"
+if [[ "$skip_re" == */* ]]; then
+	echo "check: a KNOWN_FAILING regexp names a subtest ('/' in $skip_re); name top-level tests only (see above)" >&2
+	exit 1
+fi
 
 # --- 4. go vet and go test -------------------------------------------------------
 # -count=1 defeats the test cache: a cached pass from a previous cluster is not

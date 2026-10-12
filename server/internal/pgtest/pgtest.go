@@ -155,8 +155,9 @@ func NewWithOwner(t *testing.T) (runtime, owner *pgxpool.Pool) {
 // migratedTemplate returns the name of this process's migrated template,
 // building it on the first call: a database prepared by prepareDatabase (what
 // newDatabase does for a test) and migrated by pg.Migrate as hasala_migrate,
-// with every connection to it closed again before it is returned, because
-// CREATE DATABASE refuses a template that anyone is connected to.
+// with every connection to it closed, and their backends gone, before it is
+// returned: CREATE DATABASE refuses a template that anyone is connected to
+// (after waiting up to 5 s for them itself).
 func migratedTemplate() (string, error) {
 	tmplOnce.Do(func() {
 		ctx := context.Background()
@@ -179,7 +180,9 @@ func migratedTemplate() (string, error) {
 		owner.Close()
 		if err != nil {
 			tmplErr = fmt.Errorf("pgtest: migrate the template: %w", err)
+			return
 		}
+		awaitNoBackends(ctx, name)
 	})
 	return tmplName, tmplErr
 }
@@ -249,25 +252,33 @@ func newDatabase(t *testing.T) string {
 // dropDatabase drops a test's database. Its cleanup runs after the test's pools
 // are closed, but a closed connection's backend exits a moment later, and
 // DROP DATABASE waits for the backends still on the database in steps of
-// 100 ms. So it first polls, for at most backendExitWait, until none is left;
-// whatever is still connected after that (a connection the test leaked) is
-// what WITH (FORCE) terminates, exactly as before.
+// 100 ms. So it first waits (awaitNoBackends) for them to go; whatever is still
+// connected after that (a connection the test leaked) is what WITH (FORCE)
+// terminates, exactly as before.
 func dropDatabase(t *testing.T, name string) {
 	t.Helper()
 	ctx := context.Background()
-	for deadline := time.Now().Add(backendExitWait); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
-		var n int
-		if err := adminPool.QueryRow(ctx,
-			"SELECT count(*) FROM pg_stat_activity WHERE datname = $1", name).Scan(&n); err != nil || n == 0 {
-			break
-		}
-	}
+	awaitNoBackends(ctx, name)
 	if _, err := adminPool.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
 		t.Errorf("pgtest: drop database %s: %v", name, err)
 	}
 }
 
-// backendExitWait bounds dropDatabase's wait for closed connections' backends.
+// awaitNoBackends polls, every millisecond for at most backendExitWait, until
+// no backend is connected to the database name. It only shortens a wait: what
+// follows it (CREATE DATABASE ... TEMPLATE, DROP DATABASE ... WITH (FORCE))
+// still handles a backend that is left, as it always did.
+func awaitNoBackends(ctx context.Context, name string) {
+	for deadline := time.Now().Add(backendExitWait); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		var n int
+		if err := adminPool.QueryRow(ctx,
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = $1", name).Scan(&n); err != nil || n == 0 {
+			return
+		}
+	}
+}
+
+// backendExitWait bounds awaitNoBackends.
 const backendExitWait = 250 * time.Millisecond
 
 // prepareDatabase does, as the bootstrap superuser, what infra's setup.sql
