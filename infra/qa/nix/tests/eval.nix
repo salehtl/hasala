@@ -4,8 +4,9 @@
 # name, so `nix flake check --no-build` (which is all a Mac can run of the
 # Linux checks) already enforces it. The derivation only records the result.
 #
-#   AT-E1  a minimal system and a fully configured one evaluate their toplevel
-#          with no failed assertion;
+#   AT-E1  a minimal system, a fully configured one and one with the Gmail
+#          mailbox link but no Pub/Sub push evaluate their toplevel with no
+#          failed assertion;
 #   AT-E2  each misuse fails the named module assertion (M1–M22), and each
 #          ill-typed value (a Nix path literal for a secret, an unknown key
 #          kind, a tester limit of 0) fails the option's type, via tryEval;
@@ -51,21 +52,27 @@ let
     };
   };
 
+  # The [gmail] group's two parts.
+  gmailLink = {
+    google.iosClientId = "000000000000-test.apps.googleusercontent.com";
+    mailboxRouteKeyFile = secret "mailbox_route_key";
+  };
+  gmailPush = {
+    gmail = {
+      pubsubTopic = "projects/test-project/topics/hasala-gmail-qa";
+      pubsubAudience = "https://api.hasala.app/hooks/gmail/pubsub";
+      pubsubServiceAccount = "push@test-project.iam.gserviceaccount.com";
+      pubsubSubscription = "projects/test-project/subscriptions/hasala-gmail-qa";
+    };
+  };
+
   # Every option group set: the shape of the QA host's configuration.
   full = {
-    services.hasala = lib.recursiveUpdate (tunnelOn // consoleOn) {
+    services.hasala = lib.recursiveUpdate (tunnelOn // consoleOn // gmailLink // gmailPush) {
       apns = {
         keyFile = secret "apns_key_p8";
         keyId = "ABCDE12345";
       };
-      google.iosClientId = "000000000000-test.apps.googleusercontent.com";
-      gmail = {
-        pubsubTopic = "projects/test-project/topics/hasala-gmail-qa";
-        pubsubAudience = "https://api.hasala.app/hooks/gmail/pubsub";
-        pubsubServiceAccount = "push@test-project.iam.gserviceaccount.com";
-        pubsubSubscription = "projects/test-project/subscriptions/hasala-gmail-qa";
-      };
-      mailboxRouteKeyFile = secret "mailbox_route_key";
       web.turnstile.secretFile = secret "turnstile_secret";
       backup = {
         enable = true;
@@ -203,9 +210,37 @@ let
         };
       })
     ];
-    "one gmail value only" = [
-      "M8"
+    "client id without the route key" = [
+      "M8a"
+      (hasala { inherit (gmailLink) google; })
+    ];
+    "route key without the client id" = [
+      "M8a"
+      (hasala { inherit (gmailLink) mailboxRouteKeyFile; })
+    ];
+    "client id not a Google client id" = [
+      "M8a"
+      (hasala (gmailLink // { google.iosClientId = "not-a-client-id"; }))
+    ];
+    "one Pub/Sub value only" = [
+      "M8b"
       (hasala { gmail.pubsubTopic = "projects/p/topics/t"; })
+    ];
+    "three Pub/Sub values with the link" = [
+      "M8b"
+      (hasala (gmailLink // { gmail = removeAttrs gmailPush.gmail [ "pubsubServiceAccount" ]; }))
+    ];
+    "the Pub/Sub push without the link" = [
+      "M8b"
+      (hasala gmailPush)
+    ];
+    "Pub/Sub service account not a service account email" = [
+      "M8b"
+      (hasala (
+        lib.recursiveUpdate (gmailLink // gmailPush) {
+          gmail.pubsubServiceAccount = "push@test-project.gserviceaccount.com";
+        }
+      ))
     ];
     "database listen_addresses" = [
       "M9"
@@ -460,11 +495,16 @@ let
 
   minimal = t.evalSystem { };
   fullSys = t.evalSystem full;
+  # The QA host before its Pub/Sub push exists: the mailbox link alone.
+  linkOnlySys = t.evalSystem (hasala gmailLink);
   manualSys = t.evalSystem (lib.recursiveUpdate full { services.hasala.asc.enable = false; });
 
   positiveErrors =
     lib.optional (failedAny minimal != [ ]) "AT-E1 minimal: ${builtins.toJSON (failedAny minimal)}"
-    ++ lib.optional (failedAny fullSys != [ ]) "AT-E1 full: ${builtins.toJSON (failedAny fullSys)}";
+    ++ lib.optional (failedAny fullSys != [ ]) "AT-E1 full: ${builtins.toJSON (failedAny fullSys)}"
+    ++ lib.optional (
+      failedAny linkOnlySys != [ ]
+    ) "AT-E1 gmail link only: ${builtins.toJSON (failedAny linkOnlySys)}";
 
   svc = sys: name: sys.config.systemd.services.${name};
   # NixOS adds PATH to every unit; it is not part of the contract.
@@ -491,6 +531,8 @@ let
     "backup_rclone_conf"
   ];
   hasaladEnv = envOf fullSys "hasalad";
+  linkOnlyEnv = envOf linkOnlySys "hasalad";
+  gmailKeys = env: keysWith [ "HASALA_GOOGLE_" "HASALA_GMAIL_" "HASALA_MAILBOX_" ] env;
   consoleEnv = envOf fullSys "hasala-console";
   manualConsoleEnv = envOf manualSys "hasala-console";
   allEnvValues = lib.concatMap (s: map toString (lib.attrValues (s.environment or { }))) (
@@ -616,6 +658,20 @@ let
         "turnstile-secret"
       ]
     ) "AT-E3 hasalad LoadCredential is ${builtins.toJSON (credsOf fullSys "hasalad")}"
+    ++ check (sameSet (gmailKeys linkOnlyEnv) [
+      "HASALA_GOOGLE_IOS_CLIENT_ID"
+      "HASALA_MAILBOX_ROUTE_KEY_FILE"
+    ]) "AT-E3 hasalad's [gmail] keys with the link only are ${builtins.toJSON (gmailKeys linkOnlyEnv)}"
+    ++ check (
+      linkOnlyEnv.HASALA_MAILBOX_ROUTE_KEY_FILE or null == "%d/mailbox-route-key"
+      && linkOnlyEnv.HASALA_GOOGLE_IOS_CLIENT_ID or null == "000000000000-test.apps.googleusercontent.com"
+    ) "AT-E3 the link-only [gmail] values"
+    ++
+      check (credsOf linkOnlySys "hasalad" == [ "mailbox-route-key" ])
+        "AT-E3 hasalad LoadCredential with the link only is ${builtins.toJSON (credsOf linkOnlySys "hasalad")}"
+    ++ check (
+      gmailKeys (envOf minimal "hasalad") == [ ]
+    ) "AT-E3 hasalad has [gmail] keys with none configured"
     ++ check (sameSet (lib.attrNames consoleEnv) consoleKeysExternal) "AT-E3 console environment (external) is ${builtins.toJSON (lib.attrNames consoleEnv)}"
     ++ check (
       consoleEnv.HASALA_TESTFLIGHT_MODE == "external"
@@ -689,6 +745,7 @@ let
   toplevels = map (s: builtins.unsafeDiscardStringContext s.config.system.build.toplevel.drvPath) [
     minimal
     fullSys
+    linkOnlySys
   ];
 in
 if errors != [ ] then

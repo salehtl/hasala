@@ -8,8 +8,8 @@ import (
 )
 
 // Spec 02 §7 #2: unauthenticated, exactly the five fields, gmail_watch_topic
-// null while the mailbox-link routes are not mounted, log_generation 1 when
-// no file says otherwise.
+// null unless the Pub/Sub push is configured (a mailbox link alone is not
+// enough), log_generation 1 when no file says otherwise.
 func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 	h := newHarness(t)
 	h.srv.Now = func() time.Time { return time.Date(2026, 10, 11, 9, 30, 15, 999, time.FixedZone("GST", 4*3600)) }
@@ -37,7 +37,13 @@ func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 		}
 	}
 
-	h.srv.Meta = Meta{RPID: "hasala.app", GmailWatchTopic: "projects/p/topics/t", LogGeneration: 3}
+	// The mailbox link without the push: still no topic.
+	h.srv.Gmail = &GmailOptions{IOSClientID: testClientID}
+	if m := decodeJSON[MetaResponse](t, h.req(http.MethodGet, "/api/v1/meta", "", nil)); m.GmailWatchTopic != nil {
+		t.Fatalf("a link without the push offered the topic %q", *m.GmailWatchTopic)
+	}
+	h.srv.Meta = Meta{RPID: "hasala.app", LogGeneration: 3}
+	h.srv.Gmail.Push = &GmailPush{Topic: "projects/p/topics/t"}
 	m := decodeJSON[MetaResponse](t, h.req(http.MethodGet, "/api/v1/meta", "", nil))
 	if m.GmailWatchTopic == nil || *m.GmailWatchTopic != "projects/p/topics/t" || m.LogGeneration != 3 {
 		t.Fatalf("meta = %+v", m)

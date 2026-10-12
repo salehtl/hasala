@@ -110,7 +110,17 @@ const (
 	testMailbox  = "Someone.Else@Gmail.com"
 )
 
+const testTopic = "projects/test-project/topics/hasala-gmail-qa"
+
+// withPushAndGmail mounts the mailbox link and the Pub/Sub push.
 func withPushAndGmail(h *harness) (*recWaker, *GmailOptions) {
+	h.t.Helper()
+	return withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
+		ServiceAccount: testSA})
+}
+
+// withGmail mounts the mailbox link, and the push when push is not nil.
+func withGmail(h *harness, push *GmailPush) (*recWaker, *GmailOptions) {
 	h.t.Helper()
 	rk, err := gmailpush.NewRouteKey(bytes.Repeat([]byte{7}, 32))
 	if err != nil {
@@ -118,8 +128,7 @@ func withPushAndGmail(h *harness) (*recWaker, *GmailOptions) {
 	}
 	w := &recWaker{}
 	g := &GmailOptions{RouteKey: rk, Link: fakeVerifier{testClientID}, IOSClientID: testClientID,
-		Hook: fakeVerifier{testAudience}, Subscription: testSub, PushServiceAccount: testSA,
-		MailboxPerUser: NewLimiter(1000, 1000, 100, time.Now)}
+		MailboxPerUser: NewLimiter(1000, 1000, 100, time.Now), Push: push}
 	h.srv.Push.Waker = w
 	h.srv.Gmail = g
 	h.h = h.srv.Handler()
@@ -272,6 +281,9 @@ func TestMailboxLink(t *testing.T) {
 		LinkWatchRequest{ExpiresAt: time.Now().Add(9 * 24 * time.Hour)}), http.StatusBadRequest)
 	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link/watch", k.token,
 		LinkWatchRequest{ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}), http.StatusNoContent)
+	if st := decodeJSON[LinkStatusResponse](t, h.req("GET", "/api/v1/mailbox/link", k.token, nil)); st.WatchExpiresAt == nil {
+		t.Fatal("#37 does not report the watch #36 recorded")
+	}
 
 	// A second device takes over: the first sees is_this_device = false and
 	// its watch report is 409 not_holder.
@@ -311,6 +323,114 @@ func TestMailboxLink(t *testing.T) {
 	if linked != 2 || unlinked != 1 || alerts != 0 {
 		t.Fatalf("auth events: %d linked, %d unlinked, %d alerts; want 2, 1, 0", linked, unlinked, alerts)
 	}
+}
+
+// mailboxRoutes is #34–#38.
+var mailboxRoutes = []struct{ method, path string }{
+	{"POST", "/api/v1/mailbox/link/challenge"},
+	{"PUT", "/api/v1/mailbox/link"},
+	{"PUT", "/api/v1/mailbox/link/watch"},
+	{"GET", "/api/v1/mailbox/link"},
+	{"DELETE", "/api/v1/mailbox/link"},
+}
+
+// wantNotFound wants the catch-all's 404 not_found: the route is not mounted.
+func wantNotFound(t *testing.T, w *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	if w.Code != http.StatusNotFound || decodeJSON[errorBody](t, w).Error != "not_found" {
+		t.Fatalf("%s: %d %s, want the unmounted 404 not_found", what, w.Code, w.Body)
+	}
+}
+
+// Without [gmail] nothing of #34–#39 is mounted and /meta offers no topic.
+func TestNoGmailMountsNothing(t *testing.T) {
+	h := newHarness(t)
+	for _, rt := range mailboxRoutes {
+		wantNotFound(t, h.req(rt.method, rt.path, "", map[string]any{}), rt.method+" "+rt.path)
+	}
+	wantNotFound(t, h.hook("", pubsubBody(t, testSub, map[string]any{"emailAddress": testMailbox, "historyId": "1"})),
+		"the hook")
+	if m := decodeJSON[MetaResponse](t, h.req("GET", "/api/v1/meta", "", nil)); m.GmailWatchTopic != nil {
+		t.Fatalf("meta offers the topic %q", *m.GmailWatchTopic)
+	}
+}
+
+// The mailbox link without the Pub/Sub push: #34–#38 are mounted and link,
+// report and unlink a mailbox as they do with it; #36 records no watch (409
+// no_watch_topic), #37 reports none, /meta offers no topic, and the hook (#39)
+// is not mounted, so nothing is ever woken.
+func TestMailboxLinkWithoutPush(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, g := withGmail(h, nil)
+	k := h.onboard(true)
+
+	// Mounted: without a session each is the one 401, not the catch-all 404.
+	for _, rt := range mailboxRoutes {
+		if w := h.req(rt.method, rt.path, "", map[string]any{}); w.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s: %d %s, want 401 (mounted)", rt.method, rt.path, w.Code, w.Body)
+		}
+	}
+
+	// The link: the same nonce, step-up and claims as with the push.
+	n := linkChallenge(h, k.token)
+	wantStatus(t, h.req("PUT", "/api/v1/mailbox/link", k.token, LinkRequest{IDToken: fakeToken(goodClaims(n))}),
+		http.StatusForbidden)
+	if w := link(k, k.token, fakeToken(func() fakeClaims { c := goodClaims(n); c.Aud = "other"; return c }())); w.Code != http.StatusForbidden {
+		t.Fatalf("an ID token for another client linked: %d", w.Code)
+	}
+	w := link(k, k.token, fakeToken(goodClaims(n)))
+	wantStatus(t, w, http.StatusOK)
+	if got := decodeJSON[LinkResponse](t, w); got.Holder.WriterID != k.device.WriterID || !got.Holder.IsThisDevice {
+		t.Fatalf("link %+v", got)
+	}
+	var stored []byte
+	if err := h.pool.QueryRow(bg, `SELECT address_hmac FROM mailbox_links WHERE user_id = $1`, k.user).Scan(&stored); err != nil ||
+		!bytes.Equal(stored, g.RouteKey.AddressHMAC(testMailbox)) {
+		t.Fatalf("stored hmac %x, %v", stored, err)
+	}
+	assertNoAddress(t, h, testMailbox)
+	if ws := wk.take(); len(ws) != 1 || ws[0].r != pushv2.ReasonSecurity || !ws[0].others {
+		t.Fatalf("link wakes %+v", ws)
+	}
+
+	// #36: no topic, no watch.
+	w = h.req("PUT", "/api/v1/mailbox/link/watch", k.token, LinkWatchRequest{ExpiresAt: time.Now().Add(7 * 24 * time.Hour)})
+	if w.Code != http.StatusConflict || decodeJSON[errorBody](t, w).Error != "no_watch_topic" {
+		t.Fatalf("watch without the push: %d %s, want 409 no_watch_topic", w.Code, w.Body)
+	}
+	var watch *time.Time
+	if err := h.pool.QueryRow(bg, `SELECT watch_expires_at FROM mailbox_links WHERE user_id = $1`, k.user).Scan(&watch); err != nil ||
+		watch != nil {
+		t.Fatalf("a watch was recorded without the push: %v %v", watch, err)
+	}
+
+	// #37: the holder, and no watch, even one recorded while the push was on.
+	if _, err := h.pool.Exec(bg, `UPDATE mailbox_links SET watch_expires_at = now() + interval '3 days' WHERE user_id = $1`,
+		k.user); err != nil {
+		t.Fatal(err)
+	}
+	st := decodeJSON[LinkStatusResponse](t, h.req("GET", "/api/v1/mailbox/link", k.token, nil))
+	if !st.Holder.IsThisDevice || st.Holder.WriterID != k.device.WriterID || st.WatchExpiresAt != nil {
+		t.Fatalf("status %+v", st)
+	}
+
+	// /meta: no topic, so the app never calls users.watch.
+	if m := decodeJSON[MetaResponse](t, h.req("GET", "/api/v1/meta", "", nil)); m.GmailWatchTopic != nil {
+		t.Fatalf("meta offers the topic %q without the push", *m.GmailWatchTopic)
+	}
+
+	// #39: not mounted, even for a well-formed, well-signed notice of a linked mailbox.
+	pushToken := "Bearer " + fakeToken(fakeClaims{Aud: testAudience, Email: testSA, EmailVerified: true})
+	wantNotFound(t, h.hook(pushToken, pubsubBody(t, testSub, map[string]any{"emailAddress": testMailbox, "historyId": "1"})),
+		"the hook without the push")
+	if ws := wk.take(); len(ws) != 0 {
+		t.Fatalf("the hook woke %+v without the push", ws)
+	}
+
+	// #38.
+	wantStatus(t, h.req("DELETE", "/api/v1/mailbox/link", k.token,
+		UnlinkRequest{StepUp: k.stepUp(k.token, keyproto.ActionMailboxUnlink)}), http.StatusNoContent)
+	wantStatus(t, h.req("GET", "/api/v1/mailbox/link", k.token, nil), http.StatusNotFound)
 }
 
 func assertNoAddress(t *testing.T, h *harness, addr string) {
@@ -397,20 +517,20 @@ func TestGmailHook(t *testing.T) {
 		t.Fatal("an unauthenticated push woke someone")
 	}
 
-	before := g.Counters.Malformed.Load()
+	before := g.Push.Counters.Malformed.Load()
 	wantStatus(t, h.hook(pushToken, []byte(`{"message":{"data":"!!!"},"subscription":"`+testSub+`"}`)), http.StatusNoContent)
 	wantStatus(t, h.hook(pushToken, pubsubBody(t, testSub, map[string]any{"emailAddress": "a@b.c", "historyId": "x1"})),
 		http.StatusNoContent)
-	if g.Counters.Malformed.Load() != before+2 {
+	if g.Push.Counters.Malformed.Load() != before+2 {
 		t.Fatal("malformed pushes were not counted")
 	}
 	wantStatus(t, h.hook(pushToken, pubsubBody(t, "projects/x/subscriptions/other", notice)), http.StatusNoContent)
-	if g.Counters.ForeignSubscription.Load() != 1 {
+	if g.Push.Counters.ForeignSubscription.Load() != 1 {
 		t.Fatal("foreign subscription not counted")
 	}
 	wantStatus(t, h.hook(pushToken, pubsubBody(t, testSub, map[string]any{"emailAddress": "nobody@gmail.com", "historyId": "9"})),
 		http.StatusNoContent)
-	if g.Counters.Unknown.Load() != 1 || len(wk.take()) != 0 {
+	if g.Push.Counters.Unknown.Load() != 1 || len(wk.take()) != 0 {
 		t.Fatal("an unknown address was not a counted no-op")
 	}
 
@@ -429,13 +549,13 @@ func TestGmailHook(t *testing.T) {
 	for range 20 {
 		h.hook(pushToken, good)
 	}
-	limited = int(g.Counters.LinkLimited.Load())
+	limited = int(g.Push.Counters.LinkLimited.Load())
 	if limited == 0 {
 		t.Fatal("hook-link never limited one address")
 	}
 	wantStatus(t, h.hook(pushToken, pubsubBody(t, testSub, map[string]any{"emailAddress": "fresh@gmail.com", "historyId": "1"})),
 		http.StatusNoContent)
-	if g.Counters.LinkLimited.Load() != int64(limited) {
+	if g.Push.Counters.LinkLimited.Load() != int64(limited) {
 		t.Fatal("another address was limited by the first one's budget")
 	}
 }

@@ -63,6 +63,10 @@ in
           keyFile = dummy "apns.p8";
           keyId = "ABCDE12345";
         };
+        # The Gmail mailbox link without the Pub/Sub push (gmail.* unset): the
+        # QA host's shape until its push subscription exists (AT-V2c).
+        google.iosClientId = "000000000000-vm-test.apps.googleusercontent.com";
+        mailboxRouteKeyFile = dummy "mailbox-route-key";
         backup = {
           enable = true;
           ageRecipients = [ testRecipient ];
@@ -113,6 +117,7 @@ in
           hex() { printf '%s' "hasala-vm-test-$1" | sha256sum | cut -c1-64; }
           printf '%s' "$(hex auth-key)" > "$d/auth-key"
           printf '%s' "$(hex salt-key)" > "$d/salt-key"
+          printf '%s' "$(hex mailbox-route-key)" > "$d/mailbox-route-key"
           printf '%s' dummy-email-send-token > "$d/email-token"
           # serve refuses anything but a PKCS#8 EC P-256 key; this one is
           # throwaway and never reaches APNs (the VM has no egress).
@@ -260,6 +265,29 @@ in
           assert answer == {"error": "not_invited"}, answer
           machine.fail("journalctl -u hasalad -o cat | grep 'NOT mounted' >/dev/null")
 
+      with subtest("AT-V2c: the Gmail mailbox link is mounted without the Pub/Sub push"):
+          # module -> credentials -> env -> config -> wireExtras: each link
+          # route answers a request without a session with the 401, never the
+          # 404 of an unmounted route; the hook is that 404, and /meta offers
+          # no watch topic, so the app never calls users.watch.
+          for method, path in [
+              ("POST", "/api/v1/mailbox/link/challenge"),
+              ("PUT", "/api/v1/mailbox/link"),
+              ("PUT", "/api/v1/mailbox/link/watch"),
+              ("GET", "/api/v1/mailbox/link"),
+              ("DELETE", "/api/v1/mailbox/link"),
+          ]:
+              assert http_code(f"curl -X {method} {API}{path}") == "401", (method, path)
+          hook = f"curl -X POST -H 'Content-Type: application/json' --data '{{}}' {API}/hooks/gmail/pubsub"
+          assert http_code(hook) == "404"
+          assert json.loads(machine.succeed(hook + " -s")) == {"error": "not_found", "detail": "no such endpoint"}
+          meta = json.loads(machine.succeed(f"curl -sf {API}/api/v1/meta"))
+          assert meta["gmail_watch_topic"] is None, meta
+          # Not `log`: that is the test driver's logger.
+          journal = machine.succeed("journalctl -u hasalad -o cat")
+          assert "gmail-link" in journal and "gmail-push" not in journal, journal
+          assert "Pub/Sub push is not configured" in journal, journal
+
       with subtest("AT-V3: nothing listens on a non-loopback address"):
           for line in machine.succeed("ss -ltnH").splitlines():
               local = line.split()[3]
@@ -385,6 +413,7 @@ in
           machine.fail(f"nsenter -t {pid} -m -- ls /run/credentials/hasala-console.service")
           machine.succeed(f"nsenter -t {pid} -m -- test -r /run/credentials/hasalad.service/auth-key")
           machine.succeed(f"nsenter -t {pid} -m -- test -r /run/credentials/hasalad.service/salt-key")
+          machine.succeed(f"nsenter -t {pid} -m -- test -r /run/credentials/hasalad.service/mailbox-route-key")
           props = machine.succeed(
               "systemctl show hasalad.service -p User -p NoNewPrivileges -p ProtectSystem"
               " -p PrivateDevices -p CapabilityBoundingSet -p IPAddressDeny -p RestrictAddressFamilies"

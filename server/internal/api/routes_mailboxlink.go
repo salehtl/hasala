@@ -1,7 +1,8 @@
 package api
 
 // routes_mailboxlink.go: the Gmail mailbox link (spec 02 §7 #34–#38, §13.2),
-// mounted only when the whole [gmail] group is configured. The link proves,
+// mounted when the [gmail] link part is configured, with or without the
+// Pub/Sub push (GmailOptions.Push). The link proves,
 // with a Google ID token carrying a nonce this server issued to this session,
 // that the device holding the session can read the mailbox; the server keeps
 // only an HMAC of the address under the route key and which writer is the
@@ -45,24 +46,43 @@ type IDTokenVerifier interface {
 	Verify(ctx context.Context, token string) (googlejwt.Claims, error)
 }
 
-// GmailOptions configures the mailbox link and the Pub/Sub hook. A nil
-// *GmailOptions leaves #34–#39 unmounted.
+// GmailOptions configures the mailbox link (#34–#38) and, through Push, the
+// Pub/Sub hook (#39). A nil *GmailOptions leaves #34–#39 unmounted.
 type GmailOptions struct {
 	RouteKey gmailpush.RouteKey
 	// Link verifies the app's ID token (audience = the iOS client id).
 	Link IDTokenVerifier
 	// IOSClientID is the audience Link checks, and what azp must equal.
-	IOSClientID string
-	// Hook verifies Pub/Sub's OIDC token (audience = the push URL).
-	Hook                IDTokenVerifier
-	Subscription        string
-	PushServiceAccount  string
-	Counters            gmailpush.Counters
-	MailboxPerUser      *Limiter
-	HookPerIP           *Limiter
-	HookGlobal          *Limiter
-	HookLink            *Limiter
+	IOSClientID    string
+	MailboxPerUser *Limiter
+	// Push is the Pub/Sub half. Nil is a link with no wakes: the hook is not
+	// mounted, /meta's gmail_watch_topic is null, #36 answers 409
+	// no_watch_topic and #37 reports no watch.
+	Push                *GmailPush
 	DisableHeadroomFuse bool // tests only
+}
+
+// GmailPush configures POST /hooks/gmail/pubsub (#39) and the watch topic.
+type GmailPush struct {
+	// Topic is the Pub/Sub topic the app watches its mailbox on; /meta reports
+	// it as gmail_watch_topic.
+	Topic string
+	// Hook verifies Pub/Sub's OIDC token (audience = the push URL).
+	Hook           IDTokenVerifier
+	Subscription   string
+	ServiceAccount string
+	Counters       gmailpush.Counters
+	HookPerIP      *Limiter
+	HookGlobal     *Limiter
+	HookLink       *Limiter
+}
+
+// gmailPush is the configured Pub/Sub half, or nil.
+func (s *Server) gmailPush() *GmailPush {
+	if s.Gmail == nil {
+		return nil
+	}
+	return s.Gmail.Push
 }
 
 func (s *Server) mountMailboxLink(mux *http.ServeMux) {
@@ -293,6 +313,18 @@ func (s *Server) handleLinkWatch(w http.ResponseWriter, r *http.Request, userID 
 	if s.mailboxLimited(w, userID) {
 		return
 	}
+	// Without the Pub/Sub push there is no topic to watch (/meta's
+	// gmail_watch_topic is null) and no watch to record. The app skips
+	// users.watch without a topic, so it never sends this; one that read a
+	// topic before the push was turned off stops its watch, forgets the topic
+	// and reads /meta again. It is checked before the body, the binding and
+	// the holder on purpose (spec 02 route 36): the answer depends only on this
+	// server's configuration, which /meta already makes public, so a
+	// non-holder learns nothing from no_watch_topic, and nothing is written.
+	if s.Gmail.Push == nil {
+		writeErr(w, http.StatusConflict, "no_watch_topic", "this server relays no Gmail wakes")
+		return
+	}
 	var req LinkWatchRequest
 	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
 		return
@@ -354,6 +386,11 @@ func (s *Server) handleGetLink(w http.ResponseWriter, r *http.Request, userID uu
 	}
 	out.Provider = "gmail"
 	out.Holder.IsThisDevice = info.WriterID != "" && out.Holder.WriterID == info.WriterID
+	if s.Gmail.Push == nil {
+		// A watch reported while the push was on is relayed by nobody now, and
+		// the app would take this field for a live one.
+		out.WatchExpiresAt = nil
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
