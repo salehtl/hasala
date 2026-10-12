@@ -7,7 +7,7 @@ import UIKit
 
 struct InviteCodeView: View {
   @Bindable var model: SignupModel
-  @FocusState private var focused: Bool
+  @State private var focused = false
 
   var body: some View {
     AccountScreen(
@@ -17,20 +17,11 @@ struct InviteCodeView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         LabeledField(label: "Invite code", error: model.inviteHint, focused: focused) {
-          // Vertical, so the code wraps instead of clipping at large text sizes.
-          TextField("ABCD-EFGH-IJKL-MNOP-QRST-UVWX", text: $model.inviteText, axis: .vertical)
-            .lineLimit(1...3)
-            .onChange(of: model.inviteText) { _, new in
-              let formatted = InviteCode.group(InviteCode.normalize(new.filter { !$0.isNewline }))
-              if formatted != new { model.inviteText = formatted }
-            }
-            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-            .keyboardType(.asciiCapable)
-            .textContentType(nil)
-            .autocorrectionDisabled()
-            .textInputAutocapitalization(.characters)
-            .focused($focused)
-            .accessibilityIdentifier("invite.field")
+          // Groups the code as it is typed or pasted, and wraps instead of clipping at
+          // large text sizes.
+          InviteCodeField(text: $model.inviteText, focused: $focused, identifier: "invite.field") { link in
+            model.applyInviteLink(link)
+          }
         }
         HStack {
           Spacer()
