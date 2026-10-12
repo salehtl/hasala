@@ -49,7 +49,7 @@ const CARDS = [
 ];
 ---
 
-<section class="review" aria-labelledby="review-title">
+<section id="review" class="review" aria-labelledby="review-title">
   <div class="container review__inner">
     <div class="review__stage" data-review data-reveal>
       <div class="review__phone">
@@ -156,10 +156,9 @@ const CARDS = [
 
     <div class="review__copy" data-reveal>
       <div class="review__head">
-        <span class="overline review__overline">Swipe to review</span>
-        <h2 id="review-title" class="display-panel">Sort a week in a minute.</h2>
+        <h2 id="review-title" class="display-panel">Reviewing new transactions</h2>
         <p class="body-l">
-          New transactions wait in a small deck. Swipe each one where it belongs, and Hasala remembers the merchant so it won’t ask twice.
+          New transactions wait in a short deck. Swipe each one to Want, Need, Save or Transfer. Hasala remembers the merchant, so it won’t ask again.
         </p>
       </div>
       <ul class="dirs" role="list">
@@ -176,7 +175,7 @@ const CARDS = [
           <span class="dir__icon"><Icon name="arrow-up" size={16} stroke={1.9} /></span><span><b>Transfer</b><small>Swipe up</small></span>
         </li>
       </ul>
-      <p class="review__undo"><Icon name="undo" size={16} stroke={1.6} />Changed your mind? Undo is one tap away.</p>
+      <p class="review__undo"><Icon name="undo" size={16} stroke={1.6} />Tap Undo to put one back.</p>
     </div>
   </div>
 </section>
@@ -209,9 +208,6 @@ const CARDS = [
   .dirs {
     order: 1;
     margin-top: -8px;
-  }
-  .review__overline {
-    color: var(--hue-peach-ink);
   }
   .dirs {
     display: flex;

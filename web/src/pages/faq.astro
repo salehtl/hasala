@@ -1,0 +1,152 @@
+---
+/**
+ * Every question, answered in full: a one-line reply first, then the detail,
+ * then the page that explains more. FAQ in src/data/site.ts is the source,
+ * also for the FAQPage JSON-LD and /llms-full.txt.
+ */
+import Detail from '../layouts/Detail.astro';
+import Icon from '../components/Icon.astro';
+import { FAQ, SITE, faqText } from '../data/site';
+
+/** The data keeps plain apostrophes (JSON-LD, llms.txt); the page sets them properly. */
+const curly = (s: string) => s.replace(/'/g, '’');
+
+const faqLd = {
+  '@type': 'FAQPage',
+  '@id': `${SITE.url}/faq#faq`,
+  mainEntity: FAQ.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: faqText(f) },
+  })),
+};
+---
+
+<Detail
+  title="FAQ"
+  heading="Questions and answers"
+  lead="Short answers first, then the details."
+  description="Answers about Hasala: bank logins, what it reads in Gmail, losing your phone, the price, iPhone and English only, deleting your data, and the TestFlight beta."
+  path="/faq"
+  jsonLd={[faqLd]}
+>
+  <section class="faq" aria-label="Questions">
+    <div class="container">
+      <ol class="faq__list" role="list">
+        {
+          FAQ.map((f) => (
+            <li class="qa" id={f.id} data-reveal>
+              <h2 class="qa__q">{f.q}</h2>
+              <p class="qa__short">{curly(f.short)}</p>
+              {f.a && <p class="qa__a">{curly(f.a)}</p>}
+              {f.steps && (
+                <ol class="qa__steps">
+                  {f.steps.map((step) => (
+                    <li>{curly(step)}</li>
+                  ))}
+                </ol>
+              )}
+              {f.after && <p class="qa__a">{curly(f.after)}</p>}
+              <a class="qa__more" href={f.more.href}>
+                {f.more.label}
+                <Icon name="arrow-right" size={14} stroke={1.9} />
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+      <p class="faq__ask">
+        Something we missed? Write to <a class="link" href={`mailto:${SITE.supportEmail}`}>{SITE.supportEmail}</a>.
+      </p>
+    </div>
+  </section>
+</Detail>
+
+<style>
+  .faq {
+    padding: 24px 0 24px;
+    background: var(--white);
+  }
+  .faq__list {
+    display: flex;
+    flex-direction: column;
+    max-width: 760px;
+  }
+  .qa {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 32px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    scroll-margin-top: 112px;
+  }
+  .qa:first-child {
+    padding-top: 8px;
+  }
+  .qa__q {
+    font-size: var(--t-card-title);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+  }
+  .qa__short {
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 27px;
+  }
+  .qa__a {
+    color: var(--text-body);
+    font-size: 17px;
+    line-height: 27px;
+  }
+  .qa__steps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding-left: 1.4em;
+    color: var(--text-body);
+    font-size: 17px;
+    line-height: 26px;
+  }
+  .qa__steps li::marker {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .qa__more {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    gap: 6px;
+    padding-top: 4px;
+    color: var(--text-link);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+    transition: text-decoration-color var(--t-hover-out);
+  }
+  .qa__more:hover {
+    text-decoration-color: currentColor;
+    transition-duration: var(--t-hover-in);
+  }
+  .faq__ask {
+    max-width: 760px;
+    padding-top: 32px;
+    color: var(--text-body);
+    font-size: 17px;
+    line-height: 26px;
+  }
+  @media (min-width: 1024px) {
+    .faq {
+      padding-top: 48px;
+    }
+    .qa {
+      padding: 40px 0;
+    }
+  }
+</style>

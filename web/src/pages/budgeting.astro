@@ -1,0 +1,17 @@
+---
+import Detail from '../layouts/Detail.astro';
+import Everyday from '../components/detail/Everyday.astro';
+import Bills from '../components/detail/Bills.astro';
+import Plan from '../components/detail/Plan.astro';
+---
+
+<Detail
+  title="Budgeting"
+  heading="Budgeting with Hasala"
+  lead="Hasala shows what you’ve spent, what’s left this month and the bills still to come. It starts you on a simple plan that you can change."
+  path="/budgeting"
+>
+  <Everyday />
+  <Bills />
+  <Plan />
+</Detail>

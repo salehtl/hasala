@@ -2,15 +2,10 @@
 import Base from '../layouts/Base.astro';
 import Hero from '../components/sections/Hero.astro';
 import HowItWorks from '../components/sections/HowItWorks.astro';
-import Everyday from '../components/sections/Everyday.astro';
-import Review from '../components/sections/Review.astro';
-import Plan from '../components/sections/Plan.astro';
-import Bills from '../components/sections/Bills.astro';
 import Privacy from '../components/sections/Privacy.astro';
 import Banks from '../components/sections/Banks.astro';
-import Faq from '../components/sections/Faq.astro';
 import Beta from '../components/sections/Beta.astro';
-import { FAQ, SITE } from '../data/site';
+import { SITE } from '../data/site';
 import { HERO_SEEN } from '../lib/inline-scripts.mjs';
 
 const org = { '@id': `${SITE.url}/#organization` };
@@ -57,14 +52,12 @@ const jsonLd = {
       countriesSupported: 'AE',
       isAccessibleForFree: true,
       featureList: [
-        'Reads bank alert emails from your own Gmail, read-only, on your iPhone',
-        'Supports Dubai Islamic Bank and Emirates NBD email alerts',
-        'Categorizes transactions on the device: your rules, a built-in UAE merchant list, then Apple’s on-device model',
-        'Sets bills aside and shows what is left for everyday spending',
-        '50/30/20 plan with Needs, Wants and Savings buckets',
-        'Finds recurring bills and flags price changes and late bills',
-        'Transactions, budget and plan are end-to-end encrypted on the iPhone before they sync',
-        'Sign in with Face ID (passkey) or email and password; 12-word recovery phrase',
+        'Reads your bank’s alert emails from Gmail, read-only, on your iPhone',
+        'Works with Dubai Islamic Bank and Emirates NBD',
+        'Turns alerts into transactions and sorts most into categories; you confirm the rest',
+        'Shows where your money went, what’s left, and a simple plan for the month',
+        'Transactions and budget are encrypted on your iPhone before they sync; our server can’t read them',
+        'No bank login; can’t move money',
       ],
       offers: {
         '@type': 'Offer',
@@ -76,35 +69,16 @@ const jsonLd = {
       },
       publisher: org,
     },
-    {
-      '@type': 'FAQPage',
-      '@id': `${SITE.url}/#faq`,
-      mainEntity: FAQ.map((f) => ({
-        '@type': 'Question',
-        name: f.q,
-        acceptedAnswer: { '@type': 'Answer', text: f.a },
-      })),
-    },
   ],
 };
 ---
 
-<Base
-  title="Know what’s left"
-  description="A private budgeting app for iPhone in the UAE. Hasala reads your bank alert emails on your iPhone and syncs your budget end‑to‑end encrypted. Free beta."
-  path="/"
-  jsonLd={jsonLd}
->
+<Base title="Private budgeting app for iPhone" description={SITE.description} path="/" jsonLd={jsonLd}>
   <script is:inline slot="head" set:html={HERO_SEEN} />
   <Hero />
   <HowItWorks />
-  <Everyday />
-  <Review />
-  <Plan />
-  <Bills />
   <Privacy />
   <Banks />
-  <Faq />
   <Beta />
 </Base>
 

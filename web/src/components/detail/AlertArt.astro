@@ -1,0 +1,156 @@
+---
+/**
+ * Small pictures for /how-it-works, decorative (the prose beside them says
+ * the same): "mail" is what Hasala fetches from Gmail and what it leaves
+ * alone; "sorted" is alerts turned into categorised transactions.
+ */
+import Icon from '../Icon.astro';
+
+interface Props {
+  kind: 'mail' | 'sorted';
+}
+const { kind } = Astro.props;
+---
+
+<div class="art" aria-hidden="true">
+  {
+    kind === 'mail' ? (
+      <>
+        <div class="row">
+          <span class="row__dot" />
+          <span class="row__text">
+            <strong>Emirates NBD</strong>
+            <span>Purchase of AED 64.50 at TALABAT</span>
+          </span>
+          <span class="tag tag--read">Read</span>
+        </div>
+        <div class="row">
+          <span class="row__dot" />
+          <span class="row__text">
+            <strong>DIB</strong>
+            <span>Card transaction AED 214.30 Lulu</span>
+          </span>
+          <span class="tag tag--read">Read</span>
+        </div>
+        <div class="row row--skipped">
+          <span class="row__dot" />
+          <span class="row__text">
+            <strong>Weekend plans?</strong>
+            <span>From a friend</span>
+          </span>
+          <span class="tag">Not fetched</span>
+        </div>
+      </>
+    ) : (
+      <>
+        <div class="row">
+          <span class="disc disc--lilac">
+            <Icon name="fork" size={16} stroke={1.5} />
+          </span>
+          <span class="row__text">
+            <strong>Talabat</strong>
+            <span>Dining · Wants</span>
+          </span>
+          <span class="figure row__amt">64.50</span>
+        </div>
+        <div class="row">
+          <span class="disc disc--sand">
+            <Icon name="basket" size={16} stroke={1.5} />
+          </span>
+          <span class="row__text">
+            <strong>Lulu Hypermarket</strong>
+            <span>Groceries · Needs</span>
+          </span>
+          <span class="figure row__amt">214.30</span>
+        </div>
+        <div class="row">
+          <span class="disc disc--sky">
+            <Icon name="briefcase" size={16} stroke={1.5} />
+          </span>
+          <span class="row__text">
+            <strong>Salary</strong>
+            <span>Income</span>
+          </span>
+          <span class="figure row__amt row__amt--in">+25,000.00</span>
+        </div>
+      </>
+    )
+  }
+</div>
+
+<style>
+  .art {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 20px;
+    border-radius: 28px;
+    background: var(--neutral-100);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+  }
+  .row + .row {
+    border-top: 1px solid var(--neutral-200);
+  }
+  .row__dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .row--skipped {
+    opacity: 0.55;
+  }
+  .row--skipped .row__dot {
+    background: var(--neutral-300);
+  }
+  .row__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .row__text strong {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+  .tag {
+    flex: none;
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+    background: var(--white);
+    color: var(--neutral-600);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .tag--read {
+    background: var(--success-surface);
+    color: var(--success);
+  }
+  .row__amt {
+    font-size: 17px;
+    line-height: 22px;
+  }
+  .row__amt--in {
+    color: var(--money-in);
+  }
+  @media (min-width: 1024px) {
+    .art {
+      padding: 12px 28px;
+      border-radius: 32px;
+    }
+    .row {
+      padding: 18px 0;
+    }
+  }
+</style>

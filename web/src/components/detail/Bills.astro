@@ -2,18 +2,17 @@
 import Icon from '../Icon.astro';
 ---
 
-<section class="bills" aria-labelledby="bills-title">
+<section id="bills" class="bills" aria-labelledby="bills-title">
   <div class="container bills__inner">
     <div class="bills__copy" data-reveal>
-      <span class="overline bills__overline">Bills</span>
-      <h2 id="bills-title" class="display-panel">Bills that find themselves.</h2>
+      <h2 id="bills-title" class="display-panel">Bills</h2>
       <p class="body-l">
-        Hasala spots what repeats in your history (rent, DEWA, du, the subscription you forgot) and keeps the money aside before it’s due.
+        Hasala finds the bills that repeat in your history, like rent, DEWA, du and subscriptions, and sets the money aside before they’re due.
       </p>
       <ul class="bills__list" role="list">
-        <li><span class="dot bills__dot--new"></span>New bills found from what you already pay</li>
-        <li><span class="dot bills__dot--price"></span>A nudge when a price quietly changes</li>
-        <li><span class="dot bills__dot--late"></span>A heads‑up when one is running late</li>
+        <li><span class="dot bills__dot--new"></span>Finds new bills from what you already pay</li>
+        <li><span class="dot bills__dot--price"></span>Flags a bill when its price changes</li>
+        <li><span class="dot bills__dot--late"></span>Flags a bill that’s late</li>
       </ul>
     </div>
 
@@ -69,7 +68,7 @@ import Icon from '../Icon.astro';
 
 <style>
   .bills {
-    padding: 88px 0;
+    padding: 8px 0 88px;
     background: var(--white);
   }
   .bills__inner {
@@ -82,11 +81,8 @@ import Icon from '../Icon.astro';
     flex-direction: column;
     gap: 16px;
   }
-  .bills__overline {
-    color: var(--hue-sand-ink);
-  }
   .bills__list {
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 14px;
     padding-top: 12px;
@@ -317,7 +313,7 @@ import Icon from '../Icon.astro';
   }
   @media (min-width: 1024px) {
     .bills {
-      padding: 160px 0;
+      padding: 40px 0 140px;
     }
     .bills__inner {
       flex-direction: row;

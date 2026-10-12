@@ -1,36 +1,21 @@
 ---
-import Icon from '../Icon.astro';
 import WaitlistForm from '../WaitlistForm.astro';
 import { SITE } from '../../data/site';
-import { WAITLIST_MODE } from '../../lib/env';
 ---
 
 <section id="invite" class="beta" aria-labelledby="beta-title">
   <div class="container-wide beta__panel">
     <div class="beta__glow" aria-hidden="true"></div>
     <div class="beta__copy" data-reveal>
-      <span class="beta__badge"><span class="dot" aria-hidden="true"></span>Private beta on TestFlight</span>
-      <h2 id="beta-title" class="beta__title">Get an invite.</h2>
+      <h2 id="beta-title" class="beta__title">Request an invite</h2>
       <p class="beta__lead">
-        {
-          WAITLIST_MODE === 'email'
-            ? 'We’re letting people in a few at a time, so every bank alert gets read properly. Fill in your email and your bank, send the email the form opens in your email app, and we’ll send a TestFlight invite when there’s room.'
-            : 'We’re letting people in a few at a time, so every bank alert gets read properly. Leave your email and your bank, and we’ll send a TestFlight invite when there’s room.'
-        }
+        Hasala is in an invite-only beta. When there’s room, we’ll email you an invite to install it through TestFlight, Apple’s app for trying new apps.
       </p>
-      <ul class="beta__reqs" role="list">
-        {
-          SITE.requirements.map((r) => (
-            <li>
-              <Icon name="check" size={16} stroke={1.9} />
-              {r}
-            </li>
-          ))
-        }
-      </ul>
+      <p class="beta__needs">{SITE.requirements}</p>
     </div>
     <div class="beta__form" data-reveal>
       <WaitlistForm />
+      <a class="beta__code" href="/i">Have an invite code?</a>
     </div>
   </div>
 </section>
@@ -68,23 +53,8 @@ import { WAITLIST_MODE } from '../../lib/env';
     gap: 16px;
     padding: 0 12px;
   }
-  .beta__badge {
-    display: inline-flex;
-    align-self: flex-start;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px 6px 10px;
-    border-radius: var(--r-pill);
-    background: rgb(255 255 255 / 16%);
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 18px;
-  }
-  .beta__badge .dot {
-    color: var(--gold-100);
-  }
   .beta__title {
-    font-size: clamp(40px, 27.37px + 3.238vw, 72px);
+    font-size: clamp(40px, 29.47px + 2.698vw, 68px);
     font-weight: 700;
     letter-spacing: -0.045em;
     line-height: 1.03;
@@ -94,25 +64,39 @@ import { WAITLIST_MODE } from '../../lib/env';
     font-size: clamp(17px, 16.26px + 0.19vw, 19px);
     line-height: 1.55;
   }
-  .beta__reqs {
-    display: none;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 12px;
-    color: rgb(255 255 255 / 92%);
+  .beta__needs {
+    color: rgb(255 255 255 / 88%);
     font-size: 16px;
-    line-height: 22px;
-  }
-  .beta__reqs li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .beta__reqs :global(.icon) {
-    color: var(--gold-100);
+    line-height: 24px;
   }
   .beta__form {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 12px;
+  }
+  .beta__code {
+    color: var(--white);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+    text-decoration: underline;
+    text-decoration-color: rgb(255 255 255 / 40%);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 4px;
+    transition: text-decoration-color var(--t-hover-out);
+  }
+  .beta__code:hover {
+    text-decoration-color: currentColor;
+    transition-duration: var(--t-hover-in);
+  }
+  .beta :global(:focus-visible) {
+    outline-color: var(--white);
+  }
+  .beta :global(.wl-card :focus-visible) {
+    outline-color: var(--blue-600);
   }
 
   @media (min-width: 768px) {
@@ -122,9 +106,6 @@ import { WAITLIST_MODE } from '../../lib/env';
     }
     .beta__copy {
       padding: 0;
-    }
-    .beta__reqs {
-      display: flex;
     }
     .beta__form {
       width: min(520px, 100%);

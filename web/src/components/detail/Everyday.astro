@@ -2,14 +2,13 @@
 import Icon from '../Icon.astro';
 ---
 
-<section class="everyday" aria-labelledby="everyday-title">
+<section id="left" class="everyday" aria-labelledby="everyday-title">
   <div class="container-wide everyday__panel">
     <div class="everyday__copy" data-reveal>
-      <span class="overline everyday__overline">Everyday spending</span>
-      <h2 id="everyday-title" class="display-panel">One number. Is this month okay?</h2>
+      <h2 id="everyday-title" class="display-panel">What’s left this month</h2>
       <p class="body-l">
-        Hasala sets your bills aside first, then shows what’s left for everyday spending and how fast it’s going. Rent on the 1st never looks like a spending
-        spree.
+        Hasala sets your bills aside first, then shows what’s left for everyday spending. The bar shows how fast you’re spending it, so you can tell whether the
+        month is on track.
       </p>
       <ul class="legend" role="list">
         <li><span class="legend__fill" aria-hidden="true"></span>What you’ve spent so far</li>
@@ -91,11 +90,8 @@ import Icon from '../Icon.astro';
     flex-direction: column;
     gap: 16px;
   }
-  .everyday__overline {
-    color: var(--blue-700);
-  }
   .legend {
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 12px;
     padding-top: 12px;

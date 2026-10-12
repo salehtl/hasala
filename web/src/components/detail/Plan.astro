@@ -1,28 +1,20 @@
 ---
 const BUCKETS = [
-  {
-    key: 'needs',
-    pct: '50%',
-    name: 'Needs',
-    line: 'The things that keep the lights on',
-    short: 'Rent, groceries, utilities',
-    cats: ['Rent', 'Groceries', 'Utilities', 'Transport', 'Insurance'],
-    amount: '12,500',
-  },
-  { key: 'wants', pct: '30%', name: 'Wants', line: 'The things that make it a life', short: 'Dining, shopping, travel', cats: ['Dining', 'Shopping', 'Travel'], amount: '7,500' },
-  { key: 'savings', pct: '20%', name: 'Savings', line: 'Future you, paid first', short: 'Future you, paid first', cats: ['Emergency fund'], amount: '5,000' },
+  { key: 'needs', pct: '50%', name: 'Needs', short: 'Rent, groceries, utilities', cats: ['Rent', 'Groceries', 'Utilities', 'Transport', 'Insurance'], amount: '12,500' },
+  { key: 'wants', pct: '30%', name: 'Wants', short: 'Dining, shopping, travel', cats: ['Dining', 'Shopping', 'Travel'], amount: '7,500' },
+  { key: 'savings', pct: '20%', name: 'Savings', short: 'Emergency fund', cats: ['Emergency fund'], amount: '5,000' },
 ];
 ---
 
-<section class="plan" aria-labelledby="plan-title">
+<section id="plan" class="plan" aria-labelledby="plan-title">
   <div class="container plan__inner">
     <header class="section-head" data-reveal>
       <div class="section-head__title plan__title">
-        <span class="overline">Your plan</span>
-        <h2 id="plan-title" class="display-l">Start at 50/30/20. Then make it yours.</h2>
+        <h2 id="plan-title" class="display-l">A simple plan: 50/30/20</h2>
       </div>
       <p class="intro section-head__intro">
-        Every category lives in one of three buckets. Move money between them whenever life changes; Hasala keeps the sums honest.
+        Hasala starts you with 50% of your income for Needs, 30% for Wants and 20% for Savings. Every category belongs to one of the three. You can change the
+        split, and move money between them, whenever you need to.
       </p>
     </header>
 
@@ -36,7 +28,6 @@ const BUCKETS = [
               <p class="bucket__pct figure">{b.pct}</p>
               <div class="bucket__name">
                 <h3>{b.name}</h3>
-                <p class="bucket__line">{b.line}</p>
                 <p class="bucket__short">{b.short}</p>
               </div>
             </div>
@@ -49,14 +40,13 @@ const BUCKETS = [
               <p class="bucket__amount">
                 <span class="bucket__unit">AED</span>
                 <span class="figure">{b.amount}</span>
-                {b.key === 'needs' && <span class="bucket__on">a month on a 25,000 salary</span>}
               </p>
             </div>
           </li>
         ))
       }
     </ul>
-    <p class="plan__note">Shown on a 25,000 monthly salary.</p>
+    <p class="plan__note">Example amounts for a monthly salary of AED 25,000.</p>
   </div>
 </section>
 
@@ -156,12 +146,6 @@ const BUCKETS = [
     letter-spacing: -0.02em;
     line-height: 26px;
   }
-  .bucket__line {
-    display: none;
-    font-size: 16px;
-    line-height: 22px;
-    opacity: 0.8;
-  }
   .bucket__short {
     font-size: 14px;
     line-height: 20px;
@@ -194,12 +178,6 @@ const BUCKETS = [
   .bucket__amount .figure {
     font-weight: 700;
   }
-  .bucket__on {
-    display: none;
-    font-size: 15px;
-    line-height: 20px;
-    opacity: 0.8;
-  }
   .plan__note {
     color: var(--text-secondary);
     font-size: 14px;
@@ -214,7 +192,6 @@ const BUCKETS = [
       gap: 56px;
     }
     .split,
-    .plan__note,
     .bucket__short {
       display: none;
     }
@@ -257,10 +234,7 @@ const BUCKETS = [
       font-size: 28px;
       line-height: 34px;
     }
-    .bucket__line {
-      display: block;
-    }
-    .bucket--needs .bucket__pct {
+      .bucket--needs .bucket__pct {
       font-size: 136px;
       line-height: 120px;
     }
@@ -285,10 +259,7 @@ const BUCKETS = [
       font-size: 24px;
       line-height: 28px;
     }
-    .bucket__on {
-      display: inline;
     }
-  }
 
   /* As the 50/30/20 bar itself comes into view it fills left to right
      (small screens); on large ones each bucket's categories drop in after

@@ -1,4 +1,4 @@
-import { BANKS, FAQ, SITE, VISIBILITY } from './site';
+import { BANKS, FAQ, SITE, VISIBILITY, faqText } from './site';
 
 const plain = (s: string) => s.replace(/‑/g, '-').replace(/[’]/g, "'");
 
@@ -12,19 +12,23 @@ Hasala (Arabic: ${SITE.arabicName}, "piggy bank") has the App Store name "${SITE
 
 Key facts:
 
+- What it is for: knowing where your money goes, privately. Hasala shows what you spent and on what, what's left this month, and a simple plan for the month.
 - Platform: iPhone only, iOS 26 or later. No Android app, no web app.
-- Where transactions come from: the bank alert emails in your own Gmail, read-only. Your iPhone asks Gmail only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; if Gmail's search also returns an email that only looks like it is from your bank, the iPhone reads just its sender details and sets it aside. There is no email forwarding and no bank login.
-- Banks at launch: ${BANKS.map((b) => b.name).join(' and ')}. Other banks are added by demand.
-- Categorization happens on the iPhone: your own rules first, then a built-in list of UAE merchants, then Apple's on-device model (English merchant names), then you review. Nothing is sent to an AI service.
-- Privacy: your transactions, budget and plan are end-to-end encrypted on the iPhone before they sync. Hasala's server stores sealed data it cannot open. The app contains no analytics or tracking tools. The website, hasala.app, counts visits with Cloudflare Web Analytics (never on invite, freeze or waitlist links), which sets no cookies, doesn't fingerprint or follow visitors across sites, and reports only totals, never linked to a person or a Hasala account.
+- Where transactions come from: your bank's alert emails in your own Gmail, read-only. Your iPhone asks Gmail only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; if Gmail's search also returns an email that only looks like it is from your bank, the iPhone reads just its sender details and sets it aside. There is no email forwarding and no bank login, and Hasala can't move money.
+- Banks today: ${BANKS.map((b) => b.name).join(' and ')}. Other banks: people tell us which bank they use when they request an invite, and we use that to decide which bank to add next.
+- Categorization happens on the iPhone: your own rules first, then a built-in list of UAE merchants, then Apple's on-device model (English merchant names). You confirm the rest. Nothing is sent to an AI service.
+- Privacy: your transactions, budget and plan are encrypted on the iPhone before they sync. Hasala's server stores them but cannot read them. The app contains no ads, analytics or tracking tools. The website, hasala.app, counts visits with Cloudflare Web Analytics (never on invite, freeze or waitlist links), which sets no cookies, doesn't fingerprint or follow visitors across sites, and reports only totals, never linked to a person or a Hasala account.
 - Sign-in: verified email and a display name; Face ID (passkey, recommended) or email and password. A password never unlocks your data: your passkey or your 12-word recovery phrase does. Hasala cannot reset the recovery phrase.
-- Price: free during the beta.
+- Price: free during the beta. English only, light mode only, for now.
 - Source code: source-available under the Functional Source License (FSL-1.1-ALv2); each version becomes Apache-2.0 two years after release. The name Hasala and the Slot mark are trademarks not covered by the licence: https://github.com/salehtl/hasala
 
 ## Pages
 
-- [Home](${SITE.url}/): what Hasala does, how privacy works, banks, FAQ, and the invite form
-- [How privacy works](${SITE.url}/#privacy): who can see what
+- [Home](${SITE.url}/): what Hasala is, how it works in three steps, privacy in three points, the banks, and the invite form
+- [How it works](${SITE.url}/how-it-works): connecting Gmail, supported banks and alerts, how sorting works, reviewing new transactions, signing in
+- [Budgeting](${SITE.url}/budgeting): what's left this month, bills, and the 50/30/20 starting plan
+- [How privacy works](${SITE.url}/how-privacy-works): where your data goes, who can see what, a new or lost phone
+- [FAQ](${SITE.url}/faq)
 - [Privacy Policy](${SITE.url}/privacy)
 - [Terms of Service](${SITE.url}/terms)
 - [Security and disclosure](${SITE.url}/security)
@@ -41,24 +45,24 @@ Key facts:
 
 export function llmsFullTxt(legal: { title: string; url: string; body: string }[]): string {
   const who = VISIBILITY.map((v) => `- ${v.who}. Can see: ${v.sees}.${v.never ? ` Cannot see: ${v.never}.` : ''}`).join('\n');
-  const faq = FAQ.map((f) => `### ${f.q}\n\n${f.a}`).join('\n\n');
+  const faq = FAQ.map((f) => `### ${f.q}\n\n${faqText(f)}`).join('\n\n');
   const docs = legal.length
     ? legal.map((d) => `## ${d.title}\n\nSource: ${d.url}\n\n${d.body.trim()}`).join('\n\n')
     : '## Legal pages\n\nThe Privacy Policy, Terms of Service, Security and Support pages are drafts and not published yet. The privacy model above is how Hasala works today.';
   return plain(`${llmsTxt()}
 ## How it works
 
-1. Connect Gmail. Sign in with Face ID or a password, then give Hasala read-only access. Your iPhone asks Gmail only for your bank's alerts; your other mail stays in Gmail. Setup takes a few minutes; there is no bank login and nothing to upload.
-2. Sorted on your iPhone. Every alert becomes a transaction, categorized on the phone. Correct one once and Hasala remembers the merchant.
-3. Sealed, then synced. Your transactions, budget and plan are encrypted on the iPhone with a key only your devices hold before they sync.
+1. Connect your Gmail. Hasala looks only at your bank's alert emails, on your iPhone, with read-only access. It can't send, change or delete any mail.
+2. Check the categories. Each alert becomes a transaction. Hasala sorts most of them into categories: your rules first, then a UAE merchant list, then Apple's on-device model. You confirm the rest. New transactions wait in a short deck, where you swipe each one to Want, Need, Save or Transfer; Hasala remembers the merchant.
+3. See where it went. What you spent and on what, what's left, and a simple plan for the month.
 
-Features: one number for what's left for everyday spending this month, with a pace bar; bills set aside first; a swipe deck to sort new transactions into Need, Want, Save or Transfer; a 50/30/20 plan (Needs, Wants, Savings) you can change; recurring bills found automatically, with a nudge on price changes and a heads-up when one is late. Lock-screen notifications are generic by default. Emails come from ${SITE.mailFrom}.
+Budgeting: bills are found from what repeats in your history and set aside first; what's left for everyday spending is one figure, with a bar for how fast it's going; bills are flagged when their price changes or one is late. The starting plan is 50/30/20 (Needs, Wants, Savings), and you can change it. Lock-screen notifications are generic by default. Emails come from ${SITE.mailFrom}.
 
 ## Who can see what
 
 ${who}
 
-Cloudflare is the network provider in front of Hasala's server: it ends transport encryption, so it sees requests and the still-sealed data, but it cannot open the sealed data. Hasala's server also keeps a keyed hash of your Gmail address and the timing of new mail, only to wake your phone.
+Cloudflare is the network provider in front of Hasala's server: it ends transport encryption, so it sees requests and the still-encrypted data, but it cannot read the encrypted data. Hasala's server also keeps a keyed hash of your Gmail address and the timing of new mail, only to wake your phone.
 
 ## FAQ
 

@@ -1,0 +1,113 @@
+---
+/**
+ * One section of a detail page: an H2 and plain prose, with an optional
+ * picture (slot "art") beside it from lg and under it on small screens.
+ */
+interface Props {
+  id: string;
+  title: string;
+  /** A grey band behind the section, to set it apart from its neighbours. */
+  tint?: boolean;
+}
+const { id, title, tint = false } = Astro.props;
+const hasArt = Astro.slots.has('art');
+---
+
+<section id={id} class:list={['dsec', tint && 'dsec--tint', hasArt && 'dsec--art']} aria-labelledby={`${id}-title`}>
+  <div class="container dsec__inner">
+    <div class="dsec__copy" data-reveal>
+      <h2 id={`${id}-title`} class="dsec__title">{title}</h2>
+      <div class="dsec__prose"><slot /></div>
+    </div>
+    {
+      hasArt && (
+        <div class="dsec__art" data-reveal>
+          <slot name="art" />
+        </div>
+      )
+    }
+  </div>
+</section>
+
+<style>
+  .dsec {
+    padding: 56px 0;
+    background: var(--white);
+  }
+  .dsec--tint {
+    background: var(--neutral-50);
+  }
+  .dsec__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .dsec__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 680px;
+  }
+  .dsec__title {
+    font-size: var(--t-display-panel);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: calc(1em + 4px);
+  }
+  .dsec__prose {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    color: var(--text-body);
+    font-size: clamp(17px, 16.63px + 0.095vw, 18px);
+    line-height: 1.6;
+  }
+  /* Plain lists only: components inside (bank tiles) use role="list". */
+  .dsec__prose :global(ol:not([role])),
+  .dsec__prose :global(ul:not([role])) {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding-left: 1.4em;
+  }
+  .dsec__prose :global(:is(ol, ul):not([role]) > li::marker) {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .dsec__prose :global(strong) {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .dsec__prose :global(a:not(.btn)) {
+    color: var(--text-link);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+    text-decoration-color: rgb(54 91 235 / 35%);
+  }
+  .dsec__prose :global(a:not(.btn):hover) {
+    text-decoration-color: currentColor;
+  }
+  .dsec__art {
+    min-width: 0;
+  }
+  @media (min-width: 1024px) {
+    .dsec {
+      padding: 104px 0;
+    }
+    .dsec--art .dsec__inner {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 72px;
+    }
+    .dsec--art .dsec__copy {
+      flex: 0 1 520px;
+    }
+    .dsec__art {
+      flex: 0 1 520px;
+    }
+  }
+</style>
