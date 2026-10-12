@@ -163,6 +163,22 @@ struct LiveLedgerMapperTests {
     #expect(dining.summary?.total == .aed(642_75))
   }
 
+  // MARK: Sample rows
+
+  /// The seed's `sample-<n>` message ids reach the screens, so every sample row's sheet
+  /// says it is sample data instead of naming a bank email (spec 06 §13.5).
+  @Test func sampleRowsAreMarkedSample() async throws {
+    let live = try await Self.foldedState()
+    let fromMail = live.txns.filter { $0.provenance != nil }
+    #expect(!fromMail.isEmpty)
+    let notSample = fromMail.filter { !$0.isSample }.map(\.merchant)
+    #expect(notSample == [])
+    let sampleCount = live.txns.filter { $0.isSample }.count
+    #expect(sampleCount == Scenario.mayaSample.state.txns.filter { $0.isSample }.count)
+    let row = try #require(fromMail.first)
+    #expect(TransactionEngine.detail(row.id, live, now: MayaLedger.now)?.isSample == true)
+  }
+
   // MARK: Bills
 
   @Test func billsAreMayas() async throws {
