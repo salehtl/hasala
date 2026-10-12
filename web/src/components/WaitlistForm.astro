@@ -9,11 +9,12 @@
  * "api": a real form. Without JavaScript it posts to the API like any form
  * (the browser checks the fields first; the server answers with a 303 to
  * /joined). With it, the script validates, posts JSON and shows the success
- * card in place. The waitlist is double opt-in, so success means "check your
- * email", and every valid submission gets the same answer whether or not the
- * address is already on the list (Hasala design archive, private).
+ * card in place: "Request sent", with one line about the confirmation email
+ * while the server still sends one. Every valid submission gets the same
+ * answer whether or not the address is already on the list (Hasala design
+ * archive, private).
  *
- * "email" (until the API is live): nothing is posted and Turnstile is never
+ * "email" (the fallback while the API is down): nothing is posted and Turnstile is never
  * loaded. With JavaScript the script validates the same way, then opens a
  * pre-filled email to SITE.supportEmail and shows how to finish. Without it,
  * the fields have no names, so submitting sends nothing and only opens
@@ -135,11 +136,8 @@ const named = (name: string) => (byEmail ? undefined : name);
     ) : (
       <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
         <div class="wl-head">
-          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Check your email.</h3>
-          <p class="wl-done__text">
-            We’ve sent a link to <b data-done-email></b>. Tap <b class="wl-done__strong">Confirm my email</b> in it to put your address on the list. The link works for 7
-            days. Invites go out in small batches, usually within a few weeks.
-          </p>
+          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Request sent.</h3>
+          <p class="wl-done__text">Thanks! We’ll email your invite when it’s ready. Invites go out in small batches.</p>
         </div>
         <dl class="wl-summary">
           <div><dt>Email</dt><dd data-done-email></dd></div>
@@ -147,12 +145,11 @@ const named = (name: string) => (byEmail ? undefined : name);
         </dl>
         <p class="wl-from">
           <Icon name="mail" size={16} stroke={1.6} />
-          <span>Our emails come from no‑reply@hasala.app. Nothing after a few minutes? Check your spam folder, and add the address to your contacts so the invite doesn’t land there.</span>
+          <span>Our emails come from no‑reply@hasala.app. Tap <b>Confirm my email</b> in the first one, so we can send your invite.</span>
         </p>
         <button class="btn btn--subtle wl-copy" type="button" data-copy={`${SITE.url}/#invite`} data-copied="Link copied">
           <Icon name="link" size={16} stroke={1.6} /><span>Copy link for a friend</span>
         </button>
-        <p class="wl-fine">Changed your mind? Ignore the email and we’ll forget your address within 7 days.</p>
       </section>
     )
   }
