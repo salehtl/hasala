@@ -84,6 +84,29 @@ lint "an identifier ending in stat( is not stat(" 0 "$t"
 echo 'let r = stat(path, &buf)' >"$t/Hasala/Stat.swift"
 lint "...but stat( itself is FileTimestamp" 1 "$t"
 
+# Apple's list goes beyond spec 06's table: each of these is a use of its category.
+n=0
+for c in "DiskSpace:let r = fstatfs(fd, &buf)" "DiskSpace:let r = fstatvfs(fd, &buf)" \
+	"DiskSpace:let k = URLResourceKey.volumeTotalCapacityKey" "DiskSpace:let s = attrs[.systemSize]" \
+	"FileTimestamp:let d = values.contentModificationDate" "FileTimestamp:let d = attrs[.creationDate]" \
+	"FileTimestamp:let r = fstatat(fd, path, &buf, 0)" "FileTimestamp:let n = getattrlistbulk(fd, &list, buf, size, 0)"; do
+	cat="${c%%:*}"
+	n=$((n + 1))
+	t="$(tree "apple-$n" UserDefaults)"
+	echo "${c#*:}" >"$t/HasalaCore/Sources/HasalaCore/Store/Use.swift"
+	lint "${c#*:} is $cat" 1 "$t"
+	grep -q "FAIL  $cat" "$work/out" && echo "ok   ...names $cat" || {
+		echo "FAIL ...does not name $cat"
+		sed 's/^/     /' "$work/out"
+		fail=1
+	}
+done
+
+# A helper of our own named like an API is not the API: no hit for a longer name.
+t="$(tree lookalike)"
+echo 'let v = systemSizeClass + volumeName + amountCell(1)' >"$t/Hasala/Look.swift"
+lint "systemSizeClass is not systemSize" 0 "$t"
+
 t="$(tree excluded)"
 echo 'let d = UserDefaults.standard; let m = UITextInputMode.activeInputModes' >"$t/HasalaKit/Sources/HasalaMocks/M.swift"
 echo 'let d = UserDefaults.standard' >"$t/HasalaCore/Sources/HasalaCore/TestSupport/T.swift"

@@ -17,11 +17,11 @@ struct BudgetEditSheet: View {
         ScrollView {
           VStack(spacing: 18) {
             HStack(spacing: 0) {
-              stat("Budget", row.budget)
+              amountCell("Budget", row.budget)
               Divider().frame(height: 36)
-              stat("Spent", row.spent)
+              amountCell("Spent", row.spent)
               Divider().frame(height: 36)
-              stat(row.budget.minor - row.spent.minor < 0 ? "Over" : "Left", .aed(abs(row.budget.minor - row.spent.minor)))
+              amountCell(row.budget.minor - row.spent.minor < 0 ? "Over" : "Left", .aed(abs(row.budget.minor - row.spent.minor)))
             }
             .padding(.vertical, 12)
             .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
@@ -87,7 +87,7 @@ struct BudgetEditSheet: View {
     }
   }
 
-  private func stat(_ label: String, _ money: Money) -> some View {
+  private func amountCell(_ label: String, _ money: Money) -> some View {
     VStack(spacing: 2) {
       Text(label).hType(.footnote).foregroundStyle(HColor.textSecondary)
       MoneyText(money, figure: .compact, style: .compact, hidden: model.hidden, color: HColor.textPrimary)

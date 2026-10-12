@@ -61,15 +61,20 @@ find "${roots[@]}" \( -type d \( -false "${names[@]}" \) -prune \) -o \( -type f
 	exit 2
 }
 
-# Spec 06 §5.4's trigger symbols, as one extended regular expression per category. A
-# bare call such as `stat(` must not be the end of a longer identifier.
+# Spec 06 §5.4's trigger symbols plus the rest of Apple's list for each category, as one
+# extended regular expression per category. A bare call such as `stat(` must not be the
+# end of a longer identifier (b), and a name such as `systemSize` not the start of one (e).
+# getattrlist also covers fgetattrlist, getattrlistat and getattrlistbulk; the date
+# patterns cover creationDate, fileCreationDate, (content|file)ModificationDate and their
+# URLResourceKey and FileAttributeKey forms.
 b='(^|[^A-Za-z0-9_])'
+e='([^A-Za-z0-9_]|$)'
 categories=(UserDefaults FileTimestamp SystemBootTime DiskSpace ActiveKeyboards)
 triggers=(
 	"UserDefaults|NSUserDefaults|@AppStorage|${b}AppStorage\\("
-	"creationDate|modificationDate|contentModificationDateKey|creationDateKey|attributesOfItem|${b}stat\\(|${b}fstat\\(|${b}lstat\\(|getattrlist"
+	"[cC]reationDate|[mM]odificationDate|attributesOfItem|getattrlist|${b}stat\\(|${b}fstat\\(|${b}fstatat\\(|${b}lstat\\("
 	"systemUptime|mach_absolute_time"
-	"volumeAvailableCapacity|systemFreeSize|NSFileSystemFreeSize|${b}statfs\\(|${b}statvfs\\("
+	"volumeAvailableCapacity|volumeTotalCapacity|systemFreeSize${e}|systemSize${e}|NSFileSystemFreeSize|NSFileSystemSize${e}|getattrlist|${b}statfs\\(|${b}statvfs\\(|${b}fstatfs\\(|${b}fstatvfs\\("
 	"activeInputModes"
 )
 

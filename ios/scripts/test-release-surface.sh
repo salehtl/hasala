@@ -21,7 +21,13 @@ fi
 udid="$1"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios="$(cd "$here/.." && pwd)"
-dd="${2:-$(mktemp -d "${TMPDIR:-/tmp}/hasala-release-surface.XXXXXX")}"
+# Derived data: the directory given (kept), else a temporary one, removed on exit.
+if (($# == 2)); then
+	dd="$2"
+else
+	dd="$(mktemp -d "${TMPDIR:-/tmp}/hasala-release-surface.XXXXXX")"
+	trap 'rm -rf "$dd"' EXIT
+fi
 
 # Xcode's tools by path: the Nix devShell's PATH and SDKROOT can shadow them.
 /usr/bin/xcodebuild test \
