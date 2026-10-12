@@ -15,8 +15,12 @@
 # every check passed, and upload.sh uploads nothing else.
 #
 # The API key comes from the environment (see asc-env.sh); xcodebuild uses it with
-# -allowProvisioningUpdates to create or refresh the App ID's profiles and the
-# cloud-managed distribution certificate. Output, all under ios/build/ (git-ignored):
+# -allowProvisioningUpdates to create or refresh the development profile for the
+# archive. The export is signed MANUALLY (ExportOptions.plist): an "Apple
+# Distribution" identity in this Mac's keychain plus the App Store profile named
+# "Hasala App Store", both created through the App Store Connect API (the upload key
+# is App Manager, which may not use cloud-managed distribution certificates). Output,
+# all under ios/build/ (git-ignored):
 #
 #   ios/build/<BUILD>/Hasala.xcarchive
 #   ios/build/<BUILD>/export/Hasala.ipa
@@ -155,15 +159,16 @@ if ! xcodebuild -exportArchive \
 	>"$OUT/export.log" 2>&1; then
 	echo "archive: xcodebuild -exportArchive failed; the signing errors are:" >&2
 	grep -E 'error:|No profiles|No signing|Provisioning|certificate|Cloud|distribution' "$OUT/export.log" | sort -u | head -40 >&2 || true
-	if grep -q "cloud-managed distribution certificates" "$OUT/export.log"; then
+	if grep -q -E "No profiles for|No signing certificate|doesn't include signing certificate|cloud-managed distribution certificates" "$OUT/export.log"; then
 		cat >&2 <<'HINT'
-archive: the API key may not use cloud-managed distribution certificates. Either
-  - use a team API key with the Admin role (App Store Connect > Users and Access >
-    Integrations > Team Keys; a key's role cannot be raised, so generate a new one), or
-  - give the key's access to cloud-managed distribution certificates, or
-  - once, in Xcode signed in as the Account Holder: Organizer > this archive >
-    Distribute App > App Store Connect > Export, which creates the distribution
-    certificate (spec 06 §9); later exports then need only the key.
+archive: the export signs manually (ExportOptions.plist) and needs, on this Mac:
+  - an "Apple Distribution" identity for team 8CFG28JHP3 in a keychain on the
+    search list (security find-identity -v -p codesigning), and
+  - the App Store profile named "Hasala App Store" for app.hasala.ios, made with that
+    certificate, installed in ~/Library/Developer/Xcode/UserData/Provisioning Profiles.
+  Create either through the App Store Connect API (POST /v1/certificates with a CSR
+  whose key stays in the keychain; POST /v1/profiles, profileType IOS_APP_STORE),
+  or in the developer portal. When the certificate changes, make a new profile.
 The development archive above is fine; only the distribution re-sign failed.
 HINT
 	fi
