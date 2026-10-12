@@ -91,6 +91,10 @@ struct RuntimeGlueTests {
     let refused = Recorder(.success(APIResponse(status: 409, body: Data(#"{"error":"not_holder"}"#.utf8))))
     let server = HTTPMailboxServer(http: SessionHTTPExchange(transport: refused, secrets: s), base: "https://api.hasala.app")
     await #expect(throws: MailboxServerError.notHolder) { try await server.putWatch(expiresAtMs: Self.now) }
+    // hasalad without the Pub/Sub push: route 36 is refused with its own code.
+    let noTopic = Recorder(.success(APIResponse(status: 409, body: Data(#"{"error":"no_watch_topic","detail":"x"}"#.utf8))))
+    let quiet = HTTPMailboxServer(http: SessionHTTPExchange(transport: noTopic, secrets: s), base: "https://api.hasala.app")
+    await #expect(throws: MailboxServerError.noWatchTopic) { try await quiet.putWatch(expiresAtMs: Self.now) }
   }
 
   @Test("a path the transport would resolve to another host is refused before any bearer is read")

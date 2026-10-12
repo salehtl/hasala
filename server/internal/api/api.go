@@ -251,8 +251,8 @@ type Server struct {
 
 	// Push configures the APNs token routes and the wakes (routes_push.go).
 	Push PushOptions
-	// Gmail, when set, mounts the mailbox link and the Pub/Sub hook
-	// (routes_mailboxlink.go, routes_hooks.go).
+	// Gmail, when set, mounts the mailbox link (routes_mailboxlink.go) and,
+	// when its Push is set too, the Pub/Sub hook (routes_hooks.go).
 	Gmail *GmailOptions
 	// Web, when set, mounts spec 07's website routes: the waitlist and the
 	// anonymous bank request (routes_waitlist.go, routes_bankrequests.go).

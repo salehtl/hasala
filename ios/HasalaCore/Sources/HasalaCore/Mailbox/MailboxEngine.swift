@@ -183,7 +183,10 @@ public actor MailboxEngine {
   /// once they do; this covers the same run).
   private var confirmedCards: [CardKey: CardState] = [:]
   private var waiters: [CheckedContinuation<Void, Never>] = []
+  /// `meta.gmail_watch_topic`: nil until read; `.some(nil)` when the server relays no wakes.
   private var topic: String??
+  /// When `topic` was last read (engine clock).
+  private var topicReadAtMs: Int64 = 0
   /// Set when the last cycle saw the server's topic differ from the build's (diagnostics).
   public private(set) var topicMismatch = false
 
@@ -1057,10 +1060,17 @@ public actor MailboxEngine {
   }
 
   func renewWatch(_ gmail: GmailClient, _ state: inout MailboxState, now: Int64) async {
-    if topic == nil {
+    // Read once; a null topic again every holder-check interval, so a server whose Pub/Sub push
+    // is turned on later is watched without a relaunch. A clock that went back since the last
+    // read counts as due, so a backwards jump never postpones the re-read.
+    let readTopic = topic.map {
+      $0 == nil && (now < topicReadAtMs || now - topicReadAtMs >= config.holderCheckIntervalMs)
+    } ?? true
+    if readTopic {
       do {
         let t = try await server.watchTopic()
         topic = .some(t)
+        topicReadAtMs = now
         topicMismatch = t != nil && config.buildTopic != nil && config.buildTopic != "unset" && t != config.buildTopic
       } catch {
         return  // offline: renewed on a later cycle
@@ -1069,9 +1079,15 @@ public actor MailboxEngine {
     guard let t = topic ?? nil else { return }
     if let exp = state.watchExpiresAtMs, exp > now + config.watchRenewWindowMs { return }
     guard let w = try? await gmail.watch(topicName: t) else { return }
-    do {
+    do throws(MailboxServerError) {
       try await server.putWatch(expiresAtMs: w.expirationMs)
       state.watchExpiresAtMs = w.expirationMs
+    } catch .noWatchTopic {
+      // The server turned its Pub/Sub push off after the topic was read: nothing relays this
+      // watch. Stop it, show no live watch, and read the topic again on the next cycle.
+      try? await gmail.stop()
+      state.watchExpiresAtMs = nil
+      topic = nil
     } catch {
       // Reported next cycle; the watch itself is live at Google.
     }

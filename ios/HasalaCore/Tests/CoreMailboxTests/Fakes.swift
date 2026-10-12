@@ -80,9 +80,13 @@ actor FakeServer: MailboxServer {
   var watches: [Int64] = []
   var deletes = 0
   var offline = false
+  /// Route 36's refusal, when set (e.g. `.noWatchTopic`: a server without the Pub/Sub push).
+  var watchRefusal: MailboxServerError?
+  var topicReads = 0
 
   func setLink(_ l: MailboxLinkStatus) { link = l }
   func setTopic(_ t: String?) { topic = t }
+  func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
 
   func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
     if offline { throw .offline }
@@ -94,12 +98,18 @@ actor FakeServer: MailboxServer {
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     return link
   }
-  func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) { watches.append(expiresAtMs) }
+  func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
+    if let watchRefusal { throw watchRefusal }
+    watches.append(expiresAtMs)
+  }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
     deletes += 1
     link = .noLink
   }
-  func watchTopic() async throws(MailboxServerError) -> String? { topic }
+  func watchTopic() async throws(MailboxServerError) -> String? {
+    topicReads += 1
+    return topic
+  }
 }
 
 struct FakeStepUp: MailboxStepUp {

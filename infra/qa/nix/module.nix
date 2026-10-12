@@ -134,7 +134,10 @@ let
   # §5.5: the complete, non-secret environment of `hasalad serve`. Secrets are
   # *_FILE paths into the credentials directory (%d).
   apnsOn = cfg.apns.keyFile != null;
-  gmailOn = cfg.google.iosClientId != null;
+  # The [gmail] group's two parts (M8a, M8b): the mailbox link, and the
+  # Pub/Sub push that needs it.
+  gmailLinkOn = cfg.google.iosClientId != null;
+  gmailPushOn = cfg.gmail.pubsubTopic != null;
   emailOn = cfg.email.apiTokenFile != null;
   turnstileOn = cfg.web.turnstile.secretFile != null;
 
@@ -175,13 +178,15 @@ let
     HASALA_APNS_TOPIC = cfg.apns.topic;
     HASALA_APNS_ENVIRONMENTS = concatStringsSep "," cfg.apns.environments;
   }
-  // optionalAttrs gmailOn {
+  // optionalAttrs gmailLinkOn {
     HASALA_GOOGLE_IOS_CLIENT_ID = cfg.google.iosClientId;
+    HASALA_MAILBOX_ROUTE_KEY_FILE = "%d/mailbox-route-key";
+  }
+  // optionalAttrs gmailPushOn {
     HASALA_GMAIL_PUBSUB_TOPIC = cfg.gmail.pubsubTopic;
     HASALA_GMAIL_PUBSUB_AUDIENCE = cfg.gmail.pubsubAudience;
     HASALA_GMAIL_PUBSUB_SA_EMAIL = cfg.gmail.pubsubServiceAccount;
     HASALA_GMAIL_PUBSUB_SUBSCRIPTION = cfg.gmail.pubsubSubscription;
-    HASALA_MAILBOX_ROUTE_KEY_FILE = "%d/mailbox-route-key";
   }
   // optionalAttrs (cfg.authKeyFile != null) {
     HASALA_AUTH_KEY_FILE = "%d/auth-key";
@@ -546,14 +551,17 @@ let
     || lib.hasInfix "VAPID" k
     || fixedEnv ? ${k};
 
-  gmailValues = [
+  gmailLinkValues = [
     cfg.google.iosClientId
+    cfg.mailboxRouteKeyFile
+  ];
+  gmailPushValues = [
     cfg.gmail.pubsubTopic
     cfg.gmail.pubsubAudience
     cfg.gmail.pubsubServiceAccount
     cfg.gmail.pubsubSubscription
-    cfg.mailboxRouteKeyFile
   ];
+  allOrNone = vs: lib.all (v: v == null) vs || lib.all (v: v != null) vs;
 
   ingressRules = cfg.tunnel.ingress;
   expectedRules = ingressLib.rules {
@@ -697,14 +705,15 @@ in
       };
     };
 
-    google.iosClientId = nullStr "The iOS OAuth client id; part of the [gmail] group (all or nothing, M8).";
+    google.iosClientId = nullStr "The iOS OAuth client id (<n>-<x>.apps.googleusercontent.com), the audience of the app's Google ID token. With mailboxRouteKeyFile it is the [gmail] mailbox link (M8a): the link routes are mounted, and without gmail.* the app fetches mail without wakes (no watch topic, no Pub/Sub hook).";
+    # The Pub/Sub push: all four or none, and only with the link (M8b).
     gmail = {
-      pubsubTopic = nullStr "projects/<P>/topics/<topic>.";
-      pubsubAudience = nullStr "The push subscription's OIDC audience (the hook URL).";
-      pubsubServiceAccount = nullStr "The push subscription's service account email.";
-      pubsubSubscription = nullStr "projects/<P>/subscriptions/<name>.";
+      pubsubTopic = nullStr "projects/<P>/topics/<topic>; offered to the app as the watch topic. Part of the Pub/Sub push (M8b).";
+      pubsubAudience = nullStr "The push subscription's OIDC audience (the hook URL). Part of the Pub/Sub push (M8b).";
+      pubsubServiceAccount = nullStr "The push subscription's service account email (<name>@<P>.iam.gserviceaccount.com); the hook refuses a push token whose email differs. Part of the Pub/Sub push (M8b).";
+      pubsubSubscription = nullStr "projects/<P>/subscriptions/<name>. Part of the Pub/Sub push (M8b).";
     };
-    mailboxRouteKeyFile = secretPath "The mailbox route key (64 lowercase hex).";
+    mailboxRouteKeyFile = secretPath "The mailbox route key (64 lowercase hex); with google.iosClientId it is the [gmail] mailbox link (M8a).";
     authKeyFile = secretPath "auth_key (spec 01 §4.11, 64 lowercase hex). Required with the tunnel (M12).";
     saltKeyFile = secretPath "salt_key (spec 01 §4.11, 64 lowercase hex): keys only the public password salt, generated once and never rotated; a different key from auth_key. Required with the tunnel (M12): without both key files serve mounts no signup, password, recovery, reset, email-change or freeze route.";
 
@@ -986,9 +995,24 @@ in
             )
             "backups need native age X25519 recipients; off-site needs backups, an rclone config and a remote."
           )
-          (a "M8" (
-            lib.all (v: v == null) gmailValues || lib.all (v: v != null) gmailValues
-          ) "the [gmail] group (google.iosClientId, gmail.*, mailboxRouteKeyFile) is all or nothing.")
+          (a "M8a"
+            (
+              allOrNone gmailLinkValues
+              && (!gmailLinkOn || lib.hasSuffix ".apps.googleusercontent.com" cfg.google.iosClientId)
+            )
+            "the [gmail] mailbox link is google.iosClientId (a Google client id, <n>-<x>.apps.googleusercontent.com) and mailboxRouteKeyFile, both or neither."
+          )
+          (a "M8b"
+            (
+              allOrNone gmailPushValues
+              && (gmailPushOn -> gmailLinkOn)
+              && (
+                cfg.gmail.pubsubServiceAccount == null
+                || matches "[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com" cfg.gmail.pubsubServiceAccount
+              )
+            )
+            "the [gmail] Pub/Sub push (gmail.pubsubTopic, pubsubAudience, pubsubServiceAccount, pubsubSubscription) is all or nothing, needs the mailbox link (M8a), and pubsubServiceAccount is <name>@<P>.iam.gserviceaccount.com."
+          )
           (a "M9" (!lib.any pgLib.forbiddenSetting (lib.attrNames cfg.database.settings))
             "database.settings may not set listen_addresses, unix_socket_*, hba_file, ident_file or any log_* key."
           )

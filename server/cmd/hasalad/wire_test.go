@@ -75,21 +75,53 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	if _, ok := srv.Push.Waker.(*pushv2.Dispatcher); !ok {
 		t.Fatalf("waker %T, want the dispatcher", srv.Push.Waker)
 	}
-	if srv.Gmail == nil || srv.Meta.GmailWatchTopic != "projects/p/topics/t" || srv.Web == nil {
-		t.Fatalf("gmail %v topic %q web %v", srv.Gmail != nil, srv.Meta.GmailWatchTopic, srv.Web != nil)
+	if srv.Gmail == nil || srv.Gmail.Push == nil || srv.Gmail.Push.Topic != "projects/p/topics/t" || srv.Web == nil {
+		t.Fatalf("gmail %v push %v web %v", srv.Gmail != nil, srv.Gmail != nil && srv.Gmail.Push != nil, srv.Web != nil)
+	}
+	p := srv.Gmail.Push
+	if p.Subscription != "projects/p/subscriptions/s" || p.ServiceAccount != "push@p.iam.gserviceaccount.com" {
+		t.Fatalf("push %+v", p)
 	}
 	// Each verifier has its own audience: the app's ID token is for the iOS
 	// client, Pub/Sub's is for the push URL. Swapped, every fake-verifier API
 	// test would still pass.
 	link, okLink := srv.Gmail.Link.(*googlejwt.Verifier)
-	hook, okHook := srv.Gmail.Hook.(*googlejwt.Verifier)
+	hook, okHook := p.Hook.(*googlejwt.Verifier)
 	if !okLink || !okHook || link.Audience != "1-x.apps.googleusercontent.com" ||
 		hook.Audience != "https://api.hasala.app/hooks/gmail/pubsub" || srv.Gmail.IOSClientID != link.Audience {
-		t.Fatalf("verifiers: link %T %+v, hook %T %+v", srv.Gmail.Link, link, srv.Gmail.Hook, hook)
+		t.Fatalf("verifiers: link %T %+v, hook %T %+v", srv.Gmail.Link, link, p.Hook, hook)
 	}
 	// Without HASALA_SALT_KEY_FILE the account ceremonies stay unmounted.
 	if srv.Accounts != nil {
 		t.Fatal("the account ceremonies were mounted with the auth key alone")
+	}
+	withPush := len(ex.done)
+	cancel()
+	ex.wait()
+
+	// The mailbox link without the Pub/Sub push: the link is mounted with the
+	// iOS client's audience; no hook, no topic and no renewal nudge.
+	var linkOnly []string
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "HASALA_GMAIL_PUBSUB_") {
+			linkOnly = append(linkOnly, kv)
+		}
+	}
+	srv = &api.Server{Pool: pool}
+	ctx, cancel = context.WithCancel(context.Background())
+	ex, err = wireExtras(ctx, load(linkOnly), pool, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Gmail == nil || srv.Gmail.Push != nil {
+		t.Fatalf("link only: gmail %v push %v", srv.Gmail != nil, srv.Gmail != nil && srv.Gmail.Push != nil)
+	}
+	if v, ok := srv.Gmail.Link.(*googlejwt.Verifier); !ok || v.Audience != "1-x.apps.googleusercontent.com" ||
+		srv.Gmail.IOSClientID != v.Audience {
+		t.Fatalf("link only: verifier %T %+v", srv.Gmail.Link, srv.Gmail.Link)
+	}
+	if len(ex.done) != withPush-1 {
+		t.Fatalf("link only started %d workers, the push %d: want exactly the nudge fewer", len(ex.done), withPush)
 	}
 	cancel()
 	ex.wait()

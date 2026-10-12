@@ -93,14 +93,22 @@ in
       keyFile = secret "apns_key_p8";
       keyId = "<APNS_KEY_ID>"; # not secret
     };
+    # Gmail's mailbox link (M8a): the iOS client id (not secret; it ships in
+    # the app) and the route key, both or neither. Alone, the link routes are
+    # mounted, /meta offers no watch topic and the app fetches mail when it
+    # is opened or refreshed in the background, without wakes.
     google.iosClientId = "<CLIENT_ID>.apps.googleusercontent.com";
-    gmail = {
-      pubsubTopic = "projects/<PROJECT>/topics/<TOPIC>";
-      pubsubAudience = "https://api.hasala.app/hooks/gmail/pubsub";
-      pubsubServiceAccount = "<SA>@<PROJECT>.iam.gserviceaccount.com";
-      pubsubSubscription = "projects/<PROJECT>/subscriptions/<SUBSCRIPTION>";
-    };
     mailboxRouteKeyFile = secret "mailbox_route_key";
+    # Gmail's Pub/Sub push (M8b): all four or none, and only with the link.
+    # Uncomment once the topic and the push service account exist (spec 02
+    # §13.1), before the push subscription is created; see "Gmail: the link
+    # now, the push later" below.
+    # gmail = {
+    #   pubsubTopic = "projects/<PROJECT>/topics/<TOPIC>";
+    #   pubsubAudience = "https://api.hasala.app/hooks/gmail/pubsub";
+    #   pubsubServiceAccount = "<SA>@<PROJECT>.iam.gserviceaccount.com";
+    #   pubsubSubscription = "projects/<PROJECT>/subscriptions/<SUBSCRIPTION>";
+    # };
     authKeyFile = secret "auth_key"; # spec 01 §4.11; generated once, never rotated in the beta
     saltKeyFile = secret "salt_key"; # spec 01 §4.11; the password salt key: never rotated, never equal to auth_key
     email = {
@@ -289,6 +297,64 @@ curl -s -X POST -H 'Content-Type: application/json' \
   -d '{"invite_code":"ABCDEFGHIJKLMNOPQRSTUVWX","email":"probe@example.com","display_name":"Probe"}' \
   http://127.0.0.1:8471/api/v1/auth/signup/begin             # {"error":"not_invited"}, not a 404
 ```
+
+## Gmail: the link now, the push later
+
+The `[gmail]` group is two parts. The **mailbox link** (`google.iosClientId`
+and `mailboxRouteKeyFile`, M8a) mounts the link routes: the app's Connect Gmail
+(link challenge, link, watch report, status, unlink). The **Pub/Sub push**
+(the four `gmail.*` values, M8b) adds the hook `POST /hooks/gmail/pubsub`,
+offers the topic as `/api/v1/meta`'s `gmail_watch_topic` and lets the app
+report its watch. Without the push, `gmail_watch_topic` is `null`, so the app
+never calls Gmail's `users.watch`; a watch report answers
+`409 {"error":"no_watch_topic"}`, the hook answers 404, and no device is woken
+for mail or nudged to renew a watch.
+
+**The link, on a running host.** One host PR, in `modules/services/hasala.nix`:
+set `google.iosClientId` and `mailboxRouteKeyFile = secret "mailbox_route_key"`
+(the secret already exists in `modules/sops.nix`), and leave `gmail` unset.
+After the activation:
+
+```sh
+journalctl -u hasalad -o cat | grep 'optional groups'        # "enabled" lists gmail-link, not gmail-push
+journalctl -u hasalad -o cat | grep 'Pub/Sub push is not configured'
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/api/v1/mailbox/link/challenge   # 401: mounted (404: not)
+curl -s http://127.0.0.1:8471/api/v1/meta                    # "gmail_watch_topic":null
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/hooks/gmail/pubsub              # 404
+```
+
+**The push, later.** In this order, so Pub/Sub never pushes to an unmounted
+hook:
+
+1. Create the topic (with Gmail's publisher grant) and the push service
+   account. Choose the push subscription's name now; it does not have to exist
+   yet.
+2. A second host PR sets the four `gmail.*` values. M8b refuses a service
+   account that is not `<name>@<PROJECT>.iam.gserviceaccount.com`. After the
+   activation the groups line also lists `gmail-push`, `/api/v1/meta` reports
+   the topic, and the hook answers 401 to a request without Google's token:
+
+   ```sh
+   journalctl -u hasalad -o cat | grep 'optional groups'                     # "enabled" lists gmail-link and gmail-push
+   curl -s http://127.0.0.1:8471/api/v1/meta                                 # "gmail_watch_topic":"projects/…/topics/…"
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.hasala.app/hooks/gmail/pubsub   # 401
+   ```
+
+3. Only now create the push subscription, with the endpoint, the service
+   account and the audience exactly as set in step 2.
+
+The renewal nudge starts with the push: a linked iPhone with no watch is woken,
+at most every 12 hours, to make one. An app that read a `null` topic reads
+`/meta` again on a cycle at least 10 minutes later, and watches then.
+
+**Turning the push off again.** Delete the push subscription first (or turn
+it into a pull subscription, which stops its pushes), then remove the four
+`gmail.*` values in a host PR. A push subscription left in place keeps pushing
+into the hook's 404 and retries each message for as long as it is retained. iPhones that already hold a Gmail watch keep it until their
+next renewal (about 4 days, when the watch report answers
+`409 {"error":"no_watch_topic"}` and the app stops the watch) or until it
+expires (7 days); nothing relays its pushes in the meantime, and the link
+itself keeps working.
 
 ## PR C: "hasala: operator console (tailnet only)"
 
