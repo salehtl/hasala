@@ -64,7 +64,8 @@ struct InviteCodeField: UIViewRepresentable {
   }
 
   /// The width offered, and the height the text (or, while empty, the placeholder) wraps
-  /// to there, so the code reflows at large text sizes instead of clipping.
+  /// to there, so the code reflows at large text sizes instead of clipping; never less
+  /// than a tap target.
   func sizeThatFits(_ proposal: ProposedViewSize, uiView v: InviteCodeTextView, context: Context) -> CGSize? {
     guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
     return CGSize(width: width, height: v.fittingHeight(width: width))
@@ -111,8 +112,10 @@ struct InviteCodeField: UIViewRepresentable {
   }
 }
 
-/// A text view that wraps instead of scrolling, and shows a placeholder while empty.
+/// A text view that wraps instead of scrolling, and shows a placeholder while empty. It is
+/// at least 44 points tall with its text centred, so the whole of it takes a tap.
 final class InviteCodeTextView: UITextView {
+  static let minimumHeight: CGFloat = 44
   let placeholderLabel = UILabel()
 
   init() {
@@ -139,15 +142,22 @@ final class InviteCodeTextView: UITextView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let top = max(0, floor((bounds.height - contentHeight(width: bounds.width)) / 2))
+    if textContainerInset.top != top { textContainerInset = UIEdgeInsets(top: top, left: 0, bottom: 0, right: 0) }
     placeholderLabel.isHidden = !text.isEmpty
     let height = placeholderLabel.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height
-    placeholderLabel.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
+    placeholderLabel.frame = CGRect(x: 0, y: top, width: bounds.width, height: height)
   }
 
-  /// The height of the text wrapped to `width`; while empty, of the placeholder.
+  /// The height for `width`: the content's, and at least `minimumHeight`.
   func fittingHeight(width: CGFloat) -> CGFloat {
+    ceil(max(Self.minimumHeight, contentHeight(width: width)))
+  }
+
+  /// The text wrapped to `width` (while empty, the placeholder), without the centring inset.
+  private func contentHeight(width: CGFloat) -> CGFloat {
     let fit = CGSize(width: width, height: .greatestFiniteMagnitude)
-    let own = sizeThatFits(fit).height
-    return ceil(text.isEmpty ? max(own, placeholderLabel.sizeThatFits(fit).height) : own)
+    let own = sizeThatFits(fit).height - textContainerInset.top - textContainerInset.bottom
+    return text.isEmpty ? max(own, placeholderLabel.sizeThatFits(fit).height) : own
   }
 }
