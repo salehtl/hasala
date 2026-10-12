@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how Gmail access works, and your rights under UAE law."
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-12
 status: "final"
 plainWords: "Hasala reads your bank alerts from Gmail on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data, show ads or send anything to an AI service."
 ---
@@ -119,7 +119,7 @@ When you create your Hasala account, we delete your address from the waitlist; y
 
 If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. It's deleted with your account.
 
-If you tell us your bank on our website without asking for an invite, we count it. We don't store your email address, your IP address or anything else that identifies you with it. While the website's forms are handled by email, telling us your bank there opens an email to support@hasala.app in your own email app instead; if you send it, we count the bank and keep the email like any other support email.
+On our website, you tell us your bank only when you ask for an invite (see [The website](#the-website)).
 
 ### Things you send us
 
@@ -133,8 +133,6 @@ If you tell us your bank on our website without asking for an invite, we count i
 **Asking for an invite.** While sign-ups are handled by email, the invite form on hasala.app doesn't send anything to us. It opens an email to support@hasala.app in your own email app, with the address and bank you entered, and we receive it only if you send it. We add the address the email comes from, not an address typed into it. We keep that email like any other support email (see [How long we keep data](#how-long-we-keep-data)) and use it only to add you to the waitlist.
 
 Once the form sends sign-ups to our server, we store your email address, the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), and the dates you asked, confirmed, were invited and joined. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days at most. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list, which deletes your address straight away. If you join Hasala, the bank you told us about moves to your account and stays with it until you delete the account. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
-
-**Telling us your bank.** See [Bank requests](#bank-requests) above: a bank you tell us about on the website is only counted. While the forms are handled by email, it reaches us only as an email you choose to send.
 
 **Bot checks.** Our forms can use Cloudflare Turnstile to tell people from bots. When it's switched on, Cloudflare looks at technical details from your browser, including your IP address, to decide; we receive only the answer.
 
@@ -247,7 +245,7 @@ We use a small number of service providers. None of them can open your sealed da
 | **Google** | Hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
 
-Emails you send to our @hasala.app addresses (support@, privacy@ and security@), including invite and bank requests while the website's forms are handled by email, arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them like any other support email. Apart from that, we don't use any other service provider that handles your personal data. Invites, our admin tool and, once sign-ups go to our server, the waitlist run on our own server.
+Emails you send to our @hasala.app addresses (support@, privacy@ and security@), including invite requests while the website's form is handled by email, arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them like any other support email. Apart from that, we don't use any other service provider that handles your personal data. Invites, our admin tool and, once sign-ups go to our server, the waitlist run on our own server.
 
 ### Our server
 
@@ -277,7 +275,6 @@ Our server is located in the United Arab Emirates. Cloudflare, Google and Apple 
 | Support emails | We keep them only as long as we need them to help you, and delete them when you ask. |
 | Waitlist sign-up, not confirmed | 7 days. |
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. |
-| Website bank votes | Kept as counts, which contain nothing that identifies you. While the website's forms are handled by email, the email you send is kept like any other support email. |
 | Bank requests from the app | Until you delete your account. |
 | Email records | 30 days. We never keep what an email said. |
 | Data on your iPhone | Until you delete your account or use Remove this iPhone. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |

@@ -1,0 +1,220 @@
+---
+/**
+ * The detail pages (/how-it-works, /budgeting, /how-privacy-works, /faq):
+ * a plain header (the page's question as the H1, one sentence under it),
+ * the page's sections, then "Read next" and the invite button. The home
+ * page links here for anything longer than a line.
+ */
+import Base from './Base.astro';
+import Icon from '../components/Icon.astro';
+import { NAV, SITE } from '../data/site';
+
+interface Props {
+  /** The page part of <title>: "Hasala · {title}". */
+  title: string;
+  /** The H1. */
+  heading: string;
+  /** One or two sentences under the H1; also the meta description unless `description` is set. */
+  lead: string;
+  description?: string;
+  path: string;
+  /** Extra JSON-LD nodes for this page (a WebPage and its breadcrumb are added here). */
+  jsonLd?: Record<string, unknown>[];
+}
+
+const { title, heading, lead, description = lead, path, jsonLd = [] } = Astro.props;
+const url = `${SITE.url}${path}`;
+const next = NAV.filter((n) => n.href !== path);
+const labels: Record<string, string> = { '/how-privacy-works': 'How privacy works' };
+
+const ld = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebPage',
+      '@id': `${url}#page`,
+      name: heading,
+      description,
+      url,
+      inLanguage: 'en',
+      isPartOf: { '@id': `${SITE.url}/#website` },
+      about: { '@id': `${SITE.url}/#app` },
+      breadcrumb: {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Hasala', item: SITE.url },
+          { '@type': 'ListItem', position: 2, name: heading, item: url },
+        ],
+      },
+    },
+    ...jsonLd,
+  ],
+};
+---
+
+<Base title={title} description={description} path={path} jsonLd={ld} class="detail-page">
+  <header class="page-head">
+    <div class="container page-head__inner">
+      <h1 class="page-head__title">{heading}</h1>
+      <p class="page-head__lead">{lead}</p>
+      <slot name="head" />
+    </div>
+  </header>
+
+  <slot />
+
+  <aside class="next" aria-labelledby="next-title">
+    <div class="container next__inner">
+      <div class="next__links">
+        <h2 id="next-title" class="next__title">Read next</h2>
+        <ul role="list">
+          {
+            next.map((n) => (
+              <li>
+                <a href={n.href}>
+                  {labels[n.href] ?? n.label}
+                  <Icon name="arrow-right" size={16} stroke={1.9} />
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+      <div class="next__cta">
+        <a class="btn btn--primary" href="/#invite">Request an invite</a>
+        <p>Free during the beta.</p>
+      </div>
+    </div>
+  </aside>
+</Base>
+
+<script>
+  import { initMotion } from '../scripts/motion';
+  initMotion();
+</script>
+
+<style>
+  .page-head {
+    padding: 128px 0 40px;
+    background: var(--wash-hero);
+  }
+  .page-head__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .page-head__title {
+    max-width: 16em;
+    font-size: var(--t-display-l);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: calc(1em + 4px);
+  }
+  .page-head__lead {
+    max-width: 680px;
+    color: var(--text-body);
+    font-size: var(--t-lead);
+    letter-spacing: -0.01em;
+    line-height: 1.55;
+  }
+
+  .next {
+    padding: 56px 0 24px;
+    background: var(--white);
+  }
+  .next__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding-top: 40px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .next__links {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .next__title {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .next ul {
+    display: flex;
+    flex-direction: column;
+  }
+  .next li a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 26px;
+    transition: color var(--t-hover-out);
+  }
+  .next li a :global(.icon) {
+    color: var(--accent);
+    transition: translate var(--t-hover-out) var(--ease-out-soft);
+  }
+  .next li a:hover {
+    color: var(--accent);
+    transition-duration: var(--t-hover-in);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .next li a:hover :global(.icon) {
+      translate: 3px 0;
+      transition-duration: 200ms;
+    }
+  }
+  .next__cta {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .next__cta p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 20px;
+    text-align: center;
+  }
+
+  @media (min-width: 640px) {
+    .next__cta {
+      flex-direction: row;
+      align-items: center;
+      gap: 20px;
+    }
+    .next__cta p {
+      text-align: left;
+    }
+  }
+  @media (min-width: 1024px) {
+    .page-head {
+      padding: 184px 0 72px;
+    }
+    .page-head__inner {
+      gap: 24px;
+    }
+    .next {
+      padding: 96px 0 40px;
+    }
+    .next__inner {
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 64px;
+      padding-top: 56px;
+    }
+    .next__links {
+      flex: 0 1 560px;
+    }
+  }
+</style>
