@@ -50,6 +50,13 @@ struct LiveRootView: View {
           }
         }
         .id(ObjectIdentifier(boot.session))
+        // Under a wall the gate keeps its place (a sign-in screen stays where it was).
+        .accessibilityHidden(boot.wall != nil)
+      }
+    }
+    .overlay {
+      if let wall = boot.wall {
+        BootWallView(boot: boot, wall: wall)
       }
     }
     .onAppear { boot.start() }

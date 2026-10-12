@@ -223,6 +223,8 @@ struct LiveLedgerMapperTests {
       try await Task.sleep(for: .milliseconds(20))
     }
     #expect(try a.context.store.pendingCount() == pending + 1)
+    // The op is queued before it is re-projected: wait for the projection too.
+    try await Self.eventually { try a.projection.reader.txn(steam.id)?.category == "entertainment" }
     let row = try #require(try a.projection.reader.txn(steam.id))
     #expect(row.category == "entertainment" && !row.needsReview)
     // Undo writes the old category back.
@@ -230,6 +232,51 @@ struct LiveLedgerMapperTests {
     for _ in 0..<100 where try a.context.store.pendingCount() == pending + 1 {
       try await Task.sleep(for: .milliseconds(20))
     }
+    try await Self.eventually { try a.projection.reader.txn(steam.id)?.needsReview == true }
     #expect(try a.projection.reader.txn(steam.id)?.needsReview == true)
+  }
+
+  /// Polls `condition` for up to 3 s (a write is queued, then re-projected).
+  static func eventually(_ condition: () throws -> Bool) async throws {
+    for _ in 0..<150 where try !condition() { try await Task.sleep(for: .milliseconds(20)) }
+  }
+
+  /// Undoing a rename puts back the name shown before it: an earlier rename stays, and a
+  /// merchant that had none goes back to its dictionary or prettified name.
+  @Test func undoingARenameRestoresTheNameBefore() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "laneb.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    let steam = try #require(store.state.txns.first { $0.merchant == "Steam" })
+    let original = steam.merchant
+    func shows(_ id: String, _ name: String) async throws {
+      try await Self.eventually { try a.projection.reader.txn(id)?.displayName == name }
+      await store.reload()
+      #expect(try a.projection.reader.txn(id)?.displayName == name)
+    }
+    let first = try store.apply(.renameMerchant(steam.id, "Games"))
+    try await shows(steam.id, "Games")
+    let second = try store.apply(.renameMerchant(steam.id, "Valve"))
+    try await shows(steam.id, "Valve")
+    store.undo(try #require(second))
+    try await shows(steam.id, "Games")
+    // Back past the first rename: the seed's own rename ("Steam") is put back.
+    store.undo(try #require(first))
+    try await shows(steam.id, original)
+    #expect(LedgerEditAuthor.unrenamed(try #require(try a.projection.reader.txn(steam.id)).merchantRaw) != original)
+    // A merchant with no rename goes back to its derived name.
+    let plain = try #require(
+      try a.projection.reader.activity(limit: 1_000).first {
+        $0.displayName == LedgerEditAuthor.unrenamed($0.merchantRaw) && $0.displayName != original
+      })
+    let renamed = try store.apply(.renameMerchant(plain.id, "Something else"))
+    try await shows(plain.id, "Something else")
+    store.undo(try #require(renamed))
+    try await shows(plain.id, plain.displayName)
   }
 }

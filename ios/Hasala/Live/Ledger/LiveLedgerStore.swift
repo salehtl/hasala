@@ -65,7 +65,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     let today = clock()
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
-      skippedReview: prefs.skippedReview(on: today.date))
+      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt)
     let reader = self.reader
     let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
       .value
@@ -81,6 +81,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     let before = state
     var s = state
     let (title, inverses) = try Self.patch(edit, &s, now: now)
+    // A reload already in flight read the projection before this edit: drop it, so it
+    // can't bring the old state back. The write's own reload follows.
+    reloadSeq += 1
     switch edit {
     case .skipReview(let id): prefs.skip(id, on: now.date)
     case .setNotifications(let level): prefs.update { $0.notifications = level }
@@ -140,7 +143,14 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       s.txns[i].isTransfer = c == "transfer"
       s.txns[i].splits = []
       if let project { s.txns[i].projectID = project }
-      return ("Sorted into \(name(c))", [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)])
+      // Undo puts back what the gesture changed: the split (which held the categories)
+      // or the category, and the project.
+      var inverses: [LedgerEditAuthor.Inverse] =
+        old.splits.isEmpty
+        ? [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
+        : [.split(txn: id, lines: old.splits)]
+      if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }
+      return ("Sorted into \(name(c))", inverses)
     case .markTransfer(let id):
       let i = try index(id)
       let old = s.txns[i]
@@ -170,7 +180,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       guard !new.isEmpty else { throw .notFound }
       let old = s.txns[i].merchant
       for j in s.txns.indices where s.txns[j].merchant == old { s.txns[j].merchant = new }
-      return ("Renamed to \(new)", [.displayName(txn: id, name: nil)])
+      return ("Renamed to \(new)", [.displayName(txn: id, shown: old)])
     case .split(let id, let lines):
       let i = try index(id)
       let t = s.txns[i]
@@ -234,23 +244,31 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
 }
 
 /// The device's own preferences (spec 04 §4.5; never synced): notification level, the
-/// Face ID lock, and the review cards skipped until the next local midnight.
+/// Face ID lock, and the review cards skipped until the next local midnight (kept as
+/// digests: §4.5 allows no identifier in UserDefaults).
 @MainActor
 final class DevicePrefsStore {
   private let defaults: UserDefaults
   private static let prefsKey = "prefs.device.v1"
-  private static let skippedKey = "prefs.review.skipped.v1"
+  private static let skippedKey = "prefs.review.skipped.v2"
+  /// The earlier form, which held transaction ids.
+  private static let legacySkippedKey = "prefs.review.skipped.v1"
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
   }
 
+  /// The Face ID lock is off until the app lock exists (§4.5 `appLock.enabled` defaults to
+  /// false; nothing locks the app in this build, so the toggle must not read as on).
   var prefs: DevicePrefs {
     guard let d = defaults.data(forKey: Self.prefsKey), let p = try? JSONDecoder().decode(DevicePrefs.self, from: d) else {
-      return DevicePrefs()
+      return DevicePrefs(faceIDLock: false)
     }
     return p
   }
+
+  /// This install's salt for the skipped cards' digests.
+  var salt: String { LocalAccountData.salt(defaults) }
 
   func update(_ change: (inout DevicePrefs) -> Void) {
     var p = prefs
@@ -263,7 +281,9 @@ final class DevicePrefsStore {
     var ids: [String]
   }
 
-  func skippedReview(on day: LocalDate) -> Set<TxnID> {
+  /// The digests of the cards skipped today (`LocalAccountData.digest` of each id).
+  func skippedDigests(on day: LocalDate) -> Set<String> {
+    defaults.removeObject(forKey: Self.legacySkippedKey)
     guard let d = defaults.data(forKey: Self.skippedKey), let s = try? JSONDecoder().decode(Skipped.self, from: d),
       s.day == "\(day.year)-\(day.month)-\(day.day)"
     else { return [] }
@@ -271,12 +291,15 @@ final class DevicePrefsStore {
   }
 
   func skip(_ id: TxnID, on day: LocalDate) {
-    var ids = skippedReview(on: day)
-    ids.insert(id)
+    var ids = skippedDigests(on: day)
+    ids.insert(LocalAccountData.digest(id, salt: salt))
     let s = Skipped(day: "\(day.year)-\(day.month)-\(day.day)", ids: ids.sorted())
     if let d = try? JSONEncoder().encode(s) { defaults.set(d, forKey: Self.skippedKey) }
   }
 
-  /// Sign-out and wipes forget the skipped cards (they name transactions).
-  func forgetAccountData() { defaults.removeObject(forKey: Self.skippedKey) }
+  /// The account's data left this iPhone: forget the skipped cards.
+  func forgetAccountData() {
+    defaults.removeObject(forKey: Self.skippedKey)
+    defaults.removeObject(forKey: Self.legacySkippedKey)
+  }
 }

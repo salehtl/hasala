@@ -64,10 +64,46 @@ final class AppEnvironment {
     return installCheck
   }
 
-  private static func purge(_ keychain: KeychainSecretStore) -> InstallCheck.Outcome {
-    InstallCheck.run(
-      protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable, defaults: .standard, keychain: keychain,
+  /// The fresh-install purge (§4.4). An `installID` that reads back means this install
+  /// already purged: UserDefaults read as empty only before first unlock, so the purge
+  /// needs protected data only when there is none. `isProtectedDataAvailable` is false
+  /// on every locked iPhone with a passcode, so requiring it always would keep a silent
+  /// push or a background task that launches the app on a locked iPhone from running.
+  private static func purge(_ keychain: KeychainSecretStore, defaults: UserDefaults = .standard)
+    -> InstallCheck.Outcome
+  {
+    if defaults.string(forKey: InstallCheck.installIDKey) != nil { return .done }
+    return InstallCheck.run(
+      protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable, defaults: defaults, keychain: keychain,
       groups: [keychainGroup, sharedKeychainGroup], widgetsDirectory: nil)
+  }
+
+  /// "Remove this iPhone's data" from a wall (§4.7 row 2, without the server's writer
+  /// revocation): the session is signed out (kept as `pending_logout` when the server
+  /// can't be reached, so the logout is retried), then every Hasala item in both access
+  /// groups and every account's files go, with what UserDefaults noted about the
+  /// account. This iPhone's Google grant is revoked last, from the token read first.
+  func eraseLocalData() async {
+    let secrets = account.secrets
+    let binding = try? secrets.binding()
+    let session = try? secrets.session()
+    let grant = binding?.userID.flatMap { GmailLane.heldGrant(secrets: secrets, userID: $0) }
+    let confirmed = await AccountSignIn.signOut(account)
+    let pending = confirmed ? nil : (try? secrets.session())
+    if let b = binding, let u = b.userID { AccountWipe.wipe(account, userID: u, writerID: b.writerID) }
+    if let s = session, let u = UserID(s.user_id) { AccountWipe.wipe(account, userID: u, writerID: nil) }
+    if let dir = account.accountsDirectory,
+      let items = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+    {
+      for item in items { try? FileManager.default.removeItem(at: item) }
+    }
+    _ = keychain.purgeAll(groups: [Self.keychainGroup, Self.sharedKeychainGroup])
+    LocalAccountData.forget()
+    if let pending { try? secrets.writeSession(pending) }
+    if let grant {
+      let build = self.build
+      Task { await GmailLane.endGrant(grant, build: build, stopWatch: false) }
+    }
   }
 
   /// `<Application Support>/Hasala/accounts`; each account's store is `<user_id>/` below it.

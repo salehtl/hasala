@@ -26,7 +26,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
   enum Inverse: Sendable, Equatable {
     case category(txn: String, category: String?, needsReview: Bool)
     case note(txn: String, note: String)
-    case displayName(txn: String, name: String?)
+    /// The merchant's name as it was shown before a rename: a user rename is put back,
+    /// a name that was the dictionary's or the prettified one clears the rename.
+    case displayName(txn: String, shown: String)
+    case project(txn: String, project: String?)
     case archived(txn: String, archived: Bool)
     case split(txn: String, lines: [SplitLine])
     case budget(category: String, month: YearMonth, amount: Money)
@@ -141,9 +144,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
         case .note(let t, let n):
           a.annotate(txnID: t, set: [("note", n.isEmpty ? nil : n)])
-        case .displayName(let t, let name):
+        case .displayName(let t, let shown):
           guard let row = rows[t] else { continue }
-          a.renameMerchant(raw: row.merchantRaw, to: name)
+          a.renameMerchant(raw: row.merchantRaw, to: shown == Self.unrenamed(row.merchantRaw) ? nil : shown)
+        case .project(let t, let project):
+          a.annotate(txnID: t, set: [("project_id", project)])
         case .archived(let t, let archived):
           a.annotate(txnID: t, set: [("archived", archived ? "user" : nil)])
         case .split(let t, let lines):
@@ -173,6 +178,14 @@ nonisolated struct LedgerEditAuthor: Sendable {
     guard let blob = try observer.stamps.build(ctx, body) else { return }
     try await outbox.enqueue(blob.ops)
     try await observer.reproject()
+  }
+
+  /// The name a merchant shows with no rename (03c §3.6: the dictionary's, else the
+  /// prettified raw merchant).
+  static func unrenamed(_ merchantRaw: String) -> String {
+    let dictionary = Categorizer(rules: [], dictionary: AccountRuntime.dictionary, categories: BuiltinCategories())
+      .dictionaryDisplay(merchantRaw: merchantRaw)
+    return MerchantDisplay.name(raw: merchantRaw, renamed: nil, dictionary: dictionary)
   }
 
   private func txn(_ id: String) throws -> TxnRow {

@@ -30,10 +30,13 @@ final class AccountRuntime {
   let store: LiveLedgerStore
 
   /// `GET /account`'s `review_account` (#40), read live when the account opens: the App
-  /// Review demo account, whose ledger is sample data.
+  /// Review demo account, whose ledger is sample data. Until an answer arrives, every
+  /// run asks again (an offline launch must not hide "Use sample data" for good).
   private(set) var reviewAccount = false
   /// The last `GET /account` answer, when one arrived.
   @ObservationIgnored private(set) var account: AccountInfo?
+  /// Told each `GET /account` answer (the gate updates the profile and the review flag).
+  @ObservationIgnored var onAccount: (@MainActor (AccountInfo) async -> Void)?
 
   /// The bundled merchant dictionary (`.empty` when its tier is off).
   nonisolated static let dictionary = (try? MerchantDictionary.bundled().get()) ?? .empty
@@ -87,6 +90,7 @@ final class AccountRuntime {
     let outbox = Outbox(store: context.store, clock: context.clock) {
       await box.get()?.run(.authored)
     }
+    let afterRun = AfterRun()
     let authoring = MailboxAuthoring(observer: observer)
     let mailboxLedger = RuntimeMailboxLedger(engine: engine, observer: observer, outbox: outbox, authoring: authoring)
     let lane = GmailLane(
@@ -117,14 +121,17 @@ final class AccountRuntime {
             await MainActor.run { store.mailbox = health }
           }
           await store.reload()
+          await afterRun.run()
         },
         stopped: stopped))
     box.set(coordinator)
     try await observer.open()
     await store.reload()
-    return AccountRuntime(
+    let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
       outbox: outbox, coordinator: coordinator, lane: lane, mailboxLedger: mailboxLedger, store: store)
+    afterRun.set { [weak rt] in await rt?.refreshAccountIfUnknown() }
+    return rt
   }
 
   /// The launch run (spec 04 §6.5): `GET /meta` and `GET /auth/session` first, then
@@ -134,19 +141,27 @@ final class AccountRuntime {
     let probe = await LaunchProbe.run(context, build: buildNumber)
     switch probe {
     case .frozen:
+      // Only `GET /account` and the unfreeze are allowed while frozen (§6.11).
       await stopped(.frozen)
+      await refreshAccount()
+      return
+    case .updateRequired:
+      await stopped(.halted(.updateRequired))
+      return
     case .unbound:
       await stopped(.needsRebind)
       return
     case .stop(let stop) where WorkCoordinator.endsTheAccount(stop):
       await stopped(stop)
       return
-    case .ok, .updateRequired, .stop:
+    case .ok, .stop:
       break
     }
     await refreshAccount()
-    await coordinator.run(.launch)
-    await authorOpeningOpsIfNeeded()
+    let launched = await coordinator.run(.launch)
+    // Only after a launch run that reached the server's head: an iPhone that couldn't
+    // pull yet (offline) would author the account's opening ops a second time.
+    if launched.stop == nil { await authorOpeningOpsIfNeeded() }
   }
 
   /// `GET /account` (#40), read live: the review flag and the account's own name.
@@ -155,6 +170,28 @@ final class AccountRuntime {
     guard let info = try? await env.client.account(bearer: token), info.user_id == binding.user_id else { return }
     account = info
     reviewAccount = info.review_account == true
+    await onAccount?(info)
+  }
+
+  /// After each run: `GET /account` again while no answer has arrived yet.
+  func refreshAccountIfUnknown() async {
+    if account == nil { await refreshAccount() }
+  }
+
+  /// One BGTaskScheduler task's work (spec 04 §7.9): a 25 s refresh run, or a processing
+  /// run that lasts until iOS expires it. Returns whether a scan or backfill still has
+  /// work for another processing window.
+  func backgroundWork(_ kind: BackgroundScheduler.Kind) async -> Bool {
+    switch kind {
+    case .refresh:
+      _ = await coordinator.run(.bgRefresh, budget: .seconds(25))
+      return false
+    case .processing:
+      _ = await coordinator.run(.bgProcessing)
+      guard let lane, !Task.isCancelled else { return false }
+      let phase = await lane.status().phase
+      return phase == .scanning || phase == .authoringBackfill
+    }
   }
 
   /// Home currency AED and the USD peg (04 §6.2), once per account: authored only when
@@ -210,6 +247,18 @@ final class AccountRuntime {
   /// Stops the runtime's work: no more runs and no background work.
   func close() async {
     await coordinator.close()
+  }
+}
+
+/// What runs after each run's screen reload, set once the runtime exists.
+nonisolated final class AfterRun: @unchecked Sendable {
+  private let lock = NSLock()
+  private var action: (@Sendable () async -> Void)?
+
+  func set(_ a: @escaping @Sendable () async -> Void) { lock.withLock { action = a } }
+  func run() async {
+    let a = lock.withLock { action }
+    await a?()
   }
 }
 

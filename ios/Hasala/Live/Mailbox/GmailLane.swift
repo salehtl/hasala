@@ -103,3 +103,31 @@ nonisolated final class GmailLane: Sendable {
     await engine.runCycle(trigger: trigger, deadlineMs: deadlineMs)
   }
 }
+
+// MARK: Leaving the account
+
+extension GmailLane {
+  /// The account's Google refresh token on this iPhone, read before the account's secrets
+  /// are wiped; nil when there is none (another iPhone holds Gmail) or it can't be read.
+  static func heldGrant(secrets: Secrets, userID: UserID) -> String? {
+    guard let token = try? SecretsGmailRefreshTokenStore(secrets: secrets, userID: userID).read(), !token.isEmpty else {
+      return nil
+    }
+    return token
+  }
+
+  /// Ends this iPhone's Google grant as the account leaves it (spec 04 §4.7 rows 2–4):
+  /// `users.stop` first when the account itself is going (`stopWatch`), then the refresh
+  /// token is revoked at Google. Best effort, and nothing when the build has no Google
+  /// client. It needs only the token, so it runs after the local wipe as well.
+  static func endGrant(_ refreshToken: String, build: BuildInfo, stopWatch: Bool) async {
+    let config = GmailOAuthConfig(clientID: build.googleClientID, redirectScheme: build.googleRedirectScheme)
+    guard config.isConfigured else { return }
+    let google = URLSessionHTTPExchange.ephemeral()
+    let oauth = GoogleOAuthClient(config: config, http: google)
+    if stopWatch, let grant = try? await oauth.refresh(refreshToken: refreshToken) {
+      try? await GmailClient(http: google, accessToken: grant.accessToken).stop()
+    }
+    try? await oauth.revoke(token: refreshToken)
+  }
+}

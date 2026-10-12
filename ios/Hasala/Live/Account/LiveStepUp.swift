@@ -31,11 +31,6 @@ nonisolated struct LiveStepUp: MailboxStepUp {
     let paramsHash = StepUp.paramsHash(action: kind, tuple: tuple)
     let passkey = await usesPasskey()
     let reason = kind == "mailbox.link" ? "Confirm it's you to connect Gmail" : "Confirm it's you to disconnect Gmail"
-    var password: String?
-    if !passkey {
-      guard let typed = await askPassword(reason), !typed.isEmpty else { throw .cancelled }
-      password = typed
-    }
     let begin: StepUpBeginResponse
     do {
       begin = try await env.client.stepUpBegin(
@@ -62,7 +57,9 @@ nonisolated struct LiveStepUp: MailboxStepUp {
         throw .failed
       }
     } else {
-      guard let password, let salt = binding.serverSalt,
+      // The password is asked for only once the server's challenge checked out.
+      guard let password = await askPassword(reason), !password.isEmpty else { throw .cancelled }
+      guard let salt = binding.serverSalt,
         let s = try? PasswordStretch.stretch(password: password, serverSalt: salt, emailNorm: binding.email_norm),
         let message = try? SigningMessage.deviceStepUp(challenge: challenge, writerID: writer)
       else { throw .failed }
@@ -97,19 +94,26 @@ enum PasswordPrompt {
     else { return nil }
     while let presented = top.presentedViewController { top = presented }
     let presenter = top
-    return await withCheckedContinuation { (k: CheckedContinuation<String?, Never>) in
-      let alert = UIAlertController(title: reason, message: "Enter your Hasala password.", preferredStyle: .alert)
-      alert.addTextField { field in
-        field.isSecureTextEntry = true
-        field.textContentType = .password
-        field.placeholder = "Password"
-      }
-      alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in k.resume(returning: nil) })
-      alert.addAction(
-        UIAlertAction(title: "Continue", style: .default) { [weak alert] _ in
-          k.resume(returning: alert?.textFields?.first?.text)
-        })
-      presenter.present(alert, animated: true)
+    guard !presenter.isBeingDismissed, !presenter.isBeingPresented else { return nil }
+    let answer = FirstOf<String?>()
+    let alert = UIAlertController(title: reason, message: "Enter your Hasala password.", preferredStyle: .alert)
+    alert.addTextField { field in
+      field.isSecureTextEntry = true
+      field.textContentType = .password
+      field.placeholder = "Password"
     }
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer.finish(nil) })
+    alert.addAction(
+      UIAlertAction(title: "Continue", style: .default) { [weak alert] _ in
+        answer.finish(alert?.textFields?.first?.text)
+      })
+    presenter.present(alert, animated: true)
+    // UIKit refuses a presentation silently (the presenter is busy): then nobody can
+    // answer, so the step-up is treated as cancelled.
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(1))
+      if alert.presentingViewController == nil { answer.finish(nil) }
+    }
+    return await withCheckedContinuation { answer.install($0) }
   }
 }

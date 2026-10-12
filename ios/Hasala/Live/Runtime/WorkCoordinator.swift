@@ -15,7 +15,16 @@ import Foundation
 /// At most one run is in flight; a trigger that arrives meanwhile asks for ONE trailing
 /// rerun (the strongest trigger asked for wins) and waits for it, so a burst of edits is
 /// one upload. A stop that only the account gate can act on (deleted elsewhere, signed
-/// out by the server, frozen, keys gone) is handed to `stopped` and ends the run.
+/// out by the server, frozen, keys gone, an update required) is handed to `stopped`.
+///
+/// Budgets and cancellation are per caller:
+/// - A caller with a budget (a silent push or a refresh task, 25 s) waits at most that
+///   long, even behind a run it did not start; the run carries on without it.
+/// - The trailing rerun runs to the most generous deadline of the callers that asked for
+///   it (none when any of them has no budget), never to the first run's.
+/// - A cancelled caller (a BGTask's expiration handler) returns at once. When no caller
+///   is left waiting on the run, the run is cancelled: the Gmail cycle stops at its next
+///   check and no later stage starts.
 actor WorkCoordinator {
   nonisolated enum Trigger: String, Sendable, CaseIterable {
     case launch, foreground, authored, silentPush, bgRefresh, bgProcessing
@@ -50,7 +59,8 @@ actor WorkCoordinator {
   nonisolated struct Outcome: Sendable, Equatable {
     /// Rows stored, ops acknowledged, or mail read (the silent push's `.newData`).
     var newData = false
-    /// Why the sync stage stopped early, if it did.
+    /// Why the sync stage stopped early, if it did (`.notNow` when this caller's budget ran
+    /// out first, `.cancelled` when it was cancelled).
     var stop: SyncStop?
 
     /// The silent push's `.failed`: the run could not reach the server or stopped.
@@ -81,14 +91,41 @@ actor WorkCoordinator {
     }
   }
 
+  /// How far a trailing rerun may run: the most generous deadline of the callers that
+  /// asked for it.
+  private enum RerunLimit {
+    case unasked
+    case unbounded
+    case until(ContinuousClock.Instant)
+
+    func widened(by deadline: ContinuousClock.Instant?) -> RerunLimit {
+      guard let deadline else { return .unbounded }
+      switch self {
+      case .unasked: return .until(deadline)
+      case .unbounded: return .unbounded
+      case .until(let d): return .until(max(d, deadline))
+      }
+    }
+
+    var deadline: ContinuousClock.Instant? {
+      if case .until(let d) = self { return d }
+      return nil
+    }
+  }
+
   /// Foreground runs at least this far apart (spec 04 §7.9).
   static let foregroundSpacing: Duration = .seconds(60)
 
   private let stages: Stages
   private var inFlight: Task<Outcome, Never>?
   private var rerun: Trigger?
+  private var rerunLimit = RerunLimit.unasked
+  /// The callers waiting, by id, with the run each waits on.
+  private var waiters: [Int: Task<Outcome, Never>] = [:]
+  private var nextWaiter = 0
   private var lastForeground: ContinuousClock.Instant?
   private var closed = false
+  private var paused = false
   private(set) var runs = 0
 
   init(stages: Stages) {
@@ -101,35 +138,71 @@ actor WorkCoordinator {
     rerun = nil
   }
 
-  /// Runs once, coalescing with a run in flight. `budget` bounds the run (a silent push or
-  /// a refresh task gets 25 s); nil runs until done.
+  /// Holds new runs and waits for the one in flight to end: the account is about to be
+  /// deleted, and its store wiped. `resume()` undoes it when the deletion did not happen.
+  func pause() async {
+    paused = true
+    rerun = nil
+    if let t = inFlight { _ = await t.value }
+  }
+
+  func resume() {
+    paused = false
+  }
+
+  /// Runs once, coalescing with a run in flight. `budget` bounds how long this caller
+  /// waits and how long a run it starts may take (a silent push or a refresh task gets
+  /// 25 s); nil waits until done.
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
-    guard !closed else { return Outcome() }
+    guard !closed, !paused else { return Outcome() }
     if trigger == .foreground {
       let now = ContinuousClock.now
       if let last = lastForeground, now - last < Self.foregroundSpacing { return Outcome() }
       lastForeground = now
     }
+    let deadline = budget.map { ContinuousClock.now + $0 }
+    let task: Task<Outcome, Never>
     if let t = inFlight {
       if rerun == nil || trigger.strength > (rerun?.strength ?? 0) { rerun = trigger }
-      return await t.value
+      rerunLimit = rerunLimit.widened(by: deadline)
+      task = t
+    } else {
+      task = Task { await self.loop(trigger, deadline: deadline) }
+      inFlight = task
     }
-    let deadline = budget.map { ContinuousClock.now + $0 }
-    let task = Task { await self.loop(trigger, deadline: deadline) }
-    inFlight = task
-    return await task.value
+    let id = nextWaiter
+    nextWaiter += 1
+    waiters[id] = task
+    let out = await Self.wait(
+      for: task, until: deadline, timedOut: Outcome(newData: false, stop: .notNow),
+      cancelled: Outcome(newData: false, stop: .cancelled))
+    let waited = waiters.removeValue(forKey: id)
+    if Task.isCancelled, let waited { cancelIfUnwatched(waited) }
+    return out
+  }
+
+  /// A caller was cancelled: when nobody else waits on its run, the run is cancelled.
+  private func cancelIfUnwatched(_ task: Task<Outcome, Never>) {
+    guard task == inFlight, !waiters.values.contains(task) else { return }
+    rerun = nil
+    rerunLimit = .unasked
+    task.cancel()
   }
 
   private func loop(_ trigger: Trigger, deadline: ContinuousClock.Instant?) async -> Outcome {
     var out = await once(trigger, deadline: deadline)
-    while let next = rerun, !closed {
+    while let next = rerun, !closed, !paused, !Task.isCancelled {
+      let limit = rerunLimit
       rerun = nil
+      rerunLimit = .unasked
       if out.stop.map(Self.endsTheAccount) == true { break }
-      let again = await once(next, deadline: deadline)
+      let again = await once(next, deadline: limit.deadline)
       out.newData = out.newData || again.newData
       out.stop = again.stop
     }
+    rerun = nil
+    rerunLimit = .unasked
     inFlight = nil
     return out
   }
@@ -137,21 +210,30 @@ actor WorkCoordinator {
   private func once(_ trigger: Trigger, deadline: ContinuousClock.Instant?) async -> Outcome {
     runs += 1
     var out = Outcome()
-    let synced = await stages.sync(trigger.sync, deadline)
+    // The sync engine runs in a task of its own, so a cancellation can't reach it; the
+    // run stops waiting for it instead (it finishes, or stops at its deadline).
+    let sync = stages.sync
+    let syncTask = Task { await sync(trigger.sync, deadline) }
+    let synced = await Self.wait(
+      for: syncTask, until: nil, timedOut: (newData: false, stop: SyncStop?.some(.cancelled)),
+      cancelled: (newData: false, stop: SyncStop?.some(.cancelled)))
     out.newData = synced.newData
     out.stop = synced.stop
-    if let stop = synced.stop, Self.endsTheAccount(stop) {
+    if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
+    if let stop = synced.stop, Self.surfaces(stop) {
       await stages.stopped(stop)
-      return out
+      if Self.endsTheAccount(stop) { return out }
     }
     if !closed, let mailbox = stages.mailbox, let mt = trigger.mailbox, synced.stop.map(Self.tolerable) ?? true {
       let deadlineMs = deadline.map { d -> Int64 in
         let left = ContinuousClock.now.duration(to: d)
-        return Int64(Date().timeIntervalSince1970 * 1000) + Int64(left.components.seconds * 1000)
+        let leftMs = left.components.seconds * 1000 + left.components.attoseconds / 1_000_000_000_000_000
+        return Int64(Date().timeIntervalSince1970 * 1000) + leftMs
       }
       let report = await mailbox(mt, deadlineMs)
       if report.ops > 0 { out.newData = true }
     }
+    if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     await stages.committed()
     return out
   }
@@ -165,11 +247,74 @@ actor WorkCoordinator {
     }
   }
 
+  /// A stop the gate shows: one that ends the account, or the server's "update Hasala"
+  /// (`426`, spec 04 §6.5 RD-1), after which every call is refused.
+  static func surfaces(_ stop: SyncStop) -> Bool {
+    endsTheAccount(stop) || stop == .halted(.updateRequired)
+  }
+
   /// A stop the screens read through (the last projection is still good).
   static func tolerable(_ stop: SyncStop) -> Bool {
     switch stop {
     case .rateLimited, .latched, .suspended, .notNow, .cancelled: true
     default: false
     }
+  }
+
+  // MARK: Waiting
+
+  /// Waits for `task`, returning `timedOut` once `deadline` passes and `cancelled` as soon
+  /// as the caller is cancelled, whichever comes first. The task itself is left running.
+  nonisolated static func wait<T: Sendable>(
+    for task: Task<T, Never>, until deadline: ContinuousClock.Instant?, timedOut: T, cancelled: T
+  ) async -> T {
+    let first = FirstOf<T>()
+    Task { first.finish(await task.value) }
+    let timer: Task<Void, Never>? = deadline.map { d in
+      Task {
+        do {
+          try await Task.sleep(until: d, clock: .continuous)
+          first.finish(timedOut)
+        } catch {}
+      }
+    }
+    defer { timer?.cancel() }
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { first.install($0) }
+    } onCancel: {
+      first.finish(cancelled)
+    }
+  }
+}
+
+/// The first of several racing results, handed to one continuation.
+nonisolated final class FirstOf<T: Sendable>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<T, Never>?
+  private var result: T?
+  private var done = false
+
+  func install(_ k: CheckedContinuation<T, Never>) {
+    let ready: T? = lock.withLock {
+      if done { return result }
+      continuation = k
+      return nil
+    }
+    if let ready { k.resume(returning: ready) }
+  }
+
+  /// Returns whether this call decided the result.
+  @discardableResult
+  func finish(_ value: T) -> Bool {
+    let k: CheckedContinuation<T, Never>?? = lock.withLock {
+      guard !done else { return nil }
+      done = true
+      result = value
+      defer { continuation = nil }
+      return .some(continuation)
+    }
+    guard let k else { return false }
+    k?.resume(returning: value)
+    return true
   }
 }

@@ -25,7 +25,9 @@ nonisolated enum LedgerStateMapper {
     var profile: ProfileInfo
     var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
     var prefs = DevicePrefs()
-    var skippedReview: Set<TxnID> = []
+    /// The review cards skipped today, as digests (`DevicePrefsStore`), and their salt.
+    var skippedDigests: Set<String> = []
+    var digestSalt = ""
   }
 
   enum MapError: Error { case date }
@@ -129,7 +131,13 @@ nonisolated enum LedgerStateMapper {
     return LedgerState(
       categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
-      unreadNotifications: 0, netWorth: NetWorthHistory(), skippedReview: c.skippedReview)
+      unreadNotifications: 0, netWorth: NetWorthHistory(), skippedReview: skipped(txns, c))
+  }
+
+  /// The transactions whose digest is among the skipped cards'.
+  static func skipped(_ txns: [HasalaModels.Txn], _ c: Context) -> Set<TxnID> {
+    guard !c.skippedDigests.isEmpty else { return [] }
+    return Set(txns.lazy.map(\.id).filter { c.skippedDigests.contains(LocalAccountData.digest($0, salt: c.digestSalt)) })
   }
 
   // MARK: Categories
@@ -315,10 +323,21 @@ nonisolated enum LedgerStateMapper {
     case .notConnected: status = .notConnected
     }
     let newest = st.health.compactMap(\.lastEmailAtMs).max() ?? st.lastSuccessAtMs
-    let names = Set(st.health.compactMap { row in bankNames.first { row.domain.contains($0.key) }?.value }).sorted()
+    let names = Set(st.health.compactMap { bankName(domain: $0.domain) }).sorted()
     return MailboxHealth(
       status: status, lastEmail: newest.map { ago(nowMs - $0) } ?? "", banks: names.joined(separator: " and "),
       unreadable: st.unreadable)
+  }
+
+  /// Each bank's sender domains, from its bundled templates (03c §7.2), e.g. Emirates NBD
+  /// → emiratesnbd.com: a health row names its bank by the template it matched.
+  static let bankDomains: [(name: String, domains: [String])] = bankNames.sorted { $0.key < $1.key }.map {
+    (name: $0.value, domains: GmailLane.senderDomains(bank: $0.key))
+  }
+
+  /// The bank a sender domain belongs to, if it is one the beta reads.
+  static func bankName(domain: String) -> String? {
+    bankDomains.first { BankDomains.isMember(domain, of: $0.domains) }?.name
   }
 
   /// "4 min ago", "3 h ago", "2 days ago".

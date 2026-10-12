@@ -18,8 +18,17 @@
       self.defaults = defaults
     }
 
+    private static let prefix = "debug.simulatorApprovalKey."
+
     private static func key(_ userID: UserID, _ writerID: WriterID) -> String {
-      "debug.simulatorApprovalKey.\(userID.string):\(writerID.string)"
+      "\(prefix)\(userID.string):\(writerID.string)"
+    }
+
+    /// Every simulator approval key goes with the account's data (`LocalAccountData.forget`).
+    static func forgetAll(_ defaults: UserDefaults) {
+      for k in defaults.dictionaryRepresentation().keys where k.hasPrefix(prefix) {
+        defaults.removeObject(forKey: k)
+      }
     }
 
     func create(userID: UserID, writerID: WriterID) async throws(ApprovalKeyError) -> Data {

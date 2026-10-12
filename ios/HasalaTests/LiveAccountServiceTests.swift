@@ -111,6 +111,79 @@ struct LiveAccountServiceTests {
     #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
   }
 
+  /// One account per iPhone: a signup, or a sign-in to another address, while this
+  /// iPhone holds an account's data opens the "Remove this iPhone's data" wall and
+  /// leaves the binding (and the first account's keys) alone.
+  @Test func aBoundIPhoneAsksToRemoveItsDataBeforeAnotherAccount() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let binding = try #require(try env.secrets.binding())
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    again.hooks = LiveAccountHooks(otherAccountHere: { walls.append($0) })
+    await #expect(throws: AuthFailure.cancelled) {
+      _ = try await again.beginSignup(
+        code: try #require(InviteCode(Self.invite)), linkKey: nil, email: "omar@example.com", displayName: "Omar")
+    }
+    await #expect(throws: AuthFailure.cancelled) {
+      _ = try await again.signInWithPassword(email: "omar@example.com", password: Self.password)
+    }
+    #expect(walls == [Self.email, Self.email])
+    #expect(try env.secrets.binding() == binding)
+    // The bound account's own address (any case) signs in again (C2b-P).
+    #expect(try await again.signInWithPassword(email: "Maya@Example.com", password: Self.password) == .ready)
+    #expect(walls.count == 2)
+  }
+
+  /// §4.7 row 1: an offline sign-out keeps the session item marked `pending_logout`; the
+  /// logout is retried later, and the item goes once the server confirms.
+  @Test func anOfflineSignOutIsFinishedLater() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let token = try #require(try env.secrets.session()).token
+    server.offline = true
+    await a.signOut()
+    #expect(try env.secrets.session()?.pending_logout == true)
+    #expect(await LiveAccountService.retryPendingLogout(env) == token)  // still offline
+    #expect(try env.secrets.session()?.pending_logout == true)
+    server.offline = false
+    #expect(await LiveAccountService.retryPendingLogout(env) == nil)
+    #expect(try env.secrets.session() == nil)
+    await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: token) }
+  }
+
+  @Test func aSignInFinishesAPendingSignOutFirst() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let old = try #require(try env.secrets.session()).token
+    server.offline = true
+    await a.signOut()
+    server.offline = false
+    let again = LiveAccountService(env: env)
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+    let new = try #require(try env.secrets.session())
+    #expect(new.token != old && !new.pending_logout)
+    await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: old) }
+  }
+
+  /// After a relaunch the binding doesn't say how the account signs in: the step-up asks
+  /// `GET /account` rather than assume a passkey.
+  @Test func aRelaunchAsksTheServerHowTheAccountSignsIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let relaunched = LiveAccountService(env: env)
+    relaunched.loadProfile()
+    #expect(relaunched.profile?.method == .passkey)  // the binding's guess
+    #expect(await relaunched.usesPasskey() == false)
+    #expect(relaunched.profile?.method == .password)
+  }
+
   static func refused(_ status: Int, _ code: String) -> CeremonyError {
     .api(.refused(APIFailure(status: status, code: code)))
   }
