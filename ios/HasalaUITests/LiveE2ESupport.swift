@@ -197,23 +197,25 @@ class LiveE2ECase: XCTestCase {
   /// The setup's notification step, answered "Allow notifications" and then "Allow" on
   /// the system's alert (drawn by SpringBoard or in the app's process). A tap that lands
   /// while the step is still sliding in is lost, so the button is tapped again until the
-  /// alert shows.
+  /// alert shows. The alert does not always appear on a new simulator (the request then
+  /// never returns); after 30 s the step is answered "Not now" instead. Returns whether
+  /// notifications were allowed.
   @MainActor
-  func allowNotifications(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+  @discardableResult
+  func allowNotifications(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> Bool {
     let button = el(app, "notifications.allow")
     XCTAssertTrue(button.waitForExistence(timeout: 90), "the notification step did not open", file: file, line: line)
     let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
     var lastTap = Date.distantPast
-    let deadline = Date().addingTimeInterval(40)
+    let deadline = Date().addingTimeInterval(30)
     repeat {
       for host in [springboard, app] {
         let allow = host.buttons["Allow"].firstMatch
         if allow.exists {
           allow.tap()
-          return
+          return true
         }
       }
-      if el(app, "done.home").exists { return }
       if button.exists, button.isHittable, Date().timeIntervalSince(lastTap) > 5 {
         button.tap()
         lastTap = Date()
@@ -225,7 +227,8 @@ class LiveE2ECase: XCTestCase {
     tree.name = "Hierarchies without a permission alert"
     tree.lifetime = .keepAlways
     add(tree)
-    XCTFail("the system permission alert did not appear", file: file, line: line)
+    tap(app, "notifications.notNow", file: file, line: line)
+    return false
   }
 
   /// Waits until one of `ids` exists and returns it, or nil after `timeout`.
@@ -388,19 +391,36 @@ class LiveE2ECase: XCTestCase {
     throw LiveE2EError("no email with a code reached \(address) within \(Int(timeout)) s (capture: \(e2e.mailDir.path))")
   }
 
-  /// Asks the harness for a silent push to this simulator (`simctl push` with
-  /// ios/scripts/e2e/wake.apns) and waits until it was sent.
-  func requestWake(timeout: TimeInterval = 30) throws {
+  /// Asks the harness for a push to this simulator (`simctl push` with
+  /// ios/scripts/e2e/wake.apns) and waits for the answer: nil once it was delivered, or
+  /// what simctl said when it refused it.
+  func requestWake(timeout: TimeInterval = 30) throws -> String? {
     let sent = e2e.stateDir.appendingPathComponent("wake-sent")
     let failed = e2e.stateDir.appendingPathComponent("wake-failed")
     try? FileManager.default.removeItem(at: sent)
+    try? FileManager.default.removeItem(at: failed)
     try Data("wake\n".utf8).write(to: e2e.stateDir.appendingPathComponent("wake-request"), options: .atomic)
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
-      if FileManager.default.fileExists(atPath: sent.path) { return }
-      if FileManager.default.fileExists(atPath: failed.path) { throw LiveE2EError("the harness's simctl push failed") }
+      if FileManager.default.fileExists(atPath: sent.path) { return nil }
+      if let why = try? String(contentsOf: failed, encoding: .utf8) {
+        return why.trimmingCharacters(in: .whitespacesAndNewlines)
+      }
       RunLoop.current.run(until: Date().addingTimeInterval(0.5))
     } while Date() < deadline
     throw LiveE2EError("the harness sent no push within \(Int(timeout)) s (is ios/scripts/e2e-app.sh running?)")
   }
+
+  /// Whether E1 got notification permission on this simulator (see `allowNotifications`).
+  var notificationsAllowed: Bool { FileManager.default.fileExists(atPath: notificationsMarker.path) }
+
+  func recordNotificationsAllowed(_ on: Bool) throws {
+    if on {
+      try Data("yes\n".utf8).write(to: notificationsMarker, options: .atomic)
+    } else {
+      try? FileManager.default.removeItem(at: notificationsMarker)
+    }
+  }
+
+  private var notificationsMarker: URL { e2e.stateDir.appendingPathComponent("notifications-\(e2e.device)") }
 }

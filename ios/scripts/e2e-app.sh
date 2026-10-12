@@ -36,7 +36,9 @@
 # content-available-only push (UNErrorDomain 1401, "no user visible content") and any
 # push to an app without notification permission (2003), so wake.apns carries an alert
 # besides content-available, and E1 allows notifications. hasalad's real wakes stay
-# content-free.
+# content-free. The system's permission alert does not always appear on a new
+# simulator; E1 then answers "Not now", and E3 reports the refused push as an
+# expected failure instead of a pass.
 #
 # Signing (HASALA_E2E_SIGNING):
 #   adhoc (default)  CODE_SIGN_IDENTITY=- with CODE_SIGNING_REQUIRED=YES, manual style,
@@ -324,11 +326,12 @@ fi
 		if [[ -f "$STATE/wake-request" ]]; then
 			rm -f "$STATE/wake-request"
 			sim="$(cat "$STATE/current-sim")"
-			if "$XCRUN" simctl push "$sim" "$BUNDLE_ID" "$IOS/scripts/e2e/wake.apns" >>"$TMP/wake.log" 2>&1; then
+			if "$XCRUN" simctl push "$sim" "$BUNDLE_ID" "$IOS/scripts/e2e/wake.apns" >"$TMP/wake.out" 2>&1; then
 				date -u +%Y-%m-%dT%H:%M:%SZ >"$STATE/wake-sent"
 			else
-				echo "simctl push failed" >"$STATE/wake-failed"
+				cp "$TMP/wake.out" "$STATE/wake-failed"
 			fi
+			cat "$TMP/wake.out" >>"$TMP/wake.log"
 		fi
 		sleep 0.5
 	done
@@ -363,6 +366,11 @@ for t in "${TESTS[@]}"; do
 		failed+=("$t")
 		log "FAIL $t (exit $status)"
 		grep -E 'error: |XCTAssert|failed \(|skipped' "$TMP/results/$t.log" | head -20 >&2 || true
+		# The last minutes of the app's, SpringBoard's and the notification daemon's logs
+		# (much faster than the diagnostics xcodebuild would collect).
+		"$XCRUN" simctl spawn "$sim" log show --last 5m --style compact \
+			--predicate 'process == "Hasala" OR process == "SpringBoard" OR process == "usernotificationsd"' \
+			>"$TMP/results/$t.syslog" 2>&1 || true
 		if [[ "${HASALA_E2E_CONTINUE:-0}" != 1 ]]; then
 			log "stopping: the later tests build on this one (HASALA_E2E_CONTINUE=1 runs them anyway)"
 			break

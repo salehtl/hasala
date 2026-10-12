@@ -91,7 +91,7 @@ final class LiveE2ETests: LiveE2ECase {
     // Notifications: Allow (the reviewer taps "Not now"; either finishes setup). Allowing
     // is what lets A receive E3's push: the simulator delivers only a push with visible
     // content, and only to an app the user allowed (see ios/scripts/e2e/wake.apns).
-    allowNotifications(app)
+    try recordNotificationsAllowed(allowNotifications(app))
     driveToHome(app)
     try markSignedIn(true)
     attach(app, "Home")
@@ -145,7 +145,7 @@ final class LiveE2ETests: LiveE2ECase {
   /// the password (C2b-P: this iPhone is still bound, so no words and the data is kept),
   /// then a push (`simctl push`, content-available) runs the coordinator's wake, and B's
   /// sorted card shows here. The sign-in's own pull may already have brought it; the
-  /// push must be accepted and leave the figures right.
+  /// push must be accepted (when E1 could allow notifications) and leave the figures right.
   @MainActor
   func test03_rebind() throws {
     let account = try loadAccount()
@@ -165,10 +165,20 @@ final class LiveE2ETests: LiveE2ECase {
     try markSignedIn(true)
     attach(app, "Signed in again")
 
-    try requestWake()
+    if let refused = try requestWake() {
+      if notificationsAllowed {
+        XCTFail("simctl push was refused although A allowed notifications: \(refused)")
+      } else {
+        // E1 met no permission alert, so the simulator refuses every push to the app
+        // (UNErrorDomain 2003): reported as an expected failure, not hidden.
+        XCTExpectFailure("the simulator refuses a push to an app without notification permission") {
+          XCTFail("simctl push was refused: \(refused)")
+        }
+      }
+    }
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(app.staticTexts[MayaSample.afterOneSorted].waitForExistence(timeout: 60),
-                  "B's sorted card did not reach A after the silent push")
+                  "B's sorted card did not reach A")
     XCTAssertTrue(waitForLabel(el(app, "activity.count"), containing: MayaSample.transactions, timeout: 5))
     attach(app, "Activity after the wake")
   }
