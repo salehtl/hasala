@@ -49,10 +49,12 @@ does not enter this answer.
   `ios/scripts/inspect-ipa.sh` check I4 refuses an exported `.ipa` whose Info.plist
   disagrees. `ios/HasalaTests/BuildInfoTests.swift` checks the app's own Info.plist too.
   The three change together.
-- Planned (spec check AT-11, not in `inspect-ipa.sh` yet): refuse an `.ipa` whose
-  binaries export or import a symbol of a third-party crypto library (Argon2, libsodium,
-  OpenSSL or BoringSSL, mbedTLS, wolfSSL, scrypt, bcrypt). That would contradict fact 1
-  and reopen this decision.
+- `inspect-ipa.sh` check I9 (spec check AT-11) refuses an `.ipa` in which any Mach-O
+  exports or imports a symbol of a third-party crypto library (Argon2, libsodium, OpenSSL
+  or BoringSSL, mbedTLS, wolfSSL, scrypt, bcrypt). Such a symbol would contradict fact 1
+  and reopen this decision. The check reads symbol tables, so it sees what a binary
+  exports or imports, not code linked in statically and stripped; the dependency rule
+  below covers that.
 - Adding any dependency that ships cryptography reopens this decision before it merges.
 
 ## If the answer becomes YES
