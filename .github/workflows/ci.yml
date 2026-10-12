@@ -165,17 +165,48 @@ jobs:
 
       # Every check is evaluated, and every check except the NixOS VM test is
       # built. The VM test needs KVM and minutes; it has its own job below
-      # (nixos-vm), which is not a required check.
-      - name: nix flake check (evaluate everything)
-        run: nix flake check --no-build
-      - name: nix flake check (build every check but qa-vm)
+      # (nixos-vm), which is not a required check. The two are independent Nix
+      # runs, each mostly one evaluation thread, so they run side by side: each
+      # one's output is printed in its own group once both have finished, and
+      # the step fails if either failed.
+      - name: nix flake check (evaluate everything; build every check but qa-vm)
         run: |
           set -euo pipefail
           checks="$(nix eval --json .#checks.x86_64-linux --apply 'cs: builtins.attrNames (removeAttrs cs [ "qa-vm" ])' \
             | jq -r '.[] | ".#checks.x86_64-linux." + .')"
           echo "$checks"
+          logs="$RUNNER_TEMP/nix-check-logs"
+          mkdir -p "$logs"
+          # bg LOG COMMAND...: COMMAND in the background, its output and time in LOG.
+          bg() {
+            local log="$1"
+            shift
+            (
+              start=$SECONDS rc=0
+              "$@" >"$log" 2>&1 || rc=$?
+              echo "(exit $rc after $((SECONDS - start)) s)" >>"$log"
+              exit "$rc"
+            ) &
+          }
+          bg "$logs/evaluate" nix flake check --no-build
+          evaluate=$!
           # shellcheck disable=SC2086 # one installable per word
-          nix build --no-link --print-build-logs $checks
+          bg "$logs/build" nix build --no-link --print-build-logs $checks
+          build=$!
+          failed=0
+          for run in "evaluate:$evaluate:nix flake check --no-build" "build:$build:nix build of every check but qa-vm"; do
+            IFS=: read -r log pid what <<<"$run"
+            rc=0
+            wait "$pid" || rc=$?
+            echo "::group::$what (exit $rc)"
+            cat "$logs/$log"
+            echo "::endgroup::"
+            if [[ "$rc" != 0 ]]; then
+              echo "::error::$what failed (exit $rc)"
+              failed=1
+            fi
+          done
+          exit "$failed"
 
       - name: Build the devShell
         run: nix develop --command true
