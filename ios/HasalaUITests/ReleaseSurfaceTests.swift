@@ -409,24 +409,15 @@ final class ReleaseSurfaceTests: XCTestCase {
 
   // MARK: - Gmail after setup
 
-  /// Gmail skipped at setup: Home and the Profile card offer "Connect Gmail", which runs the
-  /// Gmail step and the cards in a sheet. Once the cards are confirmed, neither offers it.
+  /// Gmail skipped at setup: Home offers "Connect Gmail", which runs the Gmail step and the
+  /// cards in a sheet; once the cards are confirmed, Home no longer offers it. (The Profile
+  /// card's button is the reconnect test's; one launch each keeps the ios job's time down.)
   @MainActor
   func testConnectGmailAfterSkippingIt() throws {
     let app = launch("gmailSkipped")
     let card = el(app, "needsYou.gmail.connect")
     XCTAssertTrue(card.waitForExistence(timeout: 10))
     attach(app, "Release · Home · Connect Gmail")
-    try audit(app)
-
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
-    XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Gmail isn't connected"))
-    XCTAssertEqual(el(app, "profile.connectGmail").label, "Connect Gmail")
-    attach(app, "Release · Profile · Connect Gmail")
-    try audit(app)
-    el(app, "profile.close").tap()
-
     card.buttons["Connect"].tap()
     let connect = el(app, "gmail.connect")
     XCTAssertTrue(connect.waitForExistence(timeout: 5))
@@ -444,11 +435,6 @@ final class ReleaseSurfaceTests: XCTestCase {
     XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 10))
     tap(app, "result.continue")
     XCTAssertTrue(card.waitForNonExistence(timeout: 10), "Home still offers Connect Gmail")
-
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
-    XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Bank alerts are working"))
-    assertAbsent(app, ["profile.connectGmail"], "Profile")
   }
 
   /// Google wants a new sign-in: the Profile card offers "Reconnect Gmail", which is done
