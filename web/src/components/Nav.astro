@@ -11,11 +11,11 @@ const { variant = 'full' } = Astro.props;
 /*
  * Client-side navigation (<ClientRouter /> in Base.astro): the header is kept,
  * not re-rendered, between pages with the same variant, so its markup must be
- * the same on all of them (every link says /#section, also on the home page;
- * nav.ts resets what changes per page). The bar and the lockup carry
- * view-transition names, so they hold still while the page fades under them;
- * between variants the bar cross-fades. The name sits on .nav itself, the
- * element with the backdrop-filter, so the frost still blurs the page.
+ * the same on all of them (nav.ts marks the current page's link, per page).
+ * The bar and the lockup carry view-transition names, so they hold still
+ * while the page fades under them; between variants the bar cross-fades.
+ * The name sits on .nav itself, the element with the backdrop-filter, so
+ * the frost still blurs the page.
  */
 ---
 
@@ -30,7 +30,7 @@ const { variant = 'full' } = Astro.props;
         <ul class="nav__links" role="list">
           {NAV.map((item) => (
             <li>
-              <a class="nav__link" href={item.href} data-spy={item.id}>
+              <a class="nav__link" href={item.href} data-nav-link>
                 {item.label}
               </a>
             </li>
@@ -42,12 +42,8 @@ const { variant = 'full' } = Astro.props;
     {
       variant === 'full' && (
         <div class="nav__cta">
-          <a class="nav__code" href="/i">
-            Have a code?
-          </a>
           <a class="btn btn--primary btn--nav" href="/#invite" data-invite-cta>
-            <span class="nav__cta-long">Request an invite</span>
-            <span class="nav__cta-short">Get an invite</span>
+            Request an invite
           </a>
         </div>
       )
@@ -55,7 +51,7 @@ const { variant = 'full' } = Astro.props;
     {
       variant === 'invite' && (
         <div class="nav__cta">
-          <a class="btn btn--subtle btn--nav nav__privacy" href="/#privacy">
+          <a class="btn btn--subtle btn--nav nav__privacy" href="/how-privacy-works">
             How privacy works
           </a>
         </div>
@@ -77,12 +73,11 @@ const { variant = 'full' } = Astro.props;
         <ul role="list">
           {NAV.map((item) => (
             <li>
-              <a href={item.href}>{item.label}</a>
+              <a href={item.href} data-nav-link>
+                {item.label}
+              </a>
             </li>
           ))}
-          <li>
-            <a href="/i">Have a code?</a>
-          </li>
         </ul>
         <a class="btn btn--primary" href="/#invite">
           Request an invite
@@ -194,10 +189,10 @@ const { variant = 'full' } = Astro.props;
     background-color: var(--glass-selected);
     transition-duration: var(--t-hover-in);
   }
-  .nav__link[aria-current='true'] {
+  .nav__link[aria-current='page'] {
     color: var(--accent);
   }
-  /* The current-section dot: always there, so it crossfades between links. */
+  /* The current-page dot: always there, so it crossfades between links. */
   .nav__link::after {
     content: '';
     position: absolute;
@@ -215,7 +210,7 @@ const { variant = 'full' } = Astro.props;
       opacity 200ms var(--ease-out-soft),
       scale 200ms var(--ease-out-soft);
   }
-  .nav__link[aria-current='true']::after {
+  .nav__link[aria-current='page']::after {
     opacity: 1;
     scale: 1;
   }
@@ -225,31 +220,16 @@ const { variant = 'full' } = Astro.props;
     gap: 8px;
     margin-left: auto;
   }
-  .nav__code {
-    display: none;
-    padding: 10px 14px;
-    color: var(--text-secondary);
-    font-size: 15px;
-    font-weight: 500;
-    line-height: 20px;
-    border-radius: var(--r-pill);
-    transition: color var(--t-hover-out);
-  }
-  .nav__code:hover {
-    color: var(--text-primary);
-  }
   .nav__cta .btn--nav {
     --btn-h: 44px;
     --btn-px: 16px;
-  }
-  .nav__cta-long {
-    display: none;
   }
   .nav__privacy {
     display: none;
   }
   .nav__menu-btn {
     display: inline-flex;
+    flex: none;
     align-items: center;
     justify-content: center;
     width: 44px;
@@ -366,6 +346,26 @@ const { variant = 'full' } = Astro.props;
     }
   }
 
+  /* Phones: the lockup, "Request an invite" and the menu button share one
+     row; below 380 px only the mark shows. */
+  @media (max-width: 559px) {
+    .nav {
+      gap: 8px;
+      padding: 0 4px 0 14px;
+    }
+    .nav__cta .btn--nav {
+      --btn-px: 14px;
+      font-size: 14px;
+    }
+    .nav__menu-btn {
+      width: 40px;
+    }
+  }
+  @media (max-width: 379px) {
+    .nav__wordmark {
+      width: calc(30px * 136 / 86);
+    }
+  }
   @media (min-width: 560px) {
     .nav__wordmark {
       height: 32px;
@@ -386,18 +386,9 @@ const { variant = 'full' } = Astro.props;
       left: 50%;
       transform: translateX(-50%);
     }
-    .nav__code {
-      display: block;
-    }
     .nav__cta .btn--nav {
       --btn-h: 48px;
       --btn-px: 22px;
-    }
-    .nav__cta-long {
-      display: inline;
-    }
-    .nav__cta-short {
-      display: none;
     }
     .nav__privacy {
       display: inline-flex;

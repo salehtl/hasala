@@ -171,14 +171,14 @@ same devShell. From `web/`:
 - PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
   `web/.env.example`; they are public and baked into the build.
   `PUBLIC_WAITLIST_MODE` is `email` (the default, until the API is live: the
-  invite and "Tell us" forms open a pre-filled email to support@hasala.app,
-  post nothing and load no Turnstile; without JavaScript the invite form lands
-  on `/joined`, which says to email us) or `api` (they post to the API, as
-  designed). Switching to `api` is that one setting, plus dropping the
-  sentences in `docs/legal/privacy.md` and `docs/legal/support.md` that say
-  sign-ups and bank requests are handled by email ("while ... handled by
-  email", "once ... our server"), and restoring support.md's **Confirm my
-  email** / **Leave the list** steps.
+  invite form, which is also where people name a bank we don't read yet,
+  opens a pre-filled email to support@hasala.app, posts nothing and loads no
+  Turnstile; without JavaScript it lands on `/joined`, which says to email
+  us) or `api` (it posts to the API, as designed). Switching to `api` is that
+  one setting, plus dropping the sentences in `docs/legal/privacy.md` and
+  `docs/legal/support.md` that say sign-ups are handled by email ("while ...
+  handled by email", "once ... our server"), and restoring support.md's
+  **Confirm my email** / **Leave the list** steps.
 
 The legal pages stay `noindex` and out of the sitemap while their front
 matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
