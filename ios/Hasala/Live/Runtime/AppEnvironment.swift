@@ -60,6 +60,8 @@ final class AppEnvironment {
   /// the background before first unlock defers it).
   func retryInstallCheck() -> InstallCheck.Outcome {
     if case .done = installCheck { return installCheck }
+    // An unsigned Debug simulator build keeps its secrets in memory: nothing to purge.
+    if secretsInMemory { return .done }
     installCheck = Self.purge(keychain)
     return installCheck
   }
