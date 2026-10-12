@@ -163,6 +163,9 @@ html {
   text-size-adjust: 100%;
   scroll-padding-top: 112px;
   overflow-x: clip;
+  /* No rubber-band past the top or bottom (Safari 16+): the page stops at
+     its edges instead of showing a gap. */
+  overscroll-behavior: none;
 }
 @media (prefers-reduced-motion: no-preference) {
   html {
@@ -172,6 +175,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  overscroll-behavior: none;
   background: var(--white);
   color: var(--text-primary);
   font-family: var(--font-sans);
