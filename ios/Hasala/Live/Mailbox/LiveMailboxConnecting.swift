@@ -4,7 +4,7 @@ import Observation
 
 /// Setup's Gmail step over the open account (spec 04 §7.4, §7.7): "Connect Gmail" runs
 /// the Gmail lane's connect (Google sign-in, token custody, the `mailbox.link` step-up),
-/// the first scan streams its progress, and the cards found become `card_linked` ops.
+/// and the first scan streams its progress while it files what it reads (no cards step).
 /// On a review account with an empty ledger the step offers "Use sample data" instead
 /// (§6.13), which loads the bundled seed through the outbox. Home and Profile run the same
 /// connect after setup, when `gmailOffer` says Gmail needs it.
@@ -21,7 +21,7 @@ final class LiveMailboxConnecting: MailboxConnecting {
   var offersSampleData: Bool { runtime()?.offersSampleData ?? false }
 
   /// Observed through the runtime: the lane's phase is read when the account opens and
-  /// after every run, connect and cards step.
+  /// after every run and connect.
   var gmailOffer: GmailOffer? { runtime()?.gmailOffer }
 
   func chosenBanks() -> [SupportedBank] {
@@ -49,7 +49,6 @@ final class LiveMailboxConnecting: MailboxConnecting {
       case .noLink?, .holder(true, _)?: return .connect
       case .holder(false, _)?, nil: return nil
       }
-    case .scanning, .awaitingCards: return .connect
     case .reconnectRequired: return .reconnect
     case .halted:
       // A full account or missing templates aren't fixed by a new Google sign-in.
@@ -57,7 +56,8 @@ final class LiveMailboxConnecting: MailboxConnecting {
       case nil, .gmail?, .reconnectRequired?: return .reconnect
       default: return nil
       }
-    case .authoringBackfill, .active, .otherDevice: return nil
+    // The first import runs on its own (Profile and Home say "Importing").
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .otherDevice: return nil
     }
   }
 
@@ -110,51 +110,39 @@ final class LiveMailboxConnecting: MailboxConnecting {
     }
     let rt = runtime()
     return AsyncStream { continuation in
-      let job = Task {
+      // Not cancelled with the stream: the import outlives the setup screens.
+      Task {
         var last = ScanProgress(phase: .downloading, read: 0, total: 0)
-        for await p in lane.firstScan() {
-          last = Self.progress(p)
-          continuation.yield(last)
+        for await event in lane.firstScan() {
+          switch event {
+          case .progress(let p):
+            last = Self.progress(p)
+            continuation.yield(last)
+          case .ended(let t):
+            continuation.yield(Self.ended(t, last: last))
+          }
         }
-        let summary = await lane.discoveredCards()
-        switch summary.phase {
-        case .awaitingCards:
-          continuation.yield(ScanProgress(phase: .awaitingCards, read: last.total, total: last.total))
-        case .active, .authoringBackfill:
-          continuation.yield(ScanProgress(phase: .finished, read: last.total, total: last.total))
-        case .halted, .reconnectRequired:
-          continuation.yield(ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: last.read, total: last.total))
-        default:
-          // Nothing to read yet (no alerts, or offline): the board waits for the cards.
-          continuation.yield(ScanProgress(phase: .awaitingCards, read: last.total, total: last.total))
-        }
+        // Home and Profile stop saying "Importing" (it runs on after setup is left).
         await rt?.refreshMailbox()
         continuation.finish()
       }
-      continuation.onTermination = { _ in job.cancel() }
     }
   }
 
-  func discoveredCards() async -> [DiscoveredCard] {
-    guard let lane = try? lane() else { return [] }
-    return await lane.discoveredCards().cards.compactMap { c in
-      guard let bank = SupportedBank(rawValue: c.card.bank) else { return nil }
-      return DiscoveredCard(id: "\(c.card.bank)-\(c.card.last4)", bank: bank, last4: c.card.last4, alertCount: c.count, keep: true)
+  /// Where the first scan's foreground runs left it, with what they filed.
+  static func ended(_ t: GmailLane.FirstScanTotals, last: ScanProgress) -> ScanProgress {
+    let summary = SortSummary(
+      total: t.ops, byRules: t.byRules, byDictionary: t.byDictionary, byModel: t.byModel, toReview: t.toReview)
+    switch t.phase {
+    case .active:
+      return ScanProgress(phase: .finished, read: last.total, total: last.total, summary: summary)
+    case .halted, .reconnectRequired, .otherDevice:
+      return ScanProgress(
+        phase: .failed("Reading your bank alerts stopped. Try again."), read: last.read, total: last.total,
+        summary: summary)
+    case .unlinked, .scanning, .awaitingCards, .authoringBackfill:
+      return ScanProgress(phase: .background, read: last.read, total: last.total, summary: summary)
     }
-  }
-
-  func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> SortSummary {
-    let lane = try lane()
-    let decisions = cards.map {
-      CardDecision(card: CardKey(bank: $0.bank.rawValue, last4: $0.last4), state: $0.keep ? .mine : .notMine)
-    }
-    let report = await lane.confirmCards(decisions)
-    await runtime()?.refreshMailbox()
-    if report.haltedOn == .offline { throw .offline }
-    let rules = report.sortedBy["rule"] ?? 0
-    let dictionary = report.sortedBy["dictionary"] ?? 0
-    let model = report.sortedBy["model"] ?? 0
-    return SortSummary(total: report.ops, byRules: rules, byDictionary: dictionary, byModel: model, toReview: report.review)
   }
 
   func loadSampleData() async throws(SetupFailure) {
@@ -166,7 +154,6 @@ final class LiveMailboxConnecting: MailboxConnecting {
     switch p.stage {
     case .listing, .downloading: ScanProgress(phase: .downloading, read: p.done, total: p.total)
     case .authoring: ScanProgress(phase: .sorting, read: p.done, total: p.total)
-    case .awaitingCards: ScanProgress(phase: .awaitingCards, read: p.total, total: p.total)
     case .done: ScanProgress(phase: .finished, read: p.total, total: p.total)
     case .failed: ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: p.done, total: p.total)
     }

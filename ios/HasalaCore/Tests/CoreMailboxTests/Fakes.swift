@@ -204,9 +204,7 @@ struct Rig {
   /// Connect, scan, confirm every card as mine: the engine ends `active`.
   func connectAndActivate(days: Int = 90) async {
     _ = await engine.connect(presenter: FakePresenter(gmail: gmail), backfillDays: days)
-    _ = await engine.runCycle(trigger: .launch)
-    let summary = await engine.scanSummary()
-    _ = await engine.confirmCards(summary.cards.map { CardDecision(card: $0.card, state: .mine) })
+    _ = await engine.runCycle(trigger: .launch)  // the scan authors what it finds (no cards step)
   }
 
   func enqueued() async -> [MailboxIngestDraft] { backend == .memory ? await memory.enqueued : authored.all }

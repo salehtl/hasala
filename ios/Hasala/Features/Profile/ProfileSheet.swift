@@ -152,7 +152,7 @@ struct ProfileSheet: View {
     case nil: break
     }
     switch status {
-    case .working: return .mint
+    case .working, .importing: return .mint
     case .quiet: return .sand
     case .reconnect: return .rose
     case .notConnected: return .sky
@@ -164,6 +164,7 @@ struct ProfileSheet: View {
     if let offer { return offer.status }
     switch status {
     case .working: return "Bank alerts are working"
+    case .importing: return "Importing your bank alerts"
     case .quiet: return "Bank alerts went quiet"
     case .reconnect: return GmailOffer.reconnect.status
     case .notConnected: return GmailOffer.connect.status

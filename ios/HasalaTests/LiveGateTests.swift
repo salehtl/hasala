@@ -40,7 +40,7 @@ struct LiveGateTests {
   @Test func theGmailStepResumesFromTheLane() {
     #expect(BootController.mailboxFact(.unlinked) == .unlinked)
     #expect(BootController.mailboxFact(.scanning) == .scanning)
-    #expect(BootController.mailboxFact(.awaitingCards) == .awaitingCards)
+    #expect(BootController.mailboxFact(.awaitingCards) == .scanning)  // filed on the next run
     #expect(BootController.mailboxFact(.otherDevice) == .otherDevice)
     #expect(BootController.mailboxFact(.active) == .linked)
   }
@@ -54,11 +54,10 @@ struct LiveGateTests {
       LiveMailboxConnecting.offer(phase: phase, halt: halt, sampleLoaded: sample, serverLink: link)
     }
     #expect(offer(.unlinked) == .connect)
-    #expect(offer(.scanning) == .connect)
-    #expect(offer(.awaitingCards) == .connect)
     #expect(offer(.reconnectRequired) == .reconnect)
     #expect(offer(.halted) == .reconnect)
-    for phase in [MailboxPhase.authoringBackfill, .active, .otherDevice] {
+    // The first import runs on its own: nothing to offer while it does.
+    for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill, .active, .otherDevice] {
       #expect(offer(phase) == nil)
     }
     for phase in MailboxPhase.allCases {

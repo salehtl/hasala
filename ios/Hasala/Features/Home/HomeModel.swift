@@ -35,6 +35,10 @@ final class HomeViewModel: HomeModel {
       snap.needsYou = offer.adding(to: snap.needsYou)
     }
     snap.needsYou.cards.removeAll { app.snoozed.contains($0.id) }
+    // The first import runs in the background after setup; the rail says so until it's in.
+    if app.store.state.mailbox.status == .importing, snap.needsYou.cards.isEmpty {
+      snap.needsYou.subtitle = "Importing your bank alerts"
+    }
     return snap
   }
 

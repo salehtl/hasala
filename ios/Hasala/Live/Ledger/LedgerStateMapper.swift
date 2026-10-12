@@ -318,7 +318,14 @@ nonisolated enum LedgerStateMapper {
   static func health(_ st: MailboxStatus, nowMs: Int64) -> MailboxHealth {
     let status: MailboxHealth.Status
     switch st.hero {
-    case .working, .catchingUp, .otherDevice: status = .working
+    case .working, .otherDevice: status = .working
+    case .catchingUp:
+      // The first import (scan and backfill) is "importing"; an active lane that hasn't
+      // succeeded for a while is still working.
+      switch st.phase {
+      case .scanning, .awaitingCards, .authoringBackfill: status = .importing
+      default: status = .working
+      }
     case .needsYou: status = .reconnect
     case .notConnected: status = .notConnected
     }

@@ -10,8 +10,10 @@
 //   1. Nothing is silently dropped. A message is set aside (not a bank: no op, recorded and
 //      shown), or becomes an op: filed, prefilled-for-review, or the EMPTY review shape.
 //   2. Filing without review needs every gate: Gmail's A-R verdict `pass`, the VERIFIED domain in
-//      the trusted set T, a template hit with a usable amount, a known card (or a template with
-//      no card field), and not forwarded. Anything less is `needs_review: true`.
+//      the trusted set T, a template hit with a usable amount, a card not marked "not mine", and
+//      not forwarded. Anything less is `needs_review: true`. A card the ledger doesn't know
+//      (`unknown`) files like a known one: setup has no cards step, and what an alert says about
+//      the card is up to each bank, so filing never depends on it. The gate still records it.
 import CoreJSON
 import CoreMail
 import CoreNorm
@@ -204,7 +206,7 @@ public enum MessageDisposer {
     }
     let filesItself =
       m.gates.ar == AuthResults.Reason.pass.rawValue && m.gates.senderTrusted && !m.gates.forwarded
-      && (card == "known" || card == "none")
+      && card != "not_mine"
     let decision = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
 
     var p = JSONObject([
