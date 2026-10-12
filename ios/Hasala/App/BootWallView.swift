@@ -1,5 +1,6 @@
 import HasalaDesign
 import SwiftUI
+import UIKit
 
 /// The walls the live gate puts in front of everything (spec 04 §6.5): data on this
 /// iPhone that the gate can't open, or that belongs to another account, a store that
@@ -42,6 +43,8 @@ struct BootWallView: View {
       }
     }
     .accessibilityIdentifier("wall.\(identifier)")
+    // A field of the screen underneath may still hold the keyboard.
+    .onAppear { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
   }
 
   private var identifier: String {
