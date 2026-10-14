@@ -3,8 +3,8 @@
  * The app's Home screen, built in HTML and CSS instead of a screenshot, in
  * its iPhone frame (Paper P3 Web hero A9Q-0 / B7Z-0, app Home 14O7-0): status
  * bar, header (eye, mark, bell with 4, avatar), "October · day 10 of 31",
- * AED 10,288.34 spent, the month bar (spent, today's tick, the hatched savings
- * set aside at the end), the verdict, the Needs / Wants / Savings tiles, "Your
+ * AED 10,288.34 spent, the month bar (needs + wants spent against 19,000 and
+ * today's tick; savings is not on the bar), the verdict, the Needs / Wants / Savings tiles, "Your
  * widgets" (Budget pace, Next bill, Net worth) and the tab bar. Every glyph is
  * text or vector, so it is sharp at any zoom.
  *
@@ -104,9 +104,6 @@ const uid = `hp-${play}`;
               <span class="hp__track"></span>
               <span class="hp__fill"></span>
               <span class="hp__tick"></span>
-              <span class="hp__saved">
-                <svg width="73" height="8" viewBox="0 0 73 8"><path d="M-8 8L0 0M-4 8L4 0M0 8L8 0M4 8L12 0M8 8L16 0M12 8L20 0M16 8L24 0M20 8L28 0M24 8L32 0M28 8L36 0M32 8L40 0M36 8L44 0M40 8L48 0M44 8L52 0M48 8L56 0M52 8L60 0M56 8L64 0M60 8L68 0M64 8L72 0M68 8L76 0M72 8L80 0"></path></svg>
-              </span>
             </span>
             <span class="hp__verdict">
               <span class="hp__ok"><span class="hp__ok-dot"></span>On track</span>
@@ -118,7 +115,7 @@ const uid = `hp-${play}`;
           <div class="hp__tiles">
             <span class="hp__tile hp__in"><span>Needs</span><b>9,040.80</b></span>
             <span class="hp__tile hp__in"><span>Wants</span><b>1,247.54</b></span>
-            <span class="hp__tile hp__in"><span>Savings</span><b>5,000.00</b></span>
+            <span class="hp__tile hp__in"><span>Savings</span><b>0 of 5,000</b></span>
           </div>
         </div>
 
@@ -137,27 +134,24 @@ const uid = `hp-${play}`;
             </div>
             <div class="hp__bucket">
               <div class="hp__bucket-row">
-                <span class="hp__bucket-name"><span class="hp__chip hp__chip--needs"></span><b>Needs</b><span class="hp__muted">9,040.80 of 12,350</span></span>
-                <b class="hp__num">3,309.20 left</b>
+                <span class="hp__bucket-name"><span class="hp__chip hp__chip--needs"></span><b>Needs</b><span class="hp__muted">9,041 of 12,350</span></span>
+                <b class="hp__num">3,309 left</b>
               </div>
               <span class="hp__mini"><span class="hp__mini-fill hp__mini-fill--needs"></span></span>
             </div>
             <div class="hp__bucket">
               <div class="hp__bucket-row">
-                <span class="hp__bucket-name"><span class="hp__chip hp__chip--wants"></span><b>Wants</b><span class="hp__muted">1,247.54 of 6,650</span></span>
-                <b class="hp__num">5,402.46 left</b>
+                <span class="hp__bucket-name"><span class="hp__chip hp__chip--wants"></span><b>Wants</b><span class="hp__muted">1,248 of 6,650</span></span>
+                <b class="hp__num">5,402 left</b>
               </div>
               <span class="hp__mini"><span class="hp__mini-fill hp__mini-fill--wants"></span></span>
             </div>
             <div class="hp__bucket">
               <div class="hp__bucket-row">
-                <span class="hp__bucket-name"><span class="hp__chip hp__chip--savings"></span><b>Savings</b><span class="hp__muted">5,000 of 5,000</span></span>
-                <b class="hp__done">
-                  <svg width="14" height="14" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2 8.8-9.2"></path></svg>
-                  Done
-                </b>
+                <span class="hp__bucket-name"><span class="hp__chip hp__chip--savings"></span><b>Savings</b><span class="hp__muted">0 of 5,000</span></span>
+                <b class="hp__num">5,000 to save</b>
               </div>
-              <span class="hp__mini"><span class="hp__mini-fill hp__mini-fill--savings"></span></span>
+              <span class="hp__mini"></span>
             </div>
           </div>
 
@@ -480,8 +474,7 @@ const uid = `hp-${play}`;
     height: 16px;
   }
   .hp__track,
-  .hp__fill,
-  .hp__saved {
+  .hp__fill {
     position: absolute;
     top: 4px;
     left: 0;
@@ -489,32 +482,21 @@ const uid = `hp-${play}`;
     border-radius: 4px;
   }
   .hp__track {
-    width: 287px;
+    width: 362px;
     background: rgb(0 0 0 / 12%);
   }
   .hp__fill {
-    width: 155px;
+    width: 196px;
     background: var(--blue-600);
   }
   .hp__tick {
     position: absolute;
     top: 0;
-    left: 169px;
+    left: 213px;
     width: 2px;
     height: 16px;
     border-radius: 1px;
     background: var(--text-primary);
-  }
-  .hp__saved {
-    left: 289px;
-    width: 73px;
-    overflow: clip;
-    background: var(--hue-mint-end);
-  }
-  .hp__saved svg {
-    fill: none;
-    stroke: var(--hue-mint-ink);
-    stroke-width: 1.25;
   }
   .hp__verdict {
     display: flex;
@@ -655,22 +637,6 @@ const uid = `hp-${play}`;
   .hp__chip--savings {
     background: linear-gradient(in oklab 160deg, var(--hue-mint-end) 0%, oklab(81.5% -0.075 0.022) 100%);
   }
-  .hp__done {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--green-700);
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 20px;
-  }
-  .hp__done svg {
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
   .hp__mini {
     display: block;
     height: 6px;
@@ -688,9 +654,6 @@ const uid = `hp-${play}`;
   }
   .hp__mini-fill--wants {
     width: 62px;
-  }
-  .hp__mini-fill--savings {
-    background: var(--green-700);
   }
 
   .hp__row {
@@ -920,9 +883,6 @@ const uid = `hp-${play}`;
   /* C: the bar fills over 900 ms from 300, the tick drops at 1200, the verdict lands last. */
   .hp__fill {
     animation: var(--hp-wipe) 900ms 300ms cubic-bezier(0.65, 0, 0.35, 1) both;
-  }
-  .hp__saved {
-    animation: var(--hp-wipe) 420ms 1000ms var(--ease-out-soft) both;
   }
   .hp__tick {
     animation: var(--hp-drop) 160ms 1200ms var(--ease-out-soft) both;
