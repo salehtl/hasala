@@ -64,6 +64,10 @@ final class AppModel {
   // kept in DevicePrefs so it survives a relaunch.
   private(set) var snoozed: Set<String> = []
 
+  /// Pull to refresh on Home and Activity: a sync and a Gmail check now, set by the live
+  /// graph once the account is open. Nil (the Maya mock) ends the pull at once.
+  @ObservationIgnored var refreshWork: (@MainActor () async -> Void)?
+
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<Int, HomeSnapshot>()
 
@@ -87,6 +91,11 @@ final class AppModel {
   var showingProfile: Bool {
     get { sheet == .profile }
     set { sheet = newValue ? .profile : (sheet == .profile ? nil : sheet) }
+  }
+
+  /// Pull to refresh: waits for the run, so the spinner shows until the screens reload.
+  func refresh() async {
+    await refreshWork?()
   }
 
   /// The header eye (Paper "Home · Amounts hidden"): hiding persists until it is toggled back; a

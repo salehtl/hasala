@@ -73,12 +73,18 @@ struct MainHeader: ToolbarContent {
     case .none:
       ToolbarItem(placement: .topBarTrailing) { EmptyView() }
     }
+    // The avatar is its own round button: without the bar's shared glass, which wraps
+    // the 36 pt disc in a capsule wider than it is tall. The tap target stays 44 pt.
     ToolbarItem(placement: .topBarTrailing) {
       Button(action: onProfile) {
         AvatarDisc(initial: avatarInitial)
+          .frame(width: 44, height: 44)
+          .contentShape(Circle())
       }
+      .buttonStyle(.plain)
       .accessibilityLabel("Your profile")
       .accessibilityIdentifier("header.profile")
     }
+    .sharedBackgroundVisibility(.hidden)
   }
 }

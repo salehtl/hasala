@@ -252,7 +252,10 @@ final class BootController {
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
       self.opening = nil
       self.runtime = rt
-      self.app = AppModel(store: rt.store, mailbox: self.services.mailbox)
+      let app = AppModel(store: rt.store, mailbox: self.services.mailbox)
+      // Pull to refresh waits at most 20 s; the run carries on without it.
+      app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
+      self.app = app
       self.generation += 1
       self.setupFacts = facts
       rt.onAccount = { [weak self, weak rt] info in

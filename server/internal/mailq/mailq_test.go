@@ -76,7 +76,7 @@ func TestTemplatesAreContentFree(t *testing.T) {
 		b, _ := templateFS.ReadFile(path)
 		s := string(b)
 		n++
-		for _, bad := range []string{"<script", " style=", "http://", "<img"} {
+		for _, bad := range []string{"<script", " style=", "http://", "<img", "url(", "@import"} {
 			if strings.Contains(strings.ToLower(s), bad) {
 				t.Errorf("%s contains %q", path, bad)
 			}
