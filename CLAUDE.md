@@ -204,10 +204,17 @@ changing that. `/licenses` lists the third-party code and font the built
 site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
 dependency reaches `dist/`.
 
-Deploying is done only with the owner's approval, for that deploy; CI never
-deploys, and an agent deploys only when the owner has approved it. The site
-is Workers Static Assets on the `hasala-aasa` Worker, on the zone route
-`hasala.app/*` (`web/wrangler.jsonc`). To deploy:
+The site is Workers Static Assets on the `hasala-aasa` Worker, on the zone
+route `hasala.app/*` (`web/wrangler.jsonc`). CI deploys it:
+`.github/workflows/deploy-web.yml` runs when CI passes on a push to `main`
+(or by hand, `workflow_dispatch` on `main`), checks out exactly the commit CI
+passed, deploys it only if it is still `main`'s head (so an older run never
+overwrites a newer site), runs `bun run deploy` and then
+`web/scripts/verify-live.sh`. Merging to `main` is therefore a deploy of the
+website. The Cloudflare credentials are secrets of the GitHub environment
+`production` (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`), limited to
+`main`. Pull requests never deploy. An agent deploys by hand only when the
+owner has approved that deploy. By hand:
 
 1. On the QA host, in its checkout of this repository, check out the commit
    to ship (normally `main`) and enter the devShell.
@@ -216,7 +223,7 @@ is Workers Static Assets on the `hasala-aasa` Worker, on the zone route
    wrangler pinned in `package.json`, under the devShell's Node.
    `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` come from the
    environment, never from a file in this repository.
-3. Verify the live site:
+3. Verify the live site: `web/scripts/verify-live.sh` runs every check below.
    - `curl -sI https://hasala.app/`: 200, with `strict-transport-security`,
      `permissions-policy` and one `content-security-policy` header
      (`frame-ancestors 'none'`);

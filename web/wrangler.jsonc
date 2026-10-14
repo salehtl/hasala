@@ -3,10 +3,11 @@
 // is no Worker script: dist/ is the whole site, including
 // /.well-known/apple-app-site-association, _headers and _redirects.
 //
-// Deploy with `bun run deploy` from this directory: it builds (with the dist
+// CI deploys it from main (.github/workflows/deploy-web.yml). By hand, deploy
+// with `bun run deploy` from this directory: it builds (with the dist
 // checks) and then runs the pinned wrangler (package.json) under Node, with
-// CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment. Only
-// with the owner's approval; see CLAUDE.md, "Website".
+// CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment, and
+// only with the owner's approval; see CLAUDE.md, "Website".
 {
   "name": "hasala-aasa",
   "compatibility_date": "2026-10-01",
