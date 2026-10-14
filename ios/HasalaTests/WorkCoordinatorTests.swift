@@ -218,4 +218,14 @@ struct WorkCoordinatorTests {
     _ = await c.run(.launch)
     #expect(await c.runs == 1)
   }
+
+  @Test func pullToRefreshIsNotSpacedAndReadsMail() async {
+    let log = Log()
+    let c = Self.coordinator(log, delay: .zero)
+    _ = await c.run(.foreground)
+    _ = await c.run(.refresh)
+    _ = await c.run(.refresh)
+    #expect(await c.runs == 3)
+    #expect(log.all.filter { $0.hasPrefix("mail.") } == ["mail.foreground", "mail.refresh", "mail.refresh"])
+  }
 }

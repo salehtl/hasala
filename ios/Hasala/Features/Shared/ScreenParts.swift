@@ -204,6 +204,7 @@ struct TabScreen<Content: View>: View {
   @ViewBuilder let content: Content
 
   @State private var topInset: CGFloat = 0
+  @State private var overscroll: CGFloat = 0
 
   var body: some View {
     ScrollView {
@@ -218,10 +219,12 @@ struct TabScreen<Content: View>: View {
       .padding(.bottom, 32)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(alignment: .top) {
-        AmbientWash(wash).padding(.top, -topInset)
+        AmbientWash(wash).padding(.top, -topInset).offset(y: -overscroll)
       }
     }
     .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
+    .trackingOverscroll($overscroll)
+    .refreshable { [app] in await app.refresh() }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
     .navigationBarTitleDisplayMode(.inline)
@@ -287,6 +290,19 @@ extension Bucket {
     case .income: "Income"
     case .project: "Projects"
     case .other: "Not spending"
+    }
+  }
+}
+
+extension View {
+  /// Keeps `pulled` at how far a pull has dragged a scroll view's content below its top
+  /// (0 when it isn't overscrolled). A screen's wash is offset by it, so pulling down,
+  /// to refresh or not, moves the content and leaves the wash where it is.
+  func trackingOverscroll(_ pulled: Binding<CGFloat>) -> some View {
+    onScrollGeometryChange(for: CGFloat.self) { geo in
+      max(0, -(geo.contentOffset.y + geo.contentInsets.top))
+    } action: { _, value in
+      pulled.wrappedValue = value
     }
   }
 }

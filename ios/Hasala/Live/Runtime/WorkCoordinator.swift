@@ -3,7 +3,7 @@ import CoreSync
 import Foundation
 
 /// The one entry point for an account's work (spec 04 §3): every trigger (launch,
-/// foreground, an authored edit, a silent push, the two BGTaskScheduler tasks) asks for a
+/// foreground, pull to refresh, an authored edit, a silent push, the two BGTaskScheduler tasks) asks for a
 /// run here, and a run is the stages in order:
 ///
 ///   1. sync: reconcile the in-flight batch, pull (fold, snapshot, project), flush
@@ -27,12 +27,16 @@ import Foundation
 ///   check and no later stage starts.
 actor WorkCoordinator {
   nonisolated enum Trigger: String, Sendable, CaseIterable {
-    case launch, foreground, authored, silentPush, bgRefresh, bgProcessing
+    /// `refresh` is pull to refresh: a foreground run the person asked for, so it skips
+    /// the once-a-minute spacing and the Gmail cycle lists even when the mailbox's history
+    /// hasn't moved.
+    case launch, foreground, refresh, authored, silentPush, bgRefresh, bgProcessing
 
     var sync: SyncTrigger {
       switch self {
       case .launch: .launch
       case .foreground: .foreground
+      case .refresh: .refresh
       case .authored: .authored
       case .silentPush: .silentPush
       case .bgRefresh: .bgRefresh
@@ -45,6 +49,7 @@ actor WorkCoordinator {
       switch self {
       case .launch: .launch
       case .foreground: .foreground
+      case .refresh: .refresh
       case .authored: nil
       case .silentPush: .silentPush
       case .bgRefresh: .appRefresh
