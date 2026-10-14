@@ -1,0 +1,1009 @@
+---
+/**
+ * The app's Home screen, built in HTML and CSS instead of a screenshot, in
+ * its iPhone frame (Paper P3 Web hero A9Q-0 / B7Z-0, app Home 14O7-0): status
+ * bar, header (eye, mark, bell with 4, avatar), "October · day 10 of 31",
+ * AED 10,288.34 spent, the month bar (spent, today's tick, the hatched savings
+ * set aside at the end), the verdict, the Needs / Wants / Savings tiles, "Your
+ * widgets" (Budget pace, Next bill, Net worth) and the tab bar. Every glyph is
+ * text or vector, so it is sharp at any zoom.
+ *
+ * 418 x 900 at 1x; the page scales the whole frame. Figures never wrap
+ * (nowrap) and the big one is sized in container units, so it shrinks with
+ * the screen rather than reflowing.
+ *
+ * Motion (Paper 13 · Dynamic layer, C83-0): the first time it is shown, the
+ * figure counts up with the bar (900 ms, ease-in-out), the today tick drops
+ * in, the verdict lands, the tiles and widgets rise one after another and the
+ * widget bars and the net-worth line draw. `play` picks when that happens:
+ * "hero" once per tab session (html.hero-seen, like the rest of the hero),
+ * "load" once per full page load (not after a client-side navigation,
+ * html.routed). Then a slow idle float, paused while off screen. With reduced
+ * motion it is simply shown in its final state.
+ *
+ * The entrance is pure CSS: the keyframe names are custom properties that
+ * exist only while it should play, so without them every `animation` is
+ * invalid and the screen is drawn final. A few lines of script count the
+ * figure and pause the idle float off screen (any [data-alive] ancestor).
+ *
+ * The frame is aria-hidden; `label` is read instead (omit it where the whole
+ * stage is decorative, as on /i).
+ */
+interface Props {
+  play: 'hero' | 'load';
+  label?: string;
+  class?: string;
+}
+const { play, label, class: extra } = Astro.props;
+const uid = `hp-${play}`;
+---
+
+<div class:list={['hp', `hp--${play}`, extra]}>
+  {label && <p class="sr-only">{label}</p>}
+  <div class="hp__device" aria-hidden="true">
+    <div class="hp__screen">
+      <div class="hp__wash"></div>
+
+      <div class="hp__status">
+        <span class="hp__time">9:41</span>
+        <span class="hp__island"></span>
+        <svg class="hp__bars" width="82" height="22" viewBox="0 0 82 22">
+          <path d="M3.7 13H2.5a1 1 0 0 0-1 1v2.5a1 1 0 0 0 1 1h1.2a1 1 0 0 0 1-1V14a1 1 0 0 0-1-1m5.2-2.5H7.7a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1.2a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1M14.1 8h-1.2a1 1 0 0 0-1 1v7.5a1 1 0 0 0 1 1h1.2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1m5.2-2.5h-1.2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h1.2a1 1 0 0 0 1-1v-10a1 1 0 0 0-1-1"></path>
+          <path fill-rule="evenodd" d="M36.57 7.8c2.49 0 4.88.92 6.68 2.58.14.13.36.12.49 0l1.3-1.27a.34.34 0 0 0 0-.5 12.55 12.55 0 0 0-16.93 0 .34.34 0 0 0 0 .5l1.3 1.26c.13.13.34.14.48 0a10 10 0 0 1 6.68-2.57m0 4.22a5.4 5.4 0 0 1 3.67 1.44c.14.13.35.13.48 0l1.3-1.33a.37.37 0 0 0-.01-.52 7.9 7.9 0 0 0-10.88 0 .37.37 0 0 0 0 .52l1.29 1.32c.13.14.34.14.48 0 1-.92 2.31-1.43 3.67-1.43m2.52 2.8q0 .15-.1.28l-2.18 2.45a.3.3 0 0 1-.24.11.3.3 0 0 1-.24-.1l-2.18-2.46a.43.43 0 0 1 .01-.56 3.44 3.44 0 0 1 4.82 0 .4.4 0 0 1 .11.28"></path>
+          <path fill-rule="evenodd" opacity=".35" d="M70.5 5c2.05 0 3.08 0 3.88.34a4.3 4.3 0 0 1 2.28 2.28c.34.8.34 1.83.34 3.88s0 3.08-.34 3.88a4.3 4.3 0 0 1-2.28 2.28c-.8.34-1.83.34-3.88.34h-12c-2.05 0-3.08 0-3.88-.34a4.3 4.3 0 0 1-2.28-2.28c-.34-.8-.34-1.83-.34-3.88s0-3.08.34-3.88a4.3 4.3 0 0 1 2.28-2.28C55.42 5 56.45 5 58.5 5zM58.28 6c-1.85 0-2.77 0-3.48.36a3.3 3.3 0 0 0-1.44 1.44C53 8.5 53 9.43 53 11.28v.44c0 1.85 0 2.77.36 3.48a3.3 3.3 0 0 0 1.44 1.44c.7.36 1.63.36 3.48.36h12.44c1.85 0 2.77 0 3.48-.36a3.3 3.3 0 0 0 1.44-1.44c.36-.7.36-1.63.36-3.48v-.44c0-1.85 0-2.77-.36-3.48a3.3 3.3 0 0 0-1.44-1.44C73.5 6 72.57 6 70.72 6z"></path>
+          <path d="M54 11c0-1.4 0-2.1.27-2.63a2.5 2.5 0 0 1 1.1-1.1C55.9 7 56.6 7 58 7h13c1.4 0 2.1 0 2.64.27q.72.37 1.09 1.1C75 8.9 75 9.6 75 11v1c0 1.4 0 2.1-.27 2.64a2.5 2.5 0 0 1-1.1 1.09C73.1 16 72.4 16 71 16H58c-1.4 0-2.1 0-2.63-.27a2.5 2.5 0 0 1-1.1-1.1C54 14.1 54 13.4 54 12z"></path>
+          <path opacity=".35" d="M78 9.5v4.08a2.2 2.2 0 0 0 1.33-2.04A2.2 2.2 0 0 0 78 9.5"></path>
+        </svg>
+      </div>
+
+      <div class="hp__header">
+        <span class="hp__glass">
+          <svg width="24" height="24" viewBox="0 0 24 24" class="hp__stroke">
+            <path d="M2.8 12s3.4-6.3 9.2-6.3 9.2 6.3 9.2 6.3-3.4 6.3-9.2 6.3S2.8 12 2.8 12Z" stroke-linejoin="round"></path>
+            <circle cx="12" cy="12" r="2.9"></circle>
+          </svg>
+        </span>
+        <svg class="hp__mark" width="54" height="32" viewBox="204 328 616 368">
+          <defs>
+            <linearGradient id={`${uid}-coin`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"></stop><stop offset="1" stop-color="#EBB04A"></stop></linearGradient>
+          </defs>
+          <rect x="212" y="576" width="600" height="112" rx="56" fill="#1426591F"></rect>
+          <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"></rect>
+          <rect x="268" y="648" width="488" height="10" rx="5" fill="#FFFFFF" opacity=".22"></rect>
+          <circle cx="512" cy="538.2" r="184" fill="#C98A1E"></circle>
+          <circle cx="512" cy="519.8" r="184" fill={`url(#${uid}-coin)`}></circle>
+          <circle cx="512" cy="519.8" r="139.8" fill="none" stroke="#C98A1E80" stroke-width="10.1"></circle>
+          <line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"></line>
+          <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"></line>
+        </svg>
+        <span class="hp__header-end">
+          <span class="hp__glass">
+            <svg width="22" height="22" viewBox="0 0 24 24" class="hp__stroke">
+              <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Z" stroke-linejoin="round"></path>
+              <path d="M10 20.5a2 2 0 0 0 4 0" stroke-linecap="round"></path>
+            </svg>
+            <span class="hp__badge hp__badge--bell">4</span>
+          </span>
+          <span class="hp__glass"><span class="hp__avatar">M</span></span>
+        </span>
+      </div>
+
+      <div class="hp__content">
+        <div class="hp__top">
+          <div class="hp__spent hp__in">
+            <span class="hp__overline">October · day 10 of 31</span>
+            <span class="hp__figure-row">
+              <span class="hp__unit">AED</span>
+              <span class="hp__figure" data-hp-count="10288.34">10,288.34</span>
+            </span>
+            <span class="hp__of">spent of 19,000 on needs and wants</span>
+          </div>
+
+          <div class="hp__month">
+            <span class="hp__bar">
+              <span class="hp__track"></span>
+              <span class="hp__fill"></span>
+              <span class="hp__tick"></span>
+              <span class="hp__saved">
+                <svg width="73" height="8" viewBox="0 0 73 8"><path d="M-8 8L0 0M-4 8L4 0M0 8L8 0M4 8L12 0M8 8L16 0M12 8L20 0M16 8L24 0M20 8L28 0M24 8L32 0M28 8L36 0M32 8L40 0M36 8L44 0M40 8L48 0M44 8L52 0M48 8L56 0M52 8L60 0M56 8L64 0M60 8L68 0M64 8L72 0M68 8L76 0M72 8L80 0"></path></svg>
+              </span>
+            </span>
+            <span class="hp__verdict">
+              <span class="hp__ok"><span class="hp__ok-dot"></span>On track</span>
+              <span class="hp__left">· AED 8,711.66 left</span>
+              <span class="hp__see">See month</span>
+            </span>
+          </div>
+
+          <div class="hp__tiles">
+            <span class="hp__tile hp__in"><span>Needs</span><b>9,040.80</b></span>
+            <span class="hp__tile hp__in"><span>Wants</span><b>1,247.54</b></span>
+            <span class="hp__tile hp__in"><span>Savings</span><b>5,000.00</b></span>
+          </div>
+        </div>
+
+        <div class="hp__widgets">
+          <div class="hp__widgets-head hp__in"><span>Your widgets</span><span class="hp__edit">Edit</span></div>
+
+          <div class="hp__w hp__pace hp__in">
+            <div class="hp__w-head">
+              <span class="hp__w-title">
+                <span class="hp__pace-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24"><path d="M10.6 4.2a8.9 8.9 0 1 0 9.2 9.2h-9.2z"></path><path d="M13 2.1v8.9h8.9A8.9 8.9 0 0 0 13 2.1Z"></path></svg>
+                </span>
+                Budget pace
+              </span>
+              <span class="hp__muted">32% of October gone</span>
+            </div>
+            <div class="hp__bucket">
+              <div class="hp__bucket-row">
+                <span class="hp__bucket-name"><span class="hp__chip hp__chip--needs"></span><b>Needs</b><span class="hp__muted">9,040.80 of 12,350</span></span>
+                <b class="hp__num">3,309.20 left</b>
+              </div>
+              <span class="hp__mini"><span class="hp__mini-fill hp__mini-fill--needs"></span></span>
+            </div>
+            <div class="hp__bucket">
+              <div class="hp__bucket-row">
+                <span class="hp__bucket-name"><span class="hp__chip hp__chip--wants"></span><b>Wants</b><span class="hp__muted">1,247.54 of 6,650</span></span>
+                <b class="hp__num">5,402.46 left</b>
+              </div>
+              <span class="hp__mini"><span class="hp__mini-fill hp__mini-fill--wants"></span></span>
+            </div>
+            <div class="hp__bucket">
+              <div class="hp__bucket-row">
+                <span class="hp__bucket-name"><span class="hp__chip hp__chip--savings"></span><b>Savings</b><span class="hp__muted">5,000 of 5,000</span></span>
+                <b class="hp__done">
+                  <svg width="14" height="14" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2 8.8-9.2"></path></svg>
+                  Done
+                </b>
+              </div>
+              <span class="hp__mini"><span class="hp__mini-fill hp__mini-fill--savings"></span></span>
+            </div>
+          </div>
+
+          <div class="hp__row">
+            <div class="hp__w hp__small hp__bill hp__in">
+              <div class="hp__small-head">
+                <span class="hp__disc hp__disc--sand">
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M13 2.5 5.5 13.5h5.5l-1 8 7.5-11h-5.5l1-8Z"></path></svg>
+                </span>
+                <span class="hp__due">In 4 days</span>
+              </div>
+              <div class="hp__small-body">
+                <span class="hp__amount"><span class="hp__amount-unit">AED</span><b>489.15</b></span>
+                <span class="hp__muted">DEWA · expected Wed</span>
+              </div>
+            </div>
+
+            <div class="hp__w hp__small hp__worth hp__in">
+              <svg class="hp__chart" width="175" height="70" viewBox="0 0 175 70">
+                <path class="hp__chart-area" d="M0 58 L18 54 L36 56 L54 47 L72 49 L90 40 L108 42 L126 31 L144 33 L162 22 L175 18 L175 70 L0 70 Z"></path>
+                <path class="hp__chart-line" pathLength="1" d="M0 58 L18 54 L36 56 L54 47 L72 49 L90 40 L108 42 L126 31 L144 33 L162 22 L175 18"></path>
+              </svg>
+              <div class="hp__small-head hp__small-head--worth">
+                <span class="hp__disc hp__disc--inverse">
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M5 15.5l5-5 3.5 3.5L20 7.5M15.5 7.5H20V12"></path></svg>
+                </span>
+                <span>Net worth</span>
+              </div>
+              <div class="hp__small-body">
+                <span class="hp__amount hp__amount--worth"><span class="hp__amount-unit">AED</span><b>227,568</b></span>
+                <span class="hp__up"><span class="hp__up-dot"></span>+2,140 this month</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hp__edge"></div>
+      <div class="hp__tabs">
+        <span class="hp__tab hp__tab--on">
+          <svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M10 21v-6.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V21" fill="#FFFFFF"></path></svg>
+          Home
+        </span>
+        <span class="hp__tab">
+          <svg width="24" height="24" viewBox="0 0 24 24"><path d="M10.6 4.2a8.9 8.9 0 1 0 9.2 9.2h-9.2z"></path><path d="M13 2.1v8.9h8.9A8.9 8.9 0 0 0 13 2.1Z"></path></svg>
+          Plan
+        </span>
+        <span class="hp__tab">
+          <svg width="24" height="24" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="3" rx="1.5" opacity=".45"></rect><rect x="4.5" y="6.5" width="15" height="3" rx="1.5" opacity=".7"></rect><rect x="3" y="10.5" width="18" height="11" rx="3"></rect></svg>
+          Review
+          <span class="hp__badge hp__badge--tab">6</span>
+        </span>
+        <span class="hp__tab">
+          <svg width="24" height="24" viewBox="0 0 24 24" class="hp__stroke hp__stroke--2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>
+          Activity
+        </span>
+      </div>
+      <span class="hp__search">
+        <svg width="26" height="26" viewBox="0 0 24 24" class="hp__stroke"><circle cx="10.5" cy="10.5" r="6.5" stroke-width="2.2"></circle><path d="M15.5 15.5 20 20" stroke-width="2.4" stroke-linecap="round"></path></svg>
+      </span>
+      <span class="hp__home-bar"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { onPage, observe } from '../scripts/page';
+
+  // The figure counts up with the month bar (motion moment C: 900 ms,
+  // ease-in-out, from 300 ms), on the bar's clock, only while the CSS
+  // entrance has yet to reach it; and
+  // every [data-alive] stage pauses its idle float while off screen.
+  onPage((signal) => {
+    const io = observe(signal, (es) => es.forEach((e) => e.target.classList.toggle('is-off', !e.isIntersecting)));
+    document.querySelectorAll('[data-alive]').forEach((el) => io?.observe(el));
+    document.querySelectorAll<HTMLElement>('[data-hp-count]').forEach((el) => {
+      if (!getComputedStyle(el).getPropertyValue('--hp-rise').trim()) return;
+      const to = Number(el.dataset.hpCount);
+      const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // Keep to the bar's own clock: a late script must not reset a figure
+      // the visitor has already seen, so past the 300 ms delay it stays put.
+      const wipe = el.closest('.hp')?.querySelector('.hp__fill')?.getAnimations()[0];
+      const at = Number(wipe?.currentTime ?? Infinity);
+      if (!(at <= 300)) return;
+      const t0 = performance.now() - at + 300;
+      const step = (now: number) => {
+        if (signal.aborted) return;
+        const t = Math.max(0, Math.min(1, (now - t0) / 900));
+        const k = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+        el.textContent = fmt.format(to * k);
+        if (t < 1) requestAnimationFrame(step);
+      };
+      step(performance.now());
+    });
+  });
+</script>
+
+<style>
+  .hp {
+    position: relative;
+    width: 418px;
+  }
+  .hp__device {
+    width: 418px;
+    padding: 8px;
+    border-radius: 62px;
+    background: #0d0d10;
+    box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
+  }
+  .hp__screen {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 402px;
+    height: 884px;
+    overflow: clip;
+    border-radius: 54px;
+    background: var(--neutral-100);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    white-space: nowrap;
+    container-type: inline-size;
+    -webkit-font-smoothing: antialiased;
+  }
+  .hp svg {
+    display: block;
+    flex: none;
+  }
+  .hp__stroke {
+    fill: none;
+    stroke: #1a1a1a;
+    stroke-width: 1.9;
+  }
+  .hp__stroke--2 {
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hp__wash {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 420px;
+    background: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.1% -0.003 -0.021) 38%, oklab(95.3% 0.0007 -0.003 / 0%) 100%);
+  }
+
+  /* Status bar, 62 high */
+  /* Two equal halves either side of the island, each item centred in its half. */
+  .hp__status {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 154px;
+    height: 62px;
+    padding: 21px 24px 19px;
+  }
+  .hp__time,
+  .hp__bars {
+    flex: 1 1 0;
+    text-align: center;
+  }
+  .hp__time {
+    font-family: -apple-system, 'SF Pro Text', var(--font-sans);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+  .hp__island {
+    position: absolute;
+    top: 11px;
+    left: 138px;
+    width: 126px;
+    height: 37px;
+    border-radius: 999px;
+    background: #000;
+  }
+  .hp svg.hp__bars {
+    flex: 1 1 0;
+    fill: #000;
+  }
+
+  /* Header: eye, mark, bell, avatar */
+  .hp__header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 20px 0;
+  }
+  .hp__header-end {
+    display: flex;
+    gap: 10px;
+  }
+  /* Liquid glass, drawn without backdrop-filter (the wash behind is flat). */
+  .hp__glass {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+    background: linear-gradient(in oklab 135deg, rgb(255 255 255 / 92%), rgb(255 255 255 / 70%));
+    box-shadow:
+      rgb(255 255 255 / 90%) 1.5px 1.5px 1px -0.5px inset,
+      rgb(255 255 255 / 45%) 0 0 0 0.5px inset,
+      rgb(0 0 0 / 10%) 0 6px 16px,
+      rgb(0 0 0 / 7%) 0 1px 2px,
+      rgb(0 0 0 / 8%) 0 0 0 0.5px;
+  }
+  .hp__mark {
+    position: absolute;
+    top: 13px;
+    left: 174px;
+  }
+  .hp__badge {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding-inline: 6px;
+    border-radius: 10px;
+    background: var(--red-700);
+    box-shadow: #fff 0 0 0 2px;
+    color: #fff;
+    font-family: var(--font-figure);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 16px;
+  }
+  .hp__badge--bell {
+    top: -3px;
+    left: 29px;
+  }
+  .hp__badge--tab {
+    top: 5px;
+    left: 39px;
+    min-width: 18px;
+    height: 18px;
+    padding-inline: 5px;
+    border-radius: 9px;
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .hp__avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+    background: linear-gradient(in oklab 145deg, oklab(82.1% 0.042 0.111) 0%, oklab(75.6% 0.086 0.05) 55%, oklab(59.2% 0.064 -0.1) 100%);
+    color: #2a1f3d;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+
+  /* Content */
+  .hp__content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding-top: 20px;
+  }
+  .hp__top {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 20px 0;
+  }
+  .hp__spent {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hp__overline {
+    color: var(--neutral-700);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .hp__figure-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .hp__unit {
+    font-family: var(--font-figure);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 24px;
+  }
+  /* 56 at the 402-wide screen; shrinks with it, never wraps. */
+  .hp__figure {
+    font-family: var(--font-figure);
+    font-size: min(56px, 13.9cqi);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.021em;
+    line-height: 58px;
+  }
+  .hp__of {
+    color: var(--neutral-700);
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .hp__month {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .hp__bar {
+    position: relative;
+    height: 16px;
+  }
+  .hp__track,
+  .hp__fill,
+  .hp__saved {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    height: 8px;
+    border-radius: 4px;
+  }
+  .hp__track {
+    width: 287px;
+    background: rgb(0 0 0 / 12%);
+  }
+  .hp__fill {
+    width: 155px;
+    background: var(--blue-600);
+  }
+  .hp__tick {
+    position: absolute;
+    top: 0;
+    left: 169px;
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: var(--text-primary);
+  }
+  .hp__saved {
+    left: 289px;
+    width: 73px;
+    overflow: clip;
+    background: var(--hue-mint-end);
+  }
+  .hp__saved svg {
+    fill: none;
+    stroke: var(--hue-mint-ink);
+    stroke-width: 1.25;
+  }
+  .hp__verdict {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .hp__ok {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--green-700);
+    font-weight: 600;
+  }
+  .hp__ok-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: currentColor;
+  }
+  .hp__left {
+    color: var(--neutral-700);
+  }
+  .hp__see {
+    margin-left: auto;
+    color: var(--blue-700);
+    font-weight: 500;
+  }
+
+  .hp__tiles {
+    display: flex;
+    gap: 8px;
+  }
+  .hp__tile {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: rgb(255 255 255 / 70%);
+    color: var(--neutral-700);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .hp__tile b,
+  .hp__num {
+    color: var(--text-primary);
+    font-family: var(--font-figure);
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 22px;
+  }
+
+  /* Your widgets */
+  .hp__widgets {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-inline: 20px;
+  }
+  .hp__widgets-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.35px;
+    line-height: 28px;
+  }
+  .hp__edit {
+    color: var(--blue-600);
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 24px;
+  }
+  .hp__w {
+    border-radius: 26px;
+    background: #fff;
+    box-shadow: rgb(0 0 0 / 6%) 0 1px 2px, rgb(0 0 0 / 8%) 0 8px 24px;
+  }
+  .hp__muted {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 18px;
+  }
+  .hp__pace {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+  .hp__w-head,
+  .hp__bucket-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .hp__w-title,
+  .hp__bucket-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .hp__pace-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    background: var(--blue-50);
+    fill: var(--blue-600);
+  }
+  .hp__bucket {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hp__chip {
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+  }
+  .hp__chip--needs {
+    background: linear-gradient(in oklab 160deg, var(--hue-sand-end) 0%, oklab(81.3% 0.028 0.096) 100%);
+  }
+  .hp__chip--wants {
+    background: linear-gradient(in oklab 160deg, var(--hue-lilac-end) 0%, oklab(76.6% 0.045 -0.081) 100%);
+  }
+  .hp__chip--savings {
+    background: linear-gradient(in oklab 160deg, var(--hue-mint-end) 0%, oklab(81.5% -0.075 0.022) 100%);
+  }
+  .hp__done {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--green-700);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .hp__done svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hp__mini {
+    display: block;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--pace-track);
+  }
+  .hp__mini-fill {
+    display: block;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--blue-600);
+  }
+  .hp__mini-fill--needs {
+    width: 242px;
+  }
+  .hp__mini-fill--wants {
+    width: 62px;
+  }
+  .hp__mini-fill--savings {
+    background: var(--green-700);
+  }
+
+  .hp__row {
+    display: flex;
+    gap: 12px;
+  }
+  .hp__small {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 175px;
+    height: 175px;
+    overflow: clip;
+    padding: 12px 12px 16px 16px;
+  }
+  .hp__small-head {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+  }
+  .hp__small-head--worth {
+    justify-content: flex-start;
+    gap: 8px;
+    color: rgb(255 255 255 / 70%);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .hp__disc {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+  }
+  .hp__disc svg {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hp__disc--sand {
+    background: linear-gradient(in oklab 160deg, var(--hue-sand-start), var(--hue-sand-end));
+    stroke: var(--hue-sand-ink);
+  }
+  .hp__disc--inverse {
+    background: rgb(255 255 255 / 12%);
+    stroke: #fff;
+  }
+  .hp__due {
+    display: flex;
+    align-items: center;
+    height: 26px;
+    padding-inline: 10px;
+    border-radius: 13px;
+    background: var(--amber-50);
+    color: var(--amber-800);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .hp__small-body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .hp__amount {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-family: var(--font-figure);
+  }
+  .hp__amount-unit {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .hp__amount b {
+    font-size: 34px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
+    line-height: 40px;
+  }
+  .hp__worth {
+    background: #15171c;
+    color: #fff;
+  }
+  .hp__amount--worth .hp__amount-unit {
+    color: rgb(255 255 255 / 70%);
+  }
+  .hp__amount--worth b {
+    font-size: 30px;
+    line-height: 36px;
+  }
+  .hp__chart {
+    position: absolute;
+    top: 44px;
+    left: 0;
+  }
+  .hp__chart-line {
+    fill: none;
+    stroke: rgb(255 255 255 / 22%);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hp__chart-area {
+    fill: rgb(255 255 255 / 5%);
+  }
+  .hp__up {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #80d6ab;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .hp__up-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background: currentColor;
+  }
+
+  /* Bottom: soft edge, tab bar, search, home indicator */
+  .hp__edge {
+    position: absolute;
+    inset: auto 0 0;
+    height: 137px;
+    background: linear-gradient(in oklab 0deg, oklab(95.3% 0.0007 -0.003 / 92%) 0%, oklab(95.3% 0.0007 -0.003 / 60%) 40%, oklab(95.3% 0.0007 -0.003 / 0%) 100%);
+  }
+  .hp__tabs,
+  .hp__search {
+    position: absolute;
+    bottom: 25px;
+    height: 64px;
+    border-radius: 32px;
+    background: linear-gradient(in oklab 135deg, rgb(255 255 255 / 94%), rgb(255 255 255 / 80%));
+    box-shadow:
+      rgb(255 255 255 / 90%) 1.5px 1.5px 1px -0.5px inset,
+      rgb(255 255 255 / 45%) 0 0 0 0.5px inset,
+      rgb(0 0 0 / 10%) 0 8px 24px,
+      rgb(0 0 0 / 7%) 0 1px 2px,
+      rgb(0 0 0 / 8%) 0 0 0 0.5px;
+  }
+  .hp__tabs {
+    left: 20px;
+    display: flex;
+    width: 288px;
+    padding: 4px;
+  }
+  .hp__tab {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    height: 56px;
+    border-radius: 999px;
+    fill: #1a1a1a;
+    font-family: -apple-system, 'SF Pro Text', var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+  .hp__tab--on {
+    background: rgb(120 120 128 / 16%);
+    color: var(--blue-600);
+    fill: var(--blue-600);
+    font-weight: 600;
+  }
+  .hp__search {
+    right: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+  }
+  .hp__home-bar {
+    position: absolute;
+    bottom: 8px;
+    left: 134px;
+    width: 134px;
+    height: 5px;
+    border-radius: 999px;
+    background: #000;
+  }
+
+  /* Motion. The keyframe names exist only while the entrance should play;
+     otherwise `animation: var(--hp-…)` is invalid and nothing moves. */
+  .hp__in {
+    animation: var(--hp-rise) 600ms var(--ease-out-soft) both;
+  }
+  .hp__spent {
+    animation-delay: 250ms;
+  }
+  .hp__tile:nth-child(1) {
+    animation-delay: 520ms;
+  }
+  .hp__tile:nth-child(2) {
+    animation-delay: 580ms;
+  }
+  .hp__tile:nth-child(3) {
+    animation-delay: 640ms;
+  }
+  .hp__widgets-head {
+    animation-delay: 760ms;
+  }
+  .hp__pace {
+    animation-delay: 840ms;
+  }
+  .hp__bill {
+    animation-delay: 960ms;
+  }
+  .hp__worth {
+    animation-delay: 1040ms;
+  }
+  /* C: the bar fills over 900 ms from 300, the tick drops at 1200, the verdict lands last. */
+  .hp__fill {
+    animation: var(--hp-wipe) 900ms 300ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+  .hp__saved {
+    animation: var(--hp-wipe) 420ms 1000ms var(--ease-out-soft) both;
+  }
+  .hp__tick {
+    animation: var(--hp-drop) 160ms 1200ms var(--ease-out-soft) both;
+  }
+  .hp__verdict {
+    animation: var(--hp-fade) 200ms 1400ms both;
+  }
+  .hp__mini-fill {
+    animation: var(--hp-wipe) 700ms 1100ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+  .hp__bucket + .hp__bucket .hp__mini-fill {
+    animation-delay: 1180ms;
+  }
+  .hp__bucket + .hp__bucket + .hp__bucket .hp__mini-fill {
+    animation-delay: 1260ms;
+  }
+  .hp__chart-line {
+    stroke-dasharray: 1;
+    animation: var(--hp-draw) 1100ms 1300ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+  .hp__chart-area {
+    animation: var(--hp-fade) 600ms 1900ms both;
+  }
+  .hp__device {
+    /* One float, up and back, done by 5 s (WCAG 2.2.2). */
+    animation: var(--hp-idle) 1.3s 2.4s ease-in-out 2 alternate;
+  }
+  :global([data-alive].is-off) .hp__device,
+  :global([data-alive].is-off .float) {
+    animation-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html:not(.hero-seen)) .hp--hero,
+    :global(html:not(.routed)) .hp--load {
+      --hp-rise: hp-rise;
+      --hp-wipe: hp-wipe;
+      --hp-drop: hp-drop;
+      --hp-fade: hp-fade;
+      --hp-draw: hp-draw;
+    }
+    .hp {
+      --hp-idle: hp-idle;
+    }
+  }
+  @keyframes hp-rise {
+    from {
+      opacity: 0;
+      translate: 0 24px;
+    }
+  }
+  @keyframes hp-wipe {
+    from {
+      clip-path: inset(0 100% 0 0 round 4px);
+    }
+    to {
+      clip-path: inset(0 0 0 0 round 4px);
+    }
+  }
+  @keyframes hp-drop {
+    from {
+      opacity: 0;
+      translate: 0 -8px;
+    }
+  }
+  @keyframes hp-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes hp-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes hp-idle {
+    to {
+      translate: 0 -8px;
+    }
+  }
+</style>

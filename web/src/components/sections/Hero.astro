@@ -1,11 +1,22 @@
 ---
-import { Picture } from 'astro:assets';
-import homeScreen from '../../assets/screens/home-screen.png';
+/**
+ * 01 Hero (Paper P3 Web: desktop A9Q-0, mobile B7Z-0). The nav is Nav.astro
+ * (fixed, shared by every page); this is everything under it: the app icon and
+ * beta chip, the headline, the subline, the two buttons, the trust row, the
+ * phone (the app's Home screen) and the two glass floats around it.
+ *
+ * Desktop (from 1024): copy on the left (top 188), the phone 418 wide on the
+ * right (top 150), the bank-alert float over its left edge (from 1280, where
+ * there is room) and the "Backed up, locked" float at its lower right. Below
+ * 1280 the phone stage is drawn at 0.8. Phones: copy, then a 560 high stage
+ * where the phone peeks in from the left and bleeds off the right.
+ */
+import HomePhone from '../HomePhone.astro';
 import AppIcon from '../brand/AppIcon.astro';
 import Icon from '../Icon.astro';
 ---
 
-<section class="hero" aria-labelledby="hero-title">
+<section id="hero" class="hero" aria-labelledby="hero-title">
   <div class="hero__glow hero__glow--dirham" aria-hidden="true"></div>
   <div class="hero__glow hero__glow--lilac" aria-hidden="true"></div>
 
@@ -13,37 +24,71 @@ import Icon from '../Icon.astro';
     <div class="hero__copy">
       <div class="hero__badge">
         <span class="hero__icon"><AppIcon id="hero-icon" size={84} /></span>
-        <p class="hero__eyebrow">For iPhone, in the UAE</p>
+        <p class="hero__beta">
+          <span class="hero__beta-name"><span class="dot hero__dot" aria-hidden="true"></span>Private beta</span>
+          <span class="hero__beta-meta">iPhone · TestFlight · UAE</span>
+        </p>
       </div>
 
-      <h1 id="hero-title" class="hero__title">See where your money goes, automatically.</h1>
+      <h1 id="hero-title" class="display-xl hero__title">
+        See where your money goes.
+        <span class="hero__accent">Automatically.</span>
+      </h1>
 
-      <p class="lead hero__lead">Hasala turns your bank’s alert emails into a simple budget on your iPhone. It’s private: only you can see it.</p>
+      <p class="lead hero__lead">
+        Hasala reads the emails your bank sends when you pay, and turns them into a monthly budget. It all happens on your iPhone, and only you can see it.
+      </p>
 
       <div class="hero__ctas">
-        <a class="btn btn--primary btn--lg hero__cta" href="#invite" data-invite-cta>
+        <a class="btn btn--primary btn--lg btn--trail hero__cta" href="#invite" data-invite-cta>
           Request an invite
           <span class="btn__disc" aria-hidden="true"><Icon name="arrow-right" size={16} stroke={1.9} /></span>
         </a>
-        <p class="hero__free">Free during the beta.</p>
+        <a class="btn btn--glass btn--lg btn--lead hero__cta" href="/how-privacy-works">
+          <Icon name="lock" size={18} stroke={1.7} />
+          How privacy works
+        </a>
       </div>
+
+      <ul class="hero__trust" role="list">
+        <li><Icon name="people" size={18} stroke={1.6} />Only you see your data</li>
+        <li><Icon name="mail" size={18} stroke={1.6} />No bank password needed</li>
+        <li><Icon name="shield-check" size={18} stroke={1.6} />Made in the UAE</li>
+      </ul>
     </div>
 
-    <div class="hero__stage">
+    <div class="hero__stage" data-alive>
       <div class="device" data-parallax>
-        <Picture
-          src={homeScreen}
-          formats={['avif', 'webp']}
-          widths={[402, 804]}
-          sizes="402px"
-          width={402}
-          height={884}
-          loading="eager"
-          fetchpriority="high"
-          decoding="async"
-          class="device__screen"
-          alt="Hasala on iPhone: AED 10,288.34 spent of 19,000 on needs and wants on day 10 of October, on track with AED 8,711.66 left. Needs 9,040.80, wants 1,247.54, savings 5,000.00."
+        <HomePhone
+          play="hero"
+          label="Hasala's Home screen on iPhone: AED 10,288.34 spent of 19,000 on needs and wants on day 10 of October, on track with AED 8,711.66 left. Needs 9,040.80, wants 1,247.54, savings 5,000.00."
         />
+      </div>
+
+      <div class="float float--card hero__alert" aria-hidden="true">
+        <div class="hero__alert-head">
+          <span class="hero__alert-icon"><Icon name="mail" size={13} stroke={1.8} /></span>
+          <span class="hero__alert-from">Bank alert · Emirates NBD</span>
+          <span class="hero__alert-now">now</span>
+        </div>
+        <p class="hero__alert-text">Purchase of AED 64.50 at TALABAT DXB with card ending 4421</p>
+        <hr class="hero__alert-rule" />
+        <div class="hero__alert-row">
+          <span class="hero__alert-disc"><Icon name="fork" size={16} stroke={1.5} /></span>
+          <span class="hero__alert-merchant">
+            <span class="hero__alert-name">Talabat</span>
+            <span class="hero__alert-cat">Dining · sorted automatically</span>
+          </span>
+          <span class="hero__alert-amount">64.50</span>
+        </div>
+      </div>
+
+      <div class="float float--pill hero__sealed" aria-hidden="true">
+        <span class="hero__sealed-icon"><Icon name="lock" size={18} stroke={1.7} /></span>
+        <span class="hero__sealed-text">
+          <span class="hero__sealed-title">Backed up, locked</span>
+          <span class="hero__sealed-sub">Only your devices can open it</span>
+        </span>
       </div>
     </div>
   </div>
@@ -54,10 +99,12 @@ import Icon from '../Icon.astro';
   .hero {
     position: relative;
     overflow: clip;
-    background: var(--wash-hero);
+    background: var(--wash-hero-m);
   }
+  /* Glows are desktop only (Paper's phone hero is the plain wash). */
   .hero__glow {
     position: absolute;
+    display: none;
     border-radius: 50%;
     pointer-events: none;
   }
@@ -75,6 +122,8 @@ import Icon from '../Icon.astro';
     top: 560px;
     background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(87.6% 0.027 -0.043 / 55%) 0%, oklab(87.6% 0.027 -0.043 / 0%) 68%);
   }
+
+  /* The fixed nav ends at 72 on a phone (16 + 56); Paper puts the copy 40 below it. */
   .hero__inner {
     position: relative;
     padding-top: 112px;
@@ -85,6 +134,7 @@ import Icon from '../Icon.astro';
     display: flex;
     flex-direction: column;
   }
+
   .hero__badge {
     display: flex;
     align-items: center;
@@ -93,146 +143,289 @@ import Icon from '../Icon.astro';
   }
   .hero__icon {
     flex: none;
-    width: 52px;
-    height: 52px;
-    border-radius: 12px;
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
     box-shadow: rgb(20 38 89 / 26%) 0 10px 22px;
   }
   .hero__icon :global(svg) {
+    display: block;
     width: 100%;
     height: 100%;
   }
-  .hero__eyebrow {
-    color: var(--text-body);
-    font-size: 15px;
-    font-weight: 600;
+  /* Phone: dot + "Private beta" over the meta line. Desktop: one glass pill. */
+  .hero__beta {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
     line-height: 20px;
+    color: var(--text-secondary);
   }
-  /* One sentence that says what Hasala is: smaller than the old two-line
-     tagline, so it fits in three lines on a desktop. */
+  .hero__beta-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .hero__dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+  }
+
   .hero__title {
-    max-width: 15em;
-    font-size: clamp(40px, 30.34px + 2.476vw, 66px);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1.08;
-    text-wrap: balance;
+    max-width: 680px;
+  }
+  .hero__accent {
+    display: block;
+    color: var(--slate-accent);
   }
   .hero__lead {
     max-width: 560px;
     padding-top: 20px;
   }
+
   .hero__ctas {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
+    gap: 10px;
     padding-top: 28px;
   }
   .hero__cta {
     --btn-h: 56px;
+    justify-content: center;
+    padding-inline: 0;
     font-size: 17px;
+    line-height: 22px;
   }
-  .hero__free {
-    color: var(--text-secondary);
-    font-size: 15px;
-    line-height: 20px;
-    text-align: center;
+  /* Phones have a plain arrow, no disc. */
+  @media (max-width: 1023px) {
+    .hero__cta :global(.btn__disc),
+    .hero__cta:hover :global(.btn__disc) {
+      width: auto;
+      height: auto;
+      background: none;
+      box-shadow: none;
+      color: inherit;
+    }
+  }
+  .hero__cta.btn--primary {
+    box-shadow: rgb(54 91 235 / 30%) 0 8px 20px;
+  }
+  .hero__cta.btn--glass {
+    background: rgb(255 255 255 / 80%);
+    box-shadow: rgb(0 0 0 / 8%) 0 0 0 0.5px, rgb(20 38 89 / 8%) 0 6px 16px;
   }
 
-  /* Phone stage: full-bleed and cropped on small screens */
+  .hero__trust {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 19px;
+    max-width: 320px;
+    margin-inline: auto;
+    padding: 20px 0 0;
+    list-style: none;
+    color: var(--text-body);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+  .hero__trust li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hero__trust :global(.icon) {
+    display: none;
+  }
+
+  /* Phone stage: 560 high, the phone starts 40 down and bleeds off the right. */
   .hero__stage {
     position: relative;
-    height: 520px;
-    margin: 40px calc(-1 * var(--gutter)) 0;
+    height: 560px;
+    margin: -38px calc(-1 * var(--gutter)) 0;
     overflow: clip;
   }
   .device {
     position: absolute;
-    left: 50%;
-    top: 24px;
+    top: 40px;
+    left: max(40px, calc(50% - 209px));
     width: 418px;
-    margin-left: -209px;
-    padding: 8px;
-    border-radius: 62px;
-    background: #0d0d10;
-    box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
     will-change: transform;
-    scale: 0.86;
-    transform-origin: top center;
-  }
-  .device :global(img) {
-    display: block;
-    width: 402px;
-    height: 884px;
-    border-radius: 54px;
-    background: var(--neutral-100);
   }
   .hero__fade {
     position: absolute;
     inset: auto 0 0;
-    height: 180px;
-    background: linear-gradient(in oklab 180deg, oklab(100% 0 0 / 0%) 0%, oklab(100% 0 0 / 85%) 62%, oklab(100% 0 0) 100%);
-    pointer-events: none;
     z-index: 4;
+    height: 160px;
+    background: linear-gradient(in oklab 180deg, oklab(100% 0 0 / 0%) 0%, oklab(100% 0 0 / 90%) 65%, oklab(100% 0 0) 100%);
+    pointer-events: none;
+  }
+
+  /* "Backed up, locked": -3deg on a phone, 3deg on desktop. */
+  .hero__sealed {
+    position: absolute;
+    z-index: 3;
+    top: 439px;
+    left: max(16px, calc(50% - 233px));
+    gap: 10px;
+    padding: 10px 16px 10px 10px;
+    background: rgb(255 255 255 / 90%);
+    box-shadow: rgb(20 38 89 / 16%) 0 14px 30px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    width: max-content;
+    rotate: -3deg;
+    transform-origin: 0 0;
+  }
+  .hero__sealed-icon {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(in oklab 180deg, var(--hue-mint-start), var(--hue-mint-end));
+    color: var(--hue-mint-ink);
+  }
+  .hero__sealed-icon :global(.icon) {
+    width: 16px;
+    height: 16px;
+  }
+  .hero__sealed-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .hero__sealed-title {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .hero__sealed-sub {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* The bank alert is desktop only, and only where it clears the copy. */
+  .hero__alert {
+    display: none;
   }
 
   @media (min-width: 640px) {
     .hero__ctas {
       flex-direction: row;
       align-items: center;
-      gap: 20px;
     }
-    .hero__free {
-      text-align: left;
+    .hero__cta {
+      padding-inline: 28px 22px;
+    }
+    .hero__cta.btn--glass {
+      padding-inline: 22px 26px;
+    }
+    .hero__trust {
+      justify-content: flex-start;
+      max-width: none;
+      margin-inline: 0;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .hero__icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+    }
+    .hero__badge {
+      gap: 14px;
     }
   }
 
   @media (min-width: 1024px) {
     .hero {
-      min-height: 940px;
+      min-height: 900px;
+      background: var(--wash-hero);
+    }
+    .hero__glow {
+      display: block;
     }
     .hero__inner {
-      min-height: 940px;
-      padding-top: 200px;
+      min-height: 900px;
+      padding-top: 188px;
     }
     .hero__copy {
       width: 600px;
     }
+
     .hero__badge {
       gap: 16px;
-      padding-bottom: 32px;
+      padding-bottom: 36px;
     }
     .hero__icon {
-      width: 72px;
-      height: 72px;
-      border-radius: 16px;
+      width: 84px;
+      height: 84px;
+      border-radius: 19px;
       box-shadow: rgb(20 38 89 / 28%) 0 14px 30px, rgb(20 38 89 / 12%) 0 2px 6px;
     }
-    .hero__eyebrow {
-      font-size: 17px;
-      line-height: 24px;
+    .hero__beta {
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      height: 36px;
+      padding: 0 16px 0 14px;
+      border-radius: var(--r-pill);
+      background: rgb(255 255 255 / 72%);
+      box-shadow: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 4px 12px;
+    }
+    .hero__beta-name {
+      gap: 8px;
     }
     .hero__lead {
-      padding-top: 28px;
-      line-height: 31px;
+      padding-top: 29px;
     }
+
     .hero__ctas {
-      gap: 24px;
+      gap: 12px;
       padding-top: 40px;
     }
     .hero__cta {
       --btn-h: 60px;
       font-size: 18px;
+      line-height: 24px;
+      letter-spacing: -0.015em;
     }
-    .hero__ctas .btn--primary {
-      padding: 0 22px 0 28px;
+    .hero__cta.btn--primary {
+      padding-inline: 28px 22px;
       gap: 12px;
+      box-shadow: rgb(255 255 255 / 25%) 0 1px 0 inset, rgb(54 91 235 / 32%) 0 10px 24px, rgb(54 91 235 / 20%) 0 1px 2px;
     }
-    .hero__free {
-      font-size: 16px;
-      line-height: 22px;
+    .hero__cta.btn--glass {
+      padding-inline: 22px 26px;
+      gap: 10px;
+      background: rgb(255 255 255 / 78%);
+      box-shadow: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(0 0 0 / 8%) 0 0 0 0.5px, rgb(20 38 89 / 8%) 0 6px 16px;
     }
+    .hero__cta:not(:hover) :global(.btn__disc) {
+      background: rgb(255 255 255 / 18%);
+    }
+
+    .hero__trust {
+      flex-wrap: nowrap;
+      gap: 28px;
+      padding-top: 44px;
+      margin: 0;
+      font-size: 15px;
+    }
+    .hero__trust :global(.icon) {
+      display: block;
+      color: var(--text-body);
+    }
+
+    /* Desktop stage: 418 x 900 at the right of the container, cropped by the fade. */
     .hero__stage {
       position: absolute;
       top: 150px;
@@ -245,29 +438,159 @@ import Icon from '../Icon.astro';
       transform-origin: top right;
     }
     .device {
-      left: 0;
       top: 0;
-      margin: 0;
-      scale: none;
+      left: 0;
+    }
+    .hero__fade {
+      height: 180px;
+      background: linear-gradient(in oklab 180deg, oklab(100% 0 0 / 0%) 0%, oklab(100% 0 0 / 85%) 62%, oklab(100% 0 0) 100%);
+    }
+
+    .hero__sealed {
+      top: 560px;
+      left: -40px;
+      gap: 12px;
+      padding: 12px 20px 12px 12px;
+      background: rgb(255 255 255 / 86%);
+      box-shadow: var(--shadow-float);
+      rotate: 3deg;
+    }
+    .hero__sealed-icon {
+      width: 40px;
+      height: 40px;
+    }
+    .hero__sealed-icon :global(.icon) {
+      width: 18px;
+      height: 18px;
+    }
+    .hero__sealed-title {
+      font-size: 15px;
+      line-height: 20px;
+    }
+    .hero__sealed-sub {
+      font-size: 13px;
+      line-height: 18px;
     }
   }
+
   @media (min-width: 1280px) {
+    .hero,
+    .hero__inner {
+      min-height: 1000px;
+    }
     .hero__copy {
-      width: 660px;
+      width: 680px;
     }
     .hero__stage {
       transform: none;
+    }
+    .hero__sealed {
+      top: 570px;
+      left: 284px;
+    }
+    .hero__alert {
+      position: absolute;
+      z-index: 3;
+      top: 434px;
+      left: -154px;
+      width: 336px;
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      rotate: -2deg;
+      transform-origin: 0 0;
+    }
+    .hero__alert-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      line-height: 18px;
+    }
+    .hero__alert-icon {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: var(--neutral-100);
+      color: var(--text-body);
+    }
+    .hero__alert-from {
+      flex: 1;
+      color: var(--text-body);
+      font-weight: 600;
+    }
+    .hero__alert-now {
+      color: var(--text-secondary);
+    }
+    .hero__alert-text {
+      margin: 0;
+      color: var(--neutral-600);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 18px;
+    }
+    .hero__alert-rule {
+      width: 100%;
+      height: 1px;
+      margin: 0;
+      border: 0;
+      background: var(--neutral-200);
+    }
+    .hero__alert-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hero__alert-disc {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(in oklab 180deg, var(--hue-lilac-start), var(--hue-lilac-end));
+      color: var(--hue-lilac-ink);
+    }
+    .hero__alert-merchant {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+    }
+    .hero__alert-name {
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 22px;
+    }
+    .hero__alert-cat {
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 18px;
+    }
+    .hero__alert-amount {
+      flex: none;
+      color: var(--text-primary);
+      font-family: var(--font-figure);
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 22px;
     }
   }
 
   /* Motion moment A: the coin drops into the slot while the headline rises
      (from 150 ms, so the copy is never blank for long) and the phone
-     settles, all done by about 1 s. Pure CSS, so it plays without JS; once
+     settles, all done by about 1 s; the phone's screen (HomePhone) fills
+     in from 250 ms and the floats drift in from 1.3 s. Pure CSS, so it plays without JS; once
      per session (html.hero-seen). The keyframes for the icon are in
      global.css, shared with /i. */
   @media (prefers-reduced-motion: no-preference) {
     :global(html:not(.hero-seen)) .hero__icon :global(.ai-tile),
-    :global(html:not(.hero-seen)) .hero__eyebrow {
+    :global(html:not(.hero-seen)) .hero__beta {
       animation: hero-fade 160ms linear both;
     }
     :global(html:not(.hero-seen)) .hero__icon :global(.ai-slot) {
@@ -283,7 +606,8 @@ import Icon from '../Icon.astro';
     }
     :global(html:not(.hero-seen)) .hero__title,
     :global(html:not(.hero-seen)) .hero__lead,
-    :global(html:not(.hero-seen)) .hero__ctas {
+    :global(html:not(.hero-seen)) .hero__ctas,
+    :global(html:not(.hero-seen)) .hero__trust {
       animation: hero-rise 600ms var(--ease-out-soft) both;
     }
     :global(html:not(.hero-seen)) .hero__title {
@@ -295,10 +619,53 @@ import Icon from '../Icon.astro';
     :global(html:not(.hero-seen)) .hero__ctas {
       animation-delay: 290ms;
     }
+    :global(html:not(.hero-seen)) .hero__trust {
+      animation-delay: 350ms;
+    }
     /* No opacity on the stage: the phone is the largest paint. `translate`
        composes with the stage's scale(.8) and the parallax transform. */
     :global(html:not(.hero-seen)) .hero__stage {
       animation: hero-stage 900ms var(--ease-out-soft) both;
+    }
+    /* The floats drift in once the phone has filled (the bank alert, then
+       its "sorted" row, then the backup pill). `transform` here, `translate`
+       for the idle float, `rotate` for the tilt: three separate properties. */
+    :global(html:not(.hero-seen)) .hero__alert {
+      animation:
+        hero-alert 700ms 1300ms var(--ease-out-soft) both,
+        hero-idle 1.3s 2.4s ease-in-out 2 alternate;
+    }
+    :global(html:not(.hero-seen)) .hero__alert-row {
+      animation: hero-rise 500ms 1850ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .hero__sealed {
+      animation:
+        hero-sealed 700ms 1600ms var(--ease-out-soft) both,
+        hero-idle 1.2s 2.6s ease-in-out 2 alternate;
+    }
+    /* Then one gentle float, up and back, done by 5 s (WCAG 2.2.2). */
+    .hero__alert {
+      animation: hero-idle 1.3s 2.4s ease-in-out 2 alternate;
+    }
+    .hero__sealed {
+      animation: hero-idle 1.2s 2.6s ease-in-out 2 alternate;
+    }
+  }
+  @keyframes hero-alert {
+    from {
+      opacity: 0;
+      transform: translateX(-32px);
+    }
+  }
+  @keyframes hero-sealed {
+    from {
+      opacity: 0;
+      transform: translate(24px, 16px);
+    }
+  }
+  @keyframes hero-idle {
+    to {
+      translate: 0 -6px;
     }
   }
   @keyframes hero-rise {

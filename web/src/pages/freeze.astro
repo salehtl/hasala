@@ -20,7 +20,7 @@ import { API_BASE } from '../lib/env';
 
 <Base
   title="Freeze your account"
-  description="If a sign-in or recovery in our email wasn't you, freeze your Hasala account. Everyone is signed out until you confirm it's you."
+  description="If a sign-in or recovery in our email wasn't you, freeze your Hasala account. Nobody can sign in or change your keys until you sign in again fully."
   path="/freeze"
   noindex
   nav="minimal"
@@ -30,12 +30,14 @@ import { API_BASE } from '../lib/env';
 >
   <section class="freeze" data-freeze data-api={API_BASE} aria-labelledby="freeze-title">
     <div class="freeze__confirm" data-freeze-confirm>
-      <span class="lockdisc" aria-hidden="true"><Icon name="lock-big" size={52} stroke={1.7} /></span>
+      <div class="freeze__id">
+        <span class="lockdisc" aria-hidden="true"><Icon name="lock-big" size={52} stroke={1.8} /></span>
+        <p class="freeze__from">From your Hasala security email</p>
+      </div>
       <div class="freeze__head">
         <h1 id="freeze-title" class="freeze__title">Freeze your account?</h1>
         <p class="freeze__lead">
-          Everyone will be signed out. No one can use your account with a password, reset the password or use the recovery phrase until you confirm it’s you with
-          a passkey, or with your password on one of your iPhones.
+          If a sign-in or recovery in our email wasn’t you, freeze now. Nobody can sign in or change your keys until you sign in again fully.
         </p>
       </div>
 
@@ -44,9 +46,9 @@ import { API_BASE } from '../lib/env';
           <div class="effects__col">
             <h2 class="effects__title effects__title--stops">Stops on every device</h2>
             <ul role="list">
-              <li>Every signed-in session</li>
-              <li>Password sign-in, resets and recovery</li>
-              <li>Passkey, password, email and device changes</li>
+              <li>New sign-ins</li>
+              <li>Passkey, password and email changes</li>
+              <li>Device changes and new 12 words</li>
             </ul>
           </div>
           <div class="effects__col">
@@ -54,11 +56,11 @@ import { API_BASE } from '../lib/env';
             <ul role="list">
               <li>Your budget, still sealed</li>
               <li>Your data. Nothing is deleted</li>
-              <li>Your passkeys and your iPhones</li>
+              <li>Security emails keep coming</li>
             </ul>
           </div>
         </div>
-        <p class="effects__foot">To unfreeze, open Hasala and confirm it’s you with a passkey, or with your password on one of your iPhones.</p>
+        <p class="effects__foot">To unfreeze, open Hasala and sign in with your passkey, or with your password on one of your iPhones.</p>
       </div>
 
       <div class="freeze__actions">
@@ -152,51 +154,62 @@ import { API_BASE } from '../lib/env';
 
 <style>
   :global(.freeze-page) {
-    background: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%);
+    background: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 40%, oklab(98% 0.0008 -0.007) 80%, oklab(100% 0 0) 100%);
   }
   .freeze {
-    padding: 104px var(--gutter) 64px;
+    padding: 104px 20px 40px;
   }
   .freeze__confirm {
     display: flex;
     flex-direction: column;
-    align-items: center;
     max-width: 720px;
     margin: 0 auto;
-    text-align: center;
   }
   .freeze__confirm[hidden] {
     display: none;
   }
+  .freeze__id {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
   .lockdisc {
     display: inline-flex;
+    flex: none;
     align-items: center;
     justify-content: center;
-    width: 96px;
-    height: 96px;
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
     background: linear-gradient(in oklab 160deg, var(--hue-rose-start), var(--hue-rose-end));
-    box-shadow: #fff 0 0 0 8px, rgb(94 31 40 / 14%) 0 18px 40px;
+    box-shadow: #fff 0 0 0 4px;
     color: var(--hue-rose-ink);
+  }
+  .lockdisc :global(svg) {
+    width: 28px;
+    height: 28px;
+  }
+  .freeze__from {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
   }
   .freeze__head {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    padding: 28px 0 32px;
+    gap: 16px;
+    padding: 24px 0 16px;
   }
   .freeze__title {
-    font-size: clamp(38px, 28.71px + 2.381vw, 60px);
+    font-size: 44px;
     font-weight: 700;
     letter-spacing: -0.045em;
-    line-height: calc(1em + 4px);
+    line-height: 46px;
   }
   .freeze__lead {
-    max-width: 600px;
     color: var(--neutral-700);
-    font-size: clamp(17px, 16.26px + 0.19vw, 19px);
-    line-height: 1.55;
+    font-size: 17px;
+    line-height: 26px;
   }
   .effects {
     width: 100%;
@@ -213,7 +226,10 @@ import { API_BASE } from '../lib/env';
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 22px 24px;
+    padding: 18px 20px;
+  }
+  .effects__col:first-child {
+    padding-top: 20px;
   }
   .effects__col + .effects__col {
     border-top: 1px solid var(--border-subtle);
@@ -226,10 +242,10 @@ import { API_BASE } from '../lib/env';
     line-height: 22px;
   }
   .effects__title {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.06em;
-    line-height: 18px;
+    line-height: 16px;
     text-transform: uppercase;
   }
   .effects__title--stops {
@@ -239,21 +255,27 @@ import { API_BASE } from '../lib/env';
     color: var(--success);
   }
   .effects__foot {
-    padding: 16px 24px;
+    padding: 16px 20px 18px;
     border-top: 1px solid var(--border-subtle);
     color: var(--text-secondary);
-    font-size: 15px;
+    font-size: 14px;
     line-height: 20px;
   }
   .freeze__actions {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
-    padding-top: 32px;
+    padding-top: 28px;
   }
   .freeze__actions .btn {
     width: 100%;
+    height: 52px;
+    font-size: 16px;
+  }
+  .freeze__actions .btn--danger {
+    height: 58px;
+    font-size: 17px;
   }
   .freeze__actions .btn[hidden] {
     display: none;
@@ -274,46 +296,104 @@ import { API_BASE } from '../lib/env';
   .freeze__safety {
     display: flex;
     align-items: flex-start;
+    justify-content: center;
     gap: 10px;
-    padding-top: 28px;
+    padding-top: 24px;
     color: var(--text-secondary);
-    font-size: 14px;
-    line-height: 20px;
-    text-align: left;
+    font-size: 13px;
+    line-height: 19px;
+    text-align: center;
   }
   .freeze__safety :global(.icon) {
-    flex: none;
-    color: var(--neutral-600);
+    display: none;
   }
   @media (min-width: 768px) {
     .freeze {
-      padding-top: 156px;
+      padding: 172px var(--gutter) 96px;
+    }
+    .freeze__confirm {
+      align-items: center;
+      text-align: center;
+    }
+    .freeze__id {
+      flex-direction: column;
+      gap: 0;
+    }
+    .lockdisc {
+      width: 96px;
+      height: 96px;
+      box-shadow: #fff 0 0 0 8px, rgb(94 31 40 / 14%) 0 18px 40px;
+    }
+    .lockdisc :global(svg) {
+      width: 52px;
+      height: 52px;
+    }
+    .freeze__from {
+      padding-top: 28px;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 20px;
+    }
+    .freeze__head {
+      align-items: center;
+      padding: 16px 0 32px;
+    }
+    .freeze__title {
+      font-size: clamp(44px, 38.06px + 1.524vw, 60px);
+      line-height: calc(1em + 4px);
+    }
+    .freeze__lead {
+      max-width: 600px;
+      font-size: clamp(17px, 16.26px + 0.19vw, 19px);
+      line-height: 1.53;
     }
     .effects__cols {
       flex-direction: row;
     }
-    .effects__col {
+    .effects__col,
+    .effects__col:first-child {
       flex: 1;
+      gap: 10px;
       padding: 24px 28px;
     }
     .effects__col + .effects__col {
       border-top: 0;
       border-left: 1px solid var(--border-subtle);
     }
+    .effects__col ul {
+      gap: 10px;
+    }
+    .effects__title {
+      font-size: 13px;
+      line-height: 18px;
+    }
     .effects__foot {
       padding: 16px 28px;
+      font-size: 15px;
     }
     .freeze__actions {
       flex-direction: row;
       justify-content: center;
+      gap: 12px;
       width: auto;
+      padding-top: 32px;
     }
-    .freeze__actions .btn {
+    .freeze__actions .btn,
+    .freeze__actions .btn--danger {
       width: auto;
+      height: 56px;
+      font-size: 17px;
     }
     .freeze__safety {
       align-items: center;
+      padding-top: 28px;
       font-size: 15px;
+      line-height: 20px;
+    }
+    .freeze__safety :global(.icon) {
+      display: inline-block;
+      flex: none;
+      color: var(--neutral-600);
     }
   }
 </style>

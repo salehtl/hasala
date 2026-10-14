@@ -1,47 +1,159 @@
 ---
 /**
- * The banks Hasala reads today. Other banks are asked for in the invite form
- * below ("Another bank", then its name).
+ * 08 Banks (Paper B2N-0 / BSY-0). The banks Hasala reads today, plus a
+ * card for everyone else that leads to the invite form, where "Another bank"
+ * takes the bank's name.
  */
 import BankTiles from '../BankTiles.astro';
 ---
 
-<section id="banks" class="banks" aria-labelledby="banks-title">
-  <div class="container banks__inner">
-    <h2 id="banks-title" class="display-l" data-reveal>Banks that work today</h2>
-    <BankTiles />
-    <p class="banks__other" data-reveal>
-      Use a different bank? <a class="link" href="#invite">Choose “Another bank” in the form below.</a>
-    </p>
+<section id="banks" class="section banks" aria-labelledby="banks-title">
+  <div class="container section__stack">
+    <div class="section-head" data-reveal>
+      <div class="section-head__title">
+        <p class="overline">Banks</p>
+        <h2 id="banks-title" class="display-panel">Works with the emails your bank already sends.</h2>
+      </div>
+      <div class="section-head__intro">
+        <p class="section-lead">
+          Two UAE banks for now, with more coming. Turn on email alerts in your banking app and you're ready.
+        </p>
+      </div>
+    </div>
+    <BankTiles home>
+      <div class="more">
+        <div class="more__text">
+          <h3>Bank with someone else?</h3>
+          <p>Tell us which one. We add the most requested banks first.</p>
+        </div>
+        <a class="more__row" href="#invite">
+          <span class="more__field" aria-hidden="true">
+            Choose your bank
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 4.5 3.5 3.5 3.5-3.5"></path></svg>
+          </span>
+          <span class="more__go">Tell us</span>
+        </a>
+      </div>
+    </BankTiles>
   </div>
 </section>
 
 <style>
   .banks {
-    padding: 88px 0 64px;
-    background: var(--white);
+    --section-pt: 88px;
+    --section-pb: 64px;
   }
-  .banks__inner {
-    display: flex;
-    flex-direction: column;
+  .banks :global(.section__stack) {
     gap: 24px;
   }
-  .banks__other {
-    max-width: 640px;
-    color: var(--text-body);
+  .banks .section-head {
+    gap: 12px 48px;
+  }
+  .banks .section-head__title {
+    max-width: 700px;
+  }
+  /* Paper's phone Banks section has only the eyebrow and heading */
+  .banks .section-head__intro {
+    display: none;
+  }
+  @media (min-width: 768px) {
+    .banks .section-head__intro {
+      display: block;
+    }
+  }
+  @media (min-width: 1024px) {
+    .banks .section-head__intro {
+      flex-shrink: 0;
+      width: 360px;
+    }
+  }
+  .more {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .more__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .more__text h3 {
+    color: var(--text-primary);
     font-size: 17px;
-    line-height: 26px;
+    font-weight: 700;
+    line-height: 22px;
+  }
+  .more__text p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .more__row {
+    display: flex;
+    gap: 8px;
+    border-radius: var(--r-field);
+  }
+  .more__field {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+    padding-inline: 14px;
+    border-radius: var(--r-field);
+    background: var(--neutral-100);
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .more__go {
+    display: flex;
+    align-items: center;
+    height: 48px;
+    padding-inline: 16px;
+    border-radius: var(--r-pill);
+    background: var(--accent-subtle);
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    transition:
+      background-color var(--t-hover-out) var(--ease-out-soft);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .more__row:hover .more__go {
+      background: var(--blue-100);
+      transition-duration: var(--t-hover-in);
+    }
+  }
+  @media (min-width: 768px) {
+    .more__text h3 {
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      line-height: 28px;
+    }
+    .more__text p {
+      font-size: 15px;
+      line-height: 22px;
+    }
+    .more {
+      gap: 20px;
+    }
+    .more__field {
+      padding-left: 16px;
+      padding-right: 14px;
+    }
+    .more__go {
+      padding-inline: 18px;
+    }
   }
   @media (min-width: 1024px) {
     .banks {
-      padding: 120px 0 112px;
+      --section-pt: 140px;
+      --section-pb: 112px;
     }
-    .banks__inner {
-      gap: 40px;
-    }
-    .banks__other {
-      font-size: 18px;
-      line-height: 28px;
+    .banks :global(.section__stack) {
+      gap: 48px;
     }
   }
 </style>

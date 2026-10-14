@@ -1,21 +1,34 @@
 ---
+/**
+ * 10 Beta · Request an invite (Paper B58-0 desktop, BUS-0 phone). The pace-blue
+ * panel: copy on the left (beta chip, H2, subline, three requirements), the
+ * coin over its slot and the form card on the right. On phones the copy is
+ * shorter (no "so we can fix problems quickly", no requirements list) and the
+ * form follows in one column. The form's states live in WaitlistForm.astro.
+ */
 import WaitlistForm from '../WaitlistForm.astro';
-import { SITE } from '../../data/site';
+import Icon from '../Icon.astro';
 ---
 
 <section id="invite" class="beta" aria-labelledby="beta-title">
-  <div class="container-wide beta__panel">
-    <div class="beta__glow" aria-hidden="true"></div>
-    <div class="beta__copy" data-reveal>
-      <h2 id="beta-title" class="beta__title">Request an invite</h2>
-      <p class="beta__lead">
-        Hasala is in an invite-only beta. When there’s room, we’ll email you an invite to install it through TestFlight, Apple’s app for trying new apps.
-      </p>
-      <p class="beta__needs">{SITE.requirements}</p>
-    </div>
-    <div class="beta__form" data-reveal>
-      <WaitlistForm />
-      <a class="beta__code" href="/i">Have an invite code?</a>
+  <div class="container-wide">
+    <div class="panel panel--pace beta__panel">
+      <div class="beta__glow section__glow" aria-hidden="true"></div>
+      <div class="beta__copy" data-reveal>
+        <p class="chip chip--glass beta__chip"><span class="beta__dot" aria-hidden="true"></span>Private beta on TestFlight</p>
+        <h2 id="beta-title" class="display-beta">Get an invite.</h2>
+        <p class="beta__lead">
+          We’re letting people in a few at a time<span class="beta__more">, so we can fix problems quickly</span>. Leave your email and bank, and we’ll send you an invite when there’s a spot.
+        </p>
+        <ul class="beta__needs">
+          <li><Icon name="check" size={16} stroke={1.9} />iPhone with iOS 26 or later</li>
+          <li><Icon name="check" size={16} stroke={1.9} />A Gmail account that gets your bank’s emails</li>
+          <li><Icon name="check" size={16} stroke={1.9} />English only for now. Expect a few bugs</li>
+        </ul>
+      </div>
+      <div class="beta__form" data-reveal>
+        <WaitlistForm />
+      </div>
     </div>
   </div>
 </section>
@@ -26,74 +39,81 @@ import { SITE } from '../../data/site';
     background: var(--white);
   }
   .beta__panel {
-    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 28px;
-    padding: 48px 12px 12px;
-    border-radius: 36px;
-    /* Until the copy sits beside the form (1024px), it sits on the top of
-       the panel: the gradient starts at --wash-pace's 45% stop and the glow
-       sits higher, so the white text keeps 4.5:1. */
-    background: linear-gradient(in oklab 160deg, oklab(55.6% -0.01 -0.217) 0%, oklab(48% -0.01 -0.211) 100%);
-    color: var(--white);
-    overflow: clip;
+    align-items: center;
+    /* Paper BUS-0: 48 top, 12 sides, 12 bottom on phones. */
+    padding-bottom: 12px;
   }
+  /* Glow behind the coin (desktop only; the phone panel has none). */
   .beta__glow {
-    position: absolute;
-    left: 40%;
-    top: -320px;
+    display: none;
+    right: -104px;
+    top: -200px;
     width: 640px;
     height: 560px;
-    border-radius: 50%;
     background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(90.3% 0.003 0.096 / 35%) 0%, oklab(90.3% 0.003 0.096 / 0%) 65%);
-    pointer-events: none;
   }
   .beta__copy {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 0 12px;
+    gap: 14px;
+    width: 100%;
+    max-width: 560px;
+    padding: 0 12px 28px;
   }
-  .beta__title {
-    font-size: clamp(40px, 29.47px + 2.698vw, 68px);
-    font-weight: 700;
-    letter-spacing: -0.045em;
-    line-height: 1.03;
+  .beta__chip {
+    align-self: flex-start;
+    min-height: 0;
+    padding: 6px 12px 6px 10px;
+    background: rgb(255 255 255 / 16%);
+    box-shadow: none;
+    color: var(--white);
+    font-size: 13px;
+  }
+  .beta__dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--gold-100);
   }
   .beta__lead {
-    color: var(--white);
-    font-size: clamp(17px, 16.26px + 0.19vw, 19px);
-    line-height: 1.55;
+    color: rgb(255 255 255 / 88%);
+    font-size: 16px;
+    line-height: 25px;
+  }
+  .beta__more,
+  .beta__needs {
+    display: none;
   }
   .beta__needs {
-    color: var(--white);
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 12px 0 0;
+    list-style: none;
+  }
+  .beta__needs li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgb(255 255 255 / 92%);
     font-size: 16px;
-    line-height: 24px;
+    line-height: 22px;
+  }
+  .beta__needs :global(.icon) {
+    flex: none;
+    color: var(--gold-100);
   }
   .beta__form {
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
-    padding-bottom: 12px;
-  }
-  .beta__code {
-    color: var(--white);
-    font-size: 16px;
-    font-weight: 600;
-    line-height: 22px;
-    text-decoration: underline;
-    text-decoration-color: rgb(255 255 255 / 40%);
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 4px;
-    transition: text-decoration-color var(--t-hover-out);
-  }
-  .beta__code:hover {
-    text-decoration-color: currentColor;
-    transition-duration: var(--t-hover-in);
+    width: 100%;
+    max-width: 520px;
   }
   .beta :global(:focus-visible) {
     outline-color: var(--white);
@@ -103,16 +123,28 @@ import { SITE } from '../../data/site';
   }
 
   @media (min-width: 768px) {
-    .beta__panel {
-      padding: 64px 48px 48px;
-      border-radius: var(--r-panel);
+    .beta__chip {
+      padding-right: 14px;
+      font-size: 14px;
+    }
+    .beta__dot {
+      width: 8px;
+      height: 8px;
     }
     .beta__copy {
-      padding: 0;
+      gap: 20px;
+      padding: 0 0 40px;
     }
-    .beta__form {
-      width: min(520px, 100%);
-      align-self: center;
+    .beta__lead {
+      font-size: 19px;
+      line-height: 30px;
+    }
+    .beta__more,
+    .beta__needs {
+      display: inline;
+    }
+    .beta__needs {
+      display: flex;
     }
   }
   @media (min-width: 1024px) {
@@ -120,26 +152,23 @@ import { SITE } from '../../data/site';
       padding-bottom: 72px;
     }
     .beta__glow {
-      top: -200px;
+      display: block;
     }
     .beta__panel {
-      flex-direction: row;
-      background: var(--wash-pace);
+      --pad-panel-x: clamp(40px, 5vw, 72px);
+      padding-bottom: var(--pad-panel-y);
+      display: grid;
+      grid-template-columns: minmax(0, 520px) minmax(0, 520px);
       align-items: center;
       justify-content: space-between;
       gap: 64px;
-      padding: 96px clamp(40px, 5vw, 72px);
     }
     .beta__copy {
-      flex: 0 1 520px;
-      gap: 20px;
-    }
-    .beta__lead {
-      line-height: 30px;
+      max-width: none;
+      padding: 0;
     }
     .beta__form {
-      flex: 0 0 auto;
-      width: min(520px, 44vw);
+      max-width: none;
     }
   }
 

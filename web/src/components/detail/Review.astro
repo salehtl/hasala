@@ -1,5 +1,18 @@
 ---
+/**
+ * The review deck (Paper AQJ-0 / BM7-0 on the landing, the same deck on
+ * /how-it-works). One live deck, used twice: `<Review stage />` renders only
+ * the stage (the landing's "Sort a week in a minute" section brings its own
+ * words and legend), `<Review />` renders the whole /how-it-works section.
+ * Behaviour is in scripts/review.ts.
+ */
 import Icon from '../Icon.astro';
+
+interface Props {
+  /** Render only the interactive stage, for a section that has its own copy. */
+  stage?: boolean;
+}
+const { stage = false } = Astro.props;
 
 const CARDS = [
   {
@@ -9,7 +22,8 @@ const CARDS = [
     amount: '214.30',
     meta: 'Spent · Fri 9 Oct, 18:42 · DIB card ···8891',
     guess: 'Groceries',
-    icon: 'basket24' as const,
+    icon: 'basket24',
+    hue: 'sand',
     to: 'need',
     isNew: true,
   },
@@ -20,130 +34,184 @@ const CARDS = [
     amount: '64.50',
     meta: 'Spent · Fri 9 Oct, 21:05 · ENBD card ···4421',
     guess: 'Dining',
-    icon: 'fork' as const,
+    icon: 'fork',
+    hue: 'lilac',
     to: 'want',
     isNew: false,
   },
   {
     initial: 'E',
-    merchant: 'Emirates NBD Savings',
-    raw: 'TRANSFER TO A/C ···2210',
+    merchant: 'ENOC',
+    raw: 'ENOC 1043 AL BARSHA DXB',
+    amount: '120.00',
+    meta: 'Spent · Sat 10 Oct, 08:20 · DIB card ···8891',
+    guess: 'Fuel',
+    icon: 'bolt',
+    hue: 'sky',
+    to: 'need',
+    isNew: true,
+  },
+  {
+    initial: 'S',
+    merchant: 'Salary to savings',
+    raw: 'IPP TRANSFER TO A/C ···2210',
     amount: '1,500.00',
     meta: 'Moved · Sat 10 Oct, 09:12 · ENBD ···2210',
     guess: 'Emergency fund',
-    icon: 'home' as const,
+    icon: 'home',
+    hue: 'mint',
     to: 'save',
     isNew: false,
   },
   {
-    initial: 'C',
-    merchant: 'Careem',
-    raw: 'CAREEM RIDE DUBAI',
-    amount: '38.00',
-    meta: 'Spent · Sat 10 Oct, 23:40 · DIB card ···8891',
-    guess: 'Transport',
-    icon: 'arrow-right' as const,
-    to: 'need',
+    initial: 'N',
+    merchant: 'Noon',
+    raw: 'NOON.COM DUBAI',
+    amount: '89.00',
+    meta: 'Spent · Sat 10 Oct, 22:15 · ENBD card ···4421',
+    guess: 'Shopping',
+    icon: 'tag',
+    hue: 'lilac',
+    to: 'want',
     isNew: true,
   },
-];
+] as const;
+// The first card is "2 of 6", as in the app: one was already sorted.
+const TOTAL = CARDS.length + 1;
 ---
 
-<section id="review" class="review" aria-labelledby="review-title">
-  <div class="container review__inner">
-    <div class="review__stage" data-review data-reveal>
+{
+  stage ? (
+    <div class="review__stage" data-review data-total={TOTAL} data-reveal>
       <div class="review__phone">
         <div class="review__screen">
           <div class="review__status" aria-hidden="true">
             <span class="review__time">9:41</span>
-            <span class="review__island"></span>
-            <svg width="78" height="13" viewBox="0 0 78 13" class="review__sysicons"
-              ><path
+            <span class="review__island" />
+            <svg width="78" height="13" viewBox="0 0 78 13" class="review__sysicons">
+              <path
                 fill="currentColor"
                 d="M2 8h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Zm5-2h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm5-3h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm5-2h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1Z"
-              ></path><path
+              />
+              <path
                 fill="currentColor"
                 d="M33 3.3c2.4 0 4.6.9 6.3 2.4l1.3-1.3a10.7 10.7 0 0 0-15.2 0l1.3 1.3A9 9 0 0 1 33 3.3Zm0 3.8c1.3 0 2.5.5 3.4 1.3l1.3-1.3a6.7 6.7 0 0 0-9.4 0l1.3 1.3c.9-.8 2.1-1.3 3.4-1.3Zm0 3.7 2-2a2.9 2.9 0 0 0-4 0l2 2Z"
-              ></path><rect x="49.5" y="1.5" width="24" height="11" rx="3.5" fill="none" stroke="currentColor" opacity="0.35"></rect><rect
-                x="51.5"
-                y="3.5"
-                width="20"
-                height="7"
-                rx="2"
-                fill="currentColor"></rect><path d="M75.5 5.5v3.5a1.9 1.9 0 0 0 0-3.5Z" fill="currentColor" opacity="0.4"></path></svg
-            >
+              />
+              <rect x="49.5" y="1.5" width="24" height="11" rx="3.5" fill="none" stroke="currentColor" opacity="0.35" />
+              <rect x="51.5" y="3.5" width="20" height="7" rx="2" fill="currentColor" />
+              <path d="M75.5 5.5v3.5a1.9 1.9 0 0 0 0-3.5Z" fill="currentColor" opacity="0.4" />
+            </svg>
           </div>
           <div class="review__bar" aria-hidden="true">
-            <span class="glass-btn"><Icon name="close" size={22} stroke={2.3} /></span>
-            <span class="review__heading"><b>Review</b><span><span data-review-count>2</span> of 6</span></span>
-            <span class="glass-btn"
-              ><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.9" fill="currentColor"></circle><circle
-                  cx="12"
-                  cy="12"
-                  r="1.9"
-                  fill="currentColor"></circle><circle cx="18.5" cy="12" r="1.9" fill="currentColor"></circle></svg
-              ></span
-            >
+            <span class="glass-btn">
+              <Icon name="close" size={22} stroke={2.3} />
+            </span>
+            <span class="review__heading">
+              <b>Review</b>
+              <span>
+                <span data-review-count>2</span> of {TOTAL}
+              </span>
+            </span>
+            <span class="glass-btn">
+              <svg width="22" height="22" viewBox="0 0 24 24">
+                <circle cx="5.5" cy="12" r="1.9" fill="currentColor" />
+                <circle cx="12" cy="12" r="1.9" fill="currentColor" />
+                <circle cx="18.5" cy="12" r="1.9" fill="currentColor" />
+              </svg>
+            </span>
           </div>
-          <div class="review__progress" aria-hidden="true"><span data-review-progress></span></div>
+          <div class="review__progress" aria-hidden="true">
+            <span data-review-progress />
+          </div>
 
-          <div class="deck" role="group" aria-roledescription="demo" aria-label="Example: sorting new transactions by swiping">
-            <span class="deck__ghost" aria-hidden="true"></span>
-            {
-              CARDS.map((c, i) => (
-                <article class="rcard" data-card={i} data-to={c.to} aria-hidden={i === 0 ? undefined : 'true'}>
-                  <span class="rcard__tint rcard__tint--need" />
-                  <span class="rcard__tint rcard__tint--want" />
-                  <span class="rcard__tint rcard__tint--save" />
-                  <span class="rcard__tint rcard__tint--transfer" />
-                  <div class="rcard__body">
-                    <div class="rcard__top">
-                      <span class="rcard__avatar">{c.initial}</span>
-                      {c.isNew && (
-                        <span class="rcard__new">
-                          <span class="dot" />
-                          New merchant
-                        </span>
-                      )}
-                    </div>
-                    <p class="rcard__merchant">{c.merchant}</p>
-                    <span class="rcard__raw">{c.raw}</span>
-                    <p class="rcard__amount">
-                      <span class="rcard__unit">AED</span>
-                      <span class="figure">{c.amount}</span>
-                    </p>
-                    <p class="rcard__meta">{c.meta}</p>
-                  </div>
-                  <div class="rcard__guess">
-                    <span class="disc disc--sand disc--32">
-                      <Icon name={c.icon} size={16} stroke={2} />
+          <div
+            class="deck"
+            role="group"
+            tabindex="0"
+            aria-roledescription="demo"
+            aria-label="Example: sorting new transactions. Use the arrow keys or the buttons to sort the top card."
+            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+          >
+            <span class="deck__ghost" aria-hidden="true" />
+            {CARDS.map((c, i) => (
+              <article class="rcard" data-card={i} data-to={c.to} aria-hidden={i === 0 ? undefined : 'true'}>
+                <span class="rcard__tint rcard__tint--need" />
+                <span class="rcard__tint rcard__tint--want" />
+                <span class="rcard__tint rcard__tint--save" />
+                <span class="rcard__tint rcard__tint--transfer" />
+                <div class="rcard__body">
+                  <div class="rcard__top">
+                    <span class="rcard__avatar" aria-hidden="true">
+                      {c.initial}
                     </span>
-                    <span class="rcard__guess-text">Looks like {c.guess}</span>
-                    <span class="rcard__use">Use</span>
+                    {c.isNew && (
+                      <span class="rcard__new">
+                        <span class="dot" />
+                        New merchant
+                      </span>
+                    )}
                   </div>
-                </article>
-              ))
-            }
+                  <p class="rcard__merchant">{c.merchant}</p>
+                  <span class="rcard__raw">{c.raw}</span>
+                  <p class="rcard__amount">
+                    <span class="rcard__unit">AED</span>
+                    <span class="figure">{c.amount}</span>
+                  </p>
+                  <p class="rcard__meta">{c.meta}</p>
+                </div>
+                <div class="rcard__guess">
+                  <span class={`disc disc--${c.hue} disc--32`}>
+                    <Icon name={c.icon} size={16} stroke={2} />
+                  </span>
+                  <span class="rcard__guess-text">Looks like {c.guess}</span>
+                  <span class="rcard__use" data-use>
+                    Use
+                  </span>
+                </div>
+              </article>
+            ))}
+            <div class="deck__done" data-review-done hidden>
+              <span class="disc disc--mint disc--40">
+                <Icon name="check" size={20} stroke={2.2} />
+              </span>
+              <p class="deck__done-title">All caught up</p>
+              <p class="deck__done-text">Nothing left to review.</p>
+              <button type="button" class="deck__again" data-review-restart>
+                <Icon name="repeat" size={16} stroke={1.9} />
+                Start again
+              </button>
+            </div>
           </div>
 
           <button class="rpill rpill--want" type="button" data-sort="want" aria-label="Sort as Want">
-            <Icon name="arrow-left" size={18} stroke={2.2} /><span class="rpill__swatch"></span>Want
+            <Icon name="arrow-left" size={18} stroke={2.2} />
+            <span class="rpill__swatch" />
+            Want
           </button>
           <button class="rpill rpill--need" type="button" data-sort="need" aria-label="Sort as Need">
-            <span class="rpill__swatch"></span>Need<Icon name="arrow-right" size={18} stroke={2.4} />
+            <span class="rpill__swatch" />
+            Need
+            <Icon name="arrow-right" size={18} stroke={2.4} />
           </button>
           <button class="rpill rpill--transfer" type="button" data-sort="transfer" aria-label="Sort as Transfer">
-            <Icon name="arrow-up" size={18} stroke={2.2} /><span class="rpill__swatch"></span>Transfer
+            <Icon name="arrow-up" size={18} stroke={2.2} />
+            <span class="rpill__swatch" />
+            Transfer
           </button>
           <button class="rpill rpill--save" type="button" data-sort="save" aria-label="Sort as Save">
-            <Icon name="arrow-down" size={18} stroke={2.2} /><span class="rpill__swatch"></span>Save
+            <Icon name="arrow-down" size={18} stroke={2.2} />
+            <span class="rpill__swatch" />
+            Save
           </button>
 
           <p class="toast">
-            <span class="toast__dot"></span><span data-toast-text>Sorted as Need</span>
-            <button type="button" class="toast__undo" data-undo>Undo</button>
+            <span class="toast__dot" />
+            <span data-toast-text>Sorted as Need</span>
+            <button type="button" class="toast__undo" data-undo>
+              Undo
+            </button>
           </p>
-          <p class="sr-only" role="status" data-review-live></p>
+          <p class="sr-only" role="status" data-review-live />
 
           <div class="review__links" aria-hidden="true">
             <span>Skip for now</span>
@@ -151,33 +219,76 @@ const CARDS = [
         </div>
       </div>
     </div>
+  ) : (
+    <section id="review" class="review" aria-labelledby="review-title">
+      <div class="container review__inner">
+        <Astro.self stage />
 
-    <div class="review__copy" data-reveal>
-      <div class="review__head">
-        <h2 id="review-title" class="display-panel">Reviewing new transactions</h2>
-        <p class="body-l">
-          Transactions Hasala can’t sort on its own wait in a short deck. Tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick the
-          category. Hasala remembers the merchant, so it won’t ask again.
-        </p>
+        <div class="review__copy" data-reveal>
+          <div class="review__head">
+            <h2 id="review-title" class="display-panel">
+              Reviewing new transactions
+            </h2>
+            <p class="body-l">
+              Transactions Hasala can’t sort on its own wait in a short deck. Tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick
+              the category. Hasala remembers the merchant, so it won’t ask again.
+            </p>
+          </div>
+          <ul class="dirs" role="list" aria-label="Sort the top card">
+            <li>
+              <button type="button" class="dir dir--want" data-sort="want">
+                <span class="dir__icon">
+                  <Icon name="arrow-left" size={16} stroke={1.9} />
+                </span>
+                <span>
+                  <b>Want</b>
+                  <small>Swipe left</small>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="dir dir--need" data-sort="need">
+                <span class="dir__icon">
+                  <Icon name="arrow-right" size={16} stroke={1.9} />
+                </span>
+                <span>
+                  <b>Need</b>
+                  <small>Swipe right</small>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="dir dir--save" data-sort="save">
+                <span class="dir__icon">
+                  <Icon name="arrow-down" size={16} stroke={1.9} />
+                </span>
+                <span>
+                  <b>Save</b>
+                  <small>Swipe down</small>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button type="button" class="dir dir--transfer" data-sort="transfer">
+                <span class="dir__icon">
+                  <Icon name="arrow-up" size={16} stroke={1.9} />
+                </span>
+                <span>
+                  <b>Transfer</b>
+                  <small>Swipe up</small>
+                </span>
+              </button>
+            </li>
+          </ul>
+          <p class="review__undo">
+            <Icon name="undo" size={16} stroke={1.6} />
+            Tap Undo to put one back.
+          </p>
+        </div>
       </div>
-      <ul class="dirs" role="list">
-        <li class="dir dir--want">
-          <span class="dir__icon"><Icon name="arrow-left" size={16} stroke={1.9} /></span><span><b>Want</b><small>Swipe left</small></span>
-        </li>
-        <li class="dir dir--need">
-          <span class="dir__icon"><Icon name="arrow-right" size={16} stroke={1.9} /></span><span><b>Need</b><small>Swipe right</small></span>
-        </li>
-        <li class="dir dir--save">
-          <span class="dir__icon"><Icon name="arrow-down" size={16} stroke={1.9} /></span><span><b>Save</b><small>Swipe down</small></span>
-        </li>
-        <li class="dir dir--transfer">
-          <span class="dir__icon"><Icon name="arrow-up" size={16} stroke={1.9} /></span><span><b>Transfer</b><small>Swipe up</small></span>
-        </li>
-      </ul>
-      <p class="review__undo"><Icon name="undo" size={16} stroke={1.6} />Tap Undo to put one back.</p>
-    </div>
-  </div>
-</section>
+    </section>
+  )
+}
 
 <script>
   import { initReview } from '../../scripts/review';
@@ -213,16 +324,26 @@ const CARDS = [
     flex-wrap: wrap;
     gap: 8px;
   }
+  .dirs li {
+    display: flex;
+  }
+  /* The legend chips are buttons too: tap one to sort the top card. */
   .dir {
     position: relative;
     display: flex;
+    flex: 1;
     align-items: center;
     gap: 8px;
     padding: 6px 14px 6px 6px;
+    border: 0;
     border-radius: var(--r-pill);
     font-size: 16px;
     line-height: 22px;
+    text-align: start;
     transition: transform 160ms var(--ease-out-soft);
+  }
+  .dir:active {
+    transform: scale(0.97);
   }
   /* The legend answers the swipe: the chosen direction swells and rings. */
   .dir::after {
@@ -321,6 +442,68 @@ const CARDS = [
     border-radius: 28px;
     background: var(--white);
     box-shadow: rgb(0 0 0 / 1%) 0 1px 2px, rgb(0 0 0 / 4%) 0 6px 16px;
+    transition: opacity 240ms var(--ease-out-soft);
+  }
+  /* The third card's edge only shows while three or more are left. */
+  .deck:is([data-left='0'], [data-left='1'], [data-left='2']) .deck__ghost {
+    opacity: 0;
+  }
+  .deck:focus-visible {
+    outline-offset: 6px;
+    border-radius: 30px;
+  }
+  .deck__done:not([hidden]) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 24px;
+    border-radius: 28px;
+    background: rgb(255 255 255 / 72%);
+    box-shadow: var(--border-subtle) 0 0 0 1px inset;
+    text-align: center;
+  }
+  .deck__done .disc {
+    margin-bottom: 8px;
+  }
+  .deck__done-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.35px;
+    line-height: 28px;
+  }
+  .deck__done-text {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .deck__again {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    margin-top: 16px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 22px;
+    background: var(--accent);
+    color: var(--white);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .deck__again:active {
+    transform: scale(0.97);
+  }
+  /* Nothing left to sort: the direction pills step aside. */
+  .review__stage[data-done] .rpill {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .rcard__use {
+    cursor: pointer;
   }
   .rcard {
     position: absolute;

@@ -39,10 +39,14 @@ const named = (name: string) => (byEmail ? undefined : name);
     class="wl-card wl-form"
     action={byEmail ? '/joined' : `${API_BASE}/v1/waitlist`}
     method={byEmail ? 'get' : 'post'}
-    aria-label="Request an invite"
+    aria-labelledby="wl-title"
     data-waitlist-form
     data-astro-reload
   >
+    <div class="wl-head">
+      <h3 class="wl-title" id="wl-title">Request an invite</h3>
+      <p class="wl-sub">Takes about ten seconds.</p>
+    </div>
     <div class="field" data-field="email">
       <label for="wl-email">Email</label>
       <input
@@ -105,8 +109,8 @@ const named = (name: string) => (byEmail ? undefined : name);
     <p class="wl-status" role="status" aria-live="polite"></p>
 
     <p class="wl-fine">
-      {byEmail ? 'This opens an email to us in your mail app. Send it, and you’re on the list.' : 'We’ll email you a link to confirm.'}
-      <a class="link" href="/privacy">Privacy Policy</a>
+      {byEmail ? 'This opens an email to us in your mail app. Send it, and you’re on the list.' : 'We’ll only email you about the beta.'}
+      <a class="link" href="/privacy">Privacy Policy</a>.
     </p>
   </form>
 
@@ -136,8 +140,10 @@ const named = (name: string) => (byEmail ? undefined : name);
     ) : (
       <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
         <div class="wl-head">
-          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Request sent.</h3>
-          <p class="wl-done__text">Thanks! We’ll email your invite when it’s ready. Invites go out in small batches.</p>
+          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">You’re on the list.</h3>
+          <p class="wl-done__text">
+            We’ve sent a confirmation to <span data-done-email></span> and will email again when your TestFlight invite is ready. Invites go out in small batches, usually within a few weeks.
+          </p>
         </div>
         <dl class="wl-summary">
           <div><dt>Email</dt><dd data-done-email></dd></div>
@@ -145,11 +151,12 @@ const named = (name: string) => (byEmail ? undefined : name);
         </dl>
         <p class="wl-from">
           <Icon name="mail" size={16} stroke={1.6} />
-          <span>Our emails come from no‑reply@hasala.app. Tap <b>Confirm my email</b> in the first one, so we can send your invite.</span>
+          <span>Our emails come from {SITE.mailFrom}. Add it to your contacts so the invite doesn’t land in spam.</span>
         </p>
         <button class="btn btn--subtle wl-copy" type="button" data-copy={`${SITE.url}/#invite`} data-copied="Link copied">
           <Icon name="link" size={16} stroke={1.6} /><span>Copy link for a friend</span>
         </button>
+        <p class="wl-fine">Changed your mind? Use the link in our email to leave the list.</p>
       </section>
     )
   }
@@ -162,27 +169,33 @@ const named = (name: string) => (byEmail ? undefined : name);
 
 <style>
   .waitlist {
+    --coin-w: 190px;
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 100%;
   }
+  /* The coin's viewBox has headroom above the slot for the lift (108 of 616
+     units); Paper's crop (250x150, 190x114) has none, so pull the layout
+     up by that headroom. The slot sits 4px above the card. */
   .waitlist :global(.wl-coin) {
-    width: 170px;
+    width: var(--coin-w);
     height: auto;
-    margin-bottom: -6px;
+    margin-top: calc(var(--coin-w) * -0.1753);
+    margin-bottom: 0;
     overflow: visible;
+    pointer-events: none;
   }
   .wl-card {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
     width: 100%;
-    padding: 24px 22px 22px;
-    border-radius: 28px;
+    padding: 22px;
+    border-radius: 26px;
     background: var(--white);
     color: var(--text-primary);
-    box-shadow: rgb(11 26 74 / 35%) 0 30px 60px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+    box-shadow: var(--shadow-form);
   }
   .wl-card[hidden] {
     display: none;
@@ -191,6 +204,20 @@ const named = (name: string) => (byEmail ? undefined : name);
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+  .wl-title {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 26px;
+  }
+  .wl-sub {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .wl-done .wl-head {
+    gap: 8px;
   }
   .field {
     display: flex;
@@ -363,17 +390,16 @@ const named = (name: string) => (byEmail ? undefined : name);
     text-decoration-color: currentColor;
   }
   .wl-done__title {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
     letter-spacing: -0.03em;
-    line-height: 34px;
+    line-height: 32px;
     outline: none;
   }
   .wl-done__text {
-    padding-top: 4px;
     color: var(--text-body);
-    font-size: 16px;
-    line-height: 25px;
+    font-size: 15px;
+    line-height: 23px;
   }
   .wl-done__text b {
     font-weight: 400;
@@ -414,7 +440,7 @@ const named = (name: string) => (byEmail ? undefined : name);
   .wl-from {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: 10px;
     padding: 14px 16px;
     border-radius: 16px;
     background: var(--blue-50);
@@ -434,18 +460,25 @@ const named = (name: string) => (byEmail ? undefined : name);
   }
 
   @media (min-width: 768px) {
-    .waitlist :global(.wl-coin) {
-      width: 250px;
-      margin-bottom: -10px;
+    .waitlist {
+      --coin-w: 250px;
     }
     .wl-card {
       gap: 20px;
       padding: 32px;
       border-radius: 32px;
     }
+    .wl-title {
+      font-size: 24px;
+      line-height: 30px;
+    }
     .wl-done__title {
       font-size: 30px;
       line-height: 36px;
+    }
+    .wl-done__text {
+      font-size: 16px;
+      line-height: 25px;
     }
   }
 
