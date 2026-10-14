@@ -17,11 +17,10 @@
  * calls the API, so it cannot know an invite's expiry and shows no date.
  * The older /i#<CODE> form works too.
  */
-import { Picture } from 'astro:assets';
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import AppIcon from '../components/brand/AppIcon.astro';
-import homeScreen from '../assets/screens/home-screen.png';
+import HomePhone from '../components/HomePhone.astro';
 import { SITE } from '../data/site';
 
 // Opens the TestFlight app on an iPhone (Apple's own address); the invite itself arrives by Apple's email.
@@ -104,9 +103,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
         <p class="invite__fine">Invites are personal and work once. Not expecting this? You can ignore it.</p>
       </div>
 
-      <div class="invite__stage" aria-hidden="true">
-        <div class="device device--invite">
-          <Picture src={homeScreen} formats={['avif', 'webp']} widths={[402, 804]} sizes="402px" width={402} height={884} loading="eager" alt="" />
+      <div class="invite__stage" aria-hidden="true" data-alive>
+        <div class="device--invite">
+          <HomePhone play="load" />
         </div>
         <div class="invite__saved">
           <span class="invite__saved-coin">
@@ -484,19 +483,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       position: absolute;
       inset: 0 auto auto 0;
       width: 418px;
-      padding: 8px;
-      border-radius: 62px;
-      background: #0d0d10;
-      box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
       /* The phone fades into the page wash at the bottom, as in Paper. */
       -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 92%);
       mask-image: linear-gradient(to bottom, #000 62%, transparent 92%);
-    }
-    .device--invite :global(img) {
-      display: block;
-      width: 402px;
-      height: 884px;
-      border-radius: 54px;
     }
     .invite__saved {
       position: absolute;

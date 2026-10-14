@@ -367,6 +367,38 @@ table {
   font-family: var(--font-figure);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+  /* body has overflow-wrap: anywhere; a number must never split mid-digits. */
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+/* Fit figures: a big money line (unit + number) that stays on ONE line and
+   shrinks with its card instead of wrapping or overflowing. Pure CSS:
+   - put .fig-box on the card (or any block whose width does not depend on
+     its content) so it becomes the size container;
+   - put .fig-fit on the line that holds the unit and the number, sizing the
+     unit and gaps in em so everything scales together;
+   - set on .fig-fit (or a parent):
+       --fig-max    the design size, e.g. 104px or a clamp() (default 1em)
+       --fig-k      width of the whole line in em at 1px font, measured in the
+                    widest figure font (Inter / SF Pro Rounded) plus ~4% slack
+       --fig-fixed  any part of the line that does not scale, in px (default 0)
+   font-size = min(--fig-max, (container width - --fig-fixed) / --fig-k).
+   Do not set font-size on the .fig-fit element in a scoped style: scoped
+   selectors win over this one. Size children in em instead. */
+.fig-box {
+  container-type: inline-size;
+}
+.fig-fit {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: min(var(--fig-max, 1em), (100cqi - var(--fig-fixed, 0px)) / var(--fig-k, 1));
+}
+.fig-fit > * {
+  flex: none;
 }
 .link {
   color: var(--text-link);

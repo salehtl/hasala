@@ -5,13 +5,13 @@ import Wordmark from './Wordmark.astro';
 const onHome = Astro.url.pathname === '/';
 const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
 
-// Paper's three columns. The site column is Paper's four anchors; the pages the
+// Paper's three columns. The site column: How it works, the privacy page and
+// the invite form (Banks stays a homepage section, not a link). The pages the
 // site also has (Budgeting, FAQ, Licences, ...) stay reachable from the nav, the
 // sections, llms.txt and the sitemap. Legal is Paper's two links only.
 const siteCol = [
   { href: '/#how-it-works', label: 'How it works' },
-  { href: '/#privacy', label: 'Privacy' },
-  { href: '/#banks', label: 'Banks' },
+  { href: '/how-privacy-works', label: 'How privacy works' },
   { href: '/#invite', label: 'Request an invite' },
 ];
 const cols = [

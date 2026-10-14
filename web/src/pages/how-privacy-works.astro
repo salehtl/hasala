@@ -2,7 +2,12 @@
 /**
  * How privacy works (Paper NFK-0): the plain-words explainer on the navy band.
  * /privacy (the policy) and /security stay the documents of record; this page
- * explains and links to them.
+ * explains and links to them. The dedicated privacy page: the nav's "How
+ * privacy works" and the homepage band link here.
+ *
+ * Motion (Paper C83-0): the head rises in on arrival (CSS only), the flow
+ * draws as it comes into view, and the who-can-see rows reveal one by one
+ * (data-play-in, set by PrivacyFlow's script). Reduced motion: all still.
  */
 import Base from '../layouts/Base.astro';
 import PrivacyFlow from '../components/detail/PrivacyFlow.astro';
@@ -89,7 +94,7 @@ const rows = [
           <tbody>
             {
               rows.map((r) => (
-                <tr>
+                <tr data-play-in>
                   <th scope="row">{r.who}</th>
                   <td data-label="Can see">{r.sees}</td>
                   <td class:list={['hpw__never', !r.never && 'hpw__none']} data-label="Can’t see">
@@ -417,6 +422,47 @@ const rows = [
     .hpw__links a:hover :global(.icon) {
       translate: 3px 0;
       transition-duration: 200ms;
+    }
+  }
+  /* Motion: the head rises in on arrival, 60 ms apart; each row of the table
+     reveals as it scrolls in (data-play, from PrivacyFlow's script). */
+  @media (prefers-reduced-motion: no-preference) {
+    .hpw__head > * {
+      animation: hpw-rise var(--t-reveal) var(--ease-out-soft) both;
+    }
+    .hpw__head > :nth-child(2) {
+      animation-delay: 60ms;
+    }
+    .hpw__head > :nth-child(3) {
+      animation-delay: 120ms;
+    }
+    :global(.js) .hpw tbody tr:not([data-play]) {
+      opacity: 0;
+    }
+    .hpw tbody tr[data-play] {
+      animation: hpw-rise var(--t-reveal) var(--ease-out-soft) calc(var(--r, 0) * 60ms) both;
+    }
+    .hpw tbody tr:nth-child(2) {
+      --r: 1;
+    }
+    .hpw tbody tr:nth-child(3) {
+      --r: 2;
+    }
+    .hpw tbody tr:nth-child(4) {
+      --r: 3;
+    }
+    .hpw tbody tr:nth-child(5) {
+      --r: 4;
+    }
+  }
+  @keyframes hpw-rise {
+    from {
+      opacity: 0;
+      transform: translateY(var(--reveal-rise));
+    }
+    to {
+      opacity: 1;
+      transform: none;
     }
   }
 </style>

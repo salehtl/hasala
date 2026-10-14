@@ -1,16 +1,12 @@
 ---
 /**
  * 04 Swipe to review (Paper AQJ-0 desktop / BM7-0 phone). The stage is the
- * drawn still of the review deck mid-swipe, exported from Paper at 2x. All
- * words around it are real text. Nothing moves, so Reduce Motion needs no
- * extra case.
+ * live review deck shared with /how-it-works (detail/Review.astro,
+ * scripts/review.ts): drag or flick the top card, tap a pill or a legend
+ * chip below, or use the arrow keys on the focused deck. It plays its short
+ * demo once and has a still crossfade under Reduce Motion.
  */
-import { Image } from 'astro:assets';
-import stageDesktop from '../../assets/landing/04-review/stage-desktop.png';
-import stageMobile from '../../assets/landing/04-review/stage-mobile.png';
-
-const ALT =
-  'The review screen of the Hasala app, 2 of 6, with a card for Lulu Hypermarket, AED 214.30, mid-swipe to Need. A suggestion below reads: Looks like Groceries.';
+import Review from '../detail/Review.astro';
 
 const DIRS = [
   { key: 'want', label: 'Want', hint: 'Swipe left', path: 'M13 8H3.5M7.5 3.5 3 8l4.5 4.5' },
@@ -22,33 +18,8 @@ const DIRS = [
 
 <section id="review" class="section review" aria-labelledby="review-title">
   <div class="container review__inner">
-    <div class="review__stage" data-reveal>
-      <Image
-        class="review__img review__img--lg"
-        src={stageDesktop}
-        width={580}
-        height={720}
-        widths={[580, 1160]}
-        sizes="(min-width: 1024px) 580px, 0px"
-        format="webp"
-        quality={90}
-        alt={ALT}
-        loading="lazy"
-        decoding="async"
-      />
-      <Image
-        class="review__img review__img--sm"
-        src={stageMobile}
-        width={350}
-        height={560}
-        widths={[350, 700]}
-        sizes="(max-width: 1023px) calc(100vw - 40px), 0px"
-        format="webp"
-        quality={90}
-        alt={ALT}
-        loading="lazy"
-        decoding="async"
-      />
+    <div class="review__deck">
+      <Review stage />
     </div>
 
     <div class="review__copy">
@@ -63,19 +34,21 @@ const DIRS = [
         </p>
       </div>
       <div class="review__body" data-reveal>
-        <ul class="dirs" role="list">
+        <ul class="dirs" role="list" aria-label="Sort the top card">
           {
             DIRS.map((d) => (
-              <li class={`dir dir--${d.key}`}>
-                <span class="dir__icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                    <path d={d.path} />
-                  </svg>
-                </span>
-                <span class="dir__text">
-                  <b>{d.label}</b>
-                  <small>{d.hint}</small>
-                </span>
+              <li>
+                <button type="button" class={`dir dir--${d.key}`} data-sort={d.key}>
+                  <span class="dir__icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                      <path d={d.path} />
+                    </svg>
+                  </span>
+                  <span class="dir__text">
+                    <b>{d.label}</b>
+                    <small>{d.hint}</small>
+                  </span>
+                </button>
               </li>
             ))
           }
@@ -112,21 +85,16 @@ const DIRS = [
     flex-direction: column;
     gap: 12px;
   }
-  .review__stage {
+  .review__deck {
     order: 1;
-    border-radius: var(--r-panel);
-    overflow: clip;
-    background: var(--wash-peach);
+  }
+  /* The shared deck fills the column it is given. */
+  .review__deck > :global(.review__stage) {
+    width: 100%;
   }
   .review__body {
     order: 2;
   }
-  .review__img {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-  .review__img--lg,
   .review__text--lg {
     display: none;
   }
@@ -145,15 +113,44 @@ const DIRS = [
     padding: 0;
     list-style: none;
   }
-  .dir {
+  .dirs li {
     display: flex;
+  }
+  /* The legend chips are buttons: tap one to sort the top card. They light
+     up with the swipe (scripts/review.ts sets data-active). */
+  .dir {
+    position: relative;
+    display: flex;
+    flex: 1;
     align-items: center;
     gap: 8px;
     padding: 8px 14px 8px 8px;
+    border: 0;
     border-radius: var(--r-pill);
     font-size: 15px;
     line-height: 20px;
     font-weight: 600;
+    text-align: start;
+    transition: transform 160ms var(--ease-out-soft);
+  }
+  .dir::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: currentColor 0 0 0 1.5px inset;
+    opacity: 0;
+    transition: opacity 200ms var(--ease-out-soft);
+    pointer-events: none;
+  }
+  .dir[data-active] {
+    transform: scale(1.04);
+  }
+  .dir[data-active]::after {
+    opacity: 1;
+  }
+  .dir:active {
+    transform: scale(0.97);
   }
   .dir__icon {
     display: inline-flex;
@@ -202,7 +199,7 @@ const DIRS = [
       align-items: center;
       gap: clamp(48px, 6.7vw, 96px);
     }
-    .review__stage {
+    .review__deck {
       order: 0;
       flex: 0 0 min(580px, 48.33%);
     }
@@ -217,12 +214,8 @@ const DIRS = [
     .review__head {
       gap: 20px;
     }
-    .review__img--sm,
     .review__text--sm {
       display: none;
-    }
-    .review__img--lg {
-      display: block;
     }
     .review__text--lg {
       display: block;

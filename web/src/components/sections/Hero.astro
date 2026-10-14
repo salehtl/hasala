@@ -11,8 +11,7 @@
  * 1280 the phone stage is drawn at 0.8. Phones: copy, then a 560 high stage
  * where the phone peeks in from the left and bleeds off the right.
  */
-import { Picture } from 'astro:assets';
-import homeScreen from '../../assets/screens/home-screen.png';
+import HomePhone from '../HomePhone.astro';
 import AppIcon from '../brand/AppIcon.astro';
 import Icon from '../Icon.astro';
 ---
@@ -45,7 +44,7 @@ import Icon from '../Icon.astro';
           Request an invite
           <span class="btn__disc" aria-hidden="true"><Icon name="arrow-right" size={16} stroke={1.9} /></span>
         </a>
-        <a class="btn btn--glass btn--lg btn--lead hero__cta" href="#privacy">
+        <a class="btn btn--glass btn--lg btn--lead hero__cta" href="/how-privacy-works">
           <Icon name="lock" size={18} stroke={1.7} />
           How privacy works
         </a>
@@ -58,20 +57,11 @@ import Icon from '../Icon.astro';
       </ul>
     </div>
 
-    <div class="hero__stage">
+    <div class="hero__stage" data-alive>
       <div class="device" data-parallax>
-        <Picture
-          src={homeScreen}
-          formats={['avif', 'webp']}
-          widths={[402, 804]}
-          sizes="402px"
-          width={402}
-          height={884}
-          loading="eager"
-          fetchpriority="high"
-          decoding="async"
-          class="device__screen"
-          alt="Hasala on iPhone: AED 10,288.34 spent of 19,000 on needs and wants on day 10 of October, on track with AED 8,711.66 left. Needs 9,040.80, wants 1,247.54, savings 5,000.00."
+        <HomePhone
+          play="hero"
+          label="Hasala's Home screen on iPhone: AED 10,288.34 spent of 19,000 on needs and wants on day 10 of October, on track with AED 8,711.66 left. Needs 9,040.80, wants 1,247.54, savings 5,000.00."
         />
       </div>
 
@@ -263,18 +253,7 @@ import Icon from '../Icon.astro';
     top: 40px;
     left: max(40px, calc(50% - 209px));
     width: 418px;
-    padding: 8px;
-    border-radius: 62px;
-    background: #0d0d10;
-    box-shadow: #3a3a40 0 0 0 1.5px inset, rgb(20 30 70 / 25%) 0 30px 60px;
     will-change: transform;
-  }
-  .device :global(img) {
-    display: block;
-    width: 402px;
-    height: 884px;
-    border-radius: 54px;
-    background: var(--neutral-100);
   }
   .hero__fade {
     position: absolute;
@@ -605,7 +584,8 @@ import Icon from '../Icon.astro';
 
   /* Motion moment A: the coin drops into the slot while the headline rises
      (from 150 ms, so the copy is never blank for long) and the phone
-     settles, all done by about 1 s. Pure CSS, so it plays without JS; once
+     settles, all done by about 1 s; the phone's screen (HomePhone) fills
+     in from 250 ms and the floats drift in from 1.3 s. Pure CSS, so it plays without JS; once
      per session (html.hero-seen). The keyframes for the icon are in
      global.css, shared with /i. */
   @media (prefers-reduced-motion: no-preference) {
@@ -646,6 +626,46 @@ import Icon from '../Icon.astro';
        composes with the stage's scale(.8) and the parallax transform. */
     :global(html:not(.hero-seen)) .hero__stage {
       animation: hero-stage 900ms var(--ease-out-soft) both;
+    }
+    /* The floats drift in once the phone has filled (the bank alert, then
+       its "sorted" row, then the backup pill). `transform` here, `translate`
+       for the idle float, `rotate` for the tilt: three separate properties. */
+    :global(html:not(.hero-seen)) .hero__alert {
+      animation:
+        hero-alert 700ms 1300ms var(--ease-out-soft) both,
+        hero-idle 1.3s 2.4s ease-in-out 2 alternate;
+    }
+    :global(html:not(.hero-seen)) .hero__alert-row {
+      animation: hero-rise 500ms 1850ms var(--ease-out-soft) both;
+    }
+    :global(html:not(.hero-seen)) .hero__sealed {
+      animation:
+        hero-sealed 700ms 1600ms var(--ease-out-soft) both,
+        hero-idle 1.2s 2.6s ease-in-out 2 alternate;
+    }
+    /* Then one gentle float, up and back, done by 5 s (WCAG 2.2.2). */
+    .hero__alert {
+      animation: hero-idle 1.3s 2.4s ease-in-out 2 alternate;
+    }
+    .hero__sealed {
+      animation: hero-idle 1.2s 2.6s ease-in-out 2 alternate;
+    }
+  }
+  @keyframes hero-alert {
+    from {
+      opacity: 0;
+      transform: translateX(-32px);
+    }
+  }
+  @keyframes hero-sealed {
+    from {
+      opacity: 0;
+      transform: translate(24px, 16px);
+    }
+  }
+  @keyframes hero-idle {
+    to {
+      translate: 0 -6px;
     }
   }
   @keyframes hero-rise {

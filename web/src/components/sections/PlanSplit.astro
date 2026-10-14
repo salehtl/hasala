@@ -54,7 +54,7 @@ const BUCKETS = [
       {
         BUCKETS.map((b) => (
           <li class:list={['bucket', `bucket--${b.key}`]} data-reveal>
-            <p class="bucket__pct figure">{b.pct}</p>
+            <div class="bucket__fig"><p class="bucket__pct figure fig-fit">{b.pct}</p></div>
             <div class="bucket__name">
               <h3>{b.name}</h3>
               <p class="bucket__sub bucket__sub--d">{b.longSub}</p>
@@ -137,15 +137,22 @@ const BUCKETS = [
     gap: 2px 12px;
     border-radius: 26px;
     padding: 22px;
+    /* Phones: the card is the size container for its percentage. */
+    container-type: inline-size;
   }
   .bucket__foot {
     grid-area: foot;
     align-self: start;
     padding-top: 6px;
   }
-  .bucket__pct {
+  .bucket__fig {
     grid-area: pct;
-    font-size: 64px;
+  }
+  /* One line, shrinks with the card (global .fig-fit): "50%" is 2.11em wide,
+     and on phones it may take at most ~26% of the card. */
+  .bucket__pct {
+    --fig-max: 64px;
+    --fig-k: 3.9;
     font-weight: 700;
     letter-spacing: -0.04em;
     line-height: 64px;
@@ -248,6 +255,7 @@ const BUCKETS = [
       gap: 16px;
     }
     .bucket {
+      container-type: normal;
       display: flex;
       flex: 1 1 0;
       flex-direction: column;
@@ -270,19 +278,25 @@ const BUCKETS = [
       padding-inline: 24px;
     }
     /* head block: pct + name sit together at the top, foot pinned below */
+    /* Large screens: the full-width block above the name is the container, so
+       the card still sizes to its chips and the percentage fits the card. */
+    .bucket__fig {
+      container-type: inline-size;
+    }
     .bucket__pct {
+      --fig-max: 96px;
+      --fig-k: 2.2;
       font-family: var(--font-figure);
-      font-size: 96px;
       line-height: 88px;
       margin-bottom: 12px;
     }
     .bucket--needs .bucket__pct {
-      font-size: 136px;
+      --fig-max: 136px;
       line-height: 120px;
       margin-bottom: 20px;
     }
     .bucket--savings .bucket__pct {
-      font-size: 72px;
+      --fig-max: 72px;
       line-height: 72px;
     }
     .bucket__name {

@@ -7,16 +7,18 @@ interface Props {
   variant?: 'full' | 'invite' | 'minimal';
 }
 const { variant = 'full' } = Astro.props;
-/* The landing page's sections (Paper P3 nav: How it works, Privacy, Banks,
-   FAQ). Hash links from every page; the router scrolls to the section. They
-   carry no data-nav-link, so nav.ts leaves them unmarked (all of them would
-   match "/"). */
-const NAV = [
+/* How it works and FAQ are landing-page sections: hash links from every page;
+   the router scrolls to the section. They carry no data-nav-link, so nav.ts
+   leaves them unmarked (all of them would match "/"). How privacy works is
+   its own page, so nav.ts marks it current there. Banks stays a homepage
+   section, not a nav item. */
+const NAV: readonly { href: string; label: string; page?: true }[] = [
   { href: '/#how-it-works', label: 'How it works' },
-  { href: '/#privacy', label: 'Privacy' },
-  { href: '/#banks', label: 'Banks' },
+  { href: '/how-privacy-works', label: 'How privacy works', page: true },
   { href: '/#faq', label: 'FAQ' },
-] as const;
+];
+/* /i keeps its own "How privacy works" button, so its links leave it out. */
+const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
 /*
  * Client-side navigation (<ClientRouter /> in Base.astro): the header is kept,
  * not re-rendered, between pages with the same variant, so its markup must be
@@ -37,9 +39,9 @@ const NAV = [
     {
       variant !== 'minimal' && (
         <ul class="nav__links" role="list">
-          {NAV.map((item) => (
+          {links.map((item) => (
             <li>
-              <a class="nav__link" href={item.href}>
+              <a class="nav__link" href={item.href} data-nav-link={item.page ? '' : undefined}>
                 {item.label}
               </a>
             </li>
@@ -86,7 +88,7 @@ const NAV = [
         <ul role="list">
           {NAV.map((item) => (
             <li>
-              <a href={item.href}>
+              <a href={item.href} data-nav-link={item.page ? '' : undefined}>
                 {item.label}
               </a>
             </li>
@@ -319,6 +321,9 @@ const NAV = [
     border-radius: 16px;
     font-size: 17px;
     font-weight: 500;
+  }
+  .nav__menu li a[aria-current='page'] {
+    color: var(--accent);
   }
   .nav__menu li a:active {
     background: var(--glass-selected);

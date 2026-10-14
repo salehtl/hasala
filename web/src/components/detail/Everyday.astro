@@ -16,7 +16,7 @@ import Icon from '../Icon.astro';
       </ul>
     </div>
 
-    <figure class="pace" data-reveal data-pace aria-labelledby="pace-caption">
+    <figure class="pace fig-box" data-reveal data-pace aria-labelledby="pace-caption">
       <figcaption id="pace-caption" class="sr-only">
         Example: AED 10,288.34 spent of 19,000 on needs and wants on day 10 of 31 in October, on track with AED 8,711.66 left. Bills this month: AED 9,045.04. Rent 7,500.00, paid. DEWA about 489.15, expected Wednesday. du 427.90, paid.
       </figcaption>
@@ -25,7 +25,7 @@ import Icon from '../Icon.astro';
           <span class="pace__date">October · day 10 of 31</span>
           <span class="chip chip--success pace__verdict"><span class="dot"></span>On track</span>
         </div>
-        <p class="pace__figure">
+        <p class="pace__figure fig-fit">
           <span class="pace__unit">AED</span>
           <span class="pace__value figure" data-count="10288.34">10,288.34</span>
         </p>
@@ -157,6 +157,11 @@ import Icon from '../Icon.astro';
     padding: 5px 12px 5px 10px;
   }
   .pace__figure {
+    /* One line, shrinks with the card (global .fig-fit). k = 4.82em number
+       + 0.1667em unit, plus slack; fixed = the unit's 12.67px part + gap. */
+    --fig-max: clamp(44px, 24.17px + 4.571vw, 104px);
+    --fig-k: 5.35;
+    --fig-fixed: 40px;
     display: flex;
     align-items: baseline;
     gap: 8px;
@@ -164,11 +169,11 @@ import Icon from '../Icon.astro';
   }
   .pace__unit {
     font-family: var(--font-figure);
-    font-size: clamp(20px, 13.6px + 0.857vw, 30px);
+    font-size: calc(0.1667em + 12.67px); /* 20px at 44, 30px at 104 */
     font-weight: 600;
   }
   .pace__value {
-    font-size: clamp(44px, 24.17px + 4.571vw, 104px);
+    font-size: 1em;
     letter-spacing: -0.03em;
     line-height: 1;
   }
@@ -320,6 +325,7 @@ import Icon from '../Icon.astro';
     line-height: 18px;
   }
   .bill__sub {
+    white-space: nowrap;
     color: var(--text-secondary);
     font-size: 12px;
     line-height: 16px;
@@ -409,6 +415,20 @@ import Icon from '../Icon.astro';
   @media (min-width: 1280px) {
     .everyday__copy {
       flex-basis: 440px;
+    }
+  }
+
+  /* The card is a size container (.fig-box). When it is narrow (1024-1180
+     two-column layout), drop the "Today" label before it runs into "For the
+     month", and stack the bill tiles so their amounts never break. */
+  @container (width < 380px) {
+    .pace__scale .pace__scale-today {
+      display: none;
+    }
+  }
+  @container (width < 460px) {
+    .bills__tiles {
+      flex-direction: column;
     }
   }
 

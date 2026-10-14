@@ -54,7 +54,7 @@ export const OTHER_BANKS = [
 export const NAV = [
   { href: '/how-it-works', label: 'How it works' },
   { href: '/budgeting', label: 'Budgeting' },
-  { href: '/how-privacy-works', label: 'Privacy' },
+  { href: '/how-privacy-works', label: 'How privacy works' },
   { href: '/faq', label: 'FAQ' },
 ] as const;
 
