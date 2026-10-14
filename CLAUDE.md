@@ -205,19 +205,26 @@ site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
 dependency reaches `dist/`.
 
 The site is Workers Static Assets on the `hasala-aasa` Worker, on the zone
-route `hasala.app/*` (`web/wrangler.jsonc`). CI deploys it:
-`.github/workflows/deploy-web.yml` runs when CI passes on a push to `main`
-(or by hand, `workflow_dispatch` on `main`), checks out exactly the commit CI
-passed, deploys it only if it is still `main`'s head (so an older run never
-overwrites a newer site), runs `bun run deploy` and then
-`web/scripts/verify-live.sh`. Merging to `main` is therefore a deploy of the
-website. The Cloudflare credentials are secrets of the GitHub environment
-`production` (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`), limited to
-`main`. Pull requests never deploy. An agent deploys by hand only when the
-owner has approved that deploy. By hand:
+route `hasala.app/*` (`web/wrangler.jsonc`). Cloudflare deploys it from
+GitHub (Workers Builds, the Worker's Git integration; set up in the Cloudflare
+dashboard, no token in GitHub), from root directory `web` with build command
+`bun install --frozen-lockfile && bun run build`, so the dist checks gate
+every deploy:
 
-1. On the QA host, in its checkout of this repository, check out the commit
-   to ship (normally `main`) and enter the devShell.
+- Every branch but `main` gets a preview URL (on `workers.dev`, behind
+  Cloudflare Access), which Cloudflare posts on its pull request. Check the
+  change there.
+- A push to `main`, normally merging a pull request, deploys hasala.app.
+  Merging is the deploy to production; it is the owner's call. Cloudflare
+  builds on the push and does not wait for GitHub CI.
+- After a production deploy, `web/scripts/verify-live.sh` checks the live
+  site (the list below).
+
+By hand (an agent only with the owner's approval for that deploy), from any
+machine:
+
+1. Check out the commit to ship (normally `main`) in a clean checkout and
+   enter the devShell.
 2. In `web/`: `bun install --frozen-lockfile`, then `bun run deploy`. It runs
    `bun run build` (so the CSP and JS-budget checks gate it), then the
    wrangler pinned in `package.json`, under the devShell's Node.

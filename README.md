@@ -13,7 +13,7 @@ Nix devShell): `bun install --frozen-lockfile`, then `bun run dev`, or
 `bun run build` and `bun run preview`. The build checks the site's
 Content-Security-Policy and JavaScript budget; CI also runs Lighthouse. Its
 privacy policy, terms, security and support pages are drafts in
-[docs/legal/](docs/legal/). CI deploys the site when a change to `main` passes. See
+[docs/legal/](docs/legal/). Pull requests get a preview URL; merging to `main` deploys the site. See
 [CLAUDE.md](CLAUDE.md), "Website".
 
 ## Licence
