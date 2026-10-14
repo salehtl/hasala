@@ -1,52 +1,422 @@
 ---
 /**
- * How privacy works, in plain words. /privacy (the policy) and /security
- * stay the documents of record; this page explains and links to them.
+ * How privacy works (Paper NFK-0): the plain-words explainer on the navy band.
+ * /privacy (the policy) and /security stay the documents of record; this page
+ * explains and links to them.
  */
-import Detail from '../layouts/Detail.astro';
-import DetailSection from '../components/DetailSection.astro';
+import Base from '../layouts/Base.astro';
 import PrivacyFlow from '../components/detail/PrivacyFlow.astro';
+import Icon from '../components/Icon.astro';
 import { SITE } from '../data/site';
+
+const title = 'How privacy works';
+const lead =
+  'Hasala reads, sorts and budgets on your iPhone. Before anything is backed up, it’s locked with a key only your devices have. We store the locked copy, but we can’t open it.';
+const path = '/how-privacy-works';
+const url = `${SITE.url}${path}`;
+
+const ld = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebPage',
+      '@id': `${url}#page`,
+      name: title,
+      description: lead,
+      url,
+      inLanguage: 'en',
+      isPartOf: { '@id': `${SITE.url}/#website` },
+      about: { '@id': `${SITE.url}/#app` },
+      breadcrumb: {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Hasala', item: SITE.url },
+          { '@type': 'ListItem', position: 2, name: title, item: url },
+        ],
+      },
+    },
+  ],
+};
+
+const rows = [
+  { who: 'You', sees: 'Everything, on your own devices', never: null },
+  {
+    who: 'Hasala (our server)',
+    sees: 'Your email address and that you have an account. When you sync, and how much locked data you store. What it needs to sign you in and send notifications, but never your password. A scrambled code for your Gmail address, so it knows when new bank emails arrive.',
+    never: 'Your emails, amounts, shops, categories or budget',
+  },
+  {
+    who: 'Cloudflare (our network provider)',
+    sees: 'Your IP address, and the time and size of each request on its way to our server. Your data is still locked as it passes through. Cloudflare also delivers our emails to you.',
+    never: 'What’s inside your locked data',
+  },
+  {
+    who: 'Google',
+    sees: 'Your email, as it already does, and that you let Hasala read it',
+    never: 'Your budget, or anything Hasala works out',
+  },
+  {
+    who: 'Apple',
+    sees: 'That you installed Hasala through TestFlight. If you use a passkey, it’s saved in your iCloud Keychain, encrypted so Apple can’t read it.',
+    never: 'Your payments or your budget',
+  },
+];
 ---
 
-<Detail
-  title="How privacy works"
-  heading="How privacy works"
-  lead="Your transactions and budget are encrypted on your iPhone before they sync. Our server stores them but can’t read them."
-  path="/how-privacy-works"
->
-  <PrivacyFlow />
+<Base title={title} description={lead} path={path} jsonLd={ld} class="hpw-page">
+  <div class="hpw-bar" aria-hidden="true"></div>
+  <section class="section section--navy hpw" aria-labelledby="hpw-title">
+    <div class="hpw__glow section__glow" aria-hidden="true"></div>
+    <div class="container hpw__inner">
+      <header class="hpw__head">
+        <p class="overline overline--on-dark">Privacy</p>
+        <h1 id="hpw-title" class="display-privacy on-dark">Your money stays on your phone. Only you can see it.</h1>
+        <p class="hpw__lead on-navy-body">{lead}</p>
+      </header>
 
-  <DetailSection id="new-phone" title="A new or lost phone">
-    <p>
-      On a new iPhone, you unlock your data with your passkey, which syncs in iCloud Keychain, or with your 12‑word recovery phrase. A password signs you in but
-      doesn’t unlock your data.
-    </p>
-    <p>Keep the 12 words somewhere safe. We can’t reset them for you, because we don’t hold the key to your data.</p>
-  </DetailSection>
+      <PrivacyFlow />
 
-  <DetailSection id="no-bank-login" title="No bank login, no ads" tint>
-    <ul>
-      <li>
-        <strong>No bank login.</strong> Hasala reads the alert emails your bank already sends. It never asks for your banking password or card number, and it
-        can’t move money.
-      </li>
-      <li><strong>No ads or tracking in the app.</strong> The app contains no analytics or tracking tools.</li>
-      <li>
-        <strong>This website counts visits in totals only.</strong> It uses Cloudflare Web Analytics, which sets no cookies and isn’t linked to you or your Hasala
-        account. Invite, waitlist and account‑freeze links aren’t counted.
-      </li>
-      <li>
-        <strong>Google API Limited Use.</strong> Hasala follows Google’s API Services User Data Policy, including the Limited Use requirements. What it reads from
-        Gmail is used only to find your bank transactions and show them to you.
-      </li>
-    </ul>
-  </DetailSection>
+      <div class="hpw__table">
+        <table>
+          <caption class="sr-only">Who can see what</caption>
+          <thead>
+            <tr>
+              <th scope="col">Who</th>
+              <th scope="col">Can see</th>
+              <th scope="col">Can’t see</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              rows.map((r) => (
+                <tr>
+                  <th scope="row">{r.who}</th>
+                  <td data-label="Can see">{r.sees}</td>
+                  <td class:list={['hpw__never', !r.never && 'hpw__none']} data-label="Can’t see">
+                    {r.never ?? '—'}
+                    {!r.never && <span class="sr-only">Nothing</span>}
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
 
-  <DetailSection id="documents" title="The full details">
-    <p>
-      The <a href="/privacy">Privacy Policy</a> lists what we collect, why, and how long we keep it. <a href="/security">Security</a> explains how Hasala protects your data and
-      how to report a problem. Questions: <a href={`mailto:${SITE.privacyEmail}`}>{SITE.privacyEmail}</a>.
-    </p>
-  </DetailSection>
-</Detail>
+      <div class="hpw__foot">
+        <aside class="hpw__note" aria-labelledby="hpw-plain">
+          <span class="hpw__note-i" aria-hidden="true">i</span>
+          <div class="hpw__note-body">
+            <h2 id="hpw-plain" class="hpw__note-title">In plain words</h2>
+            <p>
+              This is called end‑to‑end encryption: only your devices can unlock your data. We don’t call it “zero‑knowledge”, because our server does know a few
+              things: your email address, that you have an account, and when you sync. It never knows what’s inside.
+            </p>
+            <p class="hpw__note-more">
+              This website counts visits in totals only, with Cloudflare Web Analytics. Hasala follows Google’s API Services User Data Policy, including the
+              Limited Use requirements.
+            </p>
+          </div>
+        </aside>
+        <nav class="hpw__links" aria-label="Privacy documents">
+          <a href="/privacy">Read the full privacy policy <Icon name="arrow-right" size={14} stroke={1.9} /></a>
+          <a href="/security">Security and disclosure <Icon name="arrow-right" size={14} stroke={1.9} /></a>
+        </nav>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hpw-bar {
+    height: 92px;
+    background: var(--white);
+  }
+  .hpw {
+    --section-pt: 56px;
+    --section-pb: 88px;
+  }
+  .hpw :global(:focus-visible) {
+    outline-color: var(--white);
+  }
+  .hpw__glow {
+    left: calc(50% - 300px);
+    top: -240px;
+    width: 600px;
+    height: 520px;
+    background: var(--glow-blue);
+  }
+  .hpw__inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+  .hpw__head {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .hpw__head p,
+  .hpw__head h1 {
+    margin: 0;
+  }
+  .hpw__lead {
+    font-size: 16px;
+    line-height: 25px;
+  }
+
+  .hpw__table {
+    padding: 4px 20px;
+    border-radius: 24px;
+    background: rgb(255 255 255 / 4%);
+    box-shadow: rgb(255 255 255 / 12%) 0 0 0 1px inset;
+  }
+  .hpw table,
+  .hpw tbody,
+  .hpw tr,
+  .hpw th,
+  .hpw td {
+    display: block;
+  }
+  .hpw thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .hpw tr {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-block: 20px;
+    border-bottom: 1px solid rgb(255 255 255 / 12%);
+  }
+  .hpw tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .hpw tbody th {
+    color: var(--white);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+    text-align: left;
+  }
+  .hpw td {
+    color: rgb(255 255 255 / 86%);
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .hpw td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: rgb(255 255 255 / 60%);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .hpw td.hpw__never {
+    color: var(--amber-300);
+  }
+  .hpw td.hpw__none {
+    display: none;
+  }
+
+  .hpw__foot {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .hpw__note {
+    display: flex;
+    flex-grow: 1;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 24px;
+    background: rgb(241 202 120 / 12%);
+    box-shadow: rgb(241 202 120 / 30%) 0 0 0 1px inset;
+  }
+  .hpw__note-i {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    background: var(--coin);
+    color: var(--gold-ink);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+  .hpw__note-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .hpw__note-title {
+    margin: 0;
+    color: var(--gold-100);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 22px;
+  }
+  .hpw__note-body p {
+    margin: 0;
+    color: rgb(255 255 255 / 86%);
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .hpw__note-body .hpw__note-more {
+    margin-top: 8px;
+    color: rgb(255 255 255 / 70%);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .hpw__links {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .hpw__links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    color: var(--white);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+    text-decoration: none;
+  }
+  .hpw__links :global(.icon) {
+    color: var(--blue-300);
+  }
+
+  @media (min-width: 768px) {
+    .hpw__table {
+      padding: 12px 32px;
+      border-radius: 32px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .hpw-bar {
+      height: 116px;
+    }
+    .hpw {
+      --section-pt: 140px;
+      --section-pb: 140px;
+    }
+    .hpw__inner {
+      gap: 64px;
+    }
+    .hpw__head {
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+    }
+    .hpw__head h1 {
+      max-width: 900px;
+    }
+    .hpw__lead {
+      max-width: 680px;
+      font-size: 19px;
+      line-height: 30px;
+    }
+    .hpw table {
+      display: table;
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .hpw thead {
+      display: table-header-group;
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      clip-path: none;
+    }
+    .hpw tbody {
+      display: table-row-group;
+    }
+    .hpw tr {
+      display: table-row;
+      padding: 0;
+    }
+    .hpw thead th,
+    .hpw tbody th,
+    .hpw td {
+      display: table-cell;
+      padding: 20px 32px 20px 0;
+      border-bottom: 1px solid rgb(255 255 255 / 12%);
+      vertical-align: top;
+    }
+    .hpw thead th {
+      padding-block: 18px;
+      color: rgb(255 255 255 / 60%);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      line-height: 16px;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    .hpw tr {
+      border-bottom: 0;
+    }
+    .hpw tbody tr:last-child th,
+    .hpw tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .hpw tr > :first-child {
+      width: 252px;
+    }
+    .hpw tr > :nth-child(2) {
+      width: 492px;
+    }
+    .hpw tr > :last-child {
+      padding-right: 0;
+    }
+    .hpw td::before {
+      display: none;
+    }
+    .hpw td.hpw__none {
+      display: table-cell;
+      color: rgb(255 255 255 / 50%);
+    }
+    .hpw__foot {
+      flex-direction: row;
+      align-items: center;
+      gap: 32px;
+      margin-top: -24px;
+    }
+    .hpw__note {
+      padding: 22px 24px;
+    }
+    .hpw__links {
+      width: 280px;
+      gap: 12px;
+    }
+    .hpw__links a {
+      min-height: 22px;
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .hpw__links a :global(.icon) {
+      transition: translate var(--t-hover-out) var(--ease-out-soft);
+    }
+    .hpw__links a:hover :global(.icon) {
+      translate: 3px 0;
+      transition-duration: 200ms;
+    }
+  }
+</style>

@@ -1,0 +1,381 @@
+---
+/**
+ * Home section 05: "Split your pay three ways." Paper AV0-0 (desktop, tall
+ * cards with category chips) and BOA-0 (phone, one row per bucket plus a
+ * 50/30/20 bar). Copy differs a little between the two boards, so the
+ * variants are both in the markup and the unused one is display:none.
+ */
+const BUCKETS = [
+  {
+    key: 'needs',
+    pct: '50%',
+    name: 'Needs',
+    longSub: 'The things that keep the lights on',
+    shortSub: 'Rent, groceries, utilities',
+    cats: ['Rent', 'Groceries', 'Utilities', 'Transport', 'Insurance'],
+    amount: '12,500',
+    note: 'a month on a 25,000 salary',
+  },
+  {
+    key: 'wants',
+    pct: '30%',
+    name: 'Wants',
+    longSub: 'The things that make it a life',
+    shortSub: 'Dining, shopping, travel',
+    cats: ['Dining', 'Shopping', 'Travel'],
+    amount: '7,500',
+  },
+  {
+    key: 'savings',
+    pct: '20%',
+    name: 'Savings',
+    longSub: 'Future you, paid first',
+    shortSub: 'Future you, paid first',
+    cats: ['Emergency fund'],
+    amount: '5,000',
+  },
+];
+---
+
+<section id="plan" class="section section--tint plan" aria-labelledby="plan-title">
+  <div class="container section__stack">
+    <header class="plan__head" data-reveal>
+      <div class="plan__title">
+        <p class="overline">Your plan</p>
+        <h2 id="plan-title" class="display-l">Split your pay three ways.</h2>
+        <p class="intro plan__intro-m">Needs, wants and savings. You start at 50%, 30% and 20%. Change the split any time.</p>
+      </div>
+      <p class="intro plan__intro-d">Needs, wants and savings. Hasala starts you at 50%, 30% and 20%. Change the split any time and the numbers update for you.</p>
+    </header>
+
+    <div class="split" aria-hidden="true" data-reveal><span class="split--needs"></span><span class="split--wants"></span><span class="split--savings"></span></div>
+
+    <ul class="buckets" role="list">
+      {
+        BUCKETS.map((b) => (
+          <li class:list={['bucket', `bucket--${b.key}`]} data-reveal>
+            <p class="bucket__pct figure">{b.pct}</p>
+            <div class="bucket__name">
+              <h3>{b.name}</h3>
+              <p class="bucket__sub bucket__sub--d">{b.longSub}</p>
+              <p class="bucket__sub bucket__sub--m">{b.shortSub}</p>
+            </div>
+            <div class="bucket__foot">
+              <ul class="bucket__cats" role="list">
+                {b.cats.map((c) => (
+                  <li>{c}</li>
+                ))}
+              </ul>
+              <p class="bucket__amount">
+                <span class="bucket__unit">AED</span>
+                <span class="figure">{b.amount}</span>
+                {b.note && <span class="bucket__note">{b.note}</span>}
+              </p>
+            </div>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="plan__foot">Shown on a 25,000 monthly salary.</p>
+  </div>
+</section>
+
+<style>
+  .plan {
+    --section-pt: 72px;
+    --section-pb: 80px;
+    --head-gap: 28px;
+  }
+  .plan__head {
+    display: flex;
+    flex-direction: column;
+  }
+  .plan__title {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 520px;
+  }
+  .plan__title .overline {
+    margin: 0;
+  }
+  .plan__intro-d,
+  .bucket__sub--d,
+  .bucket__note {
+    display: none;
+  }
+  .split {
+    display: flex;
+    gap: 4px;
+    height: 12px;
+  }
+  .split span {
+    border-radius: 6px;
+  }
+  .split--needs {
+    flex: 50;
+    background: #ebc48f;
+  }
+  .split--wants {
+    flex: 30;
+    background: #c4b1ea;
+  }
+  .split--savings {
+    flex: 20;
+    background: #9ed3bc;
+  }
+  .buckets {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .bucket {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'name pct' 'foot pct';
+    align-items: center;
+    gap: 2px 12px;
+    border-radius: 26px;
+    padding: 22px;
+  }
+  .bucket__foot {
+    grid-area: foot;
+    align-self: start;
+    padding-top: 6px;
+  }
+  .bucket__pct {
+    grid-area: pct;
+    font-size: 64px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 64px;
+  }
+  .bucket__name {
+    grid-area: name;
+    align-self: end;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .bucket__name h3 {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 28px;
+  }
+  .bucket__sub {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .bucket__cats {
+    display: none;
+  }
+  .bucket__amount {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 22px;
+  }
+  .bucket__unit {
+    font-family: var(--font-figure);
+  }
+  .bucket--needs {
+    background: linear-gradient(in oklab 165deg, var(--hue-sand-start), var(--hue-sand-end));
+    color: var(--hue-sand-ink);
+    --rule: rgb(90 58 18 / 16%);
+  }
+  .bucket--wants {
+    background: linear-gradient(in oklab 165deg, var(--hue-lilac-start), var(--hue-lilac-end));
+    color: var(--hue-lilac-ink);
+    --rule: rgb(60 42 102 / 16%);
+  }
+  .bucket--savings {
+    background: linear-gradient(in oklab 165deg, var(--hue-mint-start), var(--hue-mint-end));
+    color: var(--hue-mint-ink);
+    --rule: rgb(22 74 53 / 16%);
+  }
+  .plan__foot {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* Pin the phone board's integers (BOA-0); fluid type scales above 390. */
+  @media (max-width: 390px) {
+    .plan__title h2 {
+      font-size: 34px;
+      line-height: 38px;
+    }
+    .plan__intro-m {
+      font-size: 16px;
+      line-height: 24px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .plan {
+      --section-pt: 140px;
+      --section-pb: 140px;
+      --head-gap: 56px;
+    }
+    .plan__head {
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 48px;
+    }
+    .plan__title {
+      flex: none;
+      gap: 16px;
+      width: 520px;
+    }
+    .plan__intro-m,
+    .split,
+    .bucket__sub--m,
+    .plan__foot {
+      display: none;
+    }
+    .plan__intro-d {
+      display: block;
+      flex: none;
+      width: 380px;
+      padding-bottom: 6px;
+    }
+    .bucket__sub--d,
+    .bucket__note {
+      display: block;
+    }
+    .buckets {
+      flex-direction: row;
+      gap: 16px;
+    }
+    .bucket {
+      display: flex;
+      flex: 1 1 0;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: stretch;
+      height: 420px;
+      gap: 0;
+      padding: 32px 28px;
+      border-radius: 32px;
+    }
+    .bucket--needs {
+      flex-grow: 50;
+      padding: 32px;
+    }
+    .bucket--wants {
+      flex-grow: 30;
+    }
+    .bucket--savings {
+      flex-grow: 20;
+      padding-inline: 24px;
+    }
+    /* head block: pct + name sit together at the top, foot pinned below */
+    .bucket__pct {
+      font-family: var(--font-figure);
+      font-size: 96px;
+      line-height: 88px;
+      margin-bottom: 12px;
+    }
+    .bucket--needs .bucket__pct {
+      font-size: 136px;
+      line-height: 120px;
+      margin-bottom: 20px;
+    }
+    .bucket--savings .bucket__pct {
+      font-size: 72px;
+      line-height: 72px;
+    }
+    .bucket__name {
+      align-self: stretch;
+      gap: 4px;
+      padding-top: 8px;
+      margin-bottom: auto;
+    }
+    .bucket--needs .bucket__name {
+      padding-top: 0;
+    }
+    .bucket__name h3 {
+      font-size: 28px;
+      letter-spacing: -0.02em;
+      line-height: 34px;
+    }
+    .bucket__sub {
+      font-size: 16px;
+      line-height: 22px;
+      opacity: 0.8;
+    }
+    .bucket__foot {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-top: 32px;
+    }
+    .bucket__cats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .bucket__cats li {
+      padding: 8px 14px;
+      border-radius: var(--r-pill);
+      background: rgb(255 255 255 / 70%);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 18px;
+    }
+    .bucket__amount {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding-top: 16px;
+      border-top: 1px solid var(--rule);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 20px;
+    }
+    .bucket__amount .figure {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 28px;
+    }
+    .bucket__note {
+      font-size: 15px;
+      font-weight: 400;
+      opacity: 0.8;
+    }
+  }
+
+  /* The bar fills left to right as it scrolls in (phones); each bucket's
+     chips drop in after the card on large screens. Still states are the
+     default, so nothing depends on JS. */
+  @media (prefers-reduced-motion: no-preference) {
+    .split span {
+      transform-origin: left;
+      transition: scale 480ms var(--ease-out-soft) 200ms;
+    }
+    .split span:nth-child(2) {
+      transition-delay: 320ms;
+    }
+    .split span:nth-child(3) {
+      transition-delay: 440ms;
+    }
+    :global(.js) .split:not(:global(.is-in)) {
+      opacity: 1;
+      transform: none;
+    }
+    :global(.js) .split:not(:global(.is-in)) span {
+      scale: 0 1;
+    }
+    .bucket__cats li {
+      transition:
+        opacity 260ms var(--ease-out-soft),
+        translate 260ms var(--ease-out-soft);
+      transition-delay: calc(var(--i, 0) * 60ms + 280ms);
+    }
+    :global(.js) .bucket:not(:global(.is-in)) .bucket__cats li {
+      opacity: 0;
+      translate: 0 6px;
+    }
+  }
+</style>

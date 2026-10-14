@@ -1,0 +1,388 @@
+---
+/**
+ * 06 Bills found (Paper AWS-0 desktop, BP7-0 phone). The three bill cards are
+ * built in HTML/CSS; they are decorative, the figcaption says what they show.
+ */
+import Icon from '../Icon.astro';
+---
+
+<section id="bills" class="section bills" aria-labelledby="bills-title">
+  <div class="container bills__inner">
+    <div class="bills__copy" data-reveal>
+      <p class="overline overline--sand">Bills</p>
+      <h2 id="bills-title" class="display-panel">Hasala finds your bills for you.</h2>
+      <p class="copy bills__text">
+        <span class="bills__m">It spots payments that repeat, like rent or DEWA, and counts each one on the day it's due. You'll hear if a price changes or a bill may be late.</span>
+        <span class="bills__d">It spots payments that repeat, like rent, DEWA, du or a subscription you forgot. Then it counts each one on the day it's due.</span>
+      </p>
+      <ul class="points" role="list">
+        <li><span class="points__dot points__dot--blue" aria-hidden="true"></span>Finds new bills on its own</li>
+        <li><span class="points__dot points__dot--amber" aria-hidden="true"></span>Tells you when a price changes</li>
+        <li><span class="points__dot points__dot--red" aria-hidden="true"></span>Tells you when a bill may be late</li>
+      </ul>
+    </div>
+
+    <figure class="stage" data-reveal aria-labelledby="bills-caption">
+      <figcaption id="bills-caption" class="sr-only">
+        Example bill cards. AXA Insurance, AED 550.00, 3 days past usual: car insurance is usually here by the 7th. du, AED 427.90, price change: charged 38.90 more than usual on Mon 5 Oct. Apple.com/bill, AED 14.99 every month, new bill found: seen 5 times, every about 30 days, last on 8 Oct, with Track this bill and Dismiss buttons.
+      </figcaption>
+
+      <div class="bill bill--axa" aria-hidden="true">
+        <div class="bill__head bill__head--rose">
+          <div class="bill__row">
+            <span class="bill__icon"><Icon name="shield-plain" size={15} stroke={1.5} /></span>
+            <span class="bill__name">AXA Insurance</span>
+            <span class="bill__tag bill__tag--red"><i></i>3 days past usual</span>
+          </div>
+          <p class="bill__amount"><span class="bill__unit figure">AED</span><span class="bill__value figure">550.00</span></p>
+        </div>
+        <p class="bill__note">Car insurance is usually here by the 7th.</p>
+      </div>
+
+      <div class="bill bill--du" aria-hidden="true">
+        <div class="bill__head bill__head--peach">
+          <div class="bill__row">
+            <span class="bill__icon"><Icon name="wifi" size={15} stroke={1.5} /></span>
+            <span class="bill__name">du</span>
+            <span class="bill__tag bill__tag--amber"><i></i>Price change</span>
+          </div>
+          <p class="bill__amount"><span class="bill__unit figure">AED</span><span class="bill__value figure">427.90</span></p>
+        </div>
+        <p class="bill__note">Charged 38.90 more than usual on Mon 5 Oct.</p>
+      </div>
+
+      <div class="bill bill--apple" aria-hidden="true">
+        <div class="bill__head bill__head--sky">
+          <div class="bill__row">
+            <span class="bill__icon"><Icon name="repeat" size={15} stroke={1.5} /></span>
+            <span class="bill__name">Apple.com/bill</span>
+            <span class="bill__tag bill__tag--blue"><i></i>New bill found</span>
+          </div>
+          <p class="bill__amount">
+            <span class="bill__unit figure">AED</span><span class="bill__value figure">14.99</span><span class="bill__every">every month</span>
+          </p>
+        </div>
+        <div class="bill__foot">
+          <div class="bill__chips">
+            <span>Seen 5×</span><span>Every ~30 days</span><span class="bill__chip-last">Last on 8 Oct</span>
+          </div>
+          <div class="bill__actions">
+            <span class="bill__btn bill__btn--primary">Track this bill</span>
+            <span class="bill__btn bill__btn--subtle">Dismiss</span>
+          </div>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<style>
+  .bills {
+    --section-pt: 88px;
+    --section-pb: 88px;
+  }
+  .bills__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .bills__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .bills__d,
+  .points {
+    display: none;
+  }
+  .points {
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 12px;
+    color: var(--text-primary);
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .points li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .points__dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+  }
+  .points__dot--blue {
+    background: var(--accent);
+  }
+  .points__dot--amber {
+    background: var(--pace-over);
+  }
+  .points__dot--red {
+    background: var(--red-700);
+  }
+
+  /* Stage: phone size by default (350 x 500) */
+  .stage {
+    --w1: 306px;
+    --w3: 338px;
+    position: relative;
+    flex: none;
+    width: 350px;
+    max-width: 100%;
+    height: 500px;
+    margin: 0;
+  }
+  .bill {
+    position: absolute;
+    overflow: clip;
+    border-radius: 28px;
+    background: var(--white);
+    transform-origin: 0 0;
+  }
+  .bill--axa {
+    top: 0;
+    left: 34px;
+    width: var(--w1);
+    rotate: 4deg;
+    box-shadow: rgb(20 38 89 / 10%) 0 20px 40px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+  }
+  .bill--du {
+    top: 128px;
+    left: 4px;
+    width: var(--w1);
+    rotate: -3deg;
+    box-shadow: rgb(20 38 89 / 12%) 0 20px 40px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+  }
+  .bill--apple {
+    top: 262px;
+    left: 6px;
+    width: var(--w3);
+    box-shadow: rgb(20 38 89 / 16%) 0 28px 56px, rgb(0 0 0 / 5%) 0 0 0 0.5px;
+  }
+  .bill__head {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px;
+  }
+  .bill__head--rose {
+    background: linear-gradient(in oklab 180deg, var(--hue-rose-start), var(--hue-rose-end));
+  }
+  .bill__head--peach {
+    background: linear-gradient(in oklab 180deg, var(--hue-peach-start), var(--hue-peach-end));
+  }
+  .bill__head--sky {
+    background: linear-gradient(in oklab 180deg, var(--hue-sky-start), var(--hue-sky-end));
+  }
+  .bill__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .bill__icon {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    background: rgb(255 255 255 / 75%);
+  }
+  .bill--axa .bill__icon {
+    color: var(--hue-rose-ink);
+  }
+  .bill--du .bill__icon {
+    color: var(--hue-peach-ink);
+  }
+  .bill--apple .bill__icon {
+    color: var(--hue-sky-ink);
+  }
+  .bill__name {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .bill__tag {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    max-width: 118px;
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+    background: var(--white);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .bill__tag i {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: currentcolor;
+  }
+  .bill__tag--red {
+    color: var(--red-700);
+  }
+  .bill__tag--amber {
+    max-width: none;
+    color: var(--amber-800);
+  }
+  .bill__tag--amber i {
+    background: var(--pace-over);
+  }
+  .bill__tag--blue {
+    max-width: none;
+    color: var(--accent);
+  }
+  .bill__amount {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--text-primary);
+  }
+  .bill__unit {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 22px;
+  }
+  .bill__value {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 44px;
+  }
+  .bill__every {
+    color: var(--neutral-700);
+    font-size: 17px;
+    line-height: 22px;
+  }
+  .bill__note {
+    padding: 16px 20px 20px;
+    color: var(--neutral-700);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .bill__foot {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 20px 20px;
+  }
+  .bill__chips {
+    display: flex;
+    gap: 6px;
+  }
+  .bill__chips span {
+    padding: 5px 10px;
+    border-radius: var(--r-pill);
+    background: var(--neutral-100);
+    color: var(--neutral-700);
+    font-size: 13px;
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  .bill__chip-last {
+    display: none;
+  }
+  .bill__actions {
+    display: flex;
+    gap: 8px;
+  }
+  .bill__btn {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    border-radius: var(--r-pill);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .bill__btn--primary {
+    background: var(--accent);
+    color: var(--white);
+  }
+  .bill__btn--subtle {
+    background: var(--accent-subtle);
+    color: var(--accent);
+  }
+
+  @media (min-width: 768px) {
+    .stage {
+      margin-inline: auto;
+    }
+  }
+
+  /* Two columns from 1024: copy left, small stage right */
+  @media (min-width: 1024px) {
+    .bills {
+      --section-pt: 160px;
+      --section-pb: 160px;
+    }
+    .bills__inner {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 48px;
+    }
+    .bills__copy {
+      flex: none;
+      gap: 20px;
+      width: 440px;
+    }
+    .bills__m {
+      display: none;
+    }
+    .bills__d {
+      display: inline;
+    }
+    .points {
+      display: flex;
+    }
+    .stage {
+      margin-inline: 0;
+    }
+  }
+
+  /* Full size from 1280: stage 680 x 640 */
+  @media (min-width: 1280px) {
+    .bills__inner {
+      gap: 80px;
+    }
+    .stage {
+      --w1: 390px;
+      --w3: 420px;
+      flex: 1;
+      width: auto;
+      height: 640px;
+    }
+    .bill--axa {
+      top: 10px;
+      left: 280px;
+    }
+    .bill--du {
+      top: 196px;
+      left: 0;
+    }
+    .bill--apple {
+      top: 372px;
+      left: 250px;
+    }
+    .bill__chip-last {
+      display: block;
+    }
+    .bill__tag {
+      max-width: none;
+    }
+  }
+</style>

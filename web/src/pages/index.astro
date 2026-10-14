@@ -2,8 +2,13 @@
 import Base from '../layouts/Base.astro';
 import Hero from '../components/sections/Hero.astro';
 import HowItWorks from '../components/sections/HowItWorks.astro';
+import Spending from '../components/sections/Spending.astro';
+import SwipeReview from '../components/sections/SwipeReview.astro';
+import PlanSplit from '../components/sections/PlanSplit.astro';
+import BillsFound from '../components/sections/BillsFound.astro';
 import Privacy from '../components/sections/Privacy.astro';
 import Banks from '../components/sections/Banks.astro';
+import Faq from '../components/sections/Faq.astro';
 import Beta from '../components/sections/Beta.astro';
 import { SITE } from '../data/site';
 import { HERO_SEEN } from '../lib/inline-scripts.mjs';
@@ -77,8 +82,13 @@ const jsonLd = {
   <script is:inline slot="head" set:html={HERO_SEEN} />
   <Hero />
   <HowItWorks />
+  <Spending />
+  <SwipeReview />
+  <PlanSplit />
+  <BillsFound />
   <Privacy />
   <Banks />
+  <Faq />
   <Beta />
 </Base>
 

@@ -1,122 +1,212 @@
 ---
 /**
- * The home page's "Private and secure": three plain points. The data-flow
- * diagram and "who can see what" are on /how-privacy-works.
+ * 07 Privacy (Paper AYX-0 / BQZ-0): "Only you can see your money." on the navy
+ * band. Three plain points, then a link to /how-privacy-works. On phones the
+ * head is left-aligned and the link is a text link with an arrow; from 1024 the
+ * head is centred and the link is a white pill with a lock.
  */
 import Icon from '../Icon.astro';
-import MoreLink from '../MoreLink.astro';
+
+const points = [
+  { title: 'No bank password', text: 'Hasala reads the emails your bank already sends. It can’t move money.' },
+  { title: 'Done on your phone', text: 'Reading, sorting and budgeting all happen on your iPhone.' },
+  { title: 'Locked before backup', text: 'We store your data, but only your devices can open it.' },
+];
 ---
 
-<section id="privacy" class="privacy" aria-labelledby="privacy-title">
-  <div class="privacy__glow" aria-hidden="true"></div>
+<section id="privacy" class="section section--navy privacy" aria-labelledby="privacy-title">
+  <div class="privacy__glow section__glow" aria-hidden="true"></div>
   <div class="container privacy__inner">
-    <h2 id="privacy-title" class="privacy__title" data-reveal>Private and secure</h2>
+    <header class="privacy__head" data-reveal>
+      <p class="overline overline--on-dark">Privacy</p>
+      <h2 id="privacy-title" class="display-privacy on-dark">Only you can see your money.</h2>
+      <p class="privacy__lead on-navy-body">
+        Hasala does its work on your iPhone. Anything it backs up is locked first, with a key we don’t have. So we can’t see your payments, shops or budget.
+      </p>
+    </header>
 
-    <ul class="points" role="list">
-      <li class="point" data-reveal>
-        <span class="point__icon" aria-hidden="true"><Icon name="lock" size={20} stroke={1.7} /></span>
-        <p><strong>Encrypted on your iPhone.</strong> Only your devices have the key, so our server can’t read your transactions or budget.</p>
-      </li>
-      <li class="point" data-reveal>
-        <span class="point__icon" aria-hidden="true"><Icon name="bank" size={20} stroke={1.6} /></span>
-        <p><strong>No bank login.</strong> Hasala never asks for your bank password and can’t move your money.</p>
-      </li>
-      <li class="point" data-reveal>
-        <span class="point__icon" aria-hidden="true"><Icon name="eye-off" size={20} stroke={1.6} /></span>
-        <p><strong>No ads or tracking.</strong> The app has no ads or analytics, and we never sell your data.</p>
-      </li>
+    <ul class="privacy__points" role="list">
+      {
+        points.map((p) => (
+          <li class="card card--navy privacy__point" data-reveal>
+            <h3 class="privacy__point-title">{p.title}</h3>
+            <p class="privacy__point-text on-navy-body">{p.text}</p>
+          </li>
+        ))
+      }
     </ul>
 
-    <MoreLink href="/how-privacy-works" onDark>How privacy works</MoreLink>
+    <div class="privacy__more" data-reveal>
+      <a class="privacy__link" href="/how-privacy-works">
+        <span class="privacy__link-lock" aria-hidden="true"><Icon name="lock" size={18} stroke={1.7} /></span>
+        <span>How privacy works</span>
+        <span class="privacy__link-arrow" aria-hidden="true"><Icon name="arrow-right" size={14} stroke={1.9} /></span>
+      </a>
+    </div>
   </div>
 </section>
 
 <style>
   .privacy {
-    position: relative;
-    padding: 72px 0;
-    background: var(--wash-navy);
-    color: var(--white);
-    overflow: clip;
+    --section-pt: 88px;
+    --section-pb: 88px;
   }
   /* The default blue-600 ring is too dark on navy; a light ring reaches 3:1. */
   .privacy :global(:focus-visible) {
-    outline-color: var(--blue-300);
+    outline-color: var(--white);
   }
   .privacy__glow {
-    position: absolute;
     left: calc(50% - 300px);
     top: -240px;
     width: 600px;
     height: 520px;
-    border-radius: 50%;
-    background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(62.2% -0.006 -0.203 / 35%) 0%, oklab(62.2% -0.006 -0.203 / 0%) 70%);
-    pointer-events: none;
+    background: var(--glow-blue);
   }
   .privacy__inner {
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 32px;
+    gap: 36px;
   }
-  .privacy__title {
-    font-size: var(--t-display-l);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: calc(1em + 4px);
-  }
-  .points {
-    display: grid;
-    gap: 12px;
-    width: 100%;
-  }
-  .point {
+  .privacy__head {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 24px;
-    border-radius: 28px;
-    background: rgb(255 255 255 / 6%);
-    box-shadow: rgb(255 255 255 / 14%) 0 0 0 1px inset;
+    gap: 12px;
   }
-  .point__icon {
+  .privacy__head .display-privacy {
+    margin: 0;
+  }
+  .privacy__lead {
+    margin: 0;
+    font-size: 16px;
+    line-height: 25px;
+  }
+  .privacy__points {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .privacy__point {
+    gap: 6px;
+  }
+  .privacy__point-title {
+    margin: 0;
+    color: var(--white);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+  }
+  .privacy__point-text {
+    margin: 0;
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .privacy__link {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 14px;
-    background: rgb(255 255 255 / 10%);
-    color: var(--gold-100);
-  }
-  .point p {
-    color: rgb(255 255 255 / 80%);
-    font-size: 17px;
-    line-height: 26px;
-  }
-  .point strong {
-    display: block;
+    gap: 8px;
+    min-height: 44px;
     color: var(--white);
-    font-size: var(--t-card-title);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
-    padding-bottom: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+    text-decoration: none;
   }
+  .privacy__link-arrow {
+    display: inline-flex;
+    color: var(--blue-300);
+  }
+  .privacy__link-lock {
+    display: none;
+  }
+
+  @media (min-width: 768px) {
+    .privacy__point-title {
+      font-size: 20px;
+      line-height: 26px;
+      letter-spacing: -0.01em;
+    }
+    .privacy__point-text {
+      font-size: 16px;
+      line-height: 24px;
+    }
+  }
+
   @media (min-width: 1024px) {
     .privacy {
-      padding: 120px 0;
+      --section-pt: 140px;
+      --section-pb: 140px;
     }
     .privacy__inner {
-      gap: 48px;
+      gap: 64px;
     }
-    .points {
-      grid-template-columns: repeat(3, 1fr);
+    .privacy__head {
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+    }
+    .privacy__head .display-privacy {
+      max-width: 1000px;
+    }
+    .privacy__lead {
+      max-width: 680px;
+      font-size: 19px;
+      line-height: 30px;
+    }
+    .privacy__points {
+      flex-direction: row;
       gap: 24px;
     }
-    .point {
-      padding: 32px;
+    .privacy__point {
+      flex: 1 1 0;
+      gap: 8px;
+    }
+    .privacy__more {
+      display: flex;
+      justify-content: center;
+    }
+    .privacy__link {
+      gap: 10px;
+      height: 60px;
+      padding: 0 26px 0 22px;
+      border-radius: var(--r-pill);
+      background: var(--white);
+      box-shadow:
+        rgb(255 255 255 / 90%) 1px 1px 0 inset,
+        rgb(0 0 0 / 8%) 0 0 0 0.5px,
+        rgb(20 38 89 / 8%) 0 6px 16px;
+      color: var(--text-primary);
+      font-size: 18px;
+      letter-spacing: -0.015em;
+      line-height: 24px;
+    }
+    .privacy__link-lock {
+      display: inline-flex;
+      color: var(--text-primary);
+    }
+    .privacy__link-arrow {
+      display: none;
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .privacy__link {
+      transition: transform var(--t-hover-out) var(--ease-out-soft);
+    }
+    .privacy__link:hover {
+      transition-duration: var(--t-hover-in);
+    }
+    @media (min-width: 1024px) {
+      .privacy__link:hover {
+        transform: translateY(-1px);
+      }
+    }
+    .privacy__link:active {
+      transform: scale(0.97);
+      transition-duration: 100ms;
     }
   }
 </style>

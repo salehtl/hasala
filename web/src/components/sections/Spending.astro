@@ -1,0 +1,482 @@
+---
+import Icon from '../Icon.astro';
+---
+
+<section id="spending" class="everyday" aria-labelledby="spending-title">
+  <div class="container-wide everyday__panel">
+    <div class="everyday__copy" data-reveal>
+      <p class="overline everyday__overline"><span class="ov-m">Needs and wants</span><span class="ov-d">Spending money</span></p>
+      <h2 id="spending-title" class="display-panel">How much can I still spend?</h2>
+      <p class="body-l">
+        See what you've spent on needs and wants this month, what's left, and whether you're on pace. Savings are set aside first.
+      </p>
+      <ul class="legend" role="list">
+        <li><span class="legend__fill" aria-hidden="true"></span>What you've spent so far</li>
+        <li><span class="legend__marker" aria-hidden="true"><span></span></span>Where an even pace would be today</li>
+      </ul>
+    </div>
+
+    <figure class="pace" data-reveal data-pace aria-labelledby="spending-pace-caption">
+      <figcaption id="spending-pace-caption" class="sr-only">
+        Example: AED 10,288.34 spent of 19,000 on needs and wants on day 10 of 31 in October, on track with AED 8,711.66 left. Bills this month: AED 9,045.04. Rent 7,500.00, paid. DEWA about 489.15, expected Wednesday. du 427.90, paid.
+      </figcaption>
+      <div class="pace__top" aria-hidden="true">
+        <div class="pace__row">
+          <span class="pace__date">October · day 10 of 31</span>
+          <span class="chip chip--success pace__verdict"><span class="dot"></span>On track</span>
+        </div>
+        <p class="pace__figure">
+          <span class="pace__unit">AED</span>
+          <span class="pace__value figure" data-count="10288.34">10,288.34</span>
+        </p>
+        <p class="pace__caption">spent of 19,000 on needs and wants</p>
+      </div>
+
+      <div class="pace__meter" aria-hidden="true">
+        <div class="pace__bar">
+          <span class="pace__track"></span>
+          <span class="pace__fill"></span>
+          <span class="pace__today"></span>
+        </div>
+        <div class="pace__scale">
+          <span><small>Spent</small><b class="figure">10,288.34</b></span>
+          <span class="pace__scale-today"><small>Today</small><b class="figure">day 10</b></span>
+          <span class="pace__scale-month"><small>For the month</small><b class="figure">19,000.00</b></span>
+        </div>
+        <p class="pace__note">On track · AED 8,711.66 left</p>
+      </div>
+
+      <div class="bills" aria-hidden="true">
+        <div class="bills__head">
+          <span class="bills__title">Bills this month</span>
+          <span class="bills__total"><span class="bills__unit">AED</span><b class="figure">9,045.04</b></span>
+        </div>
+        <ul class="bills__tiles" role="list">
+          <li class="bill">
+            <span class="bill__icon"><Icon name="home" size={15} /></span>
+            <span class="bill__text"><b>Rent</b><small class="bill__sub bill__sub--paid">7,500.00 · paid</small></span>
+          </li>
+          <li class="bill">
+            <span class="bill__icon"><Icon name="bolt" size={15} /></span>
+            <span class="bill__text"><b>DEWA</b><small class="bill__sub">~489.15 · Wed</small></span>
+          </li>
+          <li class="bill">
+            <span class="bill__icon"><Icon name="wifi" size={15} /></span>
+            <span class="bill__text"><b>du</b><small class="bill__sub bill__sub--paid">427.90 · paid</small></span>
+          </li>
+        </ul>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<style>
+  .everyday {
+    padding: 0 0 88px;
+    background: var(--white);
+  }
+  .everyday__panel {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 40px 20px 20px;
+    border-radius: 36px;
+    background: var(--wash-sky);
+    overflow: clip;
+  }
+  .everyday__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-inline: 8px;
+  }
+  .ov-d {
+    display: none;
+  }
+  .everyday__copy .body-l {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .legend {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 12px;
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .legend li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .legend__fill {
+    width: 28px;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--accent);
+  }
+  .legend__marker {
+    display: flex;
+    justify-content: center;
+    width: 28px;
+  }
+  .legend__marker span {
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: var(--text-primary);
+  }
+
+  .pace {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin: 0;
+    padding: 22px;
+    border-radius: 26px;
+    background: rgb(255 255 255 / 88%);
+    box-shadow: rgb(20 38 89 / 10%) 0 16px 32px;
+  }
+  .pace__top {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pace__row {
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pace__date {
+    color: var(--neutral-700);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .pace__verdict {
+    font-size: 13px;
+    line-height: 16px;
+    padding: 4px 10px 4px 8px;
+    gap: 5px;
+  }
+  .pace__verdict .dot {
+    width: 7px;
+    height: 7px;
+  }
+  .pace__figure {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .pace__unit {
+    font-family: var(--font-figure);
+    font-size: clamp(20px, 16.3px + 0.952vw, 30px);
+    line-height: 24px;
+    font-weight: 600;
+  }
+  .pace__value {
+    font-size: clamp(44px, 21.7px + 5.714vw, 104px);
+    letter-spacing: -0.03em;
+    line-height: 1.14;
+  }
+  .pace__caption {
+    color: var(--neutral-700);
+    font-size: clamp(16px, 14.51px + 0.381vw, 20px);
+    line-height: 1.38;
+  }
+  .pace__meter {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .pace__bar {
+    position: relative;
+    height: 20px;
+  }
+  .pace__track,
+  .pace__fill {
+    position: absolute;
+    left: 0;
+    top: 6px;
+    height: 8px;
+    border-radius: 4px;
+  }
+  .pace__track {
+    right: 0;
+    background: var(--pace-track);
+  }
+  .pace__fill {
+    width: 54%;
+    background: var(--accent);
+    transform-origin: left center;
+  }
+  .pace__today {
+    position: absolute;
+    left: 60.3%;
+    top: 0;
+    width: 2px;
+    height: 20px;
+    border-radius: 2px;
+    background: var(--text-primary);
+  }
+  .pace__scale {
+    position: relative;
+    display: none;
+    height: 40px;
+  }
+  .pace__scale span {
+    position: absolute;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pace__scale small {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .pace__scale b {
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .pace__scale-today {
+    left: 61.4%;
+  }
+  .pace__scale-month {
+    right: 0;
+    align-items: flex-end;
+  }
+  .pace__note {
+    color: var(--neutral-700);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .everyday__overline {
+    color: var(--blue-700);
+  }
+
+  .bills {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--neutral-200);
+  }
+  .bills__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .bills__title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+  .bills__total {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .bills__total b {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+  .bills__unit {
+    display: none;
+    color: var(--text-secondary);
+    font-family: var(--font-figure);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .bills__tiles {
+    display: none;
+    gap: 8px;
+  }
+  .bill {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: var(--neutral-100);
+  }
+  .bill__icon {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, var(--hue-sand-start), var(--hue-sand-end));
+    color: var(--hue-sand-ink);
+  }
+  .bill__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .bill__text b {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .bill__sub {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .bill__sub--paid {
+    color: var(--success);
+  }
+
+  @media (min-width: 768px) {
+    .everyday__panel {
+      padding: 64px 48px 48px;
+      border-radius: var(--r-panel);
+    }
+    .everyday__copy {
+      padding-inline: 0;
+    }
+    .legend {
+      display: flex;
+    }
+    .pace {
+      gap: 28px;
+      padding: 40px;
+      border-radius: 32px;
+      background: rgb(255 255 255 / 86%);
+      box-shadow: rgb(20 38 89 / 10%) 0 24px 48px, rgb(0 0 0 / 4%) 0 0 0 0.5px;
+    }
+    .pace__top {
+      gap: 8px;
+    }
+    .pace__row {
+      margin-bottom: 0;
+    }
+    .pace__date {
+      font-size: 13px;
+    }
+    .pace__verdict {
+      font-size: 14px;
+      line-height: 18px;
+      padding: 5px 12px 5px 10px;
+      gap: 6px;
+    }
+    .pace__verdict .dot {
+      width: 8px;
+      height: 8px;
+    }
+    .pace__unit {
+      line-height: 36px;
+    }
+    .bills__title,
+    .bills__total b {
+      line-height: 22px;
+    }
+    .pace__figure {
+      gap: 12px;
+    }
+    .pace__value {
+      letter-spacing: -0.035em;
+      line-height: 1;
+    }
+    .pace__caption {
+      line-height: 1.4;
+    }
+    .pace__meter {
+      gap: 12px;
+    }
+    .ov-m {
+      display: none;
+    }
+    .ov-d {
+      display: inline;
+    }
+    .pace__bar {
+      height: 28px;
+    }
+    .pace__track,
+    .pace__fill {
+      top: 8px;
+      height: 12px;
+      border-radius: 6px;
+    }
+    .pace__fill {
+      background: linear-gradient(in oklab 90deg, oklab(62.2% -0.006 -0.203) 0%, var(--accent) 100%);
+    }
+    .pace__today {
+      left: 63.4%;
+      width: 3px;
+      height: 28px;
+    }
+    .pace__note {
+      font-size: 16px;
+      line-height: 24px;
+    }
+    .pace__scale {
+      display: block;
+    }
+    .bills {
+      padding-top: 24px;
+    }
+    .bills__title {
+      font-size: 16px;
+    }
+    .bills__unit {
+      display: inline;
+    }
+    .bills__total b {
+      font-size: 18px;
+    }
+    .bills__tiles {
+      display: flex;
+    }
+  }
+  @media (min-width: 1024px) {
+    .everyday {
+      padding-bottom: 140px;
+    }
+    .everyday__panel {
+      flex-direction: row;
+      align-items: center;
+      gap: 64px;
+      padding: 88px 72px;
+    }
+    .everyday__copy {
+      flex: 0 0 400px;
+      gap: 20px;
+    }
+    .pace {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+  @media (min-width: 1280px) {
+    .everyday__copy {
+      flex-basis: 440px;
+    }
+  }
+
+  /* Motion moment C: set up by the pace script (JS only, motion allowed). */
+  .pace[data-armed] .pace__fill {
+    transform: scaleX(0);
+  }
+  .pace[data-armed] .pace__today {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  .pace[data-armed] .pace__verdict {
+    opacity: 0;
+  }
+</style>

@@ -1,0 +1,274 @@
+---
+/**
+ * 04 Swipe to review (Paper AQJ-0 desktop / BM7-0 phone). The stage is the
+ * drawn still of the review deck mid-swipe, exported from Paper at 2x. All
+ * words around it are real text. Nothing moves, so Reduce Motion needs no
+ * extra case.
+ */
+import { Image } from 'astro:assets';
+import stageDesktop from '../../assets/landing/04-review/stage-desktop.png';
+import stageMobile from '../../assets/landing/04-review/stage-mobile.png';
+
+const ALT =
+  'The review screen of the Hasala app, 2 of 6, with a card for Lulu Hypermarket, AED 214.30, mid-swipe to Need. A suggestion below reads: Looks like Groceries.';
+
+const DIRS = [
+  { key: 'want', label: 'Want', hint: 'Swipe left', path: 'M13 8H3.5M7.5 3.5 3 8l4.5 4.5' },
+  { key: 'need', label: 'Need', hint: 'Swipe right', path: 'M3 8h9.5M8.5 3.5 13 8l-4.5 4.5' },
+  { key: 'save', label: 'Save', hint: 'Swipe down', path: 'M8 3v9.5M3.5 8.5 8 13l4.5-4.5' },
+  { key: 'transfer', label: 'Transfer', hint: 'Swipe up', path: 'M8 13V3.5M3.5 7.5 8 3l4.5 4.5' },
+];
+---
+
+<section id="review" class="section review" aria-labelledby="review-title">
+  <div class="container review__inner">
+    <div class="review__stage" data-reveal>
+      <Image
+        class="review__img review__img--lg"
+        src={stageDesktop}
+        width={580}
+        height={720}
+        widths={[580, 1160]}
+        sizes="(min-width: 1024px) 580px, 0px"
+        format="webp"
+        quality={90}
+        alt={ALT}
+        loading="lazy"
+        decoding="async"
+      />
+      <Image
+        class="review__img review__img--sm"
+        src={stageMobile}
+        width={350}
+        height={560}
+        widths={[350, 700]}
+        sizes="(max-width: 1023px) calc(100vw - 40px), 0px"
+        format="webp"
+        quality={90}
+        alt={ALT}
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+
+    <div class="review__copy">
+      <div class="review__head" data-reveal>
+        <p class="overline overline--peach">Swipe to review</p>
+        <h2 id="review-title" class="display-panel">Sort a week in a minute.</h2>
+        <p class="copy review__text review__text--lg">
+          New payments wait in a short stack. Swipe each one into the right category. Hasala remembers the shop, so it won't ask again.
+        </p>
+        <p class="copy review__text review__text--sm">
+          Swipe each new payment into the right category. Hasala remembers the shop, so it won't ask again.
+        </p>
+      </div>
+      <div class="review__body" data-reveal>
+        <ul class="dirs" role="list">
+          {
+            DIRS.map((d) => (
+              <li class={`dir dir--${d.key}`}>
+                <span class="dir__icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <path d={d.path} />
+                  </svg>
+                </span>
+                <span class="dir__text">
+                  <b>{d.label}</b>
+                  <small>{d.hint}</small>
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="review__undo">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5.5 3.5 2.5 6.5l3 3M2.8 6.5h7a3.7 3.7 0 0 1 0 7.4H7" />
+          </svg>
+          Changed your mind? Undo is one tap away.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .review {
+    --section-pt: 0px;
+    --section-pb: 88px;
+    scroll-margin-top: 24px;
+  }
+  .review__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  /* Phone order: heading and copy, then the stage, then the chips. */
+  .review__copy {
+    display: contents;
+  }
+  .review__head {
+    order: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .review__stage {
+    order: 1;
+    border-radius: var(--r-panel);
+    overflow: clip;
+    background: var(--wash-peach);
+  }
+  .review__body {
+    order: 2;
+  }
+  .review__img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .review__img--lg,
+  .review__text--lg {
+    display: none;
+  }
+  .review__text {
+    color: var(--text-body);
+  }
+  .review__undo {
+    display: none;
+  }
+
+  .dirs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .dir {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px 8px 8px;
+    border-radius: var(--r-pill);
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+  .dir__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 70%);
+  }
+  .dir__icon svg {
+    width: 13px;
+    height: 13px;
+  }
+  .dir__text {
+    display: flex;
+    flex-direction: column;
+  }
+  .dir small {
+    display: none;
+  }
+  .dir--want {
+    background: linear-gradient(in oklab 180deg, var(--hue-lilac-start), var(--hue-lilac-end));
+    color: var(--hue-lilac-ink);
+  }
+  .dir--need {
+    background: linear-gradient(in oklab 180deg, var(--hue-sand-start), var(--hue-sand-end));
+    color: var(--hue-sand-ink);
+  }
+  .dir--save {
+    background: linear-gradient(in oklab 180deg, var(--hue-mint-start), var(--hue-mint-end));
+    color: var(--hue-mint-ink);
+  }
+  .dir--transfer {
+    background: linear-gradient(in oklab 180deg, var(--other-start), var(--other-end));
+    color: var(--other-ink);
+  }
+
+  @media (min-width: 1024px) {
+    .review {
+      --section-pb: 160px;
+    }
+    .review__inner {
+      flex-direction: row;
+      align-items: center;
+      gap: clamp(48px, 6.7vw, 96px);
+    }
+    .review__stage {
+      order: 0;
+      flex: 0 0 min(580px, 48.33%);
+    }
+    .review__copy {
+      order: 1;
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .review__head {
+      gap: 20px;
+    }
+    .review__img--sm,
+    .review__text--sm {
+      display: none;
+    }
+    .review__img--lg {
+      display: block;
+    }
+    .review__text--lg {
+      display: block;
+    }
+    .review__body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-top: 16px;
+    }
+    .dirs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .dir {
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 16px;
+      line-height: 22px;
+    }
+    .dir__icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 16px;
+    }
+    .dir__icon svg {
+      width: 16px;
+      height: 16px;
+    }
+    .dir small {
+      display: block;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 18px;
+    }
+    .review__undo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-top: 10px;
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 22px;
+    }
+  }
+</style>

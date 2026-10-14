@@ -119,7 +119,7 @@ const ASK_FOR_INVITE =
     ? 'Request an invite on the home page. For now, the form opens an email to support@hasala.app in your email app; send it, and we add the address you sent it from to the list.'
     : 'Request an invite on the home page, then tap Confirm my email in the email we send.';
 
-type FaqItem = {
+export type FaqItem = {
   id: string;
   q: string;
   /** The one-line reply the answer opens with. */
