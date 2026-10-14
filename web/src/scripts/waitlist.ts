@@ -7,7 +7,7 @@
  * alone; focus moves to the first field with a problem. Submitting keeps the
  * button's width, says "Sending…" and locks the fields; after 8 s it says
  * "Still trying". Posts JSON to PUBLIC_API_BASE/v1/waitlist. Every accepted
- * submission shows the same "Check your email" card: the server answers
+ * submission shows the same "Request sent" card: the server answers
  * 202 whether the address is new or already on the list.
  *
  * In "email" mode (PUBLIC_WAITLIST_MODE, see src/lib/env.ts; the markup then

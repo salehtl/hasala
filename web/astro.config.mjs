@@ -14,8 +14,8 @@ import cspUnion from './src/lib/csp-union.mjs';
 const env = loadEnv(process.env.NODE_ENV ?? 'production', process.cwd(), 'PUBLIC_');
 const API_BASE = (env.PUBLIC_API_BASE || 'https://api.hasala.app/api').replace(/\/+$/, '');
 const API_ORIGIN = new URL(API_BASE).origin;
-// "email" (default) or "api"; see src/lib/env.ts. Turnstile loads only in "api" mode.
-const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'email';
+// "api" (default) or "email"; see src/lib/env.ts. Turnstile loads only in "api" mode.
+const WAITLIST_MODE = env.PUBLIC_WAITLIST_MODE || 'api';
 if (WAITLIST_MODE !== 'email' && WAITLIST_MODE !== 'api') {
   throw new Error(`PUBLIC_WAITLIST_MODE must be "email" or "api", not ${JSON.stringify(WAITLIST_MODE)}`);
 }

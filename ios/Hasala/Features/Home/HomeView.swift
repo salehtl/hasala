@@ -18,6 +18,8 @@ struct HomeView: View {
   let model: any HomeModel
   @State private var path: [HomeRoute] = []
   @State private var topInset: CGFloat = 0
+  /// How far a pull has dragged the content below the top (0 when not overscrolled).
+  @State private var overscroll: CGFloat = 0
   /// Present once the account gate runs; it knows whether this is the review account.
   @Environment(AccountSession.self) private var session: AccountSession?
 
@@ -52,12 +54,16 @@ struct HomeView: View {
         .padding(.bottom, 32)
         .background(alignment: .top) {
           // The wash starts at the top of the screen, behind the header, and
-          // scrolls away with the content (Paper: absolute, 420 tall).
+          // scrolls away with the content (Paper: absolute, 420 tall). A pull past the
+          // top doesn't drag it down: it stays where it is while the content moves.
           AmbientWash(snapshot.hero.wash, height: 420)
             .padding(.top, -topInset)
+            .offset(y: -overscroll)
         }
       }
       .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
+      .trackingOverscroll($overscroll)
+      .refreshable { [app] in await app.refresh() }
       .scrollEdgeEffectStyle(.soft, for: .bottom)
       .background(HColor.surfaceSecondary)
       .navigationBarTitleDisplayMode(.inline)

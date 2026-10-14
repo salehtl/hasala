@@ -2,9 +2,10 @@ package mailq
 
 // templates.go renders spec 07 §6.4's templates (and spec 02's `test`): a
 // plain-text part whose first line is the subject, and for 07's kinds an HTML
-// part in one shared layout. No template carries a script, an inline style, a
-// remote image, an http:// link or a query string (spec 07 F7-6, enforced by
-// TestTemplatesAreContentFree).
+// part in one shared layout, styled by the layout's one <style> block (Paper's
+// colours and radii, system fonts). No template carries a script, an inline
+// style, a remote image or stylesheet (no url() or @import), an http:// link
+// or a query string (spec 07 F7-6, enforced by TestTemplatesAreContentFree).
 
 import (
 	"bytes"

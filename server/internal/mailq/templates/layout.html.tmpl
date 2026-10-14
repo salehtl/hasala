@@ -1,13 +1,47 @@
 {{define "layout"}}<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{{.Title}}</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{.Title}}</title>
+<style>
+body { margin: 0; padding: 0; background: #EFEFF1; color: #47474D; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif; font-size: 16px; line-height: 25px; -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 560px; margin: 0 auto; padding: 32px 16px; }
+.brand { margin: 0 0 16px; padding: 0 8px; color: #202023; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; line-height: 24px; }
+.card { padding: 32px 28px; border-radius: 20px; background: #FFFFFF; }
+h1 { margin: 0 0 16px; color: #202023; font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 34px; }
+p { margin: 0 0 16px; }
+.greeting { color: #202023; }
+a { color: #365BEB; font-weight: 600; }
+a.button { display: inline-block; margin: 8px 0 24px; padding: 15px 28px; border-radius: 999px; background: #365BEB; color: #FFFFFF; font-size: 17px; font-weight: 600; line-height: 22px; text-decoration: none; }
+.summary { width: 100%; margin: 0 0 16px; border-collapse: separate; border-spacing: 0; border-radius: 14px; background: #EFEFF1; }
+.summary td { padding: 12px 16px; font-size: 15px; line-height: 20px; }
+.summary tr + tr td { border-top: 1px solid #E4E4E7; }
+.summary td + td { color: #202023; font-weight: 600; text-align: right; }
+.code { padding: 16px; border-radius: 14px; background: #EEF1FF; color: #213D9E; font-size: 15px; line-height: 22px; }
+.code br { display: none; }
+.code strong { display: block; padding: 4px 0; color: #202023; font-size: 26px; letter-spacing: 0.06em; line-height: 32px; }
+ol { margin: 0 0 16px; padding-left: 22px; }
+li { margin-bottom: 10px; }
+.footer { padding: 24px 8px 0; color: #626267; font-size: 13px; line-height: 19px; }
+.footer p { margin-bottom: 12px; }
+.footer a { color: #626267; font-weight: 400; }
+</style>
+</head>
 <body>
 <div hidden>{{.Preview}}</div>
-<p><strong>Hasala</strong></p>
-<p>{{.Greeting}}</p>
+<div class="wrap">
+<p class="brand">Hasala</p>
+<div class="card">
+<p class="greeting">{{.Greeting}}</p>
 {{template "content" .}}
-<hr>
+</div>
+<div class="footer">
 <p>{{.Why}} Questions? <a href="https://hasala.app/support">hasala.app/support</a> · Privacy: <a href="https://hasala.app/privacy">hasala.app/privacy</a> · Sent by Hasala from no-reply@hasala.app.</p>
 <p>Hasala never asks for your recovery phrase, your password or a code by email, by phone or on a website. Don't reply to this email.</p>
+</div>
+</div>
 </body>
 </html>{{end}}
