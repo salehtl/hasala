@@ -9,12 +9,12 @@ interface Props {
 const { variant = 'full' } = Astro.props;
 /* How it works and FAQ are landing-page sections: hash links from every page;
    the router scrolls to the section. They carry no data-nav-link, so nav.ts
-   leaves them unmarked (all of them would match "/"). How privacy works is
+   leaves them unmarked (all of them would match "/"). Privacy (the How privacy works page) is
    its own page, so nav.ts marks it current there. Banks stays a homepage
    section, not a nav item. */
 const NAV: readonly { href: string; label: string; page?: true }[] = [
   { href: '/#how-it-works', label: 'How it works' },
-  { href: '/how-privacy-works', label: 'How privacy works', page: true },
+  { href: '/how-privacy-works', label: 'Privacy', page: true },
   { href: '/#faq', label: 'FAQ' },
 ];
 /* /i keeps its own "How privacy works" button, so its links leave it out. */
