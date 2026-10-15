@@ -11,10 +11,11 @@
   ///
   /// Fixtures (synthetic, one set; spec 06 open question 1): Gmail `maya@example.com`;
   /// Outlook `maya.k@example.com`, a personal Microsoft account connected on 2 Oct; the work
-  /// account `maya@contoso.com` for the admin case.
+  /// account `maya@contoso.com` for the admin case. A scenario that starts with Maya's Gmail
+  /// also has the one alert Paper shows it couldn't read ("Needs a look", Debug).
   @MainActor
   @Observable
-  final class MockMailbox: MailboxConnecting {
+  final class MockMailbox: MailboxConnecting, UnreadableMailReporting {
     var connectable: [MailProviderKind] = MailProviderKind.allCases
     var capabilities: MailboxCapabilities = .all
     private(set) var mailboxes: [MailboxSnapshot] = []
@@ -39,11 +40,16 @@
     var offline = false
     /// Each `connect` call, whatever its outcome (tests: no second sign-in on Back).
     private(set) var connectCalls = 0
+    /// Each `signInAgain` call.
+    private(set) var signInCalls = 0
     private(set) var sampleLoaded = false
+    /// The alerts a mailbox fetched but couldn't read.
+    var unreadableMail: [UnreadableMail] = []
 
     init(offersSampleData: Bool = false, mailboxes: [MailboxSnapshot] = []) {
       self.offersSampleData = offersSampleData
       self.mailboxes = mailboxes
+      if mailboxes.contains(where: { $0.id == Self.gmail.id }) { unreadableMail = [Self.unreadable] }
     }
 
     // MARK: Fixtures
@@ -59,6 +65,9 @@
       id: "outlook-1", provider: .outlook, address: outlookAddress, state: .connected, meta: "Checked 1 h ago",
       accountKind: "Personal Microsoft", banks: ["Dubai Islamic Bank"], lastChecked: "Sat 10 Oct, 12:40",
       connectedOn: "2 Oct")
+
+    /// The debit card alert Maya's Gmail fetched on Thu 8 Oct and couldn't read (Paper 64L).
+    static let unreadable = UnreadableMail(kind: "Debit card alert", provider: .gmail, day: "Thu 8 Oct")
 
     /// A mailbox whose provider ended Hasala's access on Wed 7 Oct.
     static func needingSignIn(_ m: MailboxSnapshot) -> MailboxSnapshot {
@@ -113,7 +122,9 @@
     }
 
     func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+      signInCalls += 1
       try? await Task.sleep(for: connectDelay)
+      if offline { throw .offline }
       guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { throw .failed("That mailbox is gone.") }
       if mailboxes[i].provider == .outlook, outlookCancelled { throw .cancelled }
       // It picks up where it stopped: connected, checking from the last check.

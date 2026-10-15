@@ -2,17 +2,20 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// The connect screen in the profile's context (Profile › Bank alerts › Add a mailbox, or
-/// "Sign in again"), pushed inside the profile sheet so a password step-up can present
-/// over it (no sheet over a sheet). A new mailbox's first scan starts here and goes on in
-/// the background; Bank alerts shows it syncing.
+/// The connect screen in the profile's context (Profile › Bank alerts › Add a mailbox, the
+/// Profile card's "Connect your email" or "Sign in again"), pushed inside the profile sheet
+/// so a password step-up can present over it (no sheet over a sheet). No step indicator.
+///
+/// A sign-in that didn't finish, or a work account its admin hasn't approved, swaps in its
+/// own screen ("Outlook isn't connected.", "Your organisation needs to approve Hasala.");
+/// trying again runs the sign-in from the read-only screen. Connected, it goes back to Bank
+/// alerts with a toast, where the new mailbox lands syncing; its first scan starts here and
+/// goes on in the background.
 ///
 /// An account that reads no bank yet (setup's bank step was skipped for manual entry)
 /// picks its banks first, as setup does before its email step: the lane reads only the
 /// banks' alert senders, so without them it would read nothing, and the provider's screen
 /// would list no bank.
-///
-/// The foundation's version (plan B7.3).
 struct ConnectMailPage: View {
   @Bindable var app: AppModel
   let provider: MailProviderKind
@@ -37,28 +40,57 @@ struct ConnectMailPage: View {
 
   var body: some View {
     if let coordinator, let mailbox = app.mailbox {
-      if banks.isEmpty {
-        MailBanksStep(provider: provider, setup: session?.services.setup) { banks = $0 }
-      } else {
-        ConnectProviderView(
-          provider: provider, coordinator: coordinator, banks: banks,
-          onConnected: { _ in connected(mailbox, coordinator.context) },
-          onChooseDifferent: { app.router.profile.removeLast() })
+      Group {
+        if banks.isEmpty {
+          MailBanksStep(provider: provider, setup: session?.services.setup) { banks = $0 }
+        } else if let failure = coordinator.errorScreen {
+          MailConnectErrorView(
+            failure: failure, provider: provider,
+            onRetry: { retry(coordinator, mailbox) },
+            onChooseDifferent: chooseDifferent)
+        } else {
+          ConnectProviderView(
+            provider: provider, coordinator: coordinator, banks: banks,
+            onConnected: { id in connected(id, mailbox, coordinator.context) },
+            onChooseDifferent: chooseDifferent)
+        }
       }
+      .hAnimation(.stateSwap, value: coordinator.errorScreen)
+      #if HASALA_MOCKS
+        // A Debug screen id that stands for "Continue with <provider>" (`MailLaunch`).
+        .task { if !banks.isEmpty, MailLaunch.takeConnect(provider) { await run(coordinator, mailbox) } }
+      #endif
     }
+  }
+
+  /// "Continue with Microsoft" or "Try Microsoft again" on an error: back to the read-only
+  /// screen, whose button shows the sign-in running.
+  private func retry(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) {
+    coordinator.reset()
+    Task { await run(coordinator, mailbox) }
+  }
+
+  private func run(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) async {
+    await coordinator.connect(provider)
+    if case .connected(let id)? = coordinator.outcome { connected(id, mailbox, coordinator.context) }
+  }
+
+  /// Back to the providers (Add a mailbox), or to wherever the person came from.
+  private func chooseDifferent() {
+    if !app.router.profile.isEmpty { app.router.profile.removeLast() }
   }
 
   /// Back to Bank alerts with a toast; a new mailbox's first import starts and outlives
   /// this screen.
-  private func connected(_ mailbox: MailboxConnecting, _ context: MailConnectCoordinator.Context) {
+  private func connected(_ id: String, _ mailbox: MailboxConnecting, _ context: MailConnectCoordinator.Context) {
     if context == .addMailbox {
-      app.say("\(provider.appName) connected. Checking for alerts.")
+      app.say(MailCopy.added(provider))
       Task {
         guard await mailbox.linkState() == .scanning else { return }
         for await _ in mailbox.firstScan() {}
       }
     } else {
-      app.say("\(provider.appName) reconnected")
+      app.say(MailCopy.signedInAgain(provider))
     }
     if let i = app.router.profile.lastIndex(of: .bankAlerts) {
       app.router.profile.removeSubrange((i + 1)...)
@@ -94,13 +126,13 @@ private struct MailBanksStep: View {
         Text("Available now").hType(.overline).foregroundStyle(HColor.textSecondary).padding(.leading, 16)
         VStack(spacing: 0) {
           ForEach(Array(SupportedBank.allCases.enumerated()), id: \.element) { i, bank in
-            if i > 0 { Divider().padding(.leading, 68) }
+            if i > 0 { HDivider(inset: .disc68) }
             BankChoiceRow(bank: bank, on: chosen.contains(bank)) {
               if chosen.contains(bank) { chosen.remove(bank) } else { chosen.insert(bank) }
             }
           }
         }
-        .listCard()
+        .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
         if let message = failure?.message {
           FailureBanner(failure: .badPhrase(message))
         }
