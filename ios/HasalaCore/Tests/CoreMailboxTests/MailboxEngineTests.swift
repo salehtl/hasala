@@ -1,6 +1,7 @@
 // The engine over FakeGmail (spec 04 §7.4-§7.8; the fetch.ts behaviours §7.5 keeps, each pinned
 // here). Every message is synthetic.
 import CoreJSON
+import CoreMail
 import CoreMailbox
 import CorePrimitives
 import CoreTemplate
@@ -21,6 +22,7 @@ let day: Int64 = 86_400_000
     // Step-up over P = SHA-256(id_token).
     #expect(puts[0].1["p"] == .string(Hex.encode(sha256(Data(puts[0].0.utf8)))))
     #expect(puts[0].1["kind"] == .string("mailbox.link"))
+    #expect(await rig.server.linkedProviders == [.gmail])
     let s = await rig.state()
     #expect(s.phase == .scanning && s.backfillDays == 90 && s.scanStartedMs == Rig.t0)
     #expect(s.address == "synthetic.user@example.com")
@@ -491,7 +493,7 @@ let day: Int64 = 86_400_000
       guard
         case .mail(let p) = MessageDisposer.parse(
           raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
-          bankDomains: trusted, trusted: trusted)
+          bankDomains: trusted, trusted: trusted, analyze: AuthResults.analyze)
       else { throw CancellationError() }
       c.stage.append(p)
     }

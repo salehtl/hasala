@@ -93,13 +93,15 @@ enum Scenarios {
       linked ? .holder(isThisDevice: true, watchExpiresAtMs: nil) : .noLink
     }
     func linkChallenge() async throws(MailboxServerError) -> String { "bm9uY2Utc3ludGhldGljLTAwMDAwMDAwMDAwMDAwMDA" }
-    func putLink(idToken: String, stepUp: JSONValue) async throws(MailboxServerError) -> MailboxLinkStatus {
+    func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
+      -> MailboxLinkResult
+    {
       linked = true
-      return .holder(isThisDevice: true, watchExpiresAtMs: nil)
+      return MailboxLinkResult(status: .holder(isThisDevice: true, watchExpiresAtMs: nil))
     }
     func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {}
     func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) { linked = false }
-    func watchTopic() async throws(MailboxServerError) -> String? { nil }
+    func pushConfig(provider: MailProviderID) async throws(MailboxServerError) -> MailboxPushConfig { .none }
   }
 
   struct ApprovedStepUp: MailboxStepUp {

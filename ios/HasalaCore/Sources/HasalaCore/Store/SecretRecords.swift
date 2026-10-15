@@ -139,7 +139,7 @@ public struct Secrets: Sendable {
   }
 
   /// Deletes every item of an account (§4.7 row 2): session, binding, keys,
-  /// the DAK handle and the Gmail token. Absent items are fine.
+  /// the DAK handle and the mail tokens. Absent items are fine.
   public func wipeAccount(userID: UserID, writerID: WriterID?, epochs: ClosedRange<UInt32> = 1...1)
     throws(SecretStoreError)
   {
@@ -150,6 +150,7 @@ public struct Secrets: Sendable {
       try store.delete(.writerKey(userID: userID, writerID: w))
       try store.delete(.approvalKey(userID: userID, writerID: w))
     }
-    try store.delete(.gmailRefresh(userID: userID))
+    for p in MailSecretProvider.allCases { try store.delete(.mailRefresh(provider: p, userID: userID)) }
+    try store.delete(.outlookClientState(userID: userID))
   }
 }

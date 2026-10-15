@@ -77,6 +77,7 @@ actor FakeServer: MailboxServer {
   var topic: String? = "projects/synthetic/topics/hasala-gmail-test"
   var nonce = "bm9uY2Utc3ludGhldGljLTAwMDAwMDAwMDAwMDAwMDA"
   var puts: [(String, JSONValue)] = []
+  var linkedProviders: [MailProviderID] = []
   var watches: [Int64] = []
   var deletes = 0
   var offline = false
@@ -93,10 +94,13 @@ actor FakeServer: MailboxServer {
     return link
   }
   func linkChallenge() async throws(MailboxServerError) -> String { nonce }
-  func putLink(idToken: String, stepUp: JSONValue) async throws(MailboxServerError) -> MailboxLinkStatus {
+  func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
+    -> MailboxLinkResult
+  {
     puts.append((idToken, stepUp))
+    linkedProviders.append(provider)
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
-    return link
+    return MailboxLinkResult(status: link)
   }
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
     if let watchRefusal { throw watchRefusal }
@@ -106,9 +110,10 @@ actor FakeServer: MailboxServer {
     deletes += 1
     link = .noLink
   }
-  func watchTopic() async throws(MailboxServerError) -> String? {
+  func pushConfig(provider: MailProviderID) async throws(MailboxServerError) -> MailboxPushConfig {
     topicReads += 1
-    return topic
+    guard provider == .gmail, let topic else { return .none }
+    return .gmail(topic: topic)
   }
 }
 

@@ -116,6 +116,64 @@ struct RuntimeGlueTests {
     #expect(t.last?.path == "/api/v1/mailbox/link/challenge" && t.last?.bearer == "session-token")
   }
 
+  @Test("route 35 names the provider only when it is not Gmail and returns Outlook's client_state")
+  func putLinkProvider() async throws {
+    let (s, _) = try Self.secrets()
+    let linked = #"{"provider":"gmail","holder":{"writer_id":"w","is_this_device":true},"watch_expires_at":null}"#
+    let t = Recorder(.success(APIResponse(status: 200, body: Data(linked.utf8))))
+    let server = HTTPMailboxServer(http: SessionHTTPExchange(transport: t, secrets: s), base: "https://api.hasala.app")
+    let step = JSONValue.object(JSONObject([("kind", .string("device"))]))
+    let gmail = try await server.putLink(provider: .gmail, idToken: "id", stepUp: step)
+    #expect(gmail == MailboxLinkResult(status: .holder(isThisDevice: true, watchExpiresAtMs: nil), clientState: nil))
+    // A server from before the Outlook link refuses unknown fields: a Gmail body is unchanged.
+    #expect(String(decoding: t.last?.body ?? Data(), as: UTF8.self) == #"{"id_token":"id","step_up":{"kind":"device"}}"#)
+
+    let outlookLinked = #"{"provider":"outlook","holder":{"is_this_device":true},"client_state":"Y2xpZW50LXN0YXRl"}"#
+    let o = Recorder(.success(APIResponse(status: 200, body: Data(outlookLinked.utf8))))
+    let outlookServer = HTTPMailboxServer(http: SessionHTTPExchange(transport: o, secrets: s), base: "https://api.hasala.app")
+    let outlook = try await outlookServer.putLink(provider: .outlook, idToken: "id", stepUp: step)
+    #expect(outlook.clientState == "Y2xpZW50LXN0YXRl")
+    #expect(
+      String(decoding: o.last?.body ?? Data(), as: UTF8.self)
+        == #"{"provider":"outlook","id_token":"id","step_up":{"kind":"device"}}"#)
+  }
+
+  @Test("meta's push settings, per provider: a topic, both Outlook URLs, or none")
+  func pushConfig() async throws {
+    let (s, _) = try Self.secrets()
+    func server(_ meta: String) -> HTTPMailboxServer {
+      let t = Recorder(.success(APIResponse(status: 200, body: Data(meta.utf8))))
+      return HTTPMailboxServer(http: SessionHTTPExchange(transport: t, secrets: s), base: "https://api.hasala.app")
+    }
+    let both = server(
+      #"{"gmail_watch_topic":"projects/p/topics/t","outlook_notification_url":"https://h/hooks/outlook/graph","outlook_lifecycle_url":"https://h/hooks/outlook/graph/lifecycle"}"#
+    )
+    #expect(try await both.pushConfig(provider: .gmail) == .gmail(topic: "projects/p/topics/t"))
+    #expect(
+      try await both.pushConfig(provider: .outlook)
+        == .outlook(notificationURL: "https://h/hooks/outlook/graph", lifecycleURL: "https://h/hooks/outlook/graph/lifecycle"))
+    let off = server(#"{"gmail_watch_topic":null,"outlook_notification_url":"https://h/hooks/outlook/graph","outlook_lifecycle_url":null}"#)
+    #expect(try await off.pushConfig(provider: .gmail) == MailboxPushConfig.none)
+    #expect(try await off.pushConfig(provider: .outlook) == MailboxPushConfig.none)
+    // An older server's meta has no Outlook fields at all.
+    let meta = try JSONDecoder().decode(MetaResponse.self, from: Data(#"{"rp_id":"hasala.app","gmail_watch_topic":null}"#.utf8))
+    #expect(meta.outlook_notification_url == nil && meta.outlook_lifecycle_url == nil)
+  }
+
+  @Test("each provider's refresh token is its own Keychain item; Outlook's is wiped with the account")
+  func outlookRefreshTokenStore() throws {
+    let (s, store) = try Self.secrets()
+    let gmail = SecretsMailRefreshTokenStore(secrets: s, userID: Self.user, provider: .gmail)
+    let outlook = SecretsMailRefreshTokenStore(secrets: s, userID: Self.user, provider: .outlook)
+    try outlook.write("M.outlook-refresh")
+    #expect(try gmail.read() == nil)
+    #expect(try store.read(.mailRefresh(provider: .outlook, userID: Self.user)) == Data("M.outlook-refresh".utf8))
+    try store.write(.outlookClientState(userID: Self.user), Data("cs".utf8))
+    try s.wipeAccount(userID: Self.user, writerID: Self.writer)
+    #expect(try outlook.read() == nil)
+    #expect(try store.read(.outlookClientState(userID: Self.user)) == nil)
+  }
+
   // MARK: SecretsGmailRefreshTokenStore
 
   @Test("the refresh token lives in .gmailRefresh(user): read nil, write, read back, locked throws, wiped with the account")
