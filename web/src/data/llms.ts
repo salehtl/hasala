@@ -25,7 +25,7 @@ Key facts:
 ## Pages
 
 - [Home](${SITE.url}/): what Hasala is, how it works in three steps, privacy in three points, the banks, and the invite form
-- [How it works](${SITE.url}/how-it-works): connecting Gmail, supported banks and alerts, how sorting works, reviewing new transactions, signing in
+- [How it works](${SITE.url}/how-it-works): connecting your email, supported banks and alerts, how sorting works, reviewing new transactions, signing in
 - [Budgeting](${SITE.url}/budgeting): what's left this month and the 50/30/20 starting plan
 - [How privacy works](${SITE.url}/how-privacy-works): where your data goes, who can see what, a new or lost phone
 - [FAQ](${SITE.url}/faq)

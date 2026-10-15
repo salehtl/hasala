@@ -149,7 +149,7 @@ export const FAQ: readonly FaqItem[] = [
     q: 'What exactly can Hasala read in my Gmail?',
     short: "Only your bank's alert emails, read-only.",
     a: "Your iPhone asks Gmail only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like your bank's, Hasala checks just its sender details on the phone and sets it aside. Hasala can't send, change or delete mail, and nothing is sent to an AI service.",
-    more: { href: '/how-it-works#gmail', label: 'Connecting Gmail' },
+    more: { href: '/how-it-works#email', label: 'Connecting your email' },
   },
   {
     id: 'lost-phone',
