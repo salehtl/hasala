@@ -260,6 +260,8 @@ struct MailboxFlowTests: AccountSuite {
       let release = try #require(AuthScenario.session(for: scenario, releaseSurface: true).services.mailbox as? MockMailbox)
       #expect(release.connectable == [.gmail] && !release.capabilities.contains(.addSecond))
       #expect(!release.sortsWithModel)
+      // A scenario's Outlook mailbox can't exist where Outlook can't connect.
+      #expect(release.mailboxes.allSatisfy { $0.provider == .gmail })
       let debug = try #require(AuthScenario.session(for: scenario, releaseSurface: false).services.mailbox as? MockMailbox)
       #expect(debug.connectable == [.gmail, .outlook] && debug.capabilities == .all)
     }

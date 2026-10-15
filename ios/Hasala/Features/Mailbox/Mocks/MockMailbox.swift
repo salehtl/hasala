@@ -16,7 +16,12 @@
   @MainActor
   @Observable
   final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting {
-    var connectable: [MailProviderKind] = MailProviderKind.allCases
+    /// Narrowed to the live lane's on the Release surface (`AuthScenario.session`): a
+    /// mailbox of a provider this build can't connect can't exist there either, so the
+    /// scenario's go.
+    var connectable: [MailProviderKind] = MailProviderKind.allCases {
+      didSet { mailboxes.removeAll { !connectable.contains($0.provider) } }
+    }
     var capabilities: MailboxCapabilities = .all
     private(set) var mailboxes: [MailboxSnapshot] = []
     var offersSampleData: Bool
