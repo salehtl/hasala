@@ -51,6 +51,7 @@ struct WidgetCanvas: View {
       }
       if editable {
         AddWidgetTile { edit() }
+          .accessibilityIdentifier("home.addWidget")
           .padding(.top, 12)
       }
     }
@@ -64,14 +65,17 @@ struct WidgetCanvas: View {
         .accessibilityAddTraits(.isHeader)
     } trailing: {
       if editable {
-        Button("Edit", action: edit)
-          .buttonStyle(.plain)
-          .hType(.textButton)
-          .foregroundStyle(HColor.textLink)
-          .frame(minHeight: HSpacing.targetMinimum)
-          .contentShape(Rectangle())
-          .padding(.vertical, -10)
-          .accessibilityIdentifier("home.editWidgets")
+        // A 24 pt line with a 44 pt target, taken back outside the button.
+        Button(action: edit) {
+          Text("Edit")
+            .hType(.textButton)
+            .foregroundStyle(HColor.textLink)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, -10)
+        .accessibilityIdentifier("home.editWidgets")
       }
     }
   }

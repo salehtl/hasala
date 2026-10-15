@@ -18,20 +18,18 @@ public struct PeriodPill: View {
   }
 
   public var body: some View {
-    Group {
-      if let action {
-        Button(action: action) { pill }
-          .buttonStyle(HPressStyle())
-          .accessibilityLabel("Period, \(title)")
-          .accessibilityHint("Double-tap to change.")
-      } else {
-        pill
-          .accessibilityElement(children: .ignore)
-          .accessibilityLabel("Period, \(title)")
-      }
+    if let action {
+      Button(action: action) { pill }
+        .buttonStyle(RowTargetPressStyle())
+        .accessibilityLabel("Period, \(title)")
+        .accessibilityHint("Double-tap to change.")
+    } else {
+      // The pill sits in a 44 row, so the hero's rhythm is the same with or without a control.
+      pill
+        .frame(minHeight: HSpacing.targetMinimum, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Period, \(title)")
     }
-    // The pill sits in a 44 row, so the hero's rhythm is the same with or without a control.
-    .frame(minHeight: HSpacing.targetMinimum, alignment: .leading)
   }
 
   private var pill: some View {
@@ -47,6 +45,16 @@ public struct PeriodPill: View {
     .frame(minHeight: 36)
     .background(HColor.surfacePrimary, in: Capsule())
     .hElevation(.near)
+  }
+}
+
+/// The pill's press (darken and 0.97, `HPressStyle`) on the pill alone, with the 44 row
+/// around it as the button's target (Paper "Period pill · hit area 44").
+private struct RowTargetPressStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    HPressStyle().makeBody(configuration: configuration)
+      .frame(minHeight: HSpacing.targetMinimum)
+      .contentShape(Rectangle())
   }
 }
 
@@ -101,15 +109,18 @@ public struct HeroVerdictLine: View {
       .accessibilityLabel(spoken)
     } trailing: {
       if let link {
-        Button(link.title, action: link.action)
-          .buttonStyle(.plain)
-          .hType(.subheadline.weight(.medium))
-          .foregroundStyle(HColor.textOnWashLink)
-          .frame(minHeight: HSpacing.targetMinimum)
-          .contentShape(Rectangle())
-          // The 44 target is inside the line's own 20, so the hero's rhythm doesn't move.
-          .padding(.vertical, -12)
-          .accessibilityIdentifier(link.identifier)
+        // A 20 pt line with a 44 pt target: the padding is inside the button and taken back
+        // outside it, so the hero's rhythm doesn't move.
+        Button(action: link.action) {
+          Text(link.title)
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textOnWashLink)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, -12)
+        .accessibilityIdentifier(link.identifier)
       }
     }
   }

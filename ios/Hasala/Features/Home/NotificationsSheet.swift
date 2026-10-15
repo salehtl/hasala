@@ -41,14 +41,16 @@ struct NotificationsSheet: View {
             section("Earlier", bell.earlier)
           }
           if BuildSurface.showsUnfinished {
-            Button("Notification settings") { app.router.open(.profile, profile: [.notifications]) }
-              .buttonStyle(.plain)
-              .hType(.subheadline.weight(.medium))
-              .foregroundStyle(HColor.textLink)
-              .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
-              .contentShape(Rectangle())
-              .padding(.top, -6)
-              .accessibilityIdentifier("bell.settings")
+            Button { app.router.open(.profile, profile: [.notifications]) } label: {
+              Text("Notification settings")
+                .hType(.subheadline.weight(.medium))
+                .foregroundStyle(HColor.textLink)
+                .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, -6)
+            .accessibilityIdentifier("bell.settings")
           }
         }
         .padding(.horizontal, HSpacing.insetPage)
@@ -70,6 +72,8 @@ struct NotificationsSheet: View {
       .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     }
     .presentationDetents([.large])
+    // Paper draws the grabber (36 × 5) over the header.
+    .presentationDragIndicator(.visible)
     .presentationCornerRadius(HRadius.sheetLarge)
     .presentationBackground(HColor.sheetSurfaceLarge)
     .onDisappear {
