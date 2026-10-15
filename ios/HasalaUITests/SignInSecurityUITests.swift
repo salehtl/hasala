@@ -23,7 +23,8 @@ final class SignInSecurityUITests: XCTestCase {
     type(app, "signIn.email", "maya@example.com")
     type(app, "signIn.password", "not my password")
     tap(app, "signIn.withPassword")
-    XCTAssertTrue(app.staticTexts["That email and password don't match."].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["That email and password don't match. Try again, or reset your password."]
+      .waitForExistence(timeout: 10))
     app.keyboards.buttons["return"].firstMatch.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     attach(app, "Sign in · wrong password")

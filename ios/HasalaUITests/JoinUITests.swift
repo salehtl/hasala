@@ -37,9 +37,11 @@ final class JoinUITests: XCTestCase {
     try audit(app)
     tap(app, "about.continue")
 
-    // A wrong code first: "That code didn't work. 4 tries left."
+    // A wrong code first: "That code isn't right. … 4 tries left."
     type(app, "code.field", "000000")
-    XCTAssertTrue(app.staticTexts["That code didn't work. 4 tries left."].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.staticTexts["That code isn't right. Check the newest email from us, or get a new code. 4 tries left."]
+        .waitForExistence(timeout: 5))
     attach(app, "Verify email · wrong code")
     el(app, "code.field").typeText("123456")
 
@@ -111,7 +113,7 @@ final class JoinUITests: XCTestCase {
     type(app, "about.name", "Maya")
     type(app, "about.email", "maya@example.com")
     tap(app, "about.continue")
-    XCTAssertTrue(app.staticTexts["We couldn't find that invite. Check the code, or ask for a new one."]
+    XCTAssertTrue(app.staticTexts["We couldn't find that invite. Check each character against your email."]
       .waitForExistence(timeout: 10))
     attach(app, "Invite · not found")
     try audit(app)

@@ -52,23 +52,26 @@ enum AuthFailure: Error, Equatable, Sendable {
   /// server value failed the client's own check: stop, never retry blind.
   case integrity
 
-  /// The copy shown for this failure; nil when nothing is shown.
+  /// The copy shown for this failure; nil when nothing is shown. Two short sentences: what
+  /// happened, then what to do (spec 01 §7.4; the codes and sign-in copy verbatim from spec
+  /// 07 S4, S7 and spec 08 FWD).
   var message: String? {
     switch self {
     case .cancelled: nil
     case .unsupported:
       "This iPhone can't make a passkey right now. Check that it has a passcode and iCloud Keychain is on, or use a password instead."
     case .noCredential: "No Hasala passkey on this iPhone."
-    case .notInvited: "We couldn't find that invite. Check the code, or ask for a new one."
+    case .notInvited: "We couldn't find that invite. Check each character against your email."
     case .badName: "Use 1 to 64 letters. Spaces, hyphens, apostrophes and periods are fine."
     case .badEmail: "Hasala can't use this address yet. Try another one."
     case .orphanedPasskey:
       "Hasala couldn't find an account for this passkey. If the beta was reset, join again with your invite. Then delete the older Hasala passkey in the Passwords app, so iPhone stops offering it."
-    case .wrongCredentials: "That email and password don't match."
+    case .wrongCredentials: "That email and password don't match. Try again, or reset your password."
     case .refused: "That didn't go through. Start again."
     case .emailInUse: "This address already has a Hasala account. Sign in instead."
-    case .codeWrong(let n): "That code didn't work. \(n) \(n == 1 ? "try" : "tries") left."
-    case .codeExpired: "That code has expired. Send a new one."
+    case .codeWrong(let n):
+      "That code isn't right. Check the newest email from us, or get a new code. \(n) \(n == 1 ? "try" : "tries") left."
+    case .codeExpired: "That code expired. Codes last 10 minutes, so we'll send you a fresh one."
     case .rateLimited: "Too many tries. Try again in 15 minutes."
     case .lastAuthenticator: "This is your only way to sign in. Add a passkey or a password first."
     case .frozen: "Your account is frozen. Confirm it's you to unfreeze it."

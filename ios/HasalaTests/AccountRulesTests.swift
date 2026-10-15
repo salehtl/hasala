@@ -121,6 +121,16 @@ struct AccountRulesTests {
     #expect(c.hasPrefix("Every word is real"))
   }
 
+  /// What happened, then what to do (spec 01 §7.4, spec 07 S4 and S7, spec 08 FWD), verbatim.
+  @Test func failuresSayWhatHappenedThenWhatToDo() {
+    #expect(AuthFailure.codeWrong(triesLeft: 4).message
+      == "That code isn't right. Check the newest email from us, or get a new code. 4 tries left.")
+    #expect(AuthFailure.codeWrong(triesLeft: 1).message?.hasSuffix(" 1 try left.") == true)
+    #expect(AuthFailure.codeExpired.message == "That code expired. Codes last 10 minutes, so we'll send you a fresh one.")
+    #expect(AuthFailure.wrongCredentials.message == "That email and password don't match. Try again, or reset your password.")
+    #expect(AuthFailure.notInvited.message == "We couldn't find that invite. Check each character against your email.")
+  }
+
   @Test func suggestionsComeFromTheList() {
     #expect(PhraseRules.suggestions(for: "orb") == ["orbit"])
     #expect(PhraseRules.suggestions(for: "a").isEmpty)
