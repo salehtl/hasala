@@ -6,7 +6,11 @@ import Observation
 @Observable
 final class SignupModel {
   private let account: AccountService
-  var path: [WelcomeRoute] = []
+  /// The signed-out stack. Going back (the system back button or its swipe, plan decision 7)
+  /// leaves the failure of the screen that was left behind.
+  var path: [WelcomeRoute] = [] {
+    didSet { if path.count < oldValue.count { failure = nil } }
+  }
 
   // Invite (§6.1.4)
   /// The code characters entered (`InviteCode.entryCharacters`); the field shows them

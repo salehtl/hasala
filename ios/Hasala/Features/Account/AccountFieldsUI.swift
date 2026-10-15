@@ -2,52 +2,205 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-/// Six code boxes over one hidden `.oneTimeCode` field (spec 04 §6.1.4; Paper "Verify
-/// email"). iOS may offer the code from Mail; the user still enters it here.
-struct CodeBoxes: View {
-  @Binding var code: String
-  var error = false
-  var identifier = "code.field"
-  @FocusState private var focused: Bool
+// The account fields (Paper page 11 "Type it once, see what's wrong." and "One box per
+// character, one cell per word."; spec 02 §11, spec 07 §6): a filled box with its label
+// above, a 2 pt ring outside the box only for focus or a failed check, and one line of help
+// or error below. Codes and the recovery phrase are one field drawn as cells.
 
-  var body: some View {
-    ZStack {
-      TextField("6-digit code", text: Binding(get: { code }, set: { code = String($0.filter(\.isNumber).prefix(6)) }))
-        .textContentType(.oneTimeCode)
-        .keyboardType(.numberPad)
-        .focused($focused)
-        .foregroundStyle(.clear)
-        .tint(.clear)
-        .accessibilityIdentifier(identifier)
-        .accessibilityLabel("Code")
-        .accessibilityValue(code.isEmpty ? "empty" : code.map(String.init).joined(separator: " "))
-      HStack(spacing: 8) {
-        ForEach(0..<6, id: \.self) { i in
-          let ch = i < code.count ? String(code[code.index(code.startIndex, offsetBy: i)]) : ""
-          Text(ch)
-            .font(.system(.title, design: .rounded).weight(.semibold))
-            .foregroundStyle(HColor.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 64)
-            .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-            .overlay {
-              RoundedRectangle(cornerRadius: HRadius.field, style: .continuous)
-                .strokeBorder(
-                  error ? HColor.fieldError : (focused && i == min(code.count, 5) ? HColor.fieldFocus : .clear),
-                  lineWidth: 2)
-            }
-        }
-      }
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
+// MARK: - Field
+
+/// Where a field sits: white on the grouped grey, grey on a white card or sheet.
+enum FieldSurface {
+  case onGrouped, onCard
+
+  var fill: Color {
+    switch self {
+    case .onGrouped: HColor.fieldSurfaceOnGrouped
+    case .onCard: HColor.fieldSurface
     }
-    .contentShape(Rectangle())
-    .onTapGesture { focused = true }
-    .onAppear { focused = true }
   }
 }
 
-/// A password field with a Show / Hide toggle (Paper "Sign in · Face ID first"). `isNew`
-/// picks `.newPassword` (with Hasala's password rules for AutoFill) over `.password`.
+/// A labelled field (Paper "TextField"): the 13/18 label 6 above a 52 box (radius 14, 16 in,
+/// 8 on the right when a pill sits inside), a value in 17/22, the blue ring while typing, the
+/// red ring and a 15/20 line after a failed check, otherwise a 13/18 help line.
+///
+/// The whole box takes the tap and focuses the field. `focused` overrides what the field
+/// reports (a UIKit field inside, or a screen that keeps its own focus state).
+struct AccountField<Field: View, Trailing: View>: View {
+  var label: String
+  var help: String?
+  var error: String?
+  var surface: FieldSurface
+  var focused: Bool?
+  @ViewBuilder var field: () -> Field
+  @ViewBuilder var trailing: () -> Trailing
+
+  @FocusState private var hasFocus: Bool
+
+  init(
+    _ label: String, help: String? = nil, error: String? = nil, surface: FieldSurface = .onGrouped,
+    focused: Bool? = nil, @ViewBuilder field: @escaping () -> Field, @ViewBuilder trailing: @escaping () -> Trailing
+  ) {
+    self.label = label
+    self.help = help
+    self.error = error
+    self.surface = surface
+    self.focused = focused
+    self.field = field
+    self.trailing = trailing
+  }
+
+  var body: some View {
+    FieldFrame(label: label, help: help, error: error, focused: focused ?? hasFocus, surface: surface,
+               trailingPill: Trailing.self != EmptyView.self, onTap: { hasFocus = true }) {
+      field()
+        .focused($hasFocus)
+        // The label names the field for VoiceOver; help and errors are read after it.
+        .accessibilityLabel(Text(label))
+        .accessibilityHint(Text(error.map { "Error: \($0)" } ?? help ?? ""))
+    } trailing: {
+      trailing()
+    }
+  }
+}
+
+extension AccountField where Trailing == EmptyView {
+  init(
+    _ label: String, help: String? = nil, error: String? = nil, surface: FieldSurface = .onGrouped,
+    focused: Bool? = nil, @ViewBuilder field: @escaping () -> Field
+  ) {
+    self.init(label, help: help, error: error, surface: surface, focused: focused, field: field,
+              trailing: { EmptyView() })
+  }
+}
+
+/// The drawing every field shares: label, box, ring, and the line below.
+struct FieldFrame<Field: View, Trailing: View>: View {
+  var label: String
+  var help: String?
+  var error: String?
+  var focused: Bool
+  var surface: FieldSurface = .onGrouped
+  var trailingPill: Bool
+  var onTap: (() -> Void)?
+  @ViewBuilder var field: () -> Field
+  @ViewBuilder var trailing: () -> Trailing
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: HSpacing.fieldLabelGap) {
+      Text(label)
+        .hType(.footnote.weight(.semibold))
+        .foregroundStyle(HColor.textSecondary)
+        .accessibilityHidden(true)
+      HStack(spacing: 8) {
+        field()
+          .hType(Self.valueType)
+          .foregroundStyle(HColor.fieldText)
+          .tint(HColor.actionAccent)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        trailing()
+      }
+      .padding(.leading, HSpacing.fieldInsetInline)
+      .padding(.trailing, trailingPill ? 8 : HSpacing.fieldInsetInline)
+      .frame(minHeight: HSpacing.fieldMinHeight)
+      .background(surface.fill, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .overlay { FieldRing(color: ringColor) }
+      .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .onTapGesture { onTap?() }
+      if let error {
+        FieldErrorLine(text: error)
+          .padding(.top, 2)
+      } else if let help {
+        Text(help)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .hAnimation(.fade, value: ringColor == .clear)
+  }
+
+  /// Field values: Inter 17/22 regular.
+  static var valueType: HType { HType(size: 17, leading: 22, weight: .regular, textStyle: .body) }
+
+  private var ringColor: Color {
+    if error != nil { return HColor.fieldError }
+    return focused ? HColor.fieldFocus : .clear
+  }
+}
+
+/// The 2 pt ring drawn outside a box's edge, no gap (box-shadow 0 0 0 2px).
+struct FieldRing: View {
+  var color: Color
+  var radius: CGFloat = HRadius.field
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: radius + 2, style: .continuous)
+      .strokeBorder(color, lineWidth: 2)
+      .padding(-2)
+      .allowsHitTesting(false)
+  }
+}
+
+/// The line under a field or cells that failed a check: a 7 pt dot centred on the first
+/// line, then 15/20 medium in the error (or warning) ink. Colour never works alone.
+struct FieldErrorLine: View {
+  var text: String
+  var warning = false
+
+  @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 20
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 8) {
+      Circle().fill(ink).frame(width: 7, height: 7).frame(height: lane)
+      Text(text)
+        .hType(.subheadline.weight(.medium))
+        .foregroundStyle(ink)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .accessibilityElement(children: .combine)
+  }
+
+  private var ink: Color { warning ? HColor.statusWarningForeground : HColor.statusErrorForeground }
+}
+
+/// Show / Hide inside a password box (Paper "RevealPill"): 36 tall, the chip grey, an 18 eye
+/// (slashed when shown) and 15/20 semibold; a 44 target. At the accessibility sizes it is
+/// the eye alone.
+struct ShowHidePill: View {
+  @Binding var visible: Bool
+  /// What it shows, for VoiceOver ("Show password").
+  var subject = "password"
+
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    Button {
+      visible.toggle()
+    } label: {
+      HStack(spacing: 6) {
+        HIconView(visible ? .eyeSlash : .eye, size: 18, color: HColor.iconPrimary)
+        if !typeSize.isAccessibilitySize {
+          Text(visible ? "Hide" : "Show")
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(HColor.textPrimary)
+        }
+      }
+      .padding(.horizontal, 12)
+      .frame(minHeight: 36)
+      .background(HColor.chipSurfaceOnCard, in: Capsule())
+      .frame(minWidth: 44, minHeight: 44)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HPressStyle(scales: false))
+    .accessibilityLabel(visible ? "Hide \(subject)" : "Show \(subject)")
+  }
+}
+
+/// A password field with Show / Hide (Paper "Sign in · Face ID first"). `isNew` picks
+/// `.newPassword` (with Hasala's password rules for AutoFill) over `.password`.
 struct PasswordInput: View {
   var placeholder: String
   @Binding var text: String
@@ -72,19 +225,7 @@ struct PasswordInput: View {
       .autocorrectionDisabled()
       .accessibilityIdentifier(identifier)
       .frame(maxWidth: .infinity, alignment: .leading)
-      Button {
-        visible.toggle()
-      } label: {
-        Label(visible ? "Hide" : "Show", systemImage: visible ? "eye.slash" : "eye")
-          .labelStyle(.titleAndIcon)
-          .hType(.buttonSmall)
-          .foregroundStyle(HColor.textPrimary)
-          .padding(.horizontal, 12)
-          .frame(height: 36)
-          .background(HColor.chipSurfaceOnCard, in: Capsule())
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(visible ? "Hide password" : "Show password")
+      ShowHidePill(visible: $visible)
     }
   }
 }
@@ -109,7 +250,8 @@ struct RuledNewPasswordField: UIViewRepresentable {
     f.spellCheckingType = .no
     f.font = .preferredFont(forTextStyle: .body)
     f.adjustsFontForContentSizeCategory = true
-    f.textColor = .label
+    f.textColor = UIColor(HColor.fieldText)
+    f.tintColor = UIColor(HColor.actionAccent)
     f.accessibilityIdentifier = identifier
     f.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     f.setContentHuggingPriority(.defaultHigh, for: .vertical)
@@ -144,88 +286,6 @@ struct RuledNewPasswordField: UIViewRepresentable {
   }
 }
 
-/// The new-password block: field, strength meter with the three checks, the repeat field
-/// and the footer (Paper "Create a password"; spec 04 §6.1.2).
-struct NewPasswordBlock: View {
-  @Binding var password: String
-  @Binding var confirm: String
-  var assessment: PasswordAssessment
-  var matches: Bool
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Your password signs you in. It can't unlock your data: on a new iPhone you'll also need your recovery phrase or a passkey.")
-        .hType(.subheadline)
-        .foregroundStyle(HColor.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-      LabeledField(label: "Password") {
-        PasswordInput(placeholder: "12 characters or more", text: $password, isNew: true, identifier: "password.new")
-      }
-      if !password.isEmpty { meter }
-      LabeledField(label: "Type it again",
-                   error: !confirm.isEmpty && !matches && confirm.count >= password.count ? "Passwords don't match." : nil) {
-        PasswordInput(placeholder: "Same password", text: $confirm, isNew: true, identifier: "password.confirm")
-      }
-      if matches {
-        StatusLine(text: "Passwords match.", tone: .success)
-      }
-      LockNote(text: "Your password is scrambled on this iPhone before it's sent. Our server never sees your password, only the scrambled form, which is slow to guess from.")
-    }
-  }
-
-  private var meter: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 4) {
-        ForEach(1...4, id: \.self) { i in
-          Capsule()
-            .fill(i <= filled ? meterColor : HColor.appleFillsSecondary)
-            .frame(height: 4)
-        }
-      }
-      .accessibilityHidden(true)
-      if let message = assessment.message {
-        StatusLine(text: message, tone: assessment.acceptable ? .success : .error)
-      }
-      Divider()
-      check("12 or more characters", assessment.longEnough)
-      check("Not your name or email", assessment.notPersonal)
-      // TODO(WS-14, spec 04 §4.6): the bundled list is a short starter list; the full
-      // one built by ios/tools/passwords from a public breach list replaces it, and the
-      // copy can then say "leaked" again.
-      check("Not on our list of common passwords", assessment.notCommon)
-    }
-    .padding(16)
-    .listCard()
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("password.meter")
-  }
-
-  private var filled: Int {
-    switch assessment.strength {
-    case .empty: 0
-    case .tooShort: 1
-    case .weak: 1
-    case .fair: 3
-    case .strong: 4
-    }
-  }
-
-  private var meterColor: Color {
-    assessment.acceptable ? HColor.statusSuccessForeground : HColor.statusErrorForeground
-  }
-
-  private func check(_ text: String, _ ok: Bool) -> some View {
-    HStack(spacing: 10) {
-      Image(systemName: ok ? "checkmark.circle.fill" : "circle")
-        .foregroundStyle(ok ? HColor.statusSuccessForeground : HColor.iconTertiary)
-        .accessibilityHidden(true)
-      Text(text).hType(.subheadline).foregroundStyle(HColor.textPrimary)
-    }
-    .accessibilityElement(children: .combine)
-    .accessibilityValue(ok ? "done" : "not yet")
-  }
-}
-
 /// An email field paired with AutoFill (`.username`), lower-case, no autocorrect.
 struct EmailInput: View {
   var placeholder = "you@example.com"
@@ -242,43 +302,336 @@ struct EmailInput: View {
   }
 }
 
-/// Twelve numbered words in two columns, LTR forced (spec 04 §6.7).
-struct PhraseGrid: View {
-  var words: [String]
-  var hidden: Bool
+// MARK: - Password strength
+
+/// The strength card under a new password (Paper "PasswordStrengthCard", S10a/b): a four-part
+/// meter, the one status line, a hairline, then the three rules that tick as they pass. Only
+/// positive, live feedback while typing (page 11 §05).
+struct PasswordStrengthCard: View {
+  var assessment: PasswordAssessment
 
   var body: some View {
-    let half = (words.count + 1) / 2
-    HStack(alignment: .top, spacing: 8) {
-      column(Array(words.prefix(half)), start: 1)
-      column(Array(words.dropFirst(half)), start: half + 1)
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 4) {
+        ForEach(1...4, id: \.self) { i in
+          RoundedRectangle(cornerRadius: 3)
+            .fill(i <= filled ? meterColor : HColor.paceTrack)
+            .frame(height: 6)
+        }
+      }
+      .hAnimation(.fade, value: filled)
+      .accessibilityHidden(true)
+      if let message = assessment.message {
+        StatusLine(text: message, tone: assessment.acceptable ? .success : .error, size: .regular)
+      }
+      Rectangle().fill(HColor.borderSubtle).frame(height: 1)
+      VStack(alignment: .leading, spacing: 10) {
+        rule("12 or more characters", assessment.longEnough)
+        rule("Not your name or email", assessment.notPersonal)
+        // TODO(WS-14, spec 04 §4.6): the bundled list is a short starter list; the full
+        // one built by ios/tools/passwords from a public breach list replaces it, and the
+        // copy can then say "leaked" again (Paper: "Not a common or leaked password").
+        rule("Not on our list of common passwords", assessment.notCommon)
+      }
     }
     .padding(16)
-    .listCard()
-    .blur(radius: hidden ? 9 : 0)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("password.meter")
+  }
+
+  private var filled: Int {
+    switch assessment.strength {
+    case .empty: 0
+    case .tooShort, .weak: 1
+    case .fair: 3
+    case .strong: 4
+    }
+  }
+
+  private var meterColor: Color {
+    assessment.acceptable ? HColor.statusSuccessForeground : HColor.statusErrorForeground
+  }
+
+  @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 20
+
+  private func rule(_ text: String, _ met: Bool) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      ZStack {
+        Circle().strokeBorder(HColor.neutral300, lineWidth: 1.5).opacity(met ? 0 : 1)
+        Circle().fill(HColor.statusSuccessForeground).opacity(met ? 1 : 0)
+        HIconView(.check, size: 11, color: HColor.white, strokeWidth: 3.4).opacity(met ? 1 : 0)
+      }
+      .frame(width: 18, height: 18)
+      .frame(height: lane)
+      .hAnimation(.fade, value: met)
+      Text(text).hType(.subheadline).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityValue(met ? "done" : "not yet")
+  }
+}
+
+/// The new-password block: field, strength card, the repeat field and the notes (Paper
+/// "Create a password"; spec 04 §6.1.2).
+struct NewPasswordBlock: View {
+  @Binding var password: String
+  @Binding var confirm: String
+  var assessment: PasswordAssessment
+  var matches: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Your password signs you in. It can't unlock your data: on a new iPhone you'll also need your recovery phrase or a passkey.")
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      AccountField("Password") {
+        PasswordInput(placeholder: "12 characters or more", text: $password, isNew: true, identifier: "password.new")
+      }
+      if !password.isEmpty {
+        PasswordStrengthCard(assessment: assessment)
+          .hTransition(.rise)
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        AccountField("Type it again",
+                     error: !confirm.isEmpty && !matches && confirm.count >= password.count ? "Passwords don't match." : nil) {
+          PasswordInput(placeholder: "Same password", text: $confirm, isNew: true, identifier: "password.confirm")
+        }
+        if matches {
+          StatusLine(text: "Passwords match.", tone: .success)
+        }
+      }
+      .padding(.top, 4)
+      NoteRow(icon: .lock, text: "Your password is scrambled on this iPhone before it's sent. Our server never sees your password, only the scrambled form, which is slow to guess from.")
+    }
+    .hAnimation(.rise, value: password.isEmpty)
+  }
+}
+
+// MARK: - Code cells
+
+/// A one-time code as six cells over one hidden `.oneTimeCode` field (Paper "CodeCells",
+/// S7a–c): two groups of three 52 × 64 cells, digits in SF Pro Rounded 28/34 semibold. The
+/// next empty cell takes the focus ring and the caret. A wrong code rings every cell (the
+/// digits stay so people can compare); an expired one empties the cells onto the wash and
+/// hides the keyboard. iOS may offer the code from Mail; paste fills every cell at once.
+struct CodeCells: View {
+  enum State: Equatable { case typing, wrong, expired }
+
+  @Binding var code: String
+  var state: State = .typing
+  var length = 6
+  var identifier = "code.field"
+  /// What VoiceOver calls the group ("Email code, 3 of 6 digits").
+  var label = "Email code"
+
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    ZStack {
+      TextField("", text: Binding(get: { code }, set: { code = String($0.filter(\.isNumber).prefix(length)) }))
+        .textContentType(.oneTimeCode)
+        .keyboardType(.numberPad)
+        .focused($focused)
+        .disabled(state == .expired)
+        .foregroundStyle(.clear)
+        .tint(.clear)
+        .accessibilityIdentifier(identifier)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(code.count) of \(length) digits")
+      cells
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+    .contentShape(Rectangle())
+    .onTapGesture { if state != .expired { focused = true } }
+    .onAppear { focused = state != .expired }
+    .onChange(of: state) { _, new in if new == .expired { focused = false } }
+  }
+
+  private var cells: some View {
+    let half = length / 2
+    return HStack(spacing: 0) {
+      group(0..<half)
+      Spacer(minLength: 18)
+      group(half..<length)
+    }
+  }
+
+  private func group(_ range: Range<Int>) -> some View {
+    HStack(spacing: 8) {
+      ForEach(range, id: \.self) { i in cell(i) }
+    }
+  }
+
+  private func cell(_ i: Int) -> some View {
+    let digit = state == .expired || i >= code.count ? "" : String(code[code.index(code.startIndex, offsetBy: i)])
+    let isNext = focused && state == .typing && i == min(code.count, length - 1) && code.count < length
+    return ZStack {
+      Text(digit)
+        .font(.system(size: 28, weight: .semibold, design: .rounded))
+        .foregroundStyle(HColor.textPrimary)
+      if isNext && digit.isEmpty {
+        RoundedRectangle(cornerRadius: 1).fill(HColor.actionAccent).frame(width: 2, height: 30)
+      }
+    }
+    .frame(width: HSpacing.codeCellWidth, height: HSpacing.codeCellHeight)
+    .background(state == .expired ? HColor.surfaceOnWash : HColor.fieldSurfaceOnGrouped,
+                in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+    .overlay { FieldRing(color: ring(isNext: isNext)) }
+    // Digits stay one row; at the largest sizes the cells keep their box.
+    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+  }
+
+  private func ring(isNext: Bool) -> Color {
+    switch state {
+    case .wrong: HColor.fieldError
+    case .expired: .clear
+    case .typing: isNext ? HColor.fieldFocus : .clear
+    }
+  }
+}
+
+/// The first code field's name, kept for the screens drawn with it: the cells above, with
+/// `error` as the wrong state.
+struct CodeBoxes: View {
+  @Binding var code: String
+  var error = false
+  var identifier = "code.field"
+
+  var body: some View {
+    CodeCells(code: $code, state: error ? .wrong : .typing, identifier: identifier)
+  }
+}
+
+// MARK: - Recovery phrase
+
+/// The 12 words (Paper "RecoveryPhraseGrid", S12 F6Q/F9O): two columns of six numbered cells
+/// in a white card, radius 24, forced left to right; one column at the accessibility sizes.
+///
+/// Hidden, the words are blurred under a white veil with an eye button, "Tap to show your
+/// words": the whole card is one button ("Show your 12 words", `phrase.reveal`). Revealed, a
+/// header with "Your recovery phrase" and a Hide pill (`phrase.hide`) sits above read-only
+/// cells, each read as "Word 1, orbit". `.privacySensitive()` keeps the words out of
+/// snapshots and redacted contexts; the screen blocks capture and hides them on leaving.
+struct PhraseGrid: View {
+  var words: [String]
+  @Binding var revealed: Bool
+
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if revealed {
+        header.hTransition(.fade)
+      }
+      ZStack {
+        grid
+          .blur(radius: revealed ? 0 : 9)
+          .opacity(revealed ? 1 : 0.85)
+          .accessibilityHidden(!revealed)
+        if !revealed {
+          veil.hTransition(.fade)
+        }
+      }
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    }
+    .hAnimation(.stateSwap, value: revealed)
     .environment(\.layoutDirection, .leftToRight)
     .privacySensitive()
-    .accessibilityElement(children: hidden ? .ignore : .contain)
-    .accessibilityLabel(hidden ? "Your words are hidden" : "")
+  }
+
+  private var header: some View {
+    HStack {
+      Text("Your recovery phrase").hType(.overline).foregroundStyle(HColor.textSecondary)
+        .accessibilityAddTraits(.isHeader)
+      Spacer(minLength: 8)
+      Button {
+        revealed = false
+      } label: {
+        HStack(spacing: 6) {
+          HIconView(.eyeSlash, size: 16, color: HColor.textLink, strokeWidth: 2)
+          Text("Hide").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textLink)
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 36)
+        .background(HColor.surfacePrimary, in: Capsule())
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(HPressStyle(scales: false))
+      .accessibilityLabel("Hide your words")
+      .accessibilityIdentifier("phrase.hide")
+    }
+    .padding(.leading, 4)
+  }
+
+  private var veil: some View {
+    Button {
+      revealed = true
+    } label: {
+      ZStack {
+        HColor.white.opacity(0.35)
+        VStack(spacing: 10) {
+          Circle()
+            .fill(HColor.surfacePrimary)
+            .frame(width: 56, height: 56)
+            .shadow(color: HColor.elevationFar, radius: 8, x: 0, y: 6)
+            .overlay { Circle().stroke(HColor.materialGlassOutline, lineWidth: 0.5) }
+            .overlay { HIconView(.eye, size: 26, color: HColor.iconAccent) }
+          Text("Tap to show your words")
+            .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .body))
+            .foregroundStyle(HColor.textPrimary)
+          Text("Only on this screen, only for you")
+            .hType(.subheadline)
+            .foregroundStyle(HColor.textSecondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(16)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Show your 12 words")
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("phrase.reveal")
+  }
+
+  private var grid: some View {
+    let columns = typeSize.isAccessibilitySize ? 1 : 2
+    let perColumn = (words.count + columns - 1) / columns
+    return HStack(alignment: .top, spacing: 8) {
+      ForEach(0..<columns, id: \.self) { c in
+        let start = c * perColumn
+        column(Array(words.dropFirst(start).prefix(perColumn)), start: start + 1)
+      }
+    }
+    .padding(16)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("phrase.grid")
   }
 
   private func column(_ ws: [String], start: Int) -> some View {
     VStack(spacing: 8) {
       ForEach(Array(ws.enumerated()), id: \.offset) { i, w in
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
           Text("\(start + i)")
-            .hType(.footnote)
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
             .foregroundStyle(HColor.textSecondary)
-            .frame(minWidth: 18, alignment: .trailing)
+            .frame(minWidth: 20, alignment: .trailing)
           Text(w)
-            .hType(.headline)
+            .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .body))
             .foregroundStyle(HColor.textPrimary)
           Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .frame(minHeight: 44)
-        .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
+        .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Word \(start + i), \(w)")
       }

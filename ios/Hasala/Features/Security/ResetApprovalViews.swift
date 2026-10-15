@@ -55,12 +55,11 @@ struct ResetApprovalSheet: View {
     NavigationStack {
       Group {
         if model.approved {
-          AccountScreen(
-            title: "Approved",
-            subtitle: "Your other iPhone can set a new password now. Your data stays sealed there until it's unlocked.",
-            wash: HColor.hueMintStart, centered: true
+          CelebrationScreen(
+            badge: .check, title: "Approved",
+            subtitle: "Your other iPhone can set a new password now. Your data stays sealed there until it's unlocked."
           ) {
-            SuccessBadge().frame(maxWidth: .infinity)
+            EmptyView()
           } footer: {
             Button("Done") { dismiss() }.buttonStyle(.pill(.primary, fill: true))
               .accessibilityIdentifier("approval.done")

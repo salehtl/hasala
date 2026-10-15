@@ -20,7 +20,7 @@ struct SignInView: View {
   private var password: Bool { capabilities.contains(.signInPassword) }
 
   var body: some View {
-    AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", onBack: onBack) {
+    AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", back: .system) {
       VStack(alignment: .leading, spacing: 14) {
         if passkey {
           BusyButton(title: "Sign in with Face ID", busy: model.busy && model.password.isEmpty,
@@ -109,7 +109,7 @@ struct ForgotEmailView: View {
     AccountScreen(
       title: "Forgot your password?",
       subtitle: "To reset your password, use your recovery phrase or approve it on an iPhone where you're signed in. A code from your email alone can't reset it.",
-      steps: (1, 4), onBack: onBack
+      steps: (1, 4), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         LabeledField(label: "Your account's email", footer: "We'll send a code to this address first.") {
@@ -137,7 +137,7 @@ struct ForgotCheckView: View {
     AccountScreen(
       title: "One more check",
       subtitle: "The code worked. To change your password we also need one of these.",
-      steps: (3, 4), onBack: onBack
+      steps: (3, 4), back: .system
     ) {
       VStack(spacing: 12) {
         if model.canApproveOnOtherPhone {
@@ -182,7 +182,7 @@ struct ForgotNewPasswordView: View {
   var onNext: () -> Void
 
   var body: some View {
-    AccountScreen(title: "Choose a new password", subtitle: "12 characters or more.", steps: (4, 4), onBack: onBack) {
+    AccountScreen(title: "Choose a new password", subtitle: "12 characters or more.", steps: (4, 4), back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         NewPasswordBlock(password: $model.newPassword, confirm: $model.confirmPassword,
                          assessment: model.newPasswordAssessment,
@@ -209,7 +209,7 @@ struct ForgotWaitingView: View {
     AccountScreen(
       title: "Approve on your other iPhone",
       subtitle: "On your other iPhone, open Hasala and scan this code. Never show it to anyone else.",
-      onBack: onBack
+      back: .system
     ) {
       VStack(spacing: 16) {
         if let code = model.reset?.resetCode, let image = QRCode.image(for: "hasala-reset:1:\(code)") {
@@ -265,7 +265,7 @@ struct RecoverIntroView: View {
     AccountScreen(
       title: "Recover your account",
       subtitle: "Lost your passkey or password? Use your recovery phrase and a code we email you.",
-      onBack: onBack
+      back: .system
     ) {
       VStack(spacing: 12) {
         NoteCard(systemImage: "doc.text", title: "Your 12 words", text: "From the paper you wrote at signup.")
@@ -347,7 +347,7 @@ struct RecoverWordsView: View {
   var onNext: () -> Void
 
   var body: some View {
-    AccountScreen(title: "Enter your 12 words", subtitle: "In order, from your paper.", steps: (1, 3), onBack: onBack) {
+    AccountScreen(title: "Enter your 12 words", subtitle: "In order, from your paper.", steps: (1, 3), back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         PhraseEntryField(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount)
         FailureBanner(failure: model.failure)
@@ -387,7 +387,7 @@ struct RecoverMethodView: View {
     AccountScreen(
       title: "A new way to sign in",
       subtitle: "Hasala will make a new passkey or password on this iPhone and let your other devices know.",
-      steps: (3, 3), onBack: onBack
+      steps: (3, 3), back: .system
     ) {
       VStack(spacing: 12) {
         NoteCard(systemImage: "faceid", title: "Use Face ID (passkey)", text: "Recommended. Nothing to remember or type.")
@@ -409,7 +409,7 @@ struct RecoverPasswordView: View {
   var onResult: (SignInModel.RecoveryResult) -> Void
 
   var body: some View {
-    AccountScreen(title: "Create a password", subtitle: "12 characters or more.", steps: (3, 3), onBack: onBack) {
+    AccountScreen(title: "Create a password", subtitle: "12 characters or more.", steps: (3, 3), back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         NewPasswordBlock(password: $model.newPassword, confirm: $model.confirmPassword,
                          assessment: model.newPasswordAssessment,
@@ -432,7 +432,7 @@ struct HonestEndView: View {
     AccountScreen(
       title: "We can't unlock it without them",
       subtitle: "If you lose these words and every passkey, your data can't be unlocked on a new iPhone. Not even by us.",
-      onBack: onBack
+      back: .system
     ) {
       VStack(spacing: 12) {
         NoteCard(systemImage: "iphone", title: "Still have an iPhone with Hasala open?",

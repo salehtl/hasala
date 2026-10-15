@@ -1,4 +1,5 @@
 import HasalaDesign
+import HasalaModels
 import SwiftUI
 import UIKit
 
@@ -13,7 +14,7 @@ struct InviteCodeView: View {
     AccountScreen(
       title: "Enter your invite code",
       subtitle: "It's in your invite email from Hasala. You only need it once.",
-      onBack: model.back
+      back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         LabeledField(label: "Invite code", error: model.inviteHint, focused: focused) {
@@ -65,7 +66,7 @@ struct AboutYouView: View {
       title: "Create your account",
       subtitle: "Just a name and an email. No usernames.",
       steps: (1, 3),
-      onBack: model.back
+      back: .system
     ) {
       VStack(alignment: .leading, spacing: 16) {
         LabeledField(label: "Your name",
@@ -115,7 +116,7 @@ struct CodeEntryView: View {
       title: title,
       subtitle: "We sent a 6-digit code to \(email). It works for 10 minutes.",
       steps: steps,
-      onBack: onBack
+      back: .system
     ) {
       VStack(alignment: .leading, spacing: 16) {
         CodeBoxes(code: $code, error: failure != nil)
@@ -140,9 +141,7 @@ struct CodeEntryView: View {
           }
         }
         if busy { ProgressView().frame(maxWidth: .infinity) }
-        NoteCard(systemImage: "envelope",
-                 text: "Not there? Check Spam or Promotions for an email from no-reply@hasala.app.",
-                 tint: HColor.surfacePrimary.opacity(0.7))
+        HintCard(icon: .envelope, text: "Not there? Check Spam or Promotions for an email from no-reply@hasala.app.")
         LockNote(text: "Hasala will never ask for your recovery phrase, your password or a code in an email, a notification, a phone call or on a website. Only type them into the Hasala app.",
                  systemImage: "exclamationmark.shield")
       }
@@ -160,12 +159,12 @@ struct SignInMethodView: View {
         ? "Your link opened it and confirmed your email. Now pick how you'll get back in. You can add the other way later."
         : "Email verified. Now pick how you'll get back in. You can add the other way later.",
       steps: (2, 3),
-      onBack: model.back
+      back: .system
     ) {
       VStack(spacing: 12) {
-        choice(.passkey, symbol: "faceid", title: "Use Face ID (passkey)", recommended: true,
+        choice(.passkey, icon: .faceID, hue: .sky, title: "Use Face ID (passkey)", recommended: true,
                text: "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone.")
-        choice(.password, symbol: "ellipsis.rectangle", title: "Use a password", recommended: false,
+        choice(.password, icon: .password, hue: .other, title: "Use a password", recommended: false,
                text: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.")
         FailureBanner(failure: model.failure)
       }
@@ -178,45 +177,14 @@ struct SignInMethodView: View {
     }
   }
 
-  private func choice(_ m: SignInMethod, symbol: String, title: String, recommended: Bool, text: String) -> some View {
-    let selected = model.method == m
-    return Button {
+  private func choice(_ m: SignInMethod, icon: HIcon, hue: Hue, title: String, recommended: Bool, text: String)
+    -> some View
+  {
+    SelectionCard(icon: icon, hue: hue, chip: recommended ? "Recommended" : nil, title: title, detail: text,
+                  selected: model.method == m, identifier: "method.\(m.rawValue)") {
       model.method = m
       model.failure = nil
-    } label: {
-      HStack(alignment: .top, spacing: 14) {
-        IconDisc(systemImage: symbol, tint: selected ? HColor.actionAccentSubtle : HColor.surfaceSecondary,
-                 ink: selected ? HColor.actionAccent : HColor.iconPrimary)
-        VStack(alignment: .leading, spacing: 6) {
-          if recommended {
-            Text("Recommended")
-              .hType(.caption1)
-              .foregroundStyle(HColor.statusSuccessForeground)
-              .padding(.horizontal, 8)
-              .padding(.vertical, 3)
-              .background(HColor.statusSuccessSurface, in: Capsule())
-          }
-          Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-          Text(text).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .multilineTextAlignment(.leading)
-        }
-        Spacer(minLength: 0)
-        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-          .font(.system(size: 22))
-          .foregroundStyle(selected ? HColor.actionAccent : HColor.iconTertiary)
-          .accessibilityHidden(true)
-      }
-      .padding(18)
-      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous)
-          .strokeBorder(selected ? HColor.actionAccent : .clear, lineWidth: 2)
-      }
     }
-    .buttonStyle(.plain)
-    .accessibilityAddTraits(selected ? .isSelected : [])
-    .accessibilityIdentifier("method.\(m.rawValue)")
   }
 }
 
@@ -228,7 +196,7 @@ struct CreatePasswordView: View {
       title: "Create a password",
       subtitle: "12 characters or more. A short phrase you'll remember works well.",
       steps: (2, 3),
-      onBack: model.back
+      back: .system
     ) {
       NewPasswordBlock(password: $model.newPassword, confirm: $model.confirmPassword,
                        assessment: model.passwordAssessment, matches: model.passwordsMatch)

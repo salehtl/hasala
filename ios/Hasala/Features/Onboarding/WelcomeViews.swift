@@ -259,14 +259,12 @@ struct JoinWelcomeView: View {
         .ignoresSafeArea()
     }
     .background(HColor.surfaceSecondary)
-    .toolbar(.hidden, for: .navigationBar)
+    // Back is the system's, with its swipe (plan decision 7); `onBack` says whether there is one.
+    .accountHeader(back: onBack == nil ? .none : .system)
   }
 
   private var content: some View {
     VStack(alignment: .leading, spacing: 0) {
-      if let onBack {
-        GlassBackButton(action: onBack).padding(.top, 6)
-      }
       Spacer(minLength: 16)
       VStack(spacing: 12) {
         Image("HasalaMark")

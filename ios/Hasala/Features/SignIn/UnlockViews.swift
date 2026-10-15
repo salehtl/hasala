@@ -91,9 +91,8 @@ struct UnlockView: View {
     NavigationStack {
       Group {
         if model.unlocked {
-          AccountScreen(title: "Welcome back", subtitle: "Your data is open on this iPhone again.",
-                        wash: HColor.hueMintStart, centered: true) {
-            SuccessBadge().frame(maxWidth: .infinity)
+          CelebrationScreen(badge: .check, title: "Welcome back", subtitle: "Your data is open on this iPhone again.") {
+            EmptyView()
           } footer: {
             Button("Open Hasala") { model.openApp() }
               .buttonStyle(.pill(.primary, fill: true))
@@ -131,7 +130,7 @@ struct UnlockView: View {
     AccountScreen(
       title: "Enter your 12 words",
       subtitle: "You're signed in. Enter your recovery phrase to unlock your data on this iPhone.",
-      onBack: model.passkeyCanUnlock ? { model.enteringWords = false } : nil
+      back: model.passkeyCanUnlock ? .action { model.enteringWords = false } : .none
     ) {
       VStack(alignment: .leading, spacing: 12) {
         PhraseEntryField(text: $model.phraseText, pastedChangeCount: $model.pastedChangeCount)

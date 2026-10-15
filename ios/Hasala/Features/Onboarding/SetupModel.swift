@@ -58,7 +58,11 @@ struct SetupDraft: Equatable, Sendable {
 final class SetupModel {
   private let services: AccountServices
   private let onFinished: () -> Void
-  var path: [SetupRoute] = []
+  /// The setup stack. Going back (the system back button or its swipe, plan decision 7)
+  /// leaves the failure of the step that was left behind.
+  var path: [SetupRoute] = [] {
+    didSet { if path.count < oldValue.count { failure = nil } }
+  }
   private(set) var facts: OnboardingStep.Facts
   private(set) var draft = SetupDraft()
 

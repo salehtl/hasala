@@ -6,7 +6,8 @@ import SwiftUI
 /// lives. One primary per decision.
 ///
 /// Pressed darkens the fill and scales to 0.97 at once, then eases back (decision 1, `.press`);
-/// with Reduce Motion only the colour changes. Disabled greys out but stays readable. Loading
+/// with Reduce Motion only the colour changes. Disabled greys out (`apple-fills-secondary`, as
+/// the account screens draw it) but stays readable. Loading
 /// shows a spinner before the label (pass the verb, "Saving"), keeps the button's size and
 /// colour, and blocks a second tap; the spinner waits about 300 ms so fast actions don't flash.
 public struct PillButtonStyle: ButtonStyle {
@@ -152,7 +153,9 @@ struct PillButtonBody: View {
       // On grouped keeps its white fill: the disabled grey matches the canvas.
       case .onGrouped, .destructiveQuiet: return HColor.surfacePrimary
       case .tertiary, .destructiveText: return .clear
-      default: return HColor.actionDisabled
+      // The screens' disabled fill (Paper S10a "Create account", S12 "I've written them
+      // down"): `action-disabled` is the grouped canvas itself and would vanish on it.
+      default: return HColor.appleFillsSecondary
       }
     }
     switch kind {

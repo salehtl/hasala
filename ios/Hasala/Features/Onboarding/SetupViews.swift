@@ -149,7 +149,7 @@ struct GmailView: View {
       title: model.mailConnected ? "Gmail is connected." : "Read-only Gmail, on your iPhone.",
       subtitle: "Your bank alerts are fetched from Gmail by this iPhone. Our server never receives your emails.",
       steps: model.steps(2),
-      onBack: model.back,
+      back: .system,
       trailing: skip
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -250,7 +250,7 @@ struct ScanView: View {
       title: "Reading your bank alerts, on this iPhone.",
       subtitle: "Your alerts are read here and sealed before anything syncs. It takes a minute or two, so set up your plan meanwhile.",
       steps: (2, 4),
-      onBack: model.back
+      back: .system
     ) {
       VStack(spacing: 12) {
         ScanProgressCard(scan: model.scan, banks: model.orderedBanks.map(\.shortName).formatted(.list(type: .and)))
@@ -349,7 +349,7 @@ struct IncomeView: View {
       title: "What lands in your account each month?",
       subtitle: "After tax. You can change it any time.",
       steps: (3, 4),
-      onBack: model.back,
+      back: .system,
       trailing: ("Skip", model.skipIncome)
     ) {
       VStack(spacing: 20) {
@@ -414,7 +414,7 @@ struct StartingPlanView: View {
       title: "Here's a plan to start with.",
       subtitle: "\(model.plan.needsPercent)% for needs, \(model.plan.wantsPercent)% for wants, \(model.plan.savingsPercent)% for savings. Hasala fills in your categories, and you can change any of them later.",
       steps: (4, 4),
-      onBack: model.back,
+      back: .system,
       trailing: ("Skip", { Task { await model.savePlan(skip: true) } })
     ) {
       VStack(spacing: 12) {
@@ -523,16 +523,14 @@ struct ScanResultView: View {
 
   var body: some View {
     let s = model.summary ?? SortSummary(total: 0, byRules: 0, byDictionary: 0, byModel: 0, toReview: 0)
-    AccountScreen(
+    CelebrationScreen(
+      badge: model.scanDone ? .check : nil,
       title: title(s),
       subtitle: subtitle(s),
-      wash: HColor.hueMintStart,
-      centered: true
+      wash: .itWorks
     ) {
       VStack(spacing: 16) {
-        if model.scanDone {
-          SuccessBadge().frame(maxWidth: .infinity)
-        } else {
+        if !model.scanDone {
           ScanProgressCard(scan: model.scan, banks: model.orderedBanks.map(\.shortName).formatted(.list(type: .and)))
         }
         if s.total > 0 {
@@ -665,15 +663,14 @@ struct DoneView: View {
   var model: SetupModel
 
   var body: some View {
-    AccountScreen(
+    CelebrationScreen(
+      badge: .coin,
       title: model.firstName.isEmpty ? "You're set." : "You're set, \(model.firstName).",
       subtitle: "Your budget is worked out on this iPhone, and the key stays with you.",
-      wash: HColor.hueMintStart,
-      centered: true
+      wash: .itWorks,
+      successHaptic: true
     ) {
       VStack(spacing: 14) {
-        Image("HasalaMark").resizable().scaledToFit().frame(width: 132, height: 120).frame(maxWidth: .infinity)
-          .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 12) {
           if model.scanDone, let s = model.summary {
             done("\(s.total) transactions sorted on this iPhone")

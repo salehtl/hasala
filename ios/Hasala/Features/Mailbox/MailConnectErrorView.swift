@@ -44,7 +44,7 @@ struct MailConnectErrorView: View {
   }
 
   var body: some View {
-    AccountScreen(title: title, subtitle: subtitle, onBack: { dismiss() }) {
+    AccountScreen(title: title, subtitle: subtitle, back: .system) {
       EmptyView()
     } footer: {
       BusyButton(title: provider.continueTitle, busy: false, identifier: "mail.error.retry", action: onRetry)

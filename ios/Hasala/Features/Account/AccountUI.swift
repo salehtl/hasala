@@ -1,146 +1,633 @@
 import HasalaDesign
+import HasalaModels
 import SwiftUI
 
-// The account screen template (Paper page 14 "Template · Account screen"): the morning
-// wash at the top, a glass back button and the step dashes, a title-1 headline and its
-// subtitle, the content, and a footer of pill buttons pinned above the home indicator.
+// The account templates and their parts (Paper "Template · Account screen" E01-0; P2 rows
+// 14.1–14.8; spec 07 §3, spec 08 §2.3): join, the recovery phrase, setup, sign-in, recovery
+// and the walls all stand on these, built from the design system's parts and motion.
 
+// MARK: - Account screen
+
+/// How an account screen is left from its header (plan decision 7).
+enum AccountBack {
+  /// The system back button with its edge swipe: a screen pushed on a navigation stack.
+  /// The stack's path pops; the model clears what the left screen showed.
+  case system
+  /// No way back (the account exists, the step can't be undone, the root of a flow): no
+  /// back button and no swipe.
+  case none
+  /// A back button that runs `action`: a screen whose "back" is a change of state on the
+  /// same screen, not a pop (unlock's words, the phrase viewer in Sign-in & security).
+  case action(() -> Void)
+}
+
+/// The account screen (Paper "Template · Account screen"): the morning wash under the
+/// system navigation bar, which carries the back button, the step indicator as its
+/// principal item and Skip or Close on the trailing side; the question block (title 1 and
+/// a body line on the wash); the content; and a dock of buttons above the home indicator.
+///
+/// The bar is the system's (decision 7), so back has the interactive swipe and its glass;
+/// screens with no way back hide the button, which also turns the swipe off.
 struct AccountScreen<Content: View, Footer: View>: View {
   var title: String
   var subtitle: String?
   var steps: (current: Int, of: Int)?
-  var onBack: (() -> Void)?
+  var back: AccountBack
   var trailing: (title: String, action: () -> Void)?
-  var wash: Color = HColor.washMorning
-  var centered = false
+  var wash: HWash
   @ViewBuilder var content: () -> Content
   @ViewBuilder var footer: () -> Footer
 
+  init(
+    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, back: AccountBack = .none,
+    trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
+    @ViewBuilder content: @escaping () -> Content, @ViewBuilder footer: @escaping () -> Footer
+  ) {
+    self.title = title
+    self.subtitle = subtitle
+    self.steps = steps
+    self.back = back
+    self.trailing = trailing
+    self.wash = wash
+    self.content = content
+    self.footer = footer
+  }
+
+  /// The keyboard is up: the dock lifts off it a little.
+  @State private var keyboardUp = false
+
   var body: some View {
     ScrollView {
-      VStack(alignment: centered ? .center : .leading, spacing: 0) {
-        topBar
-        VStack(alignment: centered ? .center : .leading, spacing: 8) {
-          Text(title)
-            .hType(.title1)
-            .foregroundStyle(HColor.textPrimary)
-            .multilineTextAlignment(centered ? .center : .leading)
-            .accessibilityAddTraits(.isHeader)
-          if let subtitle {
-            Text(subtitle)
-              .hType(.body)
-              .foregroundStyle(HColor.textOnWashSecondary)
-              .multilineTextAlignment(centered ? .center : .leading)
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
-        .padding(.top, 16)
+      VStack(alignment: .leading, spacing: 0) {
+        QuestionBlock(title: title, subtitle: subtitle)
         content()
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 24)
       }
       .padding(.horizontal, HSpacing.insetPage)
-      .padding(.bottom, 24)
+      .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
     .scrollDismissesKeyboard(.interactively)
-    .safeAreaInset(edge: .bottom) {
-      VStack(spacing: 4) { footer() }
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .background(HColor.surfaceSecondary.opacity(0.94))
+    .safeAreaBar(edge: .bottom) {
+      ActionDock(keyboardUp: keyboardUp, content: footer)
     }
+    .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.bottom > 120 } action: { keyboardUp = $0 }
     .background(alignment: .top) {
-      LinearGradient(colors: [wash, wash.opacity(0.45), HColor.surfaceSecondary.opacity(0)],
-                     startPoint: .top, endPoint: .bottom)
-        .frame(height: 360)
-        .ignoresSafeArea(edges: .top)
+      AmbientWash(wash).ignoresSafeArea(edges: .top)
     }
     .background(HColor.surfaceSecondary)
-    .toolbar(.hidden, for: .navigationBar)
-  }
-
-  @ViewBuilder private var topBar: some View {
-    if onBack != nil || steps != nil || trailing != nil {
-      HStack {
-        Group {
-          if let onBack {
-            GlassBackButton(action: onBack)
-          } else {
-            Color.clear.frame(width: 48, height: 48)
-          }
-        }
-        .frame(width: 72, alignment: .leading)
-        Spacer(minLength: 0)
-        if let steps { StepDashes(current: steps.current, of: steps.of) }
-        Spacer(minLength: 0)
-        Group {
-          if let trailing {
-            InlineTextButton(title: trailing.title, identifier: "account.trailing", action: trailing.action)
-          } else {
-            Color.clear.frame(width: 1, height: 48)
-          }
-        }
-        .frame(width: 72, alignment: .trailing)
-      }
-      .padding(.top, 6)
-    }
+    .accountHeader(steps: steps, back: back, trailing: trailing)
   }
 }
 
 extension AccountScreen where Footer == EmptyView {
   init(
-    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, onBack: (() -> Void)? = nil,
+    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, back: AccountBack = .none,
+    trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
     @ViewBuilder content: @escaping () -> Content
   ) {
-    self.init(title: title, subtitle: subtitle, steps: steps, onBack: onBack, content: content, footer: { EmptyView() })
+    self.init(title: title, subtitle: subtitle, steps: steps, back: back, trailing: trailing, wash: wash,
+              content: content, footer: { EmptyView() })
   }
 }
 
-/// The 48 pt glass back button.
-struct GlassBackButton: View {
+extension View {
+  /// The account header on the system bar: back as `back` says, the step indicator as the
+  /// principal item, and a trailing text action (`account.trailing`). No title: the
+  /// question block below names the screen.
+  func accountHeader(
+    steps: (current: Int, of: Int)? = nil, back: AccountBack, trailing: (title: String, action: () -> Void)? = nil
+  ) -> some View {
+    modifier(AccountHeader(steps: steps, back: back, trailing: trailing))
+  }
+}
+
+private struct AccountHeader: ViewModifier {
+  let steps: (current: Int, of: Int)?
+  let back: AccountBack
+  let trailing: (title: String, action: () -> Void)?
+
+  func body(content: Content) -> some View {
+    content
+      .navigationBarTitleDisplayMode(.inline)
+      .navigationBarBackButtonHidden(!isSystemBack)
+      .toolbar {
+        if case .action(let run) = back {
+          ToolbarItem(placement: .topBarLeading) {
+            Button(action: run) {
+              Image(systemName: "chevron.backward")
+            }
+            .accessibilityLabel("Back")
+          }
+        }
+        if let steps {
+          ToolbarItem(placement: .principal) {
+            StepIndicator(current: steps.current, of: steps.of)
+          }
+          .sharedBackgroundVisibility(.hidden)
+        }
+        if let trailing {
+          // Paper draws plain link text in the 72 trailing slot, not a glass capsule.
+          ToolbarItem(placement: .topBarTrailing) {
+            Button(action: trailing.action) {
+              Text(trailing.title)
+                .hType(HType(size: 17, leading: 22, weight: .regular, textStyle: .body))
+                .foregroundStyle(HColor.textLink)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.trailing")
+          }
+          .sharedBackgroundVisibility(.hidden)
+        }
+      }
+  }
+
+  private var isSystemBack: Bool {
+    if case .system = back { return true }
+    return false
+  }
+}
+
+/// The question block: Title 1 (28/34 bold) and a body line on the wash, 8 apart, 16 under
+/// the header.
+private struct QuestionBlock: View {
+  let title: String
+  let subtitle: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title)
+        .hType(.title1)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+      if let subtitle {
+        Text(subtitle)
+          .hType(.body)
+          .foregroundStyle(HColor.textOnWashSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.top, 16)
+  }
+}
+
+/// The bottom dock (Paper "Action"): a primary pill, then a secondary link or a note, 4
+/// apart, 20 from the sides, on the home indicator's safe area. A soft scroll edge sits
+/// under it when content scrolls behind (`safeAreaBar`).
+private struct ActionDock<Content: View>: View {
+  let keyboardUp: Bool
+  @ViewBuilder let content: () -> Content
+
+  var body: some View {
+    VStack(spacing: 4) { content() }
+      .frame(maxWidth: .infinity)
+      .padding(.horizontal, HSpacing.insetPage)
+      .padding(.top, 8)
+      .padding(.bottom, keyboardUp ? 12 : 0)
+  }
+}
+
+// MARK: - Celebration screen
+
+/// A done screen (Paper "Your account is ready." FJI-0, "You're back in" H5V-0, "You're set"
+/// GWF-0): the ready wash, the success badge with its glow and sparks, a large centred
+/// title and body, a fact card, and the dock. No header and no way back.
+///
+/// The badge lands once (`.celebrate`, under 600 ms; still under Reduce Motion), and
+/// `successHaptic` plays the success haptic as it settles ("You're set", a mailbox
+/// connected: the motion policy's two).
+struct CelebrationScreen<Cards: View, Footer: View>: View {
+  var badge: SuccessBadge.Content?
+  var title: String
+  var subtitle: String?
+  var wash: HWash
+  var successHaptic: Bool
+  @ViewBuilder var cards: () -> Cards
+  @ViewBuilder var footer: () -> Footer
+
+  init(
+    badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, wash: HWash = .ready,
+    successHaptic: Bool = false, @ViewBuilder cards: @escaping () -> Cards, @ViewBuilder footer: @escaping () -> Footer
+  ) {
+    self.badge = badge
+    self.title = title
+    self.subtitle = subtitle
+    self.wash = wash
+    self.successHaptic = successHaptic
+    self.cards = cards
+    self.footer = footer
+  }
+
+  @State private var keyboardUp = false
+  @State private var landed = false
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 0) {
+        VStack(spacing: 20) {
+          if let badge { SuccessBadge(content: badge) }
+          VStack(spacing: 8) {
+            Text(title)
+              .hType(.largeTitle)
+              .foregroundStyle(HColor.textPrimary)
+              .accessibilityAddTraits(.isHeader)
+            if let subtitle {
+              Text(subtitle)
+                .hType(.body)
+                .foregroundStyle(HColor.textOnWashSecondary)
+                .frame(maxWidth: 300)
+            }
+          }
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 28)
+        .padding(.top, badge == nil ? 40 : 76)
+        cards()
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, HSpacing.insetPage)
+          .padding(.top, 36)
+      }
+      .padding(.bottom, 16)
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .safeAreaBar(edge: .bottom) {
+      ActionDock(keyboardUp: keyboardUp, content: footer)
+    }
+    .background(alignment: .top) {
+      AmbientWash(wash).ignoresSafeArea(edges: .top)
+    }
+    .background(HColor.surfaceSecondary)
+    .navigationBarBackButtonHidden()
+    .toolbar(.hidden, for: .navigationBar)
+    .task {
+      guard successHaptic, !landed else { return }
+      // When the badge has settled, not as it starts (spec 01 §4.11).
+      try? await Task.sleep(for: .seconds(HMotion.celebrateResponse))
+      landed = true
+    }
+    .hHaptic(.success, trigger: landed)
+  }
+}
+
+extension CelebrationScreen where Footer == EmptyView {
+  init(
+    badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, wash: HWash = .ready,
+    successHaptic: Bool = false, @ViewBuilder cards: @escaping () -> Cards
+  ) {
+    self.init(badge: badge, title: title, subtitle: subtitle, wash: wash, successHaptic: successHaptic,
+              cards: cards, footer: { EmptyView() })
+  }
+}
+
+// MARK: - Cards
+
+/// A 40 icon tile: a hue disc with a 20 line icon in the hue's ink (Paper "IconTile").
+struct IconTile: View {
+  var icon: HIcon
+  var hue: Hue
+
+  var body: some View {
+    CategoryDisc(hue: hue, icon: icon, size: .s40)
+  }
+}
+
+/// The mint "Recommended" or "Fastest" chip on an option (Paper "HueChip"): 24 tall,
+/// radius 12, the mint gradient, 13/18 semibold in the mint ink.
+struct HueChip: View {
+  var text: String
+  var hue: Hue = .mint
+
+  var body: some View {
+    Text(text)
+      .hType(HType(size: 13, leading: 18, weight: .semibold, textStyle: .footnote))
+      .foregroundStyle(hue.ink)
+      .padding(.horizontal, 9)
+      .frame(minHeight: 24)
+      .background(hue.perceptualGradient, in: Capsule())
+  }
+}
+
+/// An option with its own button (Paper "OptionCard", spec 08: unlock, recover, forgot):
+/// an icon tile, an optional chip, a 17/22 title and a 15/20 line, then a 50 card button.
+struct OptionCard: View {
+  enum ButtonKind { case primary, secondary }
+
+  var icon: HIcon
+  var hue: Hue
+  var chip: String?
+  var title: String
+  var detail: String
+  var buttonTitle: String
+  var buttonKind: ButtonKind = .secondary
+  var buttonIcon: HIcon?
+  var busy = false
+  var identifier: String
+  var action: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(alignment: .top, spacing: 12) {
+        IconTile(icon: icon, hue: hue)
+        CardText(chip: chip, title: title, detail: detail)
+      }
+      .accessibilityElement(children: .combine)
+      Button(buttonTitle, action: action)
+        .buttonStyle(CardButtonStyle(kind: buttonKind, icon: buttonIcon, loading: busy))
+        .accessibilityIdentifier(identifier)
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+  }
+}
+
+/// The 50 button inside an option card (Paper "CardButton"): primary (accent, white label)
+/// or secondary (accent-subtle, link label), 17/24 semibold, radius 25. It presses like
+/// every pill (darken and 0.97, 120 ms back; colour only with Reduce Motion).
+private struct CardButtonStyle: ButtonStyle {
+  let kind: OptionCard.ButtonKind
+  let icon: HIcon?
+  let loading: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    CardButtonBody(configuration: configuration, kind: kind, icon: icon, loading: loading)
+  }
+}
+
+private struct CardButtonBody: View {
+  let configuration: ButtonStyleConfiguration
+  let kind: OptionCard.ButtonKind
+  let icon: HIcon?
+  let loading: Bool
+  @Environment(\.isEnabled) private var isEnabled
+  @Environment(\.hMotion) private var policy
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    let pressed = configuration.isPressed && !loading
+    let motion = MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
+    HStack(spacing: 8) {
+      if loading {
+        Spinner(size: 20, tint: foreground,
+                track: kind == .primary ? HColor.white.opacity(0.35) : HColor.actionAccentSubtlePressed)
+      } else if let icon {
+        HIconView(icon, size: 20, color: foreground, strokeWidth: 2)
+      }
+      configuration.label.multilineTextAlignment(.center)
+    }
+    .hType(HType(size: 17, leading: 24, weight: .semibold, textStyle: .body))
+    .foregroundStyle(foreground)
+    .padding(.horizontal, 12)
+    .frame(maxWidth: .infinity, minHeight: 50)
+    .background(fill(pressed: pressed), in: Capsule())
+    .contentShape(Capsule())
+    .scaleEffect(pressed && !motion.isStill ? HMotion.pressScale : 1)
+    .animation(pressed ? nil : motion.animation(.press), value: pressed)
+    .allowsHitTesting(!loading)
+    .accessibilityValue(loading ? Text("In progress") : Text(""))
+  }
+
+  private var foreground: Color {
+    guard isEnabled else { return HColor.textDisabled }
+    return kind == .primary ? HColor.textOnAccent : HColor.textLink
+  }
+
+  private func fill(pressed: Bool) -> Color {
+    guard isEnabled else { return HColor.appleFillsSecondary }
+    switch kind {
+    case .primary: return pressed ? HColor.actionAccentPressed : HColor.actionAccent
+    case .secondary: return pressed ? HColor.actionAccentSubtlePressed : HColor.actionAccentSubtle
+    }
+  }
+}
+
+/// A choice between two ways (Paper "SelectionCard", S8 and H43): the card is the button,
+/// a 2 pt accent ring and a filled radio mark the one chosen.
+struct SelectionCard: View {
+  var icon: HIcon
+  var hue: Hue
+  var chip: String?
+  var title: String
+  var detail: String
+  var selected: Bool
+  var identifier: String
   var action: () -> Void
 
   var body: some View {
     Button(action: action) {
-      Image(systemName: "chevron.left")
-        .font(.system(size: 18, weight: .semibold))
-        .foregroundStyle(HColor.textPrimary)
-        .frame(width: 48, height: 48)
-        // The whole circle is the hit area, for touch and for VoiceOver: on iOS 26 a
-        // plain button's accessibility frame otherwise shrinks to the glyph.
-        .contentShape([.interaction, .accessibility], Circle())
+      HStack(alignment: .top, spacing: 12) {
+        IconTile(icon: icon, hue: hue)
+        CardText(chip: chip, title: title, detail: detail)
+        Radio(on: selected)
+      }
+      .padding(20)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+      .overlay {
+        // 2 pt outside the card edge, no gap (box-shadow 0 0 0 2px).
+        RoundedRectangle(cornerRadius: HRadius.card + 2, style: .continuous)
+          .strokeBorder(HColor.actionAccent, lineWidth: 2)
+          .padding(-2)
+          .opacity(selected ? 1 : 0)
+      }
+      .hAnimation(.thumbSlide, value: selected)
     }
-    .buttonStyle(.plain)
-    .frame(width: 48, height: 48)
-    .glassEffect(.regular.interactive(), in: Circle())
-    .accessibilityLabel("Back")
-    .accessibilityIdentifier("account.back")
+    .buttonStyle(HPressStyle(in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous), scales: false))
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    .accessibilityIdentifier(identifier)
   }
 }
 
-/// The step indicator: 24 × 4 dashes, the done ones in the accent.
-struct StepDashes: View {
-  var current: Int
-  var of: Int
+/// The radio of a selection card: 24, accent with a white check when on, a 1.5 neutral
+/// ring when off.
+private struct Radio: View {
+  let on: Bool
 
   var body: some View {
-    HStack(spacing: 6) {
-      ForEach(1...max(of, 1), id: \.self) { i in
-        Capsule()
-          .fill(i <= current ? HColor.actionAccent : HColor.appleFillsSecondary)
-          .frame(width: 24, height: 4)
-      }
+    ZStack {
+      Circle().strokeBorder(HColor.neutral300, lineWidth: 1.5).opacity(on ? 0 : 1)
+      Circle().fill(HColor.actionAccent).opacity(on ? 1 : 0)
+      HIconView(.check, size: 14, color: HColor.white, strokeWidth: 3).opacity(on ? 1 : 0)
     }
-    .frame(minWidth: 44, minHeight: 44)
-    .contentShape(Rectangle())
-    .accessibilityElement()
-    .accessibilityLabel("Step \(current) of \(of)")
+    .frame(width: 24, height: 24)
+    .accessibilityHidden(true)
   }
 }
 
+/// The text column of an option or selection card: chip, title (padded 4 under a chip) and
+/// the line under it.
+private struct CardText: View {
+  let chip: String?
+  let title: String
+  let detail: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      if let chip { HueChip(text: chip) }
+      Text(title)
+        .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
+        .foregroundStyle(HColor.textPrimary)
+        .padding(.top, chip == nil ? 0 : 4)
+      Text(detail)
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textSecondary)
+    }
+    .multilineTextAlignment(.leading)
+    .fixedSize(horizontal: false, vertical: true)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// A card that tells one thing (Paper "InfoCard"; the hand-off cards on the done screens):
+/// an icon tile, a 16/22 title and a 15/20 line, on white, radius 24 (20 as a content card).
+struct InfoCard: View {
+  var icon: HIcon
+  var hue: Hue
+  var title: String
+  var detail: String
+  var radius: CGFloat = HRadius.listGroup
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      IconTile(icon: icon, hue: hue)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+        Text(detail).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(16)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// A quiet note under the content (Paper "NoteRow"): an 18 icon in icon-secondary and a
+/// 13/18 line, 4 in from the content edge.
+struct NoteRow: View {
+  var icon: HIcon
+  var text: String
+
+  @ScaledMetric(relativeTo: .footnote) private var lane: CGFloat = 18
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      HIconView(icon, size: 18, color: HColor.iconSecondary).frame(height: lane)
+      Text(text)
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.top, 4)
+    .padding(.horizontal, 4)
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// The amber note that says why something is held back (Paper "WarningCallout": no
+/// screenshots on the phrase screen): a 20 icon and 15/20 medium text in the warning ink on
+/// the warning surface, radius 20.
+struct WarningCallout: View {
+  var icon: HIcon = .cameraSlash
+  var text: String
+
+  @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 20
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      HIconView(icon, size: 20, color: HColor.statusWarningForeground).frame(height: lane)
+      Text(text)
+        .hType(.subheadline.weight(.medium))
+        .foregroundStyle(HColor.statusWarningForeground)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.vertical, 14)
+    .padding(.horizontal, 16)
+    .background(HColor.statusWarningSurface, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// A light hint on the wash (Paper "HintCard · Spam"): an 18 icon and a 13/18 line on the
+/// white-70% surface, radius 16.
+struct HintCard: View {
+  var icon: HIcon = .envelope
+  var text: String
+
+  @ScaledMetric(relativeTo: .footnote) private var lane: CGFloat = 18
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      HIconView(icon, size: 18, color: HColor.iconSecondary).frame(height: lane)
+      Text(text)
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.vertical, 12)
+    .padding(.horizontal, 14)
+    .background(HColor.surfaceOnWash, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .accessibilityElement(children: .combine)
+  }
+}
+
+// MARK: - Dock parts
+
+/// The link under the primary button (Paper "Secondary link (44pt target)"): 17/22
+/// semibold in the link colour (or destructive), a 44 box, 16 in.
+struct SecondaryLink: View {
+  var title: String
+  var identifier: String
+  var role: ButtonRole?
+  var action: () -> Void
+
+  var body: some View {
+    Button(role: role, action: action) {
+      Text(title)
+        .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .body))
+        .foregroundStyle(role == .destructive ? HColor.actionDestructive : HColor.textLink)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+    // A link dims while pressed, as text buttons do; it has no fill to darken.
+    .buttonStyle(.plain)
+    .accessibilityIdentifier(identifier)
+  }
+}
+
+/// A plain note in the link's place (Paper "Note (not a link)"): 15/22 secondary in the
+/// same 44 box ("Takes about two minutes. It can't be skipped.").
+struct ActionNote: View {
+  var text: String
+
+  var body: some View {
+    Text(text)
+      .hType(HType(size: 15, leading: 22, weight: .regular, textStyle: .subheadline))
+      .foregroundStyle(HColor.textSecondary)
+      .multilineTextAlignment(.center)
+      .padding(.horizontal, 16)
+      .frame(maxWidth: .infinity, minHeight: 44)
+  }
+}
+
+// MARK: - Earlier parts (kept; the packages move their screens to the parts above)
+
 /// A labelled field on the grouped canvas: label, a white 52 pt field (r14), a footer.
+/// The same field as `AccountField`, with the control as a view builder.
 struct LabeledField<Field: View, Accessory: View>: View {
   var label: String
   var footer: String?
@@ -150,32 +637,10 @@ struct LabeledField<Field: View, Accessory: View>: View {
   @ViewBuilder var accessory: () -> Accessory
 
   var body: some View {
-    VStack(alignment: .leading, spacing: HSpacing.fieldLabelGap) {
-      Text(label)
-        .hType(.footnote.weight(.semibold))
-        .foregroundStyle(HColor.textSecondary)
-      HStack(spacing: 8) {
-        field()
-          .hType(.body)
-          .foregroundStyle(HColor.fieldText)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        accessory()
-      }
-      .padding(.leading, HSpacing.fieldInsetInline)
-      .padding(.trailing, 8)
-      .frame(minHeight: HSpacing.fieldMinHeight)
-      .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: HRadius.field, style: .continuous)
-          .strokeBorder(error != nil ? HColor.fieldError : (focused ? HColor.fieldFocus : .clear), lineWidth: 2)
-      }
-      if let error {
-        StatusLine(text: error, tone: .error)
-      } else if let footer {
-        Text(footer)
-          .hType(.footnote)
-          .foregroundStyle(HColor.textSecondary)
-      }
+    FieldFrame(label: label, help: footer, error: error, focused: focused, trailingPill: Accessory.self != EmptyView.self) {
+      field()
+    } trailing: {
+      accessory()
     }
   }
 }
@@ -187,17 +652,23 @@ extension LabeledField where Accessory == EmptyView {
   }
 }
 
-/// A dot and one line of status: success (green), error (red), info (grey).
+/// A dot and one line of status: success (green), error (red), info (grey). Small (13/18)
+/// under a field ("Passwords match."), regular (15/20) in a card (the strength line).
 struct StatusLine: View {
   enum Tone { case success, error, info }
+  enum Size { case small, regular }
   var text: String
   var tone: Tone
+  var size: Size = .small
+
+  @ScaledMetric(relativeTo: .footnote) private var smallLane: CGFloat = 18
+  @ScaledMetric(relativeTo: .subheadline) private var regularLane: CGFloat = 20
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Circle().fill(color).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
+    HStack(alignment: .top, spacing: 8) {
+      Circle().fill(color).frame(width: 7, height: 7).frame(height: size == .regular ? regularLane : smallLane)
       Text(text)
-        .hType(.footnote.weight(tone == .info ? .regular : .semibold))
+        .hType((size == .regular ? HType.subheadline : HType.footnote).weight(tone == .info ? .regular : .semibold))
         .foregroundStyle(color)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -240,7 +711,7 @@ struct NoteCard: View {
       Spacer(minLength: 0)
     }
     .padding(16)
-    .background(tint, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .background(tint, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
     .accessibilityElement(children: .combine)
   }
 }
@@ -283,22 +754,8 @@ struct IconDisc: View {
   }
 }
 
-/// The success badge over the "account ready" and "done" boards.
-struct SuccessBadge: View {
-  var systemImage = "checkmark"
-
-  var body: some View {
-    Image(systemName: systemImage)
-      .font(.system(size: 28, weight: .semibold))
-      .foregroundStyle(HColor.statusSuccessForeground)
-      .frame(width: 72, height: 72)
-      .background(HColor.statusSuccessSurface, in: Circle())
-      .shadow(color: HColor.elevationFar, radius: 16, y: 8)
-      .accessibilityHidden(true)
-  }
-}
-
-/// A primary pill that shows a spinner while `busy`.
+/// A filling pill for a step's main action: the kit's loading state (spinner and label,
+/// same size, taps blocked) while `busy`, and Paper's disabled fill until `enabled`.
 struct BusyButton: View {
   var title: String
   var busy: Bool
@@ -308,20 +765,15 @@ struct BusyButton: View {
   var action: () -> Void
 
   var body: some View {
-    Button(action: action) {
-      ZStack {
-        Text(title).opacity(busy ? 0 : 1)
-        if busy { ProgressView().tint(kind == .primary ? HColor.textOnAccent : HColor.textLink) }
-      }
-    }
-    .buttonStyle(.pill(enabled ? kind : .tertiary, fill: true))
-    .opacity(enabled ? 1 : 0.55)
-    .disabled(!enabled || busy)
-    .accessibilityIdentifier(identifier)
+    Button(title, action: action)
+      .buttonStyle(.pill(kind, fill: true, loading: busy))
+      .disabled(!enabled)
+      .accessibilityIdentifier(identifier)
   }
 }
 
-/// A full-width text link under the primary button (44 pt).
+/// A full-width text link under the primary button (44 pt). `SecondaryLink` is the same
+/// part in Paper's type; this one keeps the button type its screens were drawn with.
 struct LinkButton: View {
   var title: String
   var identifier: String
@@ -329,12 +781,7 @@ struct LinkButton: View {
   var action: () -> Void
 
   var body: some View {
-    Button(title, role: role, action: action)
-      .hType(.button)
-      .foregroundStyle(role == .destructive ? HColor.actionDestructive : HColor.textLink)
-      .multilineTextAlignment(.center)
-      .frame(maxWidth: .infinity, minHeight: 44)
-      .accessibilityIdentifier(identifier)
+    SecondaryLink(title: title, identifier: identifier, role: role, action: action)
   }
 }
 
@@ -358,6 +805,7 @@ struct FailureBanner: View {
       .background(HColor.statusErrorSurface, in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
       .accessibilityElement(children: .combine)
       .accessibilityIdentifier("account.failure")
+      .hTransition(.rise)
     }
   }
 }
@@ -371,9 +819,10 @@ struct WebLink: View {
   var body: some View {
     Link(destination: URL(string: url)!) {
       Text(title)
-        .hType(.button)
+        .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .body))
         .foregroundStyle(HColor.textLink)
         .multilineTextAlignment(.center)
+        .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, minHeight: 44)
         .contentShape(Rectangle())
     }
@@ -381,7 +830,8 @@ struct WebLink: View {
   }
 }
 
-/// A small inline text button ("Forgot password?", "Resend code") with a 44 pt hit area.
+/// A small inline text button ("Forgot password?", "Resend code", "Change email"): Paper's
+/// InlineLink, 15/20 semibold in the link colour, with a 44 pt hit area.
 struct InlineTextButton: View {
   var title: String
   var identifier: String
@@ -390,7 +840,7 @@ struct InlineTextButton: View {
   var body: some View {
     Button(action: action) {
       Text(title)
-        .hType(.rowTitle)
+        .hType(.subheadline.weight(.semibold))
         .foregroundStyle(HColor.textLink)
         .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())

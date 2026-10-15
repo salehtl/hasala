@@ -52,7 +52,7 @@ struct ConnectProviderView: View {
       title: connectedID == nil ? "Read-only \(provider.appName), on your iPhone." : "\(provider.appName) is connected.",
       subtitle: "Your bank alerts are fetched from \(provider.appName) by this iPhone. Our server never receives your emails.",
       steps: steps,
-      onBack: { dismiss() }
+      back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 10) {
