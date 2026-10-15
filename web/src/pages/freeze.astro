@@ -26,6 +26,7 @@ import { API_BASE } from '../lib/env';
   nav="minimal"
   footer={false}
   referrer="no-referrer"
+  edge="sky"
   class="freeze-page"
 >
   <section class="freeze" data-freeze data-api={API_BASE} aria-labelledby="freeze-title">
@@ -157,6 +158,8 @@ import { API_BASE } from '../lib/env';
     background: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 40%, oklab(98% 0.0008 -0.007) 80%, oklab(100% 0 0) 100%);
   }
   .freeze {
+    --edge-t: var(--edge-sky);
+    --edge-b: var(--white);
     padding: 104px 20px 40px;
   }
   .freeze__confirm {

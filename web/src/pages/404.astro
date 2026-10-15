@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import MissedCoin from '../components/brand/MissedCoin.astro';
 ---
 
-<Base title="Page not found" description="This page has moved or never existed." path="/404" noindex footer={false} class="nf-page">
+<Base title="Page not found" description="This page has moved or never existed." path="/404" noindex footer={false} edge="soft" class="nf-page">
   <section class="nf" aria-labelledby="nf-title">
     <MissedCoin />
     <p class="nf__code">404</p>
@@ -28,6 +28,8 @@ import MissedCoin from '../components/brand/MissedCoin.astro';
     min-height: 100vh;
   }
   .nf {
+    --edge-t: var(--edge-soft);
+    --edge-b: var(--white);
     display: flex;
     flex-direction: column;
     align-items: center;

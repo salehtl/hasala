@@ -53,7 +53,7 @@ const jsonLd = {
 };
 ---
 
-<Base title={title} description={description} path={`/${slug}`} noindex={isDraft} ogType="article" jsonLd={jsonLd} class="legal-page">
+<Base title={title} description={description} path={`/${slug}`} noindex={isDraft} ogType="article" jsonLd={jsonLd} edge="legal" class="legal-page">
   <header class="doc-head">
     <div class="container doc-head__inner">
       <nav class="crumbs" aria-label="Breadcrumb">
@@ -281,6 +281,8 @@ const jsonLd = {
 
 <style>
   .doc-head {
+    --edge-t: var(--edge-legal);
+    --edge-b: var(--white);
     padding: 104px 0 32px;
     background: linear-gradient(in oklab 180deg, oklab(96% 0.002 -0.019) 0%, oklab(98% 0.0008 -0.007) 70%, oklab(100% 0 0) 100%);
   }

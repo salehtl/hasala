@@ -20,10 +20,18 @@ interface Props {
   footer?: boolean;
   /** Pages whose address can carry a code or token send no referrer at all. */
   referrer?: 'no-referrer';
+  /**
+   * The colour at the top of the page (the first block's wash), for the
+   * strip behind the status bar before scripts/edges.ts runs or without
+   * JavaScript. The same values are --edge-* in global.css.
+   */
+  edge?: keyof typeof EDGE;
   class?: string;
 }
 
-const { title, description, path, noindex = false, ogType = 'website', jsonLd, nav = 'full', footer = true, referrer, class: className } = Astro.props;
+const EDGE = { white: '#ffffff', sky: '#d3e6ff', soft: '#e6eeff', legal: '#eef1ff' } as const;
+
+const { title, description, path, noindex = false, ogType = 'website', jsonLd, nav = 'full', footer = true, referrer, edge = 'white', class: className } = Astro.props;
 const fullTitle = `Hasala · ${title}`;
 // https://hasala.app/ for the home page, https://hasala.app/privacy (no slash) elsewhere.
 const canonical = new URL(path ?? Astro.url.pathname, SITE.url).href;
@@ -32,7 +40,7 @@ const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 ---
 
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" data-edge={edge === 'white' ? undefined : edge}>
   <head>
     <meta charset="utf-8" />
     {referrer && <meta name="referrer" content={referrer} />}
@@ -41,7 +49,7 @@ const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     {noindex && <meta name="robots" content="noindex, follow" />}
-    <meta name="theme-color" content={SITE.themeColor} />
+    <meta name="theme-color" content={EDGE[edge]} />
     <meta name="color-scheme" content="light" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="application-name" content="Hasala" />
@@ -81,6 +89,8 @@ const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   </head>
   <body class={className}>
     <a class="skip-link" href="#main">Skip to content</a>
+    <div class="edge-top" aria-hidden="true"></div>
+    <div class="edge-bottom" aria-hidden="true"></div>
     <Nav variant={nav} />
     <main id="main" tabindex="-1">
       <slot />
@@ -91,4 +101,5 @@ const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
 <script>
   import '../scripts/router';
+  import '../scripts/edges';
 </script>
