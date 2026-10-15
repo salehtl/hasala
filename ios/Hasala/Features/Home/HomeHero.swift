@@ -71,8 +71,9 @@ struct HomeHero: View {
         // 6 dots at Paper's 38 pt when hidden (page 06 §6.3). The figure is its own element
         // (`home.hero.left`, plan decision 8) and carries the caption as its value, so VoiceOver
         // reads "AED 10,288.34, spent of 19,000 on needs and wants".
+        // A live change rolls the figure on the bar's own 250 ms curve, so both land together.
         HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
-          .hAnimation(.count, value: hero.spent)
+          .hAnimation(.fillUpdate, value: hero.spent)
           .accessibilityValue(hero.caption.spoken(hidden: hidden))
           .accessibilityIdentifier("home.hero.left")
         Text(hero.caption.rendered(hidden: hidden)).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
@@ -112,20 +113,21 @@ struct HomeHero: View {
 
   /// Three tiles side by side; stacked at the accessibility sizes, or when they wouldn't fit.
   @ViewBuilder private var tiles: some View {
-    let skeleton = hero.state == .syncing
     if typeSize.isAccessibilitySize {
-      VStack(spacing: 8) {
-        ForEach(hero.tiles) { StatTile($0, hidden: hidden, skeleton: skeleton) }
-      }
+      VStack(spacing: 8) { tileViews }
     } else {
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) {
-          ForEach(hero.tiles) { StatTile($0, hidden: hidden, skeleton: skeleton) }
-        }
-        VStack(spacing: 8) {
-          ForEach(hero.tiles) { StatTile($0, hidden: hidden, skeleton: skeleton) }
-        }
+        HStack(spacing: 8) { tileViews }
+        VStack(spacing: 8) { tileViews }
       }
+    }
+  }
+
+  /// Needs, Wants and Savings (`home.tile.needs`, `.wants`, `.savings`). Not controls.
+  private var tileViews: some View {
+    ForEach(hero.tiles) { tile in
+      StatTile(tile, hidden: hidden, skeleton: hero.state == .syncing)
+        .accessibilityIdentifier("home.tile.\(tile.label.lowercased())")
     }
   }
 }
