@@ -107,16 +107,18 @@ struct SectionTitle: View {
   }
 }
 
-/// "TODAY ……… 91.50": a day's overline with its total.
+/// "TODAY ……… 91.50": a day's overline with its total. At the accessibility sizes the total
+/// goes under the day, so the day never has to squeeze beside it (spec 04 §17).
 struct DayOverline: View {
   let title: String
   let total: Money
   let hidden: Bool
 
   var body: some View {
-    HStack {
+    ReflowingRow {
       Text(title).hType(.overline).foregroundStyle(HColor.textSecondary).accessibilityAddTraits(.isHeader)
-      Spacer()
+        .fixedSize(horizontal: false, vertical: true)
+    } trailing: {
       MoneyText(total, figure: .badge, hidden: hidden, hiddenGlyphs: 3, color: HColor.textSecondary,
                 sign: total.isNegative ? .income : .none)
     }

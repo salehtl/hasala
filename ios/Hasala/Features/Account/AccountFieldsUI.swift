@@ -110,8 +110,7 @@ struct FieldFrame<Field: View, Trailing: View>: View {
       .frame(minHeight: HSpacing.fieldMinHeight)
       .background(surface.fill, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
       .overlay { FieldRing(color: ringColor) }
-      .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-      .onTapGesture { onTap?() }
+      .modifier(BoxTap(action: onTap))
       if let error {
         FieldErrorLine(text: error)
           .padding(.top, 2)
@@ -131,6 +130,22 @@ struct FieldFrame<Field: View, Trailing: View>: View {
   private var ringColor: Color {
     if error != nil { return HColor.fieldError }
     return focused ? HColor.fieldFocus : .clear
+  }
+}
+
+/// A tap anywhere in a field's box focuses the field. Alongside the field's own tap, never
+/// instead of it, so a tap on the text still places the caret (and UI tests can type).
+private struct BoxTap: ViewModifier {
+  let action: (() -> Void)?
+
+  func body(content: Content) -> some View {
+    if let action {
+      content
+        .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+        .simultaneousGesture(TapGesture().onEnded(action))
+    } else {
+      content
+    }
   }
 }
 
@@ -626,7 +641,7 @@ struct PhraseGrid: View {
       ForEach(Array(ws.enumerated()), id: \.offset) { i, w in
         HStack(spacing: 8) {
           Text("\(start + i)")
-            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .hFigure(HFigure(size: 14, leading: 18, weight: .semibold, textStyle: .subheadline))
             .foregroundStyle(HColor.textSecondary)
             .frame(minWidth: 20, alignment: .trailing)
           Text(w)

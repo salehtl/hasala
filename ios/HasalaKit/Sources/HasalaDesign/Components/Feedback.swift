@@ -200,6 +200,9 @@ public struct StepIndicator: View {
       }
     }
     .hAnimation(.thumbSlide, value: current)
+    // A 44 box around the 4 pt bars, so the element VoiceOver reads is a size it can reach.
+    .frame(minWidth: 44, minHeight: 44)
+    .contentShape(Rectangle())
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("Step \(current) of \(total)")
   }
