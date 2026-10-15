@@ -118,6 +118,25 @@ struct HomeHeroTests {
     #expect(h.wash == .sand)
   }
 
+  /// The `home.overPace` screen's plan: 11,000 with needs and wants each still under, so the
+  /// widget stays blue while the hero is well past the tick (amber from 78.5% to 93.5%).
+  @Test func aTighterPlanIsAheadOfPaceWithMoneyLeft() {
+    let s = Self.maya(budgets: [
+      "groceries": 0, "transport": 50, "travel": 0, "shopping": 0, "entertainment": 0, "dining": 1_350,
+    ])
+    let h = hero(s)
+    #expect(h.plan == .aed(11_000_00))
+    #expect(h.tick == .aed(8_636_52))
+    #expect(h.verdict == .overPace && h.wash == .sand)
+    #expect(h.fact?.rendered(hidden: false) == "AED 711.66 left")
+    guard case .budgetPace(let pace) = HomeEngine.snapshot(s, now: now).widgets[0] else {
+      Issue.record("no Budget pace")
+      return
+    }
+    #expect(pace.rows.map(\.verdict) == [.onTrack, .onTrack, .done])
+    #expect(pace.rows.map { MoneyFormat.string($0.left.minor, style: .rounded) } == ["259", "452", "0"])
+  }
+
   /// Past the plan: "Over by AED …" in one run (it hides like any amount), no "left", rose.
   @Test func pastThePlanIsOverBy() {
     let h = hero(Self.maya(budgets: ["travel": 0, "rent": 0]))
