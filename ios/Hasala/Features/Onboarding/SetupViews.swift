@@ -103,10 +103,19 @@ struct BankView: View {
   }
 
   private func bankRow(_ bank: SupportedBank) -> some View {
-    let on = model.chosenBanks.contains(bank)
-    return Button {
-      model.toggle(bank)
-    } label: {
+    BankChoiceRow(bank: bank, on: model.chosenBanks.contains(bank)) { model.toggle(bank) }
+  }
+}
+
+/// One bank in a pick list (`bank.<bank>`): setup's bank step, and the banks asked for
+/// before a connect from the profile when the account reads none (`ConnectMailPage`).
+struct BankChoiceRow: View {
+  let bank: SupportedBank
+  let on: Bool
+  var toggle: () -> Void
+
+  var body: some View {
+    Button(action: toggle) {
       HStack(spacing: 14) {
         // Paper draws the bank's monogram; a text monogram fails the Dynamic Type audit
         // inside the row's fixed disc, so the disc carries a bank glyph in the bank's tint.

@@ -14,6 +14,8 @@
     /// Each op call, counted (tests: an unchanged value is not sent again).
     private(set) var chooseBanksCalls = 0
     private(set) var savePlanCalls = 0
+    /// After each `chooseBanks`, with its banks (a scenario hands them to its mailbox mock).
+    var choseBanks: ([SupportedBank]) -> Void = { _ in }
 
     init(saved: SetupReadBack = SetupReadBack()) {
       income = saved.incomeMinor
@@ -26,6 +28,7 @@
     func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
       chooseBanksCalls += 1
       self.banks = banks
+      choseBanks(banks)
     }
 
     func requestBank(_ name: String) async throws(SetupFailure) {

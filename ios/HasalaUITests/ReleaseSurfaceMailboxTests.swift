@@ -82,6 +82,35 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
   }
 
+  /// Setup's bank step was skipped (manual entry), so the account reads no bank: "Connect
+  /// your email" asks for the banks first (the lane reads only their senders), then Gmail's
+  /// screen names the banks picked, never an empty list.
+  @MainActor
+  func testConnectWithNoBankAsksForTheBanksFirst() throws {
+    let app = launchRelease("noBanks")
+    app.buttons["header.profile"].firstMatch.tap()
+    XCTAssertTrue(el(app, "profile.bankAlerts").waitForExistence(timeout: 5))
+    tap(app, "profile.connectGmail")
+    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 5), "the banks were not asked for")
+    XCTAssertFalse(el(app, "mail.connect.gmail").exists, "Gmail's sign-in came before the banks")
+    attach(app, "Release · Connect your email · Banks")
+    assertNoPlaceholders(app, "Banks")
+    assertNoOutlook(app, "Banks")
+    assertNoText(app, ["Step 1 of 4"], "Banks")
+    try audit(app)
+    tap(app, "bank.dib")
+    XCTAssertEqual(el(app, "bank.continue").label, "Continue with 1 bank")
+    tap(app, "bank.continue")
+    let connect = el(app, "mail.connect.gmail")
+    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    assertText(app, "Alerts from Emirates NBD, and nothing else", "Connect your email")
+    assertNoText(app, ["Alerts from ,"], "Connect your email")
+    attach(app, "Release · Connect your email · After the banks")
+    connect.tap()
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: 10), "Bank alerts did not open")
+    assertText(app, "Gmail connected. Checking for alerts.", "Bank alerts")
+  }
+
   /// Google ended Hasala's access: the Profile card says so and "Sign in again" runs the
   /// same Google screen, then Bank alerts says it works again.
   @MainActor
