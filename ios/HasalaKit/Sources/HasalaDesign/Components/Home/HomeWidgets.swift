@@ -11,21 +11,44 @@ private let widgetShadowNear = Color(HRGBA(0, 0, 0, 0.0588))  // #0000000F
 private let widgetShadowFar = Color(HRGBA(0, 0, 0, 0.0784))  // #00000014
 
 extension View {
-  func widgetChrome<S: ShapeStyle>(_ fill: S, padding: EdgeInsets) -> some View {
+  /// The card: `padding` inside, at least `minHeight` tall with the padding counted in, the
+  /// fill, r26, the content clipped, and the two literal shadows. `backdrop` draws between the
+  /// fill and the content, in the card's own frame (the net-worth sparkline).
+  func widgetChrome<S: ShapeStyle, B: View>(
+    _ fill: S, padding: EdgeInsets, minHeight: CGFloat? = nil, @ViewBuilder backdrop: () -> B
+  ) -> some View {
     self
       .padding(padding)
+      .frame(minHeight: minHeight)
+      .background(alignment: .top, content: backdrop)
       .background(fill, in: RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous))
       .clipShape(RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous))
       .shadow(color: widgetShadowNear, radius: 1, x: 0, y: 1)
       .shadow(color: widgetShadowFar, radius: 12, x: 0, y: 8)
   }
 
-  /// A Small widget: at least the 175 pt unit, taller when its text needs it (large
-  /// Dynamic Type sizes). It fills the height it is offered, so a canvas row that
-  /// settles its height with `.fixedSize(horizontal: false, vertical: true)` gets
-  /// two cards of equal height with their figures on the bottom edge.
+  func widgetChrome<S: ShapeStyle>(_ fill: S, padding: EdgeInsets, minHeight: CGFloat? = nil) -> some View {
+    widgetChrome(fill, padding: padding, minHeight: minHeight) { EmptyView() }
+  }
+
+  /// A Small widget's content: it fills the height it is offered, so a canvas row that
+  /// settles its height with `.fixedSize(horizontal: false, vertical: true)` gets two cards
+  /// of equal height with their figures on the bottom edge. The card itself is the 175 pt
+  /// unit, padding included (`smallWidgetChrome`), and taller when its text needs it.
   func smallWidget() -> some View {
-    frame(maxWidth: .infinity, minHeight: HContainer.widgetUnit, maxHeight: .infinity, alignment: .topLeading)
+    frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+
+  /// A Small widget's card: Paper's 12 / 16 / 16 / `trailing` padding inside the 175 pt unit.
+  func smallWidgetChrome<S: ShapeStyle, B: View>(
+    _ fill: S, trailing: CGFloat, @ViewBuilder backdrop: () -> B
+  ) -> some View {
+    widgetChrome(fill, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: trailing),
+                 minHeight: HContainer.widgetUnit, backdrop: backdrop)
+  }
+
+  func smallWidgetChrome<S: ShapeStyle>(_ fill: S, trailing: CGFloat) -> some View {
+    smallWidgetChrome(fill, trailing: trailing) { EmptyView() }
   }
 }
 
@@ -180,7 +203,7 @@ public struct NextBillWidgetView: View {
       }
     }
     .smallWidget()
-    .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 12))
+    .smallWidgetChrome(HColor.widgetSurface, trailing: 12)
     // "Next bill" first, then what the card shows (pill, amount, payee), so nothing drawn is
     // left out of what VoiceOver reads ("Next bill, In 4 days, AED 489, DEWA · expected Wed").
     .accessibilityElement(children: .combine)
@@ -232,18 +255,19 @@ public struct NetWorthWidgetView: View {
       }
     }
     .smallWidget()
-    .background(alignment: .top) {
+    // Paper: the 70 pt band from 44 down, across the whole card, behind the words.
+    .smallWidgetChrome(HColor.widgetSurfaceInverse, trailing: 12) {
       Sparkline(points: model.spark)
         .frame(height: 70)
         .padding(.top, 44)
     }
-    .widgetChrome(HColor.widgetSurfaceInverse, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 12))
     // Its own title, total and change, read together; a fixed label would drop the figures.
     .accessibilityElement(children: .combine)
   }
 }
 
-/// The net-worth sparkline: a soft line over a faint area (geometry only).
+/// The net-worth sparkline: a soft line over a faint area, edge to edge of the card, the
+/// points evenly apart (Paper: 11 points, 18 apart, the last at the edge). Geometry only.
 struct Sparkline: View {
   let points: [Permille]
 
@@ -256,14 +280,13 @@ struct Sparkline: View {
                     style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
       }
     }
-    .padding(.horizontal, -16)
     .accessibilityHidden(true)
   }
 
   private func path(in size: CGSize) -> Path {
     var p = Path()
     guard points.count > 1 else { return p }
-    let step = (size.width + 32) / CGFloat(points.count - 1)
+    let step = size.width / CGFloat(points.count - 1)
     for (i, pt) in points.enumerated() {
       let point = CGPoint(x: CGFloat(i) * step, y: size.height * (1 - pt.fraction))
       if i == 0 { p.move(to: point) } else { p.addLine(to: point) }
@@ -317,7 +340,7 @@ public struct ProjectWidgetView: View {
       }
     }
     .smallWidget()
-    .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 16))
+    .smallWidgetChrome(HColor.widgetSurface, trailing: 16)
     .accessibilityElement(children: .combine)
   }
 }
@@ -353,7 +376,7 @@ public struct GoalWidgetView: View {
       }
     }
     .smallWidget()
-    .widgetChrome(Hue.mint.perceptualGradient, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 16))
+    .smallWidgetChrome(Hue.mint.perceptualGradient, trailing: 16)
     .accessibilityElement(children: .combine)
   }
 }
