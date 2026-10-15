@@ -1,8 +1,95 @@
 import XCTest
 
-/// Helpers every UI test shares: scrolling an element into view, the accessibility audit
-/// (spec 04 §17) and screenshot attachments.
+/// Helpers every UI test shares: launching a mock scenario, finding, tapping and typing
+/// into elements by identifier, scrolling an element into view, the accessibility audit
+/// (spec 04 §17) and screenshot attachments. Every class uses these, so a package's test
+/// file holds its flows only (plan B7.4).
 extension XCTestCase {
+  /// The Debug app on a mock: `-HasalaScenario <scenario>`, and optionally straight to a
+  /// screen (`-HasalaScreen <screen>`, which picks its own scenario unless one is given),
+  /// on the Release surface (`-HasalaReleaseSurface`), with motion settled or reduced
+  /// (`-HasalaMotion off|reduce`), and any further launch arguments.
+  @MainActor
+  func launch(
+    scenario: String? = "maya", screen: String? = nil, release: Bool = false, motion: String? = nil,
+    arguments: [String] = []
+  ) -> XCUIApplication {
+    let app = XCUIApplication()
+    var args: [String] = []
+    if let scenario { args += ["-HasalaScenario", scenario] }
+    if let screen { args += ["-HasalaScreen", screen] }
+    if release { args.append("-HasalaReleaseSurface") }
+    if let motion { args += ["-HasalaMotion", motion] }
+    app.launchArguments = args + arguments
+    app.launch()
+    return app
+  }
+
+  /// The first element with this identifier (or label), of any type.
+  @MainActor
+  func el(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+    app.descendants(matching: .any)[id].firstMatch
+  }
+
+  /// Waits for `id`, drags it into reach, then taps it; fails at the caller's line when
+  /// it never appears.
+  @MainActor
+  func tap(
+    _ app: XCUIApplication, _ id: String, timeout: TimeInterval = 15, file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let e = el(app, id)
+    XCTAssertTrue(e.waitForExistence(timeout: timeout), "\(id) is missing", file: file, line: line)
+    dragUntilHittable(app, e, file: file, line: line)
+    e.tap()
+  }
+
+  /// Taps the field `id`, then types `text` into it.
+  @MainActor
+  func type(
+    _ app: XCUIApplication, _ id: String, _ text: String, file: StaticString = #filePath, line: UInt = #line
+  ) {
+    let e = el(app, id)
+    XCTAssertTrue(e.waitForExistence(timeout: 15), "\(id) is missing", file: file, line: line)
+    e.tap()
+    e.typeText(text)
+  }
+
+  /// Replaces a text field's whole contents: the cursor goes to the end (a tap can land
+  /// mid-text), then one delete per character.
+  @MainActor
+  func replaceText(
+    _ app: XCUIApplication, _ id: String, _ text: String, file: StaticString = #filePath, line: UInt = #line
+  ) {
+    let e = el(app, id)
+    XCTAssertTrue(e.waitForExistence(timeout: 10), "\(id) is missing", file: file, line: line)
+    e.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+    let current = (e.value as? String) ?? ""
+    e.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 2))
+    XCTAssertEqual((e.value as? String).map { $0 == (e.placeholderValue ?? "") || $0.isEmpty }, true,
+                   "\(id) was not cleared", file: file, line: line)
+    e.typeText(text)
+  }
+
+  /// Back on a pushed screen: the first button of the navigation bar.
+  @MainActor
+  func back(_ app: XCUIApplication) {
+    app.navigationBars.buttons.firstMatch.tap()
+  }
+
+  /// Drags the page up until `element` can be tapped, for rows near the end of a page
+  /// that can never reach the upper half. Returns whether it got there.
+  @MainActor
+  func reveal(_ app: XCUIApplication, _ element: XCUIElement) -> Bool {
+    for _ in 0..<12 {
+      if element.exists, element.isHittable, element.frame.maxY < app.frame.height - 120 { return true }
+      let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+      let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+      from.press(forDuration: 0.05, thenDragTo: to)
+    }
+    return element.exists && element.isHittable
+  }
+
   /// Drags the page until the top of `element` sits in the upper part of the screen,
   /// below the header. Returns whether it got there.
   @MainActor
@@ -119,5 +206,21 @@ extension XCTestCase {
     shot.name = name
     shot.lifetime = .keepAlways
     add(shot)
+  }
+}
+
+extension XCUIElement {
+  /// Waits until the element's label reads `label`.
+  func waitForLabel(_ label: String, timeout: TimeInterval = 5) -> Bool {
+    let predicate = NSPredicate(format: "label == %@", label)
+    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
+      == .completed
+  }
+
+  /// Waits until the element's label contains `text`.
+  func waitForLabel(containing text: String, timeout: TimeInterval = 5) -> Bool {
+    let predicate = NSPredicate(format: "label CONTAINS %@", text)
+    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
+      == .completed
   }
 }
