@@ -294,8 +294,9 @@ check "I10 icon compiled" icon_compiled
 check "I11 minos 26.0" minos_26
 check "I12 no dev hosts in any file, in any case" in_no_file_i "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"
 check "I12 HasalaAPIBaseURL is $RELEASE_API_BASE_URL" is "$info" HasalaAPIBaseURL "$RELEASE_API_BASE_URL"
-# Release links no HasalaMocks (spec 04 §1.4): no mock module, scenario or persona.
-check "AT-REV-4 no mock data (HasalaMocks) in any file" in_no_file "HasalaMocks|HasalaScenario|Maya Rahman"
+# Release links no HasalaMocks (spec 04 §1.4): no mock module, scenario, persona or Debug
+# launch hook (the screen and motion arguments, plan B6).
+check "AT-REV-4 no mock data (HasalaMocks) in any file" in_no_file "HasalaMocks|HasalaScenario|HasalaScreen|HasalaMotion|Maya Rahman"
 
 size="$(/usr/bin/stat -f '%z' "$ipa" 2>/dev/null || echo '?')"
 echo "ipa: $ipa ($size bytes)"

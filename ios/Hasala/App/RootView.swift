@@ -9,9 +9,9 @@ import SwiftUI
 ///
 /// Every build runs the live graph (spec 04 §15.2): the account gate (`BootController`)
 /// in front of the tab shell over the account's projection. Debug builds run a mock
-/// scenario instead only when launched with `-HasalaScenario <name>` (spec 04 §15.3; the
-/// UI tests and previews); no Release code path reaches HasalaMocks (spec 04 §1.4,
-/// AT-REV-4).
+/// scenario instead only when launched with `-HasalaScenario <name>` or a Debug screen
+/// launch (`ScreenLaunch`; spec 04 §15.3: the UI tests, previews and screenshots); no
+/// Release code path reaches HasalaMocks (spec 04 §1.4, AT-REV-4).
 struct RootView: View {
   #if HASALA_MOCKS
     /// The mock scenario, when one was asked for.
@@ -91,9 +91,9 @@ struct LaunchView: View {
 }
 
 #if HASALA_MOCKS
-  /// A Debug mock scenario (`-HasalaScenario <name>`): the Maya ledger in memory, the
-  /// account mock's starting state, and the process's one onboarding store (`RootView`
-  /// keeps this graph for the process).
+  /// A Debug mock scenario (`-HasalaScenario <name>`, or a screen's own with
+  /// `-HasalaScreen <id>`): the Maya ledger in memory, the account mock's starting state,
+  /// and the process's one onboarding store (`RootView` keeps this graph for the process).
   @MainActor
   final class MockGraph {
     let app: AppModel
@@ -109,16 +109,22 @@ struct LaunchView: View {
       onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
 
-    static func fromLaunchArguments(_ arguments: [String]) -> MockGraph? {
-      guard arguments.contains("-HasalaScenario") else { return nil }
+    /// The graph for a mock launch, nil for the live one. A launched screen picks its
+    /// scenario (an explicit `-HasalaScenario` wins), then opens over it (`ScreenLaunch`).
+    static func fromLaunchArguments(_ given: [String]) -> MockGraph? {
+      guard ScreenLaunch.isMockLaunch(given) else { return nil }
+      let launch = ScreenLaunch.from(given)
+      let arguments = launch?.arguments(given) ?? given
       let scenario = Scenario.fromLaunchArguments(arguments)
       let auth = AuthScenario.fromLaunchArguments(arguments)
       let session = AuthScenario.session(for: auth)
-      return MockGraph(
+      let graph = MockGraph(
         app: AppModel(
           store: InMemoryLedger(state: scenario.state, now: MayaLedger.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth))
+      launch?.open(graph)
+      return graph
     }
   }
 #endif
