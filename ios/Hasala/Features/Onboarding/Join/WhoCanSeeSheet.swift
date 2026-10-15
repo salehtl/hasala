@@ -42,12 +42,15 @@ struct WhoCanSeeSheet: View {
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           Button(role: .close) { dismiss() }
+            // Paper's close glyph is the glass's vibrant ink, not the accent.
+            .tint(HColor.textPrimary)
             .accessibilityLabel("Close")
             .accessibilityIdentifier("whoSees.close")
         }
       }
     }
     .presentationDetents([.large])
+    .presentationDragIndicator(.visible)
     .presentationBackground(HColor.sheetSurfaceLarge)
     .accessibilityIdentifier("whoSees.sheet")
   }

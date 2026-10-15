@@ -56,12 +56,15 @@
       Screen("join.method", scenario: "newUser") { await signUp($0, to: .method) },
       Screen("join.passwordShort", scenario: "newUser") { graph in
         await signUp(graph, to: .password)
-        graph.onboarding.signup.newPassword = "maya2026"
+        // Eight characters, none of them the name or the address (Paper EQ6-0).
+        graph.onboarding.signup.newPassword = "lantern4"
       },
       Screen("join.passwordStrong", scenario: "newUser") { graph in
         await signUp(graph, to: .password)
         graph.onboarding.signup.newPassword = "copper lantern quietly 42"
         graph.onboarding.signup.confirmPassword = "copper lantern quietly 42"
+        // Shown in clear, as Paper EZU-0 draws it (the person tapped "Show").
+        graph.onboarding.signup.passwordShown = true
       },
       Screen("phrase.why", scenario: "newUser") { await signUp($0, to: .phraseIntro) },
       Screen("phrase.hidden", scenario: "newUser") { await signUp($0, to: .phraseShow) },

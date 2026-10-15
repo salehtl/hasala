@@ -102,7 +102,7 @@ struct VerifyEmailView: View {
             Text("Checking the code").hType(.subheadline).foregroundStyle(HColor.textSecondary)
           }
         } else if left > 0 {
-          Text("Resend code in 0:\(String(format: "%02d", left))")
+          Text(resendCountdown(left))
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .monospacedDigit()

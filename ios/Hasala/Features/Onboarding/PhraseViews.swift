@@ -173,7 +173,11 @@ struct AccountReadyView: View {
       title: "Your account is ready.",
       subtitle: passkey
         ? "Keep the paper safe, away from this iPhone. You can see the words again in Profile after Face ID."
-        : "Keep the paper safe, away from this iPhone. It's the only copy: your words can't be shown again on this account."
+        : "Keep the paper safe, away from this iPhone. It's the only copy: your words can't be shown again on this account.",
+      // Paper's 76 / 36, less the line the title takes when it wraps (the bundled Inter
+      // sets "Your account is ready." wider than Paper does), so the summary clears the
+      // hand-off at the default size.
+      spacing: (56, 28)
     ) {
       VStack(spacing: 16) {
         summary

@@ -64,6 +64,8 @@ final class SignupModel {
   var method: SignInMethod = .passkey
   var newPassword = ""
   var confirmPassword = ""
+  /// "Show" on the new password: the person's choice stays through Back and Forward.
+  var passwordShown = false
 
   // Phrase (§6.7)
   private(set) var phrase: RecoveryPhrase?
@@ -368,6 +370,7 @@ final class SignupModel {
       self.phrase = nil
       newPassword = ""
       confirmPassword = ""
+      passwordShown = false
       failure = nil
       go(.accountReady)
     } catch {

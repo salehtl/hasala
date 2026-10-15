@@ -26,9 +26,12 @@ struct InviteCodeView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         field
-        InfoCard(icon: .envelope, hue: .sky, title: "Look for \u{201C}Your Hasala invite\u{201D}",
-                 detail: "From no-reply@hasala.app, sent to the email you used on the waitlist.", radius: HRadius.tile)
-        if notFound {
+        // Paper's "Not found" (E6F) swaps where to find the code for why it may not work.
+        if !notFound {
+          InfoCard(icon: .envelope, hue: .sky, title: "Look for \u{201C}Your Hasala invite\u{201D}",
+                   detail: "From no-reply@hasala.app, sent to the email you used on the waitlist.", radius: HRadius.tile)
+            .hTransition(.fade)
+        } else {
           ReasonsCard(reasons: [
             ("Already used it?", "Each invite works once. If you made an account, sign in instead."),
             ("Past the date in your email?",
@@ -175,9 +178,10 @@ struct CodeEntryView: View {
           TimelineView(.periodic(from: .now, by: 1)) { context in
             let left = max(0, 60 - Int(context.date.timeIntervalSince(sentAt ?? .distantPast)))
             if left > 0 {
-              Text("Resend code in 0:\(String(format: "%02d", left))")
+              Text(resendCountdown(left))
                 .hType(.subheadline)
                 .foregroundStyle(HColor.textSecondary)
+                .monospacedDigit()
             } else {
               InlineTextButton(title: "Resend code", identifier: "code.resend", action: onResend)
             }
@@ -240,7 +244,6 @@ struct SignInMethodView: View {
 /// types; "Create account" waits until the password could pass and the two match.
 struct CreatePasswordView: View {
   @Bindable var model: SignupModel
-  @State private var shown = false
 
   var body: some View {
     AccountScreen(
@@ -252,10 +255,10 @@ struct CreatePasswordView: View {
       VStack(alignment: .leading, spacing: 12) {
         LabeledField(label: "Password") {
           // A UIKit field: SwiftUI's can't carry Hasala's password rules for AutoFill.
-          RuledNewPasswordField(placeholder: "12 characters or more", text: $model.newPassword, secure: !shown,
+          RuledNewPasswordField(placeholder: "12 characters or more", text: $model.newPassword, secure: !model.passwordShown,
                                 identifier: "password.new")
         } accessory: {
-          ShowHidePill(visible: $shown)
+          ShowHidePill(visible: $model.passwordShown)
         }
         if !model.newPassword.isEmpty {
           PasswordStrengthCard(assessment: model.passwordAssessment)
@@ -294,3 +297,9 @@ struct CreatePasswordView: View {
   }
 }
 
+/// "Resend code in 0:42": the seconds left before another code can be sent, as minutes and
+/// seconds (a full minute reads "1:00", never "0:60").
+func resendCountdown(_ secondsLeft: Int) -> String {
+  let left = max(0, secondsLeft)
+  return "Resend code in \(left / 60):\(String(format: "%02d", left % 60))"
+}
