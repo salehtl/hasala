@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Hasala
@@ -210,6 +211,185 @@ struct SignupFlowTests: AccountSuite {
     #expect(session.phase == .onboarding(.bank))
   }
 
+  // MARK: Back and Forward (plan B3: everything typed stays)
+
+  /// Typed code to the method screen, then the system back twice: About you still holds the
+  /// name and the address, and Continue carries on with the open ticket (no second signup,
+  /// no second email) straight to the method, the address already confirmed.
+  @Test func backFromTheMethodKeepsNameAndEmail() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.welcome, .invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(m.path == [.welcome, .invite, .aboutYou, .verifyEmail, .method])
+    m.method = .password
+
+    // The system back button pops the stack through `navigationPath`.
+    m.navigationPath = Array(m.path.dropLast())
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .aboutYou)
+    #expect(m.displayName == "Maya Rahman" && m.email == "maya@example.com")
+    #expect(m.emailConfirmed)
+
+    await m.submitAboutYou()
+    #expect(account.signupsBegun == 1)
+    #expect(m.path.last == .method)
+    #expect(m.method == .password)
+
+    // A changed address is a new signup, and needs its own code.
+    m.navigationPath = Array(m.path.dropLast())
+    m.email = "maya.k@example.com"
+    #expect(!m.emailConfirmed)
+    await m.submitAboutYou()
+    #expect(account.signupsBegun == 2)
+    #expect(m.path.last == .verifyEmail)
+  }
+
+  /// The password and the "Show" choice stay through Back and Forward, so Create account is
+  /// ready again without typing.
+  @Test func backAndForwardKeepThePassword() async {
+    let m = SignupModel(account: CountingAccount())
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .password
+    await m.continueWithMethod()
+    m.newPassword = "copper lantern quietly 42"
+    m.confirmPassword = "copper lantern quietly 42"
+    m.passwordShown = true
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .method)
+    await m.continueWithMethod()
+    #expect(m.path.last == .password)
+    #expect(m.passwordReady && m.passwordShown)
+  }
+
+  /// Back to the method after the passkey was saved, then Forward again: no second Face ID
+  /// sheet for the same signup, and the same words.
+  @Test func aSavedPasskeyIsNeverSavedTwice() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await m.continueWithMethod()
+    #expect(account.passkeysSaved == 1 && m.passkeyRegistered)
+    let words = m.phrase?.words
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .method)
+    await m.continueWithMethod()
+    #expect(account.passkeysSaved == 1)
+    #expect(m.path.last == .phraseIntro)
+    #expect(m.phrase?.words == words)
+  }
+
+  /// A wrong code keeps its six digits on screen until the person types again; five wrong
+  /// codes use the code up ("Send a new code"), and a new code starts clean.
+  @Test func aWrongCodeStaysUntilTypingAgain() async {
+    let m = SignupModel(account: CountingAccount())
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = "482931"
+    await m.submitCode()
+    #expect(m.codeState(now: .now) == .wrong)
+    #expect(m.wrongCode == "482931" && m.code.isEmpty)
+    m.code = "1"
+    #expect(m.failure == nil && m.wrongCode.isEmpty)
+    #expect(m.codeState(now: .now) == .typing)
+    for _ in 0..<5 {
+      m.code = "000000"
+      await m.submitCode()
+    }
+    #expect(m.codeState(now: .now) == .expired)
+    #expect(m.wrongCode.isEmpty)
+    await m.resendCode()
+    #expect(m.codeState(now: .now) == .typing)
+    // Ten minutes after it was sent a code is expired, whatever the last answer was.
+    #expect(m.codeState(now: .now.addingTimeInterval(10 * 60 + 1)) == .expired)
+  }
+
+  /// The gate is made again (a body pass, the passcode wall, a wall, the launch view): the
+  /// store hands back the same signup, with what was typed and where the person was.
+  @Test func theStoreKeepsTheSignupWhenTheGateIsRebuilt() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
+    let store = OnboardingStore(services: session.services, session: { session })
+    let signup = store.signup
+    signup.path = [.welcome, .invite, .aboutYou]
+    signup.inviteText = Self.code
+    signup.displayName = "Maya Rahman"
+    signup.email = "maya@example.com"
+    store.storyPage = 3
+    for _ in 0..<3 {
+      _ = AccountRootView(session: session, onboarding: store, setupFacts: .init()) { EmptyView() }
+      _ = WelcomeFlowView(store: store)
+      store.phaseChanged(from: nil, to: session.phase)
+    }
+    #expect(store.signup === signup)
+    #expect(signup.path == [.welcome, .invite, .aboutYou])
+    #expect(signup.displayName == "Maya Rahman" && signup.email == "maya@example.com")
+    #expect(signup.normalizedInvite == Self.code)
+    #expect(store.storyPage == 3)
+  }
+
+  /// An invite link that arrives mid-signup opens "Your invite is ready" (as
+  /// `WelcomeFlowView` does), and leaves the typed name and address; with its key, the
+  /// address needs no code.
+  @Test func anInviteLinkMidSignupKeepsNameAndEmail() async throws {
+    let m = SignupModel(account: CountingAccount())
+    m.path = [.welcome, .invite, .aboutYou]
+    m.inviteText = "ABCDEFGHIJKLMNOPQRSTUVWY"
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    let key = String(repeating: "k", count: 43)
+    m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)#\(key)")!)))
+    m.path = [.welcome, .inviteReady]
+    #expect(m.normalizedInvite == Self.code && m.inviteFromLink)
+    m.submitInvite()
+    #expect(m.path == [.welcome, .inviteReady, .aboutYou])
+    #expect(m.displayName == "Maya Rahman" && m.email == "maya@example.com")
+    await m.submitAboutYou()
+    #expect(m.ticket?.emailProven == true)
+    #expect(m.path.last == .method)
+    #expect(m.emailConfirmed)
+  }
+
+  /// A link's code that the server doesn't know goes back to the code field (with the
+  /// code in it, to check), not to "Your invite is ready".
+  @Test func anUnknownLinkedInviteGoesToTheCodeField() async throws {
+    let m = SignupModel(account: CountingAccount())
+    let key = String(repeating: "k", count: 43)
+    let unknown = "ZZZZ" + String(Self.code.dropFirst(4))
+    m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(unknown)#\(key)")!)))
+    m.path = [.welcome, .inviteReady]
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    #expect(m.failure == .notInvited)
+    #expect(m.path == [.welcome, .invite])
+    #expect(m.normalizedInvite == unknown)
+    // Fixing the code clears "not found" at once.
+    m.inviteText = Self.code
+    #expect(m.failure == nil)
+  }
+
   // MARK: Session
 
   @Test func inviteLinksOnlyActSignedOut() {
@@ -221,5 +401,124 @@ struct SignupFlowTests: AccountSuite {
     signedIn.open(url)
     #expect(signedIn.pendingInvite == nil)
     #expect(signedIn.notice == "You already have an account")
+  }
+}
+
+/// The welcome stories' clock (spec 04 §2.3): 6 s a story, paused while nobody can watch,
+/// carrying on where it stopped.
+@MainActor
+@Suite("Welcome story clock")
+struct StoryClockTests {
+  let t0 = Date(timeIntervalSinceReferenceDate: 0)
+
+  @Test func aStoryPlaysSixSeconds() {
+    var c = StoryClock()
+    c.restart(at: t0, running: true)
+    #expect(c.progress(at: t0.addingTimeInterval(3)) == 0.5)
+    #expect(c.remaining(at: t0.addingTimeInterval(3)) == 3)
+    #expect(c.progress(at: t0.addingTimeInterval(9)) == 1)
+    #expect(c.remaining(at: t0.addingTimeInterval(9)) == 0)
+  }
+
+  @Test func pausedItKeepsItsPlace() {
+    var c = StoryClock()
+    c.restart(at: t0, running: true)
+    c.pause(at: t0.addingTimeInterval(2))
+    #expect(!c.isRunning)
+    // Under the sheet for a minute: nothing moves.
+    #expect(c.progress(at: t0.addingTimeInterval(62)) == 2.0 / 6)
+    c.resume(at: t0.addingTimeInterval(62))
+    #expect(c.remaining(at: t0.addingTimeInterval(63)) == 3)
+    // Resuming while running changes nothing.
+    c.resume(at: t0.addingTimeInterval(63))
+    #expect(c.remaining(at: t0.addingTimeInterval(63)) == 3)
+  }
+
+  @Test func aNewStoryStartsFromNothingAndTheLastStaysFull() {
+    var c = StoryClock()
+    c.restart(at: t0, running: true)
+    c.restart(at: t0.addingTimeInterval(4), running: false)
+    #expect(c.progress(at: t0.addingTimeInterval(10)) == 0 && !c.isRunning)
+    c.finish()
+    #expect(c.progress(at: t0) == 1 && !c.isRunning)
+    // A finished story doesn't run again.
+    c.resume(at: t0)
+    #expect(!c.isRunning)
+  }
+}
+
+/// The mock account, counting the calls that must not repeat on Back and Forward.
+@MainActor
+final class CountingAccount: AccountService {
+  let mock: MockAccountService
+  private(set) var signupsBegun = 0
+  private(set) var passkeysSaved = 0
+
+  init(_ mock: MockAccountService = MockAccountService()) {
+    mock.delay = .zero
+    self.mock = mock
+  }
+
+  var profile: AccountProfile? { mock.profile }
+  func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
+    async throws(AuthFailure) -> SignupTicket
+  {
+    signupsBegun += 1
+    return try await mock.beginSignup(code: code, linkKey: linkKey, email: email, displayName: displayName)
+  }
+  func verifySignupEmail(_ ticket: SignupTicket, code: String) async throws(AuthFailure) {
+    try await mock.verifySignupEmail(ticket, code: code)
+  }
+  func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
+    try await mock.resendSignupCode(ticket)
+  }
+  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) {
+    passkeysSaved += 1
+    try await mock.registerPasskey(ticket)
+  }
+  func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase { try mock.makeRecoveryPhrase() }
+  func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
+    async throws(AuthFailure) -> AccountProfile
+  { try await mock.finishAccount(ticket, credential: credential, phrase: phrase) }
+  func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome { try await mock.signInWithPasskey() }
+  func signInWithPassword(email: String, password: String) async throws(AuthFailure) -> SignInOutcome {
+    try await mock.signInWithPassword(email: email, password: password)
+  }
+  func unlockWithPasskey() async throws(AuthFailure) { try await mock.unlockWithPasskey() }
+  func unlockWithPhrase(_ words: [String]) async throws(AuthFailure) { try await mock.unlockWithPhrase(words) }
+  func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome { try await mock.resumeSignedIn() }
+  func finishInterruptedSetup(phrase: RecoveryPhrase) async throws(AuthFailure) -> AccountProfile {
+    try await mock.finishInterruptedSetup(phrase: phrase)
+  }
+  func beginPasswordReset(email: String) async throws(AuthFailure) -> ResetTicket {
+    try await mock.beginPasswordReset(email: email)
+  }
+  func verifyPasswordReset(_ ticket: ResetTicket, code: String) async throws(AuthFailure) -> ResetTicket {
+    try await mock.verifyPasswordReset(ticket, code: code)
+  }
+  func requestResetApproval(_ ticket: ResetTicket, newPassword: String) async throws(AuthFailure) -> ResetTicket {
+    try await mock.requestResetApproval(ticket, newPassword: newPassword)
+  }
+  func pollResetApproval(_ ticket: ResetTicket) async throws(AuthFailure) -> Bool {
+    try await mock.pollResetApproval(ticket)
+  }
+  func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
+    try await mock.beginRecovery(words: words)
+  }
+  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
+    try await mock.verifyRecovery(ticket, code: code, kind: kind)
+  }
+  func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
+    try await mock.finishRecovery(ticket, credential: credential)
+  }
+  func securityState() async throws(AuthFailure) -> SecurityState { try await mock.securityState() }
+  func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
+    try await mock.perform(action, password: password)
+  }
+  func viewRecoveryPhrase() async throws(AuthFailure) -> [String] { try await mock.viewRecoveryPhrase() }
+  func signOut() async { await mock.signOut() }
+  func pendingResetRequest() async -> PendingReset? { await mock.pendingResetRequest() }
+  func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure) {
+    try await mock.approveReset(request, code: code)
   }
 }
