@@ -22,7 +22,7 @@ final class LiveE2ETests: LiveE2ECase {
   }
 
   /// E1 on A, path B (spec §2.5): a review invite, about you, the emailed code, a
-  /// password, the 12 words read off the screen and four of them checked, ENBD, "Use
+  /// password, the 12 words read off the screen (no word check), ENBD, "Use
   /// sample data", notifications allowed, then Maya's month on Home, Activity, Bills and
   /// Plan, and Home's "Sample data" label.
   @MainActor
@@ -63,18 +63,8 @@ final class LiveE2ETests: LiveE2ECase {
     account.words = try readPhrase(app)
     try saveAccount(account)
     attach(app, "Recovery phrase")
+    // "I've written them down" publishes: there is no word check.
     tap(app, "phrase.written")
-
-    // Check 4: each slot asks for a word by position.
-    for i in 0..<4 {
-      let slot = el(app, "phrase.slot.\(i)")
-      XCTAssertTrue(slot.waitForExistence(timeout: 10))
-      let position = try XCTUnwrap(Int(slot.label.replacingOccurrences(of: "Word ", with: "")),
-                                   "slot \(i) reads '\(slot.label)'")
-      tap(app, "chip.\(account.words[position - 1])")
-    }
-    attach(app, "Check 4 words")
-    tap(app, "phrase.confirm")
 
     // Publishing the keys (password register #45, then GET /keys and /account).
     tap(app, "ready.continue", timeout: 90)

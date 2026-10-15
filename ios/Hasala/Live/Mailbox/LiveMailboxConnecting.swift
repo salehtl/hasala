@@ -1,13 +1,16 @@
 import CoreMailbox
 import Foundation
+import HasalaModels
 import Observation
 
-/// Setup's Gmail step over the open account (spec 04 §7.4, §7.7): "Connect Gmail" runs
-/// the Gmail lane's connect (Google sign-in, token custody, the `mailbox.link` step-up),
-/// and the first scan streams its progress while it files what it reads (no cards step).
-/// On a review account with an empty ledger the step offers "Use sample data" instead
-/// (§6.13), which loads the bundled seed through the outbox. Home and Profile run the same
-/// connect after setup, when `gmailOffer` says Gmail needs it.
+/// The mailbox contract over the open account's Gmail lane (spec 04 §7.4, §7.7; plan B4.4):
+/// "Continue with Google" runs the lane's connect (Google sign-in, token custody, the
+/// `mailbox.link` step-up), and the first scan streams its progress while it files what it
+/// reads (no cards step). On a review account with an empty ledger setup offers "Use sample
+/// data" instead (§6.13), which loads the bundled seed through the outbox.
+///
+/// This build reads Gmail only: `connectable` lists nothing else, and the server holds one
+/// link per account, so there is no second mailbox. The lane's status gives the one row.
 @MainActor
 @Observable
 final class LiveMailboxConnecting: MailboxConnecting {
@@ -17,12 +20,28 @@ final class LiveMailboxConnecting: MailboxConnecting {
     self.runtime = runtime
   }
 
+  /// The live mailbox's id: there is one lane.
+  static let gmailID = "gmail"
+
+  /// Gmail when this build has a Google client (the runtime built a lane), else nothing.
+  /// Outlook is never listed until a live Outlook lane exists.
+  var connectable: [MailProviderKind] { runtime()?.lane != nil ? [.gmail] : [] }
+
+  /// No `.addSecond`: linking one mailbox replaces the account's link on the server.
+  var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect] }
+
+  /// Observed through the runtime: the lane's status is read when the account opens and
+  /// after every run and connect.
+  var mailboxes: [MailboxSnapshot] {
+    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return [] }
+    return Self.mailboxes(status, nowMs: rt.context.clock.nowMs())
+  }
+
   /// Observed through the runtime: the review flag arrives with `GET /account`.
   var offersSampleData: Bool { runtime()?.offersSampleData ?? false }
 
-  /// Observed through the runtime: the lane's phase is read when the account opens and
-  /// after every run and connect.
-  var gmailOffer: GmailOffer? { runtime()?.gmailOffer }
+  /// Observed through the runtime, like `mailboxes`.
+  var offer: MailOffer? { runtime()?.mailOffer }
 
   func chosenBanks() -> [SupportedBank] {
     guard let rt = runtime() else { return [] }
@@ -34,41 +53,81 @@ final class LiveMailboxConnecting: MailboxConnecting {
     return BootController.mailboxFact(await lane.status().phase)
   }
 
-  /// What Home and Profile offer for a lane `phase` (spec 04 §6.6 row 4, §7.4). Nothing
-  /// once the account holds the App Review sample: loading it completed the Gmail step.
-  /// An iPhone without a link offers it only once the server says no other iPhone holds
-  /// one (`serverLink`): connecting there would take Gmail over from that iPhone. A halt
-  /// is offered a reconnect only when signing in to Google again fixes it (`halt`).
+  // MARK: The row (plan B4.4's table)
+
+  /// The lane's one mailbox as a row, or none while it is unlinked.
+  static func mailboxes(_ s: MailboxStatus, nowMs: Int64) -> [MailboxSnapshot] {
+    mailboxes(phase: s.phase, halt: s.haltedOn, address: s.address, lastSuccessAtMs: s.lastSuccessAtMs,
+              bankDomains: s.health.map(\.domain), nowMs: nowMs)
+  }
+
+  /// The row from the status's parts (the table in plan B4.4).
+  static func mailboxes(
+    phase: MailboxPhase, halt: MailboxHaltCode?, address: String?, lastSuccessAtMs: Int64?, bankDomains: [String],
+    nowMs: Int64
+  ) -> [MailboxSnapshot] {
+    let checked = lastSuccessAtMs.map { "Checked \(LedgerStateMapper.ago(nowMs - $0))" } ?? "Not checked yet"
+    var row = MailboxSnapshot(
+      id: gmailID, provider: .gmail, address: address ?? "Gmail", state: .connected, meta: checked,
+      banks: Set(bankDomains.compactMap { LedgerStateMapper.bankName(domain: $0) }).sorted())
+    switch phase {
+    case .unlinked:
+      return []
+    case .scanning, .awaitingCards:
+      row.state = .syncing
+      row.meta = "Checking now"
+    case .authoringBackfill, .active:
+      break
+    case .reconnectRequired:
+      row.state = .needsSignIn
+    case .halted:
+      if offer(phase: .halted, halt: halt, sampleLoaded: false, serverLink: .noLink) != nil {
+        row.state = .needsSignIn
+      } else {
+        row.note = "Reading your bank alerts stopped."
+      }
+    case .otherDevice:
+      row.note = "Read on your other iPhone"
+    }
+    return [row]
+  }
+
+  /// What the bell, Profile and Bank alerts offer for a lane `phase` (spec 04 §6.6 row 4,
+  /// §7.4). Nothing once the account holds the App Review sample: loading it completed the
+  /// email step. An iPhone without a link offers it only once the server says no other
+  /// iPhone holds one (`serverLink`): connecting there would take Gmail over from that
+  /// iPhone. A halt is offered a new sign-in only when signing in to Google again fixes it.
   static func offer(
     phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?
-  ) -> GmailOffer? {
+  ) -> MailOffer? {
     guard !sampleLoaded else { return nil }
+    let signInAgain = MailOffer.signInAgain(mailboxID: gmailID, provider: .gmail)
     switch phase {
     case .unlinked:
       switch serverLink {
       case .noLink?, .holder(true, _)?: return .connect
       case .holder(false, _)?, nil: return nil
       }
-    case .reconnectRequired: return .reconnect
+    case .reconnectRequired: return signInAgain
     case .halted:
       // A full account or missing templates aren't fixed by a new Google sign-in.
       switch halt {
-      case nil, .gmail?, .reconnectRequired?: return .reconnect
+      case nil, .gmail?, .reconnectRequired?: return signInAgain
       default: return nil
       }
-    // The first import runs on its own (Profile and Home say "Importing").
+    // The first import runs on its own (Profile says "Importing").
     case .scanning, .awaitingCards, .authoringBackfill, .active, .otherDevice: return nil
     }
   }
 
   /// Before a connect from an iPhone without a link, the server's answer asked just now:
   /// another iPhone holding the link refuses it (connecting would take Gmail over from
-  /// that iPhone), and so does no answer (`nil`, offline), as Home shows no offer then.
-  static func checkTakeover(_ link: MailboxLinkStatus?) throws(SetupFailure) {
+  /// that iPhone), and so does no answer (`nil`, offline), as no offer shows then.
+  static func checkTakeover(_ link: MailboxLinkStatus?) throws(MailConnectFailure) {
     switch link {
     case .noLink?, .holder(true, _)?: return
-    case .holder(false, _)?: throw .failed("Gmail is read on your other iPhone.")
-    case nil: throw .failed(message(.offline))
+    case .holder(false, _)?: throw .takenByOtherIPhone
+    case nil: throw .offline
     }
   }
 
@@ -79,27 +138,56 @@ final class LiveMailboxConnecting: MailboxConnecting {
     }
   }
 
-  private func lane() throws(SetupFailure) -> GmailLane {
+  // MARK: Connect, sign in again, disconnect
+
+  private func lane() throws(MailConnectFailure) -> GmailLane {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lane else { throw .failed("Gmail isn't available in this build.") }
     return lane
   }
 
-  func connectGmail(banks: [SupportedBank]) async throws(SetupFailure) {
+  @discardableResult
+  func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
+    // Unreachable in Release: Outlook is not in `connectable`.
+    guard provider == .gmail else { throw .failed("Outlook isn't available in this build.") }
     let lane = try lane()
     // The offer may be older than another iPhone's link: ask the server again first.
     if await lane.status().phase == .unlinked, let rt = runtime() {
       let link = await rt.askServerLink()
       try Self.checkTakeover(link)
     }
-    switch await lane.connect(backfillDays: 90) {
-    case .connected:
-      // Home and Profile follow the lane's new phase.
-      await runtime()?.refreshMailbox()
+    try await Self.linked(lane.connect(backfillDays: 90))
+    // The bell, Profile and Bank alerts follow the lane's new phase.
+    await runtime()?.refreshMailbox()
+    return Self.gmailID
+  }
+
+  /// The same lane connect: Google's sign-in and the step-up again, then the lane picks up
+  /// where it stopped.
+  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+    let lane = try lane()
+    try await Self.linked(lane.connect(backfillDays: 90))
+    await runtime()?.refreshMailbox()
+  }
+
+  /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch stopped, the grant
+  /// revoked at Google, the server's link deleted. Live keeps no row for it afterwards.
+  func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
+    let lane = try lane()
+    guard await lane.disconnect() else { throw .failed("Couldn't disconnect Gmail. Try again.") }
+    await runtime()?.refreshMailbox()
+  }
+
+  private static func linked(_ result: ConnectResult) throws(MailConnectFailure) {
+    switch result {
+    case .connected: return
     case .cancelled: throw .cancelled
-    case .failed(let f): throw .failed(Self.message(f))
+    case .failed(.offline): throw .offline
+    case .failed(let f): throw .failed(message(f))
     }
   }
+
+  // MARK: The first scan
 
   func firstScan() -> AsyncStream<ScanProgress> {
     guard let lane = try? lane() else {
@@ -122,7 +210,7 @@ final class LiveMailboxConnecting: MailboxConnecting {
             continuation.yield(Self.ended(t, last: last))
           }
         }
-        // Home and Profile stop saying "Importing" (it runs on after setup is left).
+        // Profile stops saying "Importing" (it runs on after setup is left).
         await rt?.refreshMailbox()
         continuation.finish()
       }

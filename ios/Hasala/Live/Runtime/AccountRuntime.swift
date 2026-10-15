@@ -73,10 +73,10 @@ final class AccountRuntime {
   /// transaction (spec 04 §6.13; plan §2.5). The loader checks both again, live.
   var offersSampleData: Bool { reviewAccount && store.loaded && store.state.txns.isEmpty }
 
-  /// Home's "Connect Gmail" card and the Profile card's action (spec 04 §6.6 row 4, §7.4):
-  /// nothing until the lane's phase and the ledger have been read, and nothing in a build
-  /// without a Google client.
-  var gmailOffer: GmailOffer? {
+  /// What the bell, the Profile card and Bank alerts offer for mail (spec 04 §6.6 row 4,
+  /// §7.4): nothing until the lane's phase and the ledger have been read, and nothing in a
+  /// build without a Google client.
+  var mailOffer: MailOffer? {
     guard lane != nil, store.loaded, let phase = store.mailboxPhase else { return nil }
     return LiveMailboxConnecting.offer(
       phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink)

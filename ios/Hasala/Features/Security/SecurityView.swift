@@ -74,7 +74,7 @@ struct SecurityView: View {
       }
     }
     .navigationDestination(isPresented: $deleting) {
-      DeleteAccountView {
+      DeleteAccountForm {
         // Back to Sign-in & security first, so a password sheet can present over it.
         deleting = false
         Task { await model.request(.deleteAccount) }
@@ -461,8 +461,41 @@ struct PasswordEditSheet: View {
   }
 }
 
-/// Delete your account (Paper "Sign-in & security · Delete your account"; copy S-22).
+/// Profile › Delete your account (Paper "Sign-in & security · Delete your account"; copy
+/// S-22), reachable from the profile itself as App Review requires (Guideline 5.1.1(v)).
+/// It runs the same ceremony as Sign-in & security: `AccountService.perform(.deleteAccount,
+/// password:)` behind its step-up (Face ID for a passkey account; the password plus this
+/// iPhone's key for a password-only one). Once it succeeds the session signs out and the
+/// account gate shows the welcome screens.
 struct DeleteAccountView: View {
+  @State private var model: SecurityModel
+
+  init(session: AccountSession) {
+    _model = State(initialValue: SecurityModel(session: session))
+  }
+
+  var body: some View {
+    DeleteAccountForm(failure: model.failure) {
+      Task { await delete() }
+    }
+    .disabled(model.busy)
+    .overlay { if model.busy { ProgressView().controlSize(.large) } }
+    .task { await model.load() }
+    .confirmSheet(model)
+  }
+
+  /// The step-up depends on whether the account has a passkey, which `load()` reads; a
+  /// first load that failed (offline) is retried here.
+  private func delete() async {
+    if model.state == nil { await model.load() }
+    guard model.state != nil else { return }
+    await model.request(.deleteAccount)
+  }
+}
+
+/// What deleting erases, and the button behind the system alert (shared by Profile ›
+/// Delete your account and Sign-in & security).
+struct DeleteAccountForm: View {
   /// Why the last attempt didn't go through, shown above the button.
   var failure: AuthFailure? = nil
   var onDelete: () -> Void

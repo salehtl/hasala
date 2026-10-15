@@ -243,14 +243,12 @@ enum PasswordRules {
 enum PhraseRules {
   static let wordCount = Phrase.wordCount
 
-  /// A new phrase from the system random source, with its four confirmation positions.
+  /// A new phrase from the system random source.
   static func generate() throws(AuthFailure) -> RecoveryPhrase {
     do {
-      let random = SystemRandom()
-      let e = try Phrase.generate(random: random)
+      let e = try Phrase.generate(random: SystemRandom())
       defer { e.wipe() }
-      let words = try Phrase.words(entropy: e)
-      return RecoveryPhrase(words: words, confirmPositions: try Phrase.confirmationPositions(random: random))
+      return RecoveryPhrase(words: try Phrase.words(entropy: e))
     } catch {
       throw .unsupported
     }
@@ -286,29 +284,4 @@ enum PhraseRules {
   }
 
   static func isWord(_ w: String) -> Bool { BIP39English.words.contains(w) }
-
-  /// The chips under "Check 4 of your words" (Paper "Check 4 random words"): the four
-  /// asked words and four other words of the same phrase, in a shuffled order that is
-  /// stable for the phrase.
-  static func confirmChoices(_ phrase: RecoveryPhrase) -> [String] {
-    let asked = phrase.confirmPositions.map { phrase.words[$0] }
-    var others: [String] = []
-    for (i, w) in phrase.words.enumerated() where !phrase.confirmPositions.contains(i) && !asked.contains(w) {
-      if !others.contains(w) { others.append(w) }
-    }
-    var choices = asked + others.prefix(4)
-    // A deterministic shuffle: sort by a hash of the word mixed with the phrase.
-    let seed = phrase.words.joined(separator: " ")
-    choices.sort { stableHash($0 + seed) < stableHash($1 + seed) }
-    return choices
-  }
-
-  private static func stableHash(_ s: String) -> UInt64 {
-    var h: UInt64 = 0xcbf2_9ce4_8422_2325
-    for b in s.utf8 {
-      h ^= UInt64(b)
-      h = h &* 0x100_0000_01b3
-    }
-    return h
-  }
 }

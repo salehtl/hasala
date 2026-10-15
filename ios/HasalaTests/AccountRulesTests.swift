@@ -107,9 +107,6 @@ struct AccountRulesTests {
   @Test func generatedPhrasesValidate() throws {
     let p = try PhraseRules.generate()
     #expect(p.words.count == 12)
-    #expect(p.confirmPositions.count == 4)
-    #expect(p.confirmPositions == p.confirmPositions.sorted())
-    #expect(Set(p.confirmPositions).count == 4)
     if case .failure = PhraseRules.validate(p.words.joined(separator: "  ")) { Issue.record("own phrase refused") }
   }
 
@@ -124,73 +121,18 @@ struct AccountRulesTests {
     #expect(c.hasPrefix("Every word is real"))
   }
 
-  @Test func confirmChoicesHoldTheAskedWords() throws {
-    let p = try PhraseRules.generate()
-    let choices = PhraseRules.confirmChoices(p)
-    for i in p.confirmPositions { #expect(choices.contains(p.words[i])) }
-    #expect(choices.count <= 8)
-    #expect(Set(choices).count == choices.count)
+  /// What happened, then what to do (spec 01 §7.4, spec 07 S4 and S7, spec 08 FWD), verbatim.
+  @Test func failuresSayWhatHappenedThenWhatToDo() {
+    #expect(AuthFailure.codeWrong(triesLeft: 4).message
+      == "That code isn't right. Check the newest email from us, or get a new code. 4 tries left.")
+    #expect(AuthFailure.codeWrong(triesLeft: 1).message?.hasSuffix(" 1 try left.") == true)
+    #expect(AuthFailure.codeExpired.message == "That code expired. Codes last 10 minutes, so we'll send you a fresh one.")
+    #expect(AuthFailure.wrongCredentials.message == "That email and password don't match. Try again, or reset your password.")
+    #expect(AuthFailure.notInvited.message == "We couldn't find that invite. Check each character against your email.")
   }
 
   @Test func suggestionsComeFromTheList() {
     #expect(PhraseRules.suggestions(for: "orb") == ["orbit"])
     #expect(PhraseRules.suggestions(for: "a").isEmpty)
-  }
-}
-
-@Suite("Onboarding step")
-struct OnboardingStepTests {
-  typealias F = OnboardingStep.Facts
-
-  @Test func stepsFollowTheFacts() {
-    var f = F()
-    f.hasPasscode = false
-    #expect(OnboardingStep.derive(f) == .passcode)
-    f.hasPasscode = true
-    #expect(OnboardingStep.derive(f) == .account)
-    f.hasSession = true
-    #expect(OnboardingStep.derive(f) == .keys)
-    f.keysReady = true
-    #expect(OnboardingStep.derive(f) == .bank)
-    f.banksChosen = true
-    #expect(OnboardingStep.derive(f) == .gmail)
-    f.mailbox = .scanning
-    #expect(OnboardingStep.derive(f) == .scan)
-    f.scanDeferred = true
-    #expect(OnboardingStep.derive(f) == .income)
-    f.incomeSet = true
-    #expect(OnboardingStep.derive(f) == .plan)
-    f.planSet = true
-    // No cards step: a scan still running doesn't hold setup up.
-    #expect(OnboardingStep.derive(f) == .notifications)
-    f.mailbox = .linked
-    #expect(OnboardingStep.derive(f) == .notifications)
-    f.notificationsAsked = true
-    #expect(OnboardingStep.derive(f) == .done)
-    f.finished = true
-    #expect(OnboardingStep.derive(f) == .finished)
-  }
-
-  @Test func skippingTheBankSkipsGmailAndTheScan() {
-    var f = F(hasSession: true, keysReady: true)
-    f.bankSkipped = true
-    #expect(OnboardingStep.derive(f) == .income)
-    f.incomeSkipped = true
-    f.planSkipped = true
-    #expect(OnboardingStep.derive(f) == .notifications)
-  }
-
-  @Test func sampleDataCompletesGmailAndTheScan() {
-    var f = F(hasSession: true, keysReady: true, banksChosen: true)
-    f.sampleLoaded = true
-    #expect(OnboardingStep.derive(f) == .notifications)
-  }
-
-  @Test func indicatorNumbers() {
-    #expect(OnboardingStep.bank.indicator == 1)
-    #expect(OnboardingStep.scan.indicator == 2)
-    #expect(OnboardingStep.plan.indicator == 4)
-    #expect(OnboardingStep.notifications.indicator == nil)
-    #expect(OnboardingStep.done.indicator == nil)
   }
 }

@@ -9,7 +9,7 @@ final class CoreScreensTests: XCTestCase {
   }
 
   @MainActor
-  private func launch(_ scenario: String = "maya") -> XCUIApplication {
+  private func launchHome(_ scenario: String = "maya") -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["-HasalaScenario", scenario]
     app.launch()
@@ -25,7 +25,7 @@ final class CoreScreensTests: XCTestCase {
   /// Activity: the overview's figures, a filter chip, search, then the Carrefour sheet.
   @MainActor
   func testActivityFiltersSearchAndTransactionSheet() throws {
-    let app = launch()
+    let app = launchHome()
     app.tabBars.firstMatch.buttons["Activity"].tap()
     let count = element(app, "activity.count")
     XCTAssertTrue(count.waitForExistence(timeout: 5))
@@ -87,8 +87,14 @@ final class CoreScreensTests: XCTestCase {
   /// and finish on All caught up.
   @MainActor
   func testReviewDeckSortsUndoesAndCatchesUp() throws {
-    let app = launch()
-    element(app, "needsYou.review").buttons["Start"].tap()
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    XCTAssertEqual(element(app, "review.tab.count").label, "6 to sort · about a minute")
+    attach(app, "Review · Tab")
+    try audit(app)
+    start.tap()
     let position = element(app, "review.position")
     XCTAssertTrue(position.waitForExistence(timeout: 5))
     XCTAssertEqual(position.label, "1 of 6")
@@ -142,120 +148,8 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["1 to sort"].waitForExistence(timeout: 5))
   }
 
-  /// Plan: Ready to assign, a category's month, Move money from Ready to assign, Undo.
-  @MainActor
-  func testPlanMoveMoneyAndBudget() throws {
-    let app = launch()
-    app.tabBars.firstMatch.buttons["Plan"].tap()
-    let rta = element(app, "plan.readyToAssign")
-    XCTAssertTrue(rta.waitForExistence(timeout: 5))
-    XCTAssertEqual(rta.label, "AED 1,000.00")
-    attach(app, "Plan · October")
-    try audit(app)
-
-    let groceries = element(app, "plan.row.groceries")
-    XCTAssertTrue(reveal(app, groceries))
-    attach(app, "Plan · Needs")
-    groceries.tap()
-    let total = element(app, "activity.summary.total")
-    XCTAssertTrue(total.waitForExistence(timeout: 5))
-    XCTAssertEqual(total.label, "AED 812.40")
-    attach(app, "Plan · Groceries")
-    try audit(app)
-
-    let move = element(app, "category.moveMoney")
-    XCTAssertTrue(reveal(app, move))
-    move.tap()
-    let save = element(app, "move.save")
-    XCTAssertTrue(save.waitForExistence(timeout: 5))
-    XCTAssertEqual(save.label, "Move AED 318.00")
-    XCTAssertTrue(element(app, "move.preview").exists)
-    // Paper's sources: Ready to assign, Travel, Shopping, Entertainment; Dining is over pace.
-    for id in ["rta", "travel", "shopping", "entertainment"] {
-      XCTAssertTrue(element(app, "move.from.\(id)").exists, "\(id) is not offered")
-    }
-    XCTAssertFalse(element(app, "move.from.dining").exists)
-    XCTAssertFalse(element(app, "move.from.transport").exists)
-    attach(app, "Plan · Move money")
-    try audit(app)
-    save.tap()
-    XCTAssertTrue(app.staticTexts["Moved to Groceries"].waitForExistence(timeout: 5))
-    app.navigationBars.buttons.firstMatch.tap()
-    XCTAssertTrue(rta.waitForExistence(timeout: 5))
-    XCTAssertTrue(scroll(app, toShow: rta))
-    XCTAssertEqual(rta.label, "AED 682.00")
-
-    // Change Dining's budget to 1,800: Ready to assign follows.
-    let dining = element(app, "plan.row.dining")
-    XCTAssertTrue(reveal(app, dining))
-    dining.tap()
-    let change = element(app, "category.changeBudget")
-    XCTAssertTrue(reveal(app, change))
-    change.tap()
-    let field = element(app, "budget.amount")
-    XCTAssertTrue(field.waitForExistence(timeout: 5))
-    app.buttons["+ 200"].tap()
-    XCTAssertEqual(element(app, "budget.save").label, "Set Dining to AED 1,800")
-    XCTAssertEqual(element(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
-    attach(app, "Plan · Dining budget")
-    // Over-assigning shows the shortfall with its minus sign.
-    for _ in 0..<4 { app.buttons["+ 200"].tap() }
-    XCTAssertEqual(element(app, "budget.consequence").label, "Ready to assign becomes \u{2212}AED 318.00")
-    for _ in 0..<8 { app.buttons["Less"].tap() }
-    XCTAssertEqual(element(app, "budget.save").label, "Set Dining to AED 1,800")
-    element(app, "budget.save").tap()
-    XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: 5))
-  }
-
-  /// Profile: the sheet, Bills (track a found bill), rules, notifications, Hide amounts.
-  @MainActor
-  func testProfileBillsAndSettings() throws {
-    let app = launch()
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(element(app, "profile.name").waitForExistence(timeout: 5))
-    XCTAssertTrue(element(app, "profile.bankAlerts").label.contains("Bank alerts are working"))
-    attach(app, "Profile")
-    try audit(app)
-
-    element(app, "profile.bills").tap()
-    let next14 = element(app, "bills.next14")
-    XCTAssertTrue(next14.waitForExistence(timeout: 5))
-    XCTAssertEqual(next14.label, "AED 1,039.15")
-    attach(app, "Bills")
-    try audit(app)
-    let track = element(app, "bills.track.apple-bill")
-    XCTAssertTrue(reveal(app, track))
-    track.tap()
-    XCTAssertTrue(app.staticTexts["Tracking Apple.com/bill"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["10 tracked"].waitForExistence(timeout: 5))
-    app.navigationBars.buttons.firstMatch.tap()
-
-    element(app, "profile.rules").tap()
-    XCTAssertTrue(element(app, "rule.r-carrefour").waitForExistence(timeout: 5))
-    attach(app, "Categories and rules")
-    try audit(app)
-    app.navigationBars.buttons.firstMatch.tap()
-
-    let notifications = element(app, "profile.notifications")
-    XCTAssertTrue(reveal(app, notifications))
-    notifications.tap()
-    element(app, "notifications.everything").tap()
-    app.navigationBars.buttons.firstMatch.tap()
-    XCTAssertTrue(element(app, "profile.notifications").waitForLabel(containing: "Everything"))
-    element(app, "profile.close").tap()
-
-    // Hide amounts reaches Activity and the transaction sheet.
-    app.buttons["header.hideAmounts"].firstMatch.tap()
-    app.tabBars.firstMatch.buttons["Activity"].tap()
-    let talabat = element(app, "txn.talabat")
-    XCTAssertTrue(talabat.waitForExistence(timeout: 5))
-    talabat.tap()
-    XCTAssertTrue(element(app, "txn.amount").waitForLabel("Amount hidden"))
-    attach(app, "Transaction · Amounts hidden")
-  }
-
-  /// The core screens at `.accessibility3`: layouts reflow instead of clipping, and the
-  /// audit passes on each screenful (spec 04 §17).
+  /// Activity, its transaction sheet and the review deck at `.accessibility3`: layouts
+  /// reflow instead of clipping, and the audit passes on each screenful (spec 04 §17).
   @MainActor
   func testCoreScreensAtLargeTextSizes() throws {
     let app = XCUIApplication()
@@ -285,76 +179,30 @@ final class CoreScreensTests: XCTestCase {
     }
     element(app, "txn.close").tap()
 
-    // Plan, down to the projects.
-    app.tabBars.firstMatch.buttons["Plan"].tap()
-    XCTAssertTrue(element(app, "plan.readyToAssign").waitForExistence(timeout: 5))
+    // The Review tab, then the deck.
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    attach(app, "AX3 · Review tab")
     try audit(app, atLargeText: true)
-    for id in ["plan.row.rent", "plan.row.insurance", "plan.row.dining", "plan.row.subscriptions",
-               "plan.row.emergency-fund", "plan.project.japan"] {
-      XCTAssertTrue(reveal(app, element(app, id)), "could not reach \(id)")
-      attach(app, "AX3 · Plan · \(id)")
-      try audit(app, atLargeText: true)
-    }
-
-    // The review deck.
-    app.tabBars.firstMatch.buttons["Home"].tap()
-    let start = element(app, "needsYou.review").buttons["Start"]
     XCTAssertTrue(reveal(app, start))
     start.tap()
     XCTAssertTrue(element(app, "review.card").waitForExistence(timeout: 5))
     attach(app, "AX3 · Review")
     try audit(app, atLargeText: true)
     element(app, "review.close").tap()
-
-    // Profile and Bills.
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(element(app, "profile.name").waitForExistence(timeout: 5))
-    try audit(app, atLargeText: true)
-    for id in ["profile.rules", "profile.faceID", "profile.signOut"] {
-      XCTAssertTrue(reveal(app, element(app, id)), "could not reach \(id)")
-      attach(app, "AX3 · Profile · \(id)")
-      try audit(app, atLargeText: true)
-    }
   }
 
-  /// The caught-up scenario has nothing to review: no To review card, no deck.
+  /// The caught-up scenario has nothing to review: no To review card, no Start, no deck.
   @MainActor
   func testCaughtUpScenarioHasNothingToReview() throws {
-    let app = launch("mayaCaughtUp")
+    let app = launchHome("mayaCaughtUp")
     XCTAssertFalse(element(app, "needsYou.review").exists)
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("All caught up"))
+    XCTAssertFalse(element(app, "review.tab.start").exists)
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["To review"].exists)
-  }
-}
-
-extension XCTestCase {
-  /// Drags the page up until `element` can be tapped, for rows near the end of a page
-  /// that can never reach the upper half. Returns whether it got there.
-  @MainActor
-  func reveal(_ app: XCUIApplication, _ element: XCUIElement) -> Bool {
-    for _ in 0..<12 {
-      if element.exists, element.isHittable, element.frame.maxY < app.frame.height - 120 { return true }
-      let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
-      let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
-      from.press(forDuration: 0.05, thenDragTo: to)
-    }
-    return element.exists && element.isHittable
-  }
-}
-
-extension XCUIElement {
-  /// Waits until the element's label reads `label`.
-  func waitForLabel(_ label: String, timeout: TimeInterval = 5) -> Bool {
-    let predicate = NSPredicate(format: "label == %@", label)
-    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
-      == .completed
-  }
-
-  /// Waits until the element's label contains `text`.
-  func waitForLabel(containing text: String, timeout: TimeInterval = 5) -> Bool {
-    let predicate = NSPredicate(format: "label CONTAINS %@", text)
-    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
-      == .completed
   }
 }

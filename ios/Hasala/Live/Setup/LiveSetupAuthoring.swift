@@ -27,6 +27,18 @@ final class LiveSetupAuthoring: SetupAuthoring {
     return rt
   }
 
+  /// The salary and the split the projection holds (plan B3.3), for setup to show again
+  /// after a relaunch. Reads only; nothing is authored.
+  func readBack() -> SetupReadBack {
+    guard let r = runtime()?.projection.reader else { return SetupReadBack() }
+    let sources = (try? r.incomeSources()) ?? []
+    let salary = sources.first { $0.id == "salary" } ?? sources.first { $0.active }
+    let split = (try? r.budgetTemplate()).flatMap { $0 }.map {
+      StartingPlan(needsPercent: Int($0.need), wantsPercent: Int($0.want), savingsPercent: Int($0.saving))
+    }
+    return SetupReadBack(incomeMinor: salary?.amountMinor, payday: salary.map { Int($0.payday) }, split: split)
+  }
+
   func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
     let rt = try open()
     var trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])

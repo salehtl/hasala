@@ -1,0 +1,167 @@
+#if HASALA_MOCKS
+  import Foundation
+  import HasalaModels
+  import Observation
+
+  /// The mail lane's stand-in for Debug scenarios, previews and UI tests (plan B4.5): Gmail
+  /// and Outlook both connect, a connect adds a syncing mailbox that the first scan turns
+  /// connected, and the first scan files 268 synthetic alerts in about two seconds,
+  /// whether or not anyone is still watching. The scenario flags make the Outlook failures
+  /// and "Already connected" happen.
+  ///
+  /// Fixtures (synthetic, one set; spec 06 open question 1): Gmail `maya@example.com`;
+  /// Outlook `maya.k@example.com`, a personal Microsoft account connected on 2 Oct; the work
+  /// account `maya@contoso.com` for the admin case.
+  @MainActor
+  @Observable
+  final class MockMailbox: MailboxConnecting {
+    var connectable: [MailProviderKind] = MailProviderKind.allCases
+    var capabilities: MailboxCapabilities = .all
+    private(set) var mailboxes: [MailboxSnapshot] = []
+    var offersSampleData: Bool
+    /// The banks the account reads.
+    var banks: [SupportedBank] = SupportedBank.allCases
+    /// Whether the first scan reports alerts sorted by the on-device model. The beta has
+    /// no model tier at ingest (a later sweep), so the Release surface turns this off, as
+    /// the live lane reports none.
+    var sortsWithModel = true
+    var total = 268
+    var step: Duration = .milliseconds(120)
+    /// How long a provider's sign-in takes.
+    var connectDelay: Duration = .milliseconds(600)
+    /// An Outlook connect is a work account its admin hasn't approved.
+    var outlookAdmin = false
+    /// An Outlook sign-in is closed, or its permissions declined.
+    var outlookCancelled = false
+    /// Every connect finds the mailbox already connected.
+    var alreadyConnected = false
+    /// Each `connect` call, whatever its outcome (tests: no second sign-in on Back).
+    private(set) var connectCalls = 0
+    private(set) var sampleLoaded = false
+
+    init(offersSampleData: Bool = false, mailboxes: [MailboxSnapshot] = []) {
+      self.offersSampleData = offersSampleData
+      self.mailboxes = mailboxes
+    }
+
+    // MARK: Fixtures
+
+    static let gmailAddress = "maya@example.com"
+    static let outlookAddress = "maya.k@example.com"
+    static let workAddress = "maya@contoso.com"
+
+    static let gmail = MailboxSnapshot(
+      id: "gmail-1", provider: .gmail, address: gmailAddress, state: .connected, meta: "Checked 4 min ago",
+      banks: ["Emirates NBD", "Dubai Islamic Bank"], lastChecked: "Sat 10 Oct, 13:36", connectedOn: "11 Sep")
+    static let outlook = MailboxSnapshot(
+      id: "outlook-1", provider: .outlook, address: outlookAddress, state: .connected, meta: "Checked 1 h ago",
+      accountKind: "Personal Microsoft", banks: ["Dubai Islamic Bank"], lastChecked: "Sat 10 Oct, 12:40",
+      connectedOn: "2 Oct")
+
+    /// A mailbox whose provider ended Hasala's access on Wed 7 Oct.
+    static func needingSignIn(_ m: MailboxSnapshot) -> MailboxSnapshot {
+      var m = m
+      m.state = .needsSignIn
+      m.meta = "Checked Wed"
+      m.lastChecked = "Wed 7 Oct, 09:14"
+      return m
+    }
+
+    /// The address a new connect of `provider` reads (a second Google account has its own).
+    private func nextAddress(_ provider: MailProviderKind) -> String? {
+      let addresses = provider == .gmail ? [Self.gmailAddress, "maya.home@example.com"] : [Self.outlookAddress]
+      let taken = Set(mailboxes.filter { $0.state != .disconnected }.map(\.address))
+      return addresses.first { !taken.contains($0) }
+    }
+
+    // MARK: MailboxConnecting
+
+    var offer: MailOffer? {
+      guard !sampleLoaded else { return nil }
+      if let m = mailboxes.first(where: { $0.state == .needsSignIn }) {
+        return .signInAgain(mailboxID: m.id, provider: m.provider)
+      }
+      return mailboxes.contains { $0.state != .disconnected } ? nil : .connect
+    }
+
+    func chosenBanks() -> [SupportedBank] { banks }
+
+    func linkState() async -> OnboardingStep.Facts.Mailbox {
+      if mailboxes.contains(where: { $0.state == .syncing }) { return .scanning }
+      return mailboxes.contains { $0.state == .connected || $0.state == .needsSignIn } ? .linked : .unlinked
+    }
+
+    @discardableResult
+    func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
+      connectCalls += 1
+      try? await Task.sleep(for: connectDelay)
+      if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
+      if provider == .outlook, outlookCancelled { throw .cancelled }
+      guard !alreadyConnected, let address = nextAddress(provider) else {
+        throw .alreadyConnected(address: provider == .gmail ? Self.gmailAddress : Self.outlookAddress)
+      }
+      let n = mailboxes.filter { $0.provider == provider }.count + 1
+      let id = "\(provider.rawValue)-\(n)"
+      mailboxes.append(MailboxSnapshot(
+        id: id, provider: provider, address: address, state: .syncing, meta: "Checking now",
+        accountKind: provider == .outlook ? "Personal Microsoft" : nil,
+        banks: banks.map(\.name), connectedOn: "10 Oct"))
+      return id
+    }
+
+    func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+      try? await Task.sleep(for: connectDelay)
+      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { throw .failed("That mailbox is gone.") }
+      if mailboxes[i].provider == .outlook, outlookCancelled { throw .cancelled }
+      // It picks up where it stopped: connected, checking from the last check.
+      mailboxes[i].state = .connected
+      mailboxes[i].meta = "Checked just now"
+      mailboxes[i].lastChecked = "Sat 10 Oct, 13:40"
+    }
+
+    func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
+      try? await Task.sleep(for: connectDelay)
+      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return }
+      // The grey row stays: past transactions stay.
+      mailboxes[i].state = .disconnected
+      mailboxes[i].meta = "Off since 10 Oct"
+    }
+
+    func firstScan() -> AsyncStream<ScanProgress> {
+      let total = total
+      let step = step
+      let dictionary = Int(Double(total) * 0.65)
+      let model = sortsWithModel ? Int(Double(total) * 0.21) : 0
+      let summary = SortSummary(
+        total: total, byRules: 0, byDictionary: dictionary, byModel: model, toReview: total - dictionary - model)
+      return AsyncStream { continuation in
+        // Like the live lane, the import outlives the stream.
+        Task {
+          var read = 0
+          while read < total {
+            try? await Task.sleep(for: step)
+            read = min(total, read + 24)
+            continuation.yield(ScanProgress(phase: read < total / 3 ? .downloading : .sorting, read: read, total: total))
+          }
+          self.scanFinished()
+          continuation.yield(ScanProgress(phase: .finished, read: total, total: total, summary: summary))
+          continuation.finish()
+        }
+      }
+    }
+
+    /// The first scan read its window: every syncing mailbox is connected.
+    private func scanFinished() {
+      for i in mailboxes.indices where mailboxes[i].state == .syncing {
+        mailboxes[i].state = .connected
+        mailboxes[i].meta = "Checked just now"
+        mailboxes[i].lastChecked = "Sat 10 Oct, 13:40"
+      }
+    }
+
+    func loadSampleData() async throws(SetupFailure) {
+      try? await Task.sleep(for: .milliseconds(300))
+      sampleLoaded = true
+    }
+  }
+#endif

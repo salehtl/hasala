@@ -4,15 +4,33 @@ import SwiftUI
 /// The account gate in front of the app (spec 04 §13.1 BootWalls + OnboardingFlow):
 /// welcome and sign-in while signed out, setup until it is finished, the unlock and
 /// frozen walls, then `main`.
+///
+/// Every onboarding model is the store's (`OnboardingStore`, one per process), so this
+/// view can be made again, flip to the passcode wall or sit under a wall without losing
+/// what was typed or chosen (plan B3).
 struct AccountRootView<Main: View>: View {
   let session: AccountSession
+  let onboarding: OnboardingStore
   /// The facts setup resumes from (the live build reads them from the projection).
   var setupFacts: OnboardingStep.Facts = .init(hasSession: true, keysReady: true)
   @ViewBuilder var main: () -> Main
 
+  init(
+    session: AccountSession, onboarding: OnboardingStore,
+    setupFacts: OnboardingStep.Facts = .init(hasSession: true, keysReady: true), @ViewBuilder main: @escaping () -> Main
+  ) {
+    self.session = session
+    self.onboarding = onboarding
+    self.setupFacts = setupFacts
+    self.main = main
+  }
+
   var body: some View {
     content
       .environment(session)
+      .environment(onboarding)
+      .onAppear { onboarding.phaseChanged(from: nil, to: session.phase) }
+      .onChange(of: session.phase) { old, new in onboarding.phaseChanged(from: old, to: new) }
       .onOpenURL { session.open($0) }
       .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
         if let url = activity.webpageURL { session.open(url) }
@@ -53,28 +71,16 @@ struct AccountRootView<Main: View>: View {
   @ViewBuilder private var phaseContent: some View {
     switch session.phase {
     case .signedOut:
-      WelcomeFlowView(session: session)
+      WelcomeFlowView(store: onboarding)
     case .checking:
       BootCheckView(session: session)
     case .onboarding:
-      SetupFlowView(model: SetupModel(
-        services: session.services,
-        displayName: session.account.profile?.displayName ?? "",
-        facts: setupFacts,
-        onFinished: { [weak session] in session?.setupFinished() }))
-    case .needsUnlock(let passkeyCanUnlock):
-      UnlockView(
-        model: UnlockModel(account: session.account,
-                           passkeyCanUnlock: passkeyCanUnlock && session.capabilities.contains(.signInPasskey),
-                           onUnlocked: { [weak session] in session?.unlocked() }),
-        onSignOut: {
-          Task {
-            await session.account.signOut()
-            session.signedOut()
-          }
-        })
+      SetupFlowView(model: onboarding.setupModel(
+        displayName: session.account.profile?.displayName ?? "", facts: setupFacts))
+    case .needsUnlock:
+      UnlockView(session: session)
     case .needsKeys:
-      InterruptedSetupFlowView(session: session)
+      InterruptedSetupFlowView(store: onboarding)
     case .frozen(let info):
       FrozenWall(session: session, info: info)
     case .ready:

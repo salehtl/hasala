@@ -253,6 +253,20 @@ seal mocks-resource
 inspect mocks-resource 40
 only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
 
+# The Debug launch hook's arguments (-HasalaScreen, -HasalaMotion) are mock code too.
+app="$(variant screen-hook)"
+printf 'const char *const hook = "%s";\nint main(void) { return hook[0] == 0; }\n' "-HasalaScreen" >"$work/hook.c"
+compile "$app/Hasala" "$work/hook.c"
+seal screen-hook
+inspect screen-hook 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
+app="$(variant motion-hook)"
+printf '{"launch": "%s"}\n' "-HasalaMotion off" >"$app/motion.json"
+seal motion-hook
+inspect motion-hook 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
 # --- I3, I4: Info.plist against archive.sh's expectations ----------------------------------
 variant marketing >/dev/null
 seal marketing

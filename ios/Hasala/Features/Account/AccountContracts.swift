@@ -43,11 +43,10 @@ struct SignupTicket: Equatable, Sendable {
   func codeExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 10 * 60 }
 }
 
-/// The 12 words, held in memory for the phrase screens only (spec 04 §6.7).
+/// The 12 words, held in memory for the phrase screens only (spec 04 §6.7). There is no
+/// word check (`docs/decisions/recovery-phrase-no-quiz.md`), so no positions to confirm.
 struct RecoveryPhrase: Equatable, Sendable {
   var words: [String]
-  /// Four distinct positions (0-based, ascending) the user confirms (PO F).
-  var confirmPositions: [Int]
 }
 
 /// What a sign-in leaves to do (spec 04 §6.5).

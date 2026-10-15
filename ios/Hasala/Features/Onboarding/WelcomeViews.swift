@@ -35,7 +35,8 @@ enum Stories {
 struct StoriesView: View {
   var onGetStarted: () -> Void
   var onSignIn: () -> Void
-  @State private var page = 0
+  /// The pager's page: the onboarding store's, so it stays when the person comes back.
+  @Binding var page: Int
   @State private var showingWhoSees = false
 
   var body: some View {
@@ -240,7 +241,7 @@ struct WhoCanSeeSheet: View {
 }
 
 /// Welcome · Join with an invite, or sign in (spec 04 §6.2 signup step 1).
-struct WelcomeView: View {
+struct JoinWelcomeView: View {
   var onJoin: () -> Void
   var onSignIn: () -> Void
   var onBack: (() -> Void)?

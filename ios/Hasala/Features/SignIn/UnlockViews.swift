@@ -70,6 +70,23 @@ struct UnlockView: View {
     self.onSignOut = onSignOut
   }
 
+  /// The gate's entry point (plan B7.3): unlocking `session`'s data, with a passkey when
+  /// the account's PRF wrap and this build allow it.
+  init(session: AccountSession) {
+    var passkeyCanUnlock = false
+    if case .needsUnlock(let p) = session.phase { passkeyCanUnlock = p }
+    self.init(
+      model: UnlockModel(
+        account: session.account, passkeyCanUnlock: passkeyCanUnlock && session.capabilities.contains(.signInPasskey),
+        onUnlocked: { [weak session] in session?.unlocked() }),
+      onSignOut: {
+        Task {
+          await session.account.signOut()
+          session.signedOut()
+        }
+      })
+  }
+
   var body: some View {
     NavigationStack {
       Group {

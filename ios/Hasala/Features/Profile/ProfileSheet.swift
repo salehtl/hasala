@@ -12,14 +12,12 @@ import SwiftUI
 /// A Release build shows only rows that work (`BuildSurface`): the pages still to come
 /// (bank alerts, accounts, privacy) and the settings with nothing behind them yet (Face ID
 /// lock, notifications) are left out, and account actions follow `capabilities`. The bank
-/// alerts card offers "Connect Gmail" or "Reconnect Gmail" when Gmail needs it, in every build.
+/// alerts card offers to connect your email, or to sign in again, when mail needs it, in
+/// every build; both open the provider's screen inside this sheet.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
-  @State private var path: [ProfileRoute] = []
   @State private var confirmSignOut = false
-  /// The Gmail connect sheet, over this one.
-  @State private var connecting: GmailOffer?
   /// Sign-in & security's state, for its row's status; nil until read.
   @State private var security: SecurityState?
   @Environment(\.dismiss) private var dismiss
@@ -39,8 +37,14 @@ struct ProfileSheet: View {
 
   private var snap: ProfileSnapshot { model.snapshot }
 
+  /// The pages pushed inside the sheet (`ProfileRoute`), held by the router.
+  private var path: [ProfileRoute] {
+    get { app.router.profile }
+    nonmutating set { app.router.profile = newValue }
+  }
+
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
         VStack(spacing: 24) {
           identity
@@ -76,7 +80,6 @@ struct ProfileSheet: View {
       .navigationDestination(for: ProfileRoute.self) { route in
         ProfilePage(app: app, model: model, route: route)
       }
-      .sheet(item: $connecting) { GmailConnectSheet(app: app, offer: $0) }
       // Read again each time the profile shows, so a change on Sign-in & security shows.
       .task { security = try? await session?.account.securityState() }
       .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
@@ -119,74 +122,67 @@ struct ProfileSheet: View {
     .padding(.top, 8)
   }
 
+  /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
+  /// row also draw from.
+  private var summary: MailboxesSummary {
+    MailboxesSummary(app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer)
+  }
+
   /// The bank alerts status. It opens Profile › Bank alerts where that page exists; a
-  /// Release build shows the status alone. When Gmail needs connecting or reconnecting, the
-  /// card says so and offers it (spec 04 §7.4).
+  /// Release build shows the status alone. When mail needs connecting or a new sign-in, the
+  /// card says so and offers it (spec 04 §7.4), on the provider's screen inside this sheet.
   private var mailboxCard: some View {
-    let offer = app.gmailOffer
+    let summary = summary
     return VStack(alignment: .leading, spacing: 12) {
       if unfinished {
-        Button { path.append(.bankAlerts) } label: { mailboxStatus(offer, chevron: true) }
+        Button { path.append(.bankAlerts) } label: { mailboxStatus(summary, chevron: true) }
           .buttonStyle(.plain)
           .accessibilityIdentifier("profile.bankAlerts")
       } else {
-        mailboxStatus(offer, chevron: false)
+        mailboxStatus(summary, chevron: false)
           .accessibilityElement(children: .combine)
           .accessibilityIdentifier("profile.bankAlerts")
       }
-      if let offer {
-        Button(offer.action) { connecting = offer }
+      if let offer = app.mailOffer, let provider = Self.provider(offer, app.mailbox?.connectable ?? []) {
+        Button(Self.action(offer)) { path.append(.connectMail(provider)) }
           .buttonStyle(.pill(.primary, size: .small))
           .accessibilityIdentifier("profile.connectGmail")
       }
     }
     .padding(16)
-    .background(Self.hue(snap.mailbox.status, offer).gradient,
-                in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+    .background(summary.hue.gradient, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
   }
 
-  static func hue(_ status: MailboxHealth.Status, _ offer: GmailOffer?) -> Hue {
+  /// The offer's button: "Connect your email" or "Sign in again".
+  static func action(_ offer: MailOffer) -> String {
     switch offer {
-    case .connect: return .sky
-    case .reconnect: return .rose
-    case nil: break
-    }
-    switch status {
-    case .working, .importing: return .mint
-    case .quiet: return .sand
-    case .reconnect: return .rose
-    case .notConnected: return .sky
+    case .connect: "Connect your email"
+    case .signInAgain: "Sign in again"
     }
   }
 
-  /// The card's title: what Gmail needs, when it needs something, else the status.
-  static func title(_ status: MailboxHealth.Status, _ offer: GmailOffer?) -> String {
-    if let offer { return offer.status }
-    switch status {
-    case .working: return "Bank alerts are working"
-    case .importing: return "Importing your bank alerts"
-    case .quiet: return "Bank alerts went quiet"
-    case .reconnect: return GmailOffer.reconnect.status
-    case .notConnected: return GmailOffer.connect.status
+  /// The provider an offer opens: the mailbox's for a new sign-in, else the first this
+  /// build can connect.
+  static func provider(_ offer: MailOffer, _ connectable: [MailProviderKind]) -> MailProviderKind? {
+    switch offer {
+    case .connect: connectable.first
+    case .signInAgain(_, let provider): provider
     }
   }
 
-  private func mailboxStatus(_ offer: GmailOffer?, chevron: Bool) -> some View {
-    let m = snap.mailbox
-    let hue = Self.hue(m.status, offer)
-    return HStack(spacing: 12) {
+  private func mailboxStatus(_ summary: MailboxesSummary, chevron: Bool) -> some View {
+    HStack(spacing: 12) {
       Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
         .overlay {
-          Image(systemName: m.status == .working && offer == nil ? "checkmark" : "envelope").foregroundStyle(hue.ink)
+          Image(systemName: summary.needsYou ? "envelope" : "checkmark").foregroundStyle(summary.hue.ink)
         }
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 0) {
-        Text(Self.title(m.status, offer)).hType(.headline).foregroundStyle(HColor.textPrimary)
-        if !m.lastEmail.isEmpty {
-          Text("Last email \(m.lastEmail)").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-        }
-        if !m.banks.isEmpty {
-          Text(m.banks).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        Text(summary.title).hType(.headline).foregroundStyle(HColor.textPrimary)
+        // One Text per line ("Last email 4 min ago", "Emirates NBD and DIB"), so each wraps
+        // on its own at the accessibility sizes.
+        ForEach(summary.detail.split(separator: "\n").map(String.init), id: \.self) { line in
+          Text(line).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
         }
       }
       Spacer()
@@ -337,17 +333,24 @@ private struct ProfilePage: View {
     switch route {
     case .bills:
       BillsScreen(app: app, showsToast: false)
+    case .bill(let id):
+      BillDetailView(app: app, bill: id)
+    case .project(let id):
+      ProjectDetailView(app: app, project: id)
     case .rules:
       RulesPage(model: model)
     case .notifications:
       NotificationSettingsPage(model: model)
     case .bankAlerts:
-      // TODO(spec 04 §16.1 "Profile · Bank alerts", §7.10): BankAlertsView (Gmail status, banks, Needs a look,
-      // disconnect, read here instead) from the Gmail lane's MailboxSource.
-      placeholder("Profile · Bank alerts", "envelope", "Your Gmail connection, banks and any email we couldn't read.")
+      BankAlertsPage(app: app)
+    case .mailbox(let id):
+      MailboxDetailPage(app: app, mailboxID: id)
+    case .addMailbox:
+      AddMailboxPage(app: app)
+    case .connectMail(let provider):
+      ConnectMailPage(app: app, provider: provider)
     case .accounts:
-      // TODO(spec 04 §16.1 "Accounts", "Accounts · Check in"): AccountsView and Check in.
-      placeholder("Accounts", "building.columns", "Net worth, your accounts and check-ins.")
+      AccountsView(app: app)
     case .security:
       if let session {
         SecurityView(session: session)
@@ -360,7 +363,7 @@ private struct ProfilePage: View {
     case .help:
       HelpPage()
     case .deleteAccount:
-      if let session { DeleteAccountPage(session: session) }
+      if let session { DeleteAccountView(session: session) }
     }
   }
 

@@ -37,22 +37,24 @@ struct BootCheckView: View {
 }
 
 /// C1 interrupted (spec 04 §6.2, §6.5 `onboarding(keys)`): the account exists but its
-/// keys never reached the server. A NEW phrase opens with S-07, is checked like at
-/// signup, then published behind one Face ID prompt (step-up `keys.bootstrap`). The
-/// phrase screens are signup's, on the same model and routes.
+/// keys never reached the server. A NEW phrase opens with S-07, is shown like at signup,
+/// then published behind one Face ID prompt (step-up `keys.bootstrap`) once the words were
+/// shown. The phrase screens are signup's, on the same model and routes.
+///
+/// The replacement phrase is the onboarding store's (`replacementModel()`): made once, not
+/// on every re-render, and kept through the phrase screens.
 struct InterruptedSetupFlowView: View {
-  let session: AccountSession
-  @State private var model: SignupModel
+  let store: OnboardingStore
 
-  init(session: AccountSession) {
-    self.session = session
-    let m = SignupModel(account: session.account)
-    m.startReplacement()
-    _model = State(initialValue: m)
+  init(store: OnboardingStore) {
+    self.store = store
   }
 
+  private var session: AccountSession { store.session() }
+
   var body: some View {
-    NavigationStack(path: $model.path) {
+    let model = store.replacementModel()
+    NavigationStack(path: Bindable(model).path) {
       AccountScreen(
         title: "Let's finish setting up",
         subtitle: "Your account was made, but setup stopped before your keys were saved. Hasala makes them again now."
@@ -80,10 +82,7 @@ struct InterruptedSetupFlowView: View {
       .navigationDestination(for: WelcomeRoute.self) { route in
         switch route {
         case .phraseShow:
-          PhraseShowView(revealed: $model.phraseRevealed, words: model.phrase?.words ?? [], onBack: model.back,
-                         onContinue: { model.go(.phraseConfirm) })
-        case .phraseConfirm:
-          PhraseConfirmView(model: model)
+          PhraseShowView(signup: model)
         case .accountReady:
           AccountReadyView(profile: model.profile) { session.accountCreated() }
             .navigationBarBackButtonHidden()

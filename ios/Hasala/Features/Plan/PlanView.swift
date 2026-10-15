@@ -6,28 +6,21 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Routes pushed from Plan (spec 04 §13.2).
-enum PlanRoute: Hashable {
-  /// TODO(spec 04 §16.1 "Category detail"): CategoryDetailView (day-by-day chart, rules). For now a
-  /// budget row opens Activity filtered to its category ("Activity · Filtered") with the budget actions.
-  case category(CategoryID)
-}
-
 /// Plan · October (Paper board): one plan for the month. Ready to assign, the split,
 /// the buckets with their budget rows, goals and projects.
 struct PlanView: View {
   @Bindable var app: AppModel
   let model: any PlanModel
-  @State private var path: [PlanRoute] = []
 
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Bindable(app.router).plan) {
       TabScreen(app: app, title: "Plan", extra: .none) {
-        PlanContent(model: model) { path.append(.category($0)) }
+        PlanContent(model: model) { app.router.plan.append(.category($0)) }
       }
       .navigationDestination(for: PlanRoute.self) { route in
         switch route {
-        case .category(let id): CategoryActivityView(app: app, category: id, plan: model)
+        case .category(let id): CategoryDetailView(app: app, category: id)
+        case .project(let id): ProjectDetailView(app: app, project: id)
         }
       }
     }

@@ -67,8 +67,8 @@ struct LiveAccountFlowTests {
     m.confirmPassword = Self.password
     m.submitPassword()
     let words = try #require(m.phrase?.words)
-    for p in m.askedPositions { m.place(words[p]) }
-    #expect(m.phraseConfirmed)
+    m.phraseRevealed = true
+    #expect(m.phraseSeen)
     await m.finish()
     #expect(m.failure == nil)
     #expect(m.path.last == .accountReady)
