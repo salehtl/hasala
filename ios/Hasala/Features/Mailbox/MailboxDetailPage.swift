@@ -17,6 +17,8 @@ struct MailboxDetailPage: View {
   @State private var failure: MailConnectFailure?
   /// The sign-in again, made once for this page.
   @State private var signIn: MailConnectCoordinator?
+  /// Each sign-in again that worked (the success haptic's trigger).
+  @State private var signedIn = 0
 
   init(app: AppModel, mailboxID: String) {
     self.app = app
@@ -63,6 +65,8 @@ struct MailboxDetailPage: View {
     } message: {
       if let m = mailbox { Text(MailCopy.disconnectMessage(m.provider)) }
     }
+    // Signed in again: the motion policy's success, once.
+    .hHaptic(.success, trigger: signedIn) { old, new in new > old }
     #if HASALA_MOCKS
       // A Debug screen id that stands for "Disconnect this mailbox" (`MailLaunch`).
       .task { if MailLaunch.takeDisconnect(mailboxID) { confirming = true } }
@@ -127,9 +131,10 @@ struct MailboxDetailPage: View {
     HListCard {
       ForEach(Array(details(m, signInLayout: true).enumerated()), id: \.element.key) { i, row in
         if i > 0 { HDivider(inset: .text16) }
-        MailboxFactRow(fact: row)
+        MailboxFactRow(fact: row, style: .details)
       }
     }
+    .accessibilityIdentifier("mailbox.details")
     disconnect(m, footnote: "Past transactions stay. No new alerts from this mailbox.")
   }
 
@@ -174,7 +179,11 @@ struct MailboxDetailPage: View {
         HListCard {
           ForEach(Array(banks.enumerated()), id: \.element) { i, bank in
             if i > 0 { HDivider(inset: .disc68) }
-            BankAlertsBankRow(bank: bank, detail: bank == .dib ? "Arabic alerts" : "Transaction alerts")
+            BankAlertsBankRow(
+              bank: bank,
+              detail: BankAlertsPage.bankDetail(
+                bank, lastEmail: (app.mailbox as? BankAlertsReporting)?.lastEmail(bank),
+                checking: m.state == .syncing))
           }
         }
       }
@@ -208,6 +217,7 @@ struct MailboxDetailPage: View {
       await signIn.connect(provider)
       if case .connected? = signIn.outcome {
         app.say(MailCopy.signedInAgain(provider))
+        signedIn += 1
         signIn.reset()
       }
     }
@@ -234,20 +244,33 @@ struct MailboxDetailPage: View {
   }
 }
 
-/// A key and its value in a mailbox's card (Paper 1NEG): the key in secondary, the value in
-/// primary on the right, wrapping under the key when it can't fit.
+/// A key and its value in a mailbox's card, wrapping under the key when it can't fit.
 private struct MailboxFactRow: View {
+  enum Style {
+    /// Under the mailbox row (Paper 1NEG): 15/20, the key in secondary, the value in
+    /// primary, 14 above and below.
+    case mailbox
+    /// The details card of a mailbox that needs a sign-in (Paper 1O3N "Card · Details"):
+    /// the key 16/22 in primary, the value 15/20 in secondary, rows at least 52 tall.
+    case details
+  }
+
   let fact: MailboxDetailPage.Fact
+  var style = Style.mailbox
 
   var body: some View {
     ReflowingRow(spacing: 12) {
-      Text(fact.key).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+      Text(fact.key)
+        .hType(style == .details ? .callout : .subheadline)
+        .foregroundStyle(style == .details ? HColor.textPrimary : HColor.textSecondary)
     } trailing: {
-      Text(fact.value).hType(.subheadline).foregroundStyle(HColor.textPrimary)
+      Text(fact.value).hType(.subheadline)
+        .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
         .multilineTextAlignment(.trailing)
     }
     .padding(.horizontal, 16)
-    .padding(.vertical, 14)
+    .padding(.vertical, style == .details ? 10 : 14)
+    .frame(minHeight: style == .details ? 52 : nil)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(fact.key)
     .accessibilityValue(fact.value)

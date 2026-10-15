@@ -20,6 +20,8 @@ struct BankAlertsPage: View {
   @State private var landed: String?
   /// The hero's sign-in again, while it runs or after it failed.
   @State private var signIn: MailConnectCoordinator?
+  /// Each sign-in again that worked (the success haptic's trigger).
+  @State private var signedIn = 0
   @Environment(\.hMotion) private var motion
 
   init(app: AppModel) {
@@ -28,11 +30,13 @@ struct BankAlertsPage: View {
 
   private var lane: (any MailboxConnecting)? { app.mailbox }
   private var mailboxes: [MailboxSnapshot] { lane?.mailboxes ?? [] }
+  private var reporting: BankAlertsReporting? { lane as? BankAlertsReporting }
 
   var body: some View {
     let health = app.store.state.mailbox
     let summary = MailboxesSummary(mailboxes, health: health, offer: app.mailOffer)
-    let hero = Hero(summary: summary, health: health, mailboxes: mailboxes, offer: app.mailOffer)
+    let hero = Hero(
+      summary: summary, health: health, mailboxes: mailboxes, offer: app.mailOffer, read: reporting?.readThisMonth)
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         heroCard(hero)
@@ -51,7 +55,9 @@ struct BankAlertsPage: View {
     .navigationBarTitleDisplayMode(.inline)
     .onAppear { noteRows(mailboxes.map(\.id)) }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
+    // A mailbox connected or signed in again: the motion policy's success, once each.
     .hHaptic(.success, trigger: landed) { _, new in new != nil }
+    .hHaptic(.success, trigger: signedIn) { old, new in new > old }
   }
 
   // MARK: Hero
@@ -66,7 +72,10 @@ struct BankAlertsPage: View {
     let kind: Kind
     let detail: String
 
-    init(summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?) {
+    init(
+      summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?,
+      read: MonthRead? = nil
+    ) {
       let live = mailboxes.filter { $0.state != .disconnected }
       if case .signInAgain(let id, let provider)? = offer {
         kind = .signInAgain(mailboxID: id, provider: provider)
@@ -83,7 +92,35 @@ struct BankAlertsPage: View {
       } else {
         kind = .working
       }
-      detail = kind == .notConnected ? "Add a mailbox so Hasala can read your bank alerts." : summary.detail
+      switch kind {
+      case .notConnected:
+        detail = "Add a mailbox so Hasala can read your bank alerts."
+      case .signInAgain(let id, _):
+        detail = Self.signInDetail(live.first { $0.id == id }, live: live) ?? summary.detail
+      case .working where !health.lastEmail.isEmpty:
+        // "Last email 4 min ago" over "214 read in October" (Paper 1NS8); the banks when
+        // the month's count isn't known.
+        detail = ["Last email \(health.lastEmail)", read?.line ?? (health.banks.isEmpty ? nil : health.banks)]
+          .compactMap { $0 }.joined(separator: "\n")
+      default:
+        detail = summary.detail
+      }
+    }
+
+    /// "Microsoft ended access to maya.k@example.com on Wed 7 Oct. Your Gmail still works."
+    /// (Paper 1NAM): the provider, the mailbox, the day it was last read, and the mailbox
+    /// that still works.
+    static func signInDetail(_ broken: MailboxSnapshot?, live: [MailboxSnapshot]) -> String? {
+      guard let broken else { return nil }
+      var detail = "\(broken.provider.company) ended access to \(broken.address)"
+      // The date stays on one line ("Wed 7 Oct").
+      if let day = broken.lastChecked?.split(separator: ",").first {
+        detail += " on " + day.replacingOccurrences(of: " ", with: "\u{00A0}")
+      }
+      detail += "."
+      let working = live.first { $0.id != broken.id && ($0.state == .connected || $0.state == .syncing) }
+      if let working { detail += " Your \(working.provider.appName) still works." }
+      return detail
     }
 
     var title: String {
@@ -133,6 +170,7 @@ struct BankAlertsPage: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Bank alerts: \(hero.title). \(hero.detail.replacingOccurrences(of: "\n", with: ". "))")
         .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("bankAlerts.status")
       }
       if case .signInAgain(let id, let provider) = hero.kind, lane?.capabilities.contains(.signInAgain) == true {
         ProviderButton(provider: provider, loading: signIn?.busy ?? false) { signInAgain(id, provider) }
@@ -160,6 +198,7 @@ struct BankAlertsPage: View {
       await attempt.connect(provider)
       if case .connected? = attempt.outcome {
         app.say(MailCopy.signedInAgain(provider))
+        signedIn += 1
         signIn = nil
       }
     }
@@ -231,9 +270,11 @@ struct BankAlertsPage: View {
       VStack(alignment: .leading, spacing: 12) {
         HSectionHeader("Banks")
         HListCard {
+          let checking = mailboxes.contains { $0.state == .syncing }
           ForEach(Array(banks.enumerated()), id: \.element) { i, bank in
             if i > 0 { HDivider(inset: .disc68) }
-            BankAlertsBankRow(bank: bank, detail: Self.bankDetail(bank, mailboxes))
+            BankAlertsBankRow(
+              bank: bank, detail: Self.bankDetail(bank, lastEmail: reporting?.lastEmail(bank), checking: checking))
               .accessibilityIdentifier("bankAlerts.bank.\(bank.rawValue)")
           }
           // Adding a bank has no screen yet (plan P3 work 5): Debug only.
@@ -248,16 +289,12 @@ struct BankAlertsPage: View {
     }
   }
 
-  /// Where a bank's alerts are read: "In Gmail and Outlook · Arabic alerts". The lane keeps
-  /// no per-bank freshness the app can show, so Paper's "Last email 4 min ago" is the hero's.
-  static func bankDetail(_ bank: SupportedBank, _ mailboxes: [MailboxSnapshot]) -> String {
-    let reading = mailboxes.filter { m in
-      m.state != .disconnected && m.banks.contains { $0 == bank.name || $0 == bank.shortName }
-    }
-    var providers: [String] = []
-    for m in reading where !providers.contains(m.provider.appName) { providers.append(m.provider.appName) }
-    let place = providers.isEmpty ? "No alerts read yet" : "In \(providers.formatted(.list(type: .and)))"
-    return bank == .dib ? "\(place) · Arabic alerts" : place
+  /// When a bank's alerts last arrived (Paper 1NS8: "Last email 4 min ago", "Last email 2 h
+  /// ago · Arabic alerts"); before the first, "Checking now" while a mailbox's first import
+  /// runs, else that none were read yet.
+  static func bankDetail(_ bank: SupportedBank, lastEmail: String?, checking: Bool) -> String {
+    let when = lastEmail.map { "Last email \($0)" } ?? (checking ? "Checking now" : "No alerts read yet")
+    return bank == .dib ? "\(when) · Arabic alerts" : when
   }
 
   // MARK: Needs a look (Debug)
@@ -336,6 +373,26 @@ struct BankAlertsPage: View {
 @MainActor
 protocol UnreadableMailReporting {
   var unreadableMail: [UnreadableMail] { get }
+}
+
+/// A mail lane that can say, bank by bank, when its alerts last arrived, and how many it
+/// read this month (Paper 1NS8: "Last email 4 min ago", "214 read in October"). The live
+/// lane reads its bank health rows; the mock has Paper's numbers. It stays on the iPhone.
+@MainActor
+protocol BankAlertsReporting {
+  /// How long ago the newest alert from `bank` arrived ("4 min ago"); nil before any.
+  func lastEmail(_ bank: SupportedBank) -> String?
+  /// The alerts read this month; nil before any.
+  var readThisMonth: MonthRead? { get }
+}
+
+/// "214 read in October": the alerts read in the current month.
+struct MonthRead: Hashable, Sendable {
+  var count: Int
+  /// "October".
+  var month: String
+
+  var line: String { "\(count) read in \(month)" }
 }
 
 /// One alert a mailbox fetched but couldn't read: "Debit card alert · Gmail · Thu 8 Oct".

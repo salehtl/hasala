@@ -15,7 +15,7 @@
   /// also has the one alert Paper shows it couldn't read ("Needs a look", Debug).
   @MainActor
   @Observable
-  final class MockMailbox: MailboxConnecting, UnreadableMailReporting {
+  final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting {
     var connectable: [MailProviderKind] = MailProviderKind.allCases
     var capabilities: MailboxCapabilities = .all
     private(set) var mailboxes: [MailboxSnapshot] = []
@@ -176,6 +176,25 @@
     func loadSampleData() async throws(SetupFailure) {
       try? await Task.sleep(for: .milliseconds(300))
       sampleLoaded = true
+    }
+
+    // MARK: BankAlertsReporting (Paper 1NS8's numbers)
+
+    /// When each bank's newest alert arrived, once a mailbox has read it.
+    static let lastEmails: [SupportedBank: String] = [.enbd: "4 min ago", .dib: "2 h ago"]
+
+    /// A bank's last alert, when a mailbox that has already read (not one on its first
+    /// import) reads its alerts.
+    func lastEmail(_ bank: SupportedBank) -> String? {
+      let read = mailboxes.contains { m in
+        (m.state == .connected || m.state == .needsSignIn) && m.banks.contains { $0 == bank.name || $0 == bank.shortName }
+      }
+      return read ? Self.lastEmails[bank] : nil
+    }
+
+    /// "214 read in October", once a mailbox has read.
+    var readThisMonth: MonthRead? {
+      mailboxes.contains { $0.state == .connected || $0.state == .needsSignIn } ? MonthRead(count: 214, month: "October") : nil
     }
   }
 #endif

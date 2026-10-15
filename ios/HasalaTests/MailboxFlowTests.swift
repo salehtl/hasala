@@ -153,23 +153,29 @@ struct MailboxFlowTests: AccountSuite {
   /// mailbox still syncing beside a working one keeps it, Paper 1NYL), Importing, Sign in
   /// again aimed at the first mailbox that needs it, Needs you, Not connected.
   @Test func theHeroSaysItInAWord() {
-    func hero(_ m: [MailboxSnapshot], _ status: MailboxHealth.Status = .working, offer: MailOffer? = nil)
-      -> BankAlertsPage.Hero
-    {
+    func hero(
+      _ m: [MailboxSnapshot], _ status: MailboxHealth.Status = .working, offer: MailOffer? = nil, read: MonthRead? = nil
+    ) -> BankAlertsPage.Hero {
       let health = MailboxHealth(status: status, lastEmail: "4 min ago", banks: "Emirates NBD and DIB")
       return BankAlertsPage.Hero(summary: MailboxesSummary(m, health: health, offer: offer), health: health,
-                                 mailboxes: m, offer: offer)
+                                 mailboxes: m, offer: offer, read: read)
     }
     var syncing = MockMailbox.outlook
     syncing.state = .syncing
-    let working = hero([MockMailbox.gmail, syncing])
+    let working = hero([MockMailbox.gmail, syncing], read: MonthRead(count: 214, month: "October"))
     #expect(working.kind == .working && working.title == "Working" && working.hue == .mint)
-    #expect(working.detail == "Last email 4 min ago\nEmirates NBD and DIB")
+    #expect(working.detail == "Last email 4 min ago\n214 read in October")
+    // Before the month's count is known, the banks.
+    #expect(hero([MockMailbox.gmail]).detail == "Last email 4 min ago\nEmirates NBD and DIB")
     #expect(hero([syncing], .importing).title == "Importing")
     let broken = hero([MockMailbox.gmail, MockMailbox.needingSignIn(MockMailbox.outlook)],
                       offer: .signInAgain(mailboxID: "outlook-1", provider: .outlook))
     #expect(broken.kind == .signInAgain(mailboxID: "outlook-1", provider: .outlook) && broken.hue == .sand)
-    #expect(broken.detail == "Microsoft ended access to maya.k@example.com. Your Gmail still works.")
+    #expect(broken.detail == "Microsoft ended access to maya.k@example.com on Wed\u{00A0}7\u{00A0}Oct. Your Gmail still works.")
+    // Google's own, alone: no other mailbox to name.
+    let gmail = hero([MockMailbox.needingSignIn(MockMailbox.gmail)],
+                     offer: .signInAgain(mailboxID: "gmail-1", provider: .gmail))
+    #expect(gmail.detail == "Google ended access to maya@example.com on Wed\u{00A0}7\u{00A0}Oct.")
     #expect(hero([MockMailbox.gmail], .quiet).title == "Needs you")
     let none = hero([], .notConnected, offer: .connect)
     #expect(none.kind == .notConnected && none.detail == "Add a mailbox so Hasala can read your bank alerts.")
@@ -177,13 +183,19 @@ struct MailboxFlowTests: AccountSuite {
 
   /// A bank says where its alerts are read; a mailbox page explains a lost sign-in.
   @Test func banksAndMailboxesSayWhereAndWhy() {
-    let both = [MockMailbox.gmail, MockMailbox.outlook]
-    #expect(BankAlertsPage.bankDetail(.enbd, both) == "In Gmail")
-    #expect(BankAlertsPage.bankDetail(.dib, both) == "In Gmail and Outlook · Arabic alerts")
-    #expect(BankAlertsPage.bankDetail(.enbd, []) == "No alerts read yet")
-    let live = MailboxSnapshot(id: "gmail", provider: .gmail, address: "maya@example.com", state: .connected,
-                               meta: "Checked 4 min ago", banks: ["DIB"])
-    #expect(BankAlertsPage.bankDetail(.dib, [live]) == "In Gmail · Arabic alerts")
+    #expect(BankAlertsPage.bankDetail(.enbd, lastEmail: "4 min ago", checking: false) == "Last email 4 min ago")
+    #expect(BankAlertsPage.bankDetail(.dib, lastEmail: "2 h ago", checking: false)
+      == "Last email 2 h ago · Arabic alerts")
+    #expect(BankAlertsPage.bankDetail(.enbd, lastEmail: nil, checking: true) == "Checking now")
+    #expect(BankAlertsPage.bankDetail(.dib, lastEmail: nil, checking: false) == "No alerts read yet · Arabic alerts")
+    // The mock knows Paper's numbers once a mailbox has read, and none on a first import.
+    let lane = mailbox([MockMailbox.gmail])
+    #expect(lane.lastEmail(.enbd) == "4 min ago" && lane.lastEmail(.dib) == "2 h ago")
+    #expect(lane.readThisMonth == MonthRead(count: 214, month: "October"))
+    var syncing = MockMailbox.outlook
+    syncing.state = .syncing
+    let fresh = mailbox([syncing])
+    #expect(fresh.lastEmail(.dib) == nil && fresh.readThisMonth == nil)
     #expect(MailboxDetailPage.signInBody(MockMailbox.needingSignIn(MockMailbox.outlook))
       == "This happens after a password change, a long time signed out, or a work policy. No new Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else changes.")
     #expect(MailCopy.disconnectMessage(.outlook)

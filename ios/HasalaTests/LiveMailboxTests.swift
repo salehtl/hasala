@@ -104,6 +104,26 @@ struct LiveMailboxTests {
     }
   }
 
+  /// Bank alerts' bank rows and hero, from the lane's bank health rows: each bank's newest
+  /// alert by its sender domains, and the alerts read in this local month only.
+  @Test func bankAlertsReadTheLaneHealth() throws {
+    // Thu 15 Oct 2026, 12:00 in Dubai.
+    let now: Int64 = 1_792_051_200_000
+    let json = """
+      [{"domain": "emiratesnbd.com", "lastEmailAtMs": \(now - 4 * 60_000), "month": "2026-10", "readThisMonth": 150},
+       {"domain": "alerts.dib.ae", "lastEmailAtMs": \(now - 2 * 3_600_000), "month": "2026-10", "readThisMonth": 64},
+       {"domain": "dib.ae", "lastEmailAtMs": \(now - 30 * 86_400_000), "month": "2026-09", "readThisMonth": 9}]
+      """
+    let health = try JSONDecoder().decode([BankHealthRow].self, from: Data(json.utf8))
+    #expect(LiveMailboxConnecting.lastEmail(.enbd, health: health, nowMs: now) == "4 min ago")
+    #expect(LiveMailboxConnecting.lastEmail(.dib, health: health, nowMs: now) == "2 h ago")
+    #expect(LiveMailboxConnecting.lastEmail(.dib, health: [], nowMs: now) == nil)
+    #expect(LiveMailboxConnecting.readThisMonth(health, nowMs: now) == MonthRead(count: 214, month: "October"))
+    #expect(LiveMailboxConnecting.readThisMonth([], nowMs: now) == nil)
+    // A new month: last month's count is not this month's.
+    #expect(LiveMailboxConnecting.readThisMonth(health, nowMs: now + 20 * 86_400_000) == nil)
+  }
+
   /// The lane's phase as the one mailbox row (plan B4.4's table).
   @Test func theLanePhaseIsTheRow() {
     let now: Int64 = 10_000_000_000
