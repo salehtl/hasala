@@ -292,6 +292,13 @@ class Case {
 }
 
 /** Builds one spec from a function over a fresh {@link Case}. */
+/**
+ * Synthetic Microsoft Graph immutable message ids (`Prefer: IdType="ImmutableId"`,
+ * prefix `AAkALgAA`); no real mailbox id.
+ */
+const OUTLOOK_ID_1 = "AAkALgAA" + "A".repeat(40) + "SyntheticOutlookId1=";
+const OUTLOOK_ID_2 = "AAkALgAA" + "A".repeat(40) + "SyntheticOutlookId2=";
+
 function spec(group: string, name: string, note: string, build: (c: Case) => void): Spec {
   const c = new Case(name);
   build(c);
@@ -655,6 +662,13 @@ function foldSpecs(): Spec[] {
         .blob("dev-a", c.unparsed("mb3", "mb4", { provenance: null }))
         .blob("dev-a", c.supersede("mb4", "mb1", { tier: "template", needs_review: false }))
         .blob("dev-a", c.supersede("mb5", "mb0", { provenance: { provider: "gmail", grant_id: "acct-1", message_id: "gmail-msg-def456" }, merchant_raw: "B" })),
+    ),
+    spec(g, "mailbox-message-id-outlook", "An Outlook provenance (a synthetic Graph immutable id) keeps its message id exactly as a Gmail one does; an empty id folds to null; a supersede carries its own.", (c) =>
+      c
+        .blob("dev-a", c.unparsed("ol", "ol1", { provenance: { provider: "outlook", grant_id: "acct-1", message_id: OUTLOOK_ID_1 } }))
+        .blob("dev-a", c.unparsed("ol0", "ol0", { provenance: { provider: "outlook", grant_id: "acct-1", message_id: "" } }))
+        .blob("dev-a", c.supersede("ol1", "ol1", { tier: "template", needs_review: false }))
+        .blob("dev-a", c.supersede("ol2", "ol0", { provenance: { provider: "outlook", grant_id: "acct-1", message_id: OUTLOOK_ID_2 }, merchant_raw: "B" })),
     ),
     spec(g, "verified-origin-domain", "A schema-v2 field: carried on a v2 row, refused on a v1 one.", (c) =>
       c

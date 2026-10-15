@@ -45,6 +45,13 @@
  * parsing, mirroring how internal/origin/dkim.go bounds its folded-header work.
  * Over-bounds input is parse_error, never an exception and never an unbounded
  * scan.
+ *
+ * # Outlook.com
+ *
+ * `outlookVerdict` is the same posture for a personal Microsoft mailbox, whose
+ * own A-R has no authserv-id. It shares the reading above (bounds, unfolding,
+ * comments, quoting) and has its own rule; see analyzeOutlook. `analyzeFor`
+ * picks the rule by provider id ("gmail" | "outlook").
  */
 
 /** The one authserv-id whose verdict this lane trusts. Bare match only. */
@@ -67,14 +74,21 @@ const maxRawBytes = 256 * 1024;
  */
 const maxFieldLines = 512;
 
-/** The reason codes gmailVerdict can report. */
+/**
+ * The reason codes a verdict can report. `no_eop` is outlookVerdict's only:
+ * gmailVerdict never returns it.
+ */
 export type ArReason =
   | "pass"
   | "no_ar"
   | "multiple_ar"
   | "not_topmost"
   | "fail"
-  | "parse_error";
+  | "parse_error"
+  | "no_eop";
+
+/** The mailbox providers whose own Authentication-Results this module reads. */
+export type MailProvider = "gmail" | "outlook";
 
 /** The verdict: trusted iff reason === "pass". */
 export type ArVerdict = { trusted: boolean; reason: ArReason };
@@ -90,6 +104,13 @@ type MethodSpec = {
 type ArHeader = {
   authservId: string; // lowercased; empty if unreadable
   methods: MethodSpec[];
+  /**
+   * Microsoft form: the first segment is a method spec, not an authserv-id
+   * (see outlookVerdict). Then `methods` also holds the first segment's spec,
+   * and `authservId` is the raw first token (which never equals an id this
+   * module trusts, because an RFC 8601 authserv-id cannot contain '=').
+   */
+  microsoftForm: boolean;
 };
 
 /**
@@ -110,11 +131,34 @@ export function gmailVerdict(rawHeaders: string): ArVerdict {
  * has no verified domain to offer; returning null there keeps the two functions
  * from disagreeing about whether a domain was proven.
  */
-export function verifiedDomain(rawHeaders: string): string | null {
-  return analyze(rawHeaders).domain;
+export function verifiedDomain(rawHeaders: string, provider: MailProvider = "gmail"): string | null {
+  return analyzeFor(rawHeaders, provider).domain;
 }
 
-type Analysis = { verdict: ArVerdict; domain: string | null };
+/**
+ * outlookVerdict is the Outlook.com twin of gmailVerdict (rule below, from the
+ * WP1 decision `docs/decisions/outlook-mailbox.md` §3). It never throws.
+ */
+export function outlookVerdict(rawHeaders: string): ArVerdict {
+  return analyzeOutlook(rawHeaders).verdict;
+}
+
+/** The verdict of the given provider's rule. */
+export function providerVerdict(rawHeaders: string, provider: MailProvider): ArVerdict {
+  return analyzeFor(rawHeaders, provider).verdict;
+}
+
+export type Analysis = { verdict: ArVerdict; domain: string | null };
+
+/**
+ * analyzeFor is the verdict and the verified domain of one provider's rule,
+ * from one reading of the bytes. An unknown provider is untrusted.
+ */
+export function analyzeFor(rawHeaders: string, provider: MailProvider): Analysis {
+  if (provider === "gmail") return analyze(rawHeaders);
+  if (provider === "outlook") return analyzeOutlook(rawHeaders);
+  return untrusted("parse_error");
+}
 
 const untrusted = (reason: ArReason): Analysis => ({
   verdict: { trusted: false, reason },
@@ -208,6 +252,153 @@ function analyze(rawHeaders: string): Analysis {
   }
 }
 
+// --- Outlook.com -----------------------------------------------------------
+
+/**
+ * The EOP-only fields that prove a message crossed Exchange Online Protection
+ * inbound. Exchange's header firewall removes sender-supplied
+ * X-MS-Exchange-Organization-* fields from untrusted mail, and keeps these on
+ * delivery (UNVERIFIED for Outlook.com until the WP0 checks C2/C3).
+ */
+const OUTLOOK_AUTH_AS = "x-ms-exchange-organization-authas";
+const OUTLOOK_AUTH_SOURCE = "x-ms-exchange-organization-authsource";
+/** The AuthAs values accepted (lower case). Internet mail is Anonymous. */
+const OUTLOOK_AUTH_AS_VALUES: readonly string[] = ["anonymous"];
+/** AuthSource must be an LDH name under this suffix (lower case). */
+const OUTLOOK_AUTH_SOURCE_SUFFIX = ".prod.outlook.com";
+/**
+ * The results the Microsoft-form A-R must report, method → result. Exactly
+ * `pass`: dmarc=bestguesspass and compauth=softpass are not passes. Each method
+ * must appear exactly once.
+ */
+const OUTLOOK_REQUIRED: readonly (readonly [string, string])[] = [
+  ["compauth", "pass"],
+  ["dmarc", "pass"],
+];
+
+/**
+ * analyzeOutlook is the Outlook.com trust rule (WP1 decision §3). It reads the
+ * header block of the `$value` MIME with the same bounds, unfolding, comment
+ * stripping and quoting as the Gmail rule. Outlook.com's own A-R carries no
+ * authserv-id ("Microsoft form"), so content cannot tell it from one a sender
+ * wrote; position and the EOP-only fields have to. The first step that applies
+ * decides:
+ *
+ *   1. over the bounds or unreadable                       → parse_error
+ *   2. no Microsoft-form A-R                               → no_ar
+ *   3. more than one Microsoft-form A-R                    → multiple_ar
+ *   4. the topmost A-R (any form) is not the Microsoft one → not_topmost
+ *   5. not exactly one AuthAs (Anonymous) and exactly one
+ *      AuthSource (LDH, under .prod.outlook.com)           → no_eop
+ *   6. not exactly one compauth=pass and one dmarc=pass,
+ *      with a valid DMARC header.from                      → fail
+ *   7. not exactly one From, or its domain ≠ header.from   → fail
+ *   8. trusted; the verified domain is the DMARC header.from.
+ *
+ * SPF and DKIM are parsed but are not trust inputs; ARC is ignored. Each step
+ * is one block below, and its constants are above, so tightening or loosening
+ * the rule after the WP0 samples is a local change (and a vector).
+ *
+ * This verdict is fail-closed but rests on premises that real mail has not yet
+ * proven (EOP stamps exactly one topmost A-R; $value keeps header order). Until
+ * the owner's checks pass, the Outlook lane sends every message to review
+ * whatever this returns (`outlookTrustProven`, WP5b).
+ */
+function analyzeOutlook(rawHeaders: string): Analysis {
+  try {
+    // 1. Bounds.
+    if (typeof rawHeaders !== "string" || rawHeaders.length === 0) {
+      return untrusted("no_ar");
+    }
+    if (rawHeaders.length > maxRawBytes) {
+      return untrusted("parse_error");
+    }
+    const fields = unfold(rawHeaders);
+    if (fields === null) {
+      return untrusted("parse_error");
+    }
+
+    const parsed = fields
+      .filter((f) => fieldNameEquals(f.name, "authentication-results"))
+      .map((f) => parseArValue(f.value));
+
+    // 2–4. Exactly one Microsoft-form A-R, and it is the topmost A-R.
+    const msIdx: number[] = [];
+    parsed.forEach((ar, i) => {
+      if (ar.microsoftForm) msIdx.push(i);
+    });
+    if (msIdx.length === 0) {
+      return untrusted("no_ar");
+    }
+    if (msIdx.length > 1) {
+      return untrusted("multiple_ar");
+    }
+    if (msIdx[0] !== 0) {
+      return untrusted("not_topmost");
+    }
+    const ar = parsed[0]!;
+
+    // 5. EOP proof.
+    const valuesOf = (name: string): string[] =>
+      fields.filter((f) => fieldNameEquals(f.name, name)).map((f) => f.value.trim().toLowerCase());
+    const authAs = valuesOf(OUTLOOK_AUTH_AS);
+    const authSource = valuesOf(OUTLOOK_AUTH_SOURCE);
+    if (
+      authAs.length !== 1 ||
+      !OUTLOOK_AUTH_AS_VALUES.includes(authAs[0]!) ||
+      authSource.length !== 1 ||
+      !authSource[0]!.endsWith(OUTLOOK_AUTH_SOURCE_SUFFIX) ||
+      !isLdhDomain(authSource[0]!)
+    ) {
+      return untrusted("no_eop");
+    }
+
+    // 6. The verdict: each required method exactly once, with the exact result.
+    for (const [method, result] of OUTLOOK_REQUIRED) {
+      const specs = ar.methods.filter((m) => m.method === method);
+      if (specs.length !== 1 || specs[0]!.result !== result) {
+        return untrusted("fail");
+      }
+    }
+    const dmarc = ar.methods.find((m) => m.method === "dmarc")!;
+    const domain = domainProp(dmarc, "header.from");
+    if (domain === "") {
+      return untrusted("fail");
+    }
+
+    // 7. From binding: the domain compauth evaluated is the From we will read.
+    const from = fields.filter((f) => fieldNameEquals(f.name, "from"));
+    if (from.length !== 1 || fromDomain(from[0]!.value) !== domain) {
+      return untrusted("fail");
+    }
+
+    // 8.
+    return { verdict: { trusted: true, reason: "pass" }, domain };
+  } catch {
+    return untrusted("parse_error");
+  }
+}
+
+/**
+ * fromDomain is the domain of a From value: the part after the last '@', cut
+ * at '>', space, tab, CR, LF, '"' or ')', ASCII lower-cased, trailing dots
+ * dropped; "" when there is no '@'. It is the Swift lane's
+ * `BankDomains.domainOf`, which the sender-trust match downstream uses on the
+ * same From.
+ */
+function fromDomain(value: string): string {
+  const at = value.lastIndexOf("@");
+  if (at < 0) return "";
+  let out = "";
+  for (let i = at + 1; i < value.length; i++) {
+    const c = value[i]!;
+    if (c === ">" || c === " " || c === "\t" || c === "\r" || c === "\n" || c === '"' || c === ")") break;
+    out += c >= "A" && c <= "Z" ? c.toLowerCase() : c;
+  }
+  while (out.endsWith(".")) out = out.slice(0, -1);
+  return out;
+}
+
 /** A single header field after unfolding. */
 type Field = { name: string; value: string };
 
@@ -290,15 +481,21 @@ function parseArValue(value: string): ArHeader {
   const idToken = tokenize(first)[0] ?? "";
   const authservId = unquote(idToken).toLowerCase();
 
+  // Microsoft's form has no authserv-id: its first token is already a
+  // method=result (e.g. "spf=pass"). An authserv-id is a value token, which
+  // cannot contain '=', so the two forms cannot be confused. In this form
+  // every segment, the first included, is a method spec.
+  const microsoftForm = idToken.includes("=");
+
   const methods: MethodSpec[] = [];
-  for (let i = 1; i < segments.length; i++) {
+  for (let i = microsoftForm ? 0 : 1; i < segments.length; i++) {
     const toks = tokenize(segments[i]!);
     if (toks.length === 0) continue;
     const spec = parseMethodSpec(toks);
     if (spec) methods.push(spec);
   }
 
-  return { authservId, methods };
+  return { authservId, methods, microsoftForm };
 }
 
 /** parseMethodSpec turns [method=result, ptype.prop=value, …] into a MethodSpec. */
@@ -343,10 +540,15 @@ function domainProp(spec: MethodSpec, key: string): string {
   v = v.toLowerCase();
   // A bare domain: labels of unreserved chars separated by dots, at least one
   // dot. Anything else (a stray port, empty, whitespace) is not usable.
-  if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(v)) {
+  if (!isLdhDomain(v)) {
     return "";
   }
   return v;
+}
+
+/** A lower-case LDH domain with at least two labels. */
+function isLdhDomain(v: string): boolean {
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(v);
 }
 
 /**
