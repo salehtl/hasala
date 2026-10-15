@@ -34,7 +34,7 @@
 set -euo pipefail
 
 HOST="api.hasala.app"
-API_PATH='^/(api/v1/.*|hooks/gmail/pubsub)$'
+API_PATH='^/(api/v1/.*|hooks/gmail/pubsub|hooks/outlook/graph(/lifecycle)?)$'
 API_PORT="${HASALA_API_PORT:-8471}"
 # 9471 hasalad metrics, 9472 cloudflared metrics, 8472/9473 the console and its
 # metrics (spec 07, M16), 5432 Postgres, 9090 Prometheus, 3000 Grafana, 2586 ntfy.
