@@ -18,13 +18,13 @@ import (
 )
 
 // Reason says why a device is woken. It is internal only: every reason sends
-// the same bytes (spec 02 §12.5), so nothing on the wire tells a gmail wake
+// the same bytes (spec 02 §12.5), so nothing on the wire tells a mail wake
 // from a security one.
 type Reason uint8
 
 // The reasons (spec 02 §12.1).
 const (
-	ReasonGmail Reason = iota + 1
+	ReasonMail Reason = iota + 1
 	ReasonSync
 	ReasonSecurity
 	ReasonNudge
@@ -33,8 +33,8 @@ const (
 
 func (r Reason) String() string {
 	switch r {
-	case ReasonGmail:
-		return "gmail"
+	case ReasonMail:
+		return "mail"
 	case ReasonSync:
 		return "sync"
 	case ReasonSecurity:

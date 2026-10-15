@@ -11,10 +11,10 @@ import (
 
 // Windows and caps (spec 02 §12.4).
 const (
-	gmailWindow     = 300 * time.Second
+	mailWindow      = 300 * time.Second
 	syncWindow      = 120 * time.Second
 	capWindow       = time.Hour
-	gmailCap        = 6
+	mailCap         = 6
 	totalCap        = 12
 	cooldownFor     = 60 * time.Second
 	throttleMaxKeys = 10_000
@@ -28,10 +28,10 @@ type tokenState struct {
 	windowEnd map[Reason]time.Time
 	pending   map[Reason]bool
 	// Sends counted toward the caps within the last hour.
-	gmailSends []time.Time
-	allSends   []time.Time
-	coolUntil  time.Time
-	elem       *list.Element
+	mailSends []time.Time
+	allSends  []time.Time
+	coolUntil time.Time
+	elem      *list.Element
 }
 
 // throttle decides, per token, whether a wake goes out now, waits for the
@@ -58,8 +58,8 @@ const (
 
 func windowFor(r Reason) time.Duration {
 	switch r {
-	case ReasonGmail:
-		return gmailWindow
+	case ReasonMail:
+		return mailWindow
 	case ReasonSync:
 		return syncWindow
 	}
@@ -94,13 +94,13 @@ func prune(ts []time.Time, now time.Time) []time.Time {
 
 // capped reports whether one more wake of reason r would exceed a cap.
 func (s *tokenState) capped(r Reason, now time.Time) bool {
-	s.gmailSends = prune(s.gmailSends, now)
+	s.mailSends = prune(s.mailSends, now)
 	s.allSends = prune(s.allSends, now)
 	switch r {
 	case ReasonSecurity, ReasonAccountGone:
 		return false
-	case ReasonGmail:
-		if len(s.gmailSends) >= gmailCap {
+	case ReasonMail:
+		if len(s.mailSends) >= mailCap {
 			return true
 		}
 	}
@@ -111,8 +111,8 @@ func (s *tokenState) count(r Reason, now time.Time) {
 	switch r {
 	case ReasonSecurity, ReasonAccountGone:
 		return
-	case ReasonGmail:
-		s.gmailSends = append(s.gmailSends, now)
+	case ReasonMail:
+		s.mailSends = append(s.mailSends, now)
 	}
 	s.allSends = append(s.allSends, now)
 }

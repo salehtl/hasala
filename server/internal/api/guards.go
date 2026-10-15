@@ -74,10 +74,10 @@ func isRead(method string) bool {
 // op it could not upload, which is what makes pausing writes survivable at all.
 func (s *Server) headroomGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The Gmail hook is exempt (spec 02 §13.4): it writes at most one row
-		// per link per hour, skips even that while the fuse is tripped, and a
-		// 503 would only make Pub/Sub retry.
-		if s.Headroom != nil && !isRead(r.Method) && r.URL.Path != "/hooks/gmail/pubsub" && s.Headroom.Tripped() {
+		// The mail hooks are exempt (spec 02 §13.4): each writes at most one
+		// row per link per hour, skips even that while the fuse is tripped,
+		// and a 503 would only make Pub/Sub or Graph retry.
+		if s.Headroom != nil && !isRead(r.Method) && !fuseExempt(r.URL.Path) && s.Headroom.Tripped() {
 			s.logf("api: %s: refused, the headroom fuse is tripped", route(r))
 			// A minute: long enough that a fleet of retrying clients does not
 			// become its own load, short enough that writes resume promptly
@@ -90,6 +90,16 @@ func (s *Server) headroomGate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// fuseExempt reports whether path is one of the mail hooks the headroom fuse
+// lets through.
+func fuseExempt(path string) bool {
+	switch path {
+	case "/hooks/gmail/pubsub", outlookHookPath, outlookLifecyclePath:
+		return true
+	}
+	return false
 }
 
 // accountSuspended reads users.status.

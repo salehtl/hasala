@@ -23,6 +23,12 @@ type MetaResponse struct {
 	// app skips users.watch, so it never makes a watch this server cannot
 	// relay. The mailbox link (#34–#38) may be mounted either way.
 	GmailWatchTopic *string `json:"gmail_watch_topic"`
+	// OutlookNotificationURL and OutlookLifecycleURL are the hooks an
+	// Outlook holder's Graph subscription names (notificationUrl,
+	// lifecycleNotificationUrl), and both null whenever those hooks are not
+	// mounted: with no URLs the app makes no subscription.
+	OutlookNotificationURL *string `json:"outlook_notification_url"`
+	OutlookLifecycleURL    *string `json:"outlook_lifecycle_url"`
 	// LogGeneration is the integer in HASALA_LOG_GENERATION_FILE (§15.5): a
 	// device that sees it rise was restored under, and says so instead of
 	// reporting tampering.
@@ -32,7 +38,8 @@ type MetaResponse struct {
 }
 
 // Meta is the configuration GET /api/v1/meta reports. NewServer fills it;
-// gmail_watch_topic comes from Server.Gmail.Push instead.
+// gmail_watch_topic comes from Server.Gmail.Push and the Outlook URLs from
+// Server.Outlook.Push instead.
 type Meta struct {
 	RPID        string
 	MinIOSBuild int
@@ -60,11 +67,19 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		t := p.Topic
 		topic = &t
 	}
+	// Likewise the Outlook URLs: both or neither, and only with the hooks.
+	var notify, life *string
+	if p := s.outlookPush(); p != nil && p.NotificationURL != "" && p.LifecycleURL != "" {
+		n, l := p.NotificationURL, p.LifecycleURL
+		notify, life = &n, &l
+	}
 	writeJSON(w, http.StatusOK, MetaResponse{
-		RPID:            s.Meta.RPID,
-		MinIOSBuild:     s.Meta.MinIOSBuild,
-		GmailWatchTopic: topic,
-		LogGeneration:   gen,
-		ServerTime:      s.now().UTC().Truncate(time.Second).Format(time.RFC3339),
+		RPID:                   s.Meta.RPID,
+		MinIOSBuild:            s.Meta.MinIOSBuild,
+		GmailWatchTopic:        topic,
+		OutlookNotificationURL: notify,
+		OutlookLifecycleURL:    life,
+		LogGeneration:          gen,
+		ServerTime:             s.now().UTC().Truncate(time.Second).Format(time.RFC3339),
 	})
 }
