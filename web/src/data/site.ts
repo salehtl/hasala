@@ -5,6 +5,17 @@
  */
 import { WAITLIST_MODE } from '../lib/env';
 
+/**
+ * The mail services the app reads bank alerts from, as shipped. The site
+ * says "your email" everywhere; only MAIL and MAIL_NOTE name the services, so
+ * adding one (Outlook) is a change to this list. Also update the footer's
+ * trademark line and the legal pages (docs/legal) then.
+ */
+export const MAIL_PROVIDERS = ['Gmail'] as const;
+/** "Gmail", then "Gmail or Outlook". */
+export const MAIL = new Intl.ListFormat('en', { type: 'disjunction' }).format(MAIL_PROVIDERS);
+export const MAIL_NOTE = `Hasala works with ${MAIL} for now.`;
+
 export const SITE = {
   name: 'Hasala',
   arabicName: 'حصّالة',
@@ -12,7 +23,7 @@ export const SITE = {
   url: 'https://hasala.app',
   tagline: 'A private budgeting app that shows where your money goes.',
   description:
-    "Hasala is a private budgeting app for iPhone in the UAE. It reads your bank's alert emails in Gmail and shows where your money goes. Your transactions and budget are encrypted on your iPhone, so we can't read them.",
+    "Hasala is a private budgeting app for iPhone in the UAE. It reads your bank's alert emails and shows where your money goes. Your transactions and budget are encrypted on your iPhone, so we can't read them.",
   shortDescription: 'Hasala (حصّالة) is Arabic for piggy bank.',
   supportEmail: 'support@hasala.app',
   privacyEmail: 'privacy@hasala.app',
@@ -25,7 +36,7 @@ export const SITE = {
   repoUrl: 'https://github.com/salehtl/hasala',
   licenseUrl: 'https://github.com/salehtl/hasala/blob/main/LICENSE.md',
   trademarksUrl: 'https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md',
-  requirements: 'You’ll need an iPhone with iOS 26 or later and a Gmail address that gets your bank’s alerts. The app is in English only for now.',
+  requirements: `You’ll need an iPhone with iOS 26 or later and an email account that gets your bank’s alerts (${MAIL} today). The app is in English only for now.`,
 } as const;
 
 export const BANKS = [
@@ -92,7 +103,7 @@ export const VISIBILITY = [
   { who: 'You', sees: 'Everything, on your own devices', never: null },
   {
     who: 'Hasala, our server',
-    sees: 'What it needs to run your account: your email address and name, when you sync, how much encrypted data you keep, and when new mail reaches your Gmail. It also keeps sign‑in and device details: your passkey’s public key or a scrambled form of your password, your devices’ push tokens, and a scrambled form of your Gmail address',
+    sees: 'What it needs to run your account: your email address and name, when you sync, how much encrypted data you keep, and when new mail reaches your inbox. It also keeps sign‑in and device details: your passkey’s public key or a scrambled form of your password, your devices’ push tokens, and a scrambled form of the email address you connect',
     never: 'Your emails, amounts, merchants, categories, budget or plan',
   },
   {
@@ -101,7 +112,7 @@ export const VISIBILITY = [
     never: 'What’s inside the encrypted data',
   },
   {
-    who: 'Google',
+    who: 'Your email provider',
     sees: 'Your email, as it already does, and that you’ve given Hasala read‑only access',
     never: 'Your budget, or anything Hasala works out',
   },
@@ -145,11 +156,11 @@ export const FAQ: readonly FaqItem[] = [
     more: { href: '/how-privacy-works', label: 'How privacy works' },
   },
   {
-    id: 'gmail',
-    q: 'What exactly can Hasala read in my Gmail?',
+    id: 'email',
+    q: 'What exactly can Hasala read in my email?',
     short: "Only your bank's alert emails, read-only.",
-    a: "Your iPhone asks Gmail only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like your bank's, Hasala checks just its sender details on the phone and sets it aside. Hasala can't send, change or delete mail, and nothing is sent to an AI service.",
-    more: { href: '/how-it-works#gmail', label: 'Connecting Gmail' },
+    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. If the search also returns an email that only looks like your bank's, Hasala checks just its sender details on the phone and sets it aside. Hasala can't send, change or delete mail, and nothing is sent to an AI service. ${MAIL_NOTE}`,
+    more: { href: '/how-it-works#email', label: 'Connecting your email' },
   },
   {
     id: 'lost-phone',
@@ -190,7 +201,7 @@ export const FAQ: readonly FaqItem[] = [
       'Open Hasala and enter your invite code.',
     ],
     after:
-      "Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later and a Gmail address that gets your bank alerts.",
+      `Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later and an email account that gets your bank alerts (${MAIL} today).`,
     more: { href: '/#invite', label: 'Request an invite' },
   },
 ];

@@ -18,6 +18,8 @@ interface Props {
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
   nav?: 'full' | 'invite' | 'minimal';
   footer?: boolean;
+  /** The footer's colour: navy when the page ends on a navy band. */
+  footerTone?: 'white' | 'navy';
   /** Pages whose address can carry a code or token send no referrer at all. */
   referrer?: 'no-referrer';
   /**
@@ -29,9 +31,9 @@ interface Props {
   class?: string;
 }
 
-const EDGE = { white: '#ffffff', sky: '#d3e6ff', soft: '#e6eeff', legal: '#eef1ff' } as const;
+const EDGE = { white: '#ffffff', sky: '#d3e6ff', soft: '#e6eeff', legal: '#eef1ff', navy: '#142659' } as const;
 
-const { title, description, path, noindex = false, ogType = 'website', jsonLd, nav = 'full', footer = true, referrer, edge = 'white', class: className } = Astro.props;
+const { title, description, path, noindex = false, ogType = 'website', jsonLd, nav = 'full', footer = true, footerTone = 'white', referrer, edge = 'white', class: className } = Astro.props;
 const fullTitle = `Hasala · ${title}`;
 // https://hasala.app/ for the home page, https://hasala.app/privacy (no slash) elsewhere.
 const canonical = new URL(path ?? Astro.url.pathname, SITE.url).href;
@@ -95,7 +97,7 @@ const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <main id="main" tabindex="-1">
       <slot />
     </main>
-    {footer && <Footer />}
+    {footer && <Footer tone={footerTone} />}
   </body>
 </html>
 

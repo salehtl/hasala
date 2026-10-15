@@ -2,29 +2,29 @@
 import { FOOTER } from '../data/site';
 import Wordmark from './Wordmark.astro';
 
+interface Props {
+  /** navy: the page ends on a navy band (/how-privacy-works), so the footer carries it on. */
+  tone?: 'white' | 'navy';
+}
+const { tone = 'white' } = Astro.props;
+
 const onHome = Astro.url.pathname === '/';
 const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
 
-// Paper's three columns. The site column: How it works, the privacy page and
-// the invite form (Banks stays a homepage section, not a link). The pages the
-// site also has (Budgeting, FAQ, Licences, ...) stay reachable from the nav, the
-// sections, llms.txt and the sitemap. Legal is Paper's two links only.
-const siteCol = [
-  { href: '/#how-it-works', label: 'How it works' },
-  { href: '/how-privacy-works', label: 'How privacy works' },
-  { href: '/#invite', label: 'Request an invite' },
-];
-const cols = [
-  { title: 'Hasala', links: siteCol, site: true },
-  ...FOOTER.filter((c) => c.title !== 'Hasala').map((c) => ({ title: c.title, links: c.links.filter((l) => l.href !== '/licenses'), site: false })),
-];
+// The columns of src/data/site.ts. The site column links the detail pages,
+// the invite form and /i for people who already have a code (Banks stays a
+// homepage section, not a link).
+const cols = FOOTER.map((c) => ({ title: c.title, links: c.links, site: c.title === 'Hasala' }));
 ---
 
-<footer class="site-footer" id="site-footer">
+<footer class:list={['site-footer', tone === 'navy' && 'site-footer--navy']} id="site-footer">
   <div class="container footer">
     <div class="footer__top" data-reveal>
       <div class="footer__brand">
-        <a href="/" aria-label="Hasala home" class="footer__home"><Wordmark id="wm-footer" img class="footer__wordmark" /></a>
+        <a href="/" aria-label="Hasala home" class="footer__home">
+          {/* The <img> paints its ink dark; on navy the inline lockup takes currentColor. */}
+          <Wordmark id="wm-footer" img={tone !== 'navy'} class="footer__wordmark" />
+        </a>
         <p>A UAE budget app that fills itself in from your bank's emails.<span class="footer__only"> Only you can see it.</span></p>
       </div>
       <nav class="footer__cols" aria-label="Footer">
@@ -59,6 +59,13 @@ const cols = [
   </div>
 </footer>
 
+<script>
+  // The footer's top is a [data-reveal]: start the reveals on every page,
+  // also those with no sections of their own (legal, /how-privacy-works).
+  import { initMotion } from '../scripts/motion';
+  initMotion();
+</script>
+
 <style>
   .site-footer {
     background: var(--white);
@@ -85,8 +92,13 @@ const cols = [
     color: var(--text-primary);
   }
   .footer__wordmark {
+    display: block;
     width: auto;
     height: 30px;
+  }
+  .footer__wordmark :global(svg) {
+    width: auto;
+    height: 100%;
   }
   .footer__brand p {
     color: var(--text-secondary);
@@ -163,6 +175,35 @@ const cols = [
     font-size: 12px;
     line-height: 18px;
   }
+  .site-footer--navy {
+    --edge-t: var(--edge-navy-bottom);
+    --edge-b: var(--edge-navy-bottom);
+    /* --wash-navy's end stop exactly, so there is no step at the seam. */
+    background: oklab(23% -0.004 -0.069);
+    color-scheme: dark;
+  }
+  .site-footer--navy :focus-visible {
+    outline-color: var(--white);
+  }
+  .site-footer--navy .footer__home,
+  .site-footer--navy .footer__col a,
+  .site-footer--navy .footer__made {
+    color: var(--white);
+  }
+  .site-footer--navy .footer__col a:hover {
+    color: var(--blue-300);
+  }
+  .site-footer--navy .footer__brand p,
+  .site-footer--navy .footer__title,
+  .site-footer--navy .footer__meta {
+    color: var(--on-navy);
+  }
+  .site-footer--navy .footer__legal {
+    color: rgb(255 255 255 / 60%);
+  }
+  .site-footer--navy .footer__bottom {
+    border-top-color: rgb(255 255 255 / 12%);
+  }
   @media (min-width: 768px) {
     .footer__col--site {
       display: block;
@@ -198,8 +239,9 @@ const cols = [
     .footer__only {
       display: inline;
     }
+    /* 48 apart until 1200, so the brand and three columns fit the container. */
     .footer__cols {
-      gap: 72px;
+      gap: 48px;
     }
     .footer__col {
       flex: none;
@@ -238,6 +280,11 @@ const cols = [
       flex: none;
       width: 520px;
       text-align: right;
+    }
+  }
+  @media (min-width: 1200px) {
+    .footer__cols {
+      gap: 72px;
     }
   }
 </style>

@@ -1,24 +1,19 @@
 ---
 import Wordmark from './Wordmark.astro';
 import Icon from './Icon.astro';
+import { NAV as PAGES } from '../data/site';
 
 interface Props {
   /** full: landing, legal, 404. invite: /i. minimal: /freeze (lockup only). */
   variant?: 'full' | 'invite' | 'minimal';
 }
 const { variant = 'full' } = Astro.props;
-/* How it works and FAQ are landing-page sections: hash links from every page;
-   the router scrolls to the section. They carry no data-nav-link, so nav.ts
-   leaves them unmarked (all of them would match "/"). Privacy (the How privacy works page) is
-   its own page, so nav.ts marks it current there. Banks stays a homepage
-   section, not a nav item. */
-const NAV: readonly { href: string; label: string; page?: true }[] = [
-  { href: '/#how-it-works', label: 'How it works' },
-  { href: '/how-privacy-works', label: 'Privacy', page: true },
-  { href: '/#faq', label: 'FAQ' },
-];
+/* Every item is its own page (the detail pages in src/data/site.ts), so
+   nav.ts marks the current one. The bar says "Privacy" for short. Banks stays
+   a homepage section, not a nav item. */
+const NAV = PAGES.map((item) => ({ ...item, label: item.href === '/how-privacy-works' ? 'Privacy' : item.label }));
 /* /i keeps its own "How privacy works" button, so its links leave it out. */
-const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
+const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-privacy-works') : NAV;
 /*
  * Client-side navigation (<ClientRouter /> in Base.astro): the header is kept,
  * not re-rendered, between pages with the same variant, so its markup must be
@@ -41,7 +36,7 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
         <ul class="nav__links" role="list">
           {links.map((item) => (
             <li>
-              <a class="nav__link" href={item.href} data-nav-link={item.page ? '' : undefined}>
+              <a class="nav__link" href={item.href} data-nav-link>
                 {item.label}
               </a>
             </li>
@@ -53,7 +48,7 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
     {
       variant === 'full' && (
         <div class="nav__cta">
-          <a class="nav__code" href="/#invite">
+          <a class="nav__code" href="/i">
             Have a code?
           </a>
           <a class="btn btn--primary btn--nav" href="/#invite" data-invite-cta>
@@ -88,7 +83,7 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
         <ul role="list">
           {NAV.map((item) => (
             <li>
-              <a href={item.href} data-nav-link={item.page ? '' : undefined}>
+              <a href={item.href} data-nav-link>
                 {item.label}
               </a>
             </li>
@@ -97,6 +92,11 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
         <a class="btn btn--primary" href="/#invite">
           Request an invite
         </a>
+        {variant === 'full' && (
+          <a class="nav__menu-code" href="/i">
+            Have a code?
+          </a>
+        )}
       </div>
     )
   }
@@ -286,7 +286,10 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
     scale: 0.95;
   }
 
+  /* .site-nav lets taps through to the page; the open menu must take them,
+     or a tap falls through to the backdrop and only light-dismisses it. */
   .nav__menu {
+    pointer-events: auto;
     inset: 80px 16px auto;
     width: auto;
     max-width: 420px;
@@ -335,6 +338,15 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
   }
   .nav__menu .btn {
     width: 100%;
+  }
+  .nav__menu-code {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 500;
   }
   .nav__menu::backdrop {
     background: rgb(0 0 0 / 12%);
