@@ -527,13 +527,23 @@ public struct MetaResponse: Codable, Sendable, Hashable {
   public let rp_id: String?
   public let min_ios_build: Int?
   public let gmail_watch_topic: String?
+  /// The Graph subscription's `notificationUrl` and `lifecycleNotificationUrl`; both null when
+  /// the server relays no Outlook push.
+  public let outlook_notification_url: String?
+  public let outlook_lifecycle_url: String?
   public let log_generation: Int64?
   public let server_time: String?
 
-  public init(rp_id: String? = nil, min_ios_build: Int? = nil, gmail_watch_topic: String? = nil, log_generation: Int64? = nil, server_time: String? = nil) {
+  public init(
+    rp_id: String? = nil, min_ios_build: Int? = nil, gmail_watch_topic: String? = nil,
+    outlook_notification_url: String? = nil, outlook_lifecycle_url: String? = nil, log_generation: Int64? = nil,
+    server_time: String? = nil
+  ) {
     self.rp_id = rp_id
     self.min_ios_build = min_ios_build
     self.gmail_watch_topic = gmail_watch_topic
+    self.outlook_notification_url = outlook_notification_url
+    self.outlook_lifecycle_url = outlook_lifecycle_url
     self.log_generation = log_generation
     self.server_time = server_time
   }

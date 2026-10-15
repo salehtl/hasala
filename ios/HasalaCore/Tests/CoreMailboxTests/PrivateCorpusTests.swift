@@ -2,6 +2,7 @@
 // (the private normalizer fixtures, the same raw messages the conformance suite reads). Disabled
 // by name without it. Never prints or records content: only counts and fixture names.
 import CoreJSON
+import CoreMail
 import CoreMailbox
 import CorePrimitives
 import CoreTemplate
@@ -33,7 +34,7 @@ struct PrivateCorpusDispositionTests {
       let from = MailHeadersForTest.from(raw)
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: ms, topLevelFrom: from, templates: templates, bankDomains: banks,
-        trusted: banks)
+        trusted: banks, analyze: AuthResults.analyze)
       let fromBank = BankDomains.isMember(BankDomains.domainOf(from), of: banks)
       switch r {
       case .setAside:
@@ -71,12 +72,12 @@ struct PrivateGmailDeliveredTests {
       let raw = [UInt8](try Data(contentsOf: root.appendingPathComponent(f)))
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
-        templates: templates, bankDomains: banks, trusted: banks)
+        templates: templates, bankDomains: banks, trusted: banks, analyze: AuthResults.analyze)
       guard case .mail(let m) = r else {
         Issue.record("\(f): set aside")
         continue
       }
-      let d = MessageDisposer.finalize(m, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      let d = MessageDisposer.finalize(m, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
       // Filing needs a passing verdict for a trusted domain; anything else is review.
       if !(m.gates.ar == "pass" && m.gates.senderTrusted) || m.gates.forwarded { #expect(d.needsReview, "\(f)") }
     }
