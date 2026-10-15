@@ -245,6 +245,9 @@ html[data-edge='soft'] {
 html[data-edge='legal'] {
   --edge-top: var(--edge-legal);
 }
+html[data-edge='navy'] {
+  --edge-top: var(--edge-navy-top);
+}
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
