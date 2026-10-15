@@ -35,6 +35,8 @@
     var outlookCancelled = false
     /// Every connect finds the mailbox already connected.
     var alreadyConnected = false
+    /// Every connect finds no network.
+    var offline = false
     /// Each `connect` call, whatever its outcome (tests: no second sign-in on Back).
     private(set) var connectCalls = 0
     private(set) var sampleLoaded = false
@@ -95,6 +97,7 @@
     func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
       connectCalls += 1
       try? await Task.sleep(for: connectDelay)
+      if offline { throw .offline }
       if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
       if provider == .outlook, outlookCancelled { throw .cancelled }
       guard !alreadyConnected, let address = nextAddress(provider) else {

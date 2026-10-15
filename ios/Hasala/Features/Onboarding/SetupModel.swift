@@ -274,11 +274,12 @@ final class SetupModel {
     go(.scan)
   }
 
-  /// A connect failure as the setup banner shows it (a closed sign-in shows nothing).
+  /// A connect failure as the setup banner shows it (a closed sign-in shows nothing), in
+  /// the provider's words: offline, "Connect Gmail when you're back online", not setup's
+  /// generic offline line.
   static func setupFailure(_ f: MailConnectFailure, _ provider: MailProviderKind) -> SetupFailure {
     switch f {
     case .cancelled: .cancelled
-    case .offline: .offline
     default: .failed(f.message(for: provider) ?? "")
     }
   }

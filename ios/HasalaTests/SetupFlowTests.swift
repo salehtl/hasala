@@ -57,6 +57,20 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.step == .notifications)
   }
 
+  /// Offline, the email step says so in the provider's words (spec copy), and stays put.
+  @Test func anOfflineConnectNamesTheProvider() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.offline = true
+    let m = SetupModel(services: s, displayName: "Maya", facts: .init(hasSession: true, keysReady: true)) {}
+    await m.continueWithBanks()
+    await m.connectMail(.gmail)
+    #expect(m.failure?.message == "You're offline. Connect Gmail when you're back online.")
+    #expect(m.path == [.connect(.gmail)] && m.facts.mailbox == .unlinked)
+    #expect(SetupModel.setupFailure(.offline, .outlook).message == "You're offline. Connect Outlook when you're back online.")
+    #expect(SetupModel.setupFailure(.cancelled, .gmail) == .cancelled)
+  }
+
   /// A relaunch mid-scan follows the scan again, and Back walks the real steps before the
   /// derived one (plan B3.3: an honest back stack, built once).
   @Test func setupResumedWithTheScanStillRunningGoesOnToNotifications() {
