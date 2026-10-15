@@ -83,10 +83,14 @@ struct StoriesView: View {
     self.onGetStarted = onGetStarted
     self.onSignIn = onSignIn
     let start = min(max(page.wrappedValue, 0), Stories.all.count - 1)
+    startPage = start
     _position = State(initialValue: ScrollPosition(id: start))
     _pager = State(initialValue: StoryPagerMotion(position: Double(start)))
   }
 
+  /// The story the pager opened on (the store's page): a re-made gate, a relaunch of the
+  /// view, or a screen launch lands there, not on story 1.
+  private let startPage: Int
   @State private var position: ScrollPosition
   @State private var pager: StoryPagerMotion
   @State private var clock = StoryClock()
@@ -97,6 +101,8 @@ struct StoriesView: View {
   /// The person's finger is on the pager, or it is still coasting from a swipe.
   @State private var dragging = false
   @State private var onScreen = false
+  /// The pager has been put on the store's page.
+  @State private var placed = false
   @State private var copyIn = false
   /// The Reduce Motion cross-fade between stories.
   @State private var fading = false
@@ -225,6 +231,20 @@ struct StoriesView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition($position)
+        // A scroll position's first id isn't applied while the pages have no width yet, so
+        // the pager goes to the store's page once they are laid out.
+        .onScrollGeometryChange(for: Bool.self) { g in
+          g.containerSize.width > 0 && g.contentSize.width > g.containerSize.width
+        } action: { _, laidOut in
+          guard laidOut, !placed else { return }
+          placed = true
+          guard startPage != 0 else { return }
+          Task { @MainActor in
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { position.scrollTo(id: page) }
+          }
+        }
         .scrollIndicators(.hidden)
         .onScrollGeometryChange(for: Double.self) { g in
           Double(g.contentOffset.x / max(1, g.containerSize.width))
