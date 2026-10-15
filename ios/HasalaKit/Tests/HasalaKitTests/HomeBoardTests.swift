@@ -2,6 +2,8 @@ import HasalaMocks
 import HasalaModels
 import Testing
 
+@testable import HasalaDesign
+
 // The Home board read models: the canvas layout and the Maya hero (owned by P5).
 
 @Suite("Home canvas")
@@ -62,5 +64,16 @@ struct MayaTests {
 
   @Test func goalPercentRoundsDown() {
     #expect(GoalWidget(name: "x", glyph: .flag, progress: Permille(999), caption: "").percentLabel == "99%")
+  }
+}
+
+/// The bell's rows read their when-label in words (page 15 §15.2: "…, Thursday, button").
+@Suite("Notification rows")
+struct NotificationRowTests {
+  @Test func whenReadsInWords() {
+    #expect(NotificationRow.spokenWhen("Thu") == "Thursday")
+    #expect(NotificationRow.spokenWhen("28 Sep") == "28 September")
+    #expect(NotificationRow.spokenWhen("Today") == "Today")
+    #expect(NotificationRow.spokenWhen("9:12") == "9:12")
   }
 }

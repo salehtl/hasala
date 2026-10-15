@@ -7,9 +7,9 @@ import SwiftUI
 /// and the when-label 13/18 with a 16 chevron, top-aligned. At least 64 tall, padding 12/16,
 /// gap 12; the divider between rows is inset 68.
 ///
-/// One VoiceOver stop: title, line, then when ("AXA Insurance may be late, Usually on the 7th ·
-/// no email yet, Thu"). At the accessibility sizes the disc sits above the words and the
-/// when-label under them.
+/// One VoiceOver stop: title, line, then when, in words ("AXA Insurance may be late, Usually
+/// on the 7th, no email yet, Thursday", page 15 §15.2). At the accessibility sizes the disc
+/// sits above the words and the when-label under them.
 public struct NotificationRow: View {
   let item: NotificationItem
   let hidden: Bool
@@ -91,8 +91,22 @@ public struct NotificationRow: View {
   @ScaledMetric(relativeTo: .footnote) private var dotLane: CGFloat = 18
 
   private var spoken: String {
-    [item.title, item.line.spoken(hidden: hidden), item.when].compactMap { $0 }.joined(separator: ", ")
+    [item.title, item.line.spoken(hidden: hidden).replacingOccurrences(of: " · ", with: ", "),
+     item.when.map(Self.spokenWhen)].compactMap { $0 }.joined(separator: ", ")
   }
+
+  /// "Thu" reads "Thursday" and "28 Sep" "28 September"; "Today" and "9:12" stay.
+  nonisolated static func spokenWhen(_ when: String) -> String {
+    let words = when.split(separator: " ").map { Self.fullNames[String($0)] ?? String($0) }
+    return words.joined(separator: " ")
+  }
+
+  private nonisolated static let fullNames: [String: String] = [
+    "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday", "Fri": "Friday",
+    "Sat": "Saturday", "Sun": "Sunday", "Jan": "January", "Feb": "February", "Mar": "March", "Apr": "April",
+    "Jun": "June", "Jul": "July", "Aug": "August", "Sep": "September", "Oct": "October", "Nov": "November",
+    "Dec": "December",
+  ]
 }
 
 /// The all-clear state of the sheet (Paper 12AC-0): a 56 success disc with a 26 check, "Nothing
