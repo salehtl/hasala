@@ -52,6 +52,21 @@ public struct BillRowModel: Sendable, Hashable, Identifiable {
   public var isIncome: Bool
   /// Under the amount: "in 4 days", "● 3 days late".
   public var trailingNote: PlanDetailPart?
+
+  public init(
+    id: String, name: String, glyph: Glyph, hue: Hue, detail: [PlanDetailPart], amount: Money,
+    approximate: Bool = false, isIncome: Bool = false, trailingNote: PlanDetailPart? = nil
+  ) {
+    self.id = id
+    self.name = name
+    self.glyph = glyph
+    self.hue = hue
+    self.detail = detail
+    self.amount = amount
+    self.approximate = approximate
+    self.isIncome = isIncome
+    self.trailingNote = trailingNote
+  }
 }
 
 public struct DayGroup: Sendable, Hashable, Identifiable {

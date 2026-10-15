@@ -1,13 +1,13 @@
 import HasalaModels
 import SwiftUI
 
-// Content cards (white on the grouped canvas): brief cards, stat tiles, list cards.
+// Content cards (Paper page 15 §02): solid white, radius 24, on the grey canvas. Only cards that
+// ask you to act get a shadow; glass is never used for content.
 
 public extension View {
-  /// The two-layer card shadow Paper uses on brief cards (`--color-elevation-*`).
+  /// The two-layer card shadow Paper uses on cards that stand alone (`--color-elevation-*`).
   func elevation() -> some View {
-    shadow(color: HColor.elevationNear, radius: 1, x: 0, y: 1)
-      .shadow(color: HColor.elevationFar, radius: 12, x: 0, y: 8)
+    hElevation(.nearFar)
   }
 
   /// A white list card, r24 (Paper "kit Lists and cards").
@@ -16,21 +16,85 @@ public extension View {
   }
 }
 
-/// A brief card on the Needs-you rail (Paper "kit Brief card"): a hue poster (at least 120 pt)
-/// over a white body with a primary and a "Later"-style secondary button. 272 wide; full width,
-/// with stacked buttons, at the accessibility text sizes (spec 04 §17).
+/// A card that asks for a decision (page 15 · Brief card, page 16 §12): a hue poster with a
+/// glyph plate, a label, a status pill and the figure, over a white body with a primary and a
+/// secondary button, 44 tall. Bills stacks them full width (poster 104); the Core kit's 272 card
+/// with a 120 poster is the first rail's, kept for its one remaining caller. At the
+/// accessibility sizes the buttons stack, primary on top.
 public struct BriefCard: View {
-  let card: NeedsYouCard
+  public enum Poster: Sendable {
+    /// 104 tall, padding 13/16, body 15/20 primary (Bills).
+    case short104
+    /// 120 tall, padding 14/16, a title 17/24 over a 15/20 secondary line.
+    case tall120
+  }
+
+  let id: String?
+  let hue: Hue
+  let icon: HIcon
+  let label: String
+  let status: StatusPill
+  let figure: PosterFigure
+  let figureCaption: String?
+  let title: String?
+  let message: MoneyPhrase
+  let primaryTitle: String
+  let secondaryTitle: String
+  let secondaryWidth: CGFloat
+  let poster: Poster
+  let width: CGFloat?
   let hidden: Bool
   let onPrimary: () -> Void
   let onSecondary: () -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
   private var accessibilityLayout: Bool { typeSize.isAccessibilitySize }
 
+  /// A Needs-you card on the 272 rail (identifier "needsYou.<id>"). Kept until Stage I.
   public init(
     _ card: NeedsYouCard, hidden: Bool, onPrimary: @escaping () -> Void = {}, onSecondary: @escaping () -> Void = {}
   ) {
-    self.card = card
+    self.id = "needsYou.\(card.id)"
+    self.hue = card.hue
+    self.icon = card.glyph.icon
+    self.label = card.label
+    self.status = card.status
+    self.figure = card.figure
+    self.figureCaption = nil
+    self.title = card.title
+    self.message = card.subtitle
+    self.primaryTitle = card.primaryAction
+    self.secondaryTitle = card.secondaryAction
+    self.secondaryWidth = 88
+    self.poster = .tall120
+    self.width = HContainer.briefCard
+    self.hidden = hidden
+    self.onPrimary = onPrimary
+    self.onSecondary = onSecondary
+  }
+
+  /// A decision card. `figureCaption` follows the figure in on-hue secondary ("every month");
+  /// `title` is the tall poster's headline. Rose is for a bill that may be late only, sand for a
+  /// price change, sky for a new bill.
+  public init(
+    hue: Hue, icon: HIcon, label: String, status: StatusPill, figure: PosterFigure, figureCaption: String? = nil,
+    title: String? = nil, body: MoneyPhrase, primaryTitle: String, secondaryTitle: String,
+    secondaryWidth: CGFloat = 128, poster: Poster = .short104, width: CGFloat? = nil, hidden: Bool,
+    onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void
+  ) {
+    self.id = nil
+    self.hue = hue
+    self.icon = icon
+    self.label = label
+    self.status = status
+    self.figure = figure
+    self.figureCaption = figureCaption
+    self.title = title
+    self.message = body
+    self.primaryTitle = primaryTitle
+    self.secondaryTitle = secondaryTitle
+    self.secondaryWidth = secondaryWidth
+    self.poster = poster
+    self.width = width
     self.hidden = hidden
     self.onPrimary = onPrimary
     self.onSecondary = onSecondary
@@ -38,197 +102,105 @@ public struct BriefCard: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      poster
+      posterView
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
-          Text(card.title).hType(.headline).foregroundStyle(HColor.textPrimary).singleLineAtDefaultTextSize()
-          Text(card.subtitle.rendered(hidden: hidden))
-            .hType(.subheadline).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
-            .accessibilityLabel(card.subtitle.spoken(hidden: hidden))
-        }
-        if accessibilityLayout {
-          VStack(spacing: 8) {
-            Button(card.primaryAction, action: onPrimary)
-              .buttonStyle(.pill(.primary, size: .medium, fill: true))
-            Button(card.secondaryAction, action: onSecondary)
-              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+          if let title {
+            Text(title).hType(.headline).foregroundStyle(HColor.textPrimary).singleLineAtDefaultTextSize()
           }
-        } else {
-          HStack(spacing: 8) {
-            Button(card.primaryAction, action: onPrimary)
-              .buttonStyle(.pill(.primary, size: .medium, fill: true))
-              .layoutPriority(1)
-            Button(card.secondaryAction, action: onSecondary)
-              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
-              .frame(width: 88)
-          }
+          Text(message.rendered(hidden: hidden))
+            .hType(.subheadline)
+            .foregroundStyle(title == nil ? HColor.textPrimary : HColor.textSecondary)
+            // A title's line is one line at the default size; a body alone may take three.
+            .lineLimitAtDefaultTextSize(title == nil ? 3 : 1)
+            .accessibilityLabel(message.spoken(hidden: hidden))
         }
+        buttons
       }
-      .padding(EdgeInsets(top: 14, leading: 16, bottom: 16, trailing: 16))
+      .padding(EdgeInsets(top: poster == .tall120 ? 14 : 12, leading: 16, bottom: poster == .tall120 ? 16 : 14,
+                          trailing: 16))
     }
-    .frame(width: accessibilityLayout ? nil : HContainer.briefCard)
-    .frame(maxWidth: accessibilityLayout ? .infinity : nil)
+    .frame(width: accessibilityLayout ? nil : width)
+    .frame(maxWidth: accessibilityLayout || width == nil ? .infinity : nil)
     .background(HColor.surfacePrimary)
     .clipShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
-    .elevation()
+    .hElevation(.nearFar)
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("needsYou.\(card.id)")
+    .modifier(OptionalIdentifier(id: id))
   }
 
-  private var poster: some View {
+  @ViewBuilder private var buttons: some View {
+    if accessibilityLayout {
+      VStack(spacing: 8) {
+        Button(primaryTitle, action: onPrimary).buttonStyle(.pill(.primary, size: .medium, fill: true))
+        Button(secondaryTitle, action: onSecondary).buttonStyle(.pill(.secondary, size: .medium, fill: true))
+      }
+    } else {
+      HStack(spacing: 8) {
+        Button(primaryTitle, action: onPrimary)
+          .buttonStyle(.pill(.primary, size: .medium, fill: true))
+          .layoutPriority(1)
+        Button(secondaryTitle, action: onSecondary)
+          .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+          .frame(width: secondaryWidth)
+      }
+    }
+  }
+
+  private var posterView: some View {
     VStack(alignment: .leading) {
       ReflowingRow(spacing: 6) {
-        posterLabel
+        HStack(spacing: 8) {
+          GlyphPlate(icon: icon, hue: hue, size: 32)
+          Text(label).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+            .singleLineAtDefaultTextSize()
+        }
       } trailing: {
-        StatusPillView(card.status)
+        StatusPillView(status)
       }
       Spacer(minLength: 8)
-      switch card.figure {
-      case .count(let n, let unit):
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Text("\(n)").hFigure(.large).foregroundStyle(HColor.textPrimary)
-          Text(unit).hFigure(.unit).foregroundStyle(HColor.textPrimary)
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        figureView
+        if let figureCaption {
+          Text(figureCaption).hType(.body).foregroundStyle(HColor.textOnHueSecondary)
         }
-        .accessibilityElement(children: .combine)
-      case .money(let m):
-        MoneyText(m, figure: .large, unit: .unit, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary,
-                  unitGap: 5)
-      case .word(let w):
-        Text(w).hFigure(.large).foregroundStyle(HColor.textPrimary)
       }
     }
     .padding(.horizontal, 16)
-    .padding(.vertical, 14)
-    // At least 120 pt; taller when the text needs it. fixedSize settles the height
+    .padding(.vertical, poster == .tall120 ? 14 : 13)
+    // At least the poster height; taller when the text needs it. fixedSize settles the height
     // first, so the spacer still pushes the figure to the bottom.
-    .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity, alignment: .topLeading)
+    .frame(maxWidth: .infinity, minHeight: poster == .tall120 ? 120 : 104, maxHeight: .infinity, alignment: .topLeading)
     .fixedSize(horizontal: false, vertical: true)
-    .background(card.hue.gradient)
+    .background(hue.perceptualGradient)
   }
 
-  private var posterLabel: some View {
-    HStack(spacing: 8) {
-      Circle().fill(HColor.posterGlyph).frame(width: 32, height: 32)
-        .overlay {
-          Image(systemName: card.glyph.symbolName)
-            .font(.system(size: 15, weight: .semibold)).foregroundStyle(card.hue.ink)
-        }
-        .accessibilityHidden(true)
-      Text(card.label).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-        .singleLineAtDefaultTextSize()
+  @ViewBuilder private var figureView: some View {
+    switch figure {
+    case .count(let n, let unit):
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text("\(n)").hFigure(.large).foregroundStyle(HColor.textPrimary)
+        Text(unit).hFigure(.unit).foregroundStyle(HColor.textPrimary)
+      }
+      .accessibilityElement(children: .combine)
+    case .money(let m):
+      MoneyText(m, figure: .large, unit: .unit, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary,
+                unitGap: 5)
+    case .word(let w):
+      Text(w).hFigure(.large).foregroundStyle(HColor.textPrimary)
     }
   }
 }
 
-/// A translucent stat tile on the hero wash: label over a rounded figure.
-public struct StatTile: View {
-  let stat: HeroStat
-  let hidden: Bool
+struct OptionalIdentifier: ViewModifier {
+  let id: String?
 
-  public init(_ stat: HeroStat, hidden: Bool) {
-    self.stat = stat
-    self.hidden = hidden
-  }
-
-  public var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(stat.label).hType(.footnote).foregroundStyle(HColor.textOnWashSecondary)
-        .singleLineAtDefaultTextSize()
-      MoneyText(stat.value, figure: HFigure.unit.weight(.bold), hidden: hidden, color: HColor.textPrimary)
-    }
-    .padding(.vertical, 12)
-    .padding(.horizontal, 14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(HColor.surfaceOnWash, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .accessibilityElement(children: .combine)
+  func body(content: Content) -> some View {
+    if let id { content.accessibilityIdentifier(id) } else { content }
   }
 }
 
-/// A two-line transaction row (Paper "kit Lists and cards"): disc, title over detail, trailing amount.
-/// At the accessibility text sizes the amount moves under the detail (spec 04 §17).
-public struct TxnRow: View {
-  let row: MiniTxnRow
-  let hidden: Bool
-  let compact: Bool
-  @Environment(\.dynamicTypeSize) private var typeSize
-
-  /// `compact` is the 48 pt widget row (32 pt disc, 15/20 type); otherwise the 64 pt list row.
-  public init(_ row: MiniTxnRow, hidden: Bool, compact: Bool = false) {
-    self.row = row
-    self.hidden = hidden
-    self.compact = compact
-  }
-
-  public var body: some View {
-    HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: HSpacing.listRowGap) {
-      if let monogram = row.monogram {
-        MonogramDisc(monogram, size: compact ? 32 : HSpacing.listRowLeadingDisc)
-      } else {
-        HueDisc(hue: row.hue, glyph: row.glyph, size: compact ? 32 : HSpacing.listRowLeadingDisc,
-                iconSize: compact ? 16 : 20)
-      }
-      VStack(alignment: .leading, spacing: 0) {
-        HStack(spacing: 6) {
-          if row.toReview {
-            Circle().fill(HColor.actionAccent).frame(width: 8, height: 8).accessibilityHidden(true)
-          }
-          Text(row.merchant).hType(compact ? .subheadline.weight(.semibold) : .rowTitle)
-            .foregroundStyle(HColor.listRowTitle).singleLineAtDefaultTextSize()
-        }
-        Text(row.detail).font(.custom(HWeight.regular.interFace, size: 13, relativeTo: .footnote))
-          .foregroundStyle(HColor.listRowSupporting).singleLineAtDefaultTextSize()
-        if typeSize.isAccessibilitySize { amount }
-      }
-      if !typeSize.isAccessibilitySize {
-        Spacer(minLength: 8)
-        amount.fixedSize()
-      }
-    }
-    .frame(maxWidth: .infinity, minHeight: compact ? 48 : HSpacing.listRowMinHeightTwoLine, alignment: .leading)
-    // One element with one label: a nested amount element would be its own tiny target.
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(spokenLabel)
-  }
-
-  private var spokenLabel: String {
-    let amount = hidden
-      ? "Amount hidden"
-      : (row.isIncome ? "plus " : "") + "\(row.amount.currency) \(MoneyFormat.string(row.amount.minor))"
-    return [row.toReview ? "To review" : nil, row.merchant, row.detail, amount].compactMap { $0 }
-      .joined(separator: ", ")
-  }
-
-  private var amount: some View {
-    MoneyText(row.amount, figure: compact ? .compact : .row, hidden: hidden, hiddenGlyphs: 3,
-              color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: row.isIncome ? .income : .none)
-  }
-}
-
-/// A grey disc with a merchant's first letter, for a merchant not sorted yet (Paper "L" for Lulu;
-/// spec 04 §14.6 `MonogramDisc`).
-public struct MonogramDisc: View {
-  let letter: String
-  let size: CGFloat
-
-  public init(_ letter: String, size: CGFloat = HSpacing.listRowLeadingDisc) {
-    self.letter = letter
-    self.size = size
-  }
-
-  public var body: some View {
-    Circle()
-      .fill(HColor.listRowMonogram)
-      .frame(width: size, height: size)
-      .overlay {
-        Text(letter)
-          .font(.custom(HWeight.semibold.interFace, size: size * 0.42))
-          .foregroundStyle(HColor.textPrimary)
-      }
-      .accessibilityHidden(true)
-  }
-}
-
-/// A screen-level placeholder for areas that are not built yet.
+/// A screen-level placeholder for areas that are not built yet (Debug only).
 public struct PlaceholderCard: View {
   let systemImage: String
   let title: String

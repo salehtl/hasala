@@ -1,0 +1,88 @@
+import HasalaModels
+import SwiftUI
+
+/// A 48 pt glass circle in screen chrome (page 10 "Glass for chrome, system for the OS.";
+/// page 13 headers, page 14 sheet headers): Hide amounts, Notifications, Back, Close, Add,
+/// More, Share, Filter, and the accent Done. Icon only: the label is for VoiceOver ("Back",
+/// "Notifications, 4 new", "Hide amounts"); the circle never holds text.
+///
+/// Native Liquid Glass (the system brightens it on press, so there is no custom pressed fill);
+/// solid with a hairline under Reduce Transparency. Dynamic Type does not grow the circle.
+public struct GlassIconButton: View {
+  let icon: HIcon
+  let label: String
+  let badge: Int?
+  let prominent: Bool
+  let selected: Bool?
+  let action: () -> Void
+  @Environment(\.isEnabled) private var isEnabled
+
+  /// `badge` draws the count top right (hidden at 0, "99+" past 99); put the count in `label`
+  /// too, since the badge is hidden from VoiceOver. `prominent` is the accent Done (one per
+  /// screen). `selected` marks a toggle such as Hide amounts.
+  public init(_ icon: HIcon, label: String, badge: Int? = nil, prominent: Bool = false, selected: Bool? = nil,
+              action: @escaping () -> Void)
+  {
+    self.icon = icon
+    self.label = label
+    self.badge = badge
+    self.prominent = prominent
+    self.selected = selected
+    self.action = action
+  }
+
+  public var body: some View {
+    Button(action: action) {
+      HIconView(icon, size: iconSize, color: iconColor)
+        .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+        .hGlass(in: Circle(), prominent: prominent)
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .overlay(alignment: .topLeading) {
+      if let badge {
+        CountBadge(badge, style: .glass20)
+          // Paper: left 29, top −3 on the 48 circle.
+          .offset(x: 29, y: -3)
+          .allowsHitTesting(false)
+      }
+    }
+    .accessibilityLabel(label)
+    .accessibilityAddTraits(selected == true ? .isSelected : [])
+  }
+
+  /// 22 for every glass glyph (`--spacing-icon-glass`), 24 for the two eye glyphs.
+  private var iconSize: CGFloat {
+    icon == .eye || icon == .eyeSlash ? HSpacing.iconLarge : HSpacing.iconGlass
+  }
+
+  private var iconColor: Color {
+    if !isEnabled { return HColor.controlNavigationDisabledForeground }
+    return prominent ? HColor.iconOnAccent : HColor.iconGlass
+  }
+}
+
+/// The Profile glass button: a 36 initial disc inside the glass, 6 in (page 10, Avatar). It
+/// opens Your profile from the Home header.
+public struct GlassAvatarButton: View {
+  let initial: String
+  let label: String
+  let action: () -> Void
+
+  public init(initial: String, label: String = "Profile", action: @escaping () -> Void) {
+    self.initial = initial
+    self.label = label
+    self.action = action
+  }
+
+  public var body: some View {
+    Button(action: action) {
+      AvatarDisc(initial: initial, size: 36)
+        .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+        .hGlass(in: Circle())
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(label)
+  }
+}
