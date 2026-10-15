@@ -105,7 +105,7 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
 <style>
   .site-nav {
     position: fixed;
-    inset: 16px 0 auto;
+    inset: calc(16px + env(safe-area-inset-top)) 0 auto;
     z-index: 50;
     pointer-events: none;
   }
@@ -117,7 +117,7 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    width: min(1200px, 100% - 32px);
+    width: min(1200px, 100% - max(32px, 2 * env(safe-area-inset-left), 2 * env(safe-area-inset-right)));
     height: 56px;
     margin-inline: auto;
     padding: 0 6px 0 16px;
@@ -411,7 +411,7 @@ const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
       width: calc(28px * 576.3 / 86);
     }
     .site-nav {
-      top: 24px;
+      top: calc(24px + env(safe-area-inset-top));
     }
     .nav {
       height: var(--nav-h);

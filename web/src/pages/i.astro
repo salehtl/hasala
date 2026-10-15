@@ -34,6 +34,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   noindex
   nav="invite"
   referrer="no-referrer"
+  edge="sky"
 >
   <section class="invite" id="invite" aria-labelledby="invite-title">
     <div class="container invite__inner">
@@ -199,6 +200,8 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 
 <style>
   .invite {
+    --edge-t: var(--edge-sky);
+    --edge-b: var(--white);
     position: relative;
     overflow: clip;
     background: var(--wash-hero-m);
