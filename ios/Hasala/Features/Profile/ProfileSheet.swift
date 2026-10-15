@@ -363,7 +363,7 @@ private struct ProfilePage: View {
     case .help:
       HelpPage()
     case .deleteAccount:
-      if let session { DeleteAccountPage(session: session) }
+      if let session { DeleteAccountView(session: session) }
     }
   }
 

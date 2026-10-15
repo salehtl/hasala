@@ -47,5 +47,5 @@ final class ProfileViewModel: ProfileModel {
   func setRule(_ id: RuleID, enabled: Bool) { app.perform(.setRuleEnabled(id, enabled)) }
 
   // Sign out and Delete your account run on the account session (`AccountService`), not
-  // the ledger: see ProfileSheet and DeleteAccountPage.
+  // the ledger: see ProfileSheet and DeleteAccountView.
 }

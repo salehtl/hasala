@@ -1,32 +1,6 @@
 import Foundation
 import Observation
 
-/// The signed-out routes: the stories, signup (C1, C1-P), sign-in (C2, C2-P), forgot
-/// password (C9 side N) and access recovery (C4). Paper page 14 sections 14.1-14.4.
-enum WelcomeRoute: Hashable {
-  case welcome
-  case invite
-  case aboutYou
-  case verifyEmail
-  case method
-  case password
-  case phraseIntro
-  case phraseShow
-  case accountReady
-  case signIn
-  case forgotEmail
-  case forgotCode
-  case forgotCheck
-  case forgotNewPassword
-  case forgotWaiting
-  case recoverIntro
-  case recoverWords
-  case recoverCode
-  case recoverMethod
-  case recoverPassword
-  case honestEnd
-}
-
 /// Signup state, shared by the screens of section 14.1 and 14.2 (spec 04 §6.2 "Signup").
 @MainActor
 @Observable

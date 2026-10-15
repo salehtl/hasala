@@ -21,7 +21,9 @@ struct RootView: View {
   var body: some View {
     #if HASALA_MOCKS
       if let mock {
-        AccountRootView(session: mock.session) { MainView(app: mock.app) }
+        AccountRootView(session: mock.session, onboarding: mock.onboarding, setupFacts: mock.setupFacts) {
+          MainView(app: mock.app)
+        }
       } else {
         LiveRootView()
       }
@@ -42,7 +44,7 @@ struct LiveRootView: View {
       if boot.state == .waiting || boot.waitingForRuntime && !isReady {
         LaunchView()
       } else {
-        AccountRootView(session: boot.session, setupFacts: boot.setupFacts) {
+        AccountRootView(session: boot.session, onboarding: boot.onboarding, setupFacts: boot.setupFacts) {
           if let app = boot.app {
             MainView(app: app).id(boot.generation)
           } else {
@@ -89,27 +91,34 @@ struct LaunchView: View {
 }
 
 #if HASALA_MOCKS
-  /// A Debug mock scenario (`-HasalaScenario <name>`): the Maya ledger in memory and the
-  /// account mock's starting state.
+  /// A Debug mock scenario (`-HasalaScenario <name>`): the Maya ledger in memory, the
+  /// account mock's starting state, and the process's one onboarding store (`RootView`
+  /// keeps this graph for the process).
   @MainActor
   final class MockGraph {
     let app: AppModel
     let session: AccountSession
+    let onboarding: OnboardingStore
+    /// Where setup resumes in this scenario.
+    let setupFacts: OnboardingStep.Facts
 
-    init(app: AppModel, session: AccountSession) {
+    init(app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts) {
       self.app = app
       self.session = session
+      self.setupFacts = setupFacts
+      onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
 
     static func fromLaunchArguments(_ arguments: [String]) -> MockGraph? {
       guard arguments.contains("-HasalaScenario") else { return nil }
       let scenario = Scenario.fromLaunchArguments(arguments)
-      let session = AuthScenario.session(for: AuthScenario.fromLaunchArguments(arguments))
+      let auth = AuthScenario.fromLaunchArguments(arguments)
+      let session = AuthScenario.session(for: auth)
       return MockGraph(
         app: AppModel(
           store: InMemoryLedger(state: scenario.state, now: MayaLedger.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox),
-        session: session)
+        session: session, setupFacts: AuthScenario.setupFacts(for: auth))
     }
   }
 #endif
