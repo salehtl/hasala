@@ -62,7 +62,7 @@ const cols = [
 <style>
   .site-footer {
     background: var(--white);
-    padding: 40px 0 48px;
+    padding: 40px 0 calc(48px + env(safe-area-inset-bottom));
   }
   .footer {
     display: flex;
@@ -173,7 +173,7 @@ const cols = [
   }
   @media (min-width: 1024px) {
     .site-footer {
-      padding: 72px 0 56px;
+      padding: 72px 0 calc(56px + env(safe-area-inset-bottom));
     }
     .footer {
       gap: 64px;

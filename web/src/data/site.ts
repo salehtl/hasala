@@ -18,7 +18,6 @@ export const SITE = {
   privacyEmail: 'privacy@hasala.app',
   securityEmail: 'security@hasala.app',
   mailFrom: 'no-reply@hasala.app',
-  themeColor: '#E6EEFF',
   ogImage: '/og-image.png',
   ogImageAlt: 'Hasala: a private budgeting app that shows where your money goes. For iPhone, in the UAE.',
   testFlightAppStore: 'https://apps.apple.com/app/testflight/id899247664',
