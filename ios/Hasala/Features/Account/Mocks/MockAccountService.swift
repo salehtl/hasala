@@ -18,8 +18,6 @@
     static let existingPassword = "copper lantern quietly 42"
     /// A valid phrase from fixed entropy 01…10 (synthetic).
     static let phraseWords: [String] = (try? Phrase.words(entropy: Data((1...16).map { UInt8($0) }))) ?? []
-    /// Paper's "Word 3, 7, 9, 12".
-    static let confirmPositions = [2, 6, 8, 11]
     /// Invite codes that start with this are "not found".
     static let unknownInvitePrefix = "ZZZZ"
 
@@ -115,7 +113,7 @@
     }
 
     func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
-      RecoveryPhrase(words: Self.phraseWords, confirmPositions: Self.confirmPositions)
+      RecoveryPhrase(words: Self.phraseWords)
     }
 
     func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)

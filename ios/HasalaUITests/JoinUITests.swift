@@ -49,21 +49,15 @@ final class JoinUITests: XCTestCase {
     tap(app, "method.continue")
 
     tap(app, "phrase.start")
+    // "I've written them down" waits until the words were shown (Paper F6Q).
+    XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10))
+    XCTAssertFalse(el(app, "phrase.written").isEnabled)
     tap(app, "phrase.reveal")
     XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
     attach(app, "Recovery phrase · revealed")
-    tap(app, "phrase.written")
-
-    // A wrong word is marked and taken back by tapping it.
-    tap(app, "chip.avoid")
-    XCTAssertTrue(app.staticTexts["That isn't word 3. Check your paper, then tap the word to take it back."]
-      .waitForExistence(timeout: 5))
-    attach(app, "Check 4 words · wrong word")
-    tap(app, "phrase.slot.0")
-    for w in ["scissors", "category", "army", "camera"] { tap(app, "chip.\(w)") }
-    attach(app, "Check 4 words · done")
     try audit(app)
-    tap(app, "phrase.confirm")
+    // "I've written them down" publishes the account: there is no word check.
+    tap(app, "phrase.written")
 
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     attach(app, "Account ready")
@@ -124,7 +118,7 @@ final class JoinUITests: XCTestCase {
   }
 
   /// C1 killed before its bootstrap, then relaunched (spec 04 §6.2 "C1 interrupted"):
-  /// a new phrase, the four-word check, then setup at the bank.
+  /// a new phrase, shown, then setup at the bank.
   @MainActor
   func testRelaunchAfterAnInterruptedSignupMakesNewWords() throws {
     let app = launch(scenario: "relaunchInterrupted")
@@ -136,8 +130,6 @@ final class JoinUITests: XCTestCase {
     tap(app, "phrase.reveal")
     XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
     tap(app, "phrase.written")
-    for w in ["scissors", "category", "army", "camera"] { tap(app, "chip.\(w)") }
-    tap(app, "phrase.confirm")
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     tap(app, "ready.continue")
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10))

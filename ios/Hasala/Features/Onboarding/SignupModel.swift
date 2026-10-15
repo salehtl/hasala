@@ -12,7 +12,6 @@ enum WelcomeRoute: Hashable {
   case password
   case phraseIntro
   case phraseShow
-  case phraseConfirm
   case accountReady
   case signIn
   case forgotEmail
@@ -69,15 +68,12 @@ final class SignupModel {
 
   // Phrase (§6.7)
   private(set) var phrase: RecoveryPhrase?
-  var phraseRevealed = false
-  /// The chips (indices into `choices`) placed in the four slots, in order of the slots.
-  /// Chips, not words: two asked positions can hold the same word (spec 04 §6.7).
-  private(set) var placedChips: [Int?] = [nil, nil, nil, nil]
-  /// The words in the four slots.
-  var placed: [String?] {
-    let c = choices
-    return placedChips.map { $0.flatMap { c.indices.contains($0) ? c[$0] : nil } }
+  var phraseRevealed = false {
+    didSet { if phraseRevealed { phraseSeen = true } }
   }
+  /// The words were shown to the person at least once. Nothing is published before
+  /// (`docs/decisions/recovery-phrase-no-quiz.md`): there is no word check after them.
+  private(set) var phraseSeen = false
 
   private(set) var ticket: SignupTicket?
   /// C1 interrupted (spec 04 §6.2): a NEW phrase for an account that exists without
@@ -277,56 +273,14 @@ final class SignupModel {
   private func startPhrase() throws(AuthFailure) {
     phrase = try account.makeRecoveryPhrase()
     phraseRevealed = false
-    placedChips = [nil, nil, nil, nil]
+    phraseSeen = false
   }
 
-  var askedPositions: [Int] { phrase?.confirmPositions ?? [] }
-  var choices: [String] { phrase.map(PhraseRules.confirmChoices) ?? [] }
-
-  /// The slot's state: empty, right or wrong.
-  enum SlotState: Equatable { case empty, right, wrong }
-
-  func slotState(_ i: Int) -> SlotState {
-    guard let phrase, let word = placed[i] else { return .empty }
-    return phrase.words[phrase.confirmPositions[i]] == word ? .right : .wrong
-  }
-
-  var wrongSlot: Int? { (0..<4).first { slotState($0) == .wrong } }
-  var confirmedCount: Int { (0..<4).filter { slotState($0) == .right }.count }
-  var phraseConfirmed: Bool { confirmedCount == 4 }
-
-  func isChipUsed(_ chip: Int) -> Bool { placedChips.contains(chip) }
-
-  /// Tapping a chip fills the first empty slot (unless a wrong word is waiting to be
-  /// taken back).
-  func placeChip(_ chip: Int) {
-    guard wrongSlot == nil, choices.indices.contains(chip), !isChipUsed(chip),
-      let i = placedChips.firstIndex(where: { $0 == nil })
-    else { return }
-    placedChips[i] = chip
-  }
-
-  /// Places the first unused chip showing `word`.
-  func place(_ word: String) {
-    guard let chip = choices.indices.first(where: { choices[$0] == word && !isChipUsed($0) }) else { return }
-    placeChip(chip)
-  }
-
-  /// Tapping a filled slot takes its word back.
-  func takeBack(_ i: Int) {
-    placedChips[i] = nil
-  }
-
-  func showWordsAgain() {
-    placedChips = [nil, nil, nil, nil]
-    phraseRevealed = false
-    if let i = path.lastIndex(of: .phraseShow) { path.removeSubrange((i + 1)...) }
-  }
-
-  /// Publishes the keys (C1 steps 10-16 / C1-P's `password/register`). Nothing reaches
-  /// the server before the four words are confirmed.
+  /// "I've written them down": publishes the keys (C1 steps 10-16 / C1-P's
+  /// `password/register`). Nothing reaches the server before the words were shown to the
+  /// person; there is no word check (`docs/decisions/recovery-phrase-no-quiz.md`).
   func finish() async {
-    guard phraseConfirmed, let phrase, replacing || ticket != nil else { return }
+    guard phraseSeen, let phrase, replacing || ticket != nil else { return }
     busy = true
     defer { busy = false }
     let credential: NewCredential = method == .passkey ? .passkey : .password(newPassword)
@@ -338,7 +292,6 @@ final class SignupModel {
       }
       // The phrase leaves memory once it is published.
       self.phrase = nil
-      placedChips = [nil, nil, nil, nil]
       newPassword = ""
       confirmPassword = ""
       failure = nil

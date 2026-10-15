@@ -107,9 +107,6 @@ struct AccountRulesTests {
   @Test func generatedPhrasesValidate() throws {
     let p = try PhraseRules.generate()
     #expect(p.words.count == 12)
-    #expect(p.confirmPositions.count == 4)
-    #expect(p.confirmPositions == p.confirmPositions.sorted())
-    #expect(Set(p.confirmPositions).count == 4)
     if case .failure = PhraseRules.validate(p.words.joined(separator: "  ")) { Issue.record("own phrase refused") }
   }
 
@@ -122,14 +119,6 @@ struct AccountRulesTests {
     let bad = Array(repeating: "abandon", count: 12)
     guard case .failure(.badPhrase(let c)) = PhraseRules.validate(bad.joined(separator: " ")) else { Issue.record("checksum"); return }
     #expect(c.hasPrefix("Every word is real"))
-  }
-
-  @Test func confirmChoicesHoldTheAskedWords() throws {
-    let p = try PhraseRules.generate()
-    let choices = PhraseRules.confirmChoices(p)
-    for i in p.confirmPositions { #expect(choices.contains(p.words[i])) }
-    #expect(choices.count <= 8)
-    #expect(Set(choices).count == choices.count)
   }
 
   @Test func suggestionsComeFromTheList() {

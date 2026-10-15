@@ -37,9 +37,9 @@ struct BootCheckView: View {
 }
 
 /// C1 interrupted (spec 04 §6.2, §6.5 `onboarding(keys)`): the account exists but its
-/// keys never reached the server. A NEW phrase opens with S-07, is checked like at
-/// signup, then published behind one Face ID prompt (step-up `keys.bootstrap`). The
-/// phrase screens are signup's, on the same model and routes.
+/// keys never reached the server. A NEW phrase opens with S-07, is shown like at signup,
+/// then published behind one Face ID prompt (step-up `keys.bootstrap`) once the words were
+/// shown. The phrase screens are signup's, on the same model and routes.
 struct InterruptedSetupFlowView: View {
   let session: AccountSession
   @State private var model: SignupModel
@@ -81,9 +81,8 @@ struct InterruptedSetupFlowView: View {
         switch route {
         case .phraseShow:
           PhraseShowView(revealed: $model.phraseRevealed, words: model.phrase?.words ?? [], onBack: model.back,
-                         onContinue: { model.go(.phraseConfirm) })
-        case .phraseConfirm:
-          PhraseConfirmView(model: model)
+                         onContinue: { Task { await model.finish() } }, seen: model.phraseSeen, busy: model.busy,
+                         failure: model.failure)
         case .accountReady:
           AccountReadyView(profile: model.profile) { session.accountCreated() }
             .navigationBarBackButtonHidden()

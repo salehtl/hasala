@@ -21,15 +21,13 @@ extension AccountSuite {
                            notifications: MockNotificationPermission())
   }
 
-  func confirmPhrase(_ m: SignupModel) {
-    for (i, pos) in m.askedPositions.enumerated() {
-      _ = i
-      m.place(MockAccountService.phraseWords[pos])
-    }
+  /// "Tap to show your words": what lets "I've written them down" publish.
+  func showPhrase(_ m: SignupModel) {
+    m.phraseRevealed = true
   }
 }
 
-/// A mock whose phrase is chosen by the test (the phrase check's edge cases).
+/// A mock whose phrase is chosen by the test.
 @MainActor
 final class StubPhraseAccount: AccountService {
   let mock = MockAccountService()

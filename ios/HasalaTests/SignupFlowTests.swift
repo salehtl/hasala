@@ -40,17 +40,13 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .phraseIntro)
     #expect(m.phrase?.words == MockAccountService.phraseWords)
 
-    // A wrong word blocks the others until it is taken back.
-    let wrong = MockAccountService.phraseWords.first { w in
-      !m.askedPositions.map { MockAccountService.phraseWords[$0] }.contains(w)
-    }!
-    m.place(wrong)
-    #expect(m.wrongSlot == 0)
-    m.place(MockAccountService.phraseWords[m.askedPositions[1]])
-    #expect(m.placed[1] == nil)
-    m.takeBack(0)
-    confirmPhrase(m)
-    #expect(m.phraseConfirmed)
+    // The words are shown, then "I've written them down" publishes: no word check.
+    m.go(.phraseShow)
+    #expect(!m.phraseSeen)
+    showPhrase(m)
+    #expect(m.phraseSeen)
+    m.phraseRevealed = false  // "Hide" keeps them seen
+    #expect(m.phraseSeen)
     await m.finish()
     #expect(m.path.last == .accountReady)
     #expect(m.profile == AccountProfile(displayName: "Maya Rahman", email: "maya@example.com", method: .passkey))
@@ -105,7 +101,7 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.ticket == nil)
   }
 
-  @Test func passwordSignupPublishesOnlyAfterTheWords() async {
+  @Test func passwordSignupPublishesOnlyAfterTheWordsWereShown() async {
     let account = MockAccountService()
     account.delay = .zero
     let m = SignupModel(account: account)
@@ -127,10 +123,34 @@ struct SignupFlowTests: AccountSuite {
     m.submitPassword()
     #expect(m.path.last == .phraseIntro)
     #expect(account.profile == nil)  // nothing published yet
-    confirmPhrase(m)
+    await m.finish()
+    #expect(account.profile == nil)  // nor before the words were shown
+    showPhrase(m)
     await m.finish()
     #expect(account.profile?.method == .password)
     #expect(m.newPassword.isEmpty)
+    #expect(m.phrase == nil)
+  }
+
+  /// "I've written them down" before the words were ever shown publishes nothing (Paper
+  /// F6Q draws it disabled; the model refuses it too).
+  @Test func finishBeforeTheRevealPublishesNothing() async {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .passkey
+    await m.continueWithMethod()
+    #expect(m.phrase != nil)
+    await m.finish()
+    #expect(account.profile == nil)
+    #expect(m.path.last == .phraseIntro)
+    #expect(m.phrase?.words == MockAccountService.phraseWords)
   }
 
   @Test func anInterruptedSignupMakesANewPhraseThenOpensSetup() async {
@@ -144,29 +164,13 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.replacing)
     #expect(m.phrase?.words.count == 12)
     await m.finish()
-    #expect(m.path.isEmpty)  // not before the four words are confirmed
-    confirmPhrase(m)
+    #expect(m.path.isEmpty)  // not before the words were shown
+    showPhrase(m)
     await m.finish()
     #expect(m.path.last == .accountReady)
     #expect(m.phrase == nil)
     session.accountCreated()
     #expect(session.phase == .onboarding(.bank))
-  }
-
-  @Test func repeatedWordsInThePhraseCheckCanAllBePlaced() {
-    // Positions 1 and 3 hold the same word (about 0.3% of phrases).
-    var words = MockAccountService.phraseWords
-    words[2] = words[0]
-    let phrase = RecoveryPhrase(words: words, confirmPositions: [0, 2, 5, 7])
-    let account = StubPhraseAccount(phrase: phrase)
-    let m = SignupModel(account: account)
-    m.startReplacement()
-    let chips = m.choices
-    #expect(chips.filter { $0 == words[0] }.count == 2)
-    for p in phrase.confirmPositions { m.place(words[p]) }
-    #expect(m.phraseConfirmed)
-    #expect(m.placedChips.compactMap { $0 }.count == 4)
-    #expect(Set(m.placedChips.compactMap { $0 }).count == 4)
   }
 
   // MARK: Session

@@ -141,7 +141,7 @@ final class LiveAccountService: AccountService {
   func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
     let k = try freshKeys()
     do {
-      return RecoveryPhrase(words: try k.words(), confirmPositions: try Phrase.confirmationPositions(random: env.random))
+      return RecoveryPhrase(words: try k.words())
     } catch {
       throw .unsupported
     }

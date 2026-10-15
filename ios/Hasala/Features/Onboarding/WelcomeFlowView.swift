@@ -67,10 +67,10 @@ struct WelcomeFlowView: View {
     case .phraseIntro:
       PhraseIntroView(model: signup)
     case .phraseShow:
+      // "I've written them down" publishes the account (no word check).
       PhraseShowView(revealed: $signup.phraseRevealed, words: signup.phrase?.words ?? [], onBack: signup.back,
-                     onContinue: { signup.go(.phraseConfirm) })
-    case .phraseConfirm:
-      PhraseConfirmView(model: signup)
+                     onContinue: { Task { await signup.finish() } }, seen: signup.phraseSeen, busy: signup.busy,
+                     failure: signup.failure)
     case .accountReady:
       AccountReadyView(profile: signup.profile) { session.accountCreated() }
         .navigationBarBackButtonHidden()

@@ -39,8 +39,6 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     tap(app, "phrase.start")
     tap(app, "phrase.reveal")
     tap(app, "phrase.written")
-    for w in ["scissors", "category", "army", "camera"] { tap(app, "chip.\(w)") }
-    tap(app, "phrase.confirm")
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     assertNoPlaceholders(app, "Account ready")
     assertNoOutlook(app, "Account ready")

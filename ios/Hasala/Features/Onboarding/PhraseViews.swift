@@ -58,7 +58,9 @@ struct PhraseIntroView: View {
 }
 
 /// The words, hidden until tapped; hidden again when the app leaves the foreground or the
-/// screen is captured (spec 04 §6.7).
+/// screen is captured (spec 04 §6.7). In create mode "I've written them down" stays off
+/// until the words were shown (Paper F6Q), then publishes them: there is no word check
+/// after this screen (`docs/decisions/recovery-phrase-no-quiz.md`).
 struct PhraseShowView: View {
   @Binding var revealed: Bool
   var words: [String]
@@ -66,6 +68,12 @@ struct PhraseShowView: View {
   var onBack: (() -> Void)?
   /// "I've written them down" (create) or "Done" (view).
   var onContinue: () -> Void
+  /// Create mode: the words were shown at least once, so "I've written them down" can go.
+  var seen = true
+  /// Create mode: publishing is under way.
+  var busy = false
+  /// Create mode: why the last publish didn't go through.
+  var failure: AuthFailure?
 
   enum Mode { case create, view }
 
@@ -116,6 +124,7 @@ struct PhraseShowView: View {
             .accessibilityIdentifier("phrase.reveal")
           }
         }
+        FailureBanner(failure: failure)
         if screenshotWarning {
           FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
         }
@@ -125,12 +134,10 @@ struct PhraseShowView: View {
       }
     } footer: {
       if mode == .create {
-        Button("I've written them down") {
+        BusyButton(title: "I've written them down", busy: busy, enabled: seen, identifier: "phrase.written") {
           revealed = false
           onContinue()
         }
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("phrase.written")
         Text("They hide again when you leave this screen.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
@@ -156,145 +163,6 @@ struct PhraseShowView: View {
   /// Whether any screen showing Hasala is being recorded or mirrored.
   static func screenCaptured() -> Bool {
     UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.contains { $0.screen.isCaptured }
-  }
-}
-
-/// "Check 4 of your words": tap the right word for each slot (Paper "Check 4 random
-/// words" / "wrong word"). Unlimited retries; a wrong word is taken back by tapping it.
-struct PhraseConfirmView: View {
-  @Bindable var model: SignupModel
-
-  var body: some View {
-    AccountScreen(
-      title: "Check 4 of your words",
-      subtitle: "Picked at random. Use your paper, not your memory. \(model.confirmedCount) of 4 done.",
-      steps: (3, 3),
-      onBack: model.back
-    ) {
-      VStack(alignment: .leading, spacing: 14) {
-        VStack(spacing: 8) {
-          ForEach(0..<4, id: \.self) { i in slot(i) }
-        }
-        .padding(12)
-        .listCard()
-        if let w = model.wrongSlot {
-          StatusLine(text: "That isn't word \(model.askedPositions[w] + 1). Check your paper, then tap the word to take it back.",
-                     tone: .error)
-        }
-        FlowChips(words: model.choices, isUsed: model.isChipUsed) { model.placeChip($0) }
-        FailureBanner(failure: model.failure)
-      }
-    } footer: {
-      BusyButton(title: "Confirm", busy: model.busy, enabled: model.phraseConfirmed, identifier: "phrase.confirm") {
-        Task { await model.finish() }
-      }
-      LinkButton(title: "Show my words again", identifier: "phrase.again") { model.showWordsAgain() }
-    }
-  }
-
-  private func slot(_ i: Int) -> some View {
-    let state = model.slotState(i)
-    let word = model.placed[i]
-    return Button {
-      model.takeBack(i)
-    } label: {
-      HStack(spacing: 16) {
-        Text("Word \(model.askedPositions.indices.contains(i) ? model.askedPositions[i] + 1 : 0)")
-          .hType(.footnote.weight(.semibold))
-          .foregroundStyle(state == .wrong ? HColor.statusErrorForeground : HColor.textSecondary)
-          .frame(width: 64, alignment: .leading)
-        Text(word ?? "")
-          .hType(.headline)
-          .foregroundStyle(state == .wrong ? HColor.statusErrorForeground : HColor.textPrimary)
-        Spacer()
-        if state == .right {
-          Image(systemName: "checkmark").foregroundStyle(HColor.actionAccent).accessibilityHidden(true)
-        }
-      }
-      .padding(.horizontal, 14)
-      .frame(minHeight: 46)
-      .background(background(state), in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: HRadius.control, style: .continuous)
-          .strokeBorder(state == .wrong ? HColor.statusErrorForeground : .clear, lineWidth: 1.5)
-      }
-    }
-    .buttonStyle(.plain)
-    .disabled(word == nil)
-    .accessibilityLabel("Word \(model.askedPositions.indices.contains(i) ? model.askedPositions[i] + 1 : 0)")
-    .accessibilityValue(word.map { "\($0), \(state == .wrong ? "wrong" : "right")" } ?? "empty")
-    .accessibilityIdentifier("phrase.slot.\(i)")
-  }
-
-  private func background(_ s: SignupModel.SlotState) -> Color {
-    switch s {
-    case .empty: HColor.surfaceSecondary
-    case .right: HColor.actionAccentSubtle
-    case .wrong: HColor.statusErrorSurface
-    }
-  }
-}
-
-/// Word chips that wrap onto lines, by position: a word can appear twice.
-struct FlowChips: View {
-  var words: [String]
-  var isUsed: (Int) -> Bool
-  var onTap: (Int) -> Void
-
-  var body: some View {
-    WrapLayout(spacing: 8) {
-      ForEach(Array(words.enumerated()), id: \.offset) { i, w in
-        let used = isUsed(i)
-        // The first chip of a word is `chip.<word>`; a repeat adds its position.
-        let repeated = words[..<i].contains(w)
-        Button(w) { onTap(i) }
-          .hType(.rowTitle)
-          .foregroundStyle(used ? HColor.textDisabled : HColor.textPrimary)
-          .padding(.horizontal, 16)
-          .frame(minHeight: 44)
-          .background(used ? HColor.appleFillsTertiary : HColor.surfacePrimary, in: Capsule())
-          .disabled(used)
-          .accessibilityIdentifier(repeated ? "chip.\(w).\(i)" : "chip.\(w)")
-      }
-    }
-    .frame(maxWidth: .infinity)
-  }
-}
-
-/// A simple wrapping layout (left to right, then down).
-struct WrapLayout: Layout {
-  var spacing: CGFloat = 8
-
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let width = proposal.width ?? .infinity
-    var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, maxX: CGFloat = 0
-    for s in subviews {
-      let size = s.sizeThatFits(.unspecified)
-      if x > 0, x + size.width > width {
-        x = 0
-        y += row + spacing
-        row = 0
-      }
-      x += size.width + spacing
-      maxX = max(maxX, x - spacing)
-      row = max(row, size.height)
-    }
-    return CGSize(width: width.isFinite ? width : maxX, height: y + row)
-  }
-
-  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
-    for s in subviews {
-      let size = s.sizeThatFits(.unspecified)
-      if x > bounds.minX, x + size.width > bounds.maxX {
-        x = bounds.minX
-        y += row + spacing
-        row = 0
-      }
-      s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-      x += size.width + spacing
-      row = max(row, size.height)
-    }
   }
 }
 
