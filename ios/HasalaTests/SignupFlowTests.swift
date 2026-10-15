@@ -153,6 +153,43 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.phrase?.words == MockAccountService.phraseWords)
   }
 
+  /// While the screen is recorded or mirrored the grid draws dots, so a reveal then shows
+  /// the person nothing: it doesn't count, and "I've written them down" publishes nothing.
+  /// Once capture stops, a reveal counts.
+  @Test func aRevealWhileTheScreenIsCapturedPublishesNothing() async {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .password
+    await m.continueWithMethod()
+    m.newPassword = "copper lantern quietly 42"
+    m.confirmPassword = "copper lantern quietly 42"
+    m.submitPassword()
+    m.go(.phraseShow)
+
+    m.phraseMasked = true
+    showPhrase(m)
+    #expect(!m.phraseRevealed && !m.phraseSeen)
+    await m.finish()
+    #expect(account.profile == nil)
+    #expect(m.path.last == .phraseShow)
+
+    // Capture starting while the words are up hides them; what was drawn before counts.
+    m.phraseMasked = false
+    showPhrase(m)
+    #expect(m.phraseRevealed && m.phraseSeen)
+    m.phraseMasked = true
+    #expect(!m.phraseRevealed && m.phraseSeen)
+    await m.finish()
+    #expect(account.profile?.method == .password)
+  }
+
   @Test func anInterruptedSignupMakesANewPhraseThenOpensSetup() async {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.resumeOutcome = .needsKeys

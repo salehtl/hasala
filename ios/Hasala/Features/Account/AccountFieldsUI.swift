@@ -536,31 +536,37 @@ struct CodeBoxes: View {
 /// words": the whole card is one button ("Show your 12 words", `phrase.reveal`). Revealed, a
 /// header with "Your recovery phrase" and a Hide pill (`phrase.hide`) sits above read-only
 /// cells, each read as "Word 1, orbit". `.privacySensitive()` keeps the words out of
-/// snapshots and redacted contexts; the screen blocks capture and hides them on leaving.
+/// snapshots and redacted contexts; the screen hides them on leaving.
+///
+/// Masked (the screen is recorded or mirrored), every cell holds dots and the veil can't
+/// be lifted: it says why instead, so a tap never counts as the words being shown.
 struct PhraseGrid: View {
   var words: [String]
   @Binding var revealed: Bool
+  var masked = false
 
   @Environment(\.dynamicTypeSize) private var typeSize
 
+  private var shown: Bool { revealed && !masked }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      if revealed {
+      if shown {
         header.hTransition(.fade)
       }
       ZStack {
         grid
-          .blur(radius: revealed ? 0 : 9)
-          .opacity(revealed ? 1 : 0.85)
-          .accessibilityHidden(!revealed)
-        if !revealed {
+          .blur(radius: shown ? 0 : 9)
+          .opacity(shown ? 1 : 0.85)
+          .accessibilityHidden(!shown)
+        if !shown {
           veil.hTransition(.fade)
         }
       }
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
       .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
     }
-    .hAnimation(.stateSwap, value: revealed)
+    .hAnimation(.stateSwap, value: shown)
     .environment(\.layoutDirection, .leftToRight)
     .privacySensitive()
   }
@@ -592,7 +598,7 @@ struct PhraseGrid: View {
 
   private var veil: some View {
     Button {
-      revealed = true
+      if !masked { revealed = true }
     } label: {
       ZStack {
         HColor.white.opacity(0.35)
@@ -602,11 +608,11 @@ struct PhraseGrid: View {
             .frame(width: 56, height: 56)
             .shadow(color: HColor.elevationFar, radius: 8, x: 0, y: 6)
             .overlay { Circle().stroke(HColor.materialGlassOutline, lineWidth: 0.5) }
-            .overlay { HIconView(.eye, size: 26, color: HColor.iconAccent) }
-          Text("Tap to show your words")
+            .overlay { HIconView(masked ? .eyeSlash : .eye, size: 26, color: HColor.iconAccent) }
+          Text(masked ? "Your words stay hidden" : "Tap to show your words")
             .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .body))
             .foregroundStyle(HColor.textPrimary)
-          Text("Only on this screen, only for you")
+          Text(masked ? Self.maskedNote : "Only on this screen, only for you")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
         }
@@ -616,19 +622,24 @@ struct PhraseGrid: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .disabled(masked)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Show your 12 words")
-    .accessibilityAddTraits(.isButton)
+    .accessibilityLabel(masked ? "Your words stay hidden. \(Self.maskedNote)" : "Show your 12 words")
+    .accessibilityAddTraits(masked ? [] : .isButton)
     .accessibilityIdentifier("phrase.reveal")
   }
 
+  static let maskedNote = "Stop recording or mirroring your screen to see them."
+
   private var grid: some View {
+    // Masked, not even the blurred words are drawn.
+    let drawn = masked ? Array(repeating: "•••••", count: words.count) : words
     let columns = typeSize.isAccessibilitySize ? 1 : 2
-    let perColumn = (words.count + columns - 1) / columns
+    let perColumn = (drawn.count + columns - 1) / columns
     return HStack(alignment: .top, spacing: 8) {
       ForEach(0..<columns, id: \.self) { c in
         let start = c * perColumn
-        column(Array(words.dropFirst(start).prefix(perColumn)), start: start + 1)
+        column(Array(drawn.dropFirst(start).prefix(perColumn)), start: start + 1)
       }
     }
     .padding(16)

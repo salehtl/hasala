@@ -56,9 +56,11 @@ struct PhraseIntroView: View {
 }
 
 /// The words, hidden until tapped; hidden again when the app leaves the foreground or the
-/// screen is captured (spec 04 §6.7). In create mode "I've written them down" stays off
-/// until the words were shown (Paper F6Q), then publishes them: there is no word check
-/// after this screen (`docs/decisions/recovery-phrase-no-quiz.md`).
+/// screen is captured (spec 04 §6.7), and not shown at all while it is captured. In create
+/// mode "I've written them down" stays off until the words were shown (Paper F6Q), then
+/// publishes them: there is no word check after this screen
+/// (`docs/decisions/recovery-phrase-no-quiz.md`), so a reveal that drew only dots must not
+/// count (`onCapture` tells the model).
 struct PhraseShowView: View {
   @Binding var revealed: Bool
   var words: [String]
@@ -72,6 +74,8 @@ struct PhraseShowView: View {
   var busy = false
   /// Create mode: why the last publish didn't go through.
   var failure: AuthFailure?
+  /// Whether the screen is being recorded or mirrored, on appear and on every change.
+  var onCapture: (Bool) -> Void = { _ in }
 
   enum Mode { case create, view }
 
@@ -90,7 +94,7 @@ struct PhraseShowView: View {
       back: mode == .view ? onBack.map { AccountBack.action($0) } ?? AccountBack.none : AccountBack.none
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseGrid(words: captured ? Array(repeating: "•••••", count: words.count) : words, revealed: $revealed)
+        PhraseGrid(words: words, revealed: $revealed, masked: captured)
         FailureBanner(failure: failure)
         if screenshotWarning {
           FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
@@ -114,13 +118,21 @@ struct PhraseShowView: View {
     .onChange(of: scenePhase) { _, phase in
       if phase != .active { revealed = false }
     }
+    .onAppear { noteCapture() }
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
-      captured = Self.screenCaptured()
+      noteCapture()
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
       screenshotWarning = revealed
     }
     .onDisappear { revealed = false }
+  }
+
+  /// Captured, the words hide and stay hidden until capture stops.
+  private func noteCapture() {
+    captured = Self.screenCaptured()
+    if captured { revealed = false }
+    onCapture(captured)
   }
 
   /// Whether any screen showing Hasala is being recorded or mirrored.

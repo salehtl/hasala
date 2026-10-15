@@ -29,6 +29,12 @@ down". There is no step where the person types back, picks or confirms any word.
 
 - `SignupModel.phraseSeen` becomes true the first time `phraseRevealed` does, and only then.
   Hiding the words again ("Hide") keeps it true.
+- Shown means drawn. While the screen is recorded or mirrored, the grid draws dots in
+  place of the words, so a tap would show the person nothing: `PhraseShowView` reports the
+  capture (`SignupModel.phraseMasked`), the words hide, the veil says "Your words stay
+  hidden. Stop recording or mirroring your screen to see them." and can't be lifted, and
+  the model refuses `phraseRevealed` while masked. Without the word check, nothing else
+  would catch a reveal that drew only dots.
 - `SignupModel.finish()` starts with `guard phraseSeen, let phrase, replacing || ticket != nil`.
   It is the only call site of `finishAccount` and `finishInterruptedSetup`.
 - `PhraseShowView` in create mode keeps "I've written them down" disabled until the words

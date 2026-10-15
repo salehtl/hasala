@@ -61,7 +61,8 @@ extension PhraseShowView {
   init(signup m: SignupModel) {
     self.init(
       revealed: Bindable(m).phraseRevealed, words: m.phrase?.words ?? [], onBack: { m.back() },
-      onContinue: { Task { await m.finish() } }, seen: m.phraseSeen, busy: m.busy, failure: m.failure)
+      onContinue: { Task { await m.finish() } }, seen: m.phraseSeen, busy: m.busy, failure: m.failure,
+      onCapture: { m.phraseMasked = $0 })
   }
 }
 

@@ -51,10 +51,20 @@ final class SignupModel {
 
   // Phrase (§6.7)
   private(set) var phrase: RecoveryPhrase?
+  /// The words are drawn. Never while the screen is captured: the grid would draw dots,
+  /// so a reveal then shows the person nothing and doesn't count.
   var phraseRevealed = false {
-    didSet { if phraseRevealed { phraseSeen = true } }
+    didSet {
+      if phraseRevealed, phraseMasked { phraseRevealed = false }
+      if phraseRevealed { phraseSeen = true }
+    }
   }
-  /// The words were shown to the person at least once. Nothing is published before
+  /// The screen is being recorded or mirrored (`PhraseShowView` reports it): the words
+  /// hide, and can't be shown until capture stops.
+  var phraseMasked = false {
+    didSet { if phraseMasked { phraseRevealed = false } }
+  }
+  /// The words were drawn for the person at least once. Nothing is published before
   /// (`docs/decisions/recovery-phrase-no-quiz.md`): there is no word check after them.
   private(set) var phraseSeen = false
 
