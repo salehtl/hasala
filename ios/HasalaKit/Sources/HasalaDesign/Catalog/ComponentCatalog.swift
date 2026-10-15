@@ -701,12 +701,9 @@ struct FeedbackPage: View {
     }
     Specimen(4, "Success badges and empty states") {
       VStack(spacing: 12) {
-        HStack(spacing: 0) {
-          SuccessBadge(content: .check)
-          SuccessBadge(content: .ring(0.64))
-        }
-        .scaleEffect(0.85)
-        SuccessBadge(content: .coin)
+        SuccessBadge(content: .check).frame(maxWidth: .infinity)
+        SuccessBadge(content: .ring(0.64)).frame(maxWidth: .infinity)
+        SuccessBadge(content: .coin).frame(maxWidth: .infinity)
         EmptyStateCard(title: "Nothing needs you", message: "We'll tell you when something does.")
           .listCard()
         EmptyStateCard(icon: .magnifier, tone: .neutral, title: "No matches for \u{201C}zuma march\u{201D}",
