@@ -7,8 +7,8 @@ import SwiftUI
 /// no period pill, and the tab badge counts the same transactions.
 ///
 /// The foundation's version (plan B7.3): the title, the count, Start and the list, on
-/// today's parts. The to-sort rows don't open the deck at their card yet, and "Use N
-/// suggestions" and the "couldn't read" card are not drawn.
+/// today's parts. The to-sort rows open the deck at its first card, not their own yet; the
+/// monogram discs, "Use N suggestions" and the "couldn't read" card are not drawn.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
 
@@ -89,7 +89,9 @@ struct ReviewTabView: View {
 
   private func row(_ card: ReviewCardModel) -> some View {
     HStack(spacing: 12) {
-      MonogramDisc(card.monogram, size: 32)
+      // The suggested category's disc, or the to-sort one. (A 32 pt monogram's letter fails
+      // the Dynamic Type audit inside its fixed disc, as the bank step found.)
+      HueDisc(hue: card.suggestion?.hue ?? .other, glyph: card.suggestion?.glyph ?? .review, size: 32)
       VStack(alignment: .leading, spacing: 0) {
         Text(card.merchant).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
         Text(Self.supporting(card)).hType(.footnote)
