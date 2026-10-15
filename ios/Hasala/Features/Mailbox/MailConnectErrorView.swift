@@ -3,52 +3,111 @@ import HasalaModels
 import SwiftUI
 
 /// A connect that didn't happen (Paper "Connect email · Work or school account needs an
-/// admin", "Microsoft sign-in didn't finish"): what happened, that nothing was connected,
-/// and the two ways on.
+/// admin" 1MUP, "Microsoft sign-in didn't finish" 1NQF): what happened, that nothing was
+/// connected, what the person can do, and the two ways on. Google gets the same screens in
+/// its own words.
 ///
-/// The foundation's version (plan B7.3), on today's parts.
-// TODO(plan P3): the reasons cards, ProviderButton and the per-failure footers.
+/// - An admin's approval: "Choose a different email" leads; "Approved since? Try Microsoft
+///   again" follows.
+/// - A sign-in that didn't finish: "Continue with Microsoft" leads; "Wrong account? Choose a
+///   different email" follows.
+///
+/// `steps` is setup's indicator ("2 of 4"); the profile shows none.
 struct MailConnectErrorView: View {
   let failure: MailConnectFailure
   let provider: MailProviderKind
+  var steps: (current: Int, of: Int)?
   var onRetry: () -> Void
   var onChooseDifferent: () -> Void
-  @Environment(\.dismiss) private var dismiss
 
   init(
     failure: MailConnectFailure, provider: MailProviderKind, onRetry: @escaping () -> Void,
-    onChooseDifferent: @escaping () -> Void
+    onChooseDifferent: @escaping () -> Void, steps: (current: Int, of: Int)? = nil
   ) {
     self.failure = failure
     self.provider = provider
     self.onRetry = onRetry
     self.onChooseDifferent = onChooseDifferent
-  }
-
-  private var title: String {
-    switch failure {
-    case .adminApprovalNeeded: "Your organisation needs to approve Hasala."
-    default: "\(provider.appName) isn't connected."
-    }
-  }
-
-  private var subtitle: String {
-    switch failure {
-    case .adminApprovalNeeded(let address):
-      "\(address) is a work or school account. Its admin has to allow Hasala to read mail before it can connect. Nothing was connected."
-    case .cancelled:
-      "\(provider.company) sign-in was cancelled or didn't finish. Nothing was connected and nothing was read."
-    default:
-      (failure.message(for: provider) ?? "") + " Nothing was connected."
-    }
+    self.steps = steps
   }
 
   var body: some View {
-    AccountScreen(title: title, subtitle: subtitle, back: .system) {
-      EmptyView()
+    let copy = Self.copy(failure, provider)
+    AccountScreen(title: copy.title, subtitle: copy.subtitle, steps: steps, back: .system) {
+      if let reasons = copy.reasons {
+        ReasonsCard(title: reasons.title, items: reasons.items, numbered: reasons.numbered)
+      }
     } footer: {
-      BusyButton(title: provider.continueTitle, busy: false, identifier: "mail.error.retry", action: onRetry)
-      LinkButton(title: "Choose a different email", identifier: "mail.error.chooseDifferent", action: onChooseDifferent)
+      if case .adminApprovalNeeded = failure {
+        BusyButton(title: "Choose a different email", busy: false, identifier: "mail.error.chooseDifferent",
+                   action: onChooseDifferent)
+        TextLinkRow(lead: "Approved since?", link: "Try \(provider.company) again", identifier: "mail.error.retry",
+                    action: onRetry)
+      } else {
+        ProviderButton(provider: provider, action: onRetry)
+          .accessibilityIdentifier("mail.error.retry")
+        TextLinkRow(lead: "Wrong account?", link: "Choose a different email", identifier: "mail.error.chooseDifferent",
+                    action: onChooseDifferent)
+      }
+    }
+  }
+
+  struct Copy: Equatable {
+    struct Reasons: Equatable {
+      let title: String
+      let items: [ReasonsCard.Item]
+      let numbered: Bool
+    }
+
+    let title: String
+    let subtitle: String
+    let reasons: Reasons?
+  }
+
+  /// The screen's words, verbatim from the boards for Microsoft and in the same pattern for
+  /// Google. Another failure (if a host shows one here) keeps its own line.
+  static func copy(_ failure: MailConnectFailure, _ provider: MailProviderKind) -> Copy {
+    switch failure {
+    case .adminApprovalNeeded(let address):
+      let approve: String =
+        switch provider {
+        case .outlook: "They approve Hasala once in Microsoft Entra. Then come back and try again."
+        case .gmail: "They approve Hasala once in the Google Admin console. Then come back and try again."
+        }
+      // A personal mailbox of a provider this build reads; Release names Google alone.
+      let other =
+        provider == .gmail
+        ? "If your bank also emails a personal Gmail address, connect that one."
+        : "If your bank also emails a personal Gmail or Outlook.com address, connect that one."
+      return Copy(
+        title: "Your organisation needs to approve Hasala.",
+        subtitle: "\(address) is a work or school account. Its admin has to allow Hasala to read mail before it can connect. Nothing was connected.",
+        reasons: Copy.Reasons(
+          title: "What you can do",
+          items: [
+            ReasonsCard.Item(title: "Ask your IT admin", detail: approve),
+            ReasonsCard.Item(title: "Use another mailbox", detail: other),
+          ],
+          numbered: true))
+    case .cancelled:
+      return Copy(
+        title: "\(provider.appName) isn't connected.",
+        subtitle: "\(provider.company) sign-in was cancelled or didn't finish. Nothing was connected and nothing was read.",
+        reasons: Copy.Reasons(
+          title: "Common reasons",
+          items: [
+            ReasonsCard.Item(title: "Cancel or Back on \(provider.company)'s screen", detail: "Fine. Try again when you're ready."),
+            ReasonsCard.Item(
+              title: "Permissions not accepted",
+              detail: "Hasala needs read-only mail access to see your bank alerts. Without it, it can't connect."),
+          ],
+          numbered: false))
+    default:
+      return Copy(
+        title: "\(provider.appName) isn't connected.",
+        subtitle: ((failure.message(for: provider) ?? "") + " Nothing was connected.")
+          .trimmingCharacters(in: .whitespaces),
+        reasons: nil)
     }
   }
 }

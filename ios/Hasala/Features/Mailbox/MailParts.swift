@@ -1,0 +1,431 @@
+import HasalaDesign
+import HasalaModels
+import SwiftUI
+
+// The parts the mailbox screens share (Paper P2.9 "Connect your email", P1 "Profile · Bank
+// alerts"; spec 06 §3): the Gmail-to-this-iPhone strip, the "Hasala reads / Never" card, the
+// reasons card of the two errors, the text link rows, the accent action row and the bank
+// row. The kit's `MailboxRow`, `ProviderRow`, `ProviderButton` and `ProviderMark` do the rest.
+
+// MARK: - Copy
+
+enum MailCopy {
+  /// "Emirates NBD and DIB": the banks as the read-only card and the scan name them.
+  static func banks(_ banks: [SupportedBank]) -> String {
+    banks.map(\.shortName).formatted(.list(type: .and))
+  }
+
+  /// The note under the read-only card. Paper's caption is the push sentence; a Release
+  /// build has no push, so it says how new alerts are really caught (no promise the beta
+  /// doesn't keep). Before it, why the provider's own screen asks for more than Hasala
+  /// reads: Gmail and Outlook offer no narrower permission.
+  static func readNote(_ provider: MailProviderKind) -> String {
+    let scope =
+      "\(provider.company)'s permission screen still asks to let Hasala read your email, because \(provider.appName) offers nothing narrower."
+    return BuildSurface.showsUnfinished
+      ? scope + " To catch new alerts quickly, our server is told when new mail arrives, never what it says."
+      : scope + " This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
+  }
+
+  /// Under the Mailboxes card (Paper 1NS8). The server's part of a new-mail wake is
+  /// Debug's: a Release build relays none.
+  static var mailboxesFootnote: String {
+    BuildSurface.showsUnfinished
+      ? "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server sees a keyed hash of each address and when new mail arrives, never the mail."
+      : "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server sees a keyed hash of each address, never the mail."
+  }
+
+  /// The toast after a new sign-in to a mailbox whose provider ended access (Paper flow:
+  /// "Connected again · Checks again from the last check").
+  static func signedInAgain(_ provider: MailProviderKind) -> String {
+    "\(provider.appName) connected again. Catching up from the last check."
+  }
+
+  /// The toast after a new mailbox (Paper 1NYL).
+  static func added(_ provider: MailProviderKind) -> String {
+    "\(provider.appName) connected. Checking for alerts."
+  }
+
+  /// Where to take Hasala's permission away on the provider's side (Paper 1O9X names
+  /// Microsoft's; Google's is its permissions page).
+  static func consentPage(_ provider: MailProviderKind) -> String {
+    switch provider {
+    case .gmail: "myaccount.google.com/permissions"
+    case .outlook: "account.live.com/consent/Manage"
+    }
+  }
+
+  /// The system alert's message before a disconnect (Paper "Mailbox · Disconnect (alert)").
+  static func disconnectMessage(_ provider: MailProviderKind) -> String {
+    "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
+  }
+}
+
+// MARK: - Glyphs Paper draws that the icon set doesn't hold
+
+/// A 24-grid glyph from a Paper board, drawn from its path data: the hero's check and "!",
+/// the link of "How Hasala reads your email", the action row's plus.
+struct PaperGlyph: View {
+  struct Part {
+    let d: String
+    var fill = false
+  }
+
+  /// Bank alerts' working hero: `M5.5 12.5l4.2 4.2 8.8-9.2`.
+  static let check = [Part(d: "M5.5 12.5l4.2 4.2 8.8-9.2")]
+  /// The "needs you" hero: a bar and a dot.
+  static let alert = [Part(d: "M12 7.5v5.5"), Part(d: "M13.4 17a1.4 1.4 0 1 1-2.8 0a1.4 1.4 0 1 1 2.8 0Z", fill: true)]
+  /// The not-connected hero: Paper's envelope.
+  static let envelope = [
+    Part(d: "M5.5 5.5h13a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16V8a2.5 2.5 0 0 1 2.5-2.5Z"),
+    Part(d: "m3.8 7 8.2 6 8.2-6"),
+  ]
+  static let link = [
+    Part(d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"),
+    Part(d: "M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"),
+  ]
+  static let eyeOff = [
+    Part(d: "M3.5 3.5l17 17"),
+    Part(d: "M10.4 5.1A9.6 9.6 0 0 1 12 5c5 0 8.4 4.1 9.4 7-.4 1.1-1.2 2.4-2.3 3.6M6.7 6.7C4.7 8 3.2 9.9 2.6 12c1 2.9 4.4 7 9.4 7 1.8 0 3.4-.5 4.8-1.3"),
+    Part(d: "M9.9 9.9a3 3 0 0 0 4.2 4.2"),
+  ]
+  static let plus = [Part(d: "M12 5v14M5 12h14")]
+  /// The read-only card's tick and dash (12 in a 20 badge).
+  static let tick = [Part(d: "m5 12.5 4.5 4.5L19 7.5")]
+  static let dash = [Part(d: "M6 12h12")]
+
+  let parts: [Part]
+  let size: CGFloat
+  let color: Color
+  /// In grid units.
+  let lineWidth: CGFloat
+
+  init(_ parts: [Part], size: CGFloat, color: Color, lineWidth: CGFloat) {
+    self.parts = parts
+    self.size = size
+    self.color = color
+    self.lineWidth = lineWidth
+  }
+
+  var body: some View {
+    Canvas { context, canvas in
+      let box = CGRect(origin: .zero, size: canvas)
+      let unit = min(canvas.width, canvas.height) / 24
+      for part in parts {
+        guard let svg = try? SVGPath(parsing: part.d) else { continue }
+        let path = svg.path(in: box)
+        if part.fill {
+          context.fill(path, with: .color(color))
+        } else {
+          context.stroke(path, with: .color(color),
+                         style: StrokeStyle(lineWidth: lineWidth * unit, lineCap: .round, lineJoin: .round))
+        }
+      }
+    }
+    .frame(width: size, height: size)
+    .accessibilityHidden(true)
+  }
+}
+
+/// The Hasala app icon as a small tile (Paper "Slot mark · tile"): the coin over its slot on
+/// the icon's blue. The blues are the app icon's own artwork, as `HasalaMark`'s colours are,
+/// not interface tokens.
+struct AppIconTile: View {
+  var size: CGFloat = 36
+  var radius: CGFloat = 10
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: radius, style: .continuous)
+      .fill(LinearGradient(
+        colors: [Color(HRGBA(84, 121, 255, 1)), Color(HRGBA(43, 74, 210, 1))],
+        startPoint: .top, endPoint: UnitPoint(x: 0.4, y: 1)))
+      .frame(width: size, height: size)
+      .overlay { HasalaMark().frame(width: size * 0.645, height: size * 0.38) }
+      .accessibilityHidden(true)
+  }
+}
+
+// MARK: - The read-only screen's parts
+
+/// "Gmail → This iPhone" (Paper "Flow · Gmail to this iPhone"): where the alerts come from
+/// and where they're read, two chips and a dotted arrow.
+struct FlowStrip: View {
+  let provider: MailProviderKind
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+      : AnyLayout(HStackLayout(spacing: 0))
+    layout {
+      chip(title: provider.appName, detail: "Read-only", lifted: false) {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(Hue.sky.perceptualGradient)
+          .frame(width: 36, height: 36)
+          .overlay { HIconView(.envelope, size: 20, color: Hue.sky.ink, strokeWidth: 1.9) }
+      }
+      arrow
+      chip(title: "This iPhone", detail: "Reads and sorts", lifted: true) { AppIconTile() }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("From \(provider.appName), read-only, to this iPhone, which reads and sorts")
+  }
+
+  private var arrow: some View {
+    Canvas { context, _ in
+      var dots = Path()
+      dots.move(to: CGPoint(x: 2, y: 6))
+      dots.addLine(to: CGPoint(x: 23, y: 6))
+      context.stroke(dots, with: .color(HColor.blue400),
+                     style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [0, 5]))
+      var head = Path()
+      head.move(to: CGPoint(x: 22, y: 2))
+      head.addLine(to: CGPoint(x: 27, y: 6))
+      head.addLine(to: CGPoint(x: 22, y: 10))
+      context.stroke(head, with: .color(HColor.blue600),
+                     style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+    }
+    .frame(width: 30, height: 12)
+    .frame(width: 36)
+    .rotationEffect(typeSize.isAccessibilitySize ? .degrees(90) : .zero)
+    .padding(.leading, typeSize.isAccessibilitySize ? 16 : 0)
+  }
+
+  private func chip(title: String, detail: String, lifted: Bool, @ViewBuilder tile: () -> some View) -> some View {
+    HStack(spacing: 8) {
+      tile()
+      VStack(alignment: .leading, spacing: 0) {
+        Text(title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        Text(detail).hType(HType(size: 12, leading: 16, weight: .regular, textStyle: .caption))
+          .foregroundStyle(HColor.textSecondary)
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 10)
+    .padding(.leading, 8)
+    .padding(.trailing, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .shadow(color: Color(HRGBA(0, 0, 0, 0.04)), radius: 1, x: 0, y: 1)
+    .shadow(color: lifted ? Color(HRGBA(30, 42, 94, 0.08)) : .clear, radius: 10, x: 0, y: 8)
+  }
+}
+
+/// "Hasala reads / Never" (Paper "What is and isn't read"): the banks picked and the iPhone
+/// on one side, the rest of the inbox, sending and the server on the other.
+struct ReadsNeverCard: View {
+  let banks: [SupportedBank]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Hasala reads").hType(.overline).foregroundStyle(HColor.statusSuccessForeground)
+          .accessibilityAddTraits(.isHeader)
+        item("Alerts from \(MailCopy.banks(banks)), and nothing else", reads: true)
+        item("Downloaded and read here, on this iPhone", reads: true)
+      }
+      HColor.borderSubtle.frame(height: 1).accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Never").hType(.overline).foregroundStyle(HColor.textSecondary)
+          .accessibilityAddTraits(.isHeader)
+        item("The rest of your inbox. It's never downloaded.", reads: false)
+        item("Sending, deleting or changing your email", reads: false)
+        item("Passing your emails to our server or an AI service", reads: false)
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+  }
+
+  private func item(_ text: String, reads: Bool) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Circle()
+        .fill(reads ? HColor.statusSuccessSurface : HColor.surfaceSecondary)
+        .frame(width: 20, height: 20)
+        .overlay {
+          PaperGlyph(reads ? PaperGlyph.tick : PaperGlyph.dash, size: 12,
+                     color: reads ? HColor.statusSuccessForeground : HColor.textSecondary, lineWidth: 3)
+        }
+      Text(text).hType(.subheadline).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(text)
+  }
+}
+
+/// A sentence and its link in one wrapping row (Paper "TextLinkRow"): "Not your email?
+/// Choose a different one." One button; VoiceOver reads both parts.
+struct TextLinkRow: View {
+  var lead: String?
+  var link: String
+  var identifier: String
+  var action: () -> Void
+
+  var body: some View {
+    Button(action: action) { TextLinkLabel(lead: lead, link: link) }
+      .buttonStyle(.plain)
+      .accessibilityLabel([lead, link].compactMap { $0 }.joined(separator: " "))
+      .accessibilityIdentifier(identifier)
+  }
+}
+
+/// "Use a different email? Tell us which." (Paper, Choose your email): a mail to support
+/// naming the provider Hasala doesn't read yet. A person reads it; nothing is sent from the
+/// app.
+struct TellUsWhichLink: View {
+  /// The sheet's footnote is 13/18 and starts at the leading edge; the screen's dock is
+  /// 15/20, centred.
+  var small = false
+  var leading = false
+
+  static let mail: URL = {
+    var parts = URLComponents()
+    parts.scheme = "mailto"
+    parts.path = BuildSurface.supportEmail
+    parts.queryItems = [URLQueryItem(name: "subject", value: "Another email for my bank alerts")]
+    return parts.url ?? BuildSurface.supportMail
+  }()
+
+  var body: some View {
+    Link(destination: Self.mail) {
+      TextLinkLabel(lead: "Use a different email?", link: "Tell us which.", small: small, leading: leading)
+    }
+    .accessibilityLabel("Use a different email? Tell us which.")
+    .accessibilityAddTraits(.isLink)
+    .accessibilityIdentifier("mail.choose.other")
+  }
+}
+
+private struct TextLinkLabel: View {
+  let lead: String?
+  let link: String
+  var small = false
+  var leading = false
+
+  var body: some View {
+    let type: HType = small ? .footnote : .subheadline
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 4) { parts(type) }
+      VStack(alignment: leading ? .leading : .center, spacing: 0) { parts(type) }
+    }
+    .multilineTextAlignment(leading ? .leading : .center)
+    .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum, alignment: leading ? .leading : .center)
+    .contentShape(Rectangle())
+  }
+
+  @ViewBuilder private func parts(_ type: HType) -> some View {
+    if let lead {
+      Text(lead).hType(type).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
+    }
+    Text(link).hType(type.weight(.semibold)).foregroundStyle(HColor.textLink).fixedSize(horizontal: false, vertical: true)
+  }
+}
+
+// MARK: - The errors' card
+
+/// "What you can do" / "Common reasons" (Paper 1MUP, 1NQF): numbered or "?" badges, a title
+/// and a line each.
+struct ReasonsCard: View {
+  struct Item: Hashable {
+    let title: String
+    let detail: String
+  }
+
+  let title: String
+  let items: [Item]
+  /// "1", "2"… or "?" on every badge.
+  let numbered: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text(title)
+        .hType(HType(size: 13, leading: 18, weight: .bold, trackingEm: 0.06, uppercase: true, textStyle: .footnote))
+        .foregroundStyle(HColor.textSecondary)
+        .accessibilityAddTraits(.isHeader)
+      ForEach(Array(items.enumerated()), id: \.element) { i, item in
+        HStack(alignment: .top, spacing: 12) {
+          Circle().fill(HColor.statusInfoSurface).frame(width: 24, height: 24)
+            .overlay {
+              Text(numbered ? "\(i + 1)" : "?")
+                .font(.custom(HWeight.bold.interFace, size: 13))
+                .foregroundStyle(HColor.statusInfoForeground)
+            }
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(item.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+            Text(item.detail).hType(HType(size: 14, leading: 20, weight: .regular, textStyle: .subheadline))
+              .foregroundStyle(HColor.textSecondary)
+          }
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+      }
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+  }
+}
+
+// MARK: - Bank alerts' rows
+
+/// An accent action row at the end of a card (Paper "Add a mailbox", "Add a bank"): a 40
+/// accent tile with a plus, the label in link blue.
+struct MailActionRow: View {
+  let title: String
+  let identifier: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: HSpacing.listRowGap) {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .fill(HColor.actionAccentSubtle)
+          .frame(width: 40, height: 40)
+          .overlay { PaperGlyph(PaperGlyph.plus, size: 18, color: HColor.textLink, lineWidth: 2.4) }
+        Text(title).hType(.rowTitle).foregroundStyle(HColor.textLink)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(.horizontal, HSpacing.listRowInsetInline)
+      .padding(.vertical, 8)
+      .frame(minHeight: 56)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .accessibilityIdentifier(identifier)
+  }
+}
+
+/// A bank whose alerts are read (Paper "BankRow"): its plate, its name, where its alerts
+/// come from, and a green tick.
+struct BankAlertsBankRow: View {
+  let bank: SupportedBank
+  let detail: String
+
+  var body: some View {
+    ReflowingRow(spacing: HSpacing.listRowGap) {
+      HStack(spacing: HSpacing.listRowGap) {
+        BankPlate(initials: bank.monogram, hue: bank == .enbd ? .sky : .sand)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(bank.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          Text(detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+      }
+    } trailing: {
+      Circle().fill(HColor.statusSuccessSurface).frame(width: 24, height: 24)
+        .overlay { PaperGlyph(PaperGlyph.check, size: 14, color: HColor.statusSuccessForeground, lineWidth: 3) }
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, HSpacing.listRowInsetBlock)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(bank.name), \(detail)")
+    .accessibilityValue("Read")
+  }
+}
