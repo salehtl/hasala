@@ -6,23 +6,23 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Pushed editors inside the transaction sheet's own stack (spec 04 §13.3).
-enum TransactionRoute: Hashable {
-  case category, note, rename, split
-}
-
 /// Transaction detail (Paper board): the hero, category with its embedded pace,
 /// account and note, where the bank email came from, and every action.
 struct TransactionSheet: View {
   @Bindable var app: AppModel
   let model: any TransactionModel
-  @State private var path: [TransactionRoute] = []
   @State private var confirmArchive = false
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
+  /// The pushed editors (`TransactionRoute`), held by the router.
+  private var path: [TransactionRoute] {
+    get { app.router.transaction }
+    nonmutating set { app.router.transaction = newValue }
+  }
+
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Bindable(app.router).transaction) {
       Group {
         if let d = model.detail {
           content(d)
@@ -336,23 +336,6 @@ struct DetailRow<Value: View>: View {
     .frame(minHeight: HSpacing.listRowMinHeight)
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
-  }
-}
-
-/// A small tinted tag ("To review", "Refund").
-struct InfoTag: View {
-  let text: String
-  let tone: StatusTone
-
-  init(_ text: String, tone: StatusTone) {
-    self.text = text
-    self.tone = tone
-  }
-
-  var body: some View {
-    Text(text).hType(.footnote.weight(.semibold)).foregroundStyle(tone.foreground)
-      .padding(.horizontal, 10).padding(.vertical, 4)
-      .background(tone.surface, in: Capsule())
   }
 }
 

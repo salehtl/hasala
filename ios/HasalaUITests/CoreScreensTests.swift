@@ -88,7 +88,13 @@ final class CoreScreensTests: XCTestCase {
   @MainActor
   func testReviewDeckSortsUndoesAndCatchesUp() throws {
     let app = launchHome()
-    element(app, "needsYou.review").buttons["Start"].tap()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    XCTAssertEqual(element(app, "review.tab.count").label, "6 to sort · about a minute")
+    attach(app, "Review · Tab")
+    try audit(app)
+    start.tap()
     let position = element(app, "review.position")
     XCTAssertTrue(position.waitForExistence(timeout: 5))
     XCTAssertEqual(position.label, "1 of 6")
@@ -173,9 +179,12 @@ final class CoreScreensTests: XCTestCase {
     }
     element(app, "txn.close").tap()
 
-    // The review deck.
-    app.tabBars.firstMatch.buttons["Home"].tap()
-    let start = element(app, "needsYou.review").buttons["Start"]
+    // The Review tab, then the deck.
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    attach(app, "AX3 · Review tab")
+    try audit(app, atLargeText: true)
     XCTAssertTrue(reveal(app, start))
     start.tap()
     XCTAssertTrue(element(app, "review.card").waitForExistence(timeout: 5))
@@ -184,11 +193,14 @@ final class CoreScreensTests: XCTestCase {
     element(app, "review.close").tap()
   }
 
-  /// The caught-up scenario has nothing to review: no To review card, no deck.
+  /// The caught-up scenario has nothing to review: no To review card, no Start, no deck.
   @MainActor
   func testCaughtUpScenarioHasNothingToReview() throws {
     let app = launchHome("mayaCaughtUp")
     XCTAssertFalse(element(app, "needsYou.review").exists)
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("All caught up"))
+    XCTAssertFalse(element(app, "review.tab.start").exists)
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["To review"].exists)

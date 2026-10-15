@@ -1,11 +1,6 @@
 import HasalaModels
 import Observation
 
-/// Pushed destinations from Home (spec 04 §13.2).
-enum HomeRoute: Hashable {
-  case insights, needsYou, notifications, widget(String), editWidgets, bills
-}
-
 /// Home · Default (spec 04 §15.1 `HomeModel`, §16.1 "Home · Default").
 @MainActor
 protocol HomeModel: AnyObject, Observable {
@@ -63,7 +58,7 @@ final class HomeViewModel: HomeModel {
       // TODO(spec 04 §16.1 "Bill detail"): BillDetailView; Bills shows the bill meanwhile.
       return .bills
     }
-    return .needsYou
+    return nil
   }
 
   func openWidget(_ id: String) -> HomeRoute? {
@@ -76,9 +71,13 @@ final class HomeViewModel: HomeModel {
       return nil
     case "nextBill":
       return .bills
+    case "netWorth":
+      return .accounts
     default:
-      // TODO(spec 04 §16.1 "Accounts", "Project detail", §16.2 P4): Accounts, Project and Goal detail.
-      return .widget(id)
+      // TODO(spec 04 §16.1 "Project detail", §16.2 P4): a project or goal opens its detail;
+      // until then Debug opens Plan, where both live.
+      app.tab = .plan
+      return nil
     }
   }
 

@@ -16,7 +16,6 @@ import SwiftUI
 struct HomeView: View {
   @Bindable var app: AppModel
   let model: any HomeModel
-  @State private var path: [HomeRoute] = []
   @State private var topInset: CGFloat = 0
   /// How far a pull has dragged the content below the top (0 when not overscrolled).
   @State private var overscroll: CGFloat = 0
@@ -28,7 +27,7 @@ struct HomeView: View {
   private var unfinished: Bool { BuildSurface.showsUnfinished }
 
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Bindable(app.router).home) {
       ScrollView {
         VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
           if session?.reviewAccount == true {
@@ -36,19 +35,17 @@ struct HomeView: View {
               .padding(.horizontal, HSpacing.insetPage)
               .padding(.bottom, -12)
           }
-          HeroSection(hero: snapshot.hero, hidden: hidden, seeMonth: unfinished ? { path.append(.insights) } : nil)
+          HeroSection(hero: snapshot.hero, hidden: hidden,
+                      seeMonth: unfinished ? { app.router.home.append(.insights) } : nil)
+          // "See all" is the bell's list (Notifications, "Needs a look").
           NeedsYouSection(rail: snapshot.needsYou, hidden: hidden,
-                          seeAll: unfinished ? { path.append(.needsYou) } : nil) { card, primary in
-            if let route = model.needsYou(card, primary: primary) { path.append(route) }
+                          seeAll: unfinished ? { app.router.open(.notifications) } : nil) { card, primary in
+            if let route = model.needsYou(card, primary: primary) { app.router.home.append(route) }
           }
           WidgetCanvas(widgets: snapshot.widgets, hidden: hidden, editable: unfinished,
-                       opens: model.widgetOpens) { route in
-            if case .widget(let id) = route {
-              if let next = model.openWidget(id) { path.append(next) }
-            } else {
-              path.append(route)
-            }
-          }
+                       opens: model.widgetOpens,
+                       open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
+                       edit: { app.say("Editing widgets isn't in this build yet", systemImage: "square.grid.2x2") })
         }
         .padding(.top, 24)
         .padding(.bottom, 32)
@@ -74,16 +71,17 @@ struct HomeView: View {
           extra: unfinished ? .bell(unread: snapshot.header.unreadNotifications) : .none,
           avatarInitial: snapshot.header.avatarInitial,
           onToggleAmounts: { app.toggleAmountsHidden() },
-          onExtra: { path.append(.notifications) },
+          onExtra: { app.router.open(.notifications) },
           onProfile: { app.showingProfile = true }
         )
       }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
       .navigationDestination(for: HomeRoute.self) { route in
-        if route == .bills {
-          BillsScreen(app: app)
-        } else {
-          HomeRouteView(route: route)
+        switch route {
+        case .bills: BillsScreen(app: app)
+        case .bill(let id): BillDetailView(app: app, bill: id)
+        case .accounts: AccountsView(app: app)
+        case .insights: InsightsPlaceholder()
         }
       }
     }
@@ -255,7 +253,10 @@ private struct WidgetCanvas: View {
   let editable: Bool
   /// Whether a widget's tap leads anywhere; one that doesn't is drawn without a button.
   let opens: (String) -> Bool
-  let open: (HomeRoute) -> Void
+  /// A widget's tap, by widget id.
+  let open: (String) -> Void
+  /// "Edit" and "Add widget".
+  let edit: () -> Void
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var rows: [[HomeWidget]] {
@@ -265,7 +266,7 @@ private struct WidgetCanvas: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       if editable {
-        SectionHeader("Your widgets", actionTitle: "Edit") { open(.editWidgets) }
+        SectionHeader("Your widgets", actionTitle: "Edit") { edit() }
       } else {
         SectionHeader("Your widgets")
       }
@@ -273,7 +274,7 @@ private struct WidgetCanvas: View {
         HStack(spacing: 12) {
           ForEach(row) { widget in
             if opens(widget.id) {
-              Button { open(.widget(widget.id)) } label: { HomeWidgetView(widget, hidden: hidden) }
+              Button { open(widget.id) } label: { HomeWidgetView(widget, hidden: hidden) }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("widget.\(widget.id)")
             } else {
@@ -289,7 +290,7 @@ private struct WidgetCanvas: View {
         .fixedSize(horizontal: false, vertical: true)
       }
       if editable {
-        AddWidgetTile { open(.editWidgets) }
+        AddWidgetTile { edit() }
           .padding(.top, 12)
       }
     }
@@ -297,43 +298,17 @@ private struct WidgetCanvas: View {
   }
 }
 
-/// Bills with its view model kept for as long as it is pushed.
-struct BillsScreen: View {
-  @Bindable var app: AppModel
-  var showsToast = true
-  @State private var model: BillsViewModel
-
-  init(app: AppModel, showsToast: Bool = true) {
-    self.app = app
-    self.showsToast = showsToast
-    _model = State(initialValue: BillsViewModel(app: app))
-  }
-
-  var body: some View { BillsView(app: app, model: model, showsToast: showsToast) }
-}
-
-/// Placeholder destinations until those screens are built.
-// TODO(spec 04 §16.1 "Insights", §16.2 H1 Needs you list, H2 widget gallery, H3
-// notifications list; "Accounts", "Project detail", P4 Goal).
-private struct HomeRouteView: View {
-  let route: HomeRoute
-
+/// "See month" in Debug, until Insights · October so far is built.
+// TODO(spec 04 §16.1 "Insights"): Insights and the September recap.
+private struct InsightsPlaceholder: View {
   var body: some View {
-    let (title, image): (String, String) =
-      switch route {
-      case .insights: ("October so far", "chart.line.uptrend.xyaxis")
-      case .needsYou: ("Needs you", "tray.full")
-      case .notifications: ("Notifications", "bell")
-      case .widget: ("Details", "square.grid.2x2")
-      case .editWidgets: ("Your widgets", "square.grid.2x2")
-      case .bills: ("Bills", "doc.text")
-      }
     ScrollView {
-      PlaceholderCard(systemImage: image, title: title, message: "This screen comes in a later build.")
+      PlaceholderCard(systemImage: "chart.line.uptrend.xyaxis", title: "October so far",
+                      message: "This screen comes in a later build.")
         .padding(HSpacing.insetPage)
     }
     .background(HColor.surfaceSecondary)
-    .navigationTitle(title)
+    .navigationTitle("October so far")
     .navigationBarTitleDisplayMode(.inline)
   }
 }
@@ -354,22 +329,6 @@ struct SampleDataLabel: View {
     .accessibilityElement(children: .combine)
     .accessibilityLabel("Sample data. This account shows a sample month, not your email.")
     .accessibilityIdentifier("home.sampleData")
-  }
-}
-
-/// Floats the app's toast above the tab bar.
-struct ToastHost: View {
-  let app: AppModel
-
-  var body: some View {
-    if let toast = app.toast {
-      GlassToast(systemImage: toast.systemImage, title: toast.title, subtitle: toast.subtitle,
-                 actionTitle: toast.actionTitle) { app.toastAction() }
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.bottom, 12)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        .accessibilityIdentifier("toast")
-    }
   }
 }
 

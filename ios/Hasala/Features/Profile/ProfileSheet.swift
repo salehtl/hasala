@@ -16,7 +16,6 @@ import SwiftUI
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
-  @State private var path: [ProfileRoute] = []
   @State private var confirmSignOut = false
   /// The Gmail connect sheet, over this one.
   @State private var connecting: GmailOffer?
@@ -39,8 +38,14 @@ struct ProfileSheet: View {
 
   private var snap: ProfileSnapshot { model.snapshot }
 
+  /// The pages pushed inside the sheet (`ProfileRoute`), held by the router.
+  private var path: [ProfileRoute] {
+    get { app.router.profile }
+    nonmutating set { app.router.profile = newValue }
+  }
+
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
         VStack(spacing: 24) {
           identity
@@ -337,6 +342,10 @@ private struct ProfilePage: View {
     switch route {
     case .bills:
       BillsScreen(app: app, showsToast: false)
+    case .bill(let id):
+      BillDetailView(app: app, bill: id)
+    case .project(let id):
+      ProjectDetailView(app: app, project: id)
     case .rules:
       RulesPage(model: model)
     case .notifications:
@@ -346,8 +355,9 @@ private struct ProfilePage: View {
       // disconnect, read here instead) from the Gmail lane's MailboxSource.
       placeholder("Profile · Bank alerts", "envelope", "Your Gmail connection, banks and any email we couldn't read.")
     case .accounts:
-      // TODO(spec 04 §16.1 "Accounts", "Accounts · Check in"): AccountsView and Check in.
-      placeholder("Accounts", "building.columns", "Net worth, your accounts and check-ins.")
+      AccountsView(app: app)
+    case .mailbox, .addMailbox, .connectMail:
+      placeholder("Profile · Bank alerts", "envelope", "Your mailboxes, one at a time.")
     case .security:
       if let session {
         SecurityView(session: session)

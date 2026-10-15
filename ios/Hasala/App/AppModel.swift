@@ -2,40 +2,10 @@ import HasalaModels
 import Observation
 import SwiftUI
 
-/// The tabs (spec 04 §13.1).
-enum AppTab: Hashable {
-  case home, plan, activity, search
-}
-
-/// Large sheets over the tabs (spec 04 §13.3).
-enum SheetRoute: Hashable, Identifiable {
-  case transaction(TxnID)
-  case budget(CategoryID)
-  case moveMoney(to: CategoryID?)
-  case profile
-  /// Connect Gmail after setup, from Home's Needs-you card.
-  case connectGmail(GmailOffer)
-
-  var id: String {
-    switch self {
-    case .transaction(let id): "txn.\(id)"
-    case .budget(let id): "budget.\(id)"
-    case .moveMoney(let id): "move.\(id ?? "assign")"
-    case .profile: "profile"
-    case .connectGmail(let offer): "gmail.\(offer.rawValue)"
-    }
-  }
-}
-
-/// Full-screen covers (spec 04 §13.3).
-enum CoverRoute: Hashable, Identifiable {
-  case review
-  var id: Self { self }
-}
-
 /// App-wide UI state: the ledger the screens read and write, Hide amounts (which applies
 /// to every screen, spec 04 §12), the transient toast with its Undo, and routing
-/// (spec 04 §13.4: the selected tab, the presented sheet and cover).
+/// (`router`: the selected tab, every push path, the presented sheet and cover; `tab`,
+/// `sheet` and `cover` forward to it so callers read as before).
 ///
 /// The store is the Maya mock in Debug builds; the live store over HasalaCore's
 /// projection replaces it (spec 04 §15.2) without changing anything here.
@@ -56,9 +26,20 @@ final class AppModel {
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
-  var tab: AppTab = .home
-  var sheet: SheetRoute?
-  var cover: CoverRoute?
+  /// Where the app is: the selected tab, every push path, the sheet and the cover.
+  let router = AppRouter()
+  var tab: AppTab {
+    get { router.tab }
+    set { router.tab = newValue }
+  }
+  var sheet: SheetRoute? {
+    get { router.sheet }
+    set { router.sheet = newValue }
+  }
+  var cover: CoverRoute? {
+    get { router.cover }
+    set { router.cover = newValue }
+  }
   /// Needs-you cards put off with "Later".
   // TODO(spec 04 §16.1 "Home · Default", 03a §6.15): device-local until the next local midnight,
   // kept in DevicePrefs so it survives a relaunch.
@@ -70,6 +51,7 @@ final class AppModel {
 
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<Int, HomeSnapshot>()
+  @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
 
   init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
     self.store = store
@@ -87,6 +69,12 @@ final class AppModel {
 
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
+
+  /// Transactions waiting to be sorted: the Review tab's badge (it never follows the
+  /// period, Paper "13 · Navigation"), once per ledger change.
+  var reviewCount: Int {
+    reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
+  }
 
   var showingProfile: Bool {
     get { sheet == .profile }
@@ -146,7 +134,7 @@ final class AppModel {
     toast = nil
   }
 
-  func open(_ txn: TxnID) { sheet = .transaction(txn) }
+  func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
   func snooze(_ card: String) { snoozed.insert(card) }
 

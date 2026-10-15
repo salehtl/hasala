@@ -1,11 +1,6 @@
 import HasalaModels
 import Observation
 
-/// Pages pushed inside the profile sheet (spec 04 §13.3 `.profile(ProfileRoute?)`).
-enum ProfileRoute: Hashable {
-  case bankAlerts, accounts, bills, rules, security, notifications, privacy, help, deleteAccount
-}
-
 /// Profile · Your profile and its settings pages (spec 04 §16.1 "Profile · Your profile" and its page-14 variant, "Profile · Categories and rules";
 /// §16.2 X2, X6).
 @MainActor
