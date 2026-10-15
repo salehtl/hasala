@@ -58,7 +58,7 @@ func TestDebounceAndCaps(t *testing.T) {
 
 	// 10 Gmail notifications in 5 s: the leading send, then one trailing at 300 s.
 	for range 10 {
-		wake(d, tok, ReasonGmail)
+		wake(d, tok, ReasonMail)
 		c.add(500 * time.Millisecond)
 		d.Flush(bg)
 	}
@@ -80,21 +80,21 @@ func TestDebounceAndCaps(t *testing.T) {
 	tok2 := fixedTarget(2)
 	sent := s.count()
 	for i := range 7 {
-		wake(d, tok2, ReasonGmail)
+		wake(d, tok2, ReasonMail)
 		c.add(301 * time.Second)
 		d.Flush(bg)
 		if i < 6 && s.count() != sent+i+1 {
-			t.Fatalf("gmail wake %d not sent", i+1)
+			t.Fatalf("mail wake %d not sent", i+1)
 		}
 	}
 	if s.count() != sent+6 {
-		t.Fatalf("the 7th gmail wake in an hour was sent (%d)", s.count()-sent)
+		t.Fatalf("the 7th mail wake in an hour was sent (%d)", s.count()-sent)
 	}
-	if d.Stats.Dropped[ReasonGmail].Load() == 0 {
-		t.Fatal("the dropped gmail wake was not counted")
+	if d.Stats.Dropped[ReasonMail].Load() == 0 {
+		t.Fatal("the dropped mail wake was not counted")
 	}
 
-	// The 13th wake across gmail, sync and nudge is dropped; a security wake
+	// The 13th wake across mail, sync and nudge is dropped; a security wake
 	// after both caps is still sent.
 	tok3 := fixedTarget(3)
 	sent = s.count()
@@ -218,7 +218,7 @@ func TestDispatcherResolvesTokensAndForgetsGoneOnes(t *testing.T) {
 		return ResultSent
 	}}
 	d := NewDispatcher(pool, s)
-	d.run(bg, job{user: u, writer: a, r: ReasonGmail, resolve: true})
+	d.run(bg, job{user: u, writer: a, r: ReasonMail, resolve: true})
 	if s.count() != 1 || s.sent[0].TokenHex != tokenHex(1) {
 		t.Fatalf("WakeWriter reached %v", s.sent)
 	}

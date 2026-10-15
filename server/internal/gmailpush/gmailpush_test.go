@@ -37,6 +37,22 @@ func TestRouteKeyBytes(t *testing.T) {
 			t.Errorf("AddressHMAC(%q) differs from the definition", in)
 		}
 	}
+	// The Gmail value is pinned to the bytes stored before Outlook existed, so
+	// no existing link is orphaned; Outlook's is separated by its provider.
+	const gmailVector = "61a572e6e3168bc9da3c4deac927ce5a40edb50ce0c38bf94c70603c7a471982"
+	for _, got := range [][]byte{rk.AddressHMAC("User@Gmail.com"), rk.AddressHMACFor(ProviderGmail, "user@gmail.com")} {
+		if hex.EncodeToString(got) != gmailVector {
+			t.Errorf("the Gmail address HMAC is %x, want %s", got, gmailVector)
+		}
+	}
+	outlook := hmac.New(sha256.New, raw)
+	outlook.Write([]byte("hasala/v1/mailbox-route\x00outlook\x00user@outlook.com"))
+	if !bytes.Equal(rk.AddressHMACFor(ProviderOutlook, " User@Outlook.com"), outlook.Sum(nil)) {
+		t.Error("AddressHMACFor(outlook) differs from the definition")
+	}
+	if bytes.Equal(rk.AddressHMACFor(ProviderOutlook, "user@gmail.com"), rk.AddressHMAC("user@gmail.com")) {
+		t.Error("one address under two providers gives one value")
+	}
 	m := hmac.New(sha256.New, raw)
 	m.Write([]byte("hasala/v1/mailbox-route-key-id"))
 	if !bytes.Equal(rk.KeyID(), m.Sum(nil)[:8]) {

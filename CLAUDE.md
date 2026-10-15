@@ -60,9 +60,8 @@ not have the private fixtures.
 
 The required checks are these three jobs:
 
-- `gate`: first `check.sh --fence-only`, then `nix flake check --no-build`,
-  then a build of each check except `qa-vm`, then `scripts/check.sh` in the
-  devShell.
+- `gate`: first `nix flake check --no-build`, then a build of each check
+  except `qa-vm`, then `scripts/check.sh` in the devShell.
 - `vuln`: `govulncheck ./...` in `server/` and in `server/oracle/`. The job
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
@@ -72,8 +71,8 @@ The required checks are these three jobs:
 Do not change these job names. The required status checks find the jobs by
 their names.
 
-These jobs are not required: `swift` (HasalaCore on a Mac), `ios` and
-`ios-ui` (the app on a Mac, refer to "The iOS app" below), `web` (the
+These jobs are not required: `swift` (HasalaCore on a Mac), `ios`, `ios-ui`
+and `ios-tools` (the app on a Mac, refer to "The iOS app" below), `web` (the
 website, refer to "Website") and `nixos-vm` (it builds
 `checks.x86_64-linux.qa-vm` with KVM).
 
@@ -142,8 +141,8 @@ and the signed `.eml` fixtures are in the private repository
 
 The first step of `scripts/check.sh` is the real-mail fence. It stops the
 private paths. CI runs this step alone (`scripts/check.sh --fence-only`, with
-no fixtures and no toolchain). It runs in `secrets` on each push and pull
-request, and in `gate` before all other steps.
+no fixtures and no toolchain) in `secrets` on each push and pull request.
+`gate` runs it again as the first step of `scripts/check.sh`.
 
 ### The iOS app
 
@@ -220,13 +219,17 @@ Release scripts:
 
 CI for iOS:
 
-- Job `ios` builds and tests without a signature in the simulator. It also
-  runs `ios/scripts/tests/run.sh`, `ios/scripts/tests/devshell_test.sh` and
-  shellcheck on `ios/scripts`.
+- Job `ios` runs the HasalaKit tests. Then it builds and tests without a
+  signature in the simulator.
 - Job `ios-ui` runs the two longest UI test classes (`CoreScreensTests`,
   `SmokeTests`) on a second runner. Job `ios` skips only these two classes
   (`ios/scripts/ci-simulator-test.sh`).
-- `ios` and `ios-ui` are not required checks.
+- Job `ios-tools` runs on a third runner, at the same time. It does the
+  checks that do not use the app build or a simulator: the design tokens,
+  the project against `ios/project.yml`, `ios/scripts/tests/run.sh`,
+  `ios/scripts/tests/devshell_test.sh` and shellcheck on `ios/scripts`.
+- `ios`, `ios-ui` and `ios-tools` are not required checks. CI skips the
+  three jobs on the same paths.
 
 ### Nix
 

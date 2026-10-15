@@ -138,6 +138,13 @@ let
   # Pub/Sub push that needs it.
   gmailLinkOn = cfg.google.iosClientId != null;
   gmailPushOn = cfg.gmail.pubsubTopic != null;
+  # The [outlook] group's two parts (M8c, M8d), the same shape: the mailbox
+  # link (the Entra client id and the shared route key), and the Graph
+  # change-notification push that needs it.
+  outlookLinkOn = cfg.outlook.clientId != null;
+  outlookPushOn = cfg.outlook.notificationUrl != null;
+  # The route key keys AddressHMAC for both providers; either link mounts it.
+  mailboxRouteKeyOn = gmailLinkOn || outlookLinkOn;
   emailOn = cfg.email.apiTokenFile != null;
   turnstileOn = cfg.web.turnstile.secretFile != null;
 
@@ -178,15 +185,24 @@ let
     HASALA_APNS_TOPIC = cfg.apns.topic;
     HASALA_APNS_ENVIRONMENTS = concatStringsSep "," cfg.apns.environments;
   }
+  // optionalAttrs mailboxRouteKeyOn {
+    HASALA_MAILBOX_ROUTE_KEY_FILE = "%d/mailbox-route-key";
+  }
   // optionalAttrs gmailLinkOn {
     HASALA_GOOGLE_IOS_CLIENT_ID = cfg.google.iosClientId;
-    HASALA_MAILBOX_ROUTE_KEY_FILE = "%d/mailbox-route-key";
   }
   // optionalAttrs gmailPushOn {
     HASALA_GMAIL_PUBSUB_TOPIC = cfg.gmail.pubsubTopic;
     HASALA_GMAIL_PUBSUB_AUDIENCE = cfg.gmail.pubsubAudience;
     HASALA_GMAIL_PUBSUB_SA_EMAIL = cfg.gmail.pubsubServiceAccount;
     HASALA_GMAIL_PUBSUB_SUBSCRIPTION = cfg.gmail.pubsubSubscription;
+  }
+  // optionalAttrs outlookLinkOn {
+    HASALA_OUTLOOK_CLIENT_ID = cfg.outlook.clientId;
+  }
+  // optionalAttrs outlookPushOn {
+    HASALA_OUTLOOK_NOTIFICATION_URL = cfg.outlook.notificationUrl;
+    HASALA_OUTLOOK_LIFECYCLE_URL = cfg.outlook.lifecycleUrl;
   }
   // optionalAttrs (cfg.authKeyFile != null) {
     HASALA_AUTH_KEY_FILE = "%d/auth-key";
@@ -551,10 +567,14 @@ let
     || lib.hasInfix "VAPID" k
     || fixedEnv ? ${k};
 
-  gmailLinkValues = [
-    cfg.google.iosClientId
-    cfg.mailboxRouteKeyFile
+  outlookPushValues = [
+    cfg.outlook.notificationUrl
+    cfg.outlook.lifecycleUrl
   ];
+  # The Graph hook routes (WP3b). The subscription's URLs must be these, on
+  # the tunnel's host: the ingress allowlist routes nothing else.
+  outlookNotificationUrl = "https://${cfg.publicHostname}/hooks/outlook/graph";
+  outlookLifecycleUrl = "https://${cfg.publicHostname}/hooks/outlook/graph/lifecycle";
   gmailPushValues = [
     cfg.gmail.pubsubTopic
     cfg.gmail.pubsubAudience
@@ -713,7 +733,14 @@ in
       pubsubServiceAccount = nullStr "The push subscription's service account email (<name>@<P>.iam.gserviceaccount.com); the hook refuses a push token whose email differs. Part of the Pub/Sub push (M8b).";
       pubsubSubscription = nullStr "projects/<P>/subscriptions/<name>. Part of the Pub/Sub push (M8b).";
     };
-    mailboxRouteKeyFile = secretPath "The mailbox route key (64 lowercase hex); with google.iosClientId it is the [gmail] mailbox link (M8a).";
+    # The Graph change-notification push: both or none, and only with the
+    # link (M8d).
+    outlook = {
+      clientId = nullStr "The Entra app's client id (a UUID; not secret, it ships in the app), the audience of the app's Microsoft ID token (personal accounts only). With mailboxRouteKeyFile it is the [outlook] mailbox link (M8c): the link routes accept provider \"outlook\", and without the URLs the app fetches mail without wakes (no Graph subscription, no hook).";
+      notificationUrl = nullStr "The Graph subscription's notificationUrl, exactly https://<publicHostname>/hooks/outlook/graph; offered to the app in /api/v1/meta. Part of the Graph push (M8d).";
+      lifecycleUrl = nullStr "The Graph subscription's lifecycleNotificationUrl, exactly https://<publicHostname>/hooks/outlook/graph/lifecycle; offered to the app in /api/v1/meta. Part of the Graph push (M8d).";
+    };
+    mailboxRouteKeyFile = secretPath "The mailbox route key (64 lowercase hex), shared by both providers; with google.iosClientId it is the [gmail] mailbox link (M8a), with outlook.clientId the [outlook] one (M8c), and it needs at least one of them.";
     authKeyFile = secretPath "auth_key (spec 01 §4.11, 64 lowercase hex). Required with the tunnel (M12).";
     saltKeyFile = secretPath "salt_key (spec 01 §4.11, 64 lowercase hex): keys only the public password salt, generated once and never rotated; a different key from auth_key. Required with the tunnel (M12): without both key files serve mounts no signup, password, recovery, reset, email-change or freeze route.";
 
@@ -997,10 +1024,11 @@ in
           )
           (a "M8a"
             (
-              allOrNone gmailLinkValues
+              (gmailLinkOn -> cfg.mailboxRouteKeyFile != null)
+              && (cfg.mailboxRouteKeyFile != null -> mailboxRouteKeyOn)
               && (!gmailLinkOn || lib.hasSuffix ".apps.googleusercontent.com" cfg.google.iosClientId)
             )
-            "the [gmail] mailbox link is google.iosClientId (a Google client id, <n>-<x>.apps.googleusercontent.com) and mailboxRouteKeyFile, both or neither."
+            "the [gmail] mailbox link is google.iosClientId (a Google client id, <n>-<x>.apps.googleusercontent.com) and mailboxRouteKeyFile; mailboxRouteKeyFile needs google.iosClientId or outlook.clientId."
           )
           (a "M8b"
             (
@@ -1012,6 +1040,22 @@ in
               )
             )
             "the [gmail] Pub/Sub push (gmail.pubsubTopic, pubsubAudience, pubsubServiceAccount, pubsubSubscription) is all or nothing, needs the mailbox link (M8a), and pubsubServiceAccount is <name>@<P>.iam.gserviceaccount.com."
+          )
+          (a "M8c"
+            (
+              (outlookLinkOn -> cfg.mailboxRouteKeyFile != null)
+              && (!outlookLinkOn || matches uuidRe cfg.outlook.clientId)
+            )
+            "the [outlook] mailbox link is outlook.clientId (the Entra app's client id, a lowercase UUID) and mailboxRouteKeyFile."
+          )
+          (a "M8d"
+            (
+              allOrNone outlookPushValues
+              && (outlookPushOn -> outlookLinkOn)
+              && (cfg.outlook.notificationUrl == null || cfg.outlook.notificationUrl == outlookNotificationUrl)
+              && (cfg.outlook.lifecycleUrl == null || cfg.outlook.lifecycleUrl == outlookLifecycleUrl)
+            )
+            "the [outlook] Graph push (outlook.notificationUrl, outlook.lifecycleUrl) is both or neither, needs the mailbox link (M8c), and the URLs are exactly ${outlookNotificationUrl} and ${outlookLifecycleUrl}."
           )
           (a "M9" (!lib.any pgLib.forbiddenSetting (lib.attrNames cfg.database.settings))
             "database.settings may not set listen_addresses, unix_socket_*, hba_file, ident_file or any log_* key."

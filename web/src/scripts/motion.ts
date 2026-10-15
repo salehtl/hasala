@@ -157,7 +157,15 @@ function stages(signal: AbortSignal) {
   }
 }
 
+/**
+ * Once per document: the footer calls it on every page (its top reveals), and
+ * the pages with sections of their own call it too. onPage re-runs it after
+ * each client-side navigation, so a second registration would run it twice.
+ */
+let started = false;
 export function initMotion(): void {
+  if (started) return;
+  started = true;
   onPage((signal) => {
     reveals(signal);
     pace(signal);

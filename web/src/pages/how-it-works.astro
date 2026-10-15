@@ -4,6 +4,7 @@ import DetailSection from '../components/DetailSection.astro';
 import BankTiles from '../components/BankTiles.astro';
 import AlertArt from '../components/detail/AlertArt.astro';
 import Review from '../components/detail/Review.astro';
+import { MAIL_NOTE } from '../data/site';
 ---
 
 <Detail
@@ -12,15 +13,16 @@ import Review from '../components/detail/Review.astro';
   lead="Hasala reads your bank’s alert emails on your iPhone, turns each one into a transaction and sorts most of them into categories. You confirm the rest."
   path="/how-it-works"
 >
-  <DetailSection id="gmail" title="Connecting Gmail">
+  <DetailSection id="email" title="Connecting your email">
     <p>
-      You give Hasala read‑only access to your Gmail. Your iPhone asks Gmail only for messages from your bank’s alert senders and reads them on the phone, so
-      the rest of your inbox is never downloaded.
+      You give Hasala read‑only access to the email account that gets your bank’s alerts. Your iPhone asks it only for messages from your bank’s alert
+      senders and reads them on the phone, so the rest of your inbox is never downloaded.
     </p>
     <p>
       Hasala can’t send, change or delete mail. If an email only looks like it came from your bank, Hasala checks just its sender details and sets it aside.
       Nothing is sent to an AI service.
     </p>
+    <p>{MAIL_NOTE}</p>
     <AlertArt kind="mail" slot="art" />
   </DetailSection>
 

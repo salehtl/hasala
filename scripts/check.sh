@@ -67,9 +67,9 @@
 # printed instead of named, and the closing real-corpus count is also raised as
 # an annotation and written to the job summary, so a run without the private
 # fixtures says so on the pull request, not only at the end of a long log. CI
-# also runs `scripts/check.sh --fence-only` before it installs Nix, and in job
-# `secrets` on every pull request (including those that skip `gate`), so the
-# real-mail fence holds on every push even when the rest cannot build.
+# also runs `scripts/check.sh --fence-only` alone, without a toolchain, in job
+# `secrets` on every push and pull request (including those that skip `gate`),
+# so the real-mail fence holds on every push even when the rest cannot build.
 #
 # What this does NOT run is the full-corpus cross-executor diff and the corpus-
 # equivalence gate: both need a snapshot of the operator's v1 mailbox
@@ -114,8 +114,8 @@ ci_report() {
 # runs. The synthetic families (edge-cases.json, synthetic-*.json, dns.json)
 # are what belongs here. This step needs no fixtures and no toolchain and takes
 # seconds, so it runs first, and `--fence-only` stops right after it: CI runs
-# that on every push and pull request (job `secrets`, and first in `gate`), so
-# the fence does not depend on the rest of the gate building.
+# that on every push and pull request (job `secrets`), so the fence does not
+# depend on the rest of the gate building.
 step "real-mail fence"
 leaked="$(
 	cd "$ROOT"

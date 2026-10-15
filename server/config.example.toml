@@ -54,6 +54,17 @@ allowed_environments = ["production", "sandbox"]
 # pubsub_audience = "https://api.example.test/hooks/gmail/pubsub"
 # pubsub_service_account = "example@example-project.iam.gserviceaccount.com"
 
+# [outlook] is two parts too (personal Microsoft accounts only). The mailbox
+# link: client_id, the Outlook application id in lower case, together with
+# HASALA_MAILBOX_ROUTE_KEY_FILE (the same route key as [gmail], which it does
+# not need). The Graph push: notification_url and lifecycle_url, both or
+# neither, only with the link; https on one host, with exactly these paths.
+# An account has one mailbox link at a time, Gmail or Outlook.
+# [outlook]
+# client_id = "00000000-0000-4000-8000-000000000000"
+# notification_url = "https://api.example.test/hooks/outlook/graph"
+# lifecycle_url = "https://api.example.test/hooks/outlook/graph/lifecycle"
+
 # [email] is all or nothing with HASALA_EMAIL_API_TOKEN_FILE.
 # [email]
 # cloudflare_account_id = "00000000000000000000000000000000"

@@ -27,6 +27,10 @@
   // On: a preview URL per non-main branch (Workers Builds), for checking a
   // pull request before it is merged. Kept behind Cloudflare Access.
   "preview_urls": true,
+  // Required by `wrangler preview`, which Workers Builds runs for those
+  // branches; without it every preview build fails. Empty: assets and
+  // compatibility settings stay at the top level.
+  "previews": {},
   // Off: request logs would record /i/<code> paths (invite codes must not be logged).
   "observability": { "enabled": false },
   // No usage telemetry from wrangler itself.

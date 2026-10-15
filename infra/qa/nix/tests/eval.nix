@@ -4,9 +4,9 @@
 # name, so `nix flake check --no-build` (which is all a Mac can run of the
 # Linux checks) already enforces it. The derivation only records the result.
 #
-#   AT-E1  a minimal system, a fully configured one and one with the Gmail
-#          mailbox link but no Pub/Sub push evaluate their toplevel with no
-#          failed assertion;
+#   AT-E1  a minimal system, a fully configured one, one with the Gmail
+#          mailbox link but no Pub/Sub push and one with the Outlook mailbox
+#          link alone evaluate their toplevel with no failed assertion;
 #   AT-E2  each misuse fails the named module assertion (M1–M22), and each
 #          ill-typed value (a Nix path literal for a secret, an unknown key
 #          kind, a tester limit of 0) fails the option's type, via tryEval;
@@ -66,41 +66,54 @@ let
     };
   };
 
+  # The [outlook] group's two parts. The client id is a made-up UUID.
+  outlookLink = {
+    outlook.clientId = "00000000-0000-4000-8000-0000000000aa";
+    mailboxRouteKeyFile = secret "mailbox_route_key";
+  };
+  outlookPushUrls = {
+    notificationUrl = "https://api.hasala.app/hooks/outlook/graph";
+    lifecycleUrl = "https://api.hasala.app/hooks/outlook/graph/lifecycle";
+  };
+  outlookOn = lib.recursiveUpdate outlookLink { outlook = outlookPushUrls; };
+
   # Every option group set: the shape of the QA host's configuration.
   full = {
-    services.hasala = lib.recursiveUpdate (tunnelOn // consoleOn // gmailLink // gmailPush) {
-      apns = {
-        keyFile = secret "apns_key_p8";
-        keyId = "ABCDE12345";
-      };
-      web.turnstile.secretFile = secret "turnstile_secret";
-      backup = {
-        enable = true;
-        ageRecipients = [ recipient ];
-        offsite = {
-          enable = true;
-          rcloneConfigFile = secret "backup_rclone_conf";
-          remote = "r2:test-bucket/daily";
+    services.hasala =
+      lib.recursiveUpdate (tunnelOn // consoleOn // gmailLink // gmailPush // outlookOn)
+        {
+          apns = {
+            keyFile = secret "apns_key_p8";
+            keyId = "ABCDE12345";
+          };
+          web.turnstile.secretFile = secret "turnstile_secret";
+          backup = {
+            enable = true;
+            ageRecipients = [ recipient ];
+            offsite = {
+              enable = true;
+              rcloneConfigFile = secret "backup_rclone_conf";
+              remote = "r2:test-bucket/daily";
+            };
+          };
+          monitoring = {
+            onFailure = [ "notify-failure@%n.service" ];
+            healthCheck.enable = true;
+          };
+          asc = {
+            enable = true;
+            keyFile = secret "asc_key_p8";
+            keyId = "ZYXWV98765";
+            issuerId = "00000000-0000-4000-8000-000000000001";
+            refusedKeyIds = [ "AAAAA11111" ];
+          };
+          hardening.inaccessiblePaths = [
+            "-/var/lib/postgresql"
+            "-/run/postgresql"
+            "-/run/secrets"
+            "-/var/lib/neighbour"
+          ];
         };
-      };
-      monitoring = {
-        onFailure = [ "notify-failure@%n.service" ];
-        healthCheck.enable = true;
-      };
-      asc = {
-        enable = true;
-        keyFile = secret "asc_key_p8";
-        keyId = "ZYXWV98765";
-        issuerId = "00000000-0000-4000-8000-000000000001";
-        refusedKeyIds = [ "AAAAA11111" ];
-      };
-      hardening.inaccessiblePaths = [
-        "-/var/lib/postgresql"
-        "-/run/postgresql"
-        "-/run/secrets"
-        "-/var/lib/neighbour"
-      ];
-    };
     # The console behind a tailnet-gated nginx vhost (M19's positive case).
     services.tailscale.enable = true;
     services.nginx = {
@@ -242,6 +255,70 @@ let
         }
       ))
     ];
+    "Outlook client id without the route key" = [
+      "M8c"
+      (hasala { inherit (outlookLink) outlook; })
+    ];
+    "Outlook client id not a UUID" = [
+      "M8c"
+      (hasala (outlookLink // { outlook.clientId = "not-a-client-id"; }))
+    ];
+    "Outlook client id in upper case" = [
+      "M8c"
+      (hasala (outlookLink // { outlook.clientId = "00000000-0000-4000-8000-0000000000AA"; }))
+    ];
+    "one Graph URL only" = [
+      "M8d"
+      (hasala (
+        lib.recursiveUpdate outlookLink { outlook = { inherit (outlookPushUrls) notificationUrl; }; }
+      ))
+    ];
+    "the Graph push without the link" = [
+      "M8d"
+      (hasala { outlook = outlookPushUrls; })
+    ];
+    "the Graph push with only the Gmail link" = [
+      "M8d"
+      (hasala (gmailLink // { outlook = outlookPushUrls; }))
+    ];
+    "Graph notification URL over http" = [
+      "M8d"
+      (hasala (
+        lib.recursiveUpdate outlookOn {
+          outlook.notificationUrl = "http://api.hasala.app/hooks/outlook/graph";
+        }
+      ))
+    ];
+    "Graph notification URL on another host" = [
+      "M8d"
+      (hasala (
+        lib.recursiveUpdate outlookOn {
+          outlook.notificationUrl = "https://hooks.example.test/hooks/outlook/graph";
+        }
+      ))
+    ];
+    "Graph notification URL on the lifecycle path" = [
+      "M8d"
+      (hasala (lib.recursiveUpdate outlookOn { outlook.notificationUrl = outlookPushUrls.lifecycleUrl; }))
+    ];
+    "Graph lifecycle URL on the notification path" = [
+      "M8d"
+      (hasala (lib.recursiveUpdate outlookOn { outlook.lifecycleUrl = outlookPushUrls.notificationUrl; }))
+    ];
+    "Graph lifecycle URL with a trailing slash" = [
+      "M8d"
+      (hasala (
+        lib.recursiveUpdate outlookOn { outlook.lifecycleUrl = outlookPushUrls.lifecycleUrl + "/"; }
+      ))
+    ];
+    "Graph notification URL with a query" = [
+      "M8d"
+      (hasala (
+        lib.recursiveUpdate outlookOn {
+          outlook.notificationUrl = outlookPushUrls.notificationUrl + "?x=1";
+        }
+      ))
+    ];
     "database listen_addresses" = [
       "M9"
       (hasala { database.settings.listen_addresses = "*"; })
@@ -313,7 +390,7 @@ let
         tunnel.ingress = lib.mkForce [
           {
             hostname = "api.hasala.app";
-            path = "^/(api/v1/.*|hooks/gmail/pubsub)$";
+            path = "^/(api/v1/.*|hooks/gmail/pubsub|hooks/outlook/graph(/lifecycle)?)$";
             service = "http://127.0.0.1:9473";
           }
           { service = "http_status:404"; }
@@ -497,6 +574,8 @@ let
   fullSys = t.evalSystem full;
   # The QA host before its Pub/Sub push exists: the mailbox link alone.
   linkOnlySys = t.evalSystem (hasala gmailLink);
+  # Outlook's link alone: the route key without a Google client id.
+  outlookLinkOnlySys = t.evalSystem (hasala outlookLink);
   manualSys = t.evalSystem (lib.recursiveUpdate full { services.hasala.asc.enable = false; });
 
   positiveErrors =
@@ -504,7 +583,10 @@ let
     ++ lib.optional (failedAny fullSys != [ ]) "AT-E1 full: ${builtins.toJSON (failedAny fullSys)}"
     ++ lib.optional (
       failedAny linkOnlySys != [ ]
-    ) "AT-E1 gmail link only: ${builtins.toJSON (failedAny linkOnlySys)}";
+    ) "AT-E1 gmail link only: ${builtins.toJSON (failedAny linkOnlySys)}"
+    ++ lib.optional (
+      failedAny outlookLinkOnlySys != [ ]
+    ) "AT-E1 outlook link only: ${builtins.toJSON (failedAny outlookLinkOnlySys)}";
 
   svc = sys: name: sys.config.systemd.services.${name};
   # NixOS adds PATH to every unit; it is not part of the contract.
@@ -532,14 +614,16 @@ let
   ];
   hasaladEnv = envOf fullSys "hasalad";
   linkOnlyEnv = envOf linkOnlySys "hasalad";
-  gmailKeys = env: keysWith [ "HASALA_GOOGLE_" "HASALA_GMAIL_" "HASALA_MAILBOX_" ] env;
+  outlookLinkOnlyEnv = envOf outlookLinkOnlySys "hasalad";
+  mailboxKeys =
+    env: keysWith [ "HASALA_GOOGLE_" "HASALA_GMAIL_" "HASALA_OUTLOOK_" "HASALA_MAILBOX_" ] env;
   consoleEnv = envOf fullSys "hasala-console";
   manualConsoleEnv = envOf manualSys "hasala-console";
   allEnvValues = lib.concatMap (s: map toString (lib.attrValues (s.environment or { }))) (
     lib.attrValues fullSys.config.systemd.services
   );
-  # §5.5: the fixed keys of `serve` (the [gmail], [email], APNs, auth-key and
-  # Turnstile ones included, since `full` sets every group).
+  # §5.5: the fixed keys of `serve` (the [gmail], [outlook], [email], APNs,
+  # auth-key and Turnstile ones included, since `full` sets every group).
   serveKeys = [
     "HASALA_HTTP_LISTEN"
     "HASALA_METRICS_LISTEN"
@@ -562,6 +646,9 @@ let
     "HASALA_GMAIL_PUBSUB_AUDIENCE"
     "HASALA_GMAIL_PUBSUB_SA_EMAIL"
     "HASALA_GMAIL_PUBSUB_SUBSCRIPTION"
+    "HASALA_OUTLOOK_CLIENT_ID"
+    "HASALA_OUTLOOK_NOTIFICATION_URL"
+    "HASALA_OUTLOOK_LIFECYCLE_URL"
     "HASALA_MAILBOX_ROUTE_KEY_FILE"
     "HASALA_AUTH_KEY_FILE"
     "HASALA_SALT_KEY_FILE"
@@ -658,10 +745,30 @@ let
         "turnstile-secret"
       ]
     ) "AT-E3 hasalad LoadCredential is ${builtins.toJSON (credsOf fullSys "hasalad")}"
-    ++ check (sameSet (gmailKeys linkOnlyEnv) [
-      "HASALA_GOOGLE_IOS_CLIENT_ID"
-      "HASALA_MAILBOX_ROUTE_KEY_FILE"
-    ]) "AT-E3 hasalad's [gmail] keys with the link only are ${builtins.toJSON (gmailKeys linkOnlyEnv)}"
+    ++ check (
+      hasaladEnv.HASALA_OUTLOOK_NOTIFICATION_URL == "https://api.hasala.app/hooks/outlook/graph"
+      && hasaladEnv.HASALA_OUTLOOK_LIFECYCLE_URL == "https://api.hasala.app/hooks/outlook/graph/lifecycle"
+    ) "AT-E3 the [outlook] push URLs"
+    ++
+      check
+        (sameSet (mailboxKeys outlookLinkOnlyEnv) [
+          "HASALA_OUTLOOK_CLIENT_ID"
+          "HASALA_MAILBOX_ROUTE_KEY_FILE"
+        ])
+        "AT-E3 hasalad's mailbox keys with the Outlook link only are ${builtins.toJSON (mailboxKeys outlookLinkOnlyEnv)}"
+    ++ check (
+      outlookLinkOnlyEnv.HASALA_MAILBOX_ROUTE_KEY_FILE or null == "%d/mailbox-route-key"
+      && outlookLinkOnlyEnv.HASALA_OUTLOOK_CLIENT_ID or null == "00000000-0000-4000-8000-0000000000aa"
+    ) "AT-E3 the Outlook-link-only values"
+    ++
+      check (credsOf outlookLinkOnlySys "hasalad" == [ "mailbox-route-key" ])
+        "AT-E3 hasalad LoadCredential with the Outlook link only is ${builtins.toJSON (credsOf outlookLinkOnlySys "hasalad")}"
+    ++ check (sameSet (mailboxKeys linkOnlyEnv)
+      [
+        "HASALA_GOOGLE_IOS_CLIENT_ID"
+        "HASALA_MAILBOX_ROUTE_KEY_FILE"
+      ]
+    ) "AT-E3 hasalad's [gmail] keys with the link only are ${builtins.toJSON (mailboxKeys linkOnlyEnv)}"
     ++ check (
       linkOnlyEnv.HASALA_MAILBOX_ROUTE_KEY_FILE or null == "%d/mailbox-route-key"
       && linkOnlyEnv.HASALA_GOOGLE_IOS_CLIENT_ID or null == "000000000000-test.apps.googleusercontent.com"
@@ -670,8 +777,8 @@ let
       check (credsOf linkOnlySys "hasalad" == [ "mailbox-route-key" ])
         "AT-E3 hasalad LoadCredential with the link only is ${builtins.toJSON (credsOf linkOnlySys "hasalad")}"
     ++ check (
-      gmailKeys (envOf minimal "hasalad") == [ ]
-    ) "AT-E3 hasalad has [gmail] keys with none configured"
+      mailboxKeys (envOf minimal "hasalad") == [ ]
+    ) "AT-E3 hasalad has [gmail] or [outlook] keys with none configured"
     ++ check (sameSet (lib.attrNames consoleEnv) consoleKeysExternal) "AT-E3 console environment (external) is ${builtins.toJSON (lib.attrNames consoleEnv)}"
     ++ check (
       consoleEnv.HASALA_TESTFLIGHT_MODE == "external"

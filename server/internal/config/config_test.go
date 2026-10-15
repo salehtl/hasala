@@ -255,6 +255,68 @@ func TestTheGmailGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	wantErr(t, merge(link, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": secretFile(t, 0o640)}), "no group or other permission")
 }
 
+// The [outlook] group: the link (client_id and [gmail]'s route key) and the
+// push (both hook URLs, only with the link). The route key alone keys either
+// link, so Outlook works without Gmail.
+func TestTheOutlookGroupIsALinkAndAnOptionalPush(t *testing.T) {
+	key := secretFile(t, 0o600)
+	link := env{
+		"HASALA_OUTLOOK_CLIENT_ID":      "00000000-1111-4222-8333-444444444444",
+		"HASALA_MAILBOX_ROUTE_KEY_FILE": key,
+	}
+	push := env{
+		"HASALA_OUTLOOK_NOTIFICATION_URL": "https://api.hasala.app/hooks/outlook/graph",
+		"HASALA_OUTLOOK_LIFECYCLE_URL":    "https://api.hasala.app/hooks/outlook/graph/lifecycle",
+	}
+	merge := func(es ...env) env {
+		out := env{}
+		for _, e := range es {
+			for k, v := range e {
+				out[k] = v
+			}
+		}
+		return out
+	}
+
+	c := mustLoad(t, link)
+	if !c.Outlook.LinkEnabled() || c.Outlook.PushEnabled() || c.Gmail.LinkEnabled() {
+		t.Fatalf("outlook link only: %+v, gmail link %v", c.Outlook, c.Gmail.LinkEnabled())
+	}
+	c = mustLoad(t, merge(link, push))
+	if !c.Outlook.LinkEnabled() || !c.Outlook.PushEnabled() {
+		t.Fatalf("outlook link and push: %+v", c.Outlook)
+	}
+	// With the Gmail link beside it.
+	c = mustLoad(t, merge(link, push, env{"HASALA_GOOGLE_IOS_CLIENT_ID": "1-abc.apps.googleusercontent.com"}))
+	if !c.Outlook.LinkEnabled() || !c.Gmail.LinkEnabled() {
+		t.Fatal("both links")
+	}
+
+	wantErr(t, env{"HASALA_OUTLOOK_CLIENT_ID": link["HASALA_OUTLOOK_CLIENT_ID"]}, "needs HASALA_MAILBOX_ROUTE_KEY_FILE")
+	wantErr(t, push, "needs the mailbox link")
+	for k := range push {
+		wantErr(t, merge(link, env{k: push[k]}), "together")
+	}
+	for _, id := range []string{"not-a-uuid", "00000000-1111-4222-8333-44444444444G", "00000000-1111-4222-8333-444444444444 ",
+		"00000000-1111-4222-8333-44444444444A"} {
+		wantErr(t, merge(link, env{"HASALA_OUTLOOK_CLIENT_ID": id}), "not an application (client) id")
+	}
+	for name, bad := range map[string]env{
+		"http":           {"HASALA_OUTLOOK_NOTIFICATION_URL": "http://api.hasala.app/hooks/outlook/graph"},
+		"wrong path":     {"HASALA_OUTLOOK_NOTIFICATION_URL": "https://api.hasala.app/hooks/outlook/graph/"},
+		"swapped":        {"HASALA_OUTLOOK_LIFECYCLE_URL": "https://api.hasala.app/hooks/outlook/graph"},
+		"query":          {"HASALA_OUTLOOK_LIFECYCLE_URL": "https://api.hasala.app/hooks/outlook/graph/lifecycle?x=1"},
+		"userinfo":       {"HASALA_OUTLOOK_NOTIFICATION_URL": "https://u@api.hasala.app/hooks/outlook/graph"},
+		"no host":        {"HASALA_OUTLOOK_NOTIFICATION_URL": "https:///hooks/outlook/graph"},
+		"two hosts":      {"HASALA_OUTLOOK_LIFECYCLE_URL": "https://other.hasala.app/hooks/outlook/graph/lifecycle"},
+		"gmail hook URL": {"HASALA_OUTLOOK_NOTIFICATION_URL": "https://api.hasala.app/hooks/gmail/pubsub"},
+	} {
+		t.Run(name, func(t *testing.T) { wantErr(t, merge(link, push, bad), "outlook.") })
+	}
+	// The route key without either link is still half a link.
+	wantErr(t, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": key}, "missing: gmail.ios_client_id")
+}
+
 func TestSecretFilesMustBePrivate(t *testing.T) {
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o640)}, "no group or other permission")
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": filepath.Join(t.TempDir(), "absent")}, "secret file")

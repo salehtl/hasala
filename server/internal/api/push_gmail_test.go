@@ -536,7 +536,7 @@ func TestGmailHook(t *testing.T) {
 
 	wantStatus(t, h.hook(pushToken, good), http.StatusNoContent)
 	ws := wk.take()
-	if len(ws) != 1 || ws[0].others || ws[0].writer != holder || ws[0].user != u || ws[0].r != pushv2.ReasonGmail {
+	if len(ws) != 1 || ws[0].others || ws[0].writer != holder || ws[0].user != u || ws[0].r != pushv2.ReasonMail {
 		t.Fatalf("wakes %+v, want exactly the holder", ws)
 	}
 	var hour *time.Time
@@ -573,13 +573,13 @@ func TestNudgeSweep(t *testing.T) {
 		t.Fatal(err)
 	}
 	wk := &recWaker{}
-	if msg, err := gmailpush.Nudge(bg, h.pool, wk); err != nil || msg == "" {
+	if msg, err := gmailpush.Nudge(bg, h.pool, wk, gmailpush.ProviderGmail); err != nil || msg == "" {
 		t.Fatalf("nudge: %q %v", msg, err)
 	}
 	if ws := wk.take(); len(ws) != 1 || ws[0].writer != holder || ws[0].r != pushv2.ReasonNudge {
 		t.Fatalf("nudges %+v", ws)
 	}
-	if _, err := gmailpush.Nudge(bg, h.pool, wk); err != nil || len(wk.take()) != 0 {
+	if _, err := gmailpush.Nudge(bg, h.pool, wk, gmailpush.ProviderGmail); err != nil || len(wk.take()) != 0 {
 		t.Fatal("a second nudge inside 12 hours")
 	}
 	if err := gmailpush.CheckKeyID(bg, h.pool, g.RouteKey); err != nil {
