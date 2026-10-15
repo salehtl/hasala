@@ -68,8 +68,7 @@ const rows = [
 ];
 ---
 
-<Base title={title} description={lead} path={path} jsonLd={ld} class="hpw-page">
-  <div class="hpw-bar" aria-hidden="true"></div>
+<Base title={title} description={lead} path={path} jsonLd={ld} edge="navy" footerTone="navy" class="hpw-page">
   <section class="section section--navy hpw" aria-labelledby="hpw-title">
     <div class="hpw__glow section__glow" aria-hidden="true"></div>
     <div class="container hpw__inner">
@@ -133,12 +132,15 @@ const rows = [
 </Base>
 
 <style>
-  .hpw-bar {
-    height: 92px;
-    background: var(--white);
+  /* Navy behind the band too, so no white shows at a sub-pixel seam with the
+     footer. An image, as in global.css, so Safari still reads html's colour. */
+  :global(body.hpw-page) {
+    background: linear-gradient(oklab(23% -0.004 -0.069), oklab(23% -0.004 -0.069));
   }
+  /* The band runs from the top of the screen, under the nav, to the footer,
+     which carries the navy on. The top padding clears the nav. */
   .hpw {
-    --section-pt: 56px;
+    --section-pt: calc(56px + 92px);
     --section-pb: 88px;
   }
   .hpw :global(:focus-visible) {
@@ -312,11 +314,8 @@ const rows = [
   }
 
   @media (min-width: 1024px) {
-    .hpw-bar {
-      height: 116px;
-    }
     .hpw {
-      --section-pt: 140px;
+      --section-pt: calc(140px + 116px);
       --section-pb: 140px;
     }
     .hpw__inner {
