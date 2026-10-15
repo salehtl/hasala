@@ -8,6 +8,7 @@
  */
 import WaitlistForm from '../WaitlistForm.astro';
 import Icon from '../Icon.astro';
+import { MAIL } from '../../data/site';
 ---
 
 <section id="invite" class="beta" aria-labelledby="beta-title">
@@ -22,7 +23,7 @@ import Icon from '../Icon.astro';
         </p>
         <ul class="beta__needs">
           <li><Icon name="check" size={16} stroke={1.9} />iPhone with iOS 26 or later</li>
-          <li><Icon name="check" size={16} stroke={1.9} />A Gmail account that gets your bank’s emails</li>
+          <li><Icon name="check" size={16} stroke={1.9} />An email account that gets your bank’s emails ({MAIL} today)</li>
           <li><Icon name="check" size={16} stroke={1.9} />English only for now. Expect a few bugs</li>
         </ul>
       </div>

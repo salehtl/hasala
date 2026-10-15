@@ -48,7 +48,7 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
     {
       variant === 'full' && (
         <div class="nav__cta">
-          <a class="nav__code" href="/#invite">
+          <a class="nav__code" href="/i">
             Have a code?
           </a>
           <a class="btn btn--primary btn--nav" href="/#invite" data-invite-cta>
@@ -92,6 +92,11 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
         <a class="btn btn--primary" href="/#invite">
           Request an invite
         </a>
+        {variant === 'full' && (
+          <a class="nav__menu-code" href="/i">
+            Have a code?
+          </a>
+        )}
       </div>
     )
   }
@@ -333,6 +338,15 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
   }
   .nav__menu .btn {
     width: 100%;
+  }
+  .nav__menu-code {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 500;
   }
   .nav__menu::backdrop {
     background: rgb(0 0 0 / 12%);

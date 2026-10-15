@@ -13,4 +13,12 @@ export const JS_CLASS = "document.documentElement.classList.add('js')";
 export const HERO_SEEN =
   "try{if(sessionStorage.getItem('hasala:hero'))document.documentElement.classList.add('hero-seen');else sessionStorage.setItem('hasala:hero','1')}catch(e){}";
 
-export const INLINE_SCRIPTS = [JS_CLASS, HERO_SEEN];
+/**
+ * /i: an address with a code (/i/<code>, or the older /i#<code>) shows the
+ * invited page; without one, the page explains where a code comes from.
+ * Decided before first paint, so neither view flashes; the page script
+ * checks the code itself and drops the class if it is not one.
+ */
+export const INVITE_CODE = "if(/^\\/i\\/./.test(location.pathname)||location.hash.length>1)document.documentElement.classList.add('has-code')";
+
+export const INLINE_SCRIPTS = [JS_CLASS, HERO_SEEN, INVITE_CODE];

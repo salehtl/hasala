@@ -13,7 +13,7 @@ const OPEN_FIRST: Record<string, string> = {
     "No. Hasala only reads the emails your bank already sends you. It can't move money, and it will never ask for your bank password or card number.",
 };
 
-const MOBILE_Q: Record<string, string> = { gmail: 'What can Hasala read in my Gmail?' };
+const MOBILE_Q: Record<string, string> = { email: 'What can Hasala read in my email?' };
 const MOBILE_A: Record<string, string> = {
   'bank-login': "No. Hasala only reads the emails your bank already sends. It can't move money and won't ask for your bank password.",
 };

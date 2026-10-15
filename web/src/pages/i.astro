@@ -16,19 +16,26 @@
  * no App Store Connect account and never see each other). The page never
  * calls the API, so it cannot know an invite's expiry and shows no date.
  * The older /i#<CODE> form works too.
+ *
+ * Without a code (the nav's "Have a code?", a reload after the code left the
+ * address bar, no JavaScript) the page is "Have an invite code?": where the
+ * code is, the same steps with typing the code in the app, and a way to
+ * request an invite. .for-code and .no-code hold each view's parts;
+ * html.has-code (INVITE_CODE in src/lib/inline-scripts.mjs) picks one.
  */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import AppIcon from '../components/brand/AppIcon.astro';
 import HomePhone from '../components/HomePhone.astro';
 import { SITE } from '../data/site';
+import { INVITE_CODE } from '../lib/inline-scripts.mjs';
 
 // Opens the TestFlight app on an iPhone (Apple's own address); the invite itself arrives by Apple's email.
 const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 ---
 
 <Base
-  title="You’ve been invited"
+  title="Your invite"
   description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and type your invite code."
   path="/i"
   noindex
@@ -36,24 +43,31 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   referrer="no-referrer"
   edge="sky"
 >
+  <script is:inline slot="head" set:html={INVITE_CODE} />
   <section class="invite" id="invite" aria-labelledby="invite-title">
     <div class="container invite__inner">
       <div class="invite__copy">
         <div class="invite__badge">
           <span class="invite__tile"><AppIcon id="invite-icon" size={56} /></span>
-          <p class="invite__code-chip">
+          <p class="invite__code-chip for-code">
             <span class="invite__coin" aria-hidden="true"></span>
             <span class="invite__id"><span>Invite</span> <code data-code hidden></code></span>
           </p>
         </div>
 
-        <h1 id="invite-title" class="display-invite invite__title">You've been invited.</h1>
-        <p class="lead invite__lead">
+        <h1 id="invite-title" class="display-invite invite__title">
+          <span class="for-code">You've been invited.</span><span class="no-code">Have an invite code?</span>
+        </h1>
+        <p class="lead invite__lead for-code">
           <span class="is-wide">A place in the Hasala beta is saved for you. Setting up takes about five minutes on your iPhone.</span>
           <span class="is-narrow">Your place in the Hasala beta is ready. It takes about five minutes on this iPhone.</span>
         </p>
+        <p class="lead invite__lead no-code">
+          It’s in your Hasala invite email, from {SITE.mailFrom}. Open the link in that email on your iPhone, or follow these steps and type the code in
+          the app.
+        </p>
 
-        <div class="invite__ctas">
+        <div class="invite__ctas for-code">
           <a class="btn btn--primary invite__cta" href={TESTFLIGHT_OPEN}>Open invite in TestFlight</a>
           <a class="btn btn--glass invite__cta invite__cta--second" href={SITE.testFlightAppStore}>No TestFlight yet? Get it first</a>
         </div>
@@ -73,11 +87,12 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
           <li>
             <span class="coin-badge">2</span>
             <div class="isteps__text">
-              <h2>Open your invite</h2>
-              <p>
+              <h2><span class="for-code">Open your invite</span><span class="no-code">Accept Apple’s invitation</span></h2>
+              <p class="for-code">
                 <span class="is-wide">TestFlight opens with Hasala ready to install.</span>
                 <span class="is-narrow">Hasala appears in TestFlight. Tap Install.</span>
               </p>
+              <p class="no-code">From Apple’s TestFlight email or the link in your invite. Then install Hasala.</p>
             </div>
             <a class="btn btn--primary btn--sm isteps__btn" href={TESTFLIGHT_OPEN}>Open in TestFlight</a>
           </li>
@@ -85,9 +100,10 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
             <span class="coin-badge">3</span>
             <div class="isteps__text">
               <h2><span class="is-wide">Install and set up</span><span class="is-narrow">Set up</span></h2>
-              <p>Choose Face ID or a password, write down your 12 words, connect Gmail.</p>
+              <p class="for-code">Choose Face ID or a password, write down your 12 words, connect your email.</p>
+              <p class="no-code">Open Hasala and type the code from your invite email. Then choose Face ID or a password, and connect your email.</p>
             </div>
-            <button class="btn btn--subtle btn--sm isteps__btn" type="button" data-copy-code hidden>
+            <button class="btn btn--subtle btn--sm isteps__btn for-code" type="button" data-copy-code hidden>
               <Icon name="copy" size={16} stroke={1.6} /><span>Copy code</span>
             </button>
           </li>
@@ -101,14 +117,20 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
           </p>
         </div>
 
-        <p class="invite__fine">Invites are personal and work once. Not expecting this? You can ignore it.</p>
+        <p class="invite__fine for-code">Invites are personal and work once. Not expecting this? You can ignore it.</p>
+        <div class="invite__guest no-code">
+          <p>
+            <b>No invite yet?</b> We let people in a few at a time. <a class="link" href="/#invite">Request an invite</a>
+          </p>
+          <p>Can’t find your invite email? Write to <a class="link" href={`mailto:${SITE.supportEmail}`}>{SITE.supportEmail}</a>.</p>
+        </div>
       </div>
 
       <div class="invite__stage" aria-hidden="true" data-alive>
         <div class="device--invite">
           <HomePhone play="load" />
         </div>
-        <div class="invite__saved">
+        <div class="invite__saved for-code">
           <span class="invite__saved-coin">
             <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true" focusable="false"><rect x="10" y="14.5" width="20" height="4" rx="2" fill="#8A5A05"></rect><rect x="10" y="21.5" width="20" height="4" rx="2" fill="#8A5A05"></rect></svg>
           </span>
@@ -148,7 +170,10 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     } else {
       code = isCode(norm(fragment)) ? norm(fragment) : '';
     }
-    if (!code) return;
+    if (!code) {
+      document.documentElement.classList.remove('has-code');
+      return;
+    }
 
     const shown = code.match(/.{4}/g)!.join('-');
     document.querySelectorAll<HTMLElement>('[data-code]').forEach((el) => {
@@ -221,6 +246,24 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   }
   .is-wide {
     display: none;
+  }
+  /* One view at a time: the invited page, or "Have an invite code?". */
+  :global(html:not(.has-code)) .for-code,
+  :global(html.has-code) .no-code {
+    display: none !important;
+  }
+  .invite__guest {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .invite__guest b {
+    color: var(--text-primary);
+    font-weight: 600;
   }
   .invite__badge {
     display: flex;
@@ -462,6 +505,10 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     }
     .isteps__btn[data-copy-code]:not([hidden]) {
       grid-column: auto;
+    }
+    /* Shown only once the script has a code to copy. */
+    .isteps__btn[hidden] {
+      display: none;
     }
     .invite__qr {
       display: flex;
