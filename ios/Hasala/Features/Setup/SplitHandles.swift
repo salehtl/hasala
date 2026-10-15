@@ -123,7 +123,9 @@ struct SplitHandles: View {
       }
     }
     .frame(height: 20)
+    // One line of text for VoiceOver, not a control (the handles are).
     .accessibilityElement(children: .ignore)
+    .accessibilityAddTraits(.isStaticText)
     .accessibilityLabel(
       "Needs \(plan.needsPercent)%, wants \(plan.wantsPercent)%, savings \(plan.savingsPercent)%")
   }

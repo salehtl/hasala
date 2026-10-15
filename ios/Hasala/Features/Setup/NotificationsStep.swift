@@ -102,16 +102,37 @@ private struct LockScreenPreview: View {
   ]
 
   var body: some View {
+    // The cap sits outside the face, so the clock's scaled size stops with the text.
+    LockScreenFace(date: date, details: details, wallpaper: Self.wallpaper)
+      .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("Lock Screen preview: \(details ? "amount and merchant shown" : "New transaction")")
+      .accessibilityIdentifier(hasalaCappedFigureIdentifier)
+  }
+}
+
+/// The preview's face: the date, the clock (SF Pro Rounded 64, growing with the large
+/// title up to the cap) and Hasala's banner, in the system's own type. Each text stops
+/// growing at the cap on purpose, so it carries the capped-figure marker too.
+private struct LockScreenFace: View {
+  let date: LocalDate
+  let details: Bool
+  let wallpaper: [Color]
+  @ScaledMetric(relativeTo: .largeTitle) private var clock: CGFloat = 64
+
+  var body: some View {
     VStack(spacing: 2) {
       Text(LedgerToday.lockScreenDate(date))
         .font(.system(.subheadline, weight: .semibold))
         .foregroundStyle(HColor.white.opacity(0.92))
+        .cappedText()
       Text(verbatim: "9:41")
-        .font(.system(size: 64, weight: .semibold, design: .rounded))
-        .tracking(-1.2)
+        .font(.system(size: clock, weight: .semibold, design: .rounded))
+        .tracking(-1.2 * clock / 64)
         .foregroundStyle(HColor.white.opacity(0.94))
         .minimumScaleFactor(0.5)
         .lineLimit(1)
+        .cappedText()
         .padding(.bottom, 14)
       banner
     }
@@ -119,13 +140,9 @@ private struct LockScreenPreview: View {
     .padding(.horizontal, 14)
     .padding(.bottom, 16)
     .frame(maxWidth: .infinity)
-    .background(LinearGradient(colors: Self.wallpaper, startPoint: .top, endPoint: .bottom))
+    .background(LinearGradient(colors: wallpaper, startPoint: .top, endPoint: .bottom))
     .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
     .shadow(color: HColor.hueSkyInk.opacity(0.16), radius: 15, x: 0, y: 14)
-    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Lock Screen preview: \(details ? "amount and merchant shown" : "New transaction")")
-    .accessibilityIdentifier(hasalaCappedFigureIdentifier)
   }
 
   private var banner: some View {
@@ -134,12 +151,14 @@ private struct LockScreenPreview: View {
       VStack(alignment: .leading, spacing: 1) {
         HStack {
           Text("Hasala").font(.system(.subheadline, weight: .semibold)).foregroundStyle(HColor.appleLabelsVibrantPrimary)
+            .cappedText()
           Spacer(minLength: 8)
-          Text("now").font(.system(.footnote)).foregroundStyle(HColor.appleLabelsSecondary)
+          Text("now").font(.system(.footnote)).foregroundStyle(HColor.appleLabelsSecondary).cappedText()
         }
         Text(details ? "AED 342.15 at Carrefour" : "New transaction")
           .font(.system(.subheadline))
           .foregroundStyle(HColor.appleLabelsVibrantPrimary)
+          .cappedText()
       }
     }
     .padding(.vertical, 12)
@@ -149,4 +168,10 @@ private struct LockScreenPreview: View {
     .background(HColor.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 6)
   }
+}
+
+extension View {
+  /// Marks text that stops growing at a cap on purpose (spec 04 §14.4), as the kit's
+  /// capped figures are marked.
+  fileprivate func cappedText() -> some View { accessibilityIdentifier(hasalaCappedFigureIdentifier) }
 }

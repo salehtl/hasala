@@ -13,8 +13,10 @@ import SwiftUI
 ///
 /// `.fill` gives the content all the height between the question and the dock (the income
 /// step centres its figure there, Paper 56S); it scrolls only when the text is too large to
-/// fit. `.scroll` is a plain scrolling column, with the question `top` under a hidden bar
-/// (the notifications step, 28 under the status bar, Paper GMV).
+/// fit. It is one scroll view either way (no second layout swapped in at a larger text
+/// size), so the text on it keeps its identity as it grows. `.scroll` is a plain scrolling
+/// column, with the question `top` under a hidden bar (the notifications step, 28 under the
+/// status bar, Paper GMV).
 struct SetupScreen<Content: View, Dock: View>: View {
   enum Layout { case fill, scroll }
 
@@ -30,19 +32,23 @@ struct SetupScreen<Content: View, Dock: View>: View {
   @ViewBuilder var content: () -> Content
   @ViewBuilder var dock: () -> Dock
 
+  /// The scroll view's visible height, inside its bars.
+  @State private var viewport: CGFloat = 0
+
   var body: some View {
-    Group {
+    ScrollView {
       switch layout {
       case .fill:
-        ViewThatFits(in: .vertical) {
-          column(filling: true)
-          ScrollView { column(filling: false) }
-            .scrollBounceBehavior(.basedOnSize)
-        }
+        FillOrGrow(minHeight: viewport) { column(filling: true) }
       case .scroll:
-        ScrollView { column(filling: false).padding(.bottom, 16) }
-          .scrollBounceBehavior(.basedOnSize)
+        column(filling: false).padding(.bottom, 16)
       }
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom
+    } action: { _, height in
+      viewport = max(0, height)
     }
     .safeAreaBar(edge: .bottom) { dock() }
     .background(alignment: .top) {
@@ -60,6 +66,23 @@ struct SetupScreen<Content: View, Dock: View>: View {
       content()
         .frame(maxWidth: .infinity, maxHeight: filling ? .infinity : nil)
     }
+  }
+}
+
+/// A column that is at least `minHeight` tall: given exactly that when its content fits
+/// (so a `maxHeight: .infinity` part takes the room left), and its own height when it
+/// doesn't (the scroll view around it then scrolls).
+private struct FillOrGrow: Layout {
+  var minHeight: CGFloat
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    guard let child = subviews.first else { return .zero }
+    let natural = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+    return CGSize(width: proposal.width ?? natural.width, height: max(minHeight, natural.height))
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
   }
 }
 

@@ -8,13 +8,21 @@ struct PaydayPicker: View {
   @Binding var choice: PaydayChoice
   /// The next payday for the choice, from the ledger's clock.
   let next: LocalDate
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     VStack(spacing: 10) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .firstTextBaseline) { label; Spacer(minLength: 8); nextLine }
-        VStack(alignment: .leading, spacing: 2) { label; nextLine }.frame(maxWidth: .infinity, alignment: .leading)
+      // One row as Paper draws it; at the accessibility sizes the next payday goes under
+      // "Payday" (the same two texts, so they keep growing where they are).
+      let layout = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+        : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+      layout {
+        label
+        if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+        nextLine
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, HSpacing.insetPage)
       PaydayStrip(choice: $choice)
     }
@@ -150,30 +158,62 @@ private struct PaydayTile: View {
       .overlay { label }
   }
 
+  // Paper: the day 20/24 semibold, the chosen day 24/28 bold over its "th" (Inter 11/14
+  // 600); "Last" 13/16 600 over "work day" 11/14 500. Each grows on its own text style's
+  // curve; the small words grow faster than the tile, so they shrink to fit it if they must.
+  private static let numeral = HFigure(size: 20, leading: 24, weight: .semibold, textStyle: .title3)
+  private static let chosenNumeral = HFigure(size: 24, leading: 28, weight: .bold, textStyle: .title3)
+  private static let suffix = HType(size: 11, leading: 14, weight: .semibold, textStyle: .caption2)
+  private static let last = HType(size: 13, leading: 16, weight: .semibold, textStyle: .footnote)
+  private static let workDay = HType(size: 11, leading: 14, weight: .medium, textStyle: .caption2)
+
   @ViewBuilder private var label: some View {
     switch day {
     case .day(let d):
       if selected {
         VStack(spacing: 0) {
-          Text(verbatim: "\(d)")
-            .font(.system(size: 24 * scale, weight: .bold, design: .rounded))
-            .foregroundStyle(HColor.white)
-          Text(verbatim: PaydayChoice.suffix(d))
-            .font(.custom(HWeight.semibold.interFace, fixedSize: 11 * scale))
-            .foregroundStyle(HColor.white.opacity(0.8))
+          Text(verbatim: "\(d)").hFigure(Self.chosenNumeral).foregroundStyle(HColor.white)
+          OrdinalMark(text: PaydayChoice.suffix(d), type: Self.suffix)
         }
       } else {
         Text(verbatim: "\(d)")
-          .font(.system(size: 20 * scale, weight: .semibold, design: .rounded))
+          .hFigure(Self.numeral)
           .foregroundStyle(distance < 1.5 ? HColor.textPrimary : HColor.textSecondary)
       }
     case .lastWorkingDay:
       VStack(spacing: 0) {
-        Text("Last").font(.custom(HWeight.semibold.interFace, fixedSize: 13 * scale))
-        Text("work day").font(.custom(HWeight.medium.interFace, fixedSize: 11 * scale))
+        Text("Last").hType(Self.last)
+        Text("work day").hType(Self.workDay)
       }
+      .lineLimit(1)
+      .minimumScaleFactor(0.5)
+      .padding(.horizontal, 2)
       .foregroundStyle(selected ? HColor.white : HColor.textSecondary)
     }
+  }
+}
+
+/// The chosen day's ordinal ending under its numeral ("th", white at 80%): part of the
+/// figure, so it is drawn with it rather than read on its own (the tile reads "Payday,
+/// 28th"). It grows with the text size on its style's curve.
+private struct OrdinalMark: View {
+  let text: String
+  let type: HType
+  @ScaledMetric private var line: CGFloat
+
+  init(text: String, type: HType) {
+    self.text = text
+    self.type = type
+    _line = ScaledMetric(wrappedValue: type.leading, relativeTo: type.textStyle)
+  }
+
+  var body: some View {
+    let mark = Text(verbatim: text).font(type.font).foregroundStyle(HColor.white.opacity(0.8))
+    Canvas { context, size in
+      context.draw(context.resolve(mark), at: CGPoint(x: size.width / 2, y: size.height / 2))
+    }
+    .frame(height: line)
+    .accessibilityHidden(true)
   }
 }
 

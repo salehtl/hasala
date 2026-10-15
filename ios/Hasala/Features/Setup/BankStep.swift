@@ -8,6 +8,7 @@ import SwiftUI
 struct BankStep: View {
   @Bindable var model: SetupModel
   @State private var telling = false
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     AccountScreen(
@@ -28,18 +29,25 @@ struct BankStep: View {
         BankList(chosen: model.chosenBanks, toggle: model.toggle)
         AnotherBankCard(sent: model.bankRequestSent) { telling = true }
         SetupFailureBanner(failure: model.failure)
+        // At the accessibility sizes the note scrolls with the banks, so the dock keeps the
+        // room the button's label needs.
+        if typeSize.isAccessibilitySize { note.padding(.top, 12) }
       }
       // Paper's scroll area starts 16 under the question (the template's content, 24).
       .padding(.top, -8)
     } footer: {
-      DockNote(text: model.chosenBanks.isEmpty
-        ? "Pick at least one bank to continue."
-        : "Next you'll connect your email, read-only. Only alerts from the banks you pick are downloaded, straight to this iPhone.")
-        .padding(.bottom, 10)
-      BusyButton(title: model.chosenBanks.count == 1 ? "Continue with 1 bank" : "Continue with \(model.chosenBanks.count) banks",
-                 busy: model.busy, enabled: !model.chosenBanks.isEmpty, identifier: "bank.continue") {
+      if !typeSize.isAccessibilitySize { note.padding(.bottom, 10) }
+      Button {
         Task { await model.continueWithBanks() }
+      } label: {
+        // The count makes the label long: at the accessibility sizes it wraps, and the pill
+        // takes the lines' full height.
+        Text(model.chosenBanks.count == 1 ? "Continue with 1 bank" : "Continue with \(model.chosenBanks.count) banks")
+          .fixedSize(horizontal: false, vertical: true)
       }
+      .buttonStyle(.pill(.primary, fill: true, loading: model.busy))
+      .disabled(model.chosenBanks.isEmpty)
+      .accessibilityIdentifier("bank.continue")
     }
     .alert("Which bank do you use?", isPresented: $telling) {
       TextField("Bank name", text: $model.bankRequest)
@@ -48,6 +56,13 @@ struct BankStep: View {
     } message: {
       Text("We'll tell the developer which bank to add next. We send only the bank's name.")
     }
+  }
+
+  /// The dock's lock note (Paper "Note row"), or why Continue is off.
+  private var note: some View {
+    DockNote(text: model.chosenBanks.isEmpty
+      ? "Pick at least one bank to continue."
+      : "Next you'll connect your email, read-only. Only alerts from the banks you pick are downloaded, straight to this iPhone.")
   }
 }
 
@@ -104,23 +119,27 @@ struct BankChoiceRow: View {
 }
 
 /// The bank's monogram on its hue plate (Paper 40, radius 12, gradient 160°): "ENBD" on
-/// sky, "DIB" on mint. The plate never grows, so its letters keep their size; it is
-/// decoration (the row says the bank's name).
+/// sky, "DIB" on mint. The plate never grows, so its letters keep their size: it is a
+/// picture of the bank's mark, drawn in a canvas (no text for VoiceOver or Dynamic Type to
+/// reach), and the row beside it says the bank's name in text that grows.
 struct BankMonogram: View {
   let bank: SupportedBank
 
   private var hue: Hue { bank == .enbd ? .sky : .mint }
 
   var body: some View {
+    let ink = hue.ink
+    let monogram = Text(verbatim: bank.monogram)
+      .font(.custom(HWeight.bold.interFace, fixedSize: bank == .enbd ? 11 : 12))
+      .tracking(bank == .enbd ? -0.22 : -0.12)
+      .foregroundStyle(ink)
     RoundedRectangle(cornerRadius: 12, style: .continuous)
       .fill(hue.perceptualGradient)
       .frame(width: 40, height: 40)
       .overlay {
-        Text(verbatim: bank.monogram)
-          .font(.custom(HWeight.bold.interFace, fixedSize: bank == .enbd ? 11 : 12))
-          .tracking(bank == .enbd ? -0.22 : -0.12)
-          .foregroundStyle(hue.ink)
-          .lineLimit(1)
+        Canvas { context, size in
+          context.draw(context.resolve(monogram), at: CGPoint(x: size.width / 2, y: size.height / 2))
+        }
       }
       .accessibilityHidden(true)
   }
