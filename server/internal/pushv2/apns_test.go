@@ -117,7 +117,7 @@ func TestPayloadAndHeadersArePinned(t *testing.T) {
 	c := f.client(t, key, func() time.Time { return now }, nil)
 	d := NewDispatcher(nil, c)
 	d.Now = func() time.Time { return now }
-	for _, r := range []Reason{ReasonGmail, ReasonSync, ReasonSecurity, ReasonNudge, ReasonAccountGone} {
+	for _, r := range []Reason{ReasonMail, ReasonSync, ReasonSecurity, ReasonNudge, ReasonAccountGone} {
 		d.run(bg, job{tokens: []Target{{TokenHex: tokenHex(byte(r)), Environment: EnvProduction}}, r: r})
 	}
 	reqs := f.requests()
