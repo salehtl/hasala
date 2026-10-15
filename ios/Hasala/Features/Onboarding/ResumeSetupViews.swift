@@ -54,7 +54,7 @@ struct InterruptedSetupFlowView: View {
 
   var body: some View {
     let model = store.replacementModel()
-    NavigationStack(path: Bindable(model).path) {
+    NavigationStack(path: Bindable(model).navigationPath) {
       AccountScreen(
         title: "Let's finish setting up",
         subtitle: "Your account was made, but setup stopped before your keys were saved. Hasala makes them again now."

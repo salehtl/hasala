@@ -16,7 +16,7 @@ struct WelcomeFlowView: View {
   private var session: AccountSession { store.session() }
 
   var body: some View {
-    NavigationStack(path: Bindable(store.signup).path) {
+    NavigationStack(path: Bindable(store.signup).navigationPath) {
       StoriesView(store: store)
         .navigationDestination(for: WelcomeRoute.self) { route in
           destination(route)

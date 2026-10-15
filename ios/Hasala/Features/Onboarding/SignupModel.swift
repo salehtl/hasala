@@ -6,10 +6,15 @@ import Observation
 @Observable
 final class SignupModel {
   private let account: AccountService
-  /// The signed-out stack. Going back (the system back button or its swipe, plan decision 7)
-  /// leaves the failure of the screen that was left behind.
-  var path: [WelcomeRoute] = [] {
-    didSet { if path.count < oldValue.count { failure = nil } }
+  var path: [WelcomeRoute] = []
+  /// The path as the navigation stack changes it: the system back button or its swipe
+  /// (plan decision 7) leaves the failure of the screen it left behind, as `back()` does.
+  var navigationPath: [WelcomeRoute] {
+    get { path }
+    set {
+      if newValue.count < path.count { failure = nil }
+      path = newValue
+    }
   }
 
   // Invite (§6.1.4)

@@ -11,7 +11,7 @@ struct SetupFlowView: View {
   }
 
   var body: some View {
-    NavigationStack(path: $model.path) {
+    NavigationStack(path: $model.navigationPath) {
       BankView(model: model)
         .navigationDestination(for: SetupRoute.self) { route in
           switch route {

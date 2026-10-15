@@ -59,7 +59,7 @@ struct AccountScreen<Content: View, Footer: View>: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
-        QuestionBlock(title: title, subtitle: subtitle)
+        QuestionBlock(title: title, subtitle: subtitle, top: hasHeader ? 16 : 24 + 16)
         content()
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 24)
@@ -78,6 +78,13 @@ struct AccountScreen<Content: View, Footer: View>: View {
     }
     .background(HColor.surfaceSecondary)
     .accountHeader(steps: steps, back: back, trailing: trailing)
+  }
+
+  /// Whether the header holds anything. Without back, steps or a trailing action Paper keeps
+  /// a 24 pt header for the rhythm (G80, K34), so the bar goes and the space stays.
+  private var hasHeader: Bool {
+    if case .none = back { return steps != nil || trailing != nil }
+    return true
   }
 }
 
@@ -112,6 +119,8 @@ private struct AccountHeader: ViewModifier {
     content
       .navigationBarTitleDisplayMode(.inline)
       .navigationBarBackButtonHidden(!isSystemBack)
+      // An empty header has no bar; hiding it also keeps the swipe from going back.
+      .toolbar(isEmpty ? .hidden : .automatic, for: .navigationBar)
       .toolbar {
         if case .action(let run) = back {
           ToolbarItem(placement: .topBarLeading) {
@@ -149,13 +158,19 @@ private struct AccountHeader: ViewModifier {
     if case .system = back { return true }
     return false
   }
+
+  private var isEmpty: Bool {
+    if case .none = back { return steps == nil && trailing == nil }
+    return false
+  }
 }
 
-/// The question block: Title 1 (28/34 bold) and a body line on the wash, 8 apart, 16 under
-/// the header.
+/// The question block: Title 1 (28/34 bold) and a body line on the wash, 8 apart.
 private struct QuestionBlock: View {
   let title: String
   let subtitle: String?
+  /// 16 under the header; 40 under the status bar when there is no header.
+  let top: CGFloat
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -172,7 +187,7 @@ private struct QuestionBlock: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.top, 16)
+    .padding(.top, top)
   }
 }
 
@@ -637,7 +652,8 @@ struct LabeledField<Field: View, Accessory: View>: View {
   @ViewBuilder var accessory: () -> Accessory
 
   var body: some View {
-    FieldFrame(label: label, help: footer, error: error, focused: focused, trailingPill: Accessory.self != EmptyView.self) {
+    FieldFrame(label: label, help: footer, error: error, focused: focused,
+               trailingPill: Accessory.self != EmptyView.self) {
       field()
     } trailing: {
       accessory()

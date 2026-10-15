@@ -26,7 +26,9 @@ enum FieldSurface {
 /// red ring and a 15/20 line after a failed check, otherwise a 13/18 help line.
 ///
 /// The whole box takes the tap and focuses the field. `focused` overrides what the field
-/// reports (a UIKit field inside, or a screen that keeps its own focus state).
+/// reports (a UIKit field inside, or a screen that keeps its own focus state). `field` is the
+/// bare control, which takes the label as its VoiceOver name and the help or error as its
+/// hint; a Show / Hide pill or a clear button goes in `trailing`.
 struct AccountField<Field: View, Trailing: View>: View {
   var label: String
   var help: String?
@@ -53,7 +55,7 @@ struct AccountField<Field: View, Trailing: View>: View {
 
   var body: some View {
     FieldFrame(label: label, help: help, error: error, focused: focused ?? hasFocus, surface: surface,
-               trailingPill: Trailing.self != EmptyView.self, onTap: { hasFocus = true }) {
+               trailingPill: Trailing.self != EmptyView.self, labelsField: true, onTap: { hasFocus = true }) {
       field()
         .focused($hasFocus)
         // The label names the field for VoiceOver; help and errors are read after it.
@@ -83,6 +85,8 @@ struct FieldFrame<Field: View, Trailing: View>: View {
   var focused: Bool
   var surface: FieldSurface = .onGrouped
   var trailingPill: Bool
+  /// The control carries the label itself, so the drawn one is not read twice.
+  var labelsField = false
   var onTap: (() -> Void)?
   @ViewBuilder var field: () -> Field
   @ViewBuilder var trailing: () -> Trailing
@@ -92,7 +96,7 @@ struct FieldFrame<Field: View, Trailing: View>: View {
       Text(label)
         .hType(.footnote.weight(.semibold))
         .foregroundStyle(HColor.textSecondary)
-        .accessibilityHidden(true)
+        .accessibilityHidden(labelsField)
       HStack(spacing: 8) {
         field()
           .hType(Self.valueType)
@@ -388,7 +392,8 @@ struct NewPasswordBlock: View {
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
-      AccountField("Password") {
+      // The password field and its pill come as one control, so the field frame draws them.
+      LabeledField(label: "Password") {
         PasswordInput(placeholder: "12 characters or more", text: $password, isNew: true, identifier: "password.new")
       }
       if !password.isEmpty {
@@ -396,7 +401,7 @@ struct NewPasswordBlock: View {
           .hTransition(.rise)
       }
       VStack(alignment: .leading, spacing: 8) {
-        AccountField("Type it again",
+        LabeledField(label: "Type it again",
                      error: !confirm.isEmpty && !matches && confirm.count >= password.count ? "Passwords don't match." : nil) {
           PasswordInput(placeholder: "Same password", text: $confirm, isNew: true, identifier: "password.confirm")
         }

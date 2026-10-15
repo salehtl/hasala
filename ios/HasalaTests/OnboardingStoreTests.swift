@@ -114,4 +114,25 @@ struct OnboardingStoreTests: AccountSuite {
     first.phraseRevealed = true
     #expect(store.replacementModel().phraseSeen && store.replacementModel().phrase?.words == words)
   }
+
+  /// The system back button (plan decision 7) pops through `navigationPath` and leaves the
+  /// failure of the screen it left behind; a pop the model makes itself keeps the failure it
+  /// set for the screen it lands on ("We couldn't find that invite").
+  @Test func goingBackLeavesTheFailureBehindButAModelPopKeepsIt() {
+    let (store, _) = store()
+    let signup = store.signup
+    signup.path = [.welcome, .invite, .aboutYou]
+    signup.failure = .notInvited
+    signup.navigationPath = [.welcome, .invite]
+    #expect(signup.failure == nil && signup.path == [.welcome, .invite])
+    signup.failure = .notInvited
+    signup.path.removeAll { $0 == .invite }
+    #expect(signup.failure == .notInvited)
+
+    let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
+    setup.path = [.connect(.gmail), .scan]
+    setup.failure = .offline
+    setup.navigationPath = [.connect(.gmail)]
+    #expect(setup.failure == nil && setup.path == [.connect(.gmail)])
+  }
 }
