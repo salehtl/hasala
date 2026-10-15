@@ -1,10 +1,12 @@
-// CoreMailbox (Mailbox/), spec 04 §2.2 and §7. Owner: WS-12. The Gmail lane on the holder iPhone.
+// CoreMailbox (Mailbox/), spec 04 §2.2 and §7. Owner: WS-12. The mailbox lane on the holder iPhone.
 //
+//   MailProvider.swift         the provider seam: MailProvider, MailOAuthClient, MailSource
+//   GmailProvider.swift        Gmail behind it: GoogleOAuthClient, GmailClient, AuthResults.analyze
 //   HTTP.swift                 the HTTPExchange seam; ephemeral URLSession for Google (§7.2)
 //   GmailOAuth.swift           PKCE, state, authorize URL, callback check, token endpoint (§7.2)
-//   TokenProvider.swift        GmailTokenProvider (§2.7) and the Keychain-backed refresh custody (§7.3)
+//   TokenProvider.swift        MailTokenProvider (§2.7) and the Keychain-backed refresh custody (§7.3)
 //   GmailClient.swift          profile, sender-filtered messages.list, metadata/raw get, watch, stop
-//   BankDomains.swift          the trusted set, the sender query, typed-sender normalization (§7.5, §7.6)
+//   BankDomains.swift          the trusted set, sender groups, typed-sender normalization (§7.5, §7.6)
 //   Disposition.swift          one message -> set aside | ParsedMail -> txn_ingested payload (§7.6)
 //   MailboxState.swift         mailbox_* tables as values and the MailboxPersistence port (§4.2)
 //   Ports.swift                MailboxLedger, MailboxServer, MailboxStepUp (the rest of the app)
@@ -16,7 +18,7 @@
 //   RuntimeMailboxLedger.swift          MailboxLedger over SyncEngine, LedgerPageObserver, Outbox
 //   PipelineCategorizer.swift           IngestCategorizer: rules, then the bundled dictionary
 //   SessionHTTPExchange.swift           HTTPExchange for HTTPMailboxServer: the session Transport
-//   SecretsGmailRefreshTokenStore.swift GmailRefreshTokenStore in Secrets (.gmailRefresh)
+//   SecretsMailRefreshTokenStore.swift  MailRefreshTokenStore in Secrets (.mailRefresh(provider, user))
 //   MailboxAuthoring.swift              MailboxOpAuthor: OpAuthor.ingest + Outbox.canonicalJSON
 //
 // Platform halves live in the app: Platform/GmailAuth (the ASWebAuthenticationSession presenter)

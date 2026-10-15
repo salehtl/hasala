@@ -1,5 +1,5 @@
-// The Gmail refresh token's custody (spec 04 §7.3, §4.4): the Keychain item
-// `.gmailRefresh(userID)` behind CoreStore's `SecretStore`, the same store, access
+// A mail provider's refresh token's custody (spec 04 §7.3, §4.4): the Keychain item
+// `.mailRefresh(provider, userID)` behind CoreStore's `SecretStore`, the same store, access
 // group and accessibility as every other item of the account, so
 // `Secrets.wipeAccount` (sign-out, deletion, a foreign-data reset) always takes
 // it with the rest.
@@ -14,13 +14,18 @@ import CorePrimitives
 import CoreStore
 import Foundation
 
-public struct SecretsGmailRefreshTokenStore: GmailRefreshTokenStore {
+public struct SecretsMailRefreshTokenStore: MailRefreshTokenStore {
   let store: any SecretStore
   let item: SecretItem
 
-  public init(secrets: Secrets, userID: UserID) {
+  public init(secrets: Secrets, userID: UserID, provider: MailProviderID) {
     store = secrets.store
-    item = .gmailRefresh(userID: userID)
+    item = .mailRefresh(provider: provider.secretProvider, userID: userID)
+  }
+
+  /// The Gmail item (`app.hasala.gmail.refresh`).
+  public init(secrets: Secrets, userID: UserID) {
+    self.init(secrets: secrets, userID: userID, provider: .gmail)
   }
 
   public func read() throws(SecretUnavailable) -> String? {
@@ -47,5 +52,17 @@ public struct SecretsGmailRefreshTokenStore: GmailRefreshTokenStore {
 
   public func delete() throws(SecretUnavailable) {
     do { try store.delete(item) } catch { throw SecretUnavailable() }
+  }
+}
+
+public typealias SecretsGmailRefreshTokenStore = SecretsMailRefreshTokenStore
+
+extension MailProviderID {
+  /// The provider's Keychain items (CoreStore names them without depending on CoreMailbox).
+  public var secretProvider: MailSecretProvider {
+    switch self {
+    case .gmail: .gmail
+    case .outlook: .outlook
+    }
   }
 }

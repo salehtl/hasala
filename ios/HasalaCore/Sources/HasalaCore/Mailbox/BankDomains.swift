@@ -1,17 +1,18 @@
-// Which senders the lane lists, and the Gmail queries that list them (spec 04 §7.5, §7.6; spec
-// 03c §7.2; port of the PWA's bankDomains.ts without its unfiltered fallback, PO G).
+// Which senders the lane lists (spec 04 §7.5, §7.6; spec 03c §7.2; port of the PWA's
+// bankDomains.ts without its unfiltered fallback, PO G). Each MailSource turns a group of these
+// domains into its own query (Gmail: `GmailClient.senderQuery`).
 //
 // The trusted set T (03c §7.2) is the sender_trust_set fold minus forwarders and shared
-// suffixes. Under PO G it is ALSO the listing set: the lane asks Gmail only for `from:` T, so
-// T empty means nothing is listed (never "list everything"). Listing is not trust: a listed
-// message is filed without review only when Gmail's Authentication-Results verdict passes for a
-// domain in T (the trust gate, `MessageDisposer`).
+// suffixes. Under PO G it is ALSO the listing set: the lane asks the provider only for mail
+// from T, so T empty means nothing is listed (never "list everything"). Listing is not trust: a
+// listed message is filed without review only when the provider's Authentication-Results
+// verdict passes for a domain in T (the trust gate, `MessageDisposer`).
 import CoreMail
 import CoreTemplate
 import Foundation
 
 public enum BankDomains {
-  /// At most this many `from:` terms per query (spec 04 §7.5).
+  /// At most this many `from:` terms per Gmail query (spec 04 §7.5).
   public static let maxTermsPerQuery = 20
   /// Re-list overlap behind the watermark: late-delivered or clock-skewed mail is re-listed and
   /// deduplicated, never lost.
@@ -24,7 +25,7 @@ public enum BankDomains {
     "com.au", "co.in", "com.pk", "co.za",
   ]
 
-  /// `^[a-z0-9-]+(\.[a-z0-9-]+)+$` (spec 04 §7.5): safe to splice into a Gmail query.
+  /// `^[a-z0-9-]+(\.[a-z0-9-]+)+$` (spec 04 §7.5): safe to splice into a provider's query.
   public static func isQuerySafe(_ d: String) -> Bool {
     let labels = d.utf8.split(separator: 0x2e, omittingEmptySubsequences: false)
     guard labels.count >= 2 else { return false }
@@ -57,16 +58,12 @@ public enum BankDomains {
     return false
   }
 
-  /// The domains cut, in order, into groups of at most `maxTermsPerQuery`.
-  public static func groups(_ domains: [String]) -> [[String]] {
-    stride(from: 0, to: domains.count, by: maxTermsPerQuery).map {
-      Array(domains[$0..<min($0 + maxTermsPerQuery, domains.count)])
+  /// The domains cut, in order, into groups of at most `size` (a source's `maxSendersPerList`).
+  public static func groups(_ domains: [String], size: Int = maxTermsPerQuery) -> [[String]] {
+    let size = max(1, size)
+    return stride(from: 0, to: domains.count, by: size).map {
+      Array(domains[$0..<min($0 + size, domains.count)])
     }
-  }
-
-  /// `{from:a from:b} after:<sinceSec> -in:trash` (spec 04 §7.5).
-  public static func query(_ group: [String], sinceSec: Int64) -> String {
-    "{" + group.map { "from:" + $0 }.joined(separator: " ") + "} after:\(sinceSec) -in:trash"
   }
 
   /// `floor((watermark − OVERLAP) / 1000)`, never negative.

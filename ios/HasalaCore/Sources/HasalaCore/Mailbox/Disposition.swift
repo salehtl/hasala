@@ -128,13 +128,15 @@ public enum MessageDisposer {
   }
 
   /// Reads one raw message. `topLevelFrom` is the message's own From (from the metadata
-  /// fetch, or the raw headers); `bankDomains` is the listing set, `trusted` the trust set T.
+  /// fetch, or the raw headers); `bankDomains` is the listing set, `trusted` the trust set T;
+  /// `analyze` is the provider's Authentication-Results rule (`MailProvider.analyzeAuthResults`).
   public static func parse(
     raw: [UInt8], messageID: String, internalDateMs: Int64, topLevelFrom: String,
-    templates: [CompiledTemplate], bankDomains: [String], trusted: [String]
+    templates: [CompiledTemplate], bankDomains: [String], trusted: [String],
+    analyze: (String) -> AuthResults.Analysis
   ) -> Parse {
     let headers = MailHeaders.headerBlock(rawMessage: raw)
-    let analysis = AuthResults.analyze(headers)
+    let analysis = analyze(headers)
     let verified = analysis.verdict.trusted ? analysis.domain : nil
     let norm = try? Normalizer.normalize(version: Normalizer.currentVersion, raw: raw, receivedAtMs: internalDateMs)
 
@@ -176,11 +178,15 @@ public enum MessageDisposer {
   }
 
   /// The payload for a parsed message, with the card gate and the categorization applied.
+  /// `provider` is `provenance.provider` (the mailbox the message came from).
   public static func finalize(
-    _ m: ParsedMail, grantID: String, cards: [CardKey: CardState], categorizer: any IngestCategorizer
+    _ m: ParsedMail, provider: MailProviderID, grantID: String, cards: [CardKey: CardState],
+    categorizer: any IngestCategorizer
   ) -> MailboxIngestDraft {
     let provenance = JSONValue.object(
-      JSONObject([("provider", .string("gmail")), ("grant_id", .string(grantID)), ("message_id", .string(m.messageID))]))
+      JSONObject([
+        ("provider", .string(provider.rawValue)), ("grant_id", .string(grantID)), ("message_id", .string(m.messageID)),
+      ]))
     guard let f = m.fields else {
       // The empty needs-review shape (spec 04 §7.6 row 2): no amount, no currency, no direction,
       // no body text; dated at local midnight of the email's local day.

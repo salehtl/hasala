@@ -2,6 +2,7 @@
 // the sender query, the Gmail client's request shapes and the disposition table. The engine's
 // cycle is in MailboxEngineTests. Every message is synthetic (CoreTestSupport.SyntheticMail).
 import CoreJSON
+import CoreMail
 import CoreMailbox
 import CorePrimitives
 import CoreTemplate
@@ -130,7 +131,7 @@ import Testing
 
 @Suite struct BankDomainTests {
   @Test func queryShape() {
-    #expect(BankDomains.query(["dib.ae", "emiratesnbd.com"], sinceSec: 1_700_000_000) == "{from:dib.ae from:emiratesnbd.com} after:1700000000 -in:trash")
+    #expect(GmailClient.senderQuery(["dib.ae", "emiratesnbd.com"], sinceSec: 1_700_000_000) == "{from:dib.ae from:emiratesnbd.com} after:1700000000 -in:trash")
     #expect(BankDomains.sinceSec(watermarkMs: 1_700_000_000_000) == 1_700_000_000 - 172_800)
   }
 
@@ -205,7 +206,7 @@ import Testing
     let g = FakeGmail()
     g.add(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0))
     let c = GmailClient(http: g, accessToken: "t")
-    let page = try await c.messagesList(query: BankDomains.query(["dib.ae"], sinceSec: 0), pageToken: nil)
+    let page = try await c.messagesList(query: GmailClient.senderQuery(["dib.ae"], sinceSec: 0), pageToken: nil)
     #expect(page.ids == ["m1"])
     let list = g.requests[0]
     #expect(list.authorization == "Bearer t")
@@ -226,7 +227,7 @@ import Testing
   func parse(_ m: FakeGmail.Message) -> MessageDisposer.Parse {
     MessageDisposer.parse(
       raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
-      bankDomains: trusted, trusted: trusted)
+      bankDomains: trusted, trusted: trusted, analyze: AuthResults.analyze)
   }
 
   func mail(_ m: FakeGmail.Message) throws -> ParsedMail {
@@ -258,7 +259,7 @@ import Testing
 
   @Test func filedOnlyWithEveryGate() throws {
     let p = try mail(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0))
-    let known = MessageDisposer.finalize(p, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: GroceryCategorizer())
+    let known = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: GroceryCategorizer())
     #expect(!known.needsReview)
     #expect(known.payload["needs_review"] == .bool(false))
     #expect(known.payload["category"] == .string("groceries"))
@@ -271,11 +272,11 @@ import Testing
     #expect(known.payload["provenance"] == .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g")), ("message_id", .string("m1"))])))
 
     // A card the ledger doesn't know files like a known one (there is no cards step).
-    let unknown = MessageDisposer.finalize(p, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    let unknown = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
     #expect(!unknown.needsReview && unknown.payload["gates"]?["card"] == .string("unknown"))
     #expect(unknown.payload["category"] == nil)
 
-    let notMine = MessageDisposer.finalize(p, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .notMine], categorizer: NoCategorizer())
+    let notMine = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .notMine], categorizer: NoCategorizer())
     #expect(notMine.needsReview && notMine.payload["gates"]?["card"] == .string("not_mine"))
   }
 
@@ -283,7 +284,7 @@ import Testing
     // A foreign A-R above Gmail's: not_topmost, so the sender is not verified.
     let p = try mail(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0, arTopmost: false))
     #expect(p.gates.ar == "not_topmost" && !p.gates.senderTrusted)
-    let d = MessageDisposer.finalize(p, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: NoCategorizer())
     #expect(d.needsReview)
     #expect(d.payload["gates"]?["sender"] == .string("untrusted"))
     #expect(d.payload["amount_minor"] == .string("25000"))  // prefilled
@@ -295,7 +296,7 @@ import Testing
   @Test func unparsedBankMailIsTheEmptyReviewShape() throws {
     let p = try mail(SyntheticMail.bankNotice(id: "m4", dateMs: Rig.t0))
     #expect(p.fields == nil)
-    let d = MessageDisposer.finalize(p, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
     #expect(d.needsReview)
     #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","card":"none","forwarded":false}}"#)
   }
@@ -304,7 +305,7 @@ import Testing
     let m = SyntheticMail.lookAlike(id: "m5", dateMs: Rig.t0, listedAs: "emiratesnbd.com")
     let r = MessageDisposer.parse(
       raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: "Offers <offers@emiratesnbd.com.promo.example>",
-      templates: templates, bankDomains: trusted, trusted: trusted)
+      templates: templates, bankDomains: trusted, trusted: trusted, analyze: AuthResults.analyze)
     #expect(r == .setAside(domain: "promo.example"))
   }
 
@@ -319,7 +320,7 @@ import Testing
     let g = FakeGmail()
     g.add(SyntheticMail.enbdAlert(id: "u1", dateMs: Rig.t0))
     let c = GmailClient(http: FakeGmailURLProtocol.exchange(for: g), accessToken: "tok")
-    let page = try await c.messagesList(query: BankDomains.query(["emiratesnbd.com"], sinceSec: 0), pageToken: nil)
+    let page = try await c.messagesList(query: GmailClient.senderQuery(["emiratesnbd.com"], sinceSec: 0), pageToken: nil)
     #expect(page.ids == ["u1"])
     #expect(g.requests.last?.authorization == "Bearer tok")
     let raw = try await c.messageRaw(id: "u1")

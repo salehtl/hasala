@@ -1,5 +1,6 @@
-// MailboxEngine: the Gmail lane on the holder iPhone (spec 04 §7.4-§7.9; port of fetch.ts
-// `runFetchCycle`, rebuilt on a sender-filtered listing, PO G).
+// MailboxEngine: the mailbox lane on the holder iPhone (spec 04 §7.4-§7.9; port of fetch.ts
+// `runFetchCycle`, rebuilt on a sender-filtered listing, PO G). The mail service is a
+// `MailProvider` (Gmail: `GmailProvider`); everything below it is the provider's wire.
 //
 // One actor per bound account. Every entry point is serialized (single flight): a cycle that is
 // asked for while one runs waits for it and returns its report rather than running twice. A
@@ -13,7 +14,8 @@
 //     accounted AND the outbox flushed; a cut run keeps the old watermark and re-lists;
 //   - 404/410 is `gone` (accounted, the cycle moves past it); 429/5xx/transport retry
 //     400 ms then 1200 ms and a 429 narrows the download width to 1 (a 403 whose reason is a
-//     rate or quota limit counts as a 429, GmailClient); 401/403 is fatal; any other 4xx halts;
+//     rate or quota limit counts as a 429, the provider's MailSource); 401/403 is fatal; any
+//     other 4xx halts;
 //   - 413 on flush halts `account_full` with the watermark intact;
 //   - no token is `reconnect_required`, an unreadable Keychain is "not now";
 //   - a deadline or background-processing run lists page by page, downloading each page before
@@ -48,6 +50,7 @@ public struct MailboxEngineConfig: Sendable {
   public var watchRenewWindowMs: Int64 = 3 * 86_400_000
   public var maxListPages = 100
   public var importMaxPages = 5
+  /// The Gmail API base of the `oauth:gmailHTTP:` initializer's `GmailProvider`.
   public var gmailBase = GmailClient.defaultBase
 
   public init(grantID: String, buildTopic: String? = nil) {
@@ -111,7 +114,7 @@ public enum ConnectResult: Sendable, Equatable {
 public enum ConnectFailure: String, Sendable, Equatable {
   case notConfigured = "not_configured"
   case offline
-  /// The token response lacked the gmail.readonly scope or a refresh token.
+  /// The token response lacked the mail-read scope (gmail.readonly) or a refresh token.
   case permissionMissing = "permission_missing"
   case stateMismatch = "state_mismatch"
   case nonceMismatch = "nonce_mismatch"
@@ -153,9 +156,8 @@ public struct MailboxStatus: Sendable, Equatable {
 
 public actor MailboxEngine {
   public let config: MailboxEngineConfig
-  let oauth: GoogleOAuthClient
-  let tokens: RefreshingGmailTokenProvider
-  let gmailHTTP: any HTTPExchange
+  public let provider: any MailProvider
+  let tokens: RefreshingMailTokenProvider
   let store: any MailboxPersistence
   let ledger: any MailboxLedger
   let server: any MailboxServer
@@ -171,24 +173,25 @@ public actor MailboxEngine {
   /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
   private var waiters: [CheckedContinuation<Void, Never>] = []
-  /// `meta.gmail_watch_topic`: nil until read; `.some(nil)` when the server relays no wakes.
-  private var topic: String??
-  /// When `topic` was last read (engine clock).
-  private var topicReadAtMs: Int64 = 0
+  /// The server's push settings for this provider (`meta`): nil until read; `.none` when the
+  /// server relays no wakes.
+  private var push: MailboxPushConfig?
+  /// When `push` was last read (engine clock).
+  private var pushReadAtMs: Int64 = 0
   /// Set when the last cycle saw the server's topic differ from the build's (diagnostics).
   public private(set) var topicMismatch = false
 
+  /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
-    config: MailboxEngineConfig, oauth: GoogleOAuthClient, tokens: RefreshingGmailTokenProvider,
-    gmailHTTP: any HTTPExchange, store: any MailboxPersistence, ledger: any MailboxLedger,
+    config: MailboxEngineConfig, provider: any MailProvider, tokens: RefreshingMailTokenProvider,
+    store: any MailboxPersistence, ledger: any MailboxLedger,
     server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
     templates: [CompiledTemplate], clock: any Clock, random: any RandomSource,
     sleep: @escaping @Sendable (Int64) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
   ) {
     self.config = config
-    self.oauth = oauth
+    self.provider = provider
     self.tokens = tokens
-    self.gmailHTTP = gmailHTTP
     self.store = store
     self.ledger = ledger
     self.server = server
@@ -198,6 +201,20 @@ public actor MailboxEngine {
     self.clock = clock
     self.random = random
     self.sleep = sleep
+  }
+
+  /// The Gmail lane: a `GmailProvider` over `oauth` and `gmailHTTP` (at `config.gmailBase`).
+  public init(
+    config: MailboxEngineConfig, oauth: GoogleOAuthClient, tokens: RefreshingMailTokenProvider,
+    gmailHTTP: any HTTPExchange, store: any MailboxPersistence, ledger: any MailboxLedger,
+    server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
+    templates: [CompiledTemplate], clock: any Clock, random: any RandomSource,
+    sleep: @escaping @Sendable (Int64) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
+  ) {
+    self.init(
+      config: config, provider: GmailProvider(oauth: oauth, http: gmailHTTP, base: config.gmailBase), tokens: tokens,
+      store: store, ledger: ledger, server: server, stepUp: stepUp, categorizer: categorizer, templates: templates,
+      clock: clock, random: random, sleep: sleep)
   }
 
   /// Receives scan and backfill progress (called on the engine's executor; hop to the UI).
@@ -233,25 +250,26 @@ public actor MailboxEngine {
 
   // MARK: - Connect, disconnect
 
-  /// Connect Gmail (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
+  /// Connect the provider's mailbox (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
   /// step-up `mailbox.link` over SHA-256(id_token) → `PUT /mailbox/link` → Keychain. A first
   /// connect then starts the scan over `backfillDays` (30, 90 or 365; §7.7); a reconnect or a
   /// takeover resumes the normal cycle from the kept watermark.
-  public func connect(presenter: any GmailAuthSessionPresenter, backfillDays: Int) async -> ConnectResult {
+  public func connect(presenter: any MailAuthSessionPresenter, backfillDays: Int) async -> ConnectResult {
     await exclusive { await connectLocked(presenter: presenter, backfillDays: backfillDays) }
   }
 
-  private func connectLocked(presenter: any GmailAuthSessionPresenter, backfillDays: Int) async -> ConnectResult {
-    guard oauth.config.isConfigured else { return .failed(.notConfigured) }
+  private func connectLocked(presenter: any MailAuthSessionPresenter, backfillDays: Int) async -> ConnectResult {
+    let oauth = provider.oauth
+    guard oauth.isConfigured else { return .failed(.notConfigured) }
     let nonce: String
     do { nonce = try await server.linkChallenge() } catch .offline { return .failed(.offline) } catch {
       return .failed(.serverRefused)
     }
-    let auth: GmailAuthorization
-    let grant: GmailTokenGrant
-    do throws(GmailOAuthError) {
+    let auth: MailAuthorization
+    let grant: MailTokenGrant
+    do throws(MailOAuthError) {
       auth = try oauth.begin(nonce: nonce, random: random)
-      let callback = try await presenter.authorize(url: auth.url, callbackScheme: oauth.config.redirectScheme)
+      let callback = try await presenter.authorize(url: auth.url, callbackScheme: oauth.redirectScheme)
       let code = try oauth.code(fromCallback: callback, for: auth)
       grant = try await oauth.exchange(code: code, auth: auth)
     } catch .cancelled {
@@ -267,7 +285,7 @@ public actor MailboxEngine {
     } catch {
       return .failed(.google)
     }
-    guard let idToken = grant.idToken, let claims = GoogleIDTokenClaims(idToken: idToken) else {
+    guard let idToken = grant.idToken, let claims = oauth.identity(idToken: idToken) else {
       return .failed(.google)
     }
     // The server checks the nonce for real (spec 02 §13.2); checking here too means a sheet that
@@ -280,7 +298,7 @@ public actor MailboxEngine {
       return .failed(.stepUpFailed)
     }
     do {
-      _ = try await server.putLink(idToken: idToken, stepUp: proof)
+      _ = try await server.putLink(provider: provider.id, idToken: idToken, stepUp: proof)
     } catch .offline {
       return .failed(.offline)
     } catch {
@@ -311,21 +329,21 @@ public actor MailboxEngine {
       s.scanStartedMs = clock.nowMs()
       // h0 is captured before any listing (§7.7 step 2); best effort here, re-read by the scan.
       if let token = try? await tokens.accessToken(forceRefresh: false) {
-        s.profileHistoryID = try? await gmail(token).profileHistoryID()
+        s.profileHistoryID = try? await source(token).changeToken()
       }
     }
     do { try await store.commit(commitState(s)) } catch { return .failed(.keychain) }
     return .connected(address: claims.email)
   }
 
-  /// Disconnect Gmail (Bank alerts › Disconnect): step-up `mailbox.unlink` → users.stop →
+  /// Disconnect (Bank alerts › Disconnect): step-up `mailbox.unlink` → stop push (users.stop) →
   /// revoke → `DELETE /mailbox/link` → delete the Keychain item → clear the mailbox tables.
   public func disconnect() async -> Bool {
     await exclusive {
       let proof: JSONValue
       do { proof = try await stepUp.proof(kind: "mailbox.unlink", payloadHash: nil) } catch { return false }
       if let token = try? await tokens.accessToken(forceRefresh: false) {
-        try? await gmail(token).stop()
+        try? await source(token).stop()
       }
       await tokens.revokeAndForget()
       do throws(MailboxServerError) {
@@ -395,8 +413,8 @@ public actor MailboxEngine {
         case .noLink:
           return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
         case .holder(isThisDevice: false, _):
-          // Delete this phone's refresh token but do NOT revoke it at Google: both iPhones share
-          // the iOS client id, and Google's revoke ends the whole grant for that client and
+          // Delete this phone's refresh token but do NOT revoke it at the provider: both iPhones
+          // share the iOS client id, and Google's revoke ends the whole grant for that client and
           // Google account, which would sign the new holder out too (deviation from §7.4's
           // "revoke OWN refresh token"; to confirm with an AT-GMAIL run on a real account).
           await tokens.forget()
@@ -427,7 +445,7 @@ public actor MailboxEngine {
       report.haltedOn = .offline
       return report
     }
-    let gmail = gmail(token)
+    let source = source(token)
     // Short runs list a page, download it, then list the next (§7.5 "one scan page per cycle in a
     // deadline run"); the foreground lists everything first so the first-scan board has a total.
     let paged = deadlineMs != nil || trigger == .processing
@@ -437,20 +455,20 @@ public actor MailboxEngine {
     state.lastCycleAtMs = now
 
     // 5. Watch renewal (scan and active phases).
-    await renewWatch(gmail, &state, now: now)
+    await renewWatch(source, &state, now: now)
 
     switch state.phase {
     case .scanning:
-      return await scan(gmail, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+      return await scan(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
     case .authoringBackfill:
-      return await authorBackfill(gmail, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+      return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
     default: break
     }
 
-    // 6. Change detector.
-    let h0: String
-    do { h0 = try await gmail.profileHistoryID() } catch let e {
-      return await gmailFailure(e, &state, report)
+    // 6. Change detector (nil: the provider has none, so every cycle lists).
+    let h0: String?
+    do { h0 = try await source.changeToken() } catch let e {
+      return await mailFailure(e, &state, report)
     }
     if trusted.isEmpty {
       // Nothing is listed when no sender is trusted (03c §7.2); not an error.
@@ -460,7 +478,7 @@ public actor MailboxEngine {
       report.completed = true
       return await finish(&state, report)
     }
-    if h0 == state.profileHistoryID, state.watermarkMs != nil,
+    if let h0, h0 == state.profileHistoryID, state.watermarkMs != nil,
       ![.refresh, .launch, .retry].contains(trigger)
     {
       state.lastSuccessAtMs = now
@@ -475,10 +493,10 @@ public actor MailboxEngine {
     let cut: Bool
     do {
       cut = try await listAndProcess(
-        gmail, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
+        source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
         run: &run, report: &report, deadlineMs: deadlineMs)
-    } catch let e as GmailAPIError {
-      return await gmailFailure(e, &state, report)
+    } catch let e as MailAPIError {
+      return await mailFailure(e, &state, report)
     } catch {
       report.haltedOn = .offline
       return await finish(&state, report)
@@ -513,7 +531,7 @@ public actor MailboxEngine {
   // MARK: - First connect (§7.7)
 
   private func scan(
-    _ gmail: GmailClient, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
+    _ source: any MailSource, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
     _ report: CycleReport
   ) async -> CycleReport {
     var report = report
@@ -523,8 +541,8 @@ public actor MailboxEngine {
     let started = state.scanStartedMs ?? clock.nowMs()
     if state.scanStartedMs == nil { state.scanStartedMs = started }
     if state.profileHistoryID == nil {
-      do { state.profileHistoryID = try await gmail.profileHistoryID() } catch let e {
-        return await gmailFailure(e, &state, report)
+      do { state.profileHistoryID = try await source.changeToken() } catch let e {
+        return await mailFailure(e, &state, report)
       }
     }
     let days = Int64(state.backfillDays ?? 90)
@@ -533,10 +551,10 @@ public actor MailboxEngine {
     var cut: Bool
     do {
       cut = try await listAndProcess(
-        gmail, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .stage, paged: paged,
+        source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .stage, paged: paged,
         run: &run, report: &report, deadlineMs: deadlineMs)
-    } catch let e as GmailAPIError {
-      return await gmailFailure(e, &state, report)
+    } catch let e as MailAPIError {
+      return await mailFailure(e, &state, report)
     } catch {
       report.haltedOn = .offline
       return await finish(&state, report)
@@ -550,11 +568,11 @@ public actor MailboxEngine {
     // card the ledger doesn't know files like a known one (`MessageDisposer.finalize`).
     state.phase = .authoringBackfill
     try? await store.commit(commitState(state))
-    return await authorBackfill(gmail, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+    return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
   }
 
   private func authorBackfill(
-    _ gmail: GmailClient, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
+    _ source: any MailSource, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
     _ report: CycleReport
   ) async -> CycleReport {
     var report = report
@@ -574,7 +592,8 @@ public actor MailboxEngine {
           report.dup += 1
           continue
         }
-        let draft = MessageDisposer.finalize(m, grantID: config.grantID, cards: cards, categorizer: categorizer)
+        let draft = MessageDisposer.finalize(
+          m, provider: provider.id, grantID: config.grantID, cards: cards, categorizer: categorizer)
         c.drafts.append(draft)
         c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
         report.count(draft)
@@ -603,11 +622,11 @@ public actor MailboxEngine {
       var run = Run(trusted: trusted, cards: cards)
       do {
         let cut = try await listAndProcess(
-          gmail, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
+          source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
           run: &run, report: &report, deadlineMs: deadlineMs)
         remainderDone = !cut
-      } catch let e as GmailAPIError {
-        return await gmailFailure(e, &state, report)
+      } catch let e as MailAPIError {
+        return await mailFailure(e, &state, report)
       } catch {
         report.haltedOn = .offline
         return await finish(&state, report)
@@ -654,18 +673,18 @@ public actor MailboxEngine {
           report.haltedOn = .reconnectRequired
           return report
         }
-        let gmail = gmail(token)
+        let source = source(token)
         var trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
         if !trusted.contains(domain) { trusted.append(domain) }
         let days = Int64(state.backfillDays ?? 90)
         let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
         var run = Run(trusted: trusted, cards: await ledger.knownCards())
         do {
-          let (ids, _) = try await list(gmail, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
+          let (ids, _) = try await list(source, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
           report.listed = ids.count
-          _ = try await process(gmail, ids: ids, mode: .author, run: &run, report: &report, deadlineMs: nil)
-        } catch let e as GmailAPIError {
-          return await gmailFailure(e, &state, report)
+          _ = try await process(source, ids: ids, mode: .author, run: &run, report: &report, deadlineMs: nil)
+        } catch let e as MailAPIError {
+          return await mailFailure(e, &state, report)
         } catch {
           report.haltedOn = .offline
           return report
@@ -689,13 +708,13 @@ public actor MailboxEngine {
       default: break
       }
       let token: AccessToken
-      do throws(GmailAuthError) { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
+      do throws(MailAuthError) { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
         return .reconnectRequired
       } catch {
         return .offline
       }
-      let raw: GmailRawMessage
-      do throws(GmailAPIError) { raw = try await gmail(token).messageRaw(id: messageID) } catch let e {
+      let raw: MailRawMessage
+      do throws(MailAPIError) { raw = try await source(token).raw(id: messageID) } catch let e {
         if let s = e.status, s == 404 || s == 410 || s < 400 { return .gone }
         if let s = e.status, s == 401 || s == 403 { return .reconnectRequired }
         return .offline
@@ -739,9 +758,7 @@ public actor MailboxEngine {
 
   // MARK: - Internals
 
-  func gmail(_ token: AccessToken) -> GmailClient {
-    GmailClient(http: gmailHTTP, accessToken: token.value, base: config.gmailBase)
-  }
+  func source(_ token: AccessToken) -> any MailSource { provider.source(accessToken: token) }
 
   struct Run {
     var trusted: [String]
@@ -755,9 +772,9 @@ public actor MailboxEngine {
 
   enum Fetched: Sendable {
     case setAside(id: String, domain: String, internalDateMs: Int64)
-    case raw(id: String, from: String, raw: GmailRawMessage)
+    case raw(id: String, from: String, raw: MailRawMessage)
     case gone(id: String)
-    case failed(id: String, error: GmailAPIError)
+    case failed(id: String, error: MailAPIError)
   }
 
   /// Whether a run must stop at this boundary: the BGTask expired (cancellation) or the
@@ -777,30 +794,29 @@ public actor MailboxEngine {
   /// listing call; the page token lives only within this run (§7.5 step 7g), and a later run
   /// re-lists the accounted pages cheaply (ids only, no downloads).
   func listAndProcess(
-    _ gmail: GmailClient, domains: [String], sinceSec: Int64, maxPages: Int, mode: Mode, paged: Bool,
+    _ source: any MailSource, domains: [String], sinceSec: Int64, maxPages: Int, mode: Mode, paged: Bool,
     run: inout Run, report: inout CycleReport, deadlineMs: Int64?
   ) async throws -> Bool {
     if !paged {
-      let (ids, exhausted) = try await list(gmail, domains: domains, sinceSec: sinceSec, maxPages: maxPages)
+      let (ids, exhausted) = try await list(source, domains: domains, sinceSec: sinceSec, maxPages: maxPages)
       report.listed += ids.count
-      let cut = try await process(gmail, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
+      let cut = try await process(source, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
       return cut || !exhausted
     }
     var seen = Set<String>()
     var cut = false
-    for group in BankDomains.groups(domains) {
-      let q = BankDomains.query(group, sinceSec: sinceSec)
+    for group in BankDomains.groups(domains, size: source.maxSendersPerList) {
       var token: String?
       var pages = 0
       repeat {
         if shouldStop(deadlineMs) { return true }
-        let page = try await gmail.messagesList(query: q, pageToken: token)
+        let page = try await source.list(senders: group, since: sinceSec, pageToken: token)
         let ids = page.ids.filter { seen.insert($0).inserted }
         report.listed += ids.count
         token = page.nextPageToken
         pages += 1
         if !ids.isEmpty,
-          try await process(gmail, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
+          try await process(source, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
         {
           return true
         }
@@ -812,19 +828,18 @@ public actor MailboxEngine {
 
   /// Lists every group, page by page. Returns the ids (deduplicated, in listing order) and
   /// whether every group's listing was exhausted (false when cancelled between pages).
-  func list(_ gmail: GmailClient, domains: [String], sinceSec: Int64, maxPages: Int) async throws(GmailAPIError)
+  func list(_ source: any MailSource, domains: [String], sinceSec: Int64, maxPages: Int) async throws(MailAPIError)
     -> ([String], Bool)
   {
     var ids: [String] = []
     var seen = Set<String>()
     var exhausted = true
-    for group in BankDomains.groups(domains) {
-      let q = BankDomains.query(group, sinceSec: sinceSec)
+    for group in BankDomains.groups(domains, size: source.maxSendersPerList) {
       var token: String?
       var pages = 0
       repeat {
         if Task.isCancelled { return (ids, false) }
-        let page = try await gmail.messagesList(query: q, pageToken: token)
+        let page = try await source.list(senders: group, since: sinceSec, pageToken: token)
         for id in page.ids where seen.insert(id).inserted { ids.append(id) }
         token = page.nextPageToken
         pages += 1
@@ -835,9 +850,9 @@ public actor MailboxEngine {
   }
 
   /// Steps 7a-7g over `ids`. Returns whether the run was cut short (deadline or staging cap).
-  /// Throws only a fatal Gmail error (401/403 or a transient one that outlived its retries).
+  /// Throws only a fatal mail API error (401/403 or a transient one that outlived its retries).
   func process(
-    _ gmail: GmailClient, ids all: [String], mode: Mode, run: inout Run, report: inout CycleReport,
+    _ source: any MailSource, ids all: [String], mode: Mode, run: inout Run, report: inout CycleReport,
     deadlineMs: Int64?
   ) async throws -> Bool {
     let accounted = (try? await store.accounted(among: all)) ?? []
@@ -861,7 +876,7 @@ public actor MailboxEngine {
       }
       let chunk = Array(todo[i..<min(i + width, todo.count)])
       i += chunk.count
-      let results = await fetchChunk(gmail, chunk, bank: run.trusted)
+      let results = await fetchChunk(source, chunk, bank: run.trusted)
       // A 429 anywhere narrows the pipe to one request for the rest of the run (fetch.ts).
       if results.contains(where: \.rateLimited) {
         run.width = 1
@@ -882,13 +897,14 @@ public actor MailboxEngine {
 
   /// Downloads a chunk concurrently; the results come back in listing order, so accounting
   /// stays strictly sequential (fetch.ts: only the network is overlapped).
-  func fetchChunk(_ gmail: GmailClient, _ ids: [String], bank: [String]) async -> [FetchResult] {
+  func fetchChunk(_ source: any MailSource, _ ids: [String], bank: [String]) async -> [FetchResult] {
     let backoff = config.retryBackoffMs
     let sleep = self.sleep
+    let provider = self.provider
     return await withTaskGroup(of: (Int, FetchResult).self) { group in
       for (n, id) in ids.enumerated() {
         group.addTask {
-          (n, await Self.fetchOne(gmail, id, bank: bank, backoff: backoff, sleep: sleep))
+          (n, await Self.fetchOne(source, provider, id, bank: bank, backoff: backoff, sleep: sleep))
         }
       }
       var out: [(Int, FetchResult)] = []
@@ -899,10 +915,11 @@ public actor MailboxEngine {
 
   /// 7a-7c for one id, with the retry classes of fetch.ts.
   static func fetchOne(
-    _ gmail: GmailClient, _ id: String, bank: [String], backoff: [Int64], sleep: @Sendable (Int64) async -> Void
+    _ source: any MailSource, _ provider: any MailProvider, _ id: String, bank: [String], backoff: [Int64],
+    sleep: @Sendable (Int64) async -> Void
   ) async -> FetchResult {
     var rateLimited = false
-    func attempt<T: Sendable>(_ op: () async throws(GmailAPIError) -> T) async -> Result<T, GmailAPIError> {
+    func attempt<T: Sendable>(_ op: () async throws(MailAPIError) -> T) async -> Result<T, MailAPIError> {
       var n = 0
       while true {
         do { return .success(try await op()) } catch let e {
@@ -915,26 +932,26 @@ public actor MailboxEngine {
         }
       }
     }
-    func gone(_ e: GmailAPIError) -> Bool {
+    func gone(_ e: MailAPIError) -> Bool {
       guard let s = e.status else { return false }
       return s == 404 || s == 410 || s < 400
     }
 
     func done(_ f: Fetched) -> FetchResult { FetchResult(fetched: f, rateLimited: rateLimited) }
-    let meta: GmailMessageMetadata
-    switch await attempt({ () async throws(GmailAPIError) in try await gmail.messageMetadata(id: id) }) {
+    let meta: MailMessageMetadata
+    switch await attempt({ () async throws(MailAPIError) in try await source.metadata(id: id) }) {
     case .success(let m): meta = m
     case .failure(let e): return done(gone(e) ? .gone(id: id) : .failed(id: id, error: e))
     }
     // 7b: neither the claimed nor the verified domain is a bank domain: set aside, no body.
     let claimed = BankDomains.domainOf(meta.from)
-    let analysis = AuthResults.analyze(meta.headerBlock)
+    let analysis = provider.analyzeAuthResults(meta.headerBlock)
     let verified = analysis.verdict.trusted ? (analysis.domain ?? "") : ""
     if !BankDomains.isMember(claimed, of: bank) && !BankDomains.isMember(verified, of: bank) {
       return done(
         .setAside(id: id, domain: verified.isEmpty ? claimed : verified, internalDateMs: Int64(meta.internalDate) ?? 0))
     }
-    switch await attempt({ () async throws(GmailAPIError) in try await gmail.messageRaw(id: id) }) {
+    switch await attempt({ () async throws(MailAPIError) in try await source.raw(id: id) }) {
     case .success(let raw): return done(.raw(id: id, from: meta.from, raw: raw))
     case .failure(let e): return done(gone(e) ? .gone(id: id) : .failed(id: id, error: e))
     }
@@ -978,7 +995,7 @@ public actor MailboxEngine {
       }
       let parsed = MessageDisposer.parse(
         raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
-        bankDomains: run.trusted, trusted: run.trusted)
+        bankDomains: run.trusted, trusted: run.trusted, analyze: { provider.analyzeAuthResults($0) })
       switch parsed {
       case .setAside(let domain):
         report.setAside += 1
@@ -996,7 +1013,8 @@ public actor MailboxEngine {
           report.staged += 1
           c.stage.append(m)
         case .author:
-          let draft = MessageDisposer.finalize(m, grantID: config.grantID, cards: run.cards, categorizer: categorizer)
+          let draft = MessageDisposer.finalize(
+            m, provider: provider.id, grantID: config.grantID, cards: run.cards, categorizer: categorizer)
           report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))
@@ -1006,41 +1024,46 @@ public actor MailboxEngine {
     try await store.commit(c)
   }
 
-  func renewWatch(_ gmail: GmailClient, _ state: inout MailboxState, now: Int64) async {
-    // Read once; a null topic again every holder-check interval, so a server whose Pub/Sub push
-    // is turned on later is watched without a relaunch. A clock that went back since the last
-    // read counts as due, so a backwards jump never postpones the re-read.
-    let readTopic = topic.map {
-      $0 == nil && (now < topicReadAtMs || now - topicReadAtMs >= config.holderCheckIntervalMs)
+  func renewWatch(_ source: any MailSource, _ state: inout MailboxState, now: Int64) async {
+    // Read once; a null setting again every holder-check interval, so a server whose push is
+    // turned on later is watched without a relaunch. A clock that went back since the last read
+    // counts as due, so a backwards jump never postpones the re-read.
+    let readPush = push.map {
+      $0 == .none && (now < pushReadAtMs || now - pushReadAtMs >= config.holderCheckIntervalMs)
     } ?? true
-    if readTopic {
+    if readPush {
       do {
-        let t = try await server.watchTopic()
-        topic = .some(t)
-        topicReadAtMs = now
-        topicMismatch = t != nil && config.buildTopic != nil && config.buildTopic != "unset" && t != config.buildTopic
+        let p = try await server.pushConfig(provider: provider.id)
+        push = p
+        pushReadAtMs = now
+        if case .gmail(let t) = p {
+          topicMismatch = config.buildTopic != nil && config.buildTopic != "unset" && t != config.buildTopic
+        } else {
+          topicMismatch = false
+        }
       } catch {
         return  // offline: renewed on a later cycle
       }
     }
-    guard let t = topic ?? nil else { return }
+    guard let p = push, p != .none else { return }
     if let exp = state.watchExpiresAtMs, exp > now + config.watchRenewWindowMs { return }
-    guard let w = try? await gmail.watch(topicName: t) else { return }
+    let live = state.watchExpiresAtMs != nil
+    guard let w = try? await (live ? source.renew(p) : source.subscribe(p)) else { return }
     do throws(MailboxServerError) {
-      try await server.putWatch(expiresAtMs: w.expirationMs)
-      state.watchExpiresAtMs = w.expirationMs
+      try await server.putWatch(expiresAtMs: w.expiresAtMs)
+      state.watchExpiresAtMs = w.expiresAtMs
     } catch .noWatchTopic {
-      // The server turned its Pub/Sub push off after the topic was read: nothing relays this
-      // watch. Stop it, show no live watch, and read the topic again on the next cycle.
-      try? await gmail.stop()
+      // The server turned its push off after the settings were read: nothing relays this
+      // watch. Stop it, show no live watch, and read the settings again on the next cycle.
+      try? await source.stop()
       state.watchExpiresAtMs = nil
-      topic = nil
+      push = nil
     } catch {
-      // Reported next cycle; the watch itself is live at Google.
+      // Reported next cycle; the watch itself is live at the provider.
     }
   }
 
-  func gmailFailure(_ e: GmailAPIError, _ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
+  func mailFailure(_ e: MailAPIError, _ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
     switch e.status {
     case 401?:

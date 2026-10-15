@@ -3,7 +3,7 @@
 //   MailboxLedger      the fold and the outbox: pull to head, the trusted senders, known cards,
 //                      dedup, authoring the non-txn ops of the lane, flush (CoreSync/CoreOutbox/
 //                      CoreDomain; Live/ wires it)
-//   MailboxServer      hasalad's mailbox routes 34-38 and `meta.gmail_watch_topic` (spec 02)
+//   MailboxServer      hasalad's mailbox routes 34-38 and the push settings in `meta` (spec 02)
 //   MailboxStepUp      the WebAuthn / device step-up proof for mailbox.link and mailbox.unlink
 //                      (spec 04 §6.3; the auth lane implements it)
 import CoreJSON
@@ -41,7 +41,7 @@ public protocol MailboxLedger: Sendable {
   func senderTrust() async -> [String: Bool]
   /// `card_linked` keys and states (03b §4.3).
   func knownCards() async -> [CardKey: CardState]
-  /// Which of these Gmail message ids a projected transaction already carries
+  /// Which of these provider message ids a projected transaction already carries
   /// (`txn.mailbox_message_id`), so they are never downloaded again (§7.5).
   func projectedMessageIDs(among ids: [String]) async -> Set<String>
   /// Whether an op with this ingest id has folded or is pending on this device.
@@ -60,14 +60,36 @@ public enum MailboxLinkStatus: Sendable, Equatable {
   case holder(isThisDevice: Bool, watchExpiresAtMs: Int64?)
 }
 
+/// `PUT /api/v1/mailbox/link`'s answer: the link, and for Outlook the Graph subscription's
+/// `clientState` (b64url of 32 bytes; the server keeps only its hash). The caller stores it in
+/// the Keychain (`SecretItem.outlookClientState`) and never logs it.
+public struct MailboxLinkResult: Sendable, Equatable {
+  public var status: MailboxLinkStatus
+  public var clientState: String?
+  public init(status: MailboxLinkStatus, clientState: String? = nil) {
+    self.status = status
+    self.clientState = clientState
+  }
+}
+
+/// Where the server relays a provider's push (from `GET /api/v1/meta`).
+public enum MailboxPushConfig: Sendable, Equatable {
+  /// `meta.gmail_watch_topic`: the Pub/Sub topic for `users.watch`.
+  case gmail(topic: String)
+  /// `meta.outlook_notification_url` and `meta.outlook_lifecycle_url` for a Graph subscription.
+  case outlook(notificationURL: String, lifecycleURL: String)
+  /// The server relays no wakes for this provider: new mail is caught by the other triggers.
+  case none
+}
+
 public enum MailboxServerError: Error, Sendable, Equatable {
   case offline
   /// 409 `not_holder`: another iPhone holds the link.
   case notHolder
   /// 404 `no_link`.
   case noLink
-  /// 409 `no_watch_topic` from route 36: the server relays no wakes (no Pub/Sub push, so
-  /// `meta.gmail_watch_topic` is null) and records no watch.
+  /// 409 `no_watch_topic` from route 36: the server relays no wakes for the link's provider (its
+  /// push settings in `meta` are null) and records no watch.
   case noWatchTopic
   /// Any other refusal (status and the server's content-free code).
   case refused(Int, String)
@@ -78,15 +100,17 @@ public protocol MailboxServer: Sendable {
   func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus
   /// `POST /api/v1/mailbox/link/challenge` (route 34): the nonce (b64url of 32 bytes).
   func linkChallenge() async throws(MailboxServerError) -> String
-  /// `PUT /api/v1/mailbox/link {id_token, step_up}` (route 35).
-  func putLink(idToken: String, stepUp: JSONValue) async throws(MailboxServerError) -> MailboxLinkStatus
+  /// `PUT /api/v1/mailbox/link {provider, id_token, step_up}` (route 35). Linking one provider
+  /// replaces the account's link to the other.
+  func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
+    -> MailboxLinkResult
   /// `PUT /api/v1/mailbox/link/watch {expires_at}` (route 36; holder only; `.noWatchTopic`
   /// when the server has no topic).
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError)
   /// `DELETE /api/v1/mailbox/link {step_up}` (route 38).
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError)
-  /// `GET /api/v1/meta` → `gmail_watch_topic` (nil: the server relays no wakes).
-  func watchTopic() async throws(MailboxServerError) -> String?
+  /// `GET /api/v1/meta` → where the server relays `provider`'s push (`.none`: it relays none).
+  func pushConfig(provider: MailProviderID) async throws(MailboxServerError) -> MailboxPushConfig
 }
 
 public enum MailboxStepUpError: Error, Sendable, Equatable {
