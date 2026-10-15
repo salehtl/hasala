@@ -90,8 +90,14 @@ const uid = `hp-${play}`;
 
       <div class="hp__content">
         <div class="hp__top">
+          <div class="hp__period-row hp__in">
+            <span class="hp__period">
+              October 2026
+              <svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"></path></svg>
+            </span>
+          </div>
           <div class="hp__spent hp__in">
-            <span class="hp__overline">October · day 10 of 31</span>
+            <span class="hp__overline">Day 10 of 31</span>
             <span class="hp__figure-row">
               <span class="hp__unit">AED</span>
               <span class="hp__figure" data-hp-count="10288.34">10,288.34</span>
@@ -115,7 +121,7 @@ const uid = `hp-${play}`;
           <div class="hp__tiles">
             <span class="hp__tile hp__in"><span>Needs</span><b>9,040.80</b></span>
             <span class="hp__tile hp__in"><span>Wants</span><b>1,247.54</b></span>
-            <span class="hp__tile hp__in"><span>Savings</span><b>0 of 5,000</b></span>
+            <span class="hp__tile hp__in"><span>Savings</span><b>0 <small>of 5,000</small></b></span>
           </div>
         </div>
 
@@ -424,6 +430,39 @@ const uid = `hp-${play}`;
     flex-direction: column;
     gap: 16px;
     padding: 4px 20px 0;
+  }
+  .hp__period-row {
+    display: flex;
+    align-items: center;
+    height: 44px;
+  }
+  .hp__period {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px 0 14px;
+    border-radius: 999px;
+    background: var(--white);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    white-space: nowrap;
+  }
+  .hp__period svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hp__tile small {
+    color: var(--neutral-700);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 400;
   }
   .hp__spent {
     display: flex;
@@ -855,6 +894,9 @@ const uid = `hp-${play}`;
      otherwise `animation: var(--hp-…)` is invalid and nothing moves. */
   .hp__in {
     animation: var(--hp-rise) 600ms var(--ease-out-soft) both;
+  }
+  .hp__period-row {
+    animation-delay: 180ms;
   }
   .hp__spent {
     animation-delay: 250ms;

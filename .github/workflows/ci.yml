@@ -149,11 +149,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before Nix, so it runs on every push even when nothing else can build.
-      # check.sh runs it again as its own first step.
-      - name: Real-mail fence
-        run: scripts/check.sh --fence-only
-
+      # No separate real-mail fence step here: `secrets` runs it alone on every
+      # push and pull request, without waiting for `changes` or a toolchain, and
+      # check.sh below runs it again as its own first step.
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           diagnostic-endpoint: ""

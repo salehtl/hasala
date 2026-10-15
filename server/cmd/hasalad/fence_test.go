@@ -209,11 +209,15 @@ func TestFenceTheSource(t *testing.T) {
 	banned := []string{
 		"gmail.googleapis.com", "oauth2.googleapis.com/token", "authentication-results",
 		"/.well-known/", "smtp", "vapid", "x-forwarded-for", "true-client-ip",
+		// The phone reads Outlook; the server never calls Graph or holds a
+		// Microsoft token.
+		"graph.microsoft.com", "/oauth2/v2.0/token", "/oauth2/v2.0/authorize",
 	}
 	onlyIn := map[string]string{
 		"api.cloudflare.com":            "internal/mail",
 		"api.appstoreconnect.apple.com": "internal/testflight",
 		"challenges.cloudflare.com":     "internal/turnstile",
+		"login.microsoftonline.com":     "internal/msjwt",
 	}
 	bypass := regexp.MustCompile(`(?i)(dev|demo|review)[-_]?(auth|login|bypass)`)
 	reviewAllowed := func(pkg, path string) bool {
