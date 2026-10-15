@@ -123,6 +123,14 @@ struct MailboxesSummary: Equatable {
       self.init(
         title: "Your email isn't connected", detail: "Connect it so Hasala can read your bank alerts.", hue: .sky,
         needsYou: offer == .connect)
+    } else if health.status == .reconnect {
+      // The lane halted for a reason a new sign-in doesn't fix (a full account, missing
+      // templates): its row still reads connected, but nothing is being read.
+      let stopped = live.first { $0.note != nil } ?? live[0]
+      let working = live.filter { $0.id != stopped.id && ($0.state == .connected || $0.state == .syncing) }
+      var detail = "Hasala stopped reading \(stopped.address)."
+      if let other = working.first { detail += " Your \(other.provider.appName) still works." }
+      self.init(title: "Bank alerts stopped", detail: detail, hue: .sand, needsYou: true)
     } else if live.allSatisfy({ $0.state == .syncing }) || health.status == .importing {
       self.init(title: "Importing your bank alerts", detail: Self.lines(health) ?? "Checking now", hue: .mint,
                 needsYou: false)

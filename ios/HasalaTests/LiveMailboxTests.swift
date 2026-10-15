@@ -103,4 +103,29 @@ struct LiveMailboxTests {
     #expect(row(.halted, halt: .accountFull)?.state == .connected && row(.halted, halt: .accountFull)?.note != nil)
     #expect(row(.otherDevice)?.note == "Read on your other iPhone")
   }
+
+  /// A lane halted for a reason a new sign-in doesn't fix: its row reads connected and
+  /// nothing is offered, but the Profile card and Bank alerts must not say it works.
+  /// (`LedgerStateMapper.health` gives every halted phase `.reconnect`: the lane's hero is
+  /// "needs you".) Another iPhone reading the mailbox is still working.
+  @Test func aHaltedLaneIsNotWorking() {
+    let now: Int64 = 10_000_000_000
+    func summary(_ phase: MailboxPhase, halt: MailboxHaltCode?, health: MailboxHealth.Status) -> MailboxesSummary {
+      let rows = LiveMailboxConnecting.mailboxes(
+        phase: phase, halt: halt, address: "maya@example.com", lastSuccessAtMs: now - 4 * 60_000,
+        bankDomains: ["dib.ae"], nowMs: now)
+      return MailboxesSummary(
+        rows, health: MailboxHealth(status: health, lastEmail: "4 min ago", banks: "DIB"),
+        offer: LiveMailboxConnecting.offer(phase: phase, halt: halt, sampleLoaded: false, serverLink: .noLink))
+    }
+    for halt in [MailboxHaltCode.accountFull, .templatesUnavailable] {
+      let s = summary(.halted, halt: halt, health: .reconnect)
+      #expect(s.title == "Bank alerts stopped" && s.detail == "Hasala stopped reading maya@example.com.")
+      #expect(s.hue == .sand && s.needsYou)
+    }
+    let fixable = summary(.halted, halt: .gmail, health: .reconnect)
+    #expect(fixable.title == "Sign in again" && fixable.needsYou)
+    let elsewhere = summary(.otherDevice, halt: nil, health: .working)
+    #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
+  }
 }

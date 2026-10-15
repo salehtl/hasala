@@ -92,6 +92,14 @@ struct MailboxFlowTests: AccountSuite {
     let importing = MailboxesSummary([syncing], health: MailboxHealth(status: .importing, lastEmail: "", banks: ""),
                                      offer: nil)
     #expect(importing.title == "Importing your bank alerts" && importing.detail == "Checking now" && !importing.needsYou)
+    // Reading stopped on a mailbox that still reads connected (a halt a sign-in doesn't fix).
+    var halted = MockMailbox.gmail
+    halted.note = "Reading your bank alerts stopped."
+    let stopped = MailboxesSummary(
+      [halted, MockMailbox.outlook], health: MailboxHealth(status: .reconnect, lastEmail: "", banks: ""), offer: nil)
+    #expect(stopped.title == "Bank alerts stopped")
+    #expect(stopped.detail == "Hasala stopped reading maya@example.com. Your Outlook still works.")
+    #expect(stopped.hue == .sand && stopped.needsYou)
   }
 
   /// On the Release surface the mock reads like the live lane: Gmail only, one mailbox.
