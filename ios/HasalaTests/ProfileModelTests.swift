@@ -35,7 +35,7 @@ struct ProfileModelTests {
     #expect(!profile.snapshot.prefs.faceIDLock)
     profile.setNotifications(.everything)
     #expect(profile.snapshot.prefs.notifications == .everything)
-    #expect(profile.rules.first?.pattern == "\"carrefour\"")
+    #expect(profile.rules.first?.pattern == "\u{201C}carrefour\u{201D}")
     profile.setRule("r-zuma", enabled: false)
     #expect(profile.rules.first { $0.id == "r-zuma" }?.enabled == false)
     #expect(profile.exportRows.count == app.store.state.txns.count)
