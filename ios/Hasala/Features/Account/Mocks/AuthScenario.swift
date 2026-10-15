@@ -71,11 +71,14 @@
     /// (`BuildSurface`), where it offers the beta's, as the live service does (and its
     /// first scan, like the live lane's, sorts nothing with the on-device model). There the
     /// mailbox mock is narrowed to the live lane too: Gmail only, one mailbox (plan B4.5),
-    /// which keeps Outlook off every Release-surface screen.
+    /// which keeps Outlook off every Release-surface screen. `releaseSurface` is the build's
+    /// (tests pass it, so they check the narrowing the app runs).
     @MainActor
-    static func session(for scenario: AuthScenario?) -> AccountSession {
-      let session = makeSession(for: scenario)
-      if !BuildSurface.showsUnfinished {
+    static func session(
+      for scenario: AuthScenario?, releaseSurface: Bool = !BuildSurface.showsUnfinished
+    ) -> AccountSession {
+      let session = makeSession(for: scenario, releaseSurface: releaseSurface)
+      if releaseSurface {
         if let mock = session.account as? MockAccountService { mock.capabilities = .beta }
         if let mailbox = session.services.mailbox as? MockMailbox {
           mailbox.connectable = [.gmail]
@@ -111,9 +114,9 @@
     }
 
     @MainActor
-    private static func makeSession(for scenario: AuthScenario?) -> AccountSession {
+    private static func makeSession(for scenario: AuthScenario?, releaseSurface: Bool) -> AccountSession {
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount, mailboxes: mailboxes(for: scenario))
-      mailbox.sortsWithModel = BuildSurface.showsUnfinished
+      mailbox.sortsWithModel = !releaseSurface
       mailbox.outlookAdmin = scenario == .outlookAdmin
       mailbox.outlookCancelled = scenario == .outlookCancelled
       if scenario == .noBanks { mailbox.banks = [] }

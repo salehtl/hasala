@@ -102,11 +102,16 @@ struct MailboxFlowTests: AccountSuite {
     #expect(stopped.hue == .sand && stopped.needsYou)
   }
 
-  /// On the Release surface the mock reads like the live lane: Gmail only, one mailbox.
-  @Test func theReleaseSurfaceListsGmailOnly() {
-    let lane = mailbox()
-    lane.connectable = [.gmail]
-    lane.capabilities.remove(.addSecond)
-    #expect(lane.connectable == [.gmail] && !lane.capabilities.contains(.addSecond))
+  /// On the Release surface the scenario's mock reads like the live lane: Gmail only, one
+  /// mailbox (plan B4.5), through the same `AuthScenario.session` the app launches with.
+  /// Off it, every provider and a second mailbox.
+  @Test func theReleaseSurfaceListsGmailOnly() throws {
+    for scenario in [AuthScenario.mailboxes2, .setupEmail, .outlookSignIn, .noMailbox, nil] {
+      let release = try #require(AuthScenario.session(for: scenario, releaseSurface: true).services.mailbox as? MockMailbox)
+      #expect(release.connectable == [.gmail] && !release.capabilities.contains(.addSecond))
+      #expect(!release.sortsWithModel)
+      let debug = try #require(AuthScenario.session(for: scenario, releaseSurface: false).services.mailbox as? MockMailbox)
+      #expect(debug.connectable == [.gmail, .outlook] && debug.capabilities == .all)
+    }
   }
 }

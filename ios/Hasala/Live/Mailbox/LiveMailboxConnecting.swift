@@ -25,7 +25,10 @@ final class LiveMailboxConnecting: MailboxConnecting {
 
   /// Gmail when this build has a Google client (the runtime built a lane), else nothing.
   /// Outlook is never listed until a live Outlook lane exists.
-  var connectable: [MailProviderKind] { runtime()?.lane != nil ? [.gmail] : [] }
+  var connectable: [MailProviderKind] { Self.connectable(hasLane: runtime()?.lane != nil) }
+
+  /// The providers for a runtime with or without a Gmail lane (the Release gate, plan B4.6).
+  static func connectable(hasLane: Bool) -> [MailProviderKind] { hasLane ? [.gmail] : [] }
 
   /// No `.addSecond`: linking one mailbox replaces the account's link on the server.
   var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect] }

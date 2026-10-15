@@ -77,8 +77,10 @@ struct LiveMailboxTests {
 
   /// Live reads Gmail only, and one mailbox: no Outlook, no second mailbox (plan B4.6).
   @Test func liveConnectsGmailOnly() {
+    #expect(LiveMailboxConnecting.connectable(hasLane: true) == [.gmail])
+    #expect(LiveMailboxConnecting.connectable(hasLane: false).isEmpty)  // no Google client, no provider
     let lane = LiveMailboxConnecting(runtime: { nil })
-    #expect(lane.connectable.isEmpty)  // no lane, no provider
+    #expect(lane.connectable.isEmpty)  // no runtime open yet
     #expect(lane.capabilities == [.connect, .signInAgain, .disconnect])
     #expect(!lane.capabilities.contains(.addSecond))
     #expect(lane.mailboxes.isEmpty && lane.offer == nil)
