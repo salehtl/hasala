@@ -49,6 +49,11 @@ public struct GlassIconButton: View {
     }
     .accessibilityLabel(label)
     .accessibilityAddTraits(selected == true ? .isSelected : [])
+    // Dynamic Type does not grow the circle; a long press shows the icon and its name large.
+    .accessibilityShowsLargeContentViewer {
+      HIconView(icon, size: 28, color: HColor.iconPrimary)
+      Text(label)
+    }
   }
 
   /// 22 for every glass glyph (`--spacing-icon-glass`), 24 for the two eye glyphs.
@@ -84,5 +89,8 @@ public struct GlassAvatarButton: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
+    .accessibilityShowsLargeContentViewer {
+      Text(label)
+    }
   }
 }
