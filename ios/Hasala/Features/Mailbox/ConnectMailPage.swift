@@ -52,7 +52,7 @@ struct ConnectMailPage: View {
           ConnectProviderView(
             provider: provider, coordinator: coordinator, banks: banks,
             onConnected: { id in connected(id, mailbox, coordinator.context) },
-            onChooseDifferent: chooseDifferent)
+            onChooseDifferent: chooseDifferent, choiceIsBack: choiceIsBack)
         }
       }
       .hAnimation(.stateSwap, value: coordinator.errorScreen)
@@ -75,9 +75,20 @@ struct ConnectMailPage: View {
     if case .connected(let id)? = coordinator.outcome { connected(id, mailbox, coordinator.context) }
   }
 
-  /// Back to the providers (Add a mailbox), or to wherever the person came from.
+  /// Add a mailbox's providers are the screen behind this one: Back picks another.
+  private var choiceIsBack: Bool {
+    let path = app.router.profile
+    guard let i = path.lastIndex(of: .connectMail(provider)), i > 0 else { return false }
+    return path[i - 1] == .addMailbox
+  }
+
+  /// The providers: back to Add a mailbox when it led here, else in this screen's place (the
+  /// Profile card's "Connect your email" pushes this screen straight away).
   private func chooseDifferent() {
-    if !app.router.profile.isEmpty { app.router.profile.removeLast() }
+    var path = app.router.profile
+    if path.last == .connectMail(provider) { path.removeLast() }
+    if path.last != .addMailbox { path.append(.addMailbox) }
+    app.router.profile = path
   }
 
   /// Back to Bank alerts with a toast; a new mailbox's first import starts and outlives

@@ -44,9 +44,8 @@ struct ChooseEmailSheet: View {
   let mailbox: MailboxConnecting
   let title: ChooseEmailTitle
   var onPick: (MailProviderKind) -> Void
-  /// The sheet's content height and its bottom safe area; the detent follows them.
+  /// The sheet's content height; the detent follows it.
   @State private var height: CGFloat = 0
-  @State private var bottomInset: CGFloat = 0
   @Environment(\.dismiss) private var dismiss
 
   init(mailbox: MailboxConnecting, title: ChooseEmailTitle, onPick: @escaping (MailProviderKind) -> Void) {
@@ -62,19 +61,21 @@ struct ChooseEmailSheet: View {
     }
   }
 
-  /// Setup: Paper's large sheet, 8 / 20 / 48 padding (the home indicator's 34 inside the
-  /// 48), 18 between the heading, the providers and the footnote.
+  /// Setup: Paper's large sheet hugging its content (1MZG): the heading 43 under the
+  /// sheet's top (8, the system grabber, 18, 12), 20 at the sides, 18 between the heading,
+  /// the providers and the footnote, 14 under the link (the system keeps the home
+  /// indicator's inset below that, Paper's 48 in all). The detent is the content's height,
+  /// so it stays right at every text size; past the screen it scrolls.
   private var sheet: some View {
     ScrollView {
-      content(headingTop: 20)
+      content(headingTop: 43)
         .padding(.horizontal, HSpacing.sheetPadding)
         .padding(.bottom, 14)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
     }
     .scrollBounceBehavior(.basedOnSize)
-    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
     .background(HColor.sheetSurfaceLarge)
-    .presentationDetents(height > 0 ? [.height(height + bottomInset)] : [.medium])
+    .presentationDetents(height > 0 ? [.height(height)] : [.medium])
     .presentationDragIndicator(.visible)
     .presentationCornerRadius(HRadius.sheetLarge)
     .presentationBackground(HColor.sheetSurfaceLarge)

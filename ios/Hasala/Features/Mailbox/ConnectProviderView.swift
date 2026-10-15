@@ -20,10 +20,15 @@ struct ConnectProviderView: View {
   var sample: (() -> Void)?
   var onConnected: (String) -> Void
   var onChooseDifferent: () -> Void
+  /// The providers are the screen behind this one (Profile › Bank alerts › Add a mailbox):
+  /// the system Back is how to pick another, so the dock doesn't offer it again, and the
+  /// screen fits above its dock inside the profile sheet.
+  var choiceIsBack: Bool
 
   init(
     provider: MailProviderKind, coordinator: MailConnectCoordinator, banks: [SupportedBank],
-    sample: (() -> Void)? = nil, onConnected: @escaping (String) -> Void, onChooseDifferent: @escaping () -> Void
+    sample: (() -> Void)? = nil, onConnected: @escaping (String) -> Void, onChooseDifferent: @escaping () -> Void,
+    choiceIsBack: Bool = false
   ) {
     self.provider = provider
     self.coordinator = coordinator
@@ -31,6 +36,7 @@ struct ConnectProviderView: View {
     self.sample = sample
     self.onConnected = onConnected
     self.onChooseDifferent = onChooseDifferent
+    self.choiceIsBack = choiceIsBack
   }
 
   private var steps: (current: Int, of: Int)? {
@@ -63,7 +69,7 @@ struct ConnectProviderView: View {
         .hTransition(.stateSwap)
         ReadsNeverCard(banks: banks)
           .padding(.top, 16)
-        Text(MailCopy.readNote(provider))
+        Text(MailCopy.readNote)
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -102,6 +108,8 @@ struct ConnectProviderView: View {
         footerLink
       }
     }
+    // At large text sizes the screen scrolls under its dock: say so once.
+    .scrollIndicatorsFlash(onAppear: true)
     // Setup moves on to the first scan; the profile's moment is Bank alerts' new row.
     .hHaptic(.success, trigger: connectedOutcome) { _, new in isSetup && new != nil }
   }
@@ -128,12 +136,23 @@ struct ConnectProviderView: View {
   /// "Not your email? Choose a different one." (Gmail, 6RN); Outlook says first that a work
   /// account may need its admin (1MRM). With one provider to offer there is nothing else to
   /// choose, so it asks which email the person uses instead (plan B4.6 rule 2). A new
-  /// sign-in to one mailbox has nothing to choose.
+  /// sign-in to one mailbox has nothing to choose, and with the providers behind this
+  /// screen Back chooses (Outlook keeps its line about work accounts).
   @ViewBuilder private var footerLink: some View {
     if signInAgainID != nil {
       EmptyView()
     } else if coordinator.mailbox.connectable.count <= 1 {
       TellUsWhichLink()
+    } else if choiceIsBack {
+      if provider == .outlook {
+        Text("Work or school account? Your organisation may need to approve Hasala first.")
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textSecondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.top, 4)
+          .accessibilityIdentifier("mail.workAccount")
+      }
     } else if provider == .outlook {
       TextLinkRow(lead: "Work or school account? Your organisation may need to approve Hasala first.",
                   link: "Choose a different email", identifier: "mail.notYours", action: onChooseDifferent)

@@ -86,8 +86,11 @@ final class MailConnectCoordinator {
     let live = mailbox.mailboxes.filter { $0.state != .disconnected }
     switch outcome {
     case .connected(let id)?:
-      return live.first { $0.id == id }
-        ?? MailboxSnapshot(id: id, provider: provider, address: provider.appName, state: .syncing, meta: "Checking now")
+      // Another provider's attempt (a host that kept this coordinator for a different
+      // screen) says nothing about this one.
+      guard self.provider == nil || self.provider == provider else { return nil }
+      if let m = live.first(where: { $0.id == id }) { return m.provider == provider ? m : nil }
+      return MailboxSnapshot(id: id, provider: provider, address: provider.appName, state: .syncing, meta: "Checking now")
     case .failed?:
       return nil
     case nil:

@@ -15,16 +15,14 @@ enum MailCopy {
     banks.map(\.shortName).formatted(.list(type: .and))
   }
 
-  /// The note under the read-only card. Paper's caption is the push sentence; a Release
-  /// build has no push, so it says how new alerts are really caught (no promise the beta
-  /// doesn't keep). Before it, why the provider's own screen asks for more than Hasala
-  /// reads: Gmail and Outlook offer no narrower permission.
-  static func readNote(_ provider: MailProviderKind) -> String {
-    let scope =
-      "\(provider.company)'s permission screen still asks to let Hasala read your email, because \(provider.appName) offers nothing narrower."
-    return BuildSurface.showsUnfinished
-      ? scope + " To catch new alerts quickly, our server is told when new mail arrives, never what it says."
-      : scope + " This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
+  /// The caption under the read-only card (Paper 6RN, 1MRM: "New mail note"), two lines as
+  /// Paper draws it, so the screen fits above its dock and nothing sits cut off behind the
+  /// provider's button. Paper's is the push sentence; a Release build relays no push, so it
+  /// says how new alerts are really caught (no promise the beta doesn't keep).
+  static var readNote: String {
+    BuildSurface.showsUnfinished
+      ? "To catch new alerts quickly, our server is told when new mail arrives, never what it says."
+      : "This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
   }
 
   /// Under the Mailboxes card (Paper 1NS8). The server's part of a new-mail wake is
@@ -240,7 +238,10 @@ struct ReadsNeverCard: View {
   }
 
   private func item(_ text: String, reads: Bool) -> some View {
-    HStack(alignment: .top, spacing: 10) {
+    // Paper's gap is 10, but Inter on iOS sets "Downloaded and read here, on this iPhone"
+    // 0.6 pt wider than the 300 that leaves on a 402 screen: 9 keeps Paper's line breaks
+    // (and the screen 20 pt shorter, so its caption isn't left under the dock).
+    HStack(alignment: .top, spacing: 9) {
       Circle()
         .fill(reads ? HColor.statusSuccessSurface : HColor.surfaceSecondary)
         .frame(width: 20, height: 20)
@@ -277,8 +278,8 @@ struct TextLinkRow: View {
 /// naming the provider Hasala doesn't read yet. A person reads it; nothing is sent from the
 /// app.
 struct TellUsWhichLink: View {
-  /// The sheet's footnote is 13/18 and starts at the leading edge; the screen's dock is
-  /// 15/20, centred.
+  /// The chooser's footnote: the whole sentence in link blue, 13/18 semibold, from the
+  /// leading edge (Paper 1MZG, 1NW2). Otherwise the dock's text link row, 15/20, centred.
   var small = false
   var leading = false
 
@@ -292,7 +293,17 @@ struct TellUsWhichLink: View {
 
   var body: some View {
     Link(destination: Self.mail) {
-      TextLinkLabel(lead: "Use a different email?", link: "Tell us which.", small: small, leading: leading)
+      if small {
+        Text("Use a different email? Tell us which.")
+          .hType(HType.footnote.weight(.semibold))
+          .foregroundStyle(HColor.textLink)
+          .multilineTextAlignment(leading ? .leading : .center)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum, alignment: leading ? .leading : .center)
+          .contentShape(Rectangle())
+      } else {
+        TextLinkLabel(lead: "Use a different email?", link: "Tell us which.", leading: leading)
+      }
     }
     .accessibilityLabel("Use a different email? Tell us which.")
     .accessibilityAddTraits(.isLink)
@@ -303,11 +314,10 @@ struct TellUsWhichLink: View {
 private struct TextLinkLabel: View {
   let lead: String?
   let link: String
-  var small = false
   var leading = false
 
   var body: some View {
-    let type: HType = small ? .footnote : .subheadline
+    let type: HType = .subheadline
     ViewThatFits(in: .horizontal) {
       HStack(spacing: 4) { parts(type) }
       VStack(alignment: leading ? .leading : .center, spacing: 0) { parts(type) }
