@@ -233,7 +233,10 @@ struct AccountReadyView: View {
     ReflowingRow(spacing: 12) {
       HStack(spacing: 12) {
         Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7).accessibilityHidden(true)
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary).lineLimit(1).truncationMode(.middle)
+        // One line as Paper draws it; at the larger sizes a long address wraps rather than
+        // losing its middle.
+        Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          .lineLimitAtDefaultTextSize(1).truncationMode(.middle)
       }
     } trailing: {
       Text(value).hType(.subheadline).foregroundStyle(HColor.textSecondary)
