@@ -93,6 +93,8 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(setup.incomeText == "25000" && setup.payday == 25 && setup.plan.needsPercent == 60)
     #expect(setup.orderedBanks == [.dib])
     #expect(setup.step == .plan)
+    // What the account holds counts as sent: the same plan again sends nothing.
+    #expect(setup.draft.authored.plan == saved && setup.draft.authored.banks == [.dib])
 
     // The same process: what was done here stays done, what was typed wins.
     setup.incomeText = "30000"

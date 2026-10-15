@@ -134,6 +134,9 @@ final class SetupModel {
     if draft.payday == nil, let day = readBack.payday { draft.payday = .day(day) }
     if draft.split == nil, let split = readBack.split { draft.split = split }
     if draft.chosenBanks == nil, !banks.isEmpty { draft.chosenBanks = Set(banks) }
+    // What the account holds was sent before this process: the same values aren't sent again.
+    if draft.authored.banks == nil, new.banksChosen, !banks.isEmpty { draft.authored.banks = banks }
+    if draft.authored.plan == nil, readBack != SetupReadBack() { draft.authored.plan = readBack }
   }
 
   /// The back stack for the derived step, built once per model: every step before it, in
