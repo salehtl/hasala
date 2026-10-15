@@ -90,7 +90,7 @@ struct ProfileSheet: View {
         Text("You can sign back in with your passkey or password.")
       }
     }
-    .overlay(alignment: .bottom) { ToastHost(app: app) }
+    .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
   }
 
   /// Signs out of this iPhone (S-26): the session ends, local data stays. The account gate

@@ -1,3 +1,4 @@
+import HasalaDesign
 import HasalaModels
 import Observation
 
@@ -31,7 +32,7 @@ final class PlanViewModel: PlanModel {
   // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign funds targets first, then follows the
   // split, as one `budget_moved` batch with a preview sheet.
   // Debug only: a Release build doesn't show the button (`BuildSurface`).
-  func autoAssign() { app.say("Auto-assign isn't in this build yet", systemImage: "wand.and.stars") }
+  func autoAssign() { app.say("Auto-assign isn't in this build yet", icon: .wand) }
 }
 
 /// One place money can come from in Move money.

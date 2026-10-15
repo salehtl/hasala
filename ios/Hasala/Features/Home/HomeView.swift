@@ -16,9 +16,6 @@ import SwiftUI
 struct HomeView: View {
   @Bindable var app: AppModel
   let model: any HomeModel
-  @State private var topInset: CGFloat = 0
-  /// How far a pull has dragged the content below the top (0 when not overscrolled).
-  @State private var overscroll: CGFloat = 0
   /// Present once the account gate runs; it knows whether this is the review account.
   @Environment(AccountSession.self) private var session: AccountSession?
 
@@ -28,54 +25,30 @@ struct HomeView: View {
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).home) {
-      ScrollView {
-        VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
-          if session?.reviewAccount == true {
-            SampleDataLabel()
-              .padding(.horizontal, HSpacing.insetPage)
-              .padding(.bottom, -12)
-          }
-          HeroSection(hero: snapshot.hero, hidden: hidden,
-                      seeMonth: unfinished ? { app.router.home.append(.insights) } : nil)
-          // "See all" is the bell's list (Notifications, "Needs a look").
-          NeedsYouSection(rail: snapshot.needsYou, hidden: hidden,
-                          seeAll: unfinished ? { app.router.open(.notifications) } : nil) { card, primary in
-            if let route = model.needsYou(card, primary: primary) { app.router.home.append(route) }
-          }
-          WidgetCanvas(widgets: snapshot.widgets, hidden: hidden, editable: unfinished,
-                       opens: model.widgetOpens,
-                       open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
-                       edit: { app.say("Editing widgets isn't in this build yet", systemImage: "square.grid.2x2") })
+      // TODO(spec 04 §16.2 H3): the notifications list; until then Release has no bell.
+      TabScreen(
+        app: app, title: nil,
+        extra: unfinished ? .bell(unread: snapshot.header.unreadNotifications) : .none,
+        onExtra: { app.router.open(.notifications) },
+        wash: HWash(snapshot.hero.wash)
+      ) {
+        if session?.reviewAccount == true {
+          SampleDataLabel()
+            .padding(.horizontal, HSpacing.insetPage)
+            .padding(.bottom, -12)
         }
-        .padding(.top, 24)
-        .padding(.bottom, 32)
-        .background(alignment: .top) {
-          // The wash starts at the top of the screen, behind the header, and
-          // scrolls away with the content (Paper: absolute, 420 tall). A pull past the
-          // top doesn't drag it down: it stays where it is while the content moves.
-          AmbientWash(snapshot.hero.wash, height: 420)
-            .padding(.top, -topInset)
-            .offset(y: -overscroll)
+        HeroSection(hero: snapshot.hero, hidden: hidden,
+                    seeMonth: unfinished ? { app.router.home.append(.insights) } : nil)
+        // "See all" is the bell's list (Notifications, "Needs a look").
+        NeedsYouSection(rail: snapshot.needsYou, hidden: hidden,
+                        seeAll: unfinished ? { app.router.open(.notifications) } : nil) { card, primary in
+          if let route = model.needsYou(card, primary: primary) { app.router.home.append(route) }
         }
+        WidgetCanvas(widgets: snapshot.widgets, hidden: hidden, editable: unfinished,
+                     opens: model.widgetOpens,
+                     open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
+                     edit: { app.say("Editing widgets isn't in this build yet", icon: .info) })
       }
-      .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
-      .trackingOverscroll($overscroll)
-      .refreshable { [app] in await app.refresh() }
-      .scrollEdgeEffectStyle(.soft, for: .bottom)
-      .background(HColor.surfaceSecondary)
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        MainHeader(
-          amountsHidden: hidden,
-          // TODO(spec 04 §16.2 H3): the notifications list; until then Release has no bell.
-          extra: unfinished ? .bell(unread: snapshot.header.unreadNotifications) : .none,
-          avatarInitial: snapshot.header.avatarInitial,
-          onToggleAmounts: { app.toggleAmountsHidden() },
-          onExtra: { app.router.open(.notifications) },
-          onProfile: { app.showingProfile = true }
-        )
-      }
-      .overlay(alignment: .bottom) { ToastHost(app: app) }
       .navigationDestination(for: HomeRoute.self) { route in
         switch route {
         case .bills: BillsScreen(app: app)

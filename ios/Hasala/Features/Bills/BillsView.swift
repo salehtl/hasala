@@ -45,7 +45,7 @@ final class BillsViewModel: BillsModel {
   // TODO(03b §3.3): "Remind me tomorrow" snoozes the occurrence (`bill_occurrence_set` snooze)
   // and plans a local notification (spec 04 §9).
   // Debug only: a Release build doesn't show "Remind me" (`BuildSurface`).
-  func remind(_ bill: BillID) { app.say("Reminders aren't in this build yet", systemImage: "bell") }
+  func remind(_ bill: BillID) { app.say("Reminders aren't in this build yet", icon: .bell) }
 
   func acceptAmount(_ bill: BillID) { app.perform(.acceptBillAmount(bill)) }
   func track(_ candidate: String) { app.perform(.trackCandidate(candidate)) }

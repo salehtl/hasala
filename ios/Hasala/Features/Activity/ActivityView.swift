@@ -15,8 +15,10 @@ struct ActivityView: View {
   var body: some View {
     NavigationStack(path: Bindable(app.router).activity) {
       // TODO(spec 04 §16.1 "Add transaction"): until AddTransactionSheet exists, Release has no "+".
+      // The period pill and the count lead the content, 10 under the title (P6 moves them
+      // into the title block with the filters).
       TabScreen(app: app, title: "Activity", extra: BuildSurface.showsUnfinished ? .add : .none,
-                onExtra: { model.addTransaction() }) {
+                onExtra: { model.addTransaction() }, spacing: 10) {
         ActivityContent(model: model)
       }
       .searchable(

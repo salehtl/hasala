@@ -15,6 +15,8 @@ struct PlanView: View {
   var body: some View {
     NavigationStack(path: Bindable(app.router).plan) {
       TabScreen(app: app, title: "Plan", extra: .none) {
+        MonthPill(month: model.snapshot.month)
+      } content: {
         PlanContent(model: model) { app.router.plan.append(.category($0)) }
       }
       .navigationDestination(for: PlanRoute.self) { route in
@@ -36,9 +38,6 @@ private struct PlanContent: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
-      MonthPill(month: snap.month)
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.bottom, -16)
       readyToAssign
       split
       ForEach(snap.sections) { section in

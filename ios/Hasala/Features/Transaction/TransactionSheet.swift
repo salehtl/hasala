@@ -65,7 +65,7 @@ struct TransactionSheet: View {
         Text("It leaves your plan and your totals. You can restore it from Activity › Archived.")
       }
     }
-    .overlay(alignment: .bottom) { ToastHost(app: app) }
+    .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
   }
 
   private func content(_ d: TransactionDetail) -> some View {

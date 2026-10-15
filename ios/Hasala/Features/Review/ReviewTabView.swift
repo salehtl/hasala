@@ -20,15 +20,15 @@ struct ReviewTabView: View {
 
   var body: some View {
     NavigationStack {
-      TabScreen(app: app, title: "Review", extra: .none) {
-        let cards = cards
+      let cards = cards
+      // Its queue is always now: a count line under the title, no period pill.
+      TabScreen(app: app, title: "Review", extra: .none, spacing: 24, titleGap: 4) {
+        Text(Self.countLine(cards.count))
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textSecondary)
+          .accessibilityIdentifier("review.tab.count")
+      } content: {
         VStack(alignment: .leading, spacing: 24) {
-          Text(Self.countLine(cards.count))
-            .hType(.subheadline)
-            .foregroundStyle(HColor.textSecondary)
-            .padding(.horizontal, HSpacing.insetPage)
-            .padding(.top, -14)
-            .accessibilityIdentifier("review.tab.count")
           if cards.isEmpty {
             EmptyNote(systemImage: "checkmark.circle", message: "Nothing to sort. New transactions show up here.")
               .padding(.horizontal, HSpacing.insetPage)

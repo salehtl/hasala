@@ -42,7 +42,7 @@ struct ReviewDeckView: View {
     .background(alignment: .top) { AmbientWash(.sky).ignoresSafeArea() }
     .background(HColor.surfaceSecondary)
     // Above "Skip for now", so the toast never covers it.
-    .overlay(alignment: .bottom) { ToastHost(app: app).padding(.bottom, model.cards.isEmpty ? 0 : 56) }
+    .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom).padding(.bottom, model.cards.isEmpty ? 0 : 56) }
     .sensoryFeedback(.impact(weight: .light), trigger: sortedCount)
     .sheet(item: $picking, onDismiss: settle) { pick in
       BucketPickSheet(model: model, pick: pick) { category, alwaysUse, project in

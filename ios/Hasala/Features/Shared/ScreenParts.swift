@@ -2,8 +2,8 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// Parts the core screens share (Paper "kit Lists and cards", "Template · Tab screen",
-// "Template · Sheet (large)"). They read amounts only through MoneyText and
+// Parts the core screens share (Paper "kit Lists and cards", "Template · Sheet (large)";
+// the tab screen template is `TabScreen`). They read amounts only through MoneyText and
 // MoneyPhrase, so Hide amounts reaches every figure (spec 04 §12).
 
 /// A line of copy that may carry amounts; hidden figures become bullets and read
@@ -190,55 +190,6 @@ struct SheetCloseButton: ToolbarContent {
       Button(role: .close, action: action)
         .accessibilityIdentifier(identifier)
     }
-  }
-}
-
-/// A tab's root screen (Paper "Template · Tab screen"): the main header, the
-/// sky wash that scrolls away, a large title, the toast host.
-struct TabScreen<Content: View>: View {
-  @Bindable var app: AppModel
-  let title: String
-  let extra: MainHeader.Extra
-  var onExtra: () -> Void = {}
-  var wash: Hue = .sky
-  @ViewBuilder let content: Content
-
-  @State private var topInset: CGFloat = 0
-  @State private var overscroll: CGFloat = 0
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        Text(title).hType(.largeTitle).foregroundStyle(HColor.textPrimary)
-          .accessibilityAddTraits(.isHeader)
-          .padding(.horizontal, HSpacing.insetPage)
-          .padding(.bottom, 10)
-        content
-      }
-      .padding(.top, 8)
-      .padding(.bottom, 32)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(alignment: .top) {
-        AmbientWash(wash).padding(.top, -topInset).offset(y: -overscroll)
-      }
-    }
-    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
-    .trackingOverscroll($overscroll)
-    .refreshable { [app] in await app.refresh() }
-    .scrollEdgeEffectStyle(.soft, for: .bottom)
-    .background(HColor.surfaceSecondary)
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      MainHeader(
-        amountsHidden: app.amountsHidden,
-        extra: extra,
-        avatarInitial: app.avatarInitial,
-        onToggleAmounts: { app.toggleAmountsHidden() },
-        onExtra: onExtra,
-        onProfile: { app.showingProfile = true }
-      )
-    }
-    .overlay(alignment: .bottom) { ToastHost(app: app) }
   }
 }
 

@@ -1,6 +1,8 @@
+import HasalaDesign
 import HasalaModels
 import Observation
 import SwiftUI
+import UIKit
 
 /// App-wide UI state: the ledger the screens read and write, Hide amounts (which applies
 /// to every screen, spec 04 §12), the transient toast with its Undo, and routing
@@ -13,7 +15,14 @@ import SwiftUI
 @Observable
 final class AppModel {
   struct Toast: Equatable {
-    var systemImage: String
+    /// The leading disc (Paper page 14 §03): the accent check when something was done, an
+    /// ink disc with a glyph for a note (amounts hidden, a refusal).
+    enum Disc: Equatable {
+      case done
+      case note(HIcon)
+    }
+
+    var disc: Disc
     var title: String
     var subtitle: String?
     var actionTitle: String?
@@ -93,7 +102,7 @@ final class AppModel {
   func toggleAmountsHidden() {
     amountsHidden.toggle()
     if amountsHidden {
-      show(Toast(systemImage: "eye.slash", title: "Amounts hidden", subtitle: "Until you tap the eye again",
+      show(Toast(disc: .note(.eyeSlash), title: "Amounts hidden", subtitle: "Until you tap the eye again",
                  actionTitle: "Show"))
     } else {
       dismissToast()
@@ -106,18 +115,19 @@ final class AppModel {
   func perform(_ edit: LedgerEdit) -> Bool {
     do {
       if let token = try store.apply(edit) {
-        show(Toast(systemImage: "checkmark", title: token.title, actionTitle: "Undo", undo: token))
+        show(Toast(disc: .done, title: token.title, actionTitle: "Undo", undo: token))
       }
       return true
     } catch {
-      show(Toast(systemImage: "exclamationmark", title: Self.message(for: error)))
+      show(Toast(disc: .note(.info), title: Self.message(for: error)))
       return false
     }
   }
 
-  /// Shows a one-line confirmation without an action.
-  func say(_ title: String, systemImage: String = "checkmark") {
-    show(Toast(systemImage: systemImage, title: title))
+  /// Shows a one-line confirmation without an action: the accent check, or `icon` on the
+  /// ink disc for a note.
+  func say(_ title: String, icon: HIcon? = nil) {
+    show(Toast(disc: icon.map { .note($0) } ?? .done, title: title))
   }
 
   func toastAction() {
@@ -136,6 +146,13 @@ final class AppModel {
     toast = nil
   }
 
+  /// The toast is touched: it stays while the finger is down, then for a full dwell after.
+  func holdToast(_ held: Bool) {
+    guard toast != nil else { return }
+    toastTask?.cancel()
+    if !held { scheduleToastEnd() }
+  }
+
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
   func snooze(_ card: String) { snoozed.insert(card) }
@@ -151,15 +168,30 @@ final class AppModel {
     }
   }
 
-  /// The undo window is 5 s (spec 04 §14.6).
+  /// One toast at a time: a new one replaces the old (plan decision 4). It stays about 4 s,
+  /// 8 s while VoiceOver runs, longer while touched; that is also the window for its Undo.
+  /// VoiceOver hears it without losing its place ("Sorted into Groceries. Undo available.").
+  /// The motion is `ToastHost`'s.
   // TODO(spec 04 §14.6): pause the window while the app is in the background (pwa `pausableTimeout`).
   private func show(_ t: Toast) {
+    toast = t
+    AccessibilityNotification.Announcement(Self.announcement(for: t)).post()
+    scheduleToastEnd()
+  }
+
+  private func scheduleToastEnd() {
     toastTask?.cancel()
-    withAnimation(.snappy) { toast = t }
+    let dwell = UIAccessibility.isVoiceOverRunning ? HMotion.toastDwellVoiceOver : HMotion.toastDwell
     toastTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(5))
+      try? await Task.sleep(for: .seconds(dwell))
       guard !Task.isCancelled else { return }
-      withAnimation(.snappy) { self?.toast = nil }
+      self?.toast = nil
     }
+  }
+
+  /// What VoiceOver says when a toast appears: the message, then the action it offers.
+  static func announcement(for t: Toast) -> String {
+    let message = [t.title, t.subtitle].compactMap { $0 }.joined(separator: ". ")
+    return t.actionTitle.map { "\(message). \($0) available." } ?? "\(message)."
   }
 }
