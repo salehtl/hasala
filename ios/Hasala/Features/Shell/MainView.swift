@@ -39,18 +39,21 @@ struct MainView: View {
 
   var body: some View {
     TabView(selection: selection) {
-      Tab("Home", systemImage: "house.fill", value: AppTab.home) {
+      // The tab glyphs are Paper's (spec 01 appendix B), as template images: the house with
+      // its door cut out, the two-piece pie, the stacked cards (0.45 / 0.7 / 1) and the
+      // history clock. The bar is the system's, so selection does not animate here.
+      Tab("Home", image: "TabHome", value: AppTab.home) {
         HomeView(app: app, model: home)
       }
       Tab("Plan", image: "TabPlan", value: AppTab.plan) {
         PlanView(app: app, model: plan)
       }
-      // TODO(spec 02 page 13): the stacked-cards glyph from spec 01 appendix B (TabReview).
-      Tab("Review", systemImage: "rectangle.stack.fill", value: AppTab.review) {
+      Tab("Review", image: "TabReview", value: AppTab.review) {
         ReviewTabView(app: app)
       }
+      // Transactions to sort; it never follows the period, and is hidden at zero.
       .badge(app.reviewCount)
-      Tab("Activity", systemImage: "clock.arrow.circlepath", value: AppTab.activity) {
+      Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
       }
       // TODO(spec 04 §13.1): Search with direct answers; Debug keeps the placeholder tab.

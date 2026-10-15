@@ -33,10 +33,16 @@ public struct GlassIconButton: View {
 
   public var body: some View {
     Button(action: action) {
-      HIconView(icon, size: iconSize, color: iconColor)
-        .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
-        .hGlass(in: Circle(), prominent: prominent)
-        .contentShape(Circle())
+      ZStack {
+        // A toggle's glyph swap (the eye of Hide amounts) cross-fades, 150 ms at most.
+        HIconView(icon, size: iconSize, color: iconColor)
+          .id(icon)
+          .transition(.opacity)
+      }
+      .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+      .hAnimation(.hideAmounts, value: icon)
+      .hGlass(in: Circle(), prominent: prominent)
+      .contentShape(Circle())
     }
     .buttonStyle(.plain)
     .overlay(alignment: .topLeading) {
