@@ -473,19 +473,17 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The two longest UI test classes, CoreScreensTests and SmokeTests (about 23 of
-  # the UI tests' 34 minutes), on a runner of their own beside `ios`, which skips
-  # exactly these two. Each class still runs serially on one simulator, as it
-  # did inside `ios`; the split adds a runner, not concurrency on one. The unit
-  # tests (HasalaTests, seconds) run here too, first, as they do before the UI
-  # tests in `ios`: their host app is the simulator's first launch, so no UI
-  # test is (a UI test that was once timed out launching the app on a freshly
-  # booted simulator). Skipped exactly when `ios` is. Not a required check.
-  ios-ui:
+  # The app built once for testing, for `ios-ui` to test without building
+  # (ci-simulator-test.sh --build-only). The products go to the next job as a
+  # tar, which keeps their file modes and symlinks; the artifact lives a day.
+  # It picks the simulator as the test jobs do, on the same runner image, so
+  # the build matches the simulator they test on. Skipped exactly when `ios`
+  # is. Not a required check.
+  ios-build:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -504,9 +502,61 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      - name: Build and test CoreScreensTests and SmokeTests in the simulator (unsigned)
+      - name: Build for testing (unsigned)
+        run: ios/scripts/ci-simulator-test.sh --build-only "$RUNNER_TEMP/dd"
+
+      - name: Pack the test products
+        run: |
+          tar -C "$RUNNER_TEMP/dd" -cf "$RUNNER_TEMP/ios-products.tar" Build/Products
+          ls -lh "$RUNNER_TEMP/ios-products.tar"
+
+      - name: Keep the test products
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-products
+          path: ${{ runner.temp }}/ios-products.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  # The two longest UI test classes, CoreScreensTests and SmokeTests (about 23 of
+  # the UI tests' 34 minutes), on a runner of their own beside `ios`, which skips
+  # exactly these two. It tests `ios-build`'s products without building
+  # (ci-simulator-test.sh --from-build). Each class still runs serially on one
+  # simulator. The unit tests (HasalaTests, seconds) run here too, first, as
+  # they do before the UI tests in `ios`: their host app is the simulator's
+  # first launch, so no UI test is (a UI test that was once timed out launching
+  # the app on a freshly booted simulator). Runs only when `ios-build`
+  # succeeded. Not a required check.
+  ios-ui:
+    needs: [changes, ios-build]
+    if: ${{ !cancelled() && needs.ios-build.result == 'success' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: Get the test products
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ios-products
+          path: ${{ runner.temp }}
+
+      - name: Unpack the test products
+        run: |
+          mkdir -p "$RUNNER_TEMP/dd"
+          tar -C "$RUNNER_TEMP/dd" -xf "$RUNNER_TEMP/ios-products.tar"
+
+      - name: Test CoreScreensTests and SmokeTests in the simulator (unsigned, no build)
         run: >-
-          ios/scripts/ci-simulator-test.sh "$RUNNER_TEMP/Hasala.xcresult"
+          ios/scripts/ci-simulator-test.sh --from-build "$RUNNER_TEMP/dd" "$RUNNER_TEMP/Hasala.xcresult"
           -only-testing:HasalaTests
           -only-testing:HasalaUITests/CoreScreensTests
           -only-testing:HasalaUITests/SmokeTests
