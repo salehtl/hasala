@@ -19,7 +19,10 @@
 //   - a deadline or background-processing run lists page by page, downloading each page before
 //     listing the next, so a short run always makes progress;
 //   - an interruption of the first-connect setup (reconnect, takeover, halt) resumes the phase it
-//     cut short (`halted_detail` "resume:<phase>"), so the card step is never authored twice.
+//     cut short (`halted_detail` "resume:<phase>"), so a backfill is never restarted as a scan;
+//   - there is no cards step: a finished scan authors what it staged in the same run, and a card
+//     the ledger doesn't know files like a known one (`awaiting_cards` survives only as a state
+//     an older build may have stored; the next cycle authors it).
 import CoreJSON
 import CoreMail
 import CoreNorm
@@ -65,6 +68,8 @@ public struct CycleReport: Sendable, Equatable {
   /// Authored rows by `category_source.kind` ("rule", "dictionary", "none", ... ; unparsed rows
   /// count as "unparsed"), for "264 transactions, sorted." summaries.
   public var sortedBy: [String: Int] = [:]
+  /// Authored rows that land in the review deck: needs review, or no category.
+  public var toReview = 0
   public var haltedOn: MailboxHaltCode?
   /// The checkpoint advanced (or the scan / backfill phase finished).
   public var completed = false
@@ -74,6 +79,7 @@ public struct CycleReport: Sendable, Equatable {
   mutating func count(_ d: MailboxIngestDraft) {
     ops += 1
     if d.needsReview { review += 1 }
+    if d.needsReview || d.payload["category"] == nil { toReview += 1 }
     let kind =
       d.payload["unparsed"] == .bool(true) ? "unparsed" : (d.payload["category_source"]?["kind"]?.stringValue ?? "none")
     sortedBy[kind, default: 0] += 1
@@ -83,7 +89,7 @@ public struct CycleReport: Sendable, Equatable {
 /// Progress of a scan or backfill, for the first-scan board (Paper FR2-0: "182 of 268 alerts").
 public struct MailboxProgress: Sendable, Equatable {
   public enum Stage: Sendable, Equatable {
-    case listing, downloading, authoring, awaitingCards, done
+    case listing, downloading, authoring, done
     case failed(MailboxHaltCode)
   }
   public var stage: Stage
@@ -121,20 +127,6 @@ public enum EmailView: Sendable, Equatable {
   case reconnectRequired
   case gone
   case offline
-}
-
-public struct ScanSummary: Sendable, Equatable {
-  public struct Card: Sendable, Equatable {
-    public let card: CardKey
-    public let count: Int
-  }
-  public var phase: MailboxPhase
-  /// Staged rows grouped by (bank, last4), newest-count first.
-  public var cards: [Card]
-  /// Staged rows with no card (no template hit, or a template without a card field).
-  public var withoutCard: Int
-  public var stagedTotal: Int
-  public var stagingFull: Bool
 }
 
 public struct MailboxStatus: Sendable, Equatable {
@@ -178,10 +170,6 @@ public actor MailboxEngine {
   private var onProgress: (@Sendable (MailboxProgress) -> Void)?
   /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
-  /// Cards confirmed on "Are these your cards?" (§7.7 step 5), applied to the staged backfill
-  /// even before their `card_linked` ops fold (the ledger's knownCards includes pending ops
-  /// once they do; this covers the same run).
-  private var confirmedCards: [CardKey: CardState] = [:]
   private var waiters: [CheckedContinuation<Void, Never>] = []
   /// `meta.gmail_watch_topic`: nil until read; `.some(nil)` when the server relays no wakes.
   private var topic: String??
@@ -309,7 +297,7 @@ public actor MailboxEngine {
       s.scanStartedMs = nil
     case .reconnectRequired, .otherDevice, .halted:
       // Reconnect / "Read them here instead": back to the phase the interruption cut short, never
-      // a fresh scan once the cards are confirmed (that would author the card step twice).
+      // a fresh scan once the backfill has started.
       s.phase = resumePhase(s)
     }
     s.address = claims.email
@@ -382,8 +370,12 @@ public actor MailboxEngine {
       state.haltedDetail = nil
     }
     switch state.phase {
-    case .unlinked, .otherDevice, .awaitingCards:
+    case .unlinked, .otherDevice:
       return report
+    case .awaitingCards:
+      // A scan staged by a build that still asked "Are these your cards?": author it now, as a
+      // finished scan does.
+      state.phase = .authoringBackfill
     case .reconnectRequired:
       guard trigger == .retry else { return report }
       state.phase = resumePhase(state)
@@ -479,7 +471,7 @@ public actor MailboxEngine {
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: (await ledger.knownCards()).merging(confirmedCards) { a, _ in a })
+    var run = Run(trusted: trusted, cards: await ledger.knownCards())
     let cut: Bool
     do {
       cut = try await listAndProcess(
@@ -551,59 +543,14 @@ public actor MailboxEngine {
     }
     if run.stagingFull {
       report.haltedOn = .stagingFull
-      cut = false  // the cap ends the listing; the remainder is authored after confirmation
+      cut = false  // the cap ends the listing; the backfill lists and authors the remainder
     }
-    if !cut {
-      state.phase = .awaitingCards
-      report.completed = true
-      emit(.awaitingCards, report.listed, report.listed)
-    }
-    return await finish(&state, report)
-  }
-
-  /// "Are these your cards?" (§7.7 step 4): the staged rows grouped by card.
-  public func scanSummary() async -> ScanSummary {
-    await exclusive {
-      let state = (try? await store.loadState()) ?? MailboxState()
-      let staged = (try? await store.staged(limit: Int.max)) ?? []
-      var counts: [CardKey: Int] = [:]
-      var without = 0
-      for m in staged {
-        if m.fields != nil && m.templateHasCardField && !m.last4.isEmpty {
-          counts[CardKey(bank: m.bank, last4: m.last4), default: 0] += 1
-        } else {
-          without += 1
-        }
-      }
-      let cards = counts.map { ScanSummary.Card(card: $0.key, count: $0.value) }
-        .sorted { $0.count != $1.count ? $0.count > $1.count : $0.card < $1.card }
-      return ScanSummary(
-        phase: state.phase, cards: cards, withoutCard: without, stagedTotal: staged.count,
-        stagingFull: staged.count >= config.stagingCap)
-    }
-  }
-
-  /// "Continue with {k} cards" (§7.7 step 5): authors the card ops, then the staged transactions
-  /// with the gate applied ("not mine" cards stay in review; nothing is dropped).
-  public func confirmCards(_ decisions: [CardDecision], deadlineMs: Int64? = nil) async -> CycleReport {
-    await exclusive {
-      var report = CycleReport()
-      guard var state = try? await store.loadState() else { return report }
-      report.phase = state.phase
-      guard state.phase == .awaitingCards else { return report }
-      // A card already linked with the same state is not authored again: a repeat of this step
-      // (a crash between the card ops and the phase commit) must not create a second account.
-      let known = await ledger.knownCards()
-      let fresh = decisions.filter { known[$0.card] != $0.state }
-      do { if !fresh.isEmpty { try await ledger.authorCards(fresh) } } catch {
-        report.haltedOn = .offline
-        return report
-      }
-      for d in decisions { confirmedCards[d.card] = d.state }
-      state.phase = .authoringBackfill
-      try? await store.commit(commitState(state))
-      return await cycleLocked(trigger: .refresh, deadlineMs: deadlineMs)
-    }
+    guard !cut else { return await finish(&state, report) }
+    // The scan is complete: author what it staged in the same run. There is no cards step; a
+    // card the ledger doesn't know files like a known one (`MessageDisposer.finalize`).
+    state.phase = .authoringBackfill
+    try? await store.commit(commitState(state))
+    return await authorBackfill(gmail, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
   }
 
   private func authorBackfill(
@@ -611,7 +558,7 @@ public actor MailboxEngine {
     _ report: CycleReport
   ) async -> CycleReport {
     var report = report
-    let cards = (await ledger.knownCards()).merging(confirmedCards) { _, confirmed in confirmed }
+    let cards = await ledger.knownCards()
     let total = (try? await store.stagedCount()) ?? 0
     var authored = 0
     emit(.authoring, 0, total)
@@ -649,7 +596,7 @@ public actor MailboxEngine {
     var remainderDone = false
     if ((try? await store.stagedCount()) ?? 1) == 0 {
       // §7.7 step 7: when the scan stopped at the staging cap, the rest of its window is listed
-      // again and authored directly with the now-known cards. Run unconditionally (no state
+      // again and authored directly. Run unconditionally (no state
       // column records the cap): ids only, and the accounted set skips everything already done.
       let days = Int64(state.backfillDays ?? 90)
       let since = max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
@@ -712,7 +659,7 @@ public actor MailboxEngine {
         if !trusted.contains(domain) { trusted.append(domain) }
         let days = Int64(state.backfillDays ?? 90)
         let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
-        var run = Run(trusted: trusted, cards: (await ledger.knownCards()).merging(confirmedCards) { a, _ in a })
+        var run = Run(trusted: trusted, cards: await ledger.knownCards())
         do {
           let (ids, _) = try await list(gmail, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
           report.listed = ids.count

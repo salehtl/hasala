@@ -270,8 +270,9 @@ import Testing
     #expect(known.payload["amount_minor"] == .string("25000"))
     #expect(known.payload["provenance"] == .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g")), ("message_id", .string("m1"))])))
 
+    // A card the ledger doesn't know files like a known one (there is no cards step).
     let unknown = MessageDisposer.finalize(p, grantID: "g", cards: [:], categorizer: NoCategorizer())
-    #expect(unknown.needsReview && unknown.payload["gates"]?["card"] == .string("unknown"))
+    #expect(!unknown.needsReview && unknown.payload["gates"]?["card"] == .string("unknown"))
     #expect(unknown.payload["category"] == nil)
 
     let notMine = MessageDisposer.finalize(p, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .notMine], categorizer: NoCategorizer())

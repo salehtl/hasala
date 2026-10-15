@@ -56,34 +56,59 @@ nonisolated final class GmailLane: Sendable {
     return r
   }
 
-  /// The first scan (Setup 2 of 5, Paper FR2-0): runs scan cycles in the foreground and yields
-  /// their progress; the stream ends at "Are these your cards?" (or a halt). The scan continues
-  /// in `app.hasala.ios.processing` if the user leaves the screen (§7.7 step 3).
-  func firstScan() -> AsyncStream<MailboxProgress> {
-    let engine = self.engine
-    return AsyncStream { continuation in
-      let job = Task {
-        await engine.setProgressHandler { continuation.yield($0) }
-        for _ in 0..<50 where !Task.isCancelled {
-          let r = await engine.runCycle(trigger: .refresh)
-          if r.phase != .scanning || (r.haltedOn != nil && r.haltedOn != .stagingFull) { break }
-          // Nothing listed and not finished: no trusted sender yet (or offline). Stop rather
-          // than spin; the board shows the scan as waiting and the next trigger resumes it.
-          if r.listed == 0 && !r.completed { break }
-        }
-        await engine.setProgressHandler(nil)
-        continuation.finish()
-      }
-      continuation.onTermination = { _ in job.cancel() }
+  /// What the first scan's foreground runs authored, for "264 transactions, sorted." and
+  /// where the lane stopped (`.active` when the whole window is in).
+  struct FirstScanTotals: Sendable, Equatable {
+    var ops = 0
+    var byRules = 0
+    var byDictionary = 0
+    var byModel = 0
+    var toReview = 0
+    var phase: MailboxPhase = .scanning
+    var haltedOn: MailboxHaltCode?
+
+    mutating func add(_ r: CycleReport) {
+      ops += r.ops
+      byRules += r.sortedBy["rule"] ?? 0
+      byDictionary += r.sortedBy["dictionary"] ?? 0
+      byModel += r.sortedBy["model"] ?? 0
+      toReview += r.toReview
+      phase = r.phase
+      haltedOn = r.haltedOn
     }
   }
 
-  /// "Are these your cards?" (Setup 5 of 5, Paper G9Q-0).
-  func discoveredCards() async -> ScanSummary { await engine.scanSummary() }
+  enum FirstScanEvent: Sendable {
+    case progress(MailboxProgress)
+    case ended(FirstScanTotals)
+  }
 
-  /// "Continue with {k} cards": `card_linked` for each card (mine or not mine), then the backfill.
-  func confirmCards(_ decisions: [CardDecision]) async -> CycleReport {
-    await engine.confirmCards(decisions)
+  /// The first scan (Setup 2 of 4, Paper FR2-0): runs cycles until the window is listed and
+  /// authored, yielding their progress, then the totals. There is no cards step: the scan
+  /// authors what it finds. Ending the stream (setup finished, the sheet closed) does not stop
+  /// the import: it runs to the end here, and whatever is left after 50 cycles runs in
+  /// `app.hasala.ios.processing` and the next foreground runs (§7.7 step 3).
+  func firstScan() -> AsyncStream<FirstScanEvent> {
+    let engine = self.engine
+    return AsyncStream { continuation in
+      // Not cancelled with the stream: the import outlives the setup screens.
+      Task {
+        await engine.setProgressHandler { continuation.yield(.progress($0)) }
+        var totals = FirstScanTotals()
+        for _ in 0..<50 {
+          let r = await engine.runCycle(trigger: .refresh)
+          totals.add(r)
+          if r.phase != .scanning && r.phase != .authoringBackfill { break }
+          if r.haltedOn != nil && r.haltedOn != .stagingFull { break }
+          // Nothing listed and not finished: no trusted sender yet (or offline). Stop rather
+          // than spin; the next trigger resumes it.
+          if r.listed == 0 && r.ops == 0 && !r.completed { break }
+        }
+        await engine.setProgressHandler(nil)
+        continuation.yield(.ended(totals))
+        continuation.finish()
+      }
+    }
   }
 
   /// The sender domains Setup's bank step trusts for a bank (03c §7.2), e.g. "dib" → dib.ae.
