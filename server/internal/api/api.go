@@ -254,6 +254,9 @@ type Server struct {
 	// Gmail, when set, mounts the mailbox link (routes_mailboxlink.go) and,
 	// when its Push is set too, the Pub/Sub hook (routes_hooks.go).
 	Gmail *GmailOptions
+	// Outlook, when set, mounts the mailbox link for provider "outlook"
+	// (routes_mailboxlink.go), with or without Gmail's.
+	Outlook *OutlookOptions
 	// Web, when set, mounts spec 07's website routes: the waitlist and the
 	// anonymous bank request (routes_waitlist.go, routes_bankrequests.go).
 	// The app's signed-in bank request is mounted either way.
