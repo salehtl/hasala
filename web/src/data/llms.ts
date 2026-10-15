@@ -1,4 +1,4 @@
-import { BANKS, FAQ, SITE, VISIBILITY, faqText } from './site';
+import { BANKS, FAQ, MAIL, SITE, VISIBILITY, faqText } from './site';
 
 const plain = (s: string) => s.replace(/‑/g, '-').replace(/[’]/g, "'");
 
@@ -14,7 +14,7 @@ Key facts:
 
 - What it is for: knowing where your money goes, privately. Hasala shows what you spent, on what, and what's left this month, and starts you on a simple plan.
 - Platform: iPhone only, iOS 26 or later. No Android app, no web app.
-- Where transactions come from: your bank's alert emails in your own Gmail, read-only. Your iPhone asks Gmail only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; if Gmail's search also returns an email that only looks like it is from your bank, the iPhone reads just its sender details and sets it aside. There is no email forwarding and no bank login, and Hasala can't move money.
+- Where transactions come from: your bank's alert emails in your own email account (${MAIL} today), read-only. Your iPhone asks your email account only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; if the search also returns an email that only looks like it is from your bank, the iPhone reads just its sender details and sets it aside. There is no email forwarding and no bank login, and Hasala can't move money.
 - Banks today: ${BANKS.map((b) => b.name).join(' and ')}. Other banks: people tell us which bank they use when they request an invite, and we use that to decide which bank to add next.
 - Categorization happens on the iPhone: your own rules first, then a built-in list of UAE merchants, then Apple's on-device model (English merchant names). You confirm the rest. Nothing is sent to an AI service.
 - Privacy: your transactions, budget and plan are encrypted on the iPhone before they sync. Hasala's server stores them but cannot read them. The app contains no ads, analytics or tracking tools. The website, hasala.app, counts visits with Cloudflare Web Analytics (never on invite, freeze or waitlist links), which sets no cookies, doesn't fingerprint or follow visitors across sites, and reports only totals, never linked to a person or a Hasala account.
@@ -52,7 +52,7 @@ export function llmsFullTxt(legal: { title: string; url: string; body: string }[
   return plain(`${llmsTxt()}
 ## How it works
 
-1. Connect your Gmail. Hasala looks only at your bank's alert emails, on your iPhone, with read-only access. It can't send, change or delete any mail.
+1. Connect your email. Hasala looks only at your bank's alert emails, on your iPhone, with read-only access. It can't send, change or delete any mail.
 2. Check the categories. Each alert becomes a transaction. Hasala sorts most of them into categories: your rules first, then a UAE merchant list, then Apple's on-device model. You confirm the rest: transactions Hasala can't sort on its own wait in a short deck, where you tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick the category. Hasala remembers the merchant.
 3. See where it went. Hasala shows what you spent, on what, and what's left this month. It also starts you on a simple plan.
 
@@ -62,7 +62,7 @@ Budgeting: the main figure is what you've spent on needs and wants this month, o
 
 ${who}
 
-Cloudflare is the network provider in front of Hasala's server: it ends transport encryption, so it sees requests and the still-encrypted data, but it cannot read the encrypted data. Hasala's server also keeps a keyed hash of your Gmail address and the timing of new mail, only to wake your phone.
+Cloudflare is the network provider in front of Hasala's server: it ends transport encryption, so it sees requests and the still-encrypted data, but it cannot read the encrypted data. Hasala's server also keeps a keyed hash of the email address you connect and the timing of new mail, only to wake your phone.
 
 ## FAQ
 

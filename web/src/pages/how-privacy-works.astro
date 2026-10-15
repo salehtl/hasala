@@ -47,7 +47,7 @@ const rows = [
   { who: 'You', sees: 'Everything, on your own devices', never: null },
   {
     who: 'Hasala (our server)',
-    sees: 'Your email address and that you have an account. When you sync, and how much locked data you store. What it needs to sign you in and send notifications, but never your password. A scrambled code for your Gmail address, so it knows when new bank emails arrive.',
+    sees: 'Your email address and that you have an account. When you sync, and how much locked data you store. What it needs to sign you in and send notifications, but never your password. A scrambled code for the email address you connect, so it knows when new bank emails arrive.',
     never: 'Your emails, amounts, shops, categories or budget',
   },
   {
@@ -56,7 +56,7 @@ const rows = [
     never: 'What’s inside your locked data',
   },
   {
-    who: 'Google',
+    who: 'Your email provider',
     sees: 'Your email, as it already does, and that you let Hasala read it',
     never: 'Your budget, or anything Hasala works out',
   },
@@ -117,7 +117,7 @@ const rows = [
               things: your email address, that you have an account, and when you sync. It never knows what’s inside.
             </p>
             <p class="hpw__note-more">
-              This website counts visits in totals only, with Cloudflare Web Analytics. Hasala follows Google’s API Services User Data Policy, including the
+              This website counts visits in totals only, with Cloudflare Web Analytics. For Gmail, Hasala follows Google’s API Services User Data Policy, including the
               Limited Use requirements.
             </p>
           </div>
