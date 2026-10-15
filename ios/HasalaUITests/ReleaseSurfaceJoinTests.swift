@@ -42,7 +42,31 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     assertNoPlaceholders(app, "Account ready")
     assertNoOutlook(app, "Account ready")
+    // "What Hasala reads, and what it doesn't": Google alone (plan B4.6 rule 4).
+    tap(app, "ready.whoSees")
+    XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 10))
+    assertNoOutlook(app, "Who can see what")
+    tap(app, "whoSees.close")
     tap(app, "ready.continue")
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow")
+  }
+
+  /// The stories and "Who can see what" name only what a Release build connects: the mail
+  /// row says "Google", never Microsoft (plan B4.6 rule 4), and nothing reads like a
+  /// placeholder.
+  @MainActor
+  func testStoriesAndWhoCanSeeWhatNameGoogleOnly() throws {
+    let app = launchRelease("newUser", waitForHome: false, screen: "welcome.whoSees")
+    XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 15))
+    let google = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Google'")).firstMatch
+    XCTAssertTrue(google.waitForExistence(timeout: 5), "the mail row does not name Google")
+    assertNoOutlook(app, "Who can see what")
+    assertNoPlaceholders(app, "Who can see what")
+    attach(app, "Release · Who can see what")
+    try audit(app)
+    tap(app, "whoSees.close")
+    XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 10))
+    assertNoOutlook(app, "Stories")
+    assertNoPlaceholders(app, "Stories")
   }
 }
