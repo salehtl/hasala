@@ -111,7 +111,8 @@ struct WhoCanSeeSheet: View {
   {
     VStack(alignment: .leading, spacing: 2) {
       Text(label)
-        .hType(HType(size: 11, leading: 16, weight: .semibold, trackingEm: 0.06, uppercase: true, textStyle: .caption2))
+        // Scales with footnote: caption 2 stops growing early at the accessibility sizes.
+        .hType(HType(size: 11, leading: 16, weight: .semibold, trackingEm: 0.06, uppercase: true, textStyle: .footnote))
         .foregroundStyle(color)
       content()
     }

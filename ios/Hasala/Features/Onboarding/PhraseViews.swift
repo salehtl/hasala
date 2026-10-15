@@ -28,7 +28,7 @@ struct PhraseIntroView: View {
       .padding(20)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
-    } footer: {
+    } actions: {
       Button("Show my 12 words") { model.go(.phraseShow) }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("phrase.start")
@@ -113,7 +113,7 @@ struct PhraseShowView: View {
       // (Paper F9O-0: 12 under the question block, 10 apart; hidden, 24 and 12).
       .padding(.top, shown ? -12 : 0)
       .hAnimation(.stateSwap, value: shown)
-    } footer: {
+    } actions: {
       if mode == .create {
         BusyButton(title: "I've written them down", busy: busy, enabled: seen, identifier: "phrase.written") {
           revealed = false
@@ -181,21 +181,30 @@ struct AccountReadyView: View {
     ) {
       VStack(spacing: 16) {
         summary
-        // At the largest sizes the hand-off scrolls with the rest rather than fill the dock.
-        if typeSize.isAccessibilitySize { handOff }
+        // At the largest sizes the hand-off and the actions scroll with the rest rather
+        // than fill the dock.
+        if typeSize.isAccessibilitySize {
+          handOff
+          VStack(spacing: 4) { actions }.padding(.top, 16)
+        }
       }
     } footer: {
       if !typeSize.isAccessibilitySize {
         handOff.padding(.bottom, 12)
-      }
-      Button("Continue", action: onContinue)
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("ready.continue")
-      DockTextButton(title: "What Hasala reads, and what it doesn't", identifier: "ready.whoSees") {
-        whoSeesOpen = true
+        actions
       }
     }
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
+  }
+
+  /// Continue to setup, and what Hasala reads (the "Who can see what" sheet).
+  @ViewBuilder private var actions: some View {
+    Button("Continue", action: onContinue)
+      .buttonStyle(.pill(.primary, fill: true))
+      .accessibilityIdentifier("ready.continue")
+    DockTextButton(title: "What Hasala reads, and what it doesn't", identifier: "ready.whoSees") {
+      whoSeesOpen = true
+    }
   }
 
   /// Paper "ListCard · Account summary": a green dot, what, and where it is.

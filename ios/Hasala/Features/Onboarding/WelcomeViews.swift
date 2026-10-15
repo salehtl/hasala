@@ -83,14 +83,10 @@ struct StoriesView: View {
     self.onGetStarted = onGetStarted
     self.onSignIn = onSignIn
     let start = min(max(page.wrappedValue, 0), Stories.all.count - 1)
-    startPage = start
     _position = State(initialValue: ScrollPosition(id: start))
     _pager = State(initialValue: StoryPagerMotion(position: Double(start)))
   }
 
-  /// The story the pager opened on (the store's page): a re-made gate, a relaunch of the
-  /// view, or a screen launch lands there, not on story 1.
-  private let startPage: Int
   @State private var position: ScrollPosition
   @State private var pager: StoryPagerMotion
   @State private var clock = StoryClock()
@@ -111,25 +107,34 @@ struct StoriesView: View {
 
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+  @Environment(\.dynamicTypeSize) private var typeSize
   @StageMotion private var motion: MotionPolicy
 
   private var count: Int { Stories.all.count }
 
+  /// Someone can see the stories: not under a pushed screen or the sheet, not in the
+  /// background.
+  private var visible: Bool { onScreen && !whoSeesOpen && scenePhase == .active }
+
   /// The clock runs only while someone can watch the story.
-  private var shouldRun: Bool {
-    onScreen && !whoSeesOpen && !voiceOver && scenePhase == .active && !dragging
-  }
+  private var shouldRun: Bool { visible && !voiceOver && !dragging }
 
   var body: some View {
-    GeometryReader { geo in
-      VStack(spacing: 0) {
-        progress
-        header
-        pagerArea
-        startPanel(bottom: max(30, geo.safeAreaInsets.bottom - 4))
+    Group {
+      if typeSize.isAccessibilitySize {
+        largeTextLayout
+      } else {
+        GeometryReader { geo in
+          VStack(spacing: 0) {
+            progress
+            header
+            pagerArea
+            startPanel(bottom: max(30, geo.safeAreaInsets.bottom - 4))
+          }
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
       }
     }
-    .ignoresSafeArea(.container, edges: .bottom)
     .background { StoryBackground().ignoresSafeArea() }
     .toolbar(.hidden, for: .navigationBar)
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
@@ -140,11 +145,47 @@ struct StoriesView: View {
       if run { clock.resume(at: .now) } else { clock.pause(at: .now) }
     }
     .task(id: AdvanceKey(page: page, running: clock.isRunning)) { await advanceWhenDone() }
+    // The other layout's pager opens on the first story: put it on this one.
+    .onChange(of: typeSize.isAccessibilitySize) { placed = false }
+  }
+
+  /// At the accessibility text sizes the copy needs the screen (spec 04 §11, plan 0.1 rule
+  /// 11): the drawings go, and the whole screen scrolls, the pager as tall as the longest
+  /// story and the Start panel under it, so nothing is cut off at the bottom.
+  private var largeTextLayout: some View {
+    ScrollView(.vertical) {
+      VStack(spacing: 0) {
+        progress
+        header
+        paged(
+          ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 0) {
+              ForEach(Stories.all) { story in
+                StoryCopy(story: story, shown: copyIn, still: motion.isStill) { whoSeesOpen = true }
+                  .fixedSize(horizontal: false, vertical: true)
+                  .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { copyHeights[story.id] = $0 }
+                  .frame(maxHeight: .infinity, alignment: .top)
+                  .containerRelativeFrame(.horizontal)
+                  .id(story.id)
+              }
+            }
+            .scrollTargetLayout()
+          }
+        )
+        .frame(height: max(1, copyHeights.max() ?? 0))
+        .padding(.top, 16)
+        startPanel(bottom: 30)
+      }
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .scrollIndicators(.hidden)
   }
 
   // MARK: Chrome
 
-  /// Four segments, the current one filling as it plays (spec 04 §2.3).
+  /// Four segments, the current one filling as it plays (spec 04 §2.3). VoiceOver reads
+  /// "Page n of 4" and swipes up or down to change the story; the element is a 44 band
+  /// around the 3 pt bars, so it is a size people can reach, without moving the header.
   private var progress: some View {
     TimelineView(.animation(minimumInterval: nil, paused: !clock.isRunning)) { context in
       StoryProgress(count: count, current: page, fill: clock.progress(at: context.date))
@@ -153,17 +194,23 @@ struct StoriesView: View {
     .padding(.top, 4)
     .padding(.horizontal, 16)
     .frame(minHeight: 7)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Page \(page + 1) of \(count)")
-    .accessibilityAddTraits(.updatesFrequently)
-    .accessibilityAdjustableAction { direction in
-      switch direction {
-      case .increment: go(to: page + 1, byUser: true)
-      case .decrement: go(to: page - 1, byUser: true)
-      @unknown default: break
-      }
+    .accessibilityHidden(true)
+    .overlay {
+      Color.clear
+        .frame(height: 44)
+        .contentShape(Rectangle())
+        .allowsHitTesting(false)
+        .accessibilityElement()
+        .accessibilityLabel("Page \(page + 1) of \(count)")
+        .accessibilityAdjustableAction { direction in
+          switch direction {
+          case .increment: go(to: page + 1, byUser: true)
+          case .decrement: go(to: page - 1, byUser: true)
+          @unknown default: break
+          }
+        }
+        .accessibilityIdentifier("stories.progress")
     }
-    .accessibilityIdentifier("stories.progress")
   }
 
   /// "Hasala · Welcome" with the app icon (spec 04 §2.4).
@@ -219,43 +266,50 @@ struct StoriesView: View {
       let metrics = (0..<count).map { stageMetrics($0, in: area.size) }
       ZStack(alignment: .top) {
         SharedOrbit(pager: pager, metrics: metrics, clock: clock, still: motion.isStill)
-        ScrollView(.horizontal) {
-          HStack(spacing: 0) {
-            ForEach(Stories.all) { story in
-              storyPage(story, metrics: metrics[story.id], width: area.size.width)
-                .containerRelativeFrame(.horizontal)
-                .id(story.id)
+        paged(
+          ScrollView(.horizontal) {
+            HStack(spacing: 0) {
+              ForEach(Stories.all) { story in
+                storyPage(story, metrics: metrics[story.id], width: area.size.width)
+                  .containerRelativeFrame(.horizontal)
+                  .id(story.id)
+              }
             }
+            .scrollTargetLayout()
           }
-          .scrollTargetLayout()
-        }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition($position)
-        // A scroll position's first id isn't applied while the pages have no width yet, so
-        // the pager goes to the store's page once they are laid out.
-        .onScrollGeometryChange(for: Bool.self) { g in
-          g.containerSize.width > 0 && g.contentSize.width > g.containerSize.width
-        } action: { _, laidOut in
-          guard laidOut, !placed else { return }
-          placed = true
-          guard startPage != 0 else { return }
-          Task { @MainActor in
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) { position.scrollTo(id: page) }
-          }
-        }
-        .scrollIndicators(.hidden)
-        .onScrollGeometryChange(for: Double.self) { g in
-          Double(g.contentOffset.x / max(1, g.containerSize.width))
-        } action: { _, x in
-          pager.position = x
-        }
-        .onScrollPhaseChange { _, phase in scrollPhaseChanged(phase) }
-        .opacity(fading ? 0 : 1)
-        .accessibilityIdentifier("stories.pager")
+        )
       }
     }
+  }
+
+  /// The pager's paging, its place, and what its scrolling tells the stories.
+  private func paged(_ scroller: some View) -> some View {
+    scroller
+      .scrollTargetBehavior(.paging)
+      .scrollPosition($position)
+      // A scroll position's first id isn't applied while the pages have no width yet, so
+      // the pager goes to the store's page once they are laid out.
+      .onScrollGeometryChange(for: Bool.self) { g in
+        g.containerSize.width > 0 && g.contentSize.width > g.containerSize.width
+      } action: { _, laidOut in
+        guard laidOut, !placed else { return }
+        placed = true
+        guard page != 0 else { return }
+        Task { @MainActor in
+          var t = Transaction()
+          t.disablesAnimations = true
+          withTransaction(t) { position.scrollTo(id: page) }
+        }
+      }
+      .scrollIndicators(.hidden)
+      .onScrollGeometryChange(for: Double.self) { g in
+        Double(g.contentOffset.x / max(1, g.containerSize.width))
+      } action: { _, x in
+        pager.position = x
+      }
+      .onScrollPhaseChange { _, phase in scrollPhaseChanged(phase) }
+      .opacity(fading ? 0 : 1)
+      .accessibilityIdentifier("stories.pager")
   }
 
   private func storyPage(_ story: Story, metrics: StageMetrics, width: CGFloat) -> some View {
@@ -278,7 +332,8 @@ struct StoriesView: View {
     let still = motion.isStill
     return StoryArt(
       index: story.id, run: runs[story.id],
-      floating: !still && story.id == page && runs[story.id] != nil)
+      // Only while someone can see it: under a pushed screen or the sheet nothing moves.
+      floating: !still && visible && story.id == page && runs[story.id] != nil)
       .scaleEffect(metrics.scale, anchor: .top)
       .frame(width: width, height: metrics.height, alignment: .top)
       .visualEffect { content, proxy in
@@ -512,6 +567,8 @@ struct JoinWelcomeView: View {
   var onSignIn: () -> Void
   var onBack: (() -> Void)?
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
@@ -532,6 +589,9 @@ struct JoinWelcomeView: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
+        // At the accessibility sizes the buttons wrap: they scroll with the page rather
+        // than fill a fixed dock.
+        if typeSize.isAccessibilitySize { panel.padding(.bottom, 30) }
       }
       // The hero sits under the status bar, as Paper draws it; the back button floats over
       // its corner.
@@ -540,7 +600,9 @@ struct JoinWelcomeView: View {
     .ignoresSafeArea(.container, edges: .top)
     .scrollEdgeEffectHidden(true, for: .top)
     .scrollBounceBehavior(.basedOnSize)
-    .safeAreaBar(edge: .bottom) { panel }
+    .safeAreaBar(edge: .bottom) {
+      if !typeSize.isAccessibilitySize { panel }
+    }
     .background(alignment: .top) {
       AmbientWash(.welcome).ignoresSafeArea(edges: .top)
     }
@@ -577,7 +639,6 @@ struct JoinWelcomeView: View {
           .tracking(-0.84)
           .foregroundStyle(HColor.textPrimary)
           .padding(.top, 18)
-          .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
       }
     }
     .frame(maxWidth: .infinity)
@@ -607,14 +668,25 @@ struct JoinWelcomeView: View {
         }
         .padding(.vertical, -4)
         .accessibilityIdentifier("welcome.waitlist")
-        // Plain text as Paper draws it; the two names still open their pages.
-        Text("By continuing you agree to the [Terms](https://hasala.app/terms) and [Privacy Policy](https://hasala.app/privacy).")
-          .hType(.footnote)
-          .foregroundStyle(HColor.textOnWashSecondary)
-          .tint(HColor.textOnWashSecondary)
-          .multilineTextAlignment(.center)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("welcome.legal")
+        // Plain text as Paper draws it. Two links inside a footnote are too small to tap,
+        // so the whole line is one target that offers both pages.
+        Menu {
+          Link("Terms", destination: URL(string: "https://hasala.app/terms")!)
+          Link("Privacy Policy", destination: URL(string: "https://hasala.app/privacy")!)
+        } label: {
+          Text("By continuing you agree to the Terms and Privacy Policy.")
+            .hType(.footnote)
+            .foregroundStyle(HColor.textOnWashSecondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .top)
+            .contentShape(Rectangle())
+        }
+        // The 44 target reaches down into the panel's bottom margin, not up into the
+        // waitlist link, so the line sits where Paper puts it.
+        .padding(.bottom, -24)
+        .accessibilityHint("Opens the Terms or the Privacy Policy.")
+        .accessibilityIdentifier("welcome.legal")
       }
     }
     .padding(.horizontal, HSpacing.insetPage)

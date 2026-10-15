@@ -11,8 +11,8 @@ import SwiftUI
 //
 // Each stage is drawn at Paper's coordinates in a 402-wide box (every piece at its top-left,
 // tilted about that corner, as CSS `rotate` with `transform-origin: 0 0` draws it); the pager
-// scales the box down when the copy needs the room. The drawing is decorative: VoiceOver
-// reads the story's copy, not its pictures.
+// scales the box down when the copy needs the room. VoiceOver reads each drawing as one
+// picture, in a sentence, then the story's copy.
 
 /// A run of a story's choreography: a new id each time the story becomes the current one,
 /// and whether the person (not the timer) brought it there. Key-moment haptics play only
@@ -67,8 +67,19 @@ struct StoryArt: View {
       }
     }
     .frame(width: 402, height: Self.heights[min(max(index, 0), 3)], alignment: .topLeading)
-    .accessibilityHidden(true)
+    // One picture with what it shows, so the words drawn in it are not text nobody can reach.
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(Self.descriptions[min(max(index, 0), 3)])
+    .accessibilityAddTraits(.isImage)
   }
+
+  /// What each drawing shows, for VoiceOver (synthetic figures, as drawn).
+  static let descriptions = [
+    "A spending card: AED 10,288.34 spent of 19,000 on needs and wants, on track, with AED 8,711.66 left. Rent, paid 1 October, counts on its due date. Only your devices can read this.",
+    "An Emirates NBD alert email, read on this iPhone, becomes a Carrefour transaction of 342.15 in Groceries.",
+    "The Carrefour transaction sealed into the Hasala coin slot. Your key stays on your devices; our server stores only sealed text.",
+    "A Lulu Hypermarket card for AED 214.30 on the review deck, between Need, Want, Transfer and Save. Hasala learns: always Groceries for Lulu.",
+  ]
 }
 
 // MARK: - Placement and entrances

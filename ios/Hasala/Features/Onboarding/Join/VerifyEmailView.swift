@@ -35,7 +35,7 @@ struct VerifyEmailView: View {
         lines(model, state: state)
       }
       .hAnimation(.stateSwap, value: state)
-    } footer: {
+    } actions: {
       if state == .expired {
         BusyButton(title: "Send a new code", busy: model.busy, identifier: "code.sendNew") {
           Task { await model.resendCode() }

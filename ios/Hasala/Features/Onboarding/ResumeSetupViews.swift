@@ -18,7 +18,7 @@ struct BootCheckView: View {
         if session.resumeFailure == nil {
           ProgressView().frame(maxWidth: .infinity).padding(.top, 24)
         }
-      } footer: {
+      } actions: {
         if session.resumeFailure != nil {
           Button("Try again") { Task { await session.resume() } }
             .buttonStyle(.pill(.primary, fill: true))
@@ -67,7 +67,7 @@ struct InterruptedSetupFlowView: View {
                    radius: HRadius.tile)
           FailureBanner(failure: model.failure)
         }
-      } footer: {
+      } actions: {
         Button("Show my new words") { model.go(.phraseShow) }
           .buttonStyle(.pill(.primary, fill: true))
           .disabled(model.phrase == nil)

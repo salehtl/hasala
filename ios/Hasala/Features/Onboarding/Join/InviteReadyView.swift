@@ -29,7 +29,7 @@ struct InviteReadyView: View {
         nextSteps
         FailureBanner(failure: model.failure)
       }
-    } footer: {
+    } actions: {
       BusyButton(title: "Create my account", busy: model.busy, enabled: model.inviteCode != nil,
                  identifier: "inviteReady.create") {
         model.submitInvite()

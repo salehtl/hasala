@@ -41,7 +41,7 @@ struct InviteCodeView: View {
         }
       }
       .hAnimation(.rise, value: notFound)
-    } footer: {
+    } actions: {
       Button(notFound ? "Try again" : "Continue") { model.submitInvite() }
         .buttonStyle(.pill(.primary, fill: true))
         .disabled(model.inviteCode == nil)
@@ -102,6 +102,8 @@ struct AboutYouView: View {
   @Bindable var model: SignupModel
   var onSignIn: () -> Void
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   var body: some View {
     AccountScreen(
       title: "Create your account",
@@ -111,22 +113,29 @@ struct AboutYouView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         AccountField("Your name", help: "What Hasala calls you, in the app and in emails.", error: model.nameError) {
-          TextField("", text: $model.displayName)
+          WrappingTextField(placeholder: "", text: $model.displayName)
             .textContentType(.name)
             .textInputAutocapitalization(.words)
             .autocorrectionDisabled()
             .accessibilityIdentifier("about.name")
         }
         AccountField("Email", help: emailHelp, error: model.emailError) {
-          EmailInput(text: $model.email, identifier: "about.email")
+          WrappingTextField(placeholder: "you@example.com", text: $model.email)
+            .textContentType(.username)
+            .keyboardType(.emailAddress)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .accessibilityIdentifier("about.email")
         } trailing: {
-          if model.emailConfirmed { ConfirmedChip() }
+          if model.emailConfirmed, !typeSize.isAccessibilitySize { ConfirmedChip() }
         }
+        // At the accessibility sizes the address needs the box's width: the chip goes under it.
+        if model.emailConfirmed, typeSize.isAccessibilitySize { ConfirmedChip() }
         FailureBanner(failure: model.failure)
         GlyphNote(icon: .shieldCheck,
                   text: "We only email you about your account: codes, invites and security alerts. Never your money, never marketing.")
       }
-    } footer: {
+    } actions: {
       BusyButton(title: "Continue", busy: model.busy, enabled: model.aboutYouReady, identifier: "about.continue") {
         Task { await model.submitAboutYou() }
       }
@@ -219,7 +228,7 @@ struct SignInMethodView: View {
                text: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.")
         FailureBanner(failure: model.failure)
       }
-    } footer: {
+    } actions: {
       BusyButton(title: model.method == .passkey ? "Continue with Face ID" : "Continue with a password",
                  busy: model.busy, identifier: "method.continue") {
         Task { await model.continueWithMethod() }
@@ -279,7 +288,7 @@ struct CreatePasswordView: View {
                 text: "Your password signs you in, but it can't unlock your data on a new iPhone. The 12 words in the next step do that.")
       }
       .hAnimation(.rise, value: model.newPassword.isEmpty)
-    } footer: {
+    } actions: {
       BusyButton(title: "Create account", busy: model.busy, enabled: model.passwordReady,
                  identifier: "password.create") {
         model.submitPassword()
