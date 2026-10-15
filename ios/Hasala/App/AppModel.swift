@@ -191,7 +191,9 @@ final class AppModel {
 
   /// What VoiceOver says when a toast appears: the message, then the action it offers.
   static func announcement(for t: Toast) -> String {
-    let message = [t.title, t.subtitle].compactMap { $0 }.joined(separator: ". ")
-    return t.actionTitle.map { "\(message). \($0) available." } ?? "\(message)."
+    // Toasts carry no closing full stop ("Sorted into Groceries"); some lines already end in one.
+    func sentence(_ s: String) -> String { s.hasSuffix(".") ? s : s + "." }
+    let parts = [t.title, t.subtitle].compactMap { $0 } + [t.actionTitle.map { "\($0) available" }].compactMap { $0 }
+    return parts.map(sentence).joined(separator: " ")
   }
 }

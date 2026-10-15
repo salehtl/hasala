@@ -41,6 +41,34 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  /// The toast's disc and what VoiceOver hears (Paper page 14 §03): a done edit gets the
+  /// accent check and "… Undo available."; a note gets its glyph on the ink disc.
+  @Test func aToastSaysWhatHappenedAndWhatItOffers() throws {
+    let app = AppModel(store: InMemoryLedger())
+    #expect(app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil)))
+    let done = try #require(app.toast)
+    #expect(done.disc == .done)
+    #expect(AppModel.announcement(for: done) == "Sorted into Groceries. Undo available.")
+    app.toggleAmountsHidden()
+    let hidden = try #require(app.toast)
+    #expect(hidden.disc == .note(.eyeSlash))
+    #expect(AppModel.announcement(for: hidden) == "Amounts hidden. Until you tap the eye again. Show available.")
+    app.say("Outlook connected. Checking for alerts.")
+    #expect(app.toast.map(AppModel.announcement(for:)) == "Outlook connected. Checking for alerts.")
+  }
+
+  /// A touch holds the toast; letting go starts its time again, and it can be sent away.
+  @Test func aHeldToastStaysUntilLetGo() {
+    let app = AppModel(store: InMemoryLedger())
+    app.say("Bill marked as paid")
+    app.holdToast(true)
+    #expect(app.toast != nil)
+    app.holdToast(false)
+    #expect(app.toast != nil)
+    app.dismissToast()
+    #expect(app.toast == nil)
+  }
+
   @Test func aRefusalSaysWhy() {
     let app = AppModel(store: InMemoryLedger())
     #expect(!app.perform(.moveMoney(from: nil, to: "dining", YearMonth(2026, 10), .aed(9_999_00))))

@@ -36,17 +36,21 @@ struct AccountRootView<Main: View>: View {
         if let url = activity.webpageURL { session.open(url) }
       }
       .overlay(alignment: .bottom) {
-        if let notice = session.notice {
-          GlassToast(systemImage: "person.crop.circle.badge.checkmark", title: notice, actionTitle: "OK") {
-            session.notice = nil
-          }
-          .padding(.horizontal, 16)
-          .padding(.bottom, 90)
-          .task {
-            try? await Task.sleep(for: .seconds(4))
-            session.notice = nil
+        // The gate's one note ("You already have an account"): the glass toast, risen in
+        // over the screen's dock and gone after the toast's dwell.
+        ZStack {
+          if let notice = session.notice {
+            GlassToast(.ink(.info), title: notice, actionTitle: "OK") { session.notice = nil }
+              .padding(.horizontal, HSpacing.insetPage)
+              .padding(.bottom, 90)
+              .hTransition(.toastIn)
+              .task {
+                try? await Task.sleep(for: .seconds(HMotion.toastDwell))
+                session.notice = nil
+              }
           }
         }
+        .hAnimation(session.notice == nil ? .toastOut : .toastIn, value: session.notice)
       }
   }
 
