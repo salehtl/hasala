@@ -1,5 +1,6 @@
 // Plan · October (Paper board): Ready to assign, the split, buckets with budget rows,
-// goals and projects. Built from `LedgerState` for one month.
+// goals and projects. Built from `LedgerState` for one month. Plan · Dining (category
+// detail) and Plan · Japan trip (project detail) come from the same state.
 //
 // TODO(03a §6): Ready to assign here is income − budgets for the month; the full
 // carry-forward, auto-assign and orphan rules come with CoreDomain's Plan engine.
@@ -56,6 +57,10 @@ public struct PlanProjectModel: Sendable, Hashable, Identifiable {
   public var glyph: Glyph
   /// "14–28 Dec · 65 days to go".
   public var dates: String
+  /// "14–28 Dec".
+  public var range: String
+  /// "65 days to go", "under way", "finished".
+  public var when: String
   public var left: Money
   public var budget: Money
   public var progress: Permille
@@ -139,7 +144,10 @@ public enum PlanEngine {
   ) -> PlanRowModel {
     let paced = c.role == .everyday
     let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
-    let ofBudget = MoneyPhrase([.amount(.aed(spent)), .text(" of "), .amount(.aed(budget), .compact)])
+    // Row figures hide as three dots (spec 03 §16.16).
+    let ofBudget = MoneyPhrase([
+      .amount(.aed(spent), hidden: 3), .text(" of "), .amount(.aed(budget), .compact, hidden: 3),
+    ])
     var detail: [PlanDetailPart] = []
     var trailing = PlanRowModel.Trailing.left(.aed(budget - spent))
 
@@ -150,8 +158,9 @@ public enum PlanEngine {
       let late = bills.first { $0.nextDue < now.date && $0.nextDue.yearMonth == month }
       let due = bills.first { $0.nextDue >= now.date && $0.nextDue.yearMonth == month }
       if let late {
+        // "AXA · 3 days past usual · usually the 7th" (Paper Plan · October, Insurance).
         let n = late.nextDue.days(until: now.date)
-        detail = [.status("\(late.name) · \(n) day\(n == 1 ? "" : "s") late", .error),
+        detail = [.status("\(shortName(late.name)) · \(n) day\(n == 1 ? "" : "s") past usual", .error),
                   .text(MoneyPhrase(stringLiteral: "usually the \(ordinal(late.usualDay))"))]
       } else if budget > 0, spent >= budget, let paid = paymentDate(c.id, s, month: month) {
         detail = [.status("Paid \(paid.dayMonth)", .success), .text("bill")]
@@ -162,7 +171,7 @@ public enum PlanEngine {
         detail.append(.text(ofBudget))
         if let due {
           detail.append(.text(MoneyPhrase([
-            .text("\(due.name) \(due.approximate ? "~" : "")"), .amount(due.amount),
+            .text("\(due.name) \(due.approximate ? "~" : "")"), .amount(due.amount, hidden: 3),
             .text(" due \(due.nextDue.weekdayShort)"),
           ])))
         }
@@ -171,14 +180,18 @@ public enum PlanEngine {
       if budget > 0, spent >= budget {
         trailing = .done
         let via = paymentMerchant(c.id, s, month: month)
-        let whole = MoneyPhrase([.amount(.aed(spent), .compact), .text(" of "), .amount(.aed(budget), .compact)])
+        let whole = MoneyPhrase([
+          .amount(.aed(spent), .compact, hidden: 3), .text(" of "), .amount(.aed(budget), .compact, hidden: 3),
+        ])
         detail = [.text(whole)] + (via.map { [.text(MoneyPhrase(stringLiteral: $0))] } ?? [])
       } else {
         detail = [.text(ofBudget)]
       }
     case .everyday, .none:
       if spent == 0, budget > 0 {
-        detail = [.text(MoneyPhrase([.text("Nothing yet · "), .amount(.aed(budget), .compact), .text(" planned")]))]
+        detail = [.text(MoneyPhrase([
+          .text("Nothing yet · "), .amount(.aed(budget), .compact, hidden: 3), .text(" planned"),
+        ]))]
       } else {
         detail = [.text(ofBudget)]
         if verdict == .overPace || verdict == .overBudget { detail.append(.status(verdict.label, verdict.tone)) }
@@ -196,7 +209,7 @@ public enum PlanEngine {
     return PlanRowModel(
       id: c.id, name: g.name, glyph: g.glyph, hue: c.hue, trailing: .percent(progress.value / 10),
       detail: [.text(MoneyPhrase([
-        .amount(g.saved, .compact), .text(" of "), .amount(g.target, .compact),
+        .amount(g.saved, .compact, hidden: 3), .text(" of "), .amount(g.target, .compact, hidden: 3),
         .text(" · by \(g.by.shortName) \(g.by.year)"),
       ]))],
       progress: progress, verdict: progress.value >= 1000 ? .done : .onTrack, paced: false,
@@ -205,16 +218,16 @@ public enum PlanEngine {
   }
 
   static func projectModel(_ p: Project, _ s: LedgerState, today: LocalDate) -> PlanProjectModel {
-    let spent = s.txns.filter { $0.projectID == p.id && !$0.archived && $0.direction == .out }
-      .reduce(Int64(0)) { $0 + $1.amount.minor }
+    let spent = projectTxns(p, s).reduce(Int64(0)) { $0 + $1.amount.minor }
     let toGo = today.days(until: p.starts)
     let range = p.starts.month == p.ends.month
       ? "\(p.starts.day)–\(p.ends.day) \(CivilCalendar.monthShortNames[p.ends.month - 1])"
       : "\(p.starts.dayMonth)–\(p.ends.dayMonth)"
     let when = toGo > 0 ? "\(toGo) days to go" : (today <= p.ends ? "under way" : "finished")
     return PlanProjectModel(
-      id: p.id, name: p.name, glyph: p.glyph, dates: "\(range) · \(when)", left: .aed(p.budget.minor - spent),
-      budget: p.budget, progress: Permille.ratio(spent, of: p.budget.minor), countInPlan: p.countInPlan
+      id: p.id, name: p.name, glyph: p.glyph, dates: "\(range) · \(when)", range: range, when: when,
+      left: .aed(p.budget.minor - spent), budget: p.budget, progress: Permille.ratio(spent, of: p.budget.minor),
+      countInPlan: p.countInPlan
     )
   }
 
@@ -249,5 +262,308 @@ public enum PlanEngine {
     default: suffix = "th"
     }
     return "\(n)\(suffix)"
+  }
+}
+
+// MARK: - Category detail (Plan · Dining)
+
+/// One day of a category's month on the Day by day chart.
+public struct DaySpend: Sendable, Hashable, Identifiable {
+  public var id: Int { day }
+  public var day: Int
+  public var date: LocalDate
+  /// What the day added to the category; a refund-only day counts as nothing.
+  public var spent: Money
+}
+
+/// Day by day (Paper Plan · Dining): what each day of the month so far added to the category,
+/// against the daily budget, with the tallest day named over its bar.
+public struct DayByDay: Sendable, Hashable {
+  /// The tallest day, named over its bar ("Zuma · 412.00").
+  public struct Peak: Sendable, Hashable {
+    public var day: Int
+    /// The merchant when one payment made the day, else "3 payments".
+    public var label: String
+    public var total: Money
+  }
+
+  /// The first of the month to today.
+  public var days: [DaySpend]
+  public var today: Int
+  /// The budget spread over the month's days (1,600 over 31 days is 51.61), rounded down.
+  public var dailyBudget: Money
+  /// "1–10 Oct".
+  public var range: String
+  public var peak: Peak?
+  /// "Zuma on Wed 7 Oct was 64% of this month's dining."
+  public var caption: String?
+
+  /// The day the chart's height is drawn against: the tallest day or the daily budget.
+  public var scaleTop: Money { .aed(max(days.map(\.spent.minor).max() ?? 0, dailyBudget.minor)) }
+}
+
+/// A rule that sorts into a category ("talabat", "Merchant contains · 28 matches").
+public struct CategoryRule: Sendable, Hashable, Identifiable {
+  public var id: RuleID
+  /// The patterns, "CAREEM or UBER".
+  public var title: String
+  /// "Merchant contains · 28 matches"; a paused rule says so first.
+  public var detail: String
+  public var enabled: Bool
+}
+
+/// Plan · Dining: one category's month in depth (spec 12 §7). Every figure is the plan row's:
+/// the hero is what is left, the bar is spent against the budget with today's tick, the verdict
+/// says it in words.
+public struct CategoryDetail: Sendable, Hashable {
+  public var id: CategoryID
+  public var name: String
+  public var glyph: Glyph
+  public var hue: Hue
+  public var bucket: Bucket
+  public var month: YearMonth
+  public var budget: Money
+  public var spent: Money
+  /// Budget − spent; below zero when the category is over.
+  public var left: Money
+  /// Spent of the budget, for the bar (it never runs past its track).
+  public var progress: Permille
+  /// The month gone, where today's tick sits; nil for a category without a pace (bills,
+  /// savings, goals), which draws no tick.
+  public var tick: Permille?
+  public var verdict: Verdict
+  /// The verdict's word: "Over pace", "On track", "Paid", "Done", "Over budget".
+  public var verdictWord: String
+  /// One fact after the word: "on course for 1,992" (whole dirhams, page 06).
+  public var verdictFact: MoneyPhrase?
+  /// The line under the verdict: "Spend about AED 43 a day to finish on budget".
+  public var advice: MoneyPhrase?
+  public var chart: DayByDay
+  /// This month's payments in the category, newest first.
+  public var transactions: [MiniTxnRow]
+  public var rules: [CategoryRule]
+}
+
+// MARK: - Project detail (Plan · Japan trip)
+
+/// One category a project's money went to ("Travel", "Emirates flights", 4,120.00).
+public struct ProjectCategoryRow: Sendable, Hashable, Identifiable {
+  public var id: CategoryID
+  public var name: String
+  public var glyph: Glyph
+  public var hue: Hue
+  /// What the money paid for: the notes or merchants, "Emirates flights".
+  public var detail: String
+  public var spent: Money
+}
+
+/// Plan · Japan trip: money set aside for one thing, outside the monthly plan (spec 12 §10).
+public struct ProjectDetail: Sendable, Hashable {
+  public var id: ProjectID
+  public var name: String
+  public var budget: Money
+  public var spent: Money
+  public var left: Money
+  public var progress: Permille
+  /// "14–28 Dec".
+  public var range: String
+  /// "65 days to go".
+  public var when: String
+  public var countInPlan: Bool
+  /// "Japan trip spending stays out of October's budgets. It comes from the 12,000 you set aside."
+  public var explainer: MoneyPhrase
+  public var categories: [ProjectCategoryRow]
+  /// The project's payments in the order they were made, as Paper lists them ("Mon 14 Sep ·
+  /// Travel", then "Sat 19 Sep · Transport"): a project is one story, told from its start.
+  public var transactions: [MiniTxnRow]
+}
+
+public extension PlanEngine {
+  /// Plan · Dining for `id` in the month of `now`; nil when the category is gone.
+  static func category(_ id: CategoryID, _ s: LedgerState, now: LocalDateTime) -> CategoryDetail? {
+    guard let c = s.category(id) else { return nil }
+    let month = now.date.yearMonth
+    let (day, days) = (now.date.day, month.days)
+    let budget = s.plan.budget(c.id, month).minor
+    let spent = s.spent(c.id, in: month).minor
+    let left = budget - spent
+    let goal = s.goals.first { $0.categoryID == c.id }
+    let paced = c.role == .everyday && goal == nil
+    let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
+
+    var word = verdict.label
+    var fact: MoneyPhrase?
+    var advice: MoneyPhrase?
+    switch verdict {
+    case .onTrack, .overPace:
+      if paced, budget > 0 {
+        // Projections are whole dirhams, rounded down (page 06): "on course for 1,992".
+        let projected = Pace.projected(spent, day: day, days: days) / 100 * 100
+        fact = MoneyPhrase([.text("on course for "), .amount(.aed(projected), .compact, hidden: 3)])
+        let perDay = Pace.perDay(left: left, day: day, days: days) / 100 * 100
+        if perDay > 0 {
+          advice = MoneyPhrase([
+            .text("Spend about AED "), .amount(.aed(perDay), .compact, hidden: 3), .text(" a day to finish on budget"),
+          ])
+        }
+      }
+    case .done:
+      word = c.role == .bill ? "Paid" : "Done"
+    case .overBudget:
+      fact = MoneyPhrase([.amount(.aed(-left), .compact, hidden: 3), .text(" over")])
+    }
+
+    return CategoryDetail(
+      id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, bucket: c.bucket, month: month,
+      budget: .aed(budget), spent: .aed(spent), left: .aed(left), progress: Permille.ratio(spent, of: budget),
+      tick: paced ? Pace.monthGone(day: day, days: days) : nil, verdict: verdict, verdictWord: word,
+      verdictFact: fact, advice: advice, chart: dayByDay(c, s, now: now, budget: budget, spent: spent),
+      transactions: monthRows(c, s, month: month), rules: rules(c, s)
+    )
+  }
+
+  /// Day by day from the first of the month to today.
+  static func dayByDay(
+    _ c: Category, _ s: LedgerState, now: LocalDateTime, budget: Int64, spent: Int64
+  ) -> DayByDay {
+    let month = now.date.yearMonth
+    let today = now.date.day
+    // Each day's payments in the category, as the plan counts them.
+    var byDay: [Int: [(txn: Txn, minor: Int64)]] = [:]
+    for (t, minor) in lines(c.id, s, month: month) where t.postedAt.date.day <= today {
+      byDay[t.postedAt.date.day, default: []].append((t, minor))
+    }
+    let days = (1...max(1, today)).map { d in
+      DaySpend(day: d, date: LocalDate(month.year, month.month, d),
+               spent: .aed(max(0, byDay[d]?.reduce(Int64(0)) { $0 + $1.minor } ?? 0)))
+    }
+    var peak: DayByDay.Peak?
+    if let top = days.max(by: { ($0.spent.minor, -$0.day) < ($1.spent.minor, -$1.day) }), top.spent.minor > 0 {
+      let payments = (byDay[top.day] ?? []).filter { $0.minor > 0 }
+      peak = DayByDay.Peak(
+        day: top.day, label: payments.count == 1 ? payments[0].txn.merchant : "\(payments.count) payments",
+        total: top.spent)
+    }
+    // The month's largest payment and its share of what the category spent.
+    var caption: String?
+    let payments = byDay.values.joined()
+    if spent > 0, let big = payments.max(by: { ($0.minor, $1.txn.postedAt) < ($1.minor, $0.txn.postedAt) }),
+       big.minor > 0
+    {
+      let share = percentRounded(big.minor, of: spent)
+      caption = "\(big.txn.merchant) on \(big.txn.postedAt.date.short) was \(share)% of this month's "
+        + "\(c.name.lowercased())."
+    }
+    let short = CivilCalendar.monthShortNames[month.month - 1]
+    return DayByDay(
+      days: days, today: today, dailyBudget: .aed(max(0, budget) / Int64(month.days)),
+      range: today == 1 ? "1 \(short)" : "1–\(today) \(short)", peak: peak, caption: caption)
+  }
+
+  /// This month's payments in the category, newest first, each for its share of the
+  /// category ("Talabat", "Sat 10 Oct · 13:20", 64.50). A refund reads as money in.
+  static func monthRows(_ c: Category, _ s: LedgerState, month: YearMonth) -> [MiniTxnRow] {
+    lines(c.id, s, month: month)
+      .sorted { $0.txn.postedAt > $1.txn.postedAt }
+      .map { t, minor in
+        MiniTxnRow(
+          id: t.id, merchant: t.title, glyph: c.glyph, hue: c.hue,
+          detail: "\(t.postedAt.date.short) · \(t.postedAt.time)", amount: .aed(abs(minor)), isIncome: minor < 0)
+      }
+  }
+
+  /// The transactions that count in the category this month, each with its line's amount
+  /// (the same set `LedgerState.spent(_:in:)` sums).
+  static func lines(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> [(txn: Txn, minor: Int64)] {
+    var out: [(txn: Txn, minor: Int64)] = []
+    for t in s.txns where t.countsInPlan && t.postedAt.date.yearMonth == month {
+      if let p = s.project(t.projectID), !p.countInPlan { continue }
+      let minor = t.lines.filter { $0.category == c }.reduce(Int64(0)) { $0 + $1.minor }
+      if t.lines.contains(where: { $0.category == c }) { out.append((t, minor)) }
+    }
+    return out
+  }
+
+  /// The rules that sort into the category, the busiest first.
+  static func rules(_ c: Category, _ s: LedgerState) -> [CategoryRule] {
+    s.rules.filter { $0.categoryID == c.id }
+      .map { r -> (CategoryRule, Int) in
+        let n = s.txns.filter { r.matches($0.merchant) || r.matches($0.provenance?.rawMerchant ?? "") }.count
+        let how = switch r.match {
+        case .contains: "Merchant contains"
+        case .startsWith: "Merchant starts with"
+        case .exact: "Merchant is"
+        }
+        let detail = (r.enabled ? "" : "Paused · ") + "\(how) · \(n) match\(n == 1 ? "" : "es")"
+        return (CategoryRule(id: r.id, title: r.patterns.joined(separator: " or "), detail: detail,
+                             enabled: r.enabled), n)
+      }
+      .sorted { $0.1 > $1.1 }
+      .map(\.0)
+  }
+
+  /// Plan · Japan trip for `id`; nil when the project is gone.
+  static func project(_ id: ProjectID, _ s: LedgerState, now: LocalDateTime) -> ProjectDetail? {
+    guard let p = s.project(id) else { return nil }
+    let card = projectModel(p, s, today: now.date)
+    let txns = projectTxns(p, s).sorted { $0.postedAt < $1.postedAt }
+    let spent = txns.reduce(Int64(0)) { $0 + $1.amount.minor }
+    // By category, the biggest first; each says what the money paid for.
+    var order: [CategoryID] = []
+    var byCategory: [CategoryID: [Txn]] = [:]
+    for t in txns {
+      let key = t.categoryID ?? ""
+      if byCategory[key] == nil { order.append(key) }
+      byCategory[key, default: []].append(t)
+    }
+    let categories = order.compactMap { key -> ProjectCategoryRow? in
+      guard let ts = byCategory[key] else { return nil }
+      let c = s.category(key)
+      var names: [String] = []
+      for t in ts {
+        let n = t.note.isEmpty ? t.merchant : t.note
+        if !names.contains(n) { names.append(n) }
+      }
+      let detail = names.count <= 2 ? listed(names) : "\(names[0]), \(names[1]) and \(names.count - 2) more"
+      return ProjectCategoryRow(
+        id: key, name: c?.name ?? "Not sorted", glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other, detail: detail,
+        spent: .aed(ts.reduce(Int64(0)) { $0 + $1.amount.minor }))
+    }.sorted { $0.spent.minor > $1.spent.minor }
+    let monthName = now.date.yearMonth.name
+    let explainer: MoneyPhrase = p.countInPlan
+      ? MoneyPhrase(stringLiteral: "\(p.name) spending counts in \(monthName)'s budgets.")
+      : MoneyPhrase([
+        .text("\(p.name) spending stays out of \(monthName)'s budgets. It comes from the "),
+        .amount(p.budget, .compact, hidden: 3), .text(" you set aside."),
+      ])
+    return ProjectDetail(
+      id: p.id, name: p.name, budget: p.budget, spent: .aed(spent), left: .aed(p.budget.minor - spent),
+      progress: Permille.ratio(spent, of: p.budget.minor), range: card.range, when: card.when,
+      countInPlan: p.countInPlan, explainer: explainer, categories: categories,
+      transactions: txns.map { t in
+        let c = s.category(t.categoryID)
+        return MiniTxnRow(
+          id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
+          detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount)
+      })
+  }
+
+  /// What a project spent: its payments out, not archived.
+  static func projectTxns(_ p: Project, _ s: LedgerState) -> [Txn] {
+    s.txns.filter { $0.projectID == p.id && !$0.archived && $0.direction == .out }
+  }
+
+  /// A bill's short name for a row's one fact: "AXA" for "AXA Insurance", "Rent" for
+  /// "Rent · Al Habtoor". A name led by a brand in capitals keeps the brand; any other name
+  /// keeps what comes before " · ".
+  static func shortName(_ name: String) -> String {
+    let head = name.firstRange(of: " · ").map { String(name[..<$0.lowerBound]) } ?? name
+    let words = head.split(separator: " ")
+    if words.count > 1, let first = words.first, first.count >= 2,
+       first.allSatisfy({ $0.isUppercase || $0.isNumber })
+    {
+      return String(first)
+    }
+    return head
   }
 }
