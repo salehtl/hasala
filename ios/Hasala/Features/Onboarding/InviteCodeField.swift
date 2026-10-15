@@ -2,7 +2,8 @@ import HasalaDesign
 import SwiftUI
 import UIKit
 
-/// The invite code field (Paper page 14, section 14.1; spec 04 §6.1.4).
+/// The invite code field (Paper P2.1 E47-0; spec 07 S2, spec 04 §6.1.4): the grouped code in
+/// the field's box (`InviteCodeView` draws the box, its rings and the line under it).
 ///
 /// A UIKit text view rather than a SwiftUI `TextField`: it takes each edit as UIKit
 /// delivers it, applies it through `InviteCodeEntry`, and sets the grouped text and the
@@ -21,16 +22,15 @@ struct InviteCodeField: UIViewRepresentable {
 
   func makeUIView(context: Context) -> InviteCodeTextView {
     let v = InviteCodeTextView()
-    // Subheadline, monospaced, semibold, scaled with Dynamic Type.
-    let size = UIFont.preferredFont(forTextStyle: .subheadline,
-                                    compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
-    let font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .monospacedSystemFont(ofSize: size, weight: .semibold))
+    // Paper's field value size (17), monospaced so every character can be checked against
+    // the email, semibold, scaled with Dynamic Type. One line at the default size.
+    let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 17, weight: .semibold))
     v.font = font
     v.adjustsFontForContentSizeCategory = true
     v.placeholderLabel.font = font
     v.placeholderLabel.adjustsFontForContentSizeCategory = true
     v.placeholderLabel.text = Self.placeholder
-    v.placeholderLabel.textColor = .placeholderText
+    v.placeholderLabel.textColor = UIColor(HColor.fieldHint)
     v.textColor = UIColor(HColor.fieldText)
     v.tintColor = UIColor(HColor.actionAccent)
     v.keyboardType = .asciiCapable
