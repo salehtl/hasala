@@ -365,9 +365,15 @@ public struct StatusHero: View {
     self.action = action
   }
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   public var body: some View {
+    // At the accessibility sizes the disc moves above the words, so the title keeps the width.
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+      : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
     VStack(alignment: .leading, spacing: 16) {
-      HStack(alignment: .center, spacing: 16) {
+      layout {
         Circle().fill(HColor.posterGlyph).frame(width: 56, height: 56)
           .overlay { HIconView(icon, size: 26, color: hue.ink) }
         VStack(alignment: .leading, spacing: 2) {

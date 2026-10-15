@@ -109,7 +109,8 @@ struct PillButtonBody: View {
     }
     .hType(size == .small ? .smallButton : .button)
     .foregroundStyle(foreground)
-    .padding(.horizontal, kind == .destructiveText ? 8 : size.inset)
+    // A hugging pill pads by its size's inset; a filling one centres its label (page 10 §01).
+    .padding(.horizontal, kind == .destructiveText ? 8 : (fill ? 12 : size.inset))
     .padding(.vertical, 4)
     .frame(maxWidth: fill ? .infinity : nil, minHeight: size.height)
     .background(background(pressed: pressed), in: Capsule())

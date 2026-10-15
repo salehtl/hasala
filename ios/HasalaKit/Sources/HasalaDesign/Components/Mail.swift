@@ -83,12 +83,13 @@ public struct MailboxRow: View {
     layout {
       ProviderMark(mailbox.provider, size: .tile40, faded: off)
       VStack(alignment: .leading, spacing: 2) {
+        // One line at the default size (Paper clamps it); above it the address wraps.
         Text(mailbox.address)
           .hType(.rowTitle)
           .foregroundStyle(off ? HColor.textSecondary : HColor.textPrimary)
-          .lineLimit(1)
-          .truncationMode(.middle)
-        Text(meta).hType(.footnote).foregroundStyle(HColor.listRowSupporting).singleLineAtDefaultTextSize()
+          .singleLineAtDefaultTextSize()
+        Text(meta).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+          .fixedSize(horizontal: false, vertical: true)
         if let note = mailbox.note {
           Text(note).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
         }

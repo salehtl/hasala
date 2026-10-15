@@ -137,7 +137,9 @@ private struct FigureLineBody: View {
     let extra = max(0, (line.figure.leading - line.figure.size * roundedLineRatio) * scale)
     Text(attributed(scale: scale))
       .lineLimit(1)
-      .minimumScaleFactor(line.figure.minimumScale)
+      // A row or compact figure never scales by design: its row reflows instead. If a container
+      // squeezes it anyway, shrinking a little is still better than cutting the amount.
+      .minimumScaleFactor(line.figure.minimumScale < 1 ? line.figure.minimumScale : 0.75)
       .padding(.vertical, extra / 2)
       .contentTransition(motion.isStill || line.numericValue == nil
         ? .identity : .numericText(value: line.numericValue ?? 0))

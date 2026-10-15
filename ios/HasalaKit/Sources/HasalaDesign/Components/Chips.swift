@@ -335,25 +335,16 @@ public struct CountBadge: View {
         .background(Self.fill(tone), in: Capsule())
     case .style(let style):
       if count > 0 {
-        Text(count > 99 ? "99+" : "\(count)")
-          .font(.system(size: Self.figure(style), weight: .bold, design: .rounded).monospacedDigit())
-          .foregroundStyle(style == .title24 ? HColor.white : HColor.badgeCountText)
-          .padding(.horizontal, Self.padding(style))
-          .frame(minWidth: height, minHeight: height)
-          .background(Self.fill(style), in: Capsule())
-          .overlay {
-            if style == .glass20 || style == .tab18 {
-              Capsule().strokeBorder(HColor.white, lineWidth: 2).padding(-2)
-            }
-          }
-          // It never grows past AX1, so it never covers the icon (page 17 §02).
+        // It never grows past AX1, so it never covers the icon (page 17 §02): the cap sits
+        // outside the badge, so its scaled sizes read the capped size.
+        StyledBadge(count: count, style: style)
           .dynamicTypeSize(...DynamicTypeSize.accessibility1)
           .accessibilityHidden(true)
       }
     }
   }
 
-  private static func height(_ style: Style) -> CGFloat {
+  fileprivate static func height(_ style: Style) -> CGFloat {
     switch style {
     case .glass20, .chip20: 20
     case .tab18: 18
@@ -362,7 +353,7 @@ public struct CountBadge: View {
     }
   }
 
-  private static func figure(_ style: Style) -> CGFloat {
+  fileprivate static func figure(_ style: Style) -> CGFloat {
     switch style {
     case .glass20, .chip20: 12
     case .tab18: 11
@@ -370,7 +361,7 @@ public struct CountBadge: View {
     }
   }
 
-  private static func padding(_ style: Style) -> CGFloat {
+  fileprivate static func padding(_ style: Style) -> CGFloat {
     switch style {
     case .glass20, .chip20: 6
     case .tab18: 5
@@ -378,7 +369,7 @@ public struct CountBadge: View {
     }
   }
 
-  private static func fill(_ style: Style) -> Color {
+  fileprivate static func fill(_ style: Style) -> Color {
     switch style {
     case .glass20, .tab18: HColor.badgeCount
     case .title24: HColor.textPrimary
@@ -393,5 +384,34 @@ public struct CountBadge: View {
     case .alert: HColor.actionDestructive
     case .accent: HColor.actionAccent
     }
+  }
+}
+
+/// A Paper badge, scaled with Dynamic Type up to the cap its parent sets.
+private struct StyledBadge: View {
+  let count: Int
+  let style: CountBadge.Style
+  @ScaledMetric private var height: CGFloat
+  @ScaledMetric private var figure: CGFloat
+
+  init(count: Int, style: CountBadge.Style) {
+    self.count = count
+    self.style = style
+    _height = ScaledMetric(wrappedValue: CountBadge.height(style), relativeTo: .footnote)
+    _figure = ScaledMetric(wrappedValue: CountBadge.figure(style), relativeTo: .footnote)
+  }
+
+  var body: some View {
+    Text(count > 99 ? "99+" : "\(count)")
+      .font(.system(size: figure, weight: .bold, design: .rounded).monospacedDigit())
+      .foregroundStyle(style == .title24 ? HColor.white : HColor.badgeCountText)
+      .padding(.horizontal, CountBadge.padding(style))
+      .frame(minWidth: height, minHeight: height)
+      .background(CountBadge.fill(style), in: Capsule())
+      .overlay {
+        if style == .glass20 || style == .tab18 {
+          Capsule().strokeBorder(HColor.white, lineWidth: 2).padding(-2)
+        }
+      }
   }
 }
