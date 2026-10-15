@@ -95,7 +95,9 @@ if ! plist_text; then rm -rf -- "$plists"; fi
 # Limits. Apart from each plist's XML, these searches read bytes as they are stored,
 # so they do not find:
 #   - a Swift string literal of 15 UTF-8 bytes or fewer, which the compiler keeps
-#     inside instructions;
+#     inside instructions when it is written inline: "-HasalaScenario" and
+#     "-HasalaScreen" are found only where a constant holds them, so AT-REV-4 also
+#     names the mock-only types, whose names every build keeps in its type metadata;
 #   - text that a file other than a plist holds as UTF-16 (a UTF-16 .txt or .json
 #     resource, say): only a plist is converted (to XML, which is UTF-8);
 #   - anything compressed: a zip, gzip or LZFSE resource, or compressed data in
@@ -295,8 +297,14 @@ check "I11 minos 26.0" minos_26
 check "I12 no dev hosts in any file, in any case" in_no_file_i "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"
 check "I12 HasalaAPIBaseURL is $RELEASE_API_BASE_URL" is "$info" HasalaAPIBaseURL "$RELEASE_API_BASE_URL"
 # Release links no HasalaMocks (spec 04 §1.4): no mock module, scenario, persona or Debug
-# launch hook (the screen and motion arguments, plan B6).
-check "AT-REV-4 no mock data (HasalaMocks) in any file" in_no_file "HasalaMocks|HasalaScenario|HasalaScreen|HasalaMotion|Maya Rahman"
+# launch hook (the screen and motion arguments, plan B6). The launch arguments are short
+# Swift literals, which an inline use keeps out of the bytes (see in_no_file), so the
+# app's mock-only types are named too: the launch hook (ScreenLaunch, MotionLaunch), the
+# mock graph and the mock services. Their names stay in the type metadata of any build
+# that compiles them, stripped or not.
+mock_terms="HasalaMocks|HasalaScenario|HasalaScreen|HasalaMotion|Maya Rahman"
+mock_terms+="|ScreenLaunch|MotionLaunch|MockGraph|MockMailbox|AuthScenario|MockAccountService"
+check "AT-REV-4 no mock data (HasalaMocks) in any file" in_no_file "$mock_terms"
 
 size="$(/usr/bin/stat -f '%z' "$ipa" 2>/dev/null || echo '?')"
 echo "ipa: $ipa ($size bytes)"
