@@ -3,9 +3,11 @@
 // is no Worker script: dist/ is the whole site, including
 // /.well-known/apple-app-site-association, _headers and _redirects.
 //
-// Cloudflare Workers Builds (the Worker's Git integration) deploys it: every
-// pull request branch gets a preview URL, and a push to main deploys
-// hasala.app. By hand, `bun run deploy` from this directory builds (with the
+// Cloudflare Workers Builds (the Worker's Git integration) deploys it: a push
+// to main deploys hasala.app, and a push to the `preview` branch deploys the
+// preview site (env "preview" below, its own Worker). No other branch builds,
+// so a pull request carries no Cloudflare check unless its head is pushed to
+// `preview`. By hand, `bun run deploy` from this directory builds (with the
 // dist checks) and runs the pinned wrangler (package.json), with
 // CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the environment; see
 // CLAUDE.md, "Website".
@@ -24,11 +26,24 @@
   "routes": [{ "pattern": "hasala.app/*", "zone_name": "hasala.app" }],
   // No hasala-aasa.<account>.workers.dev copy of the live site.
   "workers_dev": false,
-  // On: a preview URL per non-main branch (Workers Builds), for checking a
-  // pull request before it is merged. Kept behind Cloudflare Access.
-  "preview_urls": true,
+  // Off: previews come from the `preview` branch, not a URL per branch.
+  "preview_urls": false,
   // Off: request logs would record /i/<code> paths (invite codes must not be logged).
   "observability": { "enabled": false },
   // No usage telemetry from wrangler itself.
-  "send_metrics": false
+  "send_metrics": false,
+  "env": {
+    // The preview site: Worker "hasala-aasa-preview", deployed by Workers
+    // Builds from the `preview` branch with `npx wrangler deploy --env preview`.
+    // It serves the same dist/ on its workers.dev address only, kept behind
+    // Cloudflare Access. routes and workers_dev are set here because an
+    // environment inherits them: without these two lines it would take the
+    // hasala.app route.
+    "preview": {
+      "routes": [],
+      "workers_dev": true,
+      "preview_urls": false,
+      "observability": { "enabled": false }
+    }
+  }
 }

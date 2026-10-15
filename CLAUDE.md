@@ -360,11 +360,21 @@ GitHub with Workers Builds (the Git integration of the Worker). The owner set
 it up in the Cloudflare dashboard. There is no token in GitHub. The root
 directory is `web`. The build command is
 `bun install --frozen-lockfile && bun run build`. Thus the dist checks are a
-gate for each deployment.
+gate for each deployment. The build watch paths are `web/*` and
+`docs/legal/*`. A push that changes no file in these paths does not build.
 
-- Each branch except `main` gets a preview URL (on `workers.dev`, behind
-  Cloudflare Access). Cloudflare puts the URL on the pull request. Examine
-  the change there.
+Only two branches build:
+
+- `preview` deploys the preview site. This is the Worker
+  `hasala-aasa-preview` (`env.preview` in `web/wrangler.jsonc`), on its
+  `workers.dev` address only, behind Cloudflare Access. Its deploy command is
+  `npx wrangler deploy --env preview`. To examine a pull request before you
+  merge it, push its head to `preview`:
+  `git push --force origin HEAD:preview`. The `preview` branch has no
+  protection. It always shows the last push. Do not keep work only on
+  `preview`.
+- Other branches do not build. Thus a pull request shows no Cloudflare check
+  until you push its head to `preview`.
 - A push to `main` deploys hasala.app. Usually, this push is the merge of a
   pull request. Thus a merge is a deployment to production. Only the owner
   can decide to merge. Cloudflare builds on the push. It does not wait for
