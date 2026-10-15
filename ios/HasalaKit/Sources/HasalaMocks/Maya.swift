@@ -1,9 +1,9 @@
 import HasalaModels
 
-// The Maya scenario (spec 04 §15.3): Maya Rahman, Dubai Marina, with the clock
-// fixed at Saturday 10 October 2026 13:40 in Dubai. Every figure is synthetic and
-// matches the Paper Home board ("Home · Default") exactly, so a screen can be compared with
-// its board side by side. Debug builds, previews and UI tests only: no Release
+// The Maya scenario (spec 04 §15.3, page 06 §6.8): Maya Rahman, Dubai Marina, with the clock
+// fixed at Saturday 10 October 2026 13:40 in Dubai. Every figure is synthetic and matches the
+// Paper Home board ("Home · Default", 14O7-0) where the ledger agrees with it, so a screen can
+// be compared with its board side by side. Debug builds, previews and UI tests only: no Release
 // code path reaches this module (spec 04 §1.4, AT-REV-4).
 
 /// The mock scenarios a Debug build can launch with `-HasalaScenario <name>`.
@@ -56,60 +56,54 @@ public enum Maya {
   public static let displayName = "Maya Rahman"
 
   public static let home = HomeSnapshot(
-    header: HeaderState(unreadNotifications: 2, avatarInitial: "M"),
+    header: HeaderState(avatarInitial: "M"),
     hero: hero,
-    needsYou: needsYou,
+    notifications: notifications,
     widgets: widgets
   )
 
-  // Everyday budget 9,700.00: 2,282.45 spent, 7,417.55 left, 22 days to go
-  // (7,417.55 / 22 = 337.16, "about AED 337 a day"). Ten of 31 days is 32%.
-  static let hero = EverydayHero(
-    overline: "October · day 10 of 31",
-    left: .aed(7_417_55),
-    caption: "left for everyday spending",
-    spent: Permille.ratio(2_282_45, of: 9_700_00),
-    today: Permille(320),
+  // Needs + wants: 10,288.34 spent of 19,000 (12,350 + 6,650), 8,711.66 left. Today's tick is
+  // the 8,005.89 of bills paid so far plus 9,954.96 (the plan less this month's 9,045.04 of
+  // bills) × 10 ÷ 31 = 3,211.28: 11,217.17, so spending is behind it: on track.
+  // Savings: both standing orders went out on the 2nd, so the ledger has the 5,000 saved (the
+  // Paper Home board draws "0 of 5,000"; Paper's own Plan board and this ledger say 5,000, plan
+  // D.3 open decision 5).
+  static let hero = SpendHero(
+    overline: "Day 10 of 31",
+    spent: .aed(10_288_34),
+    plan: .aed(19_000_00),
+    tick: .aed(11_217_17),
     verdict: .onTrack,
-    verdictDetail: MoneyPhrase([.text("about AED "), .amount(.aed(337_16), .rounded, hidden: 3), .text(" a day")]),
-    stats: [
-      HeroStat("Spent", .aed(2_282_45)),
-      HeroStat("Bills paid", .aed(8_005_89)),
-      HeroStat("Bills to come", .aed(1_039_15)),
+    word: "On track",
+    fact: MoneyPhrase([.text("AED "), .amount(.aed(8_711_66), hidden: 3), .text(" left")]),
+    caption: MoneyPhrase([.text("spent of "), .amount(.aed(19_000_00), .rounded, hidden: 3), .text(" on needs and wants")]),
+    tiles: [
+      HeroTile("Needs", .aed(9_040_80)),
+      HeroTile("Wants", .aed(1_247_54)),
+      HeroTile("Savings", .aed(5_000_00)),
     ],
     wash: .sky
   )
 
-  static let needsYou = NeedsYouRail(
-    count: 4,
-    subtitle: "1 bill looks late",
-    cards: [
-      NeedsYouCard(
-        id: "review",
-        hue: .sky,
-        glyph: .review,
-        label: "To review",
-        status: StatusPill("2 new today", tone: .accent),
-        figure: .count(6, unit: "to sort"),
-        title: "Sort new transactions",
-        subtitle: MoneyPhrase([.text("AED "), .amount(.aed(827_28)), .text(" isn't in your plan yet")]),
-        primaryAction: "Start",
-        secondaryAction: "Later"
-      ),
-      NeedsYouCard(
-        id: "bill.axa",
-        hue: .rose,
-        glyph: .insurance,
-        label: "AXA Insurance",
-        status: StatusPill("3 days late", tone: .error),
-        figure: .money(.aed(550_00)),
-        title: "Car insurance didn't arrive",
-        subtitle: "Usually on the 7th · no email yet",
-        primaryAction: "I paid it",
-        secondaryAction: "Details"
-      ),
-    ]
-  )
+  /// Home · Notifications (11Y9-0), "Needs a look", newest first: four items, the bell's 4.
+  static let notifications = NotificationsSnapshot(needsALook: [
+    NotificationItem(
+      id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
+      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" isn't in your plan yet")]),
+      when: "Today", destination: .review),
+    NotificationItem(
+      id: "bill.axa", disc: .hue(.sand, .insurance), title: "AXA Insurance may be late",
+      line: "Usually on the 7th · no email yet", status: .error, when: "Thu", destination: .bill("axa")),
+    NotificationItem(
+      id: "found.apple-bill", disc: .hue(.lilac, .subscriptions), title: "Found a bill: Apple.com/bill",
+      line: "Seen 5× · every ~30 days", when: "Thu", destination: .bills),
+    NotificationItem(
+      id: "price.du", disc: .hue(.sand, .utilities), title: "du has a new price",
+      line: MoneyPhrase([
+        .amount(.aed(427_90), hidden: 3), .text(" from "), .amount(.aed(389_00), hidden: 3), .text(" · accept or check"),
+      ]),
+      when: "Mon", destination: .bills),
+  ])
 
   static let widgets: [HomeWidget] = [
     .budgetPace(BudgetPaceWidget(
@@ -137,7 +131,7 @@ public enum Maya {
       name: "Japan trip",
       glyph: .travel,
       left: .aed(7_140_00),
-      caption: MoneyPhrase([.text("of "), .amount(.aed(12_000_00), .compact), .text(" · flies 14 Dec")]),
+      caption: MoneyPhrase([.text("of "), .amount(.aed(12_000_00), .rounded, hidden: 4), .text(" · flies 14 Dec")]),
       progress: Permille.ratio(4_860_00, of: 12_000_00)
     )),
     .goal(GoalWidget(
@@ -145,11 +139,11 @@ public enum Maya {
       glyph: .savingsJar,
       progress: Permille.ratio(38_500_00, of: 50_000_00),
       caption: MoneyPhrase([
-        .amount(.aed(38_500_00), .compact), .text(" of "), .amount(.aed(50_000_00), .compact), .text(" · Jan"),
+        .amount(.aed(38_500_00), .rounded), .text(" of "), .amount(.aed(50_000_00), .rounded), .text(" · Jan"),
       ])
     )),
     .today(TodayWidget(
-      summary: MoneyPhrase([.text("2 transactions · "), .amount(.aed(91_50), hidden: 3)]),
+      summary: MoneyPhrase([.text("2 transactions · "), .amount(.aed(91_50), .rounded, hidden: 3)]),
       rows: [
         MiniTxnRow(id: "t.talabat", merchant: "Talabat", glyph: .dining, hue: .lilac,
                    detail: "Dining · 13:20", amount: .aed(64_50)),

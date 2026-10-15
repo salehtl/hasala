@@ -1,7 +1,8 @@
-// UI read models for Home (Paper "Home · Default", spec 04 §15.1 `HomeModel`).
+// UI read models for Home (Paper "Home · Default", spec 10, page 16 §01–02).
 //
-// They are plain values: an engine (later) or the Maya mock (now) builds them,
-// and HasalaDesign draws them. Nothing here reads a clock or a database.
+// They are plain values: `HomeEngine` builds them from the ledger, the Maya mock writes the
+// board's figures by hand, and HasalaDesign draws them. Nothing here reads a clock or a
+// database.
 
 /// The six hues of the design plus the neutral "other" (spec 04 §14.2).
 /// Rose is reserved for late or missed bills and over-budget; never a bucket.
@@ -67,57 +68,88 @@ public struct StatusPill: Sendable, Hashable {
 }
 
 public struct HeaderState: Sendable, Hashable {
-  public var unreadNotifications: Int
   public var avatarInitial: String
 
-  public init(unreadNotifications: Int, avatarInitial: String) {
-    self.unreadNotifications = unreadNotifications
+  public init(avatarInitial: String) {
     self.avatarInitial = avatarInitial
   }
 }
 
-public struct HeroStat: Sendable, Hashable, Identifiable {
+// MARK: - The hero (Paper "Hero · Spent on needs + wants", page 16 §01–02)
+
+/// One stat tile under the hero bar: Needs, Wants or Savings.
+public struct HeroTile: Sendable, Hashable, Identifiable {
   public var id: String { label }
   public var label: String
   public var value: Money
+  public var style: MoneyStyle
+  /// "of 5,000" after the value: savings part way through its plan.
+  public var of: Money?
 
-  public init(_ label: String, _ value: Money) {
+  public init(_ label: String, _ value: Money, style: MoneyStyle = .exact, of: Money? = nil) {
     self.label = label
     self.value = value
+    self.style = style
+    self.of = of
   }
 }
 
-/// "What's left for everyday spending" (Paper hero, spec 04 §15.1 `EverydayHero`).
-public struct EverydayHero: Sendable, Hashable {
-  /// "October · day 10 of 31" (drawn uppercase).
+/// "Am I okay this month?" (page 06 §6.4): what is spent on needs and wants against their
+/// combined plan, where spending should be today, and the verdict in words. Savings is never
+/// in the figure or on the bar; it has its own tile.
+public struct SpendHero: Sendable, Hashable {
+  public enum State: Sendable, Hashable {
+    /// The month so far, against the plan and today's tick.
+    case live
+    /// No needs or wants budget yet (S8): the spending still counts, with nothing to measure
+    /// it against.
+    case noPlan
+    /// The first import is running and no transaction has arrived (S9): skeletons, never a
+    /// fake zero.
+    case syncing
+  }
+
+  public var state: State
+  /// "Day 10 of 31" (drawn in capitals).
   public var overline: String
-  public var left: Money
-  public var caption: String
-  /// How much of the everyday budget is spent.
-  public var spent: Permille
-  /// How much of the month has gone: the ink tick.
-  public var today: Permille
-  public var verdict: Verdict
-  /// "about AED 337 a day" (the view draws the "·" before it when it sits on the verdict line).
-  public var verdictDetail: MoneyPhrase
-  public var stats: [HeroStat]
-  /// The wash behind the hero: sky on track, sand over pace, rose over budget.
+  /// Needs + wants spent this month.
+  public var spent: Money
+  /// Needs + wants budgets this month; zero with no plan.
+  public var plan: Money
+  /// Planned spend by today: bills paid so far, plus the rest of the plan spread over the days
+  /// gone. Nil with no plan.
+  public var tick: Money?
+  /// On track, ahead of pace (`overPace`) or over the plan (`overBudget`). Nil with no plan.
+  public var verdict: Verdict?
+  /// "On track", "Ahead of pace", "Over by AED 1,240.00", "No plan yet".
+  public var word: MoneyPhrase
+  /// "AED 8,711.66 left" (drawn after a "·"); nil when over or with no plan.
+  public var fact: MoneyPhrase?
+  /// "spent of 19,000 on needs and wants", or "spent on needs and wants" with no plan.
+  public var caption: MoneyPhrase
+  public var tiles: [HeroTile]
+  /// The wash behind the hero: sky on track, sand ahead of pace, rose over.
   public var wash: Hue
 
   public init(
-    overline: String, left: Money, caption: String, spent: Permille, today: Permille,
-    verdict: Verdict, verdictDetail: MoneyPhrase, stats: [HeroStat], wash: Hue
+    state: State = .live, overline: String, spent: Money, plan: Money, tick: Money?, verdict: Verdict?,
+    word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue
   ) {
+    self.state = state
     self.overline = overline
-    self.left = left
-    self.caption = caption
     self.spent = spent
-    self.today = today
+    self.plan = plan
+    self.tick = tick
     self.verdict = verdict
-    self.verdictDetail = verdictDetail
-    self.stats = stats
+    self.word = word
+    self.fact = fact
+    self.caption = caption
+    self.tiles = tiles
     self.wash = wash
   }
+
+  /// What is left of the plan (negative when over).
+  public var left: Money { Money(minor: plan.minor - spent.minor, currency: plan.currency) }
 }
 
 /// The big figure on a Needs-you poster: a count ("6 to sort"), an amount, or a word
@@ -128,6 +160,9 @@ public enum PosterFigure: Sendable, Hashable {
   case word(String)
 }
 
+/// A brief card's content. Home no longer has a Needs-you rail (the bell's sheet replaced it,
+/// decided 14 Oct); the type stays for the design system's `BriefCard` initializer until
+/// Stage I removes it.
 public struct NeedsYouCard: Sendable, Hashable, Identifiable {
   public var id: String
   public var hue: Hue
@@ -154,19 +189,6 @@ public struct NeedsYouCard: Sendable, Hashable, Identifiable {
     self.subtitle = subtitle
     self.primaryAction = primaryAction
     self.secondaryAction = secondaryAction
-  }
-}
-
-public struct NeedsYouRail: Sendable, Hashable {
-  /// The badge count; it may exceed the cards drawn (Paper: badge 4, two cards).
-  public var count: Int
-  public var subtitle: String
-  public var cards: [NeedsYouCard]
-
-  public init(count: Int, subtitle: String, cards: [NeedsYouCard]) {
-    self.count = count
-    self.subtitle = subtitle
-    self.cards = cards
   }
 }
 
@@ -337,17 +359,19 @@ public enum HomeWidget: Sendable, Hashable, Identifiable {
   }
 }
 
-/// Everything Home draws at one instant.
+/// Everything Home draws at one instant. The bell's list comes with it, so one ledger change
+/// recomputes both once.
 public struct HomeSnapshot: Sendable, Hashable {
   public var header: HeaderState
-  public var hero: EverydayHero
-  public var needsYou: NeedsYouRail
+  public var hero: SpendHero
+  /// What needs a look (the bell's badge and its sheet), from the ledger.
+  public var notifications: NotificationsSnapshot
   public var widgets: [HomeWidget]
 
-  public init(header: HeaderState, hero: EverydayHero, needsYou: NeedsYouRail, widgets: [HomeWidget]) {
+  public init(header: HeaderState, hero: SpendHero, notifications: NotificationsSnapshot, widgets: [HomeWidget]) {
     self.header = header
     self.hero = hero
-    self.needsYou = needsYou
+    self.notifications = notifications
     self.widgets = widgets
   }
 }

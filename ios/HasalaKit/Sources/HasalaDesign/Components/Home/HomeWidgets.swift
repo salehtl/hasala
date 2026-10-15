@@ -1,9 +1,11 @@
 import HasalaModels
 import SwiftUI
 
-// The Home canvas widgets (Paper "Widgets · launch set", "Home · Default"): r26, Small 175², Medium 362 wide.
-// The same views will draw the WidgetKit extension's cards (spec 04 DV-8). Moved here unchanged in F1;
-// P5 owns this folder from Stage P (`ReflowingRow` moved to Lists.swift, where every screen finds it).
+// The Home canvas widgets (Paper "Home · Default" 14O7-0, page 18 "Widgets & Lock Screen"): one
+// money fact each, r26, Small 175², Medium 362 wide. Widgets show whole dirhams ("AED 489",
+// "3,309 left"; page 06 rule 5) and hide every amount with the eye (page 18 §18.7: percentages,
+// counts, names and dates stay). The same views will draw the WidgetKit extension's cards
+// (spec 04 DV-8).
 
 private let widgetShadowNear = Color(HRGBA(0, 0, 0, 0.0588))  // #0000000F
 private let widgetShadowFar = Color(HRGBA(0, 0, 0, 0.0784))  // #00000014
@@ -27,19 +29,39 @@ extension View {
   }
 }
 
-/// The darker end of each bucket's legend dot (Paper draws hue-end → this, 160°).
-private extension Bucket {
-  var dotEnd: Color {
-    switch self {
-    case .needs: Color(HRGBA(233, 184, 119, 1))  // oklab(81.3% 0.028 0.096)
-    case .wants: Color(HRGBA(187, 166, 230, 1))  // oklab(76.6% 0.045 -0.081)
-    case .savings: Color(HRGBA(147, 211, 181, 1))  // oklab(81.5% -0.075 0.022)
-    default: Color(tokens.ink)
-    }
+public extension HFigure {
+  /// The figure to hand `MoneyText` for a hidden amount, so its dots draw at `dots` points as
+  /// Paper draws them on Home (hero 38, widget heroes 24, net worth 22; page 18 §18.7).
+  /// `MoneyText` draws dots at 55% of a large figure's size; Paper's are bigger.
+  // TODO(Stage I, requests/p5.md): the design system takes Paper's dot sizes; drop this.
+  func hiddenDots(_ dots: CGFloat) -> HFigure {
+    var f = self
+    f.size = dots / 0.55
+    return f
   }
 }
 
-/// Budget pace (Medium): one row per bucket with its bar; "✓ Done" when funded.
+extension HFigure {
+  /// A widget's small heroes: 34/40 bold, −0.5 (Next bill, Project).
+  static let widgetSmall = HFigure.large
+  /// Net worth: 30/36 bold, −0.5.
+  static let widgetNetWorth = HFigure(size: 30, leading: 36, weight: .bold, tracking: -0.5, textStyle: .title,
+                                      minimumScale: 0.6)
+  /// The unit and the word beside a widget figure ("AED", "left"): 15/20 semibold.
+  static let widgetUnit = HFigure.compact.weight(.semibold)
+}
+
+/// A row's whole-dirham figure with what it means: "3,309 left", "770 over", "5,000 to save".
+private func wholeDirhams(_ m: Money, _ word: String, hidden: Bool) -> String {
+  (hidden ? MoneyFormat.hidden(count: 3) : MoneyFormat.string(m.minor, style: .rounded)) + " " + word
+}
+
+// MARK: - Budget pace (Medium)
+
+/// Budget pace (Medium, page 16 §02 W1/W2): one row per bucket, the name, "spent of plan", what
+/// is left on the right, and a 6 pt bar with no tick. Over: the bar is full rose and the right
+/// says "x over" in rose. Savings: "saved of plan", "x to save", then a check and "Done" once the
+/// plan is saved, with a full green bar. Widget bars stay blue (no amber).
 public struct BudgetPaceWidgetView: View {
   let model: BudgetPaceWidget
   let hidden: Bool
@@ -54,10 +76,7 @@ public struct BudgetPaceWidgetView: View {
       ReflowingRow {
         HStack(spacing: 8) {
           Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
-            .overlay {
-              Image(systemName: Glyph.budgetPie.symbolName)
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(HColor.actionAccent)
-            }
+            .overlay { HIconView(.tabPlan, size: 16, color: HColor.actionAccent) }
             .accessibilityHidden(true)
           Text("Budget pace").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         }
@@ -68,32 +87,16 @@ public struct BudgetPaceWidgetView: View {
         VStack(spacing: 6) {
           ReflowingRow(spacing: 12) {
             HStack(spacing: 8) {
-              Circle()
-                .fill(LinearGradient(colors: [Color(row.bucket.tokens.end), row.bucket.dotEnd],
-                                     startPoint: UnitPoint(x: 0.33, y: 0), endPoint: UnitPoint(x: 0.67, y: 1)))
-                .frame(width: 10, height: 10)
+              Circle().fill(row.bucket.hue.dotGradient).frame(width: 10, height: 10)
               Text(row.bucket.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-              Text(MoneyPhrase([.amount(row.spent, .compact), .text(" of "), .amount(row.budget, .compact)])
-                .rendered(hidden: hidden))
-                .hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
-            }
-          } trailing: {
-            if row.verdict == .done {
-              HStack(spacing: 4) {
-                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
-                Text("Done").hType(.subheadline.weight(.semibold))
-              }
-              .foregroundStyle(HColor.statusSuccessForeground)
-            } else {
-              // .subheadline is 15 pt at the default size and follows Dynamic Type.
-              Text(MoneyPhrase([.amount(row.left, .compact), .text(" left")]).rendered(hidden: hidden))
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(row.left.isNegative ? HColor.paceOverBudget : HColor.textPrimary)
+              Text(spentOfPlan(row)).hType(.footnote).foregroundStyle(HColor.textSecondary)
                 .singleLineAtDefaultTextSize()
             }
+          } trailing: {
+            trailing(row)
           }
-          ProgressLine(row.progress, fill: row.verdict.fill)
+          SlimProgressBar(row.verdict == .done || row.verdict == .overBudget ? Permille(1000) : row.progress,
+                          fill: fill(row))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.bucket.title)
@@ -105,16 +108,53 @@ public struct BudgetPaceWidgetView: View {
     .accessibilityLabel("Budget pace, \(model.monthGone)")
   }
 
+  @ViewBuilder private func trailing(_ row: BucketPaceRow) -> some View {
+    switch row.verdict {
+    case .done:
+      HStack(spacing: 4) {
+        HIconView(.check, size: 14, color: HColor.statusSuccessForeground, strokeWidth: 3)
+        Text("Done").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusSuccessForeground)
+      }
+    case .overBudget:
+      Text(wholeDirhams(Money(minor: -row.left.minor), "over", hidden: hidden))
+        .hFigure(.compact).foregroundStyle(HColor.paceOverBudget).singleLineAtDefaultTextSize()
+    case .onTrack, .overPace:
+      Text(wholeDirhams(row.left, row.bucket == .savings ? "to save" : "left", hidden: hidden))
+        .hFigure(.compact).foregroundStyle(HColor.textPrimary).singleLineAtDefaultTextSize()
+    }
+  }
+
+  /// "9,041 of 12,350"; hidden "•••• of •••".
+  private func spentOfPlan(_ row: BucketPaceRow) -> String {
+    MoneyPhrase([.amount(row.spent, .rounded), .text(" of "), .amount(row.budget, .rounded, hidden: 3)])
+      .rendered(hidden: hidden)
+  }
+
+  private func fill(_ row: BucketPaceRow) -> Color {
+    switch row.verdict {
+    case .done: HColor.statusSuccessForeground
+    case .overBudget: HColor.paceFillOverBudget
+    case .onTrack, .overPace: HColor.paceFill
+    }
+  }
+
+  /// "Needs, 9,041 of 12,350, 3,309 left" (page 18 §15); hidden "Needs, amount hidden".
   private func rowSummary(_ row: BucketPaceRow) -> String {
-    if hidden { return "Amounts hidden, \(row.verdict.label)" }
-    let spent = MoneyFormat.string(row.spent.minor, style: .compact)
-    let budget = MoneyFormat.string(row.budget.minor, style: .compact)
-    if row.verdict == .done { return "\(spent) of \(budget), done" }
-    return "\(spent) of \(budget), \(MoneyFormat.string(row.left.minor, style: .compact)) left"
+    if hidden { return row.verdict == .done ? "Amount hidden, done" : "Amount hidden" }
+    let spent = MoneyFormat.string(row.spent.minor, style: .rounded)
+    let budget = MoneyFormat.string(row.budget.minor, style: .rounded)
+    switch row.verdict {
+    case .done: return "\(spent) of \(budget), done"
+    case .overBudget: return "\(spent) of \(budget), \(wholeDirhams(Money(minor: -row.left.minor), "over", hidden: false))"
+    case .onTrack, .overPace:
+      return "\(spent) of \(budget), \(wholeDirhams(row.left, row.bucket == .savings ? "to save" : "left", hidden: false))"
+    }
   }
 }
 
-/// Next bill (Small): hue disc, due chip, amount and payee line.
+// MARK: - Small widgets
+
+/// Next bill (Small): the bill's hue disc and when it is due, "AED 489", the payee line.
 public struct NextBillWidgetView: View {
   let model: NextBillWidget
   let hidden: Bool
@@ -133,16 +173,16 @@ public struct NextBillWidgetView: View {
       }
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 2) {
-        MoneyText(model.amount, figure: .large, unit: HFigure.compact.weight(.semibold), hidden: hidden,
-                  hiddenGlyphs: 3, color: HColor.textPrimary, unitGap: 4)
+        MoneyText(model.amount, figure: hidden ? HFigure.widgetSmall.hiddenDots(24) : .widgetSmall, unit: .widgetUnit,
+                  style: .rounded, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary, unitGap: 4)
         // Two lines: a 169 pt card (a 390 pt-wide phone) cannot always fit it in one.
         Text(model.caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimitAtDefaultTextSize(2)
       }
     }
     .smallWidget()
     .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 12))
-    // "Next bill" first, then what the card shows (pill, amount, payee), so nothing
-    // drawn is left out of what VoiceOver reads (spec 04 §17).
+    // "Next bill" first, then what the card shows (pill, amount, payee), so nothing drawn is
+    // left out of what VoiceOver reads ("Next bill, In 4 days, AED 489, DEWA · expected Wed").
     .accessibilityElement(children: .combine)
     .accessibilityLabel { label in
       Text("Next bill")
@@ -151,7 +191,7 @@ public struct NextBillWidgetView: View {
   }
 }
 
-/// Net worth (Small, inverse): sparkline behind the total and this month's change.
+/// Net worth (Small, inverse): the sparkline behind the total and this month's change.
 public struct NetWorthWidgetView: View {
   let model: NetWorthWidget
   let hidden: Bool
@@ -161,26 +201,33 @@ public struct NetWorthWidgetView: View {
     self.hidden = hidden
   }
 
+  /// Up this month in green-300; down in the on-ink secondary (never red on a total).
+  private var changeColor: Color {
+    model.change.parts.contains { part in
+      if case .signedMoney(let m, _, _) = part { return m.minor < 0 }
+      return false
+    } ? HColor.widgetOnInverseSecondary : HColor.green300
+  }
+
   public var body: some View {
     VStack(alignment: .leading) {
       HStack(spacing: 8) {
         Circle().fill(Color(HRGBA(255, 255, 255, 0.12))).frame(width: 34, height: 34)
-          .overlay {
-            Image(systemName: Glyph.trendUp.symbolName)
-              .font(.system(size: 14, weight: .semibold)).foregroundStyle(HColor.widgetOnInverse)
-          }
+          .overlay { HIconView(.trendUp, size: 18, color: HColor.widgetOnInverse, strokeWidth: 2) }
           .accessibilityHidden(true)
         Text("Net worth").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.widgetOnInverseSecondary)
       }
+      .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 2) {
-        MoneyText(model.total, figure: HFigure(size: 30, leading: 36, weight: .bold, tracking: -0.5, textStyle: .title),
-                  unit: HFigure.compact.weight(.semibold), style: .rounded, hidden: hidden, hiddenGlyphs: 6,
+        MoneyText(model.total, figure: hidden ? HFigure.widgetNetWorth.hiddenDots(22) : .widgetNetWorth,
+                  unit: .widgetUnit, style: .rounded, hidden: hidden, hiddenGlyphs: 6,
                   color: HColor.widgetOnInverse, unitColor: HColor.widgetOnInverseSecondary, unitGap: 4)
         HStack(spacing: 6) {
-          Circle().fill(HColor.green300).frame(width: 7, height: 7)
+          Circle().fill(changeColor).frame(width: 7, height: 7)
           Text(model.change.rendered(hidden: hidden)).hType(.footnote.weight(.semibold))
-            .foregroundStyle(HColor.green300)
+            .foregroundStyle(changeColor)
+            .accessibilityLabel(model.change.spoken(hidden: hidden))
         }
       }
     }
@@ -236,7 +283,7 @@ private extension Path {
   }
 }
 
-/// A project (Small): peach disc, what's left, target line and progress.
+/// A project (Small): the peach disc and its name, what's left, the target line and progress.
 public struct ProjectWidgetView: View {
   let model: ProjectWidget
   let hidden: Bool
@@ -253,17 +300,20 @@ public struct ProjectWidgetView: View {
         Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .singleLineAtDefaultTextSize()
       }
+      .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 0) {
           HStack(alignment: .firstTextBaseline, spacing: 5) {
-            MoneyText(model.left, figure: .large, style: .compact, hidden: hidden, color: HColor.textPrimary)
-            Text("left").hFigure(HFigure.compact.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+            MoneyText(model.left, figure: hidden ? HFigure.widgetSmall.hiddenDots(24) : .widgetSmall,
+                      style: .rounded, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
+            Text("left").hFigure(.widgetUnit).foregroundStyle(HColor.textPrimary)
           }
           Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
             .lineLimitAtDefaultTextSize(2)
+            .accessibilityLabel(model.caption.spoken(hidden: hidden))
         }
-        ProgressLine(model.progress)
+        SlimProgressBar(model.progress)
       }
     }
     .smallWidget()
@@ -272,7 +322,8 @@ public struct ProjectWidgetView: View {
   }
 }
 
-/// A savings goal (Small, mint): percent funded, amounts and progress.
+/// A savings goal (Small, the mint wash): the jar and its name, the percent funded, the
+/// amounts and the progress. The percent stays when amounts hide.
 public struct GoalWidgetView: View {
   let model: GoalWidget
   let hidden: Bool
@@ -285,11 +336,10 @@ public struct GoalWidgetView: View {
   public var body: some View {
     VStack(alignment: .leading) {
       HStack(spacing: 6) {
-        Image(systemName: model.glyph.symbolName).font(.system(size: 14, weight: .semibold))
-          .accessibilityHidden(true)
-        Text(model.name).hType(.footnote.weight(.semibold)).singleLineAtDefaultTextSize()
+        HIconView(model.glyph.icon, size: 18, color: Hue.mint.ink, strokeWidth: 2)
+        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(Hue.mint.ink)
+          .singleLineAtDefaultTextSize()
       }
-      .foregroundStyle(Hue.mint.ink)
       .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
@@ -297,17 +347,21 @@ public struct GoalWidgetView: View {
           Text(model.percentLabel).hFigure(.hero).foregroundStyle(Hue.mint.ink)
           Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
             .lineLimitAtDefaultTextSize(2)
+            .accessibilityLabel(model.caption.spoken(hidden: hidden))
         }
-        ProgressLine(model.progress, fill: Hue.mint.ink, track: HColor.progressTrackOnHue)
+        SlimProgressBar(model.progress, fill: Hue.mint.ink, track: HColor.progressTrackOnHue)
       }
     }
     .smallWidget()
-    .widgetChrome(Hue.mint.gradient, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 16))
+    .widgetChrome(Hue.mint.perceptualGradient, padding: EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 16))
     .accessibilityElement(children: .combine)
   }
 }
 
-/// Today (Medium): the day's transactions as compact rows.
+// MARK: - Today (Medium)
+
+/// Today (Medium): the day's transactions as they arrive, 48 pt rows with a 32 disc, the name
+/// 15/20 600 over "Dining · 13:20", and the whole-dirham amount on the right.
 public struct TodayWidgetView: View {
   let model: TodayWidget
   let hidden: Bool
@@ -327,14 +381,71 @@ public struct TodayWidgetView: View {
           .accessibilityLabel(model.summary.spoken(hidden: hidden))
       }
       .padding(.bottom, 4)
-      ForEach(model.rows) { TxnRow($0, hidden: hidden, compact: true) }
+      ForEach(model.rows) { TodayRow(row: $0, hidden: hidden) }
     }
     .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16))
     .accessibilityElement(children: .contain)
   }
 }
 
-/// The dashed "Add widget" slot at the end of the canvas.
+/// One Today row (Paper "Mini row"): at the accessibility sizes the amount moves under the words.
+struct TodayRow: View {
+  let row: MiniTxnRow
+  let hidden: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 6) {
+          disc
+          words
+          amount
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        HStack(spacing: 12) {
+          disc
+          words.frame(maxWidth: .infinity, alignment: .leading)
+          amount
+        }
+        .frame(minHeight: 48)
+      }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(row.merchant), \(row.detail)")
+    .accessibilityValue(hidden ? "Amount hidden"
+      : (row.isIncome ? "plus " : "") + "\(row.amount.currency) \(MoneyFormat.string(row.amount.minor, style: .rounded))")
+  }
+
+  @ViewBuilder private var disc: some View {
+    if let monogram = row.monogram {
+      MonogramDisc(monogram, size: 32)
+    } else {
+      CategoryDisc(hue: row.hue, glyph: row.glyph, size: .s32)
+    }
+  }
+
+  private var words: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Text(row.merchant).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        .singleLineAtDefaultTextSize()
+      Text(row.detail).hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
+    }
+  }
+
+  private var amount: some View {
+    MoneyText(row.amount, figure: .compact, style: .rounded, hidden: hidden, hiddenGlyphs: 3,
+              color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: row.isIncome ? .income : .none)
+      .fixedSize()
+  }
+}
+
+// MARK: - Canvas end
+
+/// The dashed "Add widget" slot at the end of the canvas: 96 tall, r26, 1.5 dashed neutral-300,
+/// a white 44 disc with an accent plus and "Add widget" 17 600 in the link blue.
 public struct AddWidgetTile: View {
   let action: () -> Void
 
@@ -344,10 +455,9 @@ public struct AddWidgetTile: View {
     Button(action: action) {
       HStack(spacing: 12) {
         Circle().fill(HColor.surfacePrimary).frame(width: 44, height: 44)
-          .overlay {
-            Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundStyle(HColor.actionAccent)
-          }
-          .elevation()
+          .overlay { HIconView(.add, size: 18, color: HColor.actionAccent, strokeWidth: 2.4) }
+          .hElevation(.nearFar)
+          .accessibilityHidden(true)
         Text("Add widget").hType(.headline).foregroundStyle(HColor.textLink)
       }
       .frame(maxWidth: .infinity, minHeight: 96)
@@ -357,7 +467,7 @@ public struct AddWidgetTile: View {
       }
       .contentShape(RoundedRectangle(cornerRadius: HRadius.widget))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HPressStyle(in: RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous)))
   }
 }
 

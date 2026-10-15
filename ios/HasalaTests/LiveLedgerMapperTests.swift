@@ -89,15 +89,21 @@ struct LiveLedgerMapperTests {
     let now = MayaLedger.now
     let got = HomeEngine.snapshot(live, now: now)
     let want = HomeEngine.snapshot(MayaLedger.state, now: now)
+    // The hero: 10,288.34 spent of 19,000, the tick at 11,217.17 (the bills paid so far are
+    // linked to their payments in the seed too), on track, and the tiles.
     #expect(got.hero == want.hero)
-    #expect(got.hero.stats.map(\.value) == [.aed(2_282_45), .aed(8_005_89), .aed(1_039_15)])
-    // Needs you: the review card and AXA three days late (the detector's proposals and
-    // price changes are not ops, so the rail's count may differ; its cards don't).
-    // (A bill's card id is its bill id, which the seed mints afresh.)
-    #expect(got.needsYou.cards.map(\.label) == want.needsYou.cards.map(\.label))
-    #expect(got.needsYou.cards.map(\.figure) == want.needsYou.cards.map(\.figure))
-    #expect(got.needsYou.cards.map(\.subtitle) == want.needsYou.cards.map(\.subtitle))
-    #expect(got.needsYou.subtitle == want.needsYou.subtitle)
+    #expect(got.hero == Maya.home.hero)
+    #expect(got.hero.tick == .aed(11_217_17))
+    #expect(got.hero.tiles.map(\.value) == [.aed(9_040_80), .aed(1_247_54), .aed(5_000_00)])
+    #expect(HomeEngine.billsThisMonth(live, month: MayaLedger.october).paid == 8_005_89)
+    // The bell: the transactions to sort, AXA three days late and du's new price. The detector's
+    // proposals are not ops, so live finds no bill yet (the mock's Apple.com/bill). A bill's row
+    // id is its bill id, which the seed mints afresh, so rows compare by what they say.
+    let wantRows = want.notifications.needsALook.filter { !$0.id.hasPrefix("found.") }
+    #expect(got.notifications.needsALook.map(\.title) == wantRows.map(\.title))
+    #expect(got.notifications.needsALook.map(\.line) == wantRows.map(\.line))
+    #expect(got.notifications.needsALook.map(\.when) == wantRows.map(\.when))
+    #expect(got.notifications.count == 3)
     // Widgets: the bucket pace rows, the next bill, net worth, the trip, the goal, today.
     func widget(_ s: HomeSnapshot, _ id: String) -> HomeWidget? { s.widgets.first { $0.id == id } }
     #expect(widget(got, "budgetPace") == widget(want, "budgetPace"))
