@@ -6,14 +6,15 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Your profile (Paper board, and its page-14 variant with Sign-in & security): who you are, whether bank alerts are
-/// working, your money things, and settings. A large sheet with its own stack.
+/// Your profile (Paper "Profile · Your profile (sheet)" 5DE-0 and its page-14 variant with
+/// Sign-in & security, HI3-0): who you are, whether bank alerts are working, your money
+/// things, settings, sign out and delete. One large sheet from the avatar: every row pushes
+/// inside its stack (`router.profile`), never a sheet over it, and Close returns to the tab
+/// as it was.
 ///
-/// A Release build shows only rows that work (`BuildSurface`): the pages still to come
-/// (bank alerts, accounts, privacy) and the settings with nothing behind them yet (Face ID
-/// lock, notifications) are left out, and account actions follow `capabilities`. The bank
-/// alerts card offers to connect your email, or to sign in again, when mail needs it, in
-/// every build; both open the provider's screen inside this sheet.
+/// A Release build shows only rows that work (`BuildSurface`): the settings with nothing
+/// behind them yet (Notifications, Face ID lock) are left out, Accounts shows once the
+/// ledger has balances, and account actions follow `capabilities`.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
@@ -37,43 +38,25 @@ struct ProfileSheet: View {
 
   private var snap: ProfileSnapshot { model.snapshot }
 
-  /// The pages pushed inside the sheet (`ProfileRoute`), held by the router.
-  private var path: [ProfileRoute] {
-    get { app.router.profile }
-    nonmutating set { app.router.profile = newValue }
-  }
+  private func push(_ route: ProfileRoute) { app.router.profile.append(route) }
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
-        VStack(spacing: 24) {
-          identity
-          mailboxCard
+        VStack(alignment: .leading, spacing: 24) {
+          ProfileIdentity(name: snap.displayName, initial: snap.initial, emailLine: snap.emailLine)
+          BankAlertsCard(summary: summary) { push(.bankAlerts) }
           money
           settings
-          VStack(spacing: 12) {
-            if can(.signOut) {
-              Button("Sign out") { confirmSignOut = true }
-                .buttonStyle(.pill(.tertiary, fill: true))
-                .foregroundStyle(HColor.listRowDestructive)
-                .accessibilityIdentifier("profile.signOut")
-            }
-            if can(.deleteAccount) {
-              Button("Delete your account") { path.append(.deleteAccount) }
-                .buttonStyle(.pill(.destructiveText, size: .small))
-                .accessibilityIdentifier("profile.delete")
-            }
-            Text(BuildInfo.current.footer)
-              .hType(.footnote)
-              .foregroundStyle(HColor.textSecondary)
-              .multilineTextAlignment(.center)
-              .accessibilityIdentifier("profile.buildFooter")
-          }
+          footer
         }
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.bottom, 32)
+        .padding(.horizontal, HSpacing.sheetPadding)
+        // 18 under the header (Paper's sheet gap), with the identity's own 4.
+        .padding(.top, 8)
+        .padding(.bottom, 48)
       }
-      .background(HColor.surfaceSecondary)
+      .scrollEdgeEffectStyle(.soft, for: .bottom)
+      .background(HColor.sheetSurfaceLarge)
       .navigationTitle("Your profile")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar { SheetCloseButton(identifier: "profile.close") { dismiss() } }
@@ -86,11 +69,15 @@ struct ProfileSheet: View {
         Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
       } message: {
-        // TODO(01 §14 S-26): the sign-out copy, verbatim, with N-08's offline line.
-        Text("You can sign back in with your passkey or password.")
+        // Paper I1C-0 says the data is erased; this build keeps it, so the alert says what
+        // happens (the same words as Sign-in & security's).
+        Text("You'll need your passkey or password to sign back in. Your data stays on this iPhone.")
       }
     }
+    .environment(\.inProfileSheet, true)
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
+    .presentationDragIndicator(.visible)
+    .presentationCornerRadius(HRadius.sheetLarge)
   }
 
   /// Signs out of this iPhone (S-26): the session ends, local data stays. The account gate
@@ -103,201 +90,95 @@ struct ProfileSheet: View {
     }
   }
 
-  private var identity: some View {
-    VStack(spacing: 10) {
-      AvatarDisc(initial: snap.initial, size: 96)
-        .overlay(Circle().strokeBorder(HColor.white, lineWidth: 4))
-        .elevation()
-      Text(snap.displayName).hType(.title2).foregroundStyle(HColor.textPrimary)
-        .accessibilityIdentifier("profile.name")
-      HStack(spacing: 6) {
-        Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7)
-        Text(snap.emailLine).hType(.footnote.weight(.semibold))
-      }
-      .foregroundStyle(HColor.statusSuccessForeground)
-      .padding(.horizontal, 10).padding(.vertical, 4)
-      .background(HColor.statusSuccessSurface, in: Capsule())
-      .accessibilityElement(children: .combine)
-    }
-    .padding(.top, 8)
-  }
-
   /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
   /// row also draw from.
   private var summary: MailboxesSummary {
     MailboxesSummary(app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer)
   }
 
-  /// The bank alerts status. It opens Profile › Bank alerts where that page exists; a
-  /// Release build shows the status alone. When mail needs connecting or a new sign-in, the
-  /// card says so and offers it (spec 04 §7.4), on the provider's screen inside this sheet.
-  private var mailboxCard: some View {
-    let summary = summary
-    return VStack(alignment: .leading, spacing: 12) {
-      if unfinished {
-        Button { path.append(.bankAlerts) } label: { mailboxStatus(summary, chevron: true) }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("profile.bankAlerts")
-      } else {
-        mailboxStatus(summary, chevron: false)
-          .accessibilityElement(children: .combine)
-          .accessibilityIdentifier("profile.bankAlerts")
-      }
-      if let offer = app.mailOffer, let provider = Self.provider(offer, app.mailbox?.connectable ?? []) {
-        Button(Self.action(offer)) { path.append(.connectMail(provider)) }
-          .buttonStyle(.pill(.primary, size: .small))
-          .accessibilityIdentifier("profile.connectGmail")
-      }
-    }
-    .padding(16)
-    .background(summary.hue.gradient, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-  }
-
-  /// The offer's button: "Connect your email" or "Sign in again".
-  static func action(_ offer: MailOffer) -> String {
-    switch offer {
-    case .connect: "Connect your email"
-    case .signInAgain: "Sign in again"
-    }
-  }
-
-  /// The provider an offer opens: the mailbox's for a new sign-in, else the first this
-  /// build can connect.
-  static func provider(_ offer: MailOffer, _ connectable: [MailProviderKind]) -> MailProviderKind? {
-    switch offer {
-    case .connect: connectable.first
-    case .signInAgain(_, let provider): provider
-    }
-  }
-
-  private func mailboxStatus(_ summary: MailboxesSummary, chevron: Bool) -> some View {
-    HStack(spacing: 12) {
-      Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
-        .overlay {
-          Image(systemName: summary.needsYou ? "envelope" : "checkmark").foregroundStyle(summary.hue.ink)
-        }
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 0) {
-        Text(summary.title).hType(.headline).foregroundStyle(HColor.textPrimary)
-        // One Text per line ("Last email 4 min ago", "Emirates NBD and DIB"), so each wraps
-        // on its own at the accessibility sizes.
-        ForEach(summary.detail.split(separator: "\n").map(String.init), id: \.self) { line in
-          Text(line).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-        }
-      }
-      Spacer()
-      if chevron {
-        Image(systemName: "chevron.right").foregroundStyle(HColor.textOnHueSecondary).accessibilityHidden(true)
-      }
-    }
-    .contentShape(Rectangle())
-  }
+  // MARK: Your money
 
   private var money: some View {
     VStack(alignment: .leading, spacing: 12) {
-      SectionTitle(title: "Your money")
-      ListCard {
-        if unfinished {
-          Button { path.append(.accounts) } label: {
-            NavRow(title: "Accounts", detail: snap.accounts.rendered(hidden: model.hidden)) {
-              HueDisc(hue: .sky, glyph: .bank)
-            }
-          }
-          .buttonStyle(.plain)
-        }
-        Button { path.append(.bills) } label: {
-          NavRow(title: "Bills", detail: snap.bills) {
-            HueDisc(hue: .sand, glyph: .bill)
-          } trailing: {
-            if snap.newBills > 0 { CountBadge(snap.newBills, tone: .alert).accessibilityLabel("\(snap.newBills) new") }
+      HSectionHeader("Your money")
+      ProfileListCard(inset: .disc68) {
+        // Balances come from check-ins: with none, Accounts would say 0.00 for each.
+        if unfinished || snap.accountsKnown {
+          row(.accounts, id: "profile.accounts") {
+            MoneyThingRow(plate: HuePlate(hue: .sky, icon: .bank, square: true), title: "Accounts",
+                          detail: snap.accounts, hidden: model.hidden)
           }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.bills")
-        Button { path.append(.rules) } label: {
-          NavRow(title: "Categories and rules", detail: snap.categoriesAndRules) {
-            HueDisc(hue: .lilac, glyph: .tag)
-          }
+        row(.bills, id: "profile.bills") {
+          MoneyThingRow(plate: HuePlate(hue: .sand, icon: .receipt), title: "Bills",
+                        detail: MoneyPhrase(stringLiteral: snap.bills), hidden: model.hidden, badge: snap.newBills,
+                        badgeSpoken: "\(snap.newBills) \(snap.newBills == 1 ? "item needs" : "items need") a look")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.rules")
-        if let projects = snap.projects {
-          // TODO(spec 04 §16.1 "Project detail"): Project detail; until then the row only reads.
-          NavRow(title: "Projects", detail: projects.rendered(hidden: model.hidden), chevron: unfinished) {
-            HueDisc(hue: .peach, glyph: .flag)
+        row(.rules, id: "profile.rules") {
+          MoneyThingRow(plate: HuePlate(hue: .lilac, icon: .tag), title: "Categories and rules",
+                        detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
+        }
+        if let projects = snap.projects, let project = snap.projectID {
+          row(.project(project), id: "profile.projects") {
+            MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: projects,
+                          hidden: model.hidden)
           }
-          .accessibilityElement(children: .combine)
         }
       }
     }
   }
 
+  private func row(_ route: ProfileRoute, id: String, @ViewBuilder label: () -> some View) -> some View {
+    Button { push(route) } label: { label() }
+      .buttonStyle(HRowPressStyle())
+      .accessibilityIdentifier(id)
+  }
+
+  // MARK: Settings
+
   private var settings: some View {
     VStack(alignment: .leading, spacing: 12) {
-      SectionTitle(title: "Settings")
-      ListCard {
+      HSectionHeader("Settings")
+      ProfileListCard(inset: .icon52) {
         if session != nil || unfinished {
-          Button { path.append(.security) } label: {
-            NavRow(title: "Sign-in & security") { RowIcon(systemName: "checkmark.shield") } trailing: {
-              if let status = security.map(Self.securityStatus) {
-                DetailLine(parts: [.status(status.text, status.tone)], hidden: false)
-              }
-            }
+          row(.security, id: "profile.security") {
+            SettingRow(icon: .shieldCheck, title: "Sign-in & security",
+                       trailing: security.map { .status(Self.securityStatus($0).text, Self.securityStatus($0).tone) }
+                         ?? .none)
           }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("profile.security")
         }
-        // TODO(spec 04 §16.2 X1): Currency and exchange rates (PENDING PO-17).
-        settingValue("Currency", "dollarsign.circle", "AED")
-        // TODO(spec 04 §9): local notifications and the Face ID lock (§11) are not in this
+        // TODO(spec 04 §16.2 X1): Currency and exchange rates (PENDING PO-17). One currency
+        // for now: the row states it and opens nothing.
+        SettingRow(icon: .globe, title: "Currency", trailing: .value("AED"), chevron: false)
+        // TODO(spec 04 §9, §11): local notifications and the Face ID lock are not in this
         // build, so a Release build doesn't offer their settings yet.
         if unfinished {
-          Button { path.append(.notifications) } label: {
-            NavRow(title: "Notifications") { RowIcon(systemName: "bell") } trailing: {
-              Text(snap.prefs.notifications.label).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-            }
+          row(.notifications, id: "profile.notifications") {
+            SettingRow(icon: .bell, title: "Notifications", trailing: .value(snap.prefs.notifications.label))
           }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("profile.notifications")
-          Toggle(isOn: Binding(get: { snap.prefs.faceIDLock }, set: { model.setFaceIDLock($0) })) {
-            HStack(spacing: HSpacing.listRowGap) {
-              RowIcon(systemName: "faceid")
-              Text("Face ID lock").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-            }
-          }
-          .tint(HColor.actionAccent)
-          .padding(.horizontal, HSpacing.listRowInsetInline)
-          .frame(minHeight: HSpacing.listRowMinHeight)
-          .accessibilityIdentifier("profile.faceID")
+          SettingSwitchRow(icon: .faceID, title: "Face ID lock",
+                           isOn: Binding(get: { snap.prefs.faceIDLock }, set: { model.setFaceIDLock($0) }))
+            .accessibilityIdentifier("profile.faceID")
         }
-        // Appearance is compiled but hidden (spec 04 §14.9, `Feature.appearance == false`).
+        // Hasala is light only for now (spec 04 §14.9), so the row states it.
+        SettingRow(icon: .appearance, title: "Appearance", trailing: .value("Light"), chevron: false)
         // TODO(spec 04 §16.2 X5): Swipe directions page.
-        settingValue("Swipe directions", "arrow.left.and.right", snap.swipeSummary)
+        SettingRow(icon: .swipe, title: "Swipe directions",
+                   trailing: .value(snap.swipeSummary, spoken: snap.swipeSpoken), chevron: false)
         ShareLink(item: CSVFile(rows: model.exportRows, name: CSVExport.fileName(model.today)),
                   preview: SharePreview(CSVExport.fileName(model.today))) {
-          NavRow(title: "Export your data") { RowIcon(systemName: "square.and.arrow.down") } trailing: {
-            Text("CSV").hType(.subheadline).foregroundStyle(HColor.textSecondary)
-          }
+          SettingRow(icon: .download, title: "Export your data", trailing: .value("CSV"))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HRowPressStyle())
         .accessibilityIdentifier("profile.export")
-        if unfinished {
-          Button { path.append(.privacy) } label: {
-            NavRow(title: "Privacy and data") { RowIcon(systemName: "hand.raised") }
-          }
-          .buttonStyle(.plain)
-        } else {
-          Link(destination: URL(string: "https://hasala.app/privacy")!) {
-            NavRow(title: "Privacy policy") { RowIcon(systemName: "hand.raised") }
-          }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("profile.privacy")
+        Link(destination: URL(string: "https://hasala.app/privacy")!) {
+          SettingRow(icon: .privacy, title: "Privacy and data")
         }
-        Button { path.append(.help) } label: {
-          NavRow(title: "Get help") { RowIcon(systemName: "questionmark.circle") }
+        .buttonStyle(HRowPressStyle())
+        .accessibilityIdentifier("profile.privacy")
+        row(.help, id: "profile.help") {
+          SettingRow(icon: .help, title: "Get help")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("profile.help")
       }
     }
   }
@@ -308,16 +189,42 @@ struct ProfileSheet: View {
     return s.hasPasskey ? ("Protected", .success) : ("Password only", .warning)
   }
 
-  private func settingValue(_ title: String, _ icon: String, _ value: String) -> some View {
-    HStack(spacing: HSpacing.listRowGap) {
-      RowIcon(systemName: icon)
-      Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-      Spacer()
-      Text(value).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+  // MARK: Sign out, delete, version
+
+  /// Sign out (quiet, 54: Paper draws 52, off the pill ladder), "Delete your account" (a 44
+  /// link), and the build line.
+  private var footer: some View {
+    VStack(spacing: 8) {
+      if can(.signOut) {
+        Button("Sign out") { confirmSignOut = true }
+          .buttonStyle(.pill(.destructiveQuiet, fill: true))
+          .accessibilityIdentifier("profile.signOut")
+      }
+      if can(.deleteAccount) {
+        Button { push(.deleteAccount) } label: {
+          Text("Delete your account")
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.actionDestructive)
+            .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("profile.delete")
+      }
+      Text(Self.footer(BuildInfo.current))
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("profile.buildFooter")
     }
-    .padding(.horizontal, HSpacing.listRowInsetInline)
-    .frame(minHeight: HSpacing.listRowMinHeight)
-    .accessibilityElement(children: .combine)
+    .padding(.top, 4)
+  }
+
+  /// "Hasala QA · 0.2.0 (1) · unset · End‑to‑end encrypted, never sold": the build first (the
+  /// tests read its prefix), then Paper's promise. The hyphens don't break (U+2011).
+  static func footer(_ build: BuildInfo) -> String {
+    "\(build.footer) · End\u{2011}to\u{2011}end encrypted, never sold"
   }
 }
 
@@ -338,7 +245,7 @@ private struct ProfilePage: View {
     case .project(let id):
       ProjectDetailView(app: app, project: id)
     case .rules:
-      RulesPage(model: model)
+      RulesPage(app: app, model: model)
     case .notifications:
       NotificationSettingsPage(model: model)
     case .bankAlerts:
@@ -352,109 +259,15 @@ private struct ProfilePage: View {
     case .accounts:
       AccountsView(app: app)
     case .security:
-      if let session {
-        SecurityView(session: session)
-      } else {
-        placeholder("Sign-in & security", "checkmark.shield", "Passkeys, password, this iPhone and your recovery phrase.")
-      }
+      if let session { SecurityView(session: session) }
     case .privacy:
-      // TODO(spec 04 §16.2 X7; 01 §14 S-02–S-06, S-18, S-42, S-43, PENDING PO-12).
-      placeholder("Privacy and data", "hand.raised", "Who can see what, and how your data is kept.")
+      // The row is a link to hasala.app/privacy; nothing pushes this page any more.
+      HelpPage()
     case .help:
       HelpPage()
     case .deleteAccount:
       if let session { DeleteAccountView(session: session) }
     }
-  }
-
-  private func placeholder(_ title: String, _ icon: String, _ message: String) -> some View {
-    ScrollView {
-      PlaceholderCard(systemImage: icon, title: "Coming in a later build", message: message)
-        .padding(HSpacing.insetPage)
-    }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle(title)
-    .navigationBarTitleDisplayMode(.inline)
-  }
-}
-
-/// Categories and rules (Paper board, Rules tab): rules most used first; pausing one sends
-/// its transactions back to review.
-// TODO(spec 04 §16.2 P5, P6): the Categories tab, rule detail and "Add a rule".
-private struct RulesPage: View {
-  let model: any ProfileModel
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 14) {
-        Text("Hasala writes a rule when you sort a new merchant. Pause one to send its transactions back to review.")
-          .hType(.subheadline).foregroundStyle(HColor.textSecondary)
-        Text("Most used").hType(.overline).foregroundStyle(HColor.textSecondary)
-        ListCard {
-          ForEach(model.rules) { r in
-            Toggle(isOn: Binding(get: { r.enabled }, set: { model.setRule(r.id, enabled: $0) })) {
-              HStack(spacing: HSpacing.listRowGap) {
-                HueDisc(hue: r.hue, glyph: r.glyph)
-                VStack(alignment: .leading, spacing: 0) {
-                  HStack(spacing: 6) {
-                    Text(r.pattern).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-                    if r.learnedToday { InfoTag("Learned today", tone: .accent) }
-                  }
-                  Text(r.detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
-                }
-              }
-            }
-            .tint(HColor.actionAccent)
-            .padding(.horizontal, HSpacing.listRowInsetInline)
-            .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
-            .accessibilityIdentifier("rule.\(r.id)")
-          }
-        }
-      }
-      .padding(HSpacing.insetPage)
-    }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle("Categories and rules")
-    .navigationBarTitleDisplayMode(.inline)
-  }
-}
-
-/// Settings › Notifications (spec 04 §16.2 X2).
-private struct NotificationSettingsPage: View {
-  let model: any ProfileModel
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 14) {
-        ListCard {
-          ForEach(DevicePrefs.NotificationLevel.allCases, id: \.self) { level in
-            Button { model.setNotifications(level) } label: {
-              HStack {
-                Text(level.label).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-                Spacer()
-                if model.snapshot.prefs.notifications == level {
-                  Image(systemName: "checkmark").font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(HColor.listRowCheck)
-                }
-              }
-              .padding(.horizontal, HSpacing.listRowInsetInline)
-              .frame(minHeight: HSpacing.listRowMinHeight)
-              .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(model.snapshot.prefs.notifications == level ? .isSelected : [])
-            .accessibilityIdentifier("notifications.\(level.rawValue)")
-          }
-        }
-        // TODO(01 §14 S-27): the Notifications settings sentence, verbatim.
-        Text("Important only keeps everything except new transactions under AED 100 and the daily sorting nudge. Lock Screen notifications stay generic unless you choose otherwise.")
-          .hType(.footnote).foregroundStyle(HColor.textSecondary)
-      }
-      .padding(HSpacing.insetPage)
-    }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle("Notifications")
-    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

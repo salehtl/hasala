@@ -8,15 +8,29 @@ import Testing
 @MainActor
 @Suite("Profile model")
 struct ProfileModelTests {
-  /// The Profile card offers what mail needs on its provider's screen; Sign-in &
-  /// security's row shows that page's own status. (The card's words are
-  /// `MailboxesSummary`'s, tested with the mailboxes.)
-  @Test func theProfileCardsSayWhatIsTrue() {
-    #expect(ProfileSheet.action(.connect) == "Connect your email")
-    #expect(ProfileSheet.action(.signInAgain(mailboxID: "gmail-1", provider: .gmail)) == "Sign in again")
-    #expect(ProfileSheet.provider(.connect, [.gmail, .outlook]) == .gmail)
-    #expect(ProfileSheet.provider(.connect, []) == nil)
-    #expect(ProfileSheet.provider(.signInAgain(mailboxID: "outlook-1", provider: .outlook), [.gmail]) == .outlook)
+  /// The Bank alerts card says what `MailboxesSummary` says (the hero and the bell draw the
+  /// same words): working in mint, a new sign-in or nothing connected otherwise.
+  @Test func theStatusCardSaysWhatIsTrue() {
+    let health = MayaLedger.state.mailbox
+    let working = MailboxesSummary([MockMailbox.gmail], health: health, offer: nil)
+    #expect(working.title == "Bank alerts are working")
+    #expect(working.detail == "Last email 4 min ago\nEmirates NBD and DIB")
+    #expect(working.hue == .mint)
+    #expect(!working.needsYou)
+
+    let signIn = MailboxesSummary([MockMailbox.needingSignIn(MockMailbox.gmail)], health: health,
+                                  offer: .signInAgain(mailboxID: MockMailbox.gmail.id, provider: .gmail))
+    #expect(signIn.title == "Sign in again")
+    #expect(signIn.hue == .sand)
+    #expect(signIn.needsYou)
+
+    let none = MailboxesSummary([], health: health, offer: .connect)
+    #expect(none.title == "Your email isn't connected")
+    #expect(none.needsYou)
+  }
+
+  /// Sign-in & security's row shows that page's own status.
+  @Test func theSecurityRowShowsItsStatus() {
     let passkey = MockAccountService.securityState(for: .passkey)
     #expect(ProfileSheet.securityStatus(passkey).text == "Protected")
     #expect(ProfileSheet.securityStatus(passkey).tone == .success)
@@ -28,6 +42,19 @@ struct ProfileModelTests {
     #expect(ProfileSheet.securityStatus(passwordOnly).text == "Frozen")
   }
 
+  /// The footer starts with the build (the tests read "Hasala QA · 0.2.0 (") and ends with
+  /// Paper's promise, its hyphens unbreakable.
+  @Test func theFooterLeadsWithTheBuild() throws {
+    let build = try BuildInfo(infoDictionary: [
+      "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",
+      "HasalaEnvironment": "qa", "HasalaAPIBaseURL": "https://api.example.com", "HasalaGoogleClientID": "unset",
+      "HasalaGoogleRedirectScheme": "unset", "HasalaGmailPubSubTopic": "unset",
+    ])
+    let footer = ProfileSheet.footer(build)
+    #expect(footer.hasPrefix("Hasala QA · 0.2.0 ("))
+    #expect(footer.hasSuffix(" · End\u{2011}to\u{2011}end encrypted, never sold"))
+  }
+
   @Test func profileSettingsAndRules() {
     let app = AppModel(store: InMemoryLedger())
     let profile = ProfileViewModel(app: app)
@@ -35,9 +62,52 @@ struct ProfileModelTests {
     #expect(!profile.snapshot.prefs.faceIDLock)
     profile.setNotifications(.everything)
     #expect(profile.snapshot.prefs.notifications == .everything)
+    // Most used first; pausing one keeps its place and turns its switch off.
     #expect(profile.rules.first?.pattern == "\u{201C}carrefour\u{201D}")
     profile.setRule("r-zuma", enabled: false)
     #expect(profile.rules.first { $0.id == "r-zuma" }?.enabled == false)
+    #expect(profile.rules.map(\.matches) == profile.rules.map(\.matches).sorted(by: >))
+    // Export your data: every transaction, archived ones too, newest first.
     #expect(profile.exportRows.count == app.store.state.txns.count)
+  }
+
+  /// The money rows read the ledger: Bills counts what's tracked after a found bill is
+  /// tracked; Hide amounts reaches the figures in the rows.
+  @Test func theMoneyRowsFollowTheLedger() {
+    let app = AppModel(store: InMemoryLedger())
+    let profile = ProfileViewModel(app: app)
+    #expect(profile.snapshot.bills == "9 tracked · 1 new found")
+    #expect(profile.snapshot.newBills == 1)
+    #expect(app.perform(.trackCandidate("apple-bill")))
+    #expect(profile.snapshot.bills == "10 tracked")
+    #expect(profile.snapshot.newBills == 0)
+    app.toggleAmountsHidden()
+    #expect(profile.hidden)
+    #expect(profile.snapshot.projects?.rendered(hidden: profile.hidden) == "Japan trip · •••• left")
+  }
+
+  /// Bills' view model: one bill's page, and what stopping it does.
+  @Test func aBillCanBeStoppedFromItsPage() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let bills = BillsViewModel(app: app)
+    let axa = try #require(bills.detail("axa"))
+    #expect(axa.isLate)
+    bills.markPaid("axa")
+    #expect(bills.detail("axa")?.state == .upcoming)
+    #expect(bills.detail("axa")?.history.dropFirst().first?.title == "Wed 7 Oct")
+    bills.stopTracking("axa")
+    #expect(bills.detail("axa") == nil)
+    #expect(bills.snapshot.tracked == 8)
+  }
+
+  /// Accounts' view model: net worth and its parts, hidden with Hide amounts.
+  @Test func accountsAddUp() {
+    let app = AppModel(store: InMemoryLedger())
+    let accounts = AccountsViewModel(app: app)
+    #expect(accounts.snapshot.netWorth == .aed(227_568_00))
+    #expect(accounts.snapshot.everydayTotal == .aed(38_163_00))
+    #expect(!accounts.hidden)
+    app.toggleAmountsHidden()
+    #expect(accounts.hidden)
   }
 }
