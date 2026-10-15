@@ -1,10 +1,12 @@
 #if HASALA_MOCKS
   import Foundation
+  import HasalaMocks
+  import HasalaModels
 
   /// Records the setup ops instead of authoring them, and reads back what was saved.
   /// (The mail lane's stand-in is `MockMailbox`.)
   @MainActor
-  final class MockSetupAuthoring: SetupAuthoring {
+  final class MockSetupAuthoring: SetupAuthoring, SetupClock {
     private(set) var banks: [SupportedBank] = []
     private(set) var requestedBanks: [String] = []
     private(set) var income: Int64?
@@ -16,6 +18,8 @@
     private(set) var savePlanCalls = 0
     /// After each `chooseBanks`, with its banks (a scenario hands them to its mailbox mock).
     var choseBanks: ([SupportedBank]) -> Void = { _ in }
+    /// The ledger's today: Maya's Saturday 10 October.
+    var day = MayaLedger.now.date
 
     init(saved: SetupReadBack = SetupReadBack()) {
       income = saved.incomeMinor
@@ -24,6 +28,8 @@
     }
 
     func readBack() -> SetupReadBack { SetupReadBack(incomeMinor: income, payday: payday, split: plan) }
+
+    func today() -> LocalDate { day }
 
     func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
       chooseBanksCalls += 1

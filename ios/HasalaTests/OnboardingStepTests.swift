@@ -51,6 +51,22 @@ struct OnboardingStepTests {
     #expect(OnboardingStep.derive(f) == .notifications)
   }
 
+  /// Your email's step is `.mail` (any provider), and skipping it is `mailSkipped`: the
+  /// scan is skipped too, and setup goes on to income.
+  @Test func theEmailStepIsProviderNeutral() {
+    var f = F(hasSession: true, keysReady: true, banksChosen: true)
+    #expect(OnboardingStep.derive(f) == .mail)
+    f.mailSkipped = true
+    #expect(OnboardingStep.derive(f) == .income)
+    f.mailSkipped = false
+    f.mailbox = .otherDevice
+    // Read on another iPhone: no scan here.
+    #expect(OnboardingStep.derive(f) == .income)
+    f.mailbox = .linked
+    #expect(OnboardingStep.derive(f) == .income)
+    #expect(OnboardingStep.mail.indicator == 2 && OnboardingStep.income.indicator == 3)
+  }
+
   @Test func indicatorNumbers() {
     #expect(OnboardingStep.bank.indicator == 1)
     #expect(OnboardingStep.scan.indicator == 2)

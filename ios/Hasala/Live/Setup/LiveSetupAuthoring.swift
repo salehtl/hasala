@@ -5,6 +5,7 @@ import CoreReplay
 import CoreSync
 import CoreTime
 import Foundation
+import HasalaModels
 
 /// The setup steps' ops (spec 04 §6.6 "When ops are authored") over the open account:
 /// each call is one blob through `OpAuthor` under the account's shared stamps, one
@@ -15,7 +16,7 @@ import Foundation
 ///   - income and plan: `income_source_set`, `budget_split_set` and the seeded
 ///     `budget_set`s, in one blob
 @MainActor
-final class LiveSetupAuthoring: SetupAuthoring {
+final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   private let runtime: @MainActor () -> AccountRuntime?
 
   init(runtime: @escaping @MainActor () -> AccountRuntime?) {
@@ -37,6 +38,15 @@ final class LiveSetupAuthoring: SetupAuthoring {
       StartingPlan(needsPercent: Int($0.need), wantsPercent: Int($0.want), savingsPercent: Int($0.saving))
     }
     return SetupReadBack(incomeMinor: salary?.amountMinor, payday: salary.map { Int($0.payday) }, split: split)
+  }
+
+  /// Today in the ledger's clock (the runtime's), for setup's payday line and the plan's
+  /// month. Reads only; before the runtime opens, the device's clock in the same zone.
+  func today() -> LocalDate {
+    guard let ms = runtime()?.context.clock.nowMs(), let d = LocalClock.localDate(ms) else {
+      return LedgerToday.device()
+    }
+    return LocalDate(d.year, d.month, d.day)
   }
 
   func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
