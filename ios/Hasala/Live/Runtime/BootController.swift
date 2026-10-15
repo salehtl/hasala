@@ -402,8 +402,8 @@ final class BootController {
   static func mailboxFact(_ phase: MailboxPhase) -> OnboardingStep.Facts.Mailbox {
     switch phase {
     case .unlinked: .unlinked
-    case .scanning: .scanning
-    case .awaitingCards: .awaitingCards
+    // A scan left at the retired cards step is filed on the lane's next run.
+    case .scanning, .awaitingCards: .scanning
     case .otherDevice: .otherDevice
     case .authoringBackfill, .active, .reconnectRequired, .halted: .linked
     }

@@ -3,6 +3,7 @@
 import CoreJSON
 import CoreMailbox
 import CorePrimitives
+import CoreTemplate
 import CoreTestSupport
 import Foundation
 import Testing
@@ -51,7 +52,7 @@ let day: Int64 = 86_400_000
 }
 
 @Suite struct ScanTests {
-  @Test func scanStagesThenAuthorsAfterTheCardsAreConfirmed() async throws {
+  @Test func scanStagesThenAuthorsWithoutACardsStep() async throws {
     let rig = Rig(categorizer: GroceryCategorizer())
     rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 5 * day))
     rig.gmail.add(SyntheticMail.dibCard(id: "d2", amount: "10.00", dateMs: Rig.t0 - 4 * day))
@@ -61,37 +62,53 @@ let day: Int64 = 86_400_000
     rig.gmail.add(SyntheticMail.dibCard(id: "old", dateMs: Rig.t0 - 120 * day))  // outside 90 days
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
 
-    let scan = await rig.engine.runCycle(trigger: .launch)
-    #expect(scan.staged == 5 && scan.ops == 0)
-    #expect(scan.phase == .awaitingCards)
-    #expect(await rig.enqueued().isEmpty)  // the scan never authors (§7.7 step 7)
-
-    let summary = await rig.engine.scanSummary()
-    #expect(summary.cards.map(\.card) == [CardKey(bank: "dib", last4: "1234"), CardKey(bank: "dib", last4: "9999"), CardKey(bank: "enbd", last4: "8642")])
-    #expect(summary.cards.map(\.count) == [2, 1, 1])
-    #expect(summary.withoutCard == 1)
-
-    let done = await rig.engine.confirmCards([
-      CardDecision(card: CardKey(bank: "dib", last4: "1234"), state: .mine),
-      CardDecision(card: CardKey(bank: "dib", last4: "9999"), state: .notMine),
-      CardDecision(card: CardKey(bank: "enbd", last4: "8642"), state: .mine),
-    ])
-    #expect(done.ops == 5 && done.review == 2)
+    // One run lists the window, stages it, then authors it: no card is asked about.
+    let done = await rig.engine.runCycle(trigger: .launch)
+    #expect(done.staged == 5)
+    #expect(done.ops == 5 && done.review == 1 && done.toReview == 2)
     #expect(done.sortedBy == ["dictionary": 3, "none": 1, "unparsed": 1])
     #expect(done.phase == .active && done.completed)
-    #expect(await rig.ledger.authoredCards.count == 3)
+    #expect(await rig.ledger.authoredCards.isEmpty)
     let drafts = await rig.enqueued()
     let byID = Dictionary(uniqueKeysWithValues: drafts.map { ($0.messageID, $0) })
     #expect(byID["d1"]?.needsReview == false && byID["d1"]?.payload["category"] == .string("groceries"))
-    #expect(byID["d3"]?.needsReview == true && byID["d3"]?.payload["gates"]?["card"] == .string("not_mine"))
-    #expect(byID["n1"]?.payload["unparsed"] == .bool(true))
+    // A card the ledger doesn't know files like a known one, and the gate still records it.
+    #expect(byID["d3"]?.needsReview == false && byID["d3"]?.payload["gates"]?["card"] == .string("unknown"))
+    #expect(byID["d3"]?.payload["last4"] == .string("9999"))
+    #expect(byID["n1"]?.payload["unparsed"] == .bool(true) && byID["n1"]?.needsReview == true)
     #expect(byID["e1"]?.needsReview == false)
+    #expect(byID["old"] == nil)
     let s = await rig.state()
     #expect(s.watermarkMs == Rig.t0 && s.profileHistoryID == "1000")
     #expect(await rig.stagedCount() == 0)
     // No history.list and never an unfiltered listing (PO G).
     #expect(!rig.gmail.requests.contains { $0.path.contains("/history") })
     #expect(rig.listRequests.allSatisfy { r in r.query.contains { $0.0 == "q" && $0.1.hasPrefix("{from:") } })
+  }
+
+  @Test func aCardMarkedNotMineStillWaitsForReview() async throws {
+    let rig = Rig()
+    await rig.ledger.setCards([CardKey(bank: "dib", last4: "9999"): .notMine])
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 2 * day))
+    rig.gmail.add(SyntheticMail.dibCard(id: "d3", last4: "9999", dateMs: Rig.t0 - day))
+    await rig.connectAndActivate()
+    let byID = Dictionary(uniqueKeysWithValues: (await rig.enqueued()).map { ($0.messageID, $0) })
+    #expect(byID["d1"]?.needsReview == false)
+    #expect(byID["d3"]?.needsReview == true && byID["d3"]?.payload["gates"]?["card"] == .string("not_mine"))
+  }
+
+  @Test func aScanLeftAtTheRetiredCardsStepIsAuthoredOnTheNextCycle() async throws {
+    let rig = Rig()
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - day))
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
+    // What an older build left behind: the scan staged, waiting for "Are these your cards?".
+    var parked = await rig.state()
+    parked.phase = .awaitingCards
+    var c = MailboxCommit()
+    c.state = parked
+    try await rig.store.commit(c)
+    let r = await rig.engine.runCycle(trigger: .launch)
+    #expect(r.phase == .active && r.completed)
   }
 
   @Test func inMemoryReferenceBehavesTheSame() async {
@@ -114,7 +131,7 @@ let day: Int64 = 86_400_000
     #expect(await rig.engine.runCycle(trigger: .launch).phase == .scanning)
     await rig.ledger.setTrust(["dib.ae": true])
     let r = await rig.engine.runCycle(trigger: .launch)
-    #expect(r.staged == 1 && r.phase == .awaitingCards)
+    #expect(r.staged == 1 && r.ops == 1 && r.phase == .active)
   }
 
   @Test func progressIsReportedForTheFirstScanBoard() async {
@@ -125,7 +142,7 @@ let day: Int64 = 86_400_000
     await rig.connectAndActivate()
     let log = seen.all
     #expect(log.contains(MailboxProgress(stage: .downloading, done: 3, total: 3)))
-    #expect(log.contains(MailboxProgress(stage: .awaitingCards, done: 3, total: 3)))
+    #expect(log.contains(MailboxProgress(stage: .authoring, done: 3, total: 3)))
     #expect(log.last == MailboxProgress(stage: .done, done: 3, total: 3))
   }
 
@@ -133,10 +150,9 @@ let day: Int64 = 86_400_000
     let rig = Rig { $0.stagingCap = 2 }
     for i in 0..<4 { rig.gmail.add(SyntheticMail.dibCard(id: "d\(i)", dateMs: Rig.t0 - Int64(i + 1) * day)) }
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
-    let r = await rig.engine.runCycle(trigger: .launch)
-    #expect(r.staged == 2 && r.haltedOn == .stagingFull && r.phase == .awaitingCards)
-    let done = await rig.engine.confirmCards([CardDecision(card: CardKey(bank: "dib", last4: "1234"), state: .mine)])
-    // The two staged rows, then the rest of the window, authored with the gate applied.
+    let done = await rig.engine.runCycle(trigger: .launch)
+    // The two staged rows, then the rest of the window listed again and authored directly.
+    #expect(done.staged == 2 && done.haltedOn == .stagingFull)
     #expect(done.ops == 4 && done.review == 0 && done.phase == .active)
     #expect(Set(await rig.enqueued().map(\.messageID)) == ["d0", "d1", "d2", "d3"])
   }
@@ -150,7 +166,7 @@ let day: Int64 = 86_400_000
     rig.gmail.add(SyntheticMail.dibCard(id: "new1", dateMs: rig.clock.nowMs() - 60_000))
     rig.gmail.historyID = "1001"
     let r = await rig.engine.runCycle(trigger: .silentPush)
-    #expect(r.ops == 1 && r.review == 1 && r.completed)  // card 1234 not confirmed (no scan mail)
+    #expect(r.ops == 1 && r.review == 0 && r.completed)  // a card the ledger does not know files itself
     #expect(await rig.ledger.flushes >= 1)
     let s = await rig.state()
     #expect(s.watermarkMs == rig.clock.nowMs() && s.profileHistoryID == "1001")
@@ -458,26 +474,40 @@ let day: Int64 = 86_400_000
 }
 
 /// The interruptions the review of the first lane found: a reconnect, a takeover or a crash
-/// during first-connect setup must resume the phase it cut short, never re-run the card step.
+/// during first-connect setup must resume the phase it cut short, never restart the scan.
 @Suite struct InterruptionTests {
-  static func stageTwoCards(_ rig: Rig) async {
-    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 3 * day))
-    rig.gmail.add(SyntheticMail.enbdAlert(id: "e1", dateMs: Rig.t0 - 2 * day))
+  /// A scan that staged two alerts and was cut before authoring them (as a deadline or a
+  /// killed app leaves it): the next cycle runs the backfill.
+  static func stageTwoAndCut(_ rig: Rig) async throws {
+    let d1 = SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 3 * day)
+    let e1 = SyntheticMail.enbdAlert(id: "e1", dateMs: Rig.t0 - 2 * day)
+    rig.gmail.add(d1)
+    rig.gmail.add(e1)
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
-    #expect(await rig.engine.runCycle(trigger: .launch).phase == .awaitingCards)
+    let trusted = ["dib.ae", "emiratesnbd.com"]
+    let templates = BundledTemplates.load().templates
+    var c = MailboxCommit()
+    for m in [d1, e1] {
+      guard
+        case .mail(let p) = MessageDisposer.parse(
+          raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
+          bankDomains: trusted, trusted: trusted)
+      else { throw CancellationError() }
+      c.stage.append(p)
+    }
+    var s = await rig.state()
+    s.phase = .authoringBackfill
+    c.state = s
+    try await rig.store.commit(c)
+    #expect(await rig.stagedCount() == 2)
   }
 
-  static func all(_ rig: Rig, _ state: CardState = .mine) async -> [CardDecision] {
-    await rig.engine.scanSummary().cards.map { CardDecision(card: $0.card, state: state) }
-  }
-
-  @Test func reconnectDuringTheBackfillResumesItWithoutAskingForTheCardsAgain() async throws {
+  @Test func reconnectDuringTheBackfillResumesIt() async throws {
     let rig = Rig()
-    await Self.stageTwoCards(rig)
-    let decisions = await Self.all(rig)
+    try await Self.stageTwoAndCut(rig)
     await rig.tokens.invalidate()
     rig.gmail.invalidGrant = true
-    let cut = await rig.engine.confirmCards(decisions)
+    let cut = await rig.engine.runCycle(trigger: .launch)
     #expect(cut.phase == .reconnectRequired && cut.ops == 0)
     #expect(await rig.state().haltedDetail == "resume:authoring_backfill")
 
@@ -487,30 +517,29 @@ let day: Int64 = 86_400_000
     #expect(s.phase == .authoringBackfill && s.scanStartedMs == Rig.t0 && s.backfillDays == 90)
     let done = await rig.engine.runCycle(trigger: .launch)
     #expect(done.phase == .active && done.completed && done.ops == 2 && done.review == 0)
-    #expect(await rig.ledger.authoredCards.count == 2)  // the card step ran once
+    #expect(await rig.ledger.authoredCards.isEmpty)
     #expect(Set(await rig.enqueued().map(\.messageID)) == ["d1", "e1"])
   }
 
-  @Test func retryAfterReconnectRequiredResumesTheBackfill() async {
+  @Test func retryAfterReconnectRequiredResumesTheBackfill() async throws {
     let rig = Rig()
-    await Self.stageTwoCards(rig)
+    try await Self.stageTwoAndCut(rig)
     await rig.tokens.invalidate()
     rig.gmail.invalidGrant = true
-    _ = await rig.engine.confirmCards(await Self.all(rig))
+    _ = await rig.engine.runCycle(trigger: .launch)
     // The grant comes back (e.g. a blip at Google): "Try again" resumes the backfill.
     rig.gmail.invalidGrant = false
     try? rig.keychain.write("fake-refresh-token")
     let r = await rig.engine.runCycle(trigger: .retry)
     #expect(r.phase == .active && r.ops == 2)
-    #expect(await rig.ledger.authoredCards.count == 2)
   }
 
   @Test func takeoverDuringTheBackfillResumesItAfterReadThemHereInstead() async throws {
     let rig = Rig()
-    await Self.stageTwoCards(rig)
+    try await Self.stageTwoAndCut(rig)
     rig.clock.advance(11 * 60_000)  // the holder check is due again
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
-    let cut = await rig.engine.confirmCards(await Self.all(rig))
+    let cut = await rig.engine.runCycle(trigger: .launch)
     #expect(cut.phase == .otherDevice && cut.ops == 0)
     #expect(try rig.keychain.read() == nil)
 
@@ -518,7 +547,6 @@ let day: Int64 = 86_400_000
     #expect(await rig.state().phase == .authoringBackfill)
     let done = await rig.engine.runCycle(trigger: .launch)
     #expect(done.phase == .active && done.ops == 2)
-    #expect(await rig.ledger.authoredCards.count == 2)
   }
 
   @Test func reconnectDuringTheScanKeepsItsWindow() async {
@@ -533,26 +561,9 @@ let day: Int64 = 86_400_000
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
     let s = await rig.state()
     #expect(s.phase == .scanning && s.scanStartedMs == Rig.t0 && s.backfillDays == 90)
-    #expect(await rig.engine.runCycle(trigger: .launch).phase == .awaitingCards)
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .active)
   }
 
-  @Test func repeatingTheCardStepAuthorsNoSecondAccount() async {
-    let rig = Rig(backend: .memory)
-    await Self.stageTwoCards(rig)
-    let decisions = await Self.all(rig)
-    await rig.memory.setFailNextCommit(true)  // a crash after the card ops, before the phase commit
-    #expect(await rig.engine.confirmCards(decisions).phase == .awaitingCards)
-    #expect(await rig.ledger.authoredCards.count == 2)
-    let done = await rig.engine.confirmCards(decisions)
-    #expect(done.phase == .active && done.ops == 2)
-    #expect(await rig.ledger.authoredCards.count == 2)
-    // Changing one's mind is still authored.
-    let rig2 = Rig(backend: .memory)
-    await Self.stageTwoCards(rig2)
-    await rig2.ledger.setCards([CardKey(bank: "dib", last4: "1234"): .mine])
-    _ = await rig2.engine.confirmCards(await Self.all(rig2, .notMine))
-    #expect(await rig2.ledger.authoredCards.map(\.state) == [.notMine, .notMine])
-  }
 }
 
 @Suite struct ListingAndErrorTests {
@@ -623,13 +634,13 @@ let day: Int64 = 86_400_000
     #expect(await rig.state().watermarkMs == before)
   }
 
-  @Test func pagedScanStillReachesTheCards() async {
+  @Test func pagedScanStillFinishesTheBackfill() async {
     let rig = Rig()
     rig.gmail.pageSize = 2
     for i in 0..<5 { rig.gmail.add(SyntheticMail.dibCard(id: "s\(i)", dateMs: Rig.t0 - Int64(i + 1) * day)) }
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
     let r = await rig.engine.runCycle(trigger: .processing)
-    #expect(r.staged == 5 && r.phase == .awaitingCards)
+    #expect(r.staged == 5 && r.ops == 5 && r.phase == .active)
   }
 }
 

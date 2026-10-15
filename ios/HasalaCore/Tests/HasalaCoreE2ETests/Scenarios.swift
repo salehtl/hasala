@@ -155,11 +155,9 @@ enum Scenarios {
       Issue.record("connect: \(connected)")
       return
     }
-    let scan = await engine.runCycle(trigger: .launch)
-    #expect(scan.phase == .awaitingCards && scan.staged == 4, "\(scan)")
-    let cards = await engine.scanSummary().cards.map(\.card)
-    #expect(cards == [CardKey(bank: "dib", last4: "1234"), CardKey(bank: "enbd", last4: "8642")])
-    let done = await engine.confirmCards(cards.map { CardDecision(card: $0, state: .mine) })
+    // The first scan lists, stages and authors in one run: there is no cards step.
+    let done = await engine.runCycle(trigger: .launch)
+    #expect(done.staged == 4, "\(done)")
     #expect(done.phase == .active && done.ops == 4 && done.haltedOn == nil, "\(done)")
     #expect(done.sortedBy["dictionary"] == 1)
     #expect(try a.context.store.pendingCount() == 0)  // the lane flushed
@@ -171,10 +169,9 @@ enum Scenarios {
     #expect(Set(rows.compactMap(\.mailboxMessageID)) == ["d1", "d2", "e1"])  // n1 is unparsed: Review, not Activity
     let starbucks = try #require(rows.first { $0.mailboxMessageID == "d1" })
     #expect(starbucks.amountMinor == 6_450 && starbucks.category == "dining" && starbucks.categorySource == "dictionary")
-    #expect(starbucks.effectiveAccountID == OpAuthor.cardAccountID(bank: "dib", last4: "1234"))
+    #expect(starbucks.effectiveAccountID == nil)  // no card was linked, and none is needed
     #expect(try b.reader.review(lanes: ReviewLane.allCases).contains { $0.mailboxMessageID == "n1" && $0.unparsed })
-    #expect(try b.reader.accounts().map { "\($0.name) \($0.kind)" }.sorted() == ["DIB ···1234 credit_card", "Emirates NBD ···8642 current"])
-    #expect(try b.reader.cards().allSatisfy { $0.state == "mine" })
+    #expect(try b.reader.accounts().isEmpty && b.reader.cards().isEmpty)
     #expect(try await a.state().serialized() == b.state().serialized())
     // Running the lane again lists nothing new and authors nothing twice.
     let again = await engine.runCycle(trigger: .refresh)
