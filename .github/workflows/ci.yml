@@ -7,12 +7,13 @@
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
 # client core on a Mac), `ios` and `ios-ui` (the app on a Mac; `ios-ui` runs the
-# two longest UI test classes beside `ios`), `web` (the website) and
+# two longest UI test classes beside `ios`), `ios-tools` (the iOS project, token
+# and release-script checks on a Mac), `web` (the website) and
 # `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
 #
 # Path-aware on pull requests, failing closed: the first job, `changes`, lists
 # the files the pull request changes, and `gate`, `vuln`, `swift`, `ios`, `ios-ui`,
-# `web` and `nixos-vm` are skipped only when every one of them is on that job's list of
+# `ios-tools`, `web` and `nixos-vm` are skipped only when every one of them is on that job's list of
 # paths it does not read. Any other path runs the job, a path nobody
 # anticipated included. `secrets` always runs. Jobs are skipped with a
 # job-level `if:`, never a workflow-level `paths:` filter: a skipped job still
@@ -127,7 +128,7 @@ jobs:
           skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
           # swift reads ios/ and conformance/ only.
           skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
-          # ios (the app) reads ios/, design/ (the Paper tokens it is generated
+          # ios, ios-ui and ios-tools read ios/, design/ (the Paper tokens the app is generated
           # from) and the flake (which pins its XcodeGen).
           skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$'
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
@@ -350,21 +351,20 @@ jobs:
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
-  # The iOS app (ios/): token generator freshness, the release-script tests (with
-  # the system's tools and again inside the Nix devShell, where GNU coreutils come
-  # first on PATH) and shellcheck, the HasalaKit package tests on macOS, then a
-  # simulator build with the unit tests and every UI test class but the two that
-  # `ios-ui` runs on a runner of its own. Nothing is signed for
-  # distribution here (CODE_SIGNING_ALLOWED=NO; the script tests sign a synthetic
-  # app ad hoc) and no Apple credential exists in CI; archives, signing and uploads
-  # happen only on the owner's Mac (ios/scripts/archive.sh, ios/scripts/upload.sh).
-  # Not a required check.
-  # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
-  ios:
+  # The iOS checks that need neither the app build nor a simulator: token
+  # generator freshness, the project against ios/project.yml, the release-script
+  # tests (with the system's tools and again inside the Nix devShell, where GNU
+  # coreutils come first on PATH) and shellcheck. On a runner of its own beside
+  # `ios`, so they no longer add to the app's build and test time. Skipped
+  # exactly when `ios` is. Nothing is signed for distribution here (the script
+  # tests sign a synthetic app ad hoc) and no Apple credential exists in CI;
+  # archives, signing and uploads happen only on the owner's Mac
+  # (ios/scripts/archive.sh, ios/scripts/upload.sh). Not a required check.
+  ios-tools:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -419,6 +419,29 @@ jobs:
         run: >-
           nix shell --inputs-from . nixpkgs#shellcheck --command
           shellcheck -S warning ios/scripts/*.sh ios/scripts/tests/*.sh
+
+  # The iOS app (ios/): the HasalaKit package tests on macOS, then a simulator
+  # build with the unit tests and every UI test class but the two that `ios-ui`
+  # runs on a runner of its own. `ios-tools` runs the project, token and
+  # release-script checks. Nothing is signed (CODE_SIGNING_ALLOWED=NO).
+  # Not a required check.
+  # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
+  ios:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the newest Xcode
+        run: |
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
 
       - name: HasalaKit tests (macOS)
         run: swift test --package-path ios/HasalaKit
