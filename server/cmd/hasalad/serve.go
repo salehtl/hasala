@@ -152,6 +152,13 @@ func logGroups(cfg config.Config) {
 	if cfg.Gmail.PushEnabled() {
 		on = append(on, "gmail-push")
 	}
+	// The [outlook] group's two parts, likewise.
+	if cfg.Outlook.LinkEnabled() {
+		on = append(on, "outlook-link")
+	}
+	if cfg.Outlook.PushEnabled() {
+		on = append(on, "outlook-push")
+	}
 	if cfg.Email.Enabled() {
 		on = append(on, "email")
 	}

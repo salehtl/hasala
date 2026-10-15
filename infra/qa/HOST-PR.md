@@ -68,8 +68,8 @@ stops. The owner merges.
 #
 # Ingress:  PUBLIC through its OWN Cloudflare Tunnel (cloudflared-hasala.service,
 #           outbound only; no port opened): api.hasala.app +
-#           ^/(api/v1/.*|hooks/gmail/pubsub)$ → 127.0.0.1:8471, everything else
-#           404. Rendered and asserted by the module, linted by hasala's CI.
+#           ^/(api/v1/.*|hooks/gmail/pubsub|hooks/outlook/graph(/lifecycle)?)$
+#           → 127.0.0.1:8471, everything else 404. Rendered and asserted by the module, linted by hasala's CI.
 #           The API (8471) is never behind the host's LAN reverse proxy.
 # Database: its OWN PostgreSQL 17 (hasala-postgresql.service), unix socket only
 #           at /run/hasala-postgresql, data /var/lib/hasala-postgresql/17.
@@ -108,6 +108,15 @@ in
     #   pubsubAudience = "https://api.hasala.app/hooks/gmail/pubsub";
     #   pubsubServiceAccount = "<SA>@<PROJECT>.iam.gserviceaccount.com";
     #   pubsubSubscription = "projects/<PROJECT>/subscriptions/<SUBSCRIPTION>";
+    # };
+    # Outlook's mailbox link (M8c): the Entra app's client id (a lowercase
+    # UUID; not secret, it ships in the app) with the same route key. Its
+    # Graph push (M8d): both URLs or none, only with the link, and exactly
+    # these two. See "Outlook: the link and the hook" below.
+    # outlook = {
+    #   clientId = "<ENTRA_CLIENT_ID>";
+    #   notificationUrl = "https://api.hasala.app/hooks/outlook/graph";
+    #   lifecycleUrl = "https://api.hasala.app/hooks/outlook/graph/lifecycle";
     # };
     authKeyFile = secret "auth_key"; # spec 01 §4.11; generated once, never rotated in the beta
     saltKeyFile = secret "salt_key"; # spec 01 §4.11; the password salt key: never rotated, never equal to auth_key
@@ -355,6 +364,55 @@ next renewal (about 4 days, when the watch report answers
 `409 {"error":"no_watch_topic"}` and the app stops the watch) or until it
 expires (7 days); nothing relays its pushes in the meantime, and the link
 itself keeps working.
+
+## Outlook: the link and the hook
+
+The `[outlook]` group has the same two parts as `[gmail]`, for personal
+Microsoft accounts (outlook.com, hotmail.com, live.com). The **mailbox link**
+(`outlook.clientId` and the shared `mailboxRouteKeyFile`, M8c) lets the link
+routes accept `provider: "outlook"`: the app's Connect Outlook. An account has
+one mailbox link at a time; linking Outlook replaces a Gmail link, and the
+reverse. The **Graph push** (`outlook.notificationUrl` and
+`outlook.lifecycleUrl`, M8d) mounts the two hooks
+`POST /hooks/outlook/graph` and `POST /hooks/outlook/graph/lifecycle` and
+offers both URLs as `/api/v1/meta`'s `outlook_notification_url` and
+`outlook_lifecycle_url`. Without the push, both are `null`, so the app creates
+no Graph subscription, both hooks answer 404, and the app fetches mail when it
+is opened or refreshed in the background, without wakes.
+
+There is nothing to create on Microsoft's side for the push: the device makes
+the Graph subscription with these URLs itself, and Graph checks each URL with
+a validation request before it accepts the subscription. M8d refuses any URL
+except exactly `https://<publicHostname>/hooks/outlook/graph` and
+`https://<publicHostname>/hooks/outlook/graph/lifecycle`, and the tunnel
+ingress routes those two paths and no other under `/hooks/outlook/`.
+
+**Before the host PR** (the owner, once): register the Entra app for
+"Personal Microsoft accounts only", with the iOS redirect for `app.hasala.ios`
+and the delegated permissions `Mail.Read`, `offline_access`, `openid` and
+`email`. Its client id is `<ENTRA_CLIENT_ID>`. It has no client secret; the
+app is a public client, and nothing Microsoft-side goes in `secrets/`.
+
+**The link and the push, on a running host.** One host PR, in
+`modules/services/hasala.nix`: set `outlook.clientId = "<ENTRA_CLIENT_ID>"`
+and the two URLs as in the snippet above. `mailboxRouteKeyFile` is already
+set for Gmail; the two providers share it. (The link alone, without the URLs,
+is also a valid configuration.) After the activation:
+
+```sh
+journalctl -u hasalad -o cat | grep 'optional groups'        # "enabled" lists the Outlook link and push groups
+curl -s http://127.0.0.1:8471/api/v1/meta                    # "outlook_notification_url":"https://api.hasala.app/hooks/outlook/graph", and the lifecycle URL
+curl -s -D- -X POST 'https://api.hasala.app/hooks/outlook/graph?validationToken=abc'             # 200, "abc", text/plain, nosniff
+curl -s -D- -X POST 'https://api.hasala.app/hooks/outlook/graph/lifecycle?validationToken=abc'   # the same
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.hasala.app/hooks/outlook/graph/x   # 404 from cloudflared
+```
+
+**Turning the push off again.** Remove the two URLs in a host PR. `/meta`
+then offers `null`, the hooks answer 404, and the app stops renewing.
+Subscriptions that devices already hold keep posting into the 404 until they
+expire (7 days at most); Graph may then remove them. The link keeps working.
+Removing `outlook.clientId` as well (and both URLs with it, M8d) unmounts the
+Outlook link; the route key stays for Gmail.
 
 ## PR C: "hasala: operator console (tailnet only)"
 

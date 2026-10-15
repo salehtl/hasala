@@ -71,17 +71,30 @@ func NormalizeAddress(x string) string {
 	return string(b)
 }
 
-// AddressHMAC is HMAC(route_key, "hasala/v1/mailbox-route" ‖ 00 ‖ "gmail" ‖ 00
-// ‖ address) over the normalized address.
-func (r RouteKey) AddressHMAC(address string) []byte {
+// The mailbox providers: the strings the database, the API and the address
+// HMAC use.
+const (
+	ProviderGmail   = "gmail"
+	ProviderOutlook = "outlook"
+)
+
+// AddressHMACFor is HMAC(route_key, "hasala/v1/mailbox-route" ‖ 00 ‖ provider
+// ‖ 00 ‖ address) over the normalized address. The provider is one of the
+// Provider constants, so one address linked through two providers gives two
+// unrelated values.
+func (r RouteKey) AddressHMACFor(provider, address string) []byte {
 	m := hmac.New(sha256.New, r.k)
 	m.Write([]byte(keyproto.DomainMailboxRoute))
 	m.Write([]byte{0})
-	m.Write([]byte("gmail"))
+	m.Write([]byte(provider))
 	m.Write([]byte{0})
 	m.Write([]byte(NormalizeAddress(address)))
 	return m.Sum(nil)
 }
+
+// AddressHMAC is AddressHMACFor(ProviderGmail, address), the key the Gmail
+// hook routes by.
+func (r RouteKey) AddressHMAC(address string) []byte { return r.AddressHMACFor(ProviderGmail, address) }
 
 // KeyID is HMAC(route_key, "hasala/v1/mailbox-route-key-id")[0:8].
 func (r RouteKey) KeyID() []byte {
