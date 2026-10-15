@@ -18,6 +18,8 @@ struct BankAlertsPage: View {
   /// A new row before it lands, then once it landed (the haptic's trigger).
   @State private var arriving: String?
   @State private var landed: String?
+  /// Whether this page is the one on screen (not under a pushed page).
+  @State private var visible = false
   /// The hero's sign-in again, while it runs or after it failed.
   @State private var signIn: MailConnectCoordinator?
   /// Each sign-in again that worked (the success haptic's trigger).
@@ -53,7 +55,12 @@ struct BankAlertsPage: View {
     .background(HColor.surfaceSecondary)
     .navigationTitle("Bank alerts")
     .navigationBarTitleDisplayMode(.inline)
-    .onAppear { noteRows(mailboxes.map(\.id)) }
+    .onAppear {
+      visible = true
+      noteRows(mailboxes.map(\.id))
+      if let arriving { land(arriving) }
+    }
+    .onDisappear { visible = false }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
     // A mailbox connected or signed in again: the motion policy's success, once each.
     .hHaptic(.success, trigger: landed) { _, new in new != nil }
@@ -224,6 +231,8 @@ struct BankAlertsPage: View {
             }
           }
         }
+        // A chip that changes (Syncing to Connected, Sign in again to Connected) cross-fades.
+        .hAnimation(.stateSwap, value: mailboxes.map(\.state))
       }
       Text(MailCopy.mailboxesFootnote)
         .hType(.footnote)
@@ -249,16 +258,22 @@ struct BankAlertsPage: View {
     return lane.capabilities.contains(.addSecond) || !mailboxes.contains { $0.state != .disconnected }
   }
 
-  /// Notes the rows on screen; one that wasn't here last time lands.
+  /// Notes the rows on screen; one that wasn't here last time lands, once this page shows
+  /// again (the connect that added it ran on a page pushed over this one).
   private func noteRows(_ ids: [String]) {
     defer { known = Set(ids) }
     guard let known, let new = ids.first(where: { !known.contains($0) }) else { return }
     arriving = new
+    if visible { land(new) }
+  }
+
+  private func land(_ id: String) {
     Task {
       // After the pop back settles, so the person sees it land.
       try? await Task.sleep(for: .milliseconds(motion.settled ? 0 : 200))
+      guard arriving == id else { return }
       withHMotion(.celebrate, motion) { arriving = nil }
-      landed = new
+      landed = id
     }
   }
 

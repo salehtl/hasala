@@ -170,15 +170,17 @@ final class MailboxUITests: XCTestCase {
       XCTAssertTrue(scroll(app, toShow: el(app, id)), "\(id) never came into view")
       try audit(app, atLargeText: true)
     }
+    // Disconnect ends each page, so it can't reach the upper half: drag until it can be
+    // tapped above the bottom edge.
     app = launch(scenario: nil, screen: "mail.detail", arguments: Self.largeText)
     XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: 15))
     try audit(app, atLargeText: true)
-    XCTAssertTrue(scroll(app, toShow: el(app, "mailbox.disconnect")))
+    XCTAssertTrue(reveal(app, el(app, "mailbox.disconnect")), "Disconnect never came into view")
     try audit(app, atLargeText: true)
     app = launch(scenario: nil, screen: "mail.detailSignIn", arguments: Self.largeText)
     XCTAssertTrue(el(app, "mailbox.signInAgain").waitForExistence(timeout: 15))
     try audit(app, atLargeText: true)
-    XCTAssertTrue(scroll(app, toShow: el(app, "mailbox.disconnect")))
+    XCTAssertTrue(reveal(app, el(app, "mailbox.disconnect")), "Disconnect never came into view")
     try audit(app, atLargeText: true)
   }
 

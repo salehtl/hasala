@@ -271,8 +271,9 @@ private struct MailboxFactRow: View {
     .padding(.horizontal, 16)
     .padding(.vertical, style == .details ? 10 : 14)
     .frame(minHeight: style == .details ? 52 : nil)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(fact.key)
-    .accessibilityValue(fact.value)
+    // One line of text for VoiceOver ("Account, Personal Microsoft"), not a control: a
+    // label with a value reads as one to the accessibility audit, which then finds its
+    // 20 pt text too small to tap.
+    .accessibilityElement(children: .combine)
   }
 }
