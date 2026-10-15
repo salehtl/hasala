@@ -98,7 +98,12 @@ the job.
 - `nixos-vm` reads only `infra/`, `server/` and the flake.
 - A change in `.github/` starts all jobs. `secrets` always runs.
 - If `changes` does not succeed, all jobs run.
-- A push to `main` or a manual run starts all jobs.
+- A manual run starts all jobs.
+- A push to `main` starts all jobs except the Mac jobs (`swift`, `ios`,
+  `ios-ui`, `ios-tools`). These use the same path rules, against the commit
+  that `main` was at before the push. The pull request already ran them on
+  the same code, because a branch must be up to date before it merges. If CI
+  cannot get that commit (a new branch, a force push), all jobs run.
 
 Rules for a change to the CI:
 
