@@ -98,15 +98,17 @@ public struct HeroVerdictLine: View {
     ReflowingRow(spacing: 12) {
       // The dot sits centred in a lane one line tall, so it stays on the first line when the
       // words wrap.
+      // The words are the element (static text, read as "On track, AED 8,711.66 left"); the
+      // dot only repeats them in colour.
       HStack(alignment: .top, spacing: 6) {
         Circle().fill(dotColor).frame(width: 8, height: 8).frame(height: lane)
+          .accessibilityHidden(true)
         Text("\(Text(word.rendered(hidden: hidden)).font(wordFont).foregroundStyle(wordColor))\(factText)")
           .hType(.subheadline)
           .foregroundStyle(HColor.textOnWashSecondary)
           .fixedSize(horizontal: false, vertical: true)
+          .accessibilityLabel(spoken)
       }
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel(spoken)
     } trailing: {
       if let link {
         // A 20 pt line with a 44 pt target: the padding is inside the button and taken back
