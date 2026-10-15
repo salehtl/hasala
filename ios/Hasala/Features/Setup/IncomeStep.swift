@@ -25,10 +25,10 @@ struct IncomeStep: View {
       amountArea
     } dock: {
       VStack(spacing: 0) {
+        // Paper "Action": the button right under the amount area, 16 above the keypad.
         BusyButton(title: "Continue", busy: false, enabled: model.incomeMinor != nil,
                    identifier: "income.continue", action: model.continueWithIncome)
           .padding(.horizontal, HSpacing.insetPage)
-          .padding(.top, 8)
           .padding(.bottom, 16)
         AmountKeypad(entry: $model.incomeEntry, layout: .docked)
       }

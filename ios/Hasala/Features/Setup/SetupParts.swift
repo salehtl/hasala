@@ -32,23 +32,19 @@ struct SetupScreen<Content: View, Dock: View>: View {
   @ViewBuilder var content: () -> Content
   @ViewBuilder var dock: () -> Dock
 
-  /// The scroll view's visible height, inside its bars.
-  @State private var viewport: CGFloat = 0
-
   var body: some View {
-    ScrollView {
-      switch layout {
-      case .fill:
-        FillOrGrow(minHeight: viewport) { column(filling: true) }
-      case .scroll:
-        column(filling: false).padding(.bottom, 16)
+    // The reader sees the room between the header and the dock (the safe area); the
+    // scroll view inside still runs under both.
+    GeometryReader { viewport in
+      ScrollView {
+        switch layout {
+        case .fill:
+          FillOrGrow(minHeight: viewport.size.height) { column(filling: true) }
+        case .scroll:
+          column(filling: false).padding(.bottom, 16)
+        }
       }
-    }
-    .scrollBounceBehavior(.basedOnSize)
-    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-      geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom
-    } action: { _, height in
-      viewport = max(0, height)
+      .scrollBounceBehavior(.basedOnSize)
     }
     .safeAreaBar(edge: .bottom) { dock() }
     .background(alignment: .top) {

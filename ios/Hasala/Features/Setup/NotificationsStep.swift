@@ -133,6 +133,8 @@ private struct LockScreenFace: View {
         .minimumScaleFactor(0.5)
         .lineLimit(1)
         .cappedText()
+        // Paper's 64/70: the clock's line, not the face's taller natural one.
+        .frame(height: clock * 70 / 64)
         .padding(.bottom, 14)
       banner
     }
