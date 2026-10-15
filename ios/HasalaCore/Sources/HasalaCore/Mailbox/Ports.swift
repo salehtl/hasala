@@ -46,8 +46,8 @@ public protocol MailboxLedger: Sendable {
   func projectedMessageIDs(among ids: [String]) async -> Set<String>
   /// Whether an op with this ingest id has folded or is pending on this device.
   func isIngested(_ ingestID: String) async -> Bool
-  /// Authors `account_set` / `card_linked` for the confirmed cards (03b §4.2-§4.3) and enqueues
-  /// them, before any staged transaction is authored (§7.7 step 5).
+  /// Authors `account_set` / `card_linked` for the given cards (03b §4.2-§4.3) and enqueues them.
+  /// The engine no longer calls it (setup has no cards step); kept for marking a card later.
   func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError)
   /// Authors `sender_trust_set {domain, trusted}` (03c §7.1; "Add a sender", "Trust <domain>").
   func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError)

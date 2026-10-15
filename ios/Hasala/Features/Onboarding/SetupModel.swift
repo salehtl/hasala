@@ -7,7 +7,6 @@ enum SetupRoute: Hashable {
   case scan
   case income
   case plan
-  case cards
   case result
   case notifications
   case done
@@ -17,8 +16,11 @@ enum SetupRoute: Hashable {
 /// them for the process (the live build reads them back from the projection and prefs).
 ///
 /// The same model runs "Connect Gmail" after setup (`connecting`, from Home or Profile):
-/// the bank step only when the account reads no bank yet, then Gmail, then the cards when
-/// the first scan needs them, in a sheet that closes at the end.
+/// the bank step only when the account reads no bank yet, then Gmail, then the scan's
+/// result, in a sheet that closes at the end.
+///
+/// The first scan never holds setup up: "Set up your plan" leaves it running, the result
+/// step continues whether or not it has finished, and it carries on after setup ends.
 @MainActor
 @Observable
 final class SetupModel {
@@ -47,8 +49,7 @@ final class SetupModel {
   var payday = 28
   var plan = StartingPlan()
 
-  // Cards and result
-  var cards: [DiscoveredCard] = []
+  // Result
   private(set) var summary: SortSummary?
 
   // Notifications
@@ -91,7 +92,7 @@ final class SetupModel {
   var step: OnboardingStep { OnboardingStep.derive(facts) }
 
   /// Routes for the derived step, so a relaunch mid-setup resumes there. A scan cut short
-  /// starts streaming again, so the cards it found reach the cards step.
+  /// starts streaming again.
   func resume() {
     switch step {
     case .bank, .passcode, .account, .keys: path = []
@@ -100,29 +101,28 @@ final class SetupModel {
       path = [.gmail, .scan]
       startScan()
     case .income: path = [.income]
-    case .plan: path = [.income, .plan]
-    case .cards:
-      path = [.cards]
-      startScan()
+    case .plan:
+      path = [.income, .plan]
+      if facts.mailbox == .scanning { startScan() }
     case .notifications: path = [.notifications]
     case .done: path = [.done]
     case .finished: onFinished()
     }
   }
 
-  /// A connect after setup opens where the lane is: a first scan whose cards are still to
-  /// confirm goes straight to the cards.
+  /// A connect after setup opens where the lane is: a first scan still running shows its
+  /// progress on the result step.
   func openConnect() async {
     guard connecting != nil else { return }
     facts.mailbox = await services.mailbox.linkState()
-    if facts.mailbox == .scanning || facts.mailbox == .awaitingCards {
-      path = [.cards]
+    if facts.mailbox == .scanning {
+      path = [.result]
       startScan()
     }
   }
 
-  /// Setup's step numbers ("2 of 5"); a connect after setup shows none.
-  func steps(_ n: Int) -> (current: Int, of: Int)? { connecting == nil ? (n, 5) : nil }
+  /// Setup's step numbers ("2 of 4"); a connect after setup shows none.
+  func steps(_ n: Int) -> (current: Int, of: Int)? { connecting == nil ? (n, 4) : nil }
 
   /// The Gmail step's button.
   var connectTitle: String { (connecting ?? .connect).action }
@@ -130,12 +130,11 @@ final class SetupModel {
   /// The Gmail step is the first screen of a connect after setup: nothing to go back to.
   var gmailIsFirst: Bool { connecting != nil && !path.contains(.gmail) }
 
-  /// The top bar's back button on the Gmail step and the cards: none where a connect after
-  /// setup has nothing to go back to (its first screen, and the cards once connected).
+  /// The top bar's back button on the Gmail step: none where a connect after setup has
+  /// nothing to go back to (its first screen).
   func backButton(on route: SetupRoute) -> (() -> Void)? {
     switch route {
     case .gmail where gmailIsFirst: nil
-    case .cards where connecting != nil: nil
     default: { [weak self] in self?.back() }
     }
   }
@@ -148,7 +147,7 @@ final class SetupModel {
   }
 
   /// "Close" on a connect after setup: the sheet goes, and a scan carries on in the
-  /// background (the Home card brings the cards back).
+  /// background (Home and Profile say "Importing" until it's in).
   func close() {
     scanTask?.cancel()
     (onClose ?? onFinished)()
@@ -187,7 +186,7 @@ final class SetupModel {
     }
   }
 
-  /// "Skip": manual-entry mode; Gmail, the scan and the cards are skipped too.
+  /// "Skip": manual-entry mode; Gmail and the scan are skipped too.
   func skipBanks() {
     facts.bankSkipped = true
     go(.income)
@@ -224,12 +223,12 @@ final class SetupModel {
       go(.scan)
       return
     }
-    // After setup: a first connect (or a reconnect cut short mid-scan) goes on to the
-    // cards; a reconnect resumes where it stopped and is done.
+    // After setup: a first connect (or a reconnect cut short mid-scan) shows the scan's
+    // progress and result; a reconnect resumes where it stopped and is done.
     facts.mailbox = await services.mailbox.linkState()
-    if facts.mailbox == .scanning || facts.mailbox == .awaitingCards {
+    if facts.mailbox == .scanning {
       startScan()
-      go(.cards)
+      go(.result)
     } else {
       finish()
     }
@@ -259,10 +258,10 @@ final class SetupModel {
       for await p in stream {
         guard let self else { return }
         self.scan = p
+        if let s = p.summary { self.summary = s }
         switch p.phase {
-        case .awaitingCards:
-          self.facts.mailbox = .awaitingCards
-          self.cards = await self.services.mailbox.discoveredCards()
+        case .finished:
+          self.facts.mailbox = .linked
         case .failed(let message):
           self.failure = .failed(message)
         default: break
@@ -270,8 +269,6 @@ final class SetupModel {
       }
     }
   }
-
-  var scanRunning: Bool { scan?.isRunning ?? false }
 
   /// "Set up your plan" while the scan keeps running.
   func planWhileScanning() {
@@ -320,36 +317,23 @@ final class SetupModel {
     }
   }
 
+  /// After the plan: the scan's result when Gmail was connected here (finished or not; it
+  /// never waits), else notifications.
   private func afterPlan() {
-    if facts.mailbox == .scanning || facts.mailbox == .awaitingCards {
-      go(.cards)
+    if scanTask != nil {
+      go(.result)
     } else {
       go(.notifications)
     }
   }
 
-  // MARK: Cards (step 8)
+  // MARK: Result
 
-  var keptCards: Int { cards.filter(\.keep).count }
+  /// The scan has stopped in the foreground and filed what's shown; it may go on later.
+  var scanDone: Bool { scan?.phase == .finished }
 
-  func toggleCard(_ id: String) {
-    guard let i = cards.firstIndex(where: { $0.id == id }) else { return }
-    cards[i].keep.toggle()
-  }
-
-  func confirmCards() async {
-    busy = true
-    defer { busy = false }
-    do {
-      summary = try await services.mailbox.confirmCards(cards)
-      facts.mailbox = .linked
-      go(.result)
-    } catch {
-      failure = error
-    }
-  }
-
-  /// "Continue" on the result: setup goes on to notifications; a connect after setup is done.
+  /// "Continue" on the result, whether or not the scan has finished: setup goes on to
+  /// notifications; a connect after setup is done.
   func afterResult() {
     if connecting != nil { finish() } else { path.append(.notifications) }
   }
@@ -368,6 +352,7 @@ final class SetupModel {
     go(.done)
   }
 
+  /// Leaves setup. Only this screen stops following the scan; the import goes on.
   func finish() {
     facts.finished = true
     scanTask?.cancel()

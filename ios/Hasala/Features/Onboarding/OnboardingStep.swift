@@ -11,7 +11,6 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
   case scan
   case income
   case plan
-  case cards
   case notifications
   case done
   /// Every step is complete: the app opens.
@@ -27,7 +26,7 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     /// ≥ 1 bank projected, or "Skip" (manual-entry mode).
     var banksChosen = false
     var bankSkipped = false
-    enum Mailbox: Equatable, Sendable { case unlinked, scanning, awaitingCards, linked, otherDevice }
+    enum Mailbox: Equatable, Sendable { case unlinked, scanning, linked, otherDevice }
     var mailbox: Mailbox = .unlinked
     var gmailSkipped = false
     var sampleLoaded = false
@@ -46,7 +45,7 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     guard f.hasSession else { return .account }
     guard f.keysReady else { return .keys }
     guard f.banksChosen || f.bankSkipped else { return .bank }
-    // Skipping the bank skips Gmail, the scan and the cards: nothing can be listed.
+    // Skipping the bank skips Gmail and the scan: nothing can be listed.
     let manual = f.bankSkipped && !f.banksChosen
     let gmailDone = manual || f.mailbox != .unlinked || f.gmailSkipped || f.sampleLoaded
     guard gmailDone else { return .gmail }
@@ -54,21 +53,20 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     if !noScan, f.mailbox == .scanning, !f.scanDeferred { return .scan }
     guard f.incomeSet || f.incomeSkipped || f.sampleLoaded else { return .income }
     guard f.planSet || f.planSkipped || f.sampleLoaded else { return .plan }
-    if !noScan, f.mailbox == .scanning || f.mailbox == .awaitingCards { return .cards }
+    // A scan still running doesn't hold setup up: it carries on in the background.
     guard f.notificationsAsked else { return .notifications }
     guard f.finished else { return .done }
     return .finished
   }
 
-  /// Paper's step indicator: bank 1, Gmail and scan 2, income 3, plan 4, cards 5 "of 5";
-  /// later boards carry no number.
+  /// The step indicator: bank 1, Gmail and scan 2, income 3, plan 4 "of 4"; later boards
+  /// carry no number.
   var indicator: Int? {
     switch self {
     case .bank: 1
     case .gmail, .scan: 2
     case .income: 3
     case .plan: 4
-    case .cards: 5
     default: nil
     }
   }

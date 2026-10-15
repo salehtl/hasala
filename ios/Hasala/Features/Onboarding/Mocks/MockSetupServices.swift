@@ -3,10 +3,9 @@
   import Observation
 
   /// The Gmail lane's stand-in for Debug scenarios and UI tests: a connect that always
-  /// succeeds, a first scan of 268 synthetic alerts that runs in about two seconds, and
-  /// the three cards of Paper's "Are these your cards?" (synthetic last-four digits).
-  /// `gmailOffer` starts the Home and Profile Gmail actions (the `gmailSkipped` and
-  /// `gmailReconnect` scenarios); a connect, or the cards step, ends it.
+  /// succeeds and a first scan of 268 synthetic alerts that files them in about two seconds,
+  /// whether or not anyone is still watching. `gmailOffer` starts the Home and Profile Gmail
+  /// actions (the `gmailSkipped` and `gmailReconnect` scenarios); a connect ends it.
   @MainActor
   @Observable
   final class MockMailbox: MailboxConnecting {
@@ -23,7 +22,6 @@
     var step: Duration = .milliseconds(120)
     private(set) var connected = false
     private(set) var sampleLoaded = false
-    private(set) var confirmed: [DiscoveredCard] = []
 
     init(offersSampleData: Bool = false) {
       self.offersSampleData = offersSampleData
@@ -39,49 +37,33 @@
       // A reconnect picks up where the lane stopped; a first connect scans.
       if gmailOffer == .reconnect {
         link = .linked
-        gmailOffer = nil
       } else {
         link = .scanning
       }
+      gmailOffer = nil
     }
 
     func firstScan() -> AsyncStream<ScanProgress> {
       let total = total
       let step = step
+      let dictionary = Int(Double(total) * 0.65)
+      let model = sortsWithModel ? Int(Double(total) * 0.21) : 0
+      let summary = SortSummary(
+        total: total, byRules: 0, byDictionary: dictionary, byModel: model, toReview: total - dictionary - model)
       return AsyncStream { continuation in
-        let task = Task {
+        // Like the live lane, the import outlives the stream.
+        Task {
           var read = 0
           while read < total {
             try? await Task.sleep(for: step)
-            if Task.isCancelled { break }
             read = min(total, read + 24)
             continuation.yield(ScanProgress(phase: read < total / 3 ? .downloading : .sorting, read: read, total: total))
           }
-          continuation.yield(ScanProgress(phase: .awaitingCards, read: total, total: total))
+          self.link = .linked
+          continuation.yield(ScanProgress(phase: .finished, read: total, total: total, summary: summary))
           continuation.finish()
         }
-        continuation.onTermination = { _ in task.cancel() }
       }
-    }
-
-    func discoveredCards() async -> [DiscoveredCard] {
-      [
-        DiscoveredCard(id: "card-enbd-1", bank: .enbd, last4: "4421", alertCount: 201, keep: true),
-        DiscoveredCard(id: "card-dib-1", bank: .dib, last4: "0937", alertCount: 63, keep: true),
-        DiscoveredCard(id: "card-enbd-2", bank: .enbd, last4: "1180", alertCount: 4, keep: false),
-      ]
-    }
-
-    func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> SortSummary {
-      try? await Task.sleep(for: .milliseconds(200))
-      confirmed = cards
-      link = .linked
-      gmailOffer = nil
-      let kept = cards.filter(\.keep).reduce(0) { $0 + $1.alertCount }
-      let dictionary = Int(Double(kept) * 0.65)
-      let model = sortsWithModel ? Int(Double(kept) * 0.21) : 0
-      return SortSummary(total: kept, byRules: 0, byDictionary: dictionary, byModel: model,
-                         toReview: kept - dictionary - model)
     }
 
     func loadSampleData() async throws(SetupFailure) {
