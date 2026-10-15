@@ -4,6 +4,7 @@ import DetailSection from '../components/DetailSection.astro';
 import BankTiles from '../components/BankTiles.astro';
 import AlertArt from '../components/detail/AlertArt.astro';
 import Review from '../components/detail/Review.astro';
+import { MAIL_NOTE } from '../data/site';
 ---
 
 <Detail
@@ -21,7 +22,7 @@ import Review from '../components/detail/Review.astro';
       Hasala can’t send, change or delete mail. If an email only looks like it came from your bank, Hasala checks just its sender details and sets it aside.
       Nothing is sent to an AI service.
     </p>
-    <p>Hasala works with Gmail for now.</p>
+    <p>{MAIL_NOTE}</p>
     <AlertArt kind="mail" slot="art" />
   </DetailSection>
 
