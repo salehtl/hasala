@@ -54,7 +54,9 @@ struct NotificationsSheet: View {
           }
         }
         .padding(.horizontal, HSpacing.insetPage)
-        .padding(.top, 6)
+        // Paper: the 48 header, 18, then the content 6 down, so "Needs a look" starts 48 under
+        // the header's centre line. The system bar's own height leaves 9 of that to us.
+        .padding(.top, 15)
         .padding(.bottom, 40)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("bell.sheet")
