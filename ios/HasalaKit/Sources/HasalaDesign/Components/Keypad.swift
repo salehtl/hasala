@@ -196,14 +196,18 @@ struct KeypadKey: View {
 
   @ViewBuilder private var label: some View {
     switch key {
+    // Digits keep 28 at every text size on purpose (page 11); the figure above is what grows.
+    // The marker tells the accessibility audit the fixed size is deliberate.
     case .digit(let d):
       Text("\(d)")
         .font(.system(size: HFontSize.numericMedium, weight: .medium, design: .rounded))
         .foregroundStyle(HColor.textPrimary)
+        .accessibilityIdentifier(hasalaCappedFigureIdentifier)
     case .decimal:
       Text(verbatim: ".")
         .font(.system(size: HFontSize.numericMedium, weight: .medium, design: .rounded))
         .foregroundStyle(HColor.textPrimary)
+        .accessibilityIdentifier(hasalaCappedFigureIdentifier)
     case .delete:
       HIconView(.delete, size: 26, color: HColor.iconPrimary)
     }

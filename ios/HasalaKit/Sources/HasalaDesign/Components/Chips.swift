@@ -404,6 +404,9 @@ private struct StyledBadge: View {
   var body: some View {
     Text(count > 99 ? "99+" : "\(count)")
       .font(.system(size: figure, weight: .bold, design: .rounded).monospacedDigit())
+      // Stops growing at AX1 on purpose, like the capped hero figures: the accessibility
+      // audit accepts partial Dynamic Type only on text with this marker.
+      .accessibilityIdentifier(hasalaCappedFigureIdentifier)
       .foregroundStyle(style == .title24 ? HColor.white : HColor.badgeCountText)
       .padding(.horizontal, CountBadge.padding(style))
       .frame(minWidth: height, minHeight: height)
