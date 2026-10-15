@@ -18,17 +18,28 @@ struct RootView: View {
     @State private var mock: MockGraph? = MockGraph.fromLaunchArguments(ProcessInfo.processInfo.arguments)
   #endif
 
+  /// The motion policy (plan B1.2) is set here once, above the gate, the shell and their
+  /// sheets, so every part of the design system reads the same Reduce Motion answer.
   var body: some View {
     #if HASALA_MOCKS
-      if let mock {
-        AccountRootView(session: mock.session, onboarding: mock.onboarding, setupFacts: mock.setupFacts) {
-          MainView(app: mock.app)
+      Group {
+        if let mock {
+          AccountRootView(session: mock.session, onboarding: mock.onboarding, setupFacts: mock.setupFacts) {
+            MainView(app: mock.app)
+          }
+        } else {
+          LiveRootView()
         }
-      } else {
-        LiveRootView()
       }
+      // `-HasalaMotion off|reduce` (plan B6): end states at once for screenshots, or the
+      // Reduce Motion substitutes without the system setting.
+      .hMotionPolicy(
+        settled: MotionLaunch.current?.settled ?? false,
+        forceReduceMotion: MotionLaunch.current?.reduceMotion ?? false
+      )
     #else
       LiveRootView()
+        .hMotionPolicy()
     #endif
   }
 }
