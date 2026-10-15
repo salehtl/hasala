@@ -1,7 +1,8 @@
 import Foundation
 
 // The setup steps after the account (spec 04 §6.6, Paper row 10): bank → read-only Gmail →
-// first scan → income → starting plan → your cards → result → notifications → done.
+// first scan → income → starting plan → result → notifications → done. There is no cards
+// step: the scan files what it reads, and it carries on in the background if setup ends first.
 // The Gmail lane implements `MailboxConnecting` (spec 04 §7); the op-authoring lane
 // implements `SetupAuthoring` over OpAuthor + Outbox (§6.6 "When ops are authored").
 
@@ -48,29 +49,22 @@ struct ScanProgress: Equatable, Sendable {
     case downloading
     /// Parsing and sorting on device.
     case sorting
-    /// Waiting for the user to confirm the cards found.
-    case awaitingCards
-    /// Done: cards confirmed and the backfill authored.
+    /// The whole window is read and filed.
     case finished
+    /// The foreground run stopped first (no trusted sender yet, offline, or the run limit);
+    /// the import carries on in the background.
+    case background
     case failed(String)
   }
 
   var phase: Phase
   var read: Int
   var total: Int
+  /// How what was filed so far was sorted (with `.finished` and `.background`).
+  var summary: SortSummary?
 
   var isRunning: Bool { phase == .downloading || phase == .sorting }
   var fraction: Double { total == 0 ? 0 : min(1, Double(read) / Double(total)) }
-}
-
-/// A card found in the alerts, before the user confirms it (spec 04 §7.7, PO-16).
-struct DiscoveredCard: Identifiable, Equatable, Sendable {
-  var id: String
-  var bank: SupportedBank
-  /// The last four digits as the alerts show them (masked; never the full number).
-  var last4: String
-  var alertCount: Int
-  var keep: Bool
 }
 
 /// How the scan sorted the transactions (Paper "264 transactions, sorted.").
@@ -81,11 +75,12 @@ struct SortSummary: Equatable, Sendable {
   var byModel: Int
   var toReview: Int
 
-  var sortedThemselves: Int { byRules + byDictionary + byModel }
+  /// Filed with a category and nothing to check; the rest wait in Review.
+  var sortedThemselves: Int { max(0, total - toReview) }
 }
 
 /// What Home and Profile offer for Gmail once setup is done: "Connect Gmail" when the Gmail
-/// step was skipped or its cards step is still to do (spec 04 §6.6 row 4), "Reconnect Gmail"
+/// step was skipped (spec 04 §6.6 row 4), "Reconnect Gmail"
 /// when Google wants a new sign-in or the lane stopped (§7.4).
 enum GmailOffer: String, Identifiable, Sendable {
   case connect
@@ -124,13 +119,9 @@ protocol MailboxConnecting: AnyObject {
   /// Runs Google's sign-in (read-only scope), the `mailbox.link` step-up and the first
   /// listing for `banks`' senders. Throws `.cancelled` when the user closes Google's sheet.
   func connectGmail(banks: [SupportedBank]) async throws(SetupFailure)
-  /// The first scan's progress; the stream ends when the scan reaches `.awaitingCards`
-  /// or fails.
+  /// The first scan's progress: it reads the window and files what it finds, then ends
+  /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
   func firstScan() -> AsyncStream<ScanProgress>
-  /// The cards found so far (complete once the scan is `.awaitingCards`).
-  func discoveredCards() async -> [DiscoveredCard]
-  /// Authors `account_set` / `card_linked` for the kept cards and starts the backfill.
-  func confirmCards(_ cards: [DiscoveredCard]) async throws(SetupFailure) -> SortSummary
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of Gmail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)

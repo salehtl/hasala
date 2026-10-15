@@ -517,14 +517,15 @@ struct AccountFlowTests {
     #expect(setup.income == 2_500_000)
     #expect(setup.plan == StartingPlan())
     #expect(m.plan.amounts(income: 2_500_000) == (1_250_000, 750_000, 500_000))
-    #expect(m.path.last == .cards)
-    // Wait for the mock scan to reach the cards.
-    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(m.cards.count == 3)
-    #expect(m.keptCards == 2)
-    await m.confirmCards()
-    #expect(m.summary?.total == 264)
+    // No cards step: the result, finished or not, then notifications.
+    #expect(m.path.last == .result)
     #expect(m.step == .notifications)
+    for _ in 0..<400 where !m.scanDone { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(m.scanDone)
+    #expect(m.summary?.total == 268)
+    #expect(m.facts.mailbox == .linked)
+    m.afterResult()
+    #expect(m.path.last == .notifications)
     await m.allowNotifications()
     #expect(m.step == .done)
     m.finish()
@@ -553,7 +554,7 @@ struct AccountFlowTests {
     return (s, mailbox)
   }
 
-  @Test func connectingGmailAfterSetupRunsGmailThenTheCards() async throws {
+  @Test func connectingGmailAfterSetupRunsGmailThenTheResult() async throws {
     let (s, mailbox) = connectServices(.connect, banks: [.dib])
     var finished = 0, closed = 0
     let m = SetupModel.connectingGmail(.connect, services: s, onClose: { closed += 1 }, onFinished: { finished += 1 })
@@ -565,13 +566,10 @@ struct AccountFlowTests {
     await m.openConnect()
     #expect(m.path.isEmpty)
     await m.connectGmail()
-    #expect(m.path == [.cards])
-    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(m.cards.count == 3)
-    await m.confirmCards()
-    #expect(m.path == [.cards, .result])
+    #expect(m.path == [.result])
     #expect(mailbox.gmailOffer == nil)
     #expect(finished == 0)
+    // "Continue" doesn't wait for the import.
     m.afterResult()
     #expect(finished == 1 && closed == 0)
   }
@@ -600,28 +598,27 @@ struct AccountFlowTests {
     #expect(closed == 1)
   }
 
-  /// Closed during the scan: the Home card opens the cards again, where the scan is.
-  @Test func connectingGmailResumesAtTheCards() async throws {
+  /// Opened again during the scan (a reconnect cut short mid-scan): the result shows it.
+  @Test func connectingGmailResumesAtTheResult() async throws {
     let (s, mailbox) = connectServices(.connect)
     try await mailbox.connectGmail(banks: [.enbd])
     let m = SetupModel.connectingGmail(.connect, services: s, onClose: {}, onFinished: {})
     await m.openConnect()
-    #expect(m.path == [.cards])
-    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(m.cards.count == 3)
+    #expect(m.path == [.result])
+    for _ in 0..<400 where !m.scanDone { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(m.summary?.total == 268)
   }
 
-  @Test func setupResumedAtTheCardsStreamsTheScanAgain() async throws {
+  @Test func setupResumedWithTheScanStillRunningGoesOnToNotifications() {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.mailbox = .awaitingCards
+    facts.mailbox = .scanning
+    facts.scanDeferred = true
     facts.incomeSkipped = true
     facts.planSkipped = true
     let m = SetupModel(services: s, displayName: "Maya", facts: facts) {}
     m.resume()
-    #expect(m.path == [.cards])
-    for _ in 0..<200 where m.cards.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(m.cards.count == 3)
+    #expect(m.path == [.notifications])
   }
 
   @Test func resumesAtTheDerivedStep() {

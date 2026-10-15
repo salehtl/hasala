@@ -161,7 +161,8 @@ struct OnboardingStepTests {
     f.incomeSet = true
     #expect(OnboardingStep.derive(f) == .plan)
     f.planSet = true
-    #expect(OnboardingStep.derive(f) == .cards)
+    // No cards step: a scan still running doesn't hold setup up.
+    #expect(OnboardingStep.derive(f) == .notifications)
     f.mailbox = .linked
     #expect(OnboardingStep.derive(f) == .notifications)
     f.notificationsAsked = true
@@ -170,7 +171,7 @@ struct OnboardingStepTests {
     #expect(OnboardingStep.derive(f) == .finished)
   }
 
-  @Test func skippingTheBankSkipsGmailScanAndCards() {
+  @Test func skippingTheBankSkipsGmailAndTheScan() {
     var f = F(hasSession: true, keysReady: true)
     f.bankSkipped = true
     #expect(OnboardingStep.derive(f) == .income)
@@ -179,7 +180,7 @@ struct OnboardingStepTests {
     #expect(OnboardingStep.derive(f) == .notifications)
   }
 
-  @Test func sampleDataCompletesGmailThroughCards() {
+  @Test func sampleDataCompletesGmailAndTheScan() {
     var f = F(hasSession: true, keysReady: true, banksChosen: true)
     f.sampleLoaded = true
     #expect(OnboardingStep.derive(f) == .notifications)
@@ -188,7 +189,8 @@ struct OnboardingStepTests {
   @Test func indicatorNumbers() {
     #expect(OnboardingStep.bank.indicator == 1)
     #expect(OnboardingStep.scan.indicator == 2)
-    #expect(OnboardingStep.cards.indicator == 5)
+    #expect(OnboardingStep.plan.indicator == 4)
+    #expect(OnboardingStep.notifications.indicator == nil)
     #expect(OnboardingStep.done.indicator == nil)
   }
 }

@@ -18,7 +18,6 @@ struct SetupFlowView: View {
           case .scan: ScanView(model: model)
           case .income: IncomeView(model: model)
           case .plan: StartingPlanView(model: model)
-          case .cards: CardsView(model: model)
           case .result: ScanResultView(model: model)
           case .notifications: NotificationsStepView(model: model)
           case .done: DoneView(model: model)
@@ -199,7 +198,7 @@ struct GmailView: View {
   }
 }
 
-// MARK: - The scan (2 of 5)
+// MARK: - The scan (2 of 4)
 
 struct ScanProgressCard: View {
   var scan: ScanProgress?
@@ -233,7 +232,7 @@ struct ScanView: View {
     AccountScreen(
       title: "Reading your bank alerts, on this iPhone.",
       subtitle: "Your alerts are read here and sealed before anything syncs. It takes a minute or two, so set up your plan meanwhile.",
-      steps: (2, 5),
+      steps: (2, 4),
       onBack: model.back
     ) {
       VStack(spacing: 12) {
@@ -298,14 +297,18 @@ struct ScanPill: View {
   var body: some View {
     if let scan {
       HStack(spacing: 8) {
-        if scan.isRunning {
-          ProgressView().controlSize(.mini)
-          Text("Reading on this iPhone").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-          Text("\(scan.read) of \(scan.total)").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        } else {
+        switch scan.phase {
+        case .finished:
           Image(systemName: "checkmark.circle.fill").foregroundStyle(HColor.statusSuccessForeground)
           Text("All \(scan.total) alerts read on this iPhone").hType(.footnote.weight(.semibold))
             .foregroundStyle(HColor.textPrimary)
+        case .background, .failed:
+          Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(HColor.textSecondary)
+          Text("Importing in the background").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        case .downloading, .sorting:
+          ProgressView().controlSize(.mini)
+          Text("Reading on this iPhone").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+          Text("\(scan.read) of \(scan.total)").hType(.footnote).foregroundStyle(HColor.textSecondary)
         }
       }
       .padding(.horizontal, 14)
@@ -318,7 +321,7 @@ struct ScanPill: View {
   }
 }
 
-// MARK: - Income (3 of 5)
+// MARK: - Income (3 of 4)
 
 struct IncomeView: View {
   @Bindable var model: SetupModel
@@ -328,7 +331,7 @@ struct IncomeView: View {
     AccountScreen(
       title: "What lands in your account each month?",
       subtitle: "After tax. You can change it any time.",
-      steps: (3, 5),
+      steps: (3, 4),
       onBack: model.back,
       trailing: ("Skip", model.skipIncome)
     ) {
@@ -383,7 +386,7 @@ struct IncomeView: View {
   }
 }
 
-// MARK: - Starting plan (4 of 5)
+// MARK: - Starting plan (4 of 4)
 
 struct StartingPlanView: View {
   @Bindable var model: SetupModel
@@ -393,7 +396,7 @@ struct StartingPlanView: View {
     AccountScreen(
       title: "Here's a plan to start with.",
       subtitle: "\(model.plan.needsPercent)% for needs, \(model.plan.wantsPercent)% for wants, \(model.plan.savingsPercent)% for savings. Hasala fills in your categories, and you can change any of them later.",
-      steps: (4, 5),
+      steps: (4, 4),
       onBack: model.back,
       trailing: ("Skip", { Task { await model.savePlan(skip: true) } })
     ) {
@@ -493,97 +496,67 @@ struct SplitEditor: View {
   }
 }
 
-// MARK: - Cards (5 of 5)
-
-struct CardsView: View {
-  @Bindable var model: SetupModel
-
-  var body: some View {
-    AccountScreen(
-      title: "Are these your cards?",
-      subtitle: "We found these in your bank alerts. Turn off any that aren't yours, like a family member's card, and their alerts are skipped.",
-      steps: model.steps(5),
-      onBack: model.backButton(on: .cards),
-      trailing: model.topAction(skip: nil)
-    ) {
-      VStack(alignment: .leading, spacing: 12) {
-        if model.scanRunning || model.cards.isEmpty {
-          ScanProgressCard(scan: model.scan, banks: model.orderedBanks.map(\.shortName).formatted(.list(type: .and)))
-        } else {
-          VStack(spacing: 0) {
-            ForEach(Array(model.cards.enumerated()), id: \.element.id) { i, card in
-              if i > 0 { Divider().padding(.leading, 72) }
-              Toggle(isOn: Binding(get: { card.keep }, set: { _ in model.toggleCard(card.id) })) {
-                HStack(spacing: 14) {
-                  RoundedRectangle(cornerRadius: 6)
-                    .fill(card.bank == .enbd ? HColor.blue800 : HColor.green700)
-                    .frame(width: 40, height: 28)
-                    .opacity(card.keep ? 1 : 0.4)
-                    .accessibilityHidden(true)
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text("\(card.bank.name) ·· \(card.last4)").hType(.headline)
-                      .foregroundStyle(card.keep ? HColor.textPrimary : HColor.textSecondary)
-                    Text(card.keep ? "\(card.alertCount) transactions" : "Not yours · \(card.alertCount) alerts skipped")
-                      .hType(.footnote).foregroundStyle(HColor.textSecondary)
-                  }
-                }
-              }
-              .tint(HColor.actionAccent)
-              .padding(.horizontal, 16)
-              .frame(minHeight: 68)
-              .accessibilityIdentifier("card.\(card.last4)")
-            }
-          }
-          .listCard()
-          Text("Only alerts from cards you keep on are counted. If a new card turns up later, Hasala asks you first. Change this any time in Bank alerts.")
-            .hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
-        }
-        failureText(model.failure)
-      }
-    } footer: {
-      ScanPill(scan: model.scan).padding(.bottom, 8)
-      BusyButton(title: model.keptCards == 1 ? "Continue with 1 card" : "Continue with \(model.keptCards) cards",
-                 busy: model.busy, enabled: !model.scanRunning && !model.cards.isEmpty, identifier: "cards.continue") {
-        Task { await model.confirmCards() }
-      }
-    }
-  }
-}
-
 // MARK: - Result
 
 struct ScanResultView: View {
   var model: SetupModel
 
+  /// The window the first scan reads (`LiveMailboxConnecting.connectGmail`).
+  static let windowDays = 90
+
   var body: some View {
     let s = model.summary ?? SortSummary(total: 0, byRules: 0, byDictionary: 0, byModel: 0, toReview: 0)
     AccountScreen(
-      title: "\(s.total) transactions, sorted.",
-      subtitle: "All on this iPhone. \(s.sortedThemselves) sorted themselves; \(s.toReview) wait for a quick swipe.",
+      title: title(s),
+      subtitle: subtitle(s),
       wash: HColor.hueMintStart,
       centered: true
     ) {
       VStack(spacing: 16) {
-        SuccessBadge().frame(maxWidth: .infinity)
-        VStack(alignment: .leading, spacing: 12) {
-          Text("How they were sorted").hType(.overline).foregroundStyle(HColor.textSecondary)
-          row(HColor.actionAccent, "UAE merchant list", s.byDictionary)
-          if BuildSurface.showsUnfinished || s.byModel > 0 {
-            row(HColor.blue300, "Apple's on-device model", s.byModel)
-          }
-          row(HColor.amber300, "Waiting for your swipe", s.toReview)
-          Divider()
-          Text("From now on your own rules go first. Nothing was sent to an AI service.")
-            .hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
+        if model.scanDone {
+          SuccessBadge().frame(maxWidth: .infinity)
+        } else {
+          ScanProgressCard(scan: model.scan, banks: model.orderedBanks.map(\.shortName).formatted(.list(type: .and)))
         }
-        .padding(18)
-        .listCard()
+        if s.total > 0 {
+          VStack(alignment: .leading, spacing: 12) {
+            Text("How they were sorted").hType(.overline).foregroundStyle(HColor.textSecondary)
+            row(HColor.actionAccent, "UAE merchant list", s.byDictionary)
+            if s.byRules > 0 { row(HColor.green700, "Your rules", s.byRules) }
+            if BuildSurface.showsUnfinished || s.byModel > 0 {
+              row(HColor.blue300, "Apple's on-device model", s.byModel)
+            }
+            row(HColor.amber300, "Waiting for your swipe", s.toReview)
+            Divider()
+            Text("From now on your own rules go first. Nothing was sent to an AI service.")
+              .hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
+          }
+          .padding(18)
+          .listCard()
+        }
+        failureText(model.failure)
       }
     } footer: {
       Button("Continue") { model.afterResult() }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("result.continue")
     }
+  }
+
+  private func title(_ s: SortSummary) -> String {
+    if !model.scanDone { return "Importing your last \(Self.windowDays) days." }
+    return s.total == 0 ? "No bank alerts yet." : "\(s.total) transactions, sorted."
+  }
+
+  private func subtitle(_ s: SortSummary) -> String {
+    if !model.scanDone {
+      return "Carry on. They keep arriving in Hasala, newest included, and anything unsure waits for a quick swipe."
+    }
+    if s.total == 0 {
+      let banks = model.orderedBanks.map(\.shortName).formatted(.list(type: .and))
+      return "We found no alerts from \(banks) in the last \(Self.windowDays) days. New ones are read as they arrive."
+    }
+    return "All on this iPhone. \(s.sortedThemselves) sorted themselves; \(s.toReview) wait for a quick swipe."
   }
 
   private func row(_ color: Color, _ text: String, _ n: Int) -> some View {
@@ -682,7 +655,11 @@ struct DoneView: View {
         Image("HasalaMark").resizable().scaledToFit().frame(width: 132, height: 120).frame(maxWidth: .infinity)
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 12) {
-          if let s = model.summary { done("\(s.total) transactions sorted on this iPhone") }
+          if model.scanDone, let s = model.summary {
+            done("\(s.total) transactions sorted on this iPhone")
+          } else if model.scan != nil {
+            done("Your bank alerts keep importing in the background")
+          }
           if model.facts.planSet { done("Your plan is ready, starting at \(model.plan.needsPercent)/\(model.plan.wantsPercent)/\(model.plan.savingsPercent)") }
           done("Encrypted on this iPhone before it syncs")
           done(model.showDetails ? "Lock Screen shows amounts and merchants" : "Lock Screen shows no amounts or names")
@@ -713,7 +690,7 @@ struct DoneView: View {
 
 /// "Connect Gmail" or "Reconnect Gmail" once setup is done (spec 04 §6.6 row 4, §7.4), from
 /// Home's Needs-you card or the Profile card: setup's own steps through the live Gmail lane
-/// (Google's sign-in, the `mailbox.link` step-up, the first scan and the cards), in a sheet.
+/// (Google's sign-in, the `mailbox.link` step-up, the first scan and its result), in a sheet.
 struct GmailConnectSheet: View {
   let app: AppModel
   let offer: GmailOffer
@@ -749,7 +726,6 @@ private struct GmailConnectFlow: View {
       .navigationDestination(for: SetupRoute.self) { route in
         switch route {
         case .gmail: GmailView(model: model)
-        case .cards: CardsView(model: model)
         case .result: ScanResultView(model: model)
         case .scan, .income, .plan, .notifications, .done: EmptyView()
         }

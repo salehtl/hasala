@@ -176,15 +176,9 @@ final class ReleaseSurfaceTests: XCTestCase {
     assertNoPlaceholders(app, "Starting plan")
     tap(app, "plan.use")
 
-    let cards = el(app, "cards.continue")
-    XCTAssertTrue(cards.waitForExistence(timeout: 10))
-    expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: cards)
-    waitForExpectations(timeout: 20)
-    assertNoPlaceholders(app, "Your cards")
-    cards.tap()
-
     // How they were sorted: no on-device model row, since the beta doesn't use it.
     XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["268 transactions, sorted."].waitForExistence(timeout: 20))
     attach(app, "Release · Sorted")
     assertNoPlaceholders(app, "Sorted")
     assertNoText(app, ["on-device model"], "Sorted")
@@ -424,15 +418,13 @@ final class ReleaseSurfaceTests: XCTestCase {
     XCTAssertEqual(connect.label, "Connect Gmail")
     assertNoPlaceholders(app, "Connect Gmail")
     // Not setup: no step indicator, and Close instead of Skip.
-    assertNoText(app, ["Step 2 of 5"], "Connect Gmail")
+    assertNoText(app, ["Step 2 of 4"], "Connect Gmail")
     XCTAssertEqual(el(app, "account.trailing").label, "Close")
     attach(app, "Release · Connect Gmail")
     try audit(app)
     connect.tap()
-    XCTAssertTrue(el(app, "card.4421").waitForExistence(timeout: 15), "the cards did not appear")
-    attach(app, "Release · Connect Gmail · Cards")
-    tap(app, "cards.continue")
-    XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 15), "the result did not appear")
+    attach(app, "Release · Connect Gmail · Result")
     tap(app, "result.continue")
     XCTAssertTrue(card.waitForNonExistence(timeout: 10), "Home still offers Connect Gmail")
   }
