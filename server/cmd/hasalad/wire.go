@@ -1,7 +1,7 @@
 package main
 
 // wire.go builds what serve runs beside the API: the APNs dispatcher, the
-// Gmail and Outlook links and the Gmail hook, the account ceremonies (with the server keys), the one
+// Gmail and Outlook links and hooks, the account ceremonies (with the server keys), the one
 // email queue and its worker, and spec 07's website routes, each from its own
 // configuration group, plus their sweeps.
 
@@ -86,11 +86,27 @@ func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv
 		return refusal{err}
 	}
 	wireOutlook(cfg.Outlook, srv, rk)
-	return wireGmail(ctx, cfg.Gmail, pool, srv, waker, ex, rk)
+	wireGmail(cfg.Gmail, srv, rk)
+	// The renewal nudge asks a holder to renew its watch, so it runs only
+	// for the providers whose push is on: without one it would wake every
+	// holder twice a day for a watch that cannot exist.
+	var nudged []string
+	if srv.Gmail != nil && srv.Gmail.Push != nil {
+		nudged = append(nudged, gmailpush.ProviderGmail)
+	}
+	if srv.Outlook != nil && srv.Outlook.Push != nil {
+		nudged = append(nudged, gmailpush.ProviderOutlook)
+	}
+	if len(nudged) > 0 {
+		ex.done = append(ex.done, startSweepEvery(ctx, "mailbox watch nudge", nudgeInterval,
+			func(ctx context.Context) (string, error) { return gmailpush.Nudge(ctx, pool, waker, nudged...) }))
+	}
+	return nil
 }
 
 // wireOutlook mounts the [outlook] group's parts (config.OutlookConfig): the
-// link with client_id and the route key; the hook URLs with the push too.
+// link with client_id and the route key; the Graph hooks and their URLs in
+// /meta with the push too.
 func wireOutlook(o config.OutlookConfig, srv *api.Server, rk gmailpush.RouteKey) {
 	if !o.LinkEnabled() {
 		slog.Warn("hasalad serve: the [outlook] group is not configured: Outlook mailboxes cannot be linked")
@@ -110,15 +126,12 @@ func wireOutlook(o config.OutlookConfig, srv *api.Server, rk gmailpush.RouteKey)
 }
 
 // wireGmail mounts the [gmail] group's parts (config.GmailConfig): the link
-// with ios_client_id and the route key; the hook, the watch topic and the
-// renewal nudge only with the Pub/Sub push too. The nudge asks a holder to
-// renew its watch, so without the push it would wake every holder twice a day
-// for a watch that cannot exist.
-func wireGmail(ctx context.Context, g config.GmailConfig, pool *pgxpool.Pool, srv *api.Server, waker pushv2.Waker,
-	ex *extras, rk gmailpush.RouteKey) error {
+// with ios_client_id and the route key; the hook and the watch topic only with
+// the Pub/Sub push too.
+func wireGmail(g config.GmailConfig, srv *api.Server, rk gmailpush.RouteKey) {
 	if !g.LinkEnabled() {
 		slog.Warn("hasalad serve: the [gmail] group is not configured: Gmail mailboxes cannot be linked and the Pub/Sub hook is not mounted")
-		return nil
+		return
 	}
 	srv.Gmail = &api.GmailOptions{
 		RouteKey:    rk,
@@ -128,7 +141,7 @@ func wireGmail(ctx context.Context, g config.GmailConfig, pool *pgxpool.Pool, sr
 	if !g.PushEnabled() {
 		slog.Warn("hasalad serve: the [gmail] Pub/Sub push is not configured: the mailbox link is mounted, " +
 			"the Pub/Sub hook is not, and /api/v1/meta offers no watch topic (the app fetches mail when opened, without wakes)")
-		return nil
+		return
 	}
 	srv.Gmail.Push = &api.GmailPush{
 		Topic:          g.PubSubTopic,
@@ -136,9 +149,6 @@ func wireGmail(ctx context.Context, g config.GmailConfig, pool *pgxpool.Pool, sr
 		Subscription:   g.PubSubSubscription,
 		ServiceAccount: g.PubSubServiceAccount,
 	}
-	ex.done = append(ex.done, startSweepEvery(ctx, "mailbox watch nudge", nudgeInterval,
-		func(ctx context.Context) (string, error) { return gmailpush.Nudge(ctx, pool, waker) }))
-	return nil
 }
 
 // extras is what wireExtras started; stop waits for its goroutines.

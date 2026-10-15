@@ -71,8 +71,8 @@ The required checks are these three jobs:
 Do not change these job names. The required status checks find the jobs by
 their names.
 
-These jobs are not required: `swift` (HasalaCore on a Mac), `ios` and
-`ios-ui` (the app on a Mac, refer to "The iOS app" below), `web` (the
+These jobs are not required: `swift` (HasalaCore on a Mac), `ios`, `ios-ui`
+and `ios-tools` (the app on a Mac, refer to "The iOS app" below), `web` (the
 website, refer to "Website") and `nixos-vm` (it builds
 `checks.x86_64-linux.qa-vm` with KVM).
 
@@ -98,7 +98,12 @@ the job.
 - `nixos-vm` reads only `infra/`, `server/` and the flake.
 - A change in `.github/` starts all jobs. `secrets` always runs.
 - If `changes` does not succeed, all jobs run.
-- A push to `main` or a manual run starts all jobs.
+- A manual run starts all jobs.
+- A push to `main` starts all jobs except the Mac jobs (`swift`, `ios`,
+  `ios-ui`, `ios-tools`). These use the same path rules, against the commit
+  that `main` was at before the push. The pull request already ran them on
+  the same code, because a branch must be up to date before it merges. If CI
+  cannot get that commit (a new branch, a force push), all jobs run.
 
 Rules for a change to the CI:
 
@@ -219,13 +224,17 @@ Release scripts:
 
 CI for iOS:
 
-- Job `ios` builds and tests without a signature in the simulator. It also
-  runs `ios/scripts/tests/run.sh`, `ios/scripts/tests/devshell_test.sh` and
-  shellcheck on `ios/scripts`.
+- Job `ios` runs the HasalaKit tests. Then it builds and tests without a
+  signature in the simulator.
 - Job `ios-ui` runs the two longest UI test classes (`CoreScreensTests`,
   `SmokeTests`) on a second runner. Job `ios` skips only these two classes
   (`ios/scripts/ci-simulator-test.sh`).
-- `ios` and `ios-ui` are not required checks.
+- Job `ios-tools` runs on a third runner, at the same time. It does the
+  checks that do not use the app build or a simulator: the design tokens,
+  the project against `ios/project.yml`, `ios/scripts/tests/run.sh`,
+  `ios/scripts/tests/devshell_test.sh` and shellcheck on `ios/scripts`.
+- `ios`, `ios-ui` and `ios-tools` are not required checks. CI skips the
+  three jobs on the same paths.
 
 ### Nix
 
