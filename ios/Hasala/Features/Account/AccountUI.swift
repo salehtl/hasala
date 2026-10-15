@@ -222,18 +222,23 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
   var subtitle: String?
   var wash: HWash
   var successHaptic: Bool
+  /// The badge under the status bar, and the cards under the copy: 76 and 36 on the account
+  /// boards (FJI, GL7, H5V); setup's result and done screens draw 40 and 28 (7DG, GWF).
+  var spacing: (top: CGFloat, cards: CGFloat)
   @ViewBuilder var cards: () -> Cards
   @ViewBuilder var footer: () -> Footer
 
   init(
     badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, wash: HWash = .ready,
-    successHaptic: Bool = false, @ViewBuilder cards: @escaping () -> Cards, @ViewBuilder footer: @escaping () -> Footer
+    successHaptic: Bool = false, spacing: (top: CGFloat, cards: CGFloat) = (76, 36),
+    @ViewBuilder cards: @escaping () -> Cards, @ViewBuilder footer: @escaping () -> Footer
   ) {
     self.badge = badge
     self.title = title
     self.subtitle = subtitle
     self.wash = wash
     self.successHaptic = successHaptic
+    self.spacing = spacing
     self.cards = cards
     self.footer = footer
   }
@@ -263,11 +268,11 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 28)
-        .padding(.top, badge == nil ? 40 : 76)
+        .padding(.top, badge == nil ? min(40, spacing.top) : spacing.top)
         cards()
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.horizontal, HSpacing.insetPage)
-          .padding(.top, 36)
+          .padding(.top, spacing.cards)
       }
       .padding(.bottom, 16)
     }
@@ -294,10 +299,11 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
 extension CelebrationScreen where Footer == EmptyView {
   init(
     badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, wash: HWash = .ready,
-    successHaptic: Bool = false, @ViewBuilder cards: @escaping () -> Cards
+    successHaptic: Bool = false, spacing: (top: CGFloat, cards: CGFloat) = (76, 36),
+    @ViewBuilder cards: @escaping () -> Cards
   ) {
     self.init(badge: badge, title: title, subtitle: subtitle, wash: wash, successHaptic: successHaptic,
-              cards: cards, footer: { EmptyView() })
+              spacing: spacing, cards: cards, footer: { EmptyView() })
   }
 }
 

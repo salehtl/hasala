@@ -527,7 +527,8 @@ struct ScanResultView: View {
       badge: model.scanDone ? .check : nil,
       title: title(s),
       subtitle: subtitle(s),
-      wash: .itWorks
+      wash: .itWorks,
+      spacing: (40, 28)
     ) {
       VStack(spacing: 16) {
         if !model.scanDone {
@@ -668,7 +669,8 @@ struct DoneView: View {
       title: model.firstName.isEmpty ? "You're set." : "You're set, \(model.firstName).",
       subtitle: "Your budget is worked out on this iPhone, and the key stays with you.",
       wash: .itWorks,
-      successHaptic: true
+      successHaptic: true,
+      spacing: (40, 28)
     ) {
       VStack(spacing: 14) {
         VStack(alignment: .leading, spacing: 12) {
