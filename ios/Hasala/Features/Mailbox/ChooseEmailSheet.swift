@@ -109,7 +109,9 @@ struct ChooseEmailSheet: View {
       HListCard {
         ForEach(Array(mailbox.connectable.enumerated()), id: \.element) { i, provider in
           if i > 0 { HDivider(inset: .disc68) }
-          ProviderRow(provider: provider, subtitle: subtitle(provider)) { pick(provider) }
+          ProviderRow(provider: provider, subtitle: Self.subtitle(provider, mailboxes: mailbox.mailboxes)) {
+            pick(provider)
+          }
             .accessibilityIdentifier("mail.choose.\(provider.rawValue)")
         }
       }
@@ -126,8 +128,8 @@ struct ChooseEmailSheet: View {
   /// A connected provider names its address and offers another account of its own (page
   /// 15: "A provider already connected shows its address as the subtitle and stays
   /// tappable, to add a second mailbox").
-  private func subtitle(_ provider: MailProviderKind) -> String? {
-    guard let connected = mailbox.mailboxes.first(where: { $0.provider == provider && $0.state != .disconnected })
+  static func subtitle(_ provider: MailProviderKind, mailboxes: [MailboxSnapshot]) -> String? {
+    guard let connected = mailboxes.first(where: { $0.provider == provider && $0.state != .disconnected })
     else { return nil }
     return "\(connected.address) is connected. Add another \(provider.company) account."
   }

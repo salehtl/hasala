@@ -86,6 +86,24 @@ struct LiveMailboxTests {
     #expect(lane.mailboxes.isEmpty && lane.offer == nil)
   }
 
+  /// The mailbox page's "Last checked", on the iPhone's clock in its time zone; and a
+  /// connect for anything but Gmail is refused without naming another provider.
+  @Test func theLiveMailboxSaysWhenItLastChecked() async {
+    let dubai = TimeZone(identifier: "Asia/Dubai")!
+    // Wed 7 Oct 2026, 09:14 in Dubai (05:14 UTC).
+    let ms: Int64 = 1_791_350_040_000
+    #expect(LiveMailboxConnecting.checkedAt(ms, timeZone: dubai) == "Wed 7 Oct, 09:14")
+    let row = LiveMailboxConnecting.mailboxes(
+      phase: .active, halt: nil, address: "maya@example.com", lastSuccessAtMs: ms, bankDomains: [],
+      nowMs: ms + 60_000, timeZone: dubai
+    ).first
+    #expect(row?.lastChecked == "Wed 7 Oct, 09:14" && row?.meta == "Checked 1 min ago")
+    let lane = LiveMailboxConnecting(runtime: { nil })
+    await #expect(throws: MailConnectFailure.failed("Hasala reads Gmail only.")) {
+      try await lane.connect(.outlook)
+    }
+  }
+
   /// The lane's phase as the one mailbox row (plan B4.4's table).
   @Test func theLanePhaseIsTheRow() {
     let now: Int64 = 10_000_000_000
