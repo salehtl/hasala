@@ -105,6 +105,42 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(setup.facts.incomeSet && setup.facts.mailbox == .scanning && setup.incomeText == "30000")
   }
 
+  /// A store that failed to open draws setup under its wall with the gate's placeholder
+  /// facts (the bank step), so the first `resume()` has nothing to build; once the runtime
+  /// opens on "Try again", the real facts reach the same model and its stack is built for
+  /// them, as a fresh model's would be. A person who moved on in this process keeps their
+  /// place.
+  @Test func aResumeAtThePlaceholderStepWaitsForTheRealFacts() {
+    let (store, _) = store(phase: .onboarding(.bank))
+    let placeholder = OnboardingStep.Facts(hasSession: true, keysReady: true)
+    let setup = store.setupModel(displayName: "Maya", facts: placeholder)
+    setup.resume()
+    #expect(setup.step == .bank && setup.path.isEmpty)
+    var real = placeholder
+    real.banksChosen = true
+    real.mailbox = .linked
+    real.incomeSet = true
+    #expect(store.setupModel(displayName: "Maya", facts: real) === setup)
+    setup.resume()
+    let (other, _) = self.store(phase: .onboarding(.plan))
+    let fresh = other.setupModel(displayName: "Maya", facts: real)
+    fresh.resume()
+    #expect(setup.step == .plan && fresh.step == .plan)
+    #expect(setup.path == fresh.path && setup.path == [.connect(.gmail), .income, .plan])
+    // Built once: Back, then a later call, leave the stack as the person left it.
+    setup.back()
+    setup.resume()
+    #expect(setup.path == [.connect(.gmail), .income])
+
+    // Moved on here before the facts changed: nothing is rebuilt over that place.
+    let (third, _) = self.store(phase: .onboarding(.bank))
+    let moving = third.setupModel(displayName: "Maya", facts: placeholder)
+    moving.resume()
+    moving.skipBanks()
+    moving.resume()
+    #expect(moving.path == [.income])
+  }
+
   /// The replacement phrase is made once, not on every render of its flow.
   @Test func theReplacementPhraseIsMadeOnce() {
     let (store, _) = store(phase: .needsKeys)

@@ -31,6 +31,9 @@ struct SetupFlowView: View {
         }
     }
     .onAppear { model.resume() }
+    // The account's facts can arrive after setup first appeared (a runtime that opened on
+    // "Try again"): the stack is built for them then.
+    .onChange(of: model.step) { model.resume() }
   }
 }
 

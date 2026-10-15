@@ -151,15 +151,22 @@ final class SetupModel {
   /// The back stack for the derived step, built once per model: every step before it, in
   /// order, so Back walks real screens that show what they hold. A scan that is still
   /// running is followed again; one that runs here already is never restarted.
+  ///
+  /// `SetupFlowView` calls it on appear and whenever the derived step changes. At the bank
+  /// step there is nothing to build, and the facts may still be the gate's placeholder (a
+  /// store that failed to open draws setup under its wall), so the stack is built by the
+  /// first call that finds a later step, unless the person has moved on here already.
   func resume() {
     guard !didResume else { return }
-    didResume = true
     let target = step
     if target == .finished {
+      didResume = true
       onFinished()
       return
     }
     guard target > .bank else { return }
+    didResume = true
+    guard path.isEmpty else { return }
     let manual = facts.bankSkipped && !facts.banksChosen
     var stack: [SetupRoute] = []
     if !manual { stack.append(.connect(provider)) }
@@ -408,6 +415,7 @@ final class SetupModel {
   /// Leaves setup. Only this screen stops following the scan; the import goes on.
   func finish() {
     facts.finished = true
+    didResume = true  // the step it derives now is `.finished`: `resume()` must not finish again
     scanTask?.cancel()
     onFinished()
   }
