@@ -8,13 +8,15 @@ import Testing
 @MainActor
 @Suite("Profile model")
 struct ProfileModelTests {
-  /// The Profile card says what Gmail needs before its status; Sign-in & security's row
-  /// shows that page's own status.
+  /// The Profile card offers what mail needs on its provider's screen; Sign-in &
+  /// security's row shows that page's own status. (The card's words are
+  /// `MailboxesSummary`'s, tested with the mailboxes.)
   @Test func theProfileCardsSayWhatIsTrue() {
-    #expect(ProfileSheet.title(.working, nil) == "Bank alerts are working")
-    #expect(ProfileSheet.title(.working, .connect) == "Gmail isn't connected")
-    #expect(ProfileSheet.title(.reconnect, nil) == "Gmail needs reconnecting")
-    #expect(ProfileSheet.hue(.working, .reconnect) == .rose)
+    #expect(ProfileSheet.action(.connect) == "Connect your email")
+    #expect(ProfileSheet.action(.signInAgain(mailboxID: "gmail-1", provider: .gmail)) == "Sign in again")
+    #expect(ProfileSheet.provider(.connect, [.gmail, .outlook]) == .gmail)
+    #expect(ProfileSheet.provider(.connect, []) == nil)
+    #expect(ProfileSheet.provider(.signInAgain(mailboxID: "outlook-1", provider: .outlook), [.gmail]) == .outlook)
     let passkey = MockAccountService.securityState(for: .passkey)
     #expect(ProfileSheet.securityStatus(passkey).text == "Protected")
     #expect(ProfileSheet.securityStatus(passkey).tone == .success)

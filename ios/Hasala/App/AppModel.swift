@@ -22,7 +22,8 @@ final class AppModel {
   }
 
   let store: any LedgerStore
-  /// The Gmail lane as setup uses it: what Home and Profile offer for Gmail.
+  /// The mail lane as setup uses it: the mailboxes, and what the bell, Profile and Bank
+  /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
@@ -59,8 +60,9 @@ final class AppModel {
     self.mailbox = mailbox
   }
 
-  /// "Connect Gmail" or "Reconnect Gmail" on Home and Profile, when Gmail needs it.
-  var gmailOffer: GmailOffer? { mailbox?.gmailOffer }
+  /// "Connect your email" or "Sign in again" on the bell, Profile and Bank alerts, when
+  /// mail needs it.
+  var mailOffer: MailOffer? { mailbox?.offer }
 
   /// What Home draws, recomputed once per ledger change.
   var snapshot: HomeSnapshot {

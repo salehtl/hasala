@@ -81,8 +81,6 @@ struct MainView: View {
         ProfileSheet(app: app)
       case .notifications:
         NotificationsSheet(app: app)
-      case .connectGmail(let offer):
-        GmailConnectSheet(app: app, offer: offer)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

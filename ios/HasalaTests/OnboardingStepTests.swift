@@ -18,7 +18,7 @@ struct OnboardingStepTests {
     f.keysReady = true
     #expect(OnboardingStep.derive(f) == .bank)
     f.banksChosen = true
-    #expect(OnboardingStep.derive(f) == .gmail)
+    #expect(OnboardingStep.derive(f) == .mail)
     f.mailbox = .scanning
     #expect(OnboardingStep.derive(f) == .scan)
     f.scanDeferred = true
@@ -36,7 +36,7 @@ struct OnboardingStepTests {
     #expect(OnboardingStep.derive(f) == .finished)
   }
 
-  @Test func skippingTheBankSkipsGmailAndTheScan() {
+  @Test func skippingTheBankSkipsTheEmailAndTheScan() {
     var f = F(hasSession: true, keysReady: true)
     f.bankSkipped = true
     #expect(OnboardingStep.derive(f) == .income)
@@ -45,7 +45,7 @@ struct OnboardingStepTests {
     #expect(OnboardingStep.derive(f) == .notifications)
   }
 
-  @Test func sampleDataCompletesGmailAndTheScan() {
+  @Test func sampleDataCompletesTheEmailAndTheScan() {
     var f = F(hasSession: true, keysReady: true, banksChosen: true)
     f.sampleLoaded = true
     #expect(OnboardingStep.derive(f) == .notifications)

@@ -23,12 +23,10 @@ final class HomeViewModel: HomeModel {
 
   init(app: AppModel) { self.app = app }
 
+  /// Mail's offer is no longer a Needs-you card: it is the bell's mail row and the Profile
+  /// card (`AppModel.mailOffer`, plan B4.3).
   var snapshot: HomeSnapshot {
     var snap = app.snapshot
-    // A card put off with "Later" leaves the rail's count and subtitle as they were.
-    if let offer = app.gmailOffer, !app.snoozed.contains(offer.cardID) {
-      snap.needsYou = offer.adding(to: snap.needsYou)
-    }
     snap.needsYou.cards.removeAll { app.snoozed.contains($0.id) }
     // The first import runs in the background after setup; the rail says so until it's in.
     if app.store.state.mailbox.status == .importing, snap.needsYou.cards.isEmpty {
@@ -40,10 +38,6 @@ final class HomeViewModel: HomeModel {
   var hidden: Bool { app.amountsHidden }
 
   func needsYou(_ card: String, primary: Bool) -> HomeRoute? {
-    if let offer = GmailOffer(cardID: card) {
-      if primary { app.sheet = .connectGmail(offer) } else { app.snooze(card) }
-      return nil
-    }
     if card == "review" {
       if primary { app.startReview() } else { app.snooze(card) }
       return nil
@@ -86,42 +80,5 @@ final class HomeViewModel: HomeModel {
 
   func widgetOpens(_ id: String) -> Bool {
     BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id)
-  }
-}
-
-/// Home's Gmail card (spec 04 §6.6 row 4: Gmail was skipped; §7.4: Google wants a new
-/// sign-in), first in Needs you.
-extension GmailOffer {
-  var cardID: String { "gmail.\(rawValue)" }
-
-  init?(cardID: String) {
-    guard cardID.hasPrefix("gmail.") else { return nil }
-    self.init(rawValue: String(cardID.dropFirst("gmail.".count)))
-  }
-
-  var card: NeedsYouCard {
-    switch self {
-    case .connect:
-      NeedsYouCard(
-        id: cardID, hue: .sky, glyph: .envelope, label: "Bank alerts",
-        status: StatusPill("Not connected", tone: .warning), figure: .word("Gmail"),
-        title: "Connect Gmail", subtitle: "Your bank alerts aren't read yet",
-        primaryAction: "Connect", secondaryAction: "Later")
-    case .reconnect:
-      NeedsYouCard(
-        id: cardID, hue: .rose, glyph: .envelope, label: "Bank alerts",
-        status: StatusPill("Stopped", tone: .error), figure: .word("Gmail"),
-        title: "Reconnect Gmail", subtitle: "New bank alerts aren't read",
-        primaryAction: "Reconnect", secondaryAction: "Later")
-    }
-  }
-
-  /// `rail` with this card first; "All caught up" no longer holds.
-  func adding(to rail: NeedsYouRail) -> NeedsYouRail {
-    var r = rail
-    r.cards.insert(card, at: 0)
-    r.count += 1
-    if rail.cards.isEmpty { r.subtitle = status }
-    return r
   }
 }

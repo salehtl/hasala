@@ -19,4 +19,28 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "the first scan did not start")
     attach(app, "First scan")
   }
+
+  /// Debug offers Outlook too: Profile › Bank alerts › Add a mailbox › Outlook connects a
+  /// second mailbox, and Bank alerts lists both.
+  @MainActor
+  func testAddOutlookFromBankAlerts() throws {
+    let app = launch(scenario: "passkeyUser")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.buttons["header.profile"].firstMatch.tap()
+    tap(app, "profile.bankAlerts")
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: 5))
+    attach(app, "Bank alerts")
+    try audit(app)
+    tap(app, "bankAlerts.addMailbox")
+    tap(app, "mail.choose.outlook")
+    let connect = el(app, "mail.connect.outlook")
+    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    XCTAssertEqual(connect.label, "Continue with Microsoft")
+    attach(app, "Connect Outlook")
+    try audit(app)
+    connect.tap()
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Outlook connected. Checking for alerts."].waitForExistence(timeout: 5))
+    attach(app, "Bank alerts · two mailboxes")
+  }
 }

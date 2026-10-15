@@ -28,39 +28,15 @@ struct HomeModelTests {
     #expect(app.tab == .activity)
   }
 
-  /// Gmail skipped at setup: Home's Needs you leads with "Connect Gmail" (spec 04 §6.6 row 4);
-  /// "Connect" opens the connect sheet and "Later" puts it off.
-  @Test func homeOffersConnectGmailWhenTheLaneSaysSo() throws {
+  /// Mail's offer is no longer a Needs-you card (plan B4.3): Home stays Maya's board, and
+  /// the offer is `AppModel.mailOffer` for the bell and the Profile card.
+  @Test func mailNeedsAreNotANeedsYouCard() {
     let mailbox = MockMailbox()
     let app = AppModel(store: InMemoryLedger(), mailbox: mailbox)
     let home = HomeViewModel(app: app)
+    #expect(app.mailOffer == .connect)
     #expect(home.snapshot == Maya.home)
-    mailbox.gmailOffer = .connect
-    let rail = home.snapshot.needsYou
-    let card = try #require(rail.cards.first)
-    #expect(card.id == "gmail.connect" && card.title == "Connect Gmail" && card.primaryAction == "Connect")
-    #expect(rail.count == Maya.home.needsYou.count + 1)
-    #expect(rail.subtitle == Maya.home.needsYou.subtitle)
-    #expect(home.needsYou(card.id, primary: true) == nil)
-    #expect(app.sheet == .connectGmail(.connect))
-    app.sheet = nil
-    #expect(home.needsYou(card.id, primary: false) == nil)
-    #expect(app.sheet == nil)
-    #expect(!home.snapshot.needsYou.cards.contains { $0.id == "gmail.connect" })
-    #expect(home.snapshot == Maya.home)  // the count and subtitle too
-
-    mailbox.gmailOffer = .reconnect
-    #expect(home.snapshot.needsYou.cards.first?.title == "Reconnect Gmail")
-    mailbox.gmailOffer = nil
-    #expect(home.snapshot == Maya.home)
-  }
-
-  @Test func theGmailCardSaysWhatNeedsDoingWhenItIsAlone() {
-    let rail = GmailOffer.reconnect.adding(to: NeedsYouRail(count: 0, subtitle: "All caught up", cards: []))
-    #expect(rail.count == 1 && rail.cards.map(\.id) == ["gmail.reconnect"])
-    #expect(rail.subtitle == "Gmail needs reconnecting")
-    #expect(GmailOffer(cardID: "gmail.connect") == .connect)
-    #expect(GmailOffer(cardID: "review") == nil && GmailOffer(cardID: "gmail.other") == nil)
+    #expect(!home.snapshot.needsYou.cards.contains { $0.id.hasPrefix("gmail.") })
   }
 
   @Test func startOpensTheReviewCover() {

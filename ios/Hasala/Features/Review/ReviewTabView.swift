@@ -73,22 +73,11 @@ struct ReviewTabView: View {
       }
       .padding(.bottom, 4)
       ForEach(cards) { card in
-        HStack(spacing: 12) {
-          MonogramDisc(card.monogram, size: 32)
-          VStack(alignment: .leading, spacing: 0) {
-            Text(card.merchant).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-            Text(Self.supporting(card)).hType(.footnote)
-              .foregroundStyle(card.suggestion == nil ? HColor.textSecondary : HColor.actionAccent)
-          }
-          Spacer(minLength: 8)
-          MoneyText(card.amount, figure: .row, hidden: app.amountsHidden, hiddenGlyphs: 3,
-                    color: card.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: card.isIncome ? .income : .none)
-        }
-        .frame(minHeight: 52)
-        // One element, as TxnRow is: the disc's letter is decoration.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spoken(card))
-        .accessibilityIdentifier("review.tab.row.\(card.id)")
+        // A row opens the deck (at its own card once the deck can start anywhere).
+        Button { app.startReview() } label: { row(card) }
+          .buttonStyle(.plain)
+          .accessibilityLabel(spoken(card))
+          .accessibilityIdentifier("review.tab.row.\(card.id)")
       }
     }
     .padding(.horizontal, 16)
@@ -96,6 +85,22 @@ struct ReviewTabView: View {
     .padding(.bottom, 8)
     .listCard()
     .padding(.horizontal, HSpacing.insetPage)
+  }
+
+  private func row(_ card: ReviewCardModel) -> some View {
+    HStack(spacing: 12) {
+      MonogramDisc(card.monogram, size: 32)
+      VStack(alignment: .leading, spacing: 0) {
+        Text(card.merchant).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+        Text(Self.supporting(card)).hType(.footnote)
+          .foregroundStyle(card.suggestion == nil ? HColor.textSecondary : HColor.actionAccent)
+      }
+      Spacer(minLength: 8)
+      MoneyText(card.amount, figure: .row, hidden: app.amountsHidden, hiddenGlyphs: 3,
+                color: card.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: card.isIncome ? .income : .none)
+    }
+    .frame(minHeight: 52)
+    .contentShape(Rectangle())
   }
 
   private func spoken(_ card: ReviewCardModel) -> String {

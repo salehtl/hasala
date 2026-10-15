@@ -18,8 +18,9 @@ struct SetupFlowTests: AccountSuite {
     m.toggle(.dib)
     await m.continueWithBanks()
     #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib])
-    #expect(m.step == .gmail)
-    await m.connectGmail()
+    #expect(m.step == .mail)
+    #expect(m.path == [.connect(.gmail)])
+    await m.connectMail(.gmail)
     #expect(m.step == .scan)
     m.planWhileScanning()
     #expect(m.step == .income)
@@ -56,6 +57,8 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.step == .notifications)
   }
 
+  /// A relaunch mid-scan follows the scan again, and Back walks the real steps before the
+  /// derived one (plan B3.3: an honest back stack, built once).
   @Test func setupResumedWithTheScanStillRunningGoesOnToNotifications() {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
@@ -65,15 +68,65 @@ struct SetupFlowTests: AccountSuite {
     facts.planSkipped = true
     let m = SetupModel(services: s, displayName: "Maya", facts: facts) {}
     m.resume()
-    #expect(m.path == [.notifications])
+    #expect(m.path == [.connect(.gmail), .scan, .income, .plan, .result, .notifications])
+    m.path = [.connect(.gmail)]
+    m.resume()  // once per model
+    #expect(m.path == [.connect(.gmail)])
   }
 
   @Test func resumesAtTheDerivedStep() {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.gmailSkipped = true
+    facts.mailSkipped = true
     let m = SetupModel(services: s, displayName: "Maya", facts: facts) {}
     m.resume()
-    #expect(m.path == [.income])
+    #expect(m.path == [.connect(.gmail), .income])
+  }
+
+  /// Back to the email step after connecting shows it connected: Continue goes on to the
+  /// scan without a second sign-in, and an unchanged bank choice sends nothing again
+  /// (plan B3.2 rules 2 and 3).
+  @Test func backAndForwardNeverConnectsOrAuthorsTwice() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let mailbox = try #require(s.mailbox as? MockMailbox)
+    let setup = try #require(s.setup as? MockSetupAuthoring)
+    let m = SetupModel(services: s, displayName: "Maya", facts: .init(hasSession: true, keysReady: true)) {}
+    await m.continueWithBanks()
+    await m.connectMail(.gmail)
+    #expect(m.path == [.connect(.gmail), .scan])
+    m.back()
+    m.back()
+    #expect(m.path.isEmpty && m.mailConnected)
+    await m.continueWithBanks()
+    await m.connectMail(.gmail)
+    #expect(m.path == [.connect(.gmail), .scan])
+    #expect(mailbox.connectCalls == 1 && setup.chooseBanksCalls == 1)
+    m.planWhileScanning()
+    m.incomeText = "25000"
+    m.payday = 25
+    m.continueWithIncome()
+    await m.savePlan()
+    m.back()
+    m.back()
+    #expect(m.incomeText == "25000" && m.payday == 25)
+    m.continueWithIncome()
+    await m.savePlan()
+    #expect(setup.savePlanCalls == 1)
+    m.back()
+    m.plan = StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20)
+    await m.savePlan()
+    #expect(setup.savePlanCalls == 2 && setup.plan?.needsPercent == 60)
+  }
+
+  /// "Allow notifications" asks iOS once; back there it only goes on.
+  @Test func notificationsAreAskedOnce() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let m = SetupModel(services: s, displayName: "Maya", facts: .init(hasSession: true, keysReady: true)) {}
+    #expect(!m.notificationsAllowed)
+    await m.allowNotifications()
+    #expect(m.notificationsAllowed && m.path.last == .done)
+    m.back()
+    m.notNow()
+    #expect(m.notificationsAllowed)
   }
 }

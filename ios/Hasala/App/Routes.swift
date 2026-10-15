@@ -76,8 +76,6 @@ enum SheetRoute: Hashable, Identifiable {
   case profile
   /// Home's bell.
   case notifications
-  /// Connect Gmail after setup, from Home's Needs-you card (goes with the mailbox contract).
-  case connectGmail(GmailOffer)
 
   var id: String {
     switch self {
@@ -86,7 +84,6 @@ enum SheetRoute: Hashable, Identifiable {
     case .moveMoney(let id): "move.\(id ?? "assign")"
     case .profile: "profile"
     case .notifications: "notifications"
-    case .connectGmail(let offer): "gmail.\(offer.rawValue)"
     }
   }
 }

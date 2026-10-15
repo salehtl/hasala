@@ -1,10 +1,11 @@
 import Foundation
 
-// The setup steps after the account (spec 04 §6.6, Paper row 10): bank → read-only Gmail →
-// first scan → income → starting plan → result → notifications → done. There is no cards
-// step: the scan files what it reads, and it carries on in the background if setup ends first.
-// The Gmail lane implements `MailboxConnecting` (spec 04 §7); the op-authoring lane
-// implements `SetupAuthoring` over OpAuthor + Outbox (§6.6 "When ops are authored").
+// The setup steps after the account (spec 04 §6.6, Paper row 10): bank → your email (read
+// only) → first scan → income → starting plan → result → notifications → done. There is no
+// cards step: the scan files what it reads, and it carries on in the background if setup
+// ends first. The mail lane implements `MailboxConnecting` (Features/Mailbox); the
+// op-authoring lane implements `SetupAuthoring` over OpAuthor + Outbox (§6.6 "When ops are
+// authored").
 
 /// The banks the beta reads (spec 04 §6.6 step 3).
 enum SupportedBank: String, CaseIterable, Identifiable, Sendable {
@@ -79,54 +80,6 @@ struct SortSummary: Equatable, Sendable {
   var sortedThemselves: Int { max(0, total - toReview) }
 }
 
-/// What Home and Profile offer for Gmail once setup is done: "Connect Gmail" when the Gmail
-/// step was skipped (spec 04 §6.6 row 4), "Reconnect Gmail"
-/// when Google wants a new sign-in or the lane stopped (§7.4).
-enum GmailOffer: String, Identifiable, Sendable {
-  case connect
-  case reconnect
-
-  var id: String { rawValue }
-
-  /// The action's title.
-  var action: String {
-    switch self {
-    case .connect: "Connect Gmail"
-    case .reconnect: "Reconnect Gmail"
-    }
-  }
-
-  /// What the Profile card says.
-  var status: String {
-    switch self {
-    case .connect: "Gmail isn't connected"
-    case .reconnect: "Gmail needs reconnecting"
-    }
-  }
-}
-
-/// The Gmail link and first scan, implemented by the Gmail lane (spec 04 §7.4, §7.7).
-@MainActor
-protocol MailboxConnecting: AnyObject {
-  /// Home's Needs-you card and the Profile card's action, once setup is done; nil when
-  /// Gmail works, the lane's state isn't known yet, the build has no Google client, or
-  /// the account loaded the App Review sample (§6.13, which completes the Gmail step).
-  var gmailOffer: GmailOffer? { get }
-  /// The banks the account reads (its sender-trust ops), for a connect after setup.
-  func chosenBanks() -> [SupportedBank]
-  /// The lane's state, as setup's facts name it.
-  func linkState() async -> OnboardingStep.Facts.Mailbox
-  /// Runs Google's sign-in (read-only scope), the `mailbox.link` step-up and the first
-  /// listing for `banks`' senders. Throws `.cancelled` when the user closes Google's sheet.
-  func connectGmail(banks: [SupportedBank]) async throws(SetupFailure)
-  /// The first scan's progress: it reads the window and files what it finds, then ends
-  /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
-  func firstScan() -> AsyncStream<ScanProgress>
-  /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of Gmail.
-  var offersSampleData: Bool { get }
-  func loadSampleData() async throws(SetupFailure)
-}
-
 /// The plan the starting-plan step proposes (50/30/20, `03a` §6.12).
 struct StartingPlan: Equatable, Sendable {
   var needsPercent: Int = 50
@@ -144,9 +97,21 @@ struct StartingPlan: Equatable, Sendable {
   }
 }
 
+/// What the account already holds for setup's typed values (plan B3.3), read back after a
+/// relaunch so the steps show them again. Nil where nothing was saved.
+struct SetupReadBack: Equatable, Sendable {
+  /// The salary, in fils.
+  var incomeMinor: Int64?
+  /// The salary's day of the month.
+  var payday: Int?
+  var split: StartingPlan?
+}
+
 /// The setup ops (spec 04 §6.6). Each call is one `Outbox.enqueue`.
 @MainActor
 protocol SetupAuthoring: AnyObject {
+  /// What the account holds for income, payday and the split. Reads only.
+  func readBack() -> SetupReadBack
   /// `sender_trust_set` for each bank's alert senders and `bank_declared`.
   func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure)
   /// "Another bank? Tell us": a bank request to the operator (`07` P4). Content: the name only.

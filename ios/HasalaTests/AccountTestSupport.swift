@@ -17,6 +17,7 @@ extension AccountSuite {
     a.delay = .zero
     let mailbox = MockMailbox(offersSampleData: sample)
     mailbox.step = .milliseconds(1)
+    mailbox.connectDelay = .zero
     return AccountServices(account: a, mailbox: mailbox, setup: MockSetupAuthoring(),
                            notifications: MockNotificationPermission())
   }

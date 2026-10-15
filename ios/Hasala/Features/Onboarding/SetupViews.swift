@@ -1,4 +1,5 @@
 import HasalaDesign
+import HasalaModels
 import SwiftUI
 
 /// Setup after the account (Paper row 10), one navigation stack.
@@ -14,7 +15,12 @@ struct SetupFlowView: View {
       BankView(model: model)
         .navigationDestination(for: SetupRoute.self) { route in
           switch route {
-          case .gmail: GmailView(model: model)
+          // TODO(plan P2): ChooseEmailSheet and ConnectProviderView for every connectable provider.
+          case .connect: GmailView(model: model)
+          case .connectError(let provider):
+            MailConnectErrorView(
+              failure: .failed(model.failure?.message ?? ""), provider: provider,
+              onRetry: { Task { await model.connectMail(provider) } }, onChooseDifferent: model.back)
           case .scan: ScanView(model: model)
           case .income: IncomeView(model: model)
           case .plan: StartingPlanView(model: model)
@@ -47,7 +53,7 @@ struct BankView: View {
       title: "Which bank do you use?",
       subtitle: "Pick yours. Hasala reads only their transaction alerts, nothing else in your mail.",
       steps: model.steps(1),
-      trailing: model.topAction(skip: model.skipBanks)
+      trailing: ("Skip", model.skipBanks)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         Text("Available now").hType(.overline).foregroundStyle(HColor.textSecondary).padding(.leading, 16)
@@ -126,18 +132,25 @@ struct BankView: View {
   }
 }
 
-// MARK: - Gmail (2 of 5)
+// MARK: - Your email: Gmail (2 of 4)
 
+/// The read-only Gmail step. Once it ran here it shows "Continue", never a second sign-in.
 struct GmailView: View {
   @Bindable var model: SetupModel
 
+  /// "Skip" until the step ran here.
+  private var skip: (title: String, action: () -> Void)? {
+    if model.mailConnected { return nil }
+    return (title: "Skip", action: model.skipMail)
+  }
+
   var body: some View {
     AccountScreen(
-      title: "Read-only Gmail, on your iPhone.",
+      title: model.mailConnected ? "Gmail is connected." : "Read-only Gmail, on your iPhone.",
       subtitle: "Your bank alerts are fetched from Gmail by this iPhone. Our server never receives your emails.",
       steps: model.steps(2),
-      onBack: model.backButton(on: .gmail),
-      trailing: model.topAction(skip: model.skipGmail)
+      onBack: model.back,
+      trailing: skip
     ) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 10) {
@@ -159,16 +172,20 @@ struct GmailView: View {
         failureText(model.failure)
       }
     } footer: {
-      if model.offersSampleData {
+      if model.mailConnected {
+        BusyButton(title: "Continue", busy: false, identifier: "mail.continue") {
+          Task { await model.connectMail(.gmail) }
+        }
+      } else if model.offersSampleData {
         BusyButton(title: "Use sample data", busy: model.busy, identifier: "gmail.sample") {
           Task { await model.useSampleData() }
         }
-        BusyButton(title: model.connectTitle, busy: false, kind: .tertiary, identifier: "gmail.connect") {
-          Task { await model.connectGmail() }
+        BusyButton(title: "Connect Gmail", busy: false, kind: .tertiary, identifier: "gmail.connect") {
+          Task { await model.connectMail(.gmail) }
         }
       } else {
-        BusyButton(title: model.connectTitle, busy: model.busy, identifier: "gmail.connect") {
-          Task { await model.connectGmail() }
+        BusyButton(title: "Connect Gmail", busy: model.busy, identifier: "gmail.connect") {
+          Task { await model.connectMail(.gmail) }
         }
         Text("Not on Gmail? Hasala works with Gmail for now.")
           .hType(.footnote)
@@ -501,7 +518,7 @@ struct SplitEditor: View {
 struct ScanResultView: View {
   var model: SetupModel
 
-  /// The window the first scan reads (`LiveMailboxConnecting.connectGmail`).
+  /// The window the first scan reads (`LiveMailboxConnecting.connect`).
   static let windowDays = 90
 
   var body: some View {
@@ -631,9 +648,12 @@ struct NotificationsStepView: View {
         LockNote(text: "Hasala writes its notifications on this iPhone. Our server only sends a silent signal to wake the app. It never sends what a notification says.")
       }
     } footer: {
-      Button("Allow notifications") { Task { await model.allowNotifications() } }
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("notifications.allow")
+      // Once iOS has asked, the step only goes on.
+      Button(model.notificationsAllowed ? "Continue" : "Allow notifications") {
+        Task { await model.allowNotifications() }
+      }
+      .buttonStyle(.pill(.primary, fill: true))
+      .accessibilityIdentifier("notifications.allow")
       LinkButton(title: "Not now", identifier: "notifications.notNow") { model.notNow() }
     }
   }
@@ -683,55 +703,5 @@ struct DoneView: View {
       Image(systemName: "checkmark.circle.fill").foregroundStyle(HColor.statusSuccessForeground).accessibilityHidden(true)
       Text(text).hType(.callout).foregroundStyle(HColor.textPrimary).fixedSize(horizontal: false, vertical: true)
     }
-  }
-}
-
-// MARK: - Connect Gmail after setup
-
-/// "Connect Gmail" or "Reconnect Gmail" once setup is done (spec 04 §6.6 row 4, §7.4), from
-/// Home's Needs-you card or the Profile card: setup's own steps through the live Gmail lane
-/// (Google's sign-in, the `mailbox.link` step-up, the first scan and its result), in a sheet.
-struct GmailConnectSheet: View {
-  let app: AppModel
-  let offer: GmailOffer
-  @Environment(AccountSession.self) private var session: AccountSession?
-  @Environment(\.dismiss) private var dismiss
-
-  var body: some View {
-    if let session {
-      GmailConnectFlow(
-        model: .connectingGmail(
-          offer, services: session.services, onClose: { dismiss() },
-          onFinished: {
-            dismiss()
-            if offer == .reconnect { app.say("Gmail reconnected") }
-          }))
-    }
-  }
-}
-
-/// The connect's navigation stack: the bank step first only when the account reads no bank.
-private struct GmailConnectFlow: View {
-  @State private var model: SetupModel
-
-  init(model: SetupModel) {
-    _model = State(initialValue: model)
-  }
-
-  var body: some View {
-    NavigationStack(path: $model.path) {
-      Group {
-        if model.startsAtBank { BankView(model: model) } else { GmailView(model: model) }
-      }
-      .navigationDestination(for: SetupRoute.self) { route in
-        switch route {
-        case .gmail: GmailView(model: model)
-        case .result: ScanResultView(model: model)
-        case .scan, .income, .plan, .notifications, .done: EmptyView()
-        }
-      }
-    }
-    .interactiveDismissDisabled(model.busy)
-    .task { await model.openConnect() }
   }
 }
