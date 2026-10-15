@@ -1,7 +1,7 @@
 {
   "comment": "Design tokens exported verbatim from the private Paper design file (get_tokens). Regenerate ios/HasalaKit/Sources/HasalaDesign/Generated/Tokens.swift with ios/tools/tokens/generate.swift after any change.",
-  "hash": "360d497c",
-  "count": 447,
+  "hash": "8c572fea",
+  "count": 477,
   "tokens": [
     {
       "name": "--color-white",
@@ -186,30 +186,6 @@
     {
       "name": "--color-apple-buttons-bg-destructive",
       "value": "rgb(255 56 60 / 14%)"
-    },
-    {
-      "name": "--color-glass-tint",
-      "value": "rgb(255 255 255 / 42%)"
-    },
-    {
-      "name": "--color-glass-specular",
-      "value": "rgb(255 255 255 / 75%)"
-    },
-    {
-      "name": "--color-glass-specular-soft",
-      "value": "rgb(255 255 255 / 35%)"
-    },
-    {
-      "name": "--color-glass-glow",
-      "value": "rgb(255 255 255 / 30%)"
-    },
-    {
-      "name": "--color-glass-edge",
-      "value": "rgb(0 0 0 / 10%)"
-    },
-    {
-      "name": "--color-glass-shadow",
-      "value": "rgb(0 0 0 / 8%)"
     },
     {
       "name": "--color-scroll-edge-scrim",
@@ -465,7 +441,7 @@
     },
     {
       "name": "--color-control-switch-track-off",
-      "value": "var(--color-neutral-500)"
+      "value": "var(--color-apple-fills-primary)"
     },
     {
       "name": "--color-control-switch-track-off-pressed",
@@ -510,18 +486,6 @@
     {
       "name": "--color-surface-scroll-edge-reduced",
       "value": "var(--color-surface-canvas)"
-    },
-    {
-      "name": "--color-glass-panel-tint",
-      "value": "rgb(255 255 255 / 70%)"
-    },
-    {
-      "name": "--color-glass-panel-edge",
-      "value": "#DBDBDB"
-    },
-    {
-      "name": "--color-glass-panel-shadow",
-      "value": "rgb(0 0 0 / 25%)"
     },
     {
       "name": "--color-surface-widget",
@@ -624,16 +588,8 @@
       "value": "#D3E6FF"
     },
     {
-      "name": "--color-wash-midday",
-      "value": "#F5F0E1"
-    },
-    {
       "name": "--color-wash-evening",
       "value": "#E8D7EB"
-    },
-    {
-      "name": "--color-wash-night",
-      "value": "#C9CFEF"
     },
     {
       "name": "--color-text-on-wash-secondary",
@@ -792,10 +748,6 @@
       "value": "var(--color-surface-widget-inverse)"
     },
     {
-      "name": "--color-widget-surface-board",
-      "value": "var(--color-surface-board)"
-    },
-    {
       "name": "--color-widget-on-inverse",
       "value": "#FFFFFF"
     },
@@ -814,10 +766,6 @@
     {
       "name": "--color-widget-on-inverse-rule",
       "value": "rgb(255 255 255 / 10%)"
-    },
-    {
-      "name": "--color-widget-meter-tile",
-      "value": "var(--color-ink-900)"
     },
     {
       "name": "--color-poster-glyph",
@@ -1001,7 +949,7 @@
     },
     {
       "name": "--color-pace-fill-over-pace",
-      "value": "#C77700"
+      "value": "var(--color-amber-600)"
     },
     {
       "name": "--color-pace-fill-over-budget",
@@ -1042,6 +990,82 @@
     {
       "name": "--color-wash-over-budget",
       "value": "var(--color-hue-rose-start)"
+    },
+    {
+      "name": "--color-amber-600",
+      "value": "#C77700"
+    },
+    {
+      "name": "--color-badge-count",
+      "value": "var(--color-action-destructive)"
+    },
+    {
+      "name": "--color-badge-count-text",
+      "value": "var(--color-text-on-destructive)"
+    },
+    {
+      "name": "--color-icon-glass",
+      "value": "var(--color-apple-labels-vibrant-primary)"
+    },
+    {
+      "name": "--color-control-check-unselected",
+      "value": "var(--color-border-control)"
+    },
+    {
+      "name": "--color-field-surface-readonly",
+      "value": "var(--color-apple-fills-quaternary)"
+    },
+    {
+      "name": "--color-sheet-surface-large",
+      "value": "var(--color-surface-secondary)"
+    },
+    {
+      "name": "--color-keypad-tray",
+      "value": "var(--color-neutral-200)"
+    },
+    {
+      "name": "--color-keypad-key",
+      "value": "var(--color-surface-primary)"
+    },
+    {
+      "name": "--color-surface-poster-pill",
+      "value": "var(--color-white)"
+    },
+    {
+      "name": "--color-widget-surface-waiting",
+      "value": "var(--color-surface-secondary)"
+    },
+    {
+      "name": "--color-progress-ring-track",
+      "value": "rgb(0 0 0 / 8%)"
+    },
+    {
+      "name": "--color-review-suggestion-surface",
+      "value": "rgb(247 247 248 / 72%)"
+    },
+    {
+      "name": "--color-keypad-tray-inline",
+      "value": "var(--color-apple-fills-tertiary)"
+    },
+    {
+      "name": "--color-pace-reserved",
+      "value": "var(--color-bucket-savings-end)"
+    },
+    {
+      "name": "--color-pace-reserved-hatch",
+      "value": "rgb(22 74 53 / 45%)"
+    },
+    {
+      "name": "--color-bucket-needs-fill",
+      "value": "#E2AA62"
+    },
+    {
+      "name": "--color-bucket-wants-fill",
+      "value": "#A68DDB"
+    },
+    {
+      "name": "--color-bucket-savings-fill",
+      "value": "#78C29F"
     },
     {
       "name": "--font-sans",
@@ -1118,78 +1142,6 @@
     {
       "name": "--font-mono",
       "value": "JetBrains Mono"
-    },
-    {
-      "name": "--font-weight-regular",
-      "value": "400"
-    },
-    {
-      "name": "--font-weight-medium",
-      "value": "500"
-    },
-    {
-      "name": "--font-weight-semibold",
-      "value": "600"
-    },
-    {
-      "name": "--font-weight-bold",
-      "value": "700"
-    },
-    {
-      "name": "--font-weight-body",
-      "value": "400"
-    },
-    {
-      "name": "--font-weight-callout",
-      "value": "400"
-    },
-    {
-      "name": "--font-weight-subheadline",
-      "value": "400"
-    },
-    {
-      "name": "--font-weight-footnote",
-      "value": "400"
-    },
-    {
-      "name": "--font-weight-caption-1",
-      "value": "500"
-    },
-    {
-      "name": "--font-weight-caption-2",
-      "value": "500"
-    },
-    {
-      "name": "--font-weight-title-2",
-      "value": "600"
-    },
-    {
-      "name": "--font-weight-title-3",
-      "value": "600"
-    },
-    {
-      "name": "--font-weight-headline",
-      "value": "600"
-    },
-    {
-      "name": "--font-weight-button",
-      "value": "600"
-    },
-    {
-      "name": "--font-weight-large-title",
-      "value": "700"
-    },
-    {
-      "name": "--font-weight-title-1",
-      "value": "700"
-    },
-    {
-      "name": "--font-weight-section",
-      "value": "700"
-    },
-    {
-      "name": "--font-weight-list-row-title",
-      "value": "var(--font-weight-medium)"
     },
     {
       "name": "--text-caption-1",
@@ -1292,6 +1244,94 @@
       "value": "56px"
     },
     {
+      "name": "--text-numeric-badge",
+      "value": "13px"
+    },
+    {
+      "name": "--text-numeric-compact",
+      "value": "15px"
+    },
+    {
+      "name": "--text-numeric-row",
+      "value": "16px"
+    },
+    {
+      "name": "--text-numeric-display-unit",
+      "value": "20px"
+    },
+    {
+      "name": "--font-weight-regular",
+      "value": "400"
+    },
+    {
+      "name": "--font-weight-medium",
+      "value": "500"
+    },
+    {
+      "name": "--font-weight-semibold",
+      "value": "600"
+    },
+    {
+      "name": "--font-weight-bold",
+      "value": "700"
+    },
+    {
+      "name": "--font-weight-body",
+      "value": "400"
+    },
+    {
+      "name": "--font-weight-callout",
+      "value": "400"
+    },
+    {
+      "name": "--font-weight-subheadline",
+      "value": "400"
+    },
+    {
+      "name": "--font-weight-footnote",
+      "value": "400"
+    },
+    {
+      "name": "--font-weight-caption-1",
+      "value": "500"
+    },
+    {
+      "name": "--font-weight-caption-2",
+      "value": "500"
+    },
+    {
+      "name": "--font-weight-title-2",
+      "value": "600"
+    },
+    {
+      "name": "--font-weight-title-3",
+      "value": "600"
+    },
+    {
+      "name": "--font-weight-headline",
+      "value": "600"
+    },
+    {
+      "name": "--font-weight-button",
+      "value": "600"
+    },
+    {
+      "name": "--font-weight-large-title",
+      "value": "700"
+    },
+    {
+      "name": "--font-weight-title-1",
+      "value": "700"
+    },
+    {
+      "name": "--font-weight-section",
+      "value": "700"
+    },
+    {
+      "name": "--font-weight-list-row-title",
+      "value": "var(--font-weight-semibold)"
+    },
+    {
       "name": "--tracking-title-1",
       "value": "-0.55px"
     },
@@ -1366,6 +1406,10 @@
     {
       "name": "--tracking-numeric-display",
       "value": "-1.2px"
+    },
+    {
+      "name": "--tracking-numeric-medium",
+      "value": "-0.4px"
     },
     {
       "name": "--leading-caption-1",
@@ -1474,6 +1518,26 @@
     {
       "name": "--leading-numeric-display",
       "value": "58px"
+    },
+    {
+      "name": "--leading-overline",
+      "value": "16px"
+    },
+    {
+      "name": "--leading-numeric-badge",
+      "value": "16px"
+    },
+    {
+      "name": "--leading-numeric-compact",
+      "value": "20px"
+    },
+    {
+      "name": "--leading-numeric-row",
+      "value": "22px"
+    },
+    {
+      "name": "--leading-numeric-display-unit",
+      "value": "24px"
     },
     {
       "name": "--container-favorite-tile",
@@ -1593,7 +1657,7 @@
     },
     {
       "name": "--spacing-inset-card",
-      "value": "20px"
+      "value": "16px"
     },
     {
       "name": "--spacing-gap-section",
@@ -1740,6 +1804,50 @@
       "value": "16px"
     },
     {
+      "name": "--spacing-icon-inline",
+      "value": "18px"
+    },
+    {
+      "name": "--spacing-sheet-gap",
+      "value": "18px"
+    },
+    {
+      "name": "--spacing-icon-glass",
+      "value": "22px"
+    },
+    {
+      "name": "--spacing-tab-bar-bottom",
+      "value": "29px"
+    },
+    {
+      "name": "--spacing-keypad-key-height-inline",
+      "value": "44px"
+    },
+    {
+      "name": "--spacing-list-row-min-height-key-value",
+      "value": "48px"
+    },
+    {
+      "name": "--spacing-code-cell-width",
+      "value": "52px"
+    },
+    {
+      "name": "--spacing-keypad-key-height",
+      "value": "52px"
+    },
+    {
+      "name": "--spacing-code-cell-height",
+      "value": "64px"
+    },
+    {
+      "name": "--spacing-scroll-content-bottom",
+      "value": "160px"
+    },
+    {
+      "name": "--spacing-pace-marker-height-widget",
+      "value": "12px"
+    },
+    {
       "name": "--radius-small",
       "value": "8px"
     },
@@ -1749,7 +1857,7 @@
     },
     {
       "name": "--radius-card",
-      "value": "20px"
+      "value": "24px"
     },
     {
       "name": "--radius-pill",
@@ -1790,6 +1898,18 @@
     {
       "name": "--radius-pace-bar",
       "value": "4px"
+    },
+    {
+      "name": "--radius-stat-tile",
+      "value": "18px"
+    },
+    {
+      "name": "--radius-review-card",
+      "value": "28px"
+    },
+    {
+      "name": "--radius-sheet-large",
+      "value": "34px"
     }
   ]
 }

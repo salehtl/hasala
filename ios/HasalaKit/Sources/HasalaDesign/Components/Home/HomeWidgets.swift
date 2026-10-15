@@ -2,7 +2,8 @@ import HasalaModels
 import SwiftUI
 
 // The Home canvas widgets (Paper "Widgets · launch set", "Home · Default"): r26, Small 175², Medium 362 wide.
-// The same views will draw the WidgetKit extension's cards (spec 04 DV-8).
+// The same views will draw the WidgetKit extension's cards (spec 04 DV-8). Moved here unchanged in F1;
+// P5 owns this folder from Stage P (`ReflowingRow` moved to Lists.swift, where every screen finds it).
 
 private let widgetShadowNear = Color(HRGBA(0, 0, 0, 0.0588))  // #0000000F
 private let widgetShadowFar = Color(HRGBA(0, 0, 0, 0.0784))  // #00000014
@@ -23,50 +24,6 @@ extension View {
   /// two cards of equal height with their figures on the bottom edge.
   func smallWidget() -> some View {
     frame(maxWidth: .infinity, minHeight: HContainer.widgetUnit, maxHeight: .infinity, alignment: .topLeading)
-  }
-}
-
-/// A row with a leading and a trailing part. It stays one line while both fit at their
-/// natural width; otherwise, and always at the accessibility text sizes, the trailing
-/// part moves under the leading one instead of either truncating (spec 04 §17).
-public struct ReflowingRow<Leading: View, Trailing: View>: View {
-  let spacing: CGFloat
-  let alignment: VerticalAlignment
-  let leading: Leading
-  let trailing: Trailing
-  @Environment(\.dynamicTypeSize) private var typeSize
-
-  public init(
-    spacing: CGFloat = 8, alignment: VerticalAlignment = .center, @ViewBuilder leading: () -> Leading,
-    @ViewBuilder trailing: () -> Trailing
-  ) {
-    self.spacing = spacing
-    self.alignment = alignment
-    self.leading = leading()
-    self.trailing = trailing()
-  }
-
-  public var body: some View {
-    if typeSize.isAccessibilitySize {
-      stacked
-    } else {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: alignment, spacing: 0) {
-          leading
-          Spacer(minLength: spacing)
-          trailing
-        }
-        stacked
-      }
-    }
-  }
-
-  private var stacked: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      leading
-      trailing
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 

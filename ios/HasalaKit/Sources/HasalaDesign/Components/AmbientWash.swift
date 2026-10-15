@@ -1,48 +1,50 @@
 import HasalaModels
 import SwiftUI
 
-/// The ambient wash at the top of tab and pushed screens (Paper `4.8`): 420 pt tall,
-/// fading into the grouped canvas. Sky on track or neutral, sand over pace, rose
-/// over budget or a late bill, lilac a category, peach projects and bills, mint done.
+/// The ambient wash at the top of tab, pushed and flow screens (Paper `4.6`): a tint that
+/// fades into the grouped canvas, interpolated in a perceptual space as Paper draws it
+/// (`in oklab`). A change of wash cross-fades (`.stateSwap`); the colour is set before any
+/// other motion starts.
 public struct AmbientWash: View {
-  let hue: Hue
+  let wash: HWash
   let height: CGFloat
+  @ResolvedMotion private var motion: MotionPolicy
 
+  public init(_ wash: HWash, height: CGFloat? = nil) {
+    self.wash = wash
+    self.height = height ?? wash.height
+  }
+
+  /// The hue form: sky, sand and rose are the three verdict washes (on track, over pace,
+  /// over budget); lilac, peach and mint tint a category or project detail.
   public init(_ hue: Hue, height: CGFloat = 420) {
-    self.hue = hue
-    self.height = height
-  }
-
-  public var body: some View {
-    LinearGradient(
-      stops: [
-        .init(color: Color(top), location: 0),
-        .init(color: Color(middle), location: 0.38),
-        .init(color: HColor.surfaceSecondary.opacity(0), location: 1),
-      ],
-      startPoint: .top, endPoint: .bottom
-    )
-    .frame(height: height)
-    .accessibilityHidden(true)
-  }
-
-  /// The wash's first stop. On-track sky is `--color-wash-on-track`; the others start
-  /// at their hue's start token (`--color-wash-over-pace` / `-over-budget` are sand/rose).
-  var top: HRGBA {
     switch hue {
-    case .sky: HPalette.washOnTrack
-    case .sand: HPalette.washOverPace
-    case .rose: HPalette.washOverBudget
-    default: hue.tokens.start
+    case .sky: self.init(.onTrack, height: height)
+    case .sand: self.init(.overPace, height: height)
+    case .rose: self.init(.overBudget, height: height)
+    default: self.init(.hue(hue), height: height)
     }
   }
 
-  /// The 38% stop. Paper's on-track board draws oklab(94.1% −0.003 −0.021) = #E4ECFA;
-  /// the other washes blend their start halfway into the canvas.
-  var middle: HRGBA {
-    if hue == .sky { return HRGBA(228, 236, 250, 1) }
-    let a = top, b = HPalette.surfaceSecondary
-    return HRGBA(UInt8((Int(a.red) + Int(b.red)) / 2), UInt8((Int(a.green) + Int(b.green)) / 2),
-                 UInt8((Int(a.blue) + Int(b.blue)) / 2), 1)
+  public var body: some View {
+    ZStack {
+      WashLayer(wash: wash)
+        .id(wash)
+        .transition(.opacity)
+    }
+    .frame(height: height)
+    .frame(maxWidth: .infinity)
+    .animation(motion.animation(.stateSwap), value: wash)
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
+}
+
+struct WashLayer: View {
+  let wash: HWash
+
+  var body: some View {
+    let gradient = Gradient(stops: wash.stops.map { Gradient.Stop(color: Color($0.color), location: $0.location) })
+    Rectangle().fill(.linearGradient(gradient.colorSpace(.perceptual), startPoint: .top, endPoint: .bottom))
   }
 }
