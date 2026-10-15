@@ -28,7 +28,7 @@ const description = data?.description ?? page.fallbackDescription;
 const isDraft = !entry || (data?.status ?? 'draft') === 'draft';
 const updated = data?.lastUpdated ?? data?.updated;
 const updatedText = updated?.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
-const version = data?.version ? `Version ${data.version}` : 'Beta';
+const version = data?.version ? `Version ${data.version} · Beta` : 'Beta';
 const plainWords = typeof data?.plainWords === 'string' ? data.plainWords : null;
 const contact = data?.contact ?? (slug === 'privacy' ? SITE.privacyEmail : slug === 'security' ? SITE.securityEmail : SITE.supportEmail);
 const crumb = slug === 'support' || slug === 'security' ? 'Help' : 'Legal';
@@ -53,7 +53,7 @@ const jsonLd = {
 };
 ---
 
-<Base title={title} description={description} path={`/${slug}`} noindex={isDraft} ogType="article" jsonLd={jsonLd} class="legal-page">
+<Base title={title} description={description} path={`/${slug}`} noindex={isDraft} ogType="article" jsonLd={jsonLd} edge="legal" class="legal-page">
   <header class="doc-head">
     <div class="container doc-head__inner">
       <nav class="crumbs" aria-label="Breadcrumb">
@@ -70,12 +70,12 @@ const jsonLd = {
           updatedText && (
             <span class="doc-updated">
               <Icon name="clock" size={14} stroke={1.5} />
-              Last updated <time datetime={updated!.toISOString().slice(0, 10)}>{updatedText}</time>
+              <span>Last updated <time datetime={updated!.toISOString().slice(0, 10)}>{updatedText}</time></span>
             </span>
           )
         }
         <span class="doc-version">{version}</span>
-        <span class="doc-sep no-print" aria-hidden="true" data-print-only hidden></span>
+        <span class="doc-sep doc-sep--print no-print" aria-hidden="true" data-print-only hidden></span>
         <button type="button" class="doc-print no-print" data-print hidden>Print or save as PDF</button>
       </div>
       {
@@ -151,7 +151,7 @@ const jsonLd = {
         plainWords && (
           <aside class="plain-words" aria-label="In plain words">
             <span class="plain-words__coin" aria-hidden="true" />
-            <div>
+            <div class="plain-words__text">
               <p class="plain-words__title">In plain words</p>
               <p>{plainWords}</p>
             </div>
@@ -167,6 +167,17 @@ const jsonLd = {
             <p>
               This page isn’t ready yet. Until it is, write to <a href={`mailto:${contact}`}>{contact}</a> and a person who builds Hasala will reply.
             </p>
+          </div>
+        )
+      }
+      {
+        (slug === 'privacy' || slug === 'support') && (
+          <div class="doc-contact">
+            <div class="doc-contact__text">
+              <p class="doc-contact__title">{slug === 'privacy' ? 'Hasala · Data protection contact' : 'Hasala · Support'}</p>
+              <p class="doc-contact__sub">{slug === 'privacy' ? 'Questions about your data or this policy.' : 'A person who builds Hasala will reply.'}</p>
+            </div>
+            <a href={`mailto:${contact}`}>{contact}</a>
           </div>
         )
       }
@@ -270,23 +281,24 @@ const jsonLd = {
 
 <style>
   .doc-head {
-    padding: 112px 0 24px;
-    background: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 60%, oklab(100% 0 0) 100%);
-    border-bottom: 1px solid var(--neutral-200);
+    --edge-t: var(--edge-legal);
+    --edge-b: var(--white);
+    padding: 104px 0 32px;
+    background: linear-gradient(in oklab 180deg, oklab(96% 0.002 -0.019) 0%, oklab(98% 0.0008 -0.007) 70%, oklab(100% 0 0) 100%);
   }
   .doc-head__inner {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
   }
   .crumbs ol {
     display: flex;
     align-items: center;
     gap: 8px;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
-    line-height: 20px;
+    line-height: 18px;
   }
   .crumbs a:hover {
     color: var(--text-primary);
@@ -295,7 +307,7 @@ const jsonLd = {
     color: var(--neutral-400);
   }
   .doc-title {
-    font-size: clamp(36px, 27.83px + 2.095vw, 60px);
+    font-size: clamp(38px, 28.9px + 2.33vw, 60px);
     font-weight: 700;
     letter-spacing: -0.04em;
     line-height: calc(1em + 4px);
@@ -303,24 +315,24 @@ const jsonLd = {
   .doc-standfirst {
     max-width: 680px;
     color: var(--neutral-700);
-    font-size: clamp(17px, 15.89px + 0.286vw, 20px);
-    line-height: 1.55;
+    font-size: clamp(17px, 15.9px + 0.29vw, 20px);
+    line-height: clamp(26px, 24.4px + 0.5vw, 31px);
   }
   .doc-meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 12px;
+    gap: 8px 10px;
     padding-top: 4px;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
     line-height: 18px;
   }
   .doc-updated {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px 6px 10px;
+    padding: 5px 10px 5px 8px;
     border-radius: var(--r-pill);
     background: var(--white);
     box-shadow: rgb(0 0 0 / 6%) 0 0 0 1px;
@@ -328,9 +340,20 @@ const jsonLd = {
     font-weight: 500;
   }
   .doc-updated :global(.icon) {
+    width: 13px;
+    height: 13px;
     color: var(--neutral-600);
   }
+  .doc-updated {
+    gap: 6px;
+  }
+  .doc-version,
+  .doc-sep,
+  .doc-print {
+    display: none;
+  }
   .doc-sep {
+    flex: none;
     width: 3px;
     height: 3px;
     border-radius: 2px;
@@ -365,7 +388,7 @@ const jsonLd = {
   .doc-body {
     display: flex;
     flex-direction: column;
-    padding: 0 0 72px;
+    padding: 0 0 56px;
   }
   .rail__desktop {
     display: none;
@@ -385,7 +408,7 @@ const jsonLd = {
     display: flex;
     align-items: center;
     gap: 12px;
-    height: 56px;
+    height: 57px;
     list-style: none;
     cursor: pointer;
   }
@@ -469,7 +492,31 @@ const jsonLd = {
 
   @media (min-width: 1024px) {
     .doc-head {
-      padding: 148px 0 48px;
+      padding: 140px 0 64px;
+      border-bottom: 1px solid var(--neutral-200);
+    }
+    .crumbs ol,
+    .doc-meta {
+      font-size: 14px;
+    }
+    .doc-meta {
+      gap: 8px 12px;
+    }
+    .doc-updated {
+      gap: 8px;
+      padding: 6px 12px 6px 10px;
+    }
+    .doc-updated :global(.icon) {
+      width: 14px;
+      height: 14px;
+    }
+    .doc-version,
+    .doc-sep:not([hidden]),
+    .doc-print:not([hidden]) {
+      display: inline;
+    }
+    .doc-sep:not([hidden]) {
+      display: block;
     }
     .doc-head__inner {
       gap: 20px;
@@ -479,7 +526,7 @@ const jsonLd = {
       flex-direction: row;
       align-items: flex-start;
       gap: 100px;
-      padding: 48px 0 140px;
+      padding: 64px 0 120px;
     }
     .rail {
       position: sticky;
@@ -545,7 +592,7 @@ const jsonLd = {
     counter-reset: section;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
     width: 100%;
     max-width: 680px;
     min-width: 0;
@@ -562,10 +609,10 @@ const jsonLd = {
     position: relative;
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
-    margin-top: 28px;
-    padding-top: 40px;
+    align-items: baseline;
+    gap: 8px 10px;
+    margin-top: 20px;
+    padding-top: 36px;
     border-top: 1px solid var(--neutral-200);
     color: var(--text-primary);
     font-size: 24px;
@@ -576,15 +623,15 @@ const jsonLd = {
   }
   .prose h2::before {
     content: counter(section);
-    width: 18px;
     color: var(--accent);
     font-family: var(--font-figure);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0;
   }
-  .prose > .plain-words:first-child + h2,
-  .prose > h2:first-child {
+  /* Paper: the numbered heading comes first, then the "In plain words" card. */
+  .prose > h2:first-of-type {
+    order: -1;
     margin-top: 0;
     padding-top: 0;
     border-top: 0;
@@ -626,8 +673,23 @@ const jsonLd = {
     gap: 10px;
     padding-left: 22px;
   }
-  .prose ul li::marker {
-    color: var(--accent);
+  .prose ul {
+    padding-left: 4px;
+    list-style: none;
+  }
+  .prose ul > li {
+    position: relative;
+    padding-left: 18px;
+  }
+  .prose ul > li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 11px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   .prose ol li::marker {
     color: var(--accent);
@@ -638,12 +700,12 @@ const jsonLd = {
     margin: 0;
   }
   .prose blockquote {
-    padding: 18px 20px;
-    border-radius: 18px;
+    padding: 14px 16px;
+    border-radius: 16px;
     background: var(--blue-50);
     color: var(--blue-800);
-    font-size: 16px;
-    line-height: 25px;
+    font-size: 15px;
+    line-height: 23px;
   }
   .prose table {
     display: block;
@@ -694,14 +756,15 @@ const jsonLd = {
   .plain-words {
     display: flex;
     gap: 14px;
-    padding: 20px 22px;
-    border-radius: 20px;
+    padding: 16px 18px;
+    border-radius: 18px;
     background: linear-gradient(in oklab 180deg, oklab(96.2% 0.008 0.03) 0%, oklab(93.5% 0.012 0.04) 100%);
     color: var(--hue-sand-ink);
-    font-size: 17px;
-    line-height: 27px;
+    font-size: 16px;
+    line-height: 25px;
   }
   .plain-words__coin {
+    display: none;
     position: relative;
     flex: none;
     width: 28px;
@@ -730,8 +793,15 @@ const jsonLd = {
   .plain-words p {
     margin: 0;
   }
+  .plain-words__text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
   .plain-words__title {
+    font-size: 15px;
     font-weight: 700;
+    line-height: 20px;
   }
   .anchor-copy {
     position: relative;
@@ -785,17 +855,41 @@ const jsonLd = {
     color: var(--text-link);
     font-weight: 600;
   }
+  .doc-contact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-top: 16px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: var(--neutral-100);
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .doc-contact__title {
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .doc-contact a {
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+  }
   .doc-end {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-top: 28px;
-    padding-top: 24px;
+    margin-top: 20px;
+    padding-top: 20px;
     border-top: 1px solid var(--neutral-200);
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
     line-height: 20px;
   }
   .doc-top {
@@ -803,6 +897,7 @@ const jsonLd = {
     align-items: center;
     gap: 6px;
     color: var(--text-link);
+    font-size: 14px;
     font-weight: 500;
   }
   @media (min-width: 1024px) {
@@ -813,10 +908,66 @@ const jsonLd = {
       line-height: 30px;
     }
     .prose h2 {
-      margin-top: 28px;
+      margin-top: 36px;
       padding-top: 48px;
+      align-items: center;
+      gap: 8px 12px;
       font-size: 28px;
       line-height: 34px;
+    }
+    .prose h2::before {
+      width: 28px;
+      font-size: 15px;
+    }
+    .prose ul,
+    .prose ol {
+      gap: 12px;
+      padding-left: 24px;
+    }
+    .prose ul {
+      padding-left: 4px;
+    }
+    .prose ul > li {
+      padding-left: 21px;
+    }
+    .prose ul > li::before {
+      top: 12px;
+      width: 7px;
+      height: 7px;
+    }
+    .prose blockquote {
+      padding: 18px 20px;
+      border-radius: 18px;
+      font-size: 16px;
+      line-height: 25px;
+    }
+    .doc-contact {
+      padding: 20px 22px;
+      border-radius: 20px;
+      font-size: 15px;
+      line-height: 22px;
+    }
+    .doc-contact__title {
+      font-size: 16px;
+      line-height: 22px;
+    }
+    .plain-words {
+      padding: 20px 22px;
+      border-radius: 20px;
+      font-size: 17px;
+      line-height: 27px;
+    }
+    .plain-words__coin {
+      display: block;
+    }
+    .plain-words__title {
+      font-size: 16px;
+      line-height: 22px;
+    }
+    .doc-end {
+      margin-top: 36px;
+      padding-top: 24px;
+      font-size: 14px;
     }
     .prose h3 {
       font-size: 20px;

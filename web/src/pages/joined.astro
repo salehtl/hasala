@@ -4,7 +4,7 @@
  *
  * "api" mode: the API answers a script-free form post with a 303 to
  * HASALA_WEB_WAITLIST_DONE_URL, which must be https://hasala.app/joined.
- * Success shows "Request sent". A validation
+ * Success shows "You're on the list." (Paper "Waitlist · States"). A validation
  * error comes back as ?error=<code>; a few lines of script then show what
  * went wrong instead.
  *
@@ -22,19 +22,20 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
 ---
 
 <Base
-  title={byEmail ? 'Email us to join' : 'Request sent'}
+  title={byEmail ? 'Email us to join' : 'You’re on the list'}
   description={
     byEmail
       ? `To join the Hasala waitlist, email ${SITE.supportEmail} with your email address and your bank. We'll email you when your TestFlight invite is ready.`
-      : "Your request to join the Hasala beta is in. We'll email you when your TestFlight invite is ready."
+      : "You're on the Hasala waitlist. We'll email you when your TestFlight invite is ready."
   }
   path="/joined"
   noindex
 >
   <section class="joined">
+    <div class="container-wide">
     {
       byEmail ? (
-        <div class="joined__panel" data-state="email">
+        <div class="joined__panel panel panel--pace" data-state="email">
           <WaitlistCoin id="joined-coin" />
           <div class="joined__card">
             <h1>Email us to join.</h1>
@@ -51,13 +52,13 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
           </div>
         </div>
       ) : (
-        <div class="joined__panel" data-state="success">
+        <div class="joined__panel panel panel--pace" data-state="success">
           <WaitlistCoin id="joined-coin" />
           <div class="joined__card" data-joined-ok>
-            <h1>Request sent.</h1>
-            <p>Thanks! We’ll email your invite when it’s ready. Invites go out in small batches.</p>
+            <h1>You’re on the list.</h1>
+            <p>We’ve sent you a confirmation and will email again when your TestFlight invite is ready. Invites go out in small batches, usually within a few weeks.</p>
             <p class="joined__from">
-              <Icon name="mail" size={16} stroke={1.6} />Our emails come from {SITE.mailFrom}. Tap <b>Confirm my email</b> in the first one, so we can send your invite.
+              <Icon name="mail" size={16} stroke={1.6} /><span>Our emails come from {SITE.mailFrom}. Add it to your contacts so the invite doesn’t land in spam.</span>
             </p>
             <a class="btn btn--subtle" href="/">Back to the home page</a>
           </div>
@@ -69,6 +70,7 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
         </div>
       )
     }
+    </div>
   </section>
 </Base>
 
@@ -96,7 +98,7 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
 
 <style>
   .joined {
-    padding: 96px 12px 40px;
+    padding: 96px 0 40px;
   }
   .joined__panel {
     display: flex;
@@ -104,14 +106,13 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
     align-items: center;
     max-width: 720px;
     margin: 0 auto;
-    padding: 48px 12px 12px;
-    border-radius: 36px;
-    background: var(--wash-pace);
+    --coin-w: 190px;
   }
   .joined__panel :global(.wl-coin) {
-    width: 200px;
+    width: var(--coin-w);
     height: auto;
-    margin-bottom: -8px;
+    margin-top: calc(var(--coin-w) * -0.1753);
+    overflow: visible;
   }
   .joined__panel :global(.wl-coin-body) {
     display: none;
@@ -123,11 +124,20 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
   .joined__panel :global(.wl-whoosh) {
     display: none;
   }
+  .joined__panel :global(.wl-plate) {
+    fill: #f9dc94;
+    fill-opacity: 0.3;
+  }
   .joined__panel[data-state='error'] :global(.wl-check),
   .joined__panel[data-state='error'] :global(.wl-lip),
   .joined__panel[data-state='email'] :global(.wl-check),
   .joined__panel[data-state='email'] :global(.wl-lip) {
     display: none;
+  }
+  .joined__panel[data-state='error'] :global(.wl-plate),
+  .joined__panel[data-state='email'] :global(.wl-plate) {
+    fill: #fff;
+    fill-opacity: 0.16;
   }
   /* "email" mode: the coin still waits in the slot, as on the form. */
   .joined__panel[data-state='email'] :global(.wl-coin-body) {
@@ -139,27 +149,28 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
   .joined__card {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
     width: min(520px, 100%);
-    padding: 28px 24px;
-    border-radius: 28px;
+    padding: 22px;
+    border-radius: 26px;
     background: var(--white);
-    box-shadow: rgb(11 26 74 / 35%) 0 30px 60px;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-form);
   }
   .joined__card h1 {
-    font-size: 30px;
+    font-size: 26px;
     font-weight: 700;
     letter-spacing: -0.03em;
-    line-height: 36px;
+    line-height: 32px;
   }
   .joined__card p {
     color: var(--text-body);
-    font-size: 16px;
-    line-height: 25px;
+    font-size: 15px;
+    line-height: 23px;
   }
   .joined__from {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     padding: 14px 16px;
     border-radius: 16px;
     background: var(--blue-50);
@@ -175,6 +186,22 @@ const inviteMail = `mailto:${SITE.supportEmail}?subject=${encodeURIComponent('Ha
   @media (min-width: 768px) {
     .joined {
       padding-top: 140px;
+    }
+    .joined__panel {
+      --coin-w: 250px;
+    }
+    .joined__card {
+      gap: 20px;
+      padding: 32px;
+      border-radius: 32px;
+    }
+    .joined__card h1 {
+      font-size: 30px;
+      line-height: 36px;
+    }
+    .joined__card p {
+      font-size: 16px;
+      line-height: 25px;
     }
   }
 </style>

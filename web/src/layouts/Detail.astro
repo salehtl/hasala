@@ -52,7 +52,7 @@ const ld = {
 };
 ---
 
-<Base title={title} description={description} path={path} jsonLd={ld} class="detail-page">
+<Base title={title} description={description} path={path} jsonLd={ld} edge="sky" class="detail-page">
   <header class="page-head">
     <div class="container page-head__inner">
       <h1 class="page-head__title">{heading}</h1>
@@ -95,6 +95,8 @@ const ld = {
 
 <style>
   .page-head {
+    --edge-t: var(--edge-sky);
+    --edge-b: var(--white);
     padding: 128px 0 40px;
     background: var(--wash-hero);
   }

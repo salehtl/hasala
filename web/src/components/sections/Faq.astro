@@ -1,0 +1,253 @@
+---
+/**
+ * 09 FAQ (Paper B3U-0 / BTQ-0). Native <details>, so it works without JS; the
+ * first answer starts open as drawn. Same questions as /faq (data/faq.ts).
+ */
+import Icon from '../Icon.astro';
+import { HOME_FAQ } from '../../data/faq';
+import { SITE } from '../../data/site';
+---
+
+<section id="faq" class="faq" aria-labelledby="faq-title">
+  <div class="container faq__inner">
+    <div class="faq__aside" data-reveal>
+      <p class="overline">FAQ</p>
+      <h2 id="faq-title" class="display-panel">Common questions</h2>
+      <p class="faq__lead">Can’t find your answer? Email us. The people who build Hasala will reply.</p>
+      <a class="faq__mail" href={`mailto:${SITE.supportEmail}`}>
+        {SITE.supportEmail}
+        <Icon name="arrow-right" size={14} stroke={1.9} />
+      </a>
+    </div>
+    <div class="faq__list" data-reveal>
+      {
+        HOME_FAQ.map((f, i) => (
+          <details class="faq__item" open={i === 0}>
+            <summary class="faq__summary">
+              <span class="faq__q">
+                {f.qMobile ? (
+                  <>
+                    <span class="faq__d">{f.q}</span>
+                    <span class="faq__m">{f.qMobile}</span>
+                  </>
+                ) : (
+                  f.q
+                )}
+              </span>
+              <span class="faq__toggle" aria-hidden="true" />
+            </summary>
+            <div class="faq__answer">
+              {f.paragraphs.map((p, pi) =>
+                pi === 0 && f.mobileFirst ? (
+                  <p>
+                    <span class="faq__d">{p}</span>
+                    <span class="faq__m">{f.mobileFirst}</span>
+                  </p>
+                ) : (
+                  <p>{p}</p>
+                ),
+              )}
+              {f.steps.length > 0 && (
+                <ol>
+                  {f.steps.map((s) => (
+                    <li>{s}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .faq {
+    --section-pt: 32px;
+    --section-pb: 72px;
+    padding-block: var(--section-pt) var(--section-pb);
+    background: var(--white);
+  }
+  .faq__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 40px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .faq__aside {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .faq__lead,
+  .faq__mail {
+    display: none;
+  }
+  .faq__item {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .faq__summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-block: 20px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .faq__summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq__q {
+    flex: 1;
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+  }
+  .faq__toggle {
+    position: relative;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--neutral-100);
+    transition:
+      background-color var(--t-hover-out) var(--ease-out-soft);
+  }
+  .faq__toggle::before,
+  .faq__toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 1.8px;
+    margin: -0.9px 0 0 -6px;
+    border-radius: 2px;
+    background: var(--ink-900);
+    transition: transform var(--t-hover-out) var(--ease-out-soft), background-color var(--t-hover-out);
+  }
+  .faq__toggle::after {
+    transform: rotate(90deg);
+  }
+  .faq__item[open] .faq__toggle {
+    background: var(--ink-900);
+  }
+  .faq__item[open] .faq__toggle::before,
+  .faq__item[open] .faq__toggle::after {
+    background: var(--white);
+  }
+  .faq__item[open] .faq__toggle::after {
+    transform: rotate(0);
+  }
+  .faq__summary:focus-visible {
+    outline-offset: -2px;
+    border-radius: 12px;
+  }
+  .faq__answer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 48px 20px 0;
+    color: var(--text-body);
+    font-size: 15px;
+    line-height: 23px;
+  }
+  .faq__answer ol {
+    margin: 0;
+    padding-left: 1.4em;
+  }
+  .faq__m {
+    display: inline;
+  }
+  .faq__d {
+    display: none;
+  }
+  .faq__item[open] .faq__summary {
+    align-items: flex-start;
+    padding-bottom: 8px;
+  }
+  .faq__item[open] .faq__toggle {
+    margin-top: -4px;
+  }
+  @media (min-width: 768px) {
+    .faq__m {
+      display: none;
+    }
+    .faq__d {
+      display: inline;
+    }
+    .faq__inner {
+      gap: 32px;
+    }
+    .faq__lead {
+      display: block;
+      max-width: 380px;
+      color: var(--text-secondary);
+      font-size: 17px;
+      line-height: 26px;
+    }
+    .faq__mail {
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      gap: 8px;
+      padding-top: 4px;
+      color: var(--text-link);
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 24px;
+    }
+    .faq__aside {
+      gap: 20px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .faq {
+      --section-pt: 0;
+      --section-pb: 140px;
+    }
+    .faq__inner {
+      flex-direction: row;
+      gap: 96px;
+      padding-top: 80px;
+    }
+    .faq__aside {
+      flex: 0 0 380px;
+    }
+    .faq__list {
+      flex: 1;
+      min-width: 0;
+    }
+    .faq__summary {
+      gap: 24px;
+      padding-block: 28px;
+    }
+    .faq__q {
+      font-size: 21px;
+      line-height: 28px;
+      letter-spacing: -0.015em;
+    }
+    .faq__toggle {
+      width: 36px;
+      height: 36px;
+    }
+    .faq__item[open] .faq__summary {
+      padding-bottom: 12px;
+    }
+    .faq__answer {
+      max-width: 660px;
+      padding: 0 60px 28px 0;
+      gap: 12px;
+      font-size: 17px;
+      line-height: 27px;
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .faq__item:not([open]) .faq__summary:hover .faq__toggle {
+      background: var(--neutral-200);
+    }
+  }
+</style>

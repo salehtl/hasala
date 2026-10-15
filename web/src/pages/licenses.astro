@@ -31,7 +31,7 @@ const jsonLd = {
 };
 ---
 
-<Base title={title} description={description} path="/licenses" jsonLd={jsonLd}>
+<Base title={title} description={description} path="/licenses" jsonLd={jsonLd} edge="soft">
   <header class="lic-head">
     <div class="container lic-head__inner">
       <nav class="crumbs" aria-label="Breadcrumb">
@@ -103,6 +103,8 @@ const jsonLd = {
 
 <style>
   .lic-head {
+    --edge-t: var(--edge-soft);
+    --edge-b: var(--white);
     padding: 112px 0 24px;
     background: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 60%, oklab(100% 0 0) 100%);
     border-bottom: 1px solid var(--neutral-200);

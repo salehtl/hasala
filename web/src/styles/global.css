@@ -102,8 +102,37 @@
   --wash-peach: linear-gradient(in oklab 170deg, oklab(96.2% 0.008 0.03) 0%, oklab(94.7% 0.017 0.027) 55%, oklab(91.3% 0.017 0.056) 100%);
   --wash-navy: linear-gradient(in oklab 180deg, oklab(28.7% -0.007 -0.095) 0%, oklab(25.1% -0.005 -0.081) 60%, oklab(23% -0.004 -0.069) 100%);
   --wash-pace: linear-gradient(in oklab 160deg, oklab(62.2% -0.006 -0.203) 0%, oklab(55.6% -0.01 -0.217) 45%, oklab(48% -0.01 -0.211) 100%);
+  --wash-hero-m: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 45%, oklab(97.3% 0.0002 -0.008) 80%, oklab(100% 0 0) 100%);
+  --wash-invite: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 40%, oklab(97.3% 0.0002 -0.008) 75%, oklab(100% 0 0) 100%);
+  --wash-soft: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%); /* 404 */
+  --wash-legal: linear-gradient(in oklab 180deg, oklab(96% 0.002 -0.019) 0%, oklab(98% 0.0008 -0.007) 60%, oklab(100% 0 0) 100%);
+  --wash-callout: linear-gradient(in oklab 180deg, oklab(96.2% 0.008 0.03) 0%, oklab(93.5% 0.012 0.04) 100%); /* "In plain words" */
+  --glow-gold: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(90.3% 0.003 0.096 / 35%) 0%, oklab(90.3% 0.003 0.096 / 0%) 65%);
+  --glow-blue: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(62.2% -0.006 -0.203 / 35%) 0%, oklab(62.2% -0.006 -0.203 / 0%) 70%);
   --coin: linear-gradient(in oklab 180deg, oklab(90.3% 0.003 0.096) 0%, oklab(79.4% 0.028 0.132) 100%);
   --glow-dirham: oklab(90.3% 0.003 0.096);
+
+  /* Screen edges (iOS Safari). Safari can't show a gradient or an image
+     behind the status bar or its toolbar, only a solid colour: for the
+     status bar, the document's background colour (body's if it has one,
+     else html's), and fixed strips at the screen edges (.edge-top and
+     .edge-bottom, Base.astro). So every full-bleed block declares the solid
+     colour of its top and bottom edge as --edge-t and --edge-b (white unless
+     it says otherwise), scripts/edges.ts sets --edge-top and --edge-bottom
+     from the blocks under the screen edges as the page scrolls, and html's
+     background is --edge-top. Body's background colour stays transparent
+     (it paints white as an image) so Safari reads html's. Without JavaScript
+     they stay at the page's top colour (html[data-edge], from Base's edge
+     prop) and white. The washes' end stops as solid colours: */
+  --edge-sky: #d3e6ff; /* --wash-hero, --wash-sky, --wash-invite */
+  --edge-soft: #e6eeff; /* --wash-soft, licences */
+  --edge-legal: #eef1ff; /* --wash-legal */
+  --edge-navy-top: #142659; /* --wash-navy */
+  --edge-navy-bottom: #0e1a3d;
+  --edge-t: #ffffff;
+  --edge-b: #ffffff;
+  --edge-top: var(--white);
+  --edge-bottom: var(--white);
 
   /* Type */
   --font-sans: var(--font-inter), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -118,17 +147,48 @@
   --t-card-title: clamp(21px, 19.89px + 0.286vw, 24px);
   --t-lead: clamp(17px, 15.89px + 0.286vw, 20px);
   --t-body: clamp(16px, 15.63px + 0.095vw, 17px);
+  /* Paper "P3 Web" additions (390 -> 1440). Line height is 1em + 4px unless noted. */
+  --t-display-privacy: clamp(34px, 24.34px + 2.476vw, 60px); /* 34/38 -> 60/64 */
+  --t-display-beta: clamp(44px, 33.6px + 2.667vw, 72px); /* 44/46 -> 72/74 (+2) */
+  --t-display-invite: clamp(44px, 32.11px + 3.048vw, 76px); /* 44/46 -> 76/80 */
+  --t-display-404: clamp(44px, 36.57px + 1.905vw, 64px); /* 44/48 -> 64/68 */
+  --t-legal-title: clamp(38px, 29.83px + 2.095vw, 60px); /* 38/42 -> 60/64 */
+  --t-legal-h2: clamp(24px, 22.51px + 0.381vw, 28px); /* 24/30 -> 28/34, -0.025em */
+  --t-copy: clamp(16px, 15.26px + 0.19vw, 18px); /* section copy 16/24 -> 18/28 */
+  --t-prose: clamp(17px, 16.63px + 0.095vw, 18px); /* legal body 17/28 -> 18/30, max 680 */
 
   /* Space and shape */
-  --gutter: 20px;
+  --gutter: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
   --container: 1200px;
   --container-wide: 1296px;
   --section-y: 88px;
   --r-field: 14px;
   --r-card: 20px;
   --r-tile: 28px;
-  --r-panel: 48px;
+  --r-card-lg: 28px; /* web cards: 28 on phones, 32 from 1024 */
+  --r-panel: 36px; /* hue / pace panels: 36 on phones, 48 from 768 */
   --r-pill: 999px;
+  --pad-card: 20px; /* card padding: 20 on phones, 28 from 1024 */
+  --pad-panel-x: 20px;
+  --pad-panel-y: 40px;
+  --head-gap: 32px; /* section head -> content: 32 on phones, 56 from 1024 */
+  --measure-prose: 680px;
+  --measure-lead: 560px;
+  --form-w: 520px;
+
+  /* Surfaces on dark / blue (white at 74% and 88%) */
+  --on-navy: rgb(255 255 255 / 74%);
+  --on-pace: rgb(255 255 255 / 88%);
+  --navy-card: rgb(255 255 255 / 6%);
+  --navy-card-edge: rgb(255 255 255 / 10%);
+  --slate-accent: #5b6b9a; /* hero "Automatically." */
+
+  /* Depth */
+  --shadow-card: rgb(20 38 89 / 10%) 0 24px 48px, rgb(0 0 0 / 4%) 0 0 0 0.5px;
+  --shadow-card-sm: rgb(20 38 89 / 10%) 0 16px 32px, rgb(0 0 0 / 4%) 0 0 0 0.5px;
+  --shadow-form: rgb(11 26 74 / 35%) 0 30px 60px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+  --shadow-float: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(20 38 89 / 16%) 0 18px 40px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
+  --shadow-chip: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 4px 12px;
 
   /* Motion ("13 · Dynamic layer") */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
@@ -136,19 +196,27 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --t-hover-in: 120ms;
   --t-hover-out: 200ms;
+  --t-reveal: 480ms;
+  --reveal-rise: 24px;
+  --reveal-stagger: 60ms;
 
   --nav-h: 68px;
 }
 
 @media (min-width: 768px) {
   :root {
-    --gutter: 40px;
+    --gutter: max(40px, env(safe-area-inset-left), env(safe-area-inset-right));
+    --r-panel: 48px;
   }
 }
 @media (min-width: 1024px) {
   :root {
     --section-y: 140px;
-    --r-panel: 48px;
+    --r-card-lg: 32px;
+    --pad-card: 28px;
+    --pad-panel-x: 72px;
+    --pad-panel-y: 88px;
+    --head-gap: 56px;
   }
 }
 
@@ -166,6 +234,16 @@ html {
   /* No rubber-band past the top or bottom (Safari 16+): the page stops at
      its edges instead of showing a gap. */
   overscroll-behavior: none;
+  background: var(--edge-top);
+}
+html[data-edge='sky'] {
+  --edge-top: var(--edge-sky);
+}
+html[data-edge='soft'] {
+  --edge-top: var(--edge-soft);
+}
+html[data-edge='legal'] {
+  --edge-top: var(--edge-legal);
 }
 @media (prefers-reduced-motion: no-preference) {
   html {
@@ -176,7 +254,9 @@ body {
   margin: 0;
   min-height: 100vh;
   overscroll-behavior: none;
-  background: var(--white);
+  /* White, as an image: a background colour here would be the colour
+     Safari shows behind the status bar ("Screen edges" above). */
+  background: linear-gradient(var(--white), var(--white));
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -243,7 +323,7 @@ table {
   margin-inline: auto;
 }
 .container-wide {
-  width: min(var(--container-wide), 100% - 24px);
+  width: min(var(--container-wide), 100% - max(24px, 2 * env(safe-area-inset-left), 2 * env(safe-area-inset-right)));
   margin-inline: auto;
 }
 
@@ -270,7 +350,32 @@ table {
   font-weight: 600;
 }
 .skip-link:focus {
-  top: 16px;
+  top: calc(16px + env(safe-area-inset-top));
+}
+/* Fixed strips over the safe areas at the top and bottom screen edges, in
+   the edge colours, for Safari to extend behind its controls (and to fill
+   the safe areas in landscape and standalone). They have no 12px minimum:
+   in iOS 27 Safari the layout viewport ends at the status bar and above the
+   toolbar, so a 12px strip there just hid 12px of the page (a line of text
+   above the toolbar) without changing the colour behind the controls. */
+.edge-top::after,
+.edge-bottom::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.edge-top::after {
+  top: 0;
+  height: env(safe-area-inset-top);
+  background: var(--edge-top);
+}
+.edge-bottom::after {
+  bottom: 0;
+  height: env(safe-area-inset-bottom);
+  background: var(--edge-bottom);
 }
 
 /* Type */
@@ -321,6 +426,38 @@ table {
   font-family: var(--font-figure);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+  /* body has overflow-wrap: anywhere; a number must never split mid-digits. */
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+/* Fit figures: a big money line (unit + number) that stays on ONE line and
+   shrinks with its card instead of wrapping or overflowing. Pure CSS:
+   - put .fig-box on the card (or any block whose width does not depend on
+     its content) so it becomes the size container;
+   - put .fig-fit on the line that holds the unit and the number, sizing the
+     unit and gaps in em so everything scales together;
+   - set on .fig-fit (or a parent):
+       --fig-max    the design size, e.g. 104px or a clamp() (default 1em)
+       --fig-k      width of the whole line in em at 1px font, measured in the
+                    widest figure font (Inter / SF Pro Rounded) plus ~4% slack
+       --fig-fixed  any part of the line that does not scale, in px (default 0)
+   font-size = min(--fig-max, (container width - --fig-fixed) / --fig-k).
+   Do not set font-size on the .fig-fit element in a scoped style: scoped
+   selectors win over this one. Size children in em instead. */
+.fig-box {
+  container-type: inline-size;
+}
+.fig-fit {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: min(var(--fig-max, 1em), (100cqi - var(--fig-fixed, 0px)) / var(--fig-k, 1));
+}
+.fig-fit > * {
+  flex: none;
 }
 .link {
   color: var(--text-link);
@@ -560,13 +697,13 @@ table {
 @media (prefers-reduced-motion: no-preference) {
   .js [data-reveal]:not(.is-in) {
     opacity: 0;
-    transform: translateY(24px);
+    transform: translateY(var(--reveal-rise));
   }
   .js [data-reveal] {
     transition:
-      opacity 480ms var(--ease-out-soft),
-      transform 480ms var(--ease-out-soft);
-    transition-delay: calc(var(--i, 0) * 60ms);
+      opacity var(--t-reveal) var(--ease-out-soft),
+      transform var(--t-reveal) var(--ease-out-soft);
+    transition-delay: calc(var(--i, 0) * var(--reveal-stagger));
   }
 }
 /* For one style flush, while motion.ts shows what is already on screen. */
@@ -743,4 +880,284 @@ html.vt-swap {
 }
 .disc--white {
   background: rgb(255 255 255 / 75%);
+}
+
+/* ------------------------------------------------------------------------
+ * Web layer from Paper "P3 Web" (landing, legal, invite, 404).
+ * Breakpoints (media queries cannot read variables): 768 (md), 1024 (lg,
+ * two-column sections start), 1280 (xl). Phones are < 768.
+ * ---------------------------------------------------------------------- */
+
+/* Section wrapper. Padding comes from --section-pt / --section-pb, which
+   default to --section-y (88 phones, 140 from 1024); a section sets them in
+   its own scoped CSS, so there is no inline style. Stacked white sections
+   add their paddings: Paper gives the bottom a value and the next section
+   starts flush (pt 0). */
+.section {
+  position: relative;
+  padding-block: var(--section-pt, var(--section-y)) var(--section-pb, var(--section-y));
+  background: var(--white);
+}
+.section--tint {
+  --edge-t: var(--neutral-100);
+  --edge-b: var(--neutral-100);
+  background: var(--neutral-100);
+}
+.section--navy {
+  --edge-t: var(--edge-navy-top);
+  --edge-b: var(--edge-navy-bottom);
+  background: var(--wash-navy);
+  color: var(--white);
+  overflow: clip;
+}
+/* Head, then content, 32 apart on phones and 56 from 1024 */
+.section__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--head-gap);
+}
+.section__glow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Display headings added by P3. They share .display-l's tracking; the line
+   height is 1em + 4px (beta: + 2px) as in Paper. */
+.display-privacy {
+  font-size: var(--t-display-privacy);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: calc(1em + 4px);
+}
+.display-beta {
+  font-size: var(--t-display-beta);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: calc(1em + 2px);
+}
+.display-invite {
+  font-size: var(--t-display-invite);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: calc(1em + 4px);
+}
+.display-404 {
+  font-size: var(--t-display-404);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: calc(1em + 4px);
+}
+.display-legal {
+  font-size: var(--t-legal-title);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: calc(1em + 4px);
+}
+.title-legal {
+  font-size: var(--t-legal-h2);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: calc(1em + 6px);
+}
+.copy {
+  color: var(--text-body);
+  font-size: var(--t-copy);
+  line-height: clamp(24px, 22.51px + 0.381vw, 28px);
+}
+.prose-text {
+  color: var(--text-body);
+  font-size: var(--t-prose);
+  line-height: 1.667;
+}
+.section-lead {
+  color: var(--text-secondary);
+  font-size: var(--t-body);
+  line-height: 1.53;
+  max-width: var(--measure-lead);
+}
+
+/* Eyebrow colours: default is --accent (blue-600). Paper tints it to the
+   section: blue-700 on the sky panel, hue ink on sand / peach, blue-300 on navy. */
+.overline--strong {
+  color: var(--blue-700);
+}
+.overline--sand {
+  color: var(--hue-sand-ink);
+}
+.overline--peach {
+  color: var(--hue-peach-ink);
+}
+.overline--on-dark {
+  color: var(--blue-300);
+}
+
+/* On dark / blue surfaces */
+.on-dark {
+  color: var(--white);
+}
+.on-navy-body {
+  color: var(--on-navy);
+}
+.on-pace-body {
+  color: var(--on-pace);
+}
+
+/* Cards */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: var(--pad-card);
+  border-radius: var(--r-card-lg);
+  background: var(--neutral-100);
+}
+.card--glass {
+  background: rgb(255 255 255 / 86%);
+  box-shadow: var(--shadow-card);
+}
+.card--white {
+  background: var(--white);
+  box-shadow: var(--shadow-card);
+}
+.card--navy {
+  padding: 20px;
+  border: 1px solid var(--navy-card-edge);
+  border-radius: 20px;
+  background: var(--navy-card);
+  color: var(--white);
+}
+@media (min-width: 1024px) {
+  .card {
+    gap: 28px;
+  }
+  .card--navy {
+    padding: 28px;
+    border-radius: 24px;
+  }
+}
+/* The request form card on the blue panel (520 wide, 342 on phones) */
+.form-card {
+  padding: 22px;
+  border-radius: 26px;
+  background: var(--white);
+  box-shadow: var(--shadow-form);
+}
+@media (min-width: 1024px) {
+  .form-card {
+    padding: 32px;
+    border-radius: 32px;
+  }
+}
+/* Glass float: bank alert, sealed sync, "place is saved". Rotation is set
+   per float in the component's scoped CSS (-2deg, 3deg). */
+.float {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 24px;
+  background: rgb(255 255 255 / 86%);
+  box-shadow: var(--shadow-float);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+.float--pill {
+  padding: 12px 20px 12px 12px;
+  border-radius: var(--r-pill);
+}
+.float--card {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 16px;
+}
+
+/* Panels: 1296 wide on the page, radius 36 / 48, copy inset 20 / 72 */
+.panel {
+  position: relative;
+  overflow: clip;
+  padding: var(--pad-panel-y) var(--pad-panel-x);
+  border-radius: var(--r-panel);
+}
+.panel--sky {
+  background: var(--wash-sky);
+}
+.panel--peach {
+  background: var(--wash-peach);
+}
+.panel--pace {
+  background: var(--wash-pace);
+  color: var(--white);
+}
+/* Pace-blue panel (Beta): 48 / 12 on phones, 96 / 72 from 1024 */
+.panel--pace {
+  --pad-panel-x: 12px;
+  --pad-panel-y: 48px;
+}
+@media (min-width: 1024px) {
+  .panel--pace {
+    --pad-panel-x: 72px;
+    --pad-panel-y: 96px;
+  }
+}
+
+/* Chip on glass: the beta chip in the hero and the invite code chip */
+.chip--glass {
+  min-height: 36px;
+  padding: 0 16px 0 14px;
+  gap: 8px;
+  background: rgb(255 255 255 / 72%);
+  box-shadow: var(--shadow-chip);
+  color: var(--text-primary);
+}
+
+/* Buttons with a trailing arrow disc: 28 left, 22 right (large primary);
+   22 left, 26 right (glass secondary with a leading icon). */
+.btn--lg.btn--trail {
+  padding-inline: 28px 22px;
+  gap: 12px;
+}
+.btn--lg.btn--lead {
+  padding-inline: 22px 26px;
+  gap: 10px;
+}
+.btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* Plan buckets and hue surfaces: gradient 165deg, text in the hue's ink */
+.bucket-needs {
+  background: linear-gradient(in oklab 165deg, var(--hue-sand-start), var(--hue-sand-end));
+  color: var(--hue-sand-ink);
+}
+.bucket-wants {
+  background: linear-gradient(in oklab 165deg, var(--hue-lilac-start), var(--hue-lilac-end));
+  color: var(--hue-lilac-ink);
+}
+.bucket-savings {
+  background: linear-gradient(in oklab 165deg, var(--hue-mint-start), var(--hue-mint-end));
+  color: var(--hue-mint-ink);
+}
+
+/* Callouts in legal pages: "In plain words" (sand) and "Note" (blue-50) */
+.callout {
+  display: flex;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: var(--accent-subtle);
+  color: var(--blue-800);
+}
+.callout--plain {
+  background: var(--wash-callout);
+  color: var(--hue-sand-ink);
+}
+@media (min-width: 1024px) {
+  .callout {
+    padding: 18px 20px;
+  }
+  .callout--plain {
+    padding: 20px 22px;
+    border-radius: 20px;
+  }
 }

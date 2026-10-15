@@ -18,7 +18,6 @@ export const SITE = {
   privacyEmail: 'privacy@hasala.app',
   securityEmail: 'security@hasala.app',
   mailFrom: 'no-reply@hasala.app',
-  themeColor: '#E6EEFF',
   ogImage: '/og-image.png',
   ogImageAlt: 'Hasala: a private budgeting app that shows where your money goes. For iPhone, in the UAE.',
   testFlightAppStore: 'https://apps.apple.com/app/testflight/id899247664',
@@ -54,7 +53,7 @@ export const OTHER_BANKS = [
 export const NAV = [
   { href: '/how-it-works', label: 'How it works' },
   { href: '/budgeting', label: 'Budgeting' },
-  { href: '/how-privacy-works', label: 'Privacy' },
+  { href: '/how-privacy-works', label: 'How privacy works' },
   { href: '/faq', label: 'FAQ' },
 ] as const;
 
@@ -119,7 +118,7 @@ const ASK_FOR_INVITE =
     ? 'Request an invite on the home page. For now, the form opens an email to support@hasala.app in your email app; send it, and we add the address you sent it from to the list.'
     : 'Request an invite on the home page, then tap Confirm my email in the email we send.';
 
-type FaqItem = {
+export type FaqItem = {
   id: string;
   q: string;
   /** The one-line reply the answer opens with. */

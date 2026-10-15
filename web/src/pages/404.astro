@@ -3,15 +3,15 @@ import Base from '../layouts/Base.astro';
 import MissedCoin from '../components/brand/MissedCoin.astro';
 ---
 
-<Base title="Page not found" description="This page has moved or never existed." path="/404" noindex footer={false} class="nf-page">
+<Base title="Page not found" description="This page has moved or never existed." path="/404" noindex footer={false} edge="soft" class="nf-page">
   <section class="nf" aria-labelledby="nf-title">
     <MissedCoin />
     <p class="nf__code">404</p>
-    <h1 id="nf-title" class="nf__title">This one missed the slot.</h1>
-    <p class="nf__lead">The page you’re looking for has moved or never existed. Nothing to do with your budget: that’s safe on your iPhone.</p>
+    <h1 id="nf-title" class="display-404 nf__title">This one missed the slot.</h1>
+    <p class="nf__lead">The page you're looking for has moved or never existed. Nothing to do with your money — that's safe on your iPhone.</p>
     <div class="nf__ctas">
-      <a class="btn btn--primary" href="/">Back to the home page</a>
-      <a class="btn btn--glass" href="/support">Get support</a>
+      <a class="btn btn--primary btn--lg" href="/">Back to the home page</a>
+      <a class="btn btn--glass btn--lg" href="/support">Get support</a>
     </div>
     <nav class="nf__more" aria-label="Popular pages">
       <span>Looking for:</span>
@@ -24,17 +24,43 @@ import MissedCoin from '../components/brand/MissedCoin.astro';
 
 <style>
   :global(.nf-page) {
-    background: var(--wash-hero);
+    background: var(--wash-soft);
     min-height: 100vh;
   }
   .nf {
+    --edge-t: var(--edge-soft);
+    --edge-b: var(--white);
     display: flex;
     flex-direction: column;
     align-items: center;
     max-width: 840px;
     margin: 0 auto;
-    padding: 120px var(--gutter) 80px;
+    justify-content: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding: 116px var(--gutter) 48px;
     text-align: center;
+  }
+  .nf__ctas .btn {
+    --btn-h: 56px;
+    font-size: 17px;
+    line-height: 22px;
+    letter-spacing: 0;
+  }
+  .nf__ctas .btn--primary {
+    --btn-px: 26px;
+    box-shadow: rgb(54 91 235 / 30%) 0 8px 20px;
+  }
+  .nf__ctas .btn--glass {
+    --btn-px: 24px;
+    background: #ffffffcc;
+  }
+  @media (max-width: 520px) {
+    .nf__ctas {
+      flex-direction: column;
+      align-self: stretch;
+      align-items: stretch;
+    }
   }
   .nf :global(.missed-coin) {
     width: min(360px, 90%);
@@ -63,7 +89,7 @@ import MissedCoin from '../components/brand/MissedCoin.astro';
     }
   }
   .nf__code {
-    padding-top: 48px;
+    padding-top: 40px;
     color: var(--accent);
     font-family: var(--font-figure);
     font-size: 15px;
@@ -72,17 +98,14 @@ import MissedCoin from '../components/brand/MissedCoin.astro';
   }
   .nf__title {
     padding-top: 16px;
-    font-size: clamp(38px, 28.71px + 2.381vw, 64px);
-    font-weight: 700;
-    letter-spacing: -0.05em;
-    line-height: 1.06;
+    text-align: center;
   }
   .nf__lead {
     max-width: 560px;
-    padding-top: 20px;
+    padding-top: 16px;
     color: var(--neutral-700);
     font-size: clamp(17px, 16.26px + 0.19vw, 19px);
-    line-height: 1.55;
+    line-height: 1.526;
   }
   .nf__ctas {
     display: flex;
@@ -97,6 +120,7 @@ import MissedCoin from '../components/brand/MissedCoin.astro';
     justify-content: center;
     gap: 8px 24px;
     padding-top: 40px;
+    align-items: center;
     color: var(--text-secondary);
     font-size: 15px;
     line-height: 20px;
@@ -111,7 +135,8 @@ import MissedCoin from '../components/brand/MissedCoin.astro';
   }
   @media (min-width: 1024px) {
     .nf {
-      padding-top: 180px;
+      padding-top: 92px;
+      padding-bottom: 0;
     }
   }
 </style>

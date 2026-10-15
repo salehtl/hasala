@@ -1,195 +1,140 @@
 ---
 /**
- * /how-privacy-works: the data-flow diagram (Gmail, iPhone, our server, a
- * new iPhone) and the "who can see what" table, on navy. The home page only
- * summarises this ("Private and secure").
+ * /how-privacy-works flow (Paper NFK-0): Your Gmail, Your iPhone, Our server,
+ * A new iPhone, joined by labelled connectors. A numbered list: the cards carry
+ * the whole story in text; the connectors are decoration. From 1024 it runs
+ * left to right; on phones it stacks and the connectors point down.
+ *
+ * Motion (Paper C83-0, B): when a fifth of it is in view (data-play, set by
+ * the script below), the cards and arrows draw in order, 120 ms per hop; the
+ * iPhone lifts in on the spring, its key turns and its checks tick in; the
+ * server's coins drop into the slot. Then one token flows down each arrow
+ * in turn: an email, then a locked coin, then another. With reduced
+ * motion all of it is shown still and nothing moves.
  */
 import Icon from '../Icon.astro';
-import { VISIBILITY } from '../../data/site';
 ---
 
-<section id="flow" class="privacy" aria-labelledby="flow-title">
-  <div class="privacy__glow" aria-hidden="true"></div>
-  <div class="container privacy__inner">
-    <header class="privacy__head" data-reveal>
-      <h2 id="flow-title" class="privacy__title">Where your data goes</h2>
-      <p class="privacy__intro">
-        Reading alerts, sorting and budgeting happen on your iPhone. Your transactions, budget and plan are encrypted there before they sync, with a key we never
-        have.
-      </p>
-    </header>
-
-    <ol class="diagram" role="list" data-diagram aria-label="Where your data goes">
-      <li class="node node--glass">
-        <span class="node__icon"><Icon name="mail" size={22} stroke={1.5} /></span>
-        <div class="node__text">
-          <h3>Your Gmail</h3>
-          <p>Your iPhone asks Gmail only for your bank’s alerts, read‑only. Your other mail stays in Gmail.</p>
-        </div>
-        <span class="node__chip">Google API Limited Use</span>
-      </li>
-      <li class="hop hop--blue" aria-hidden="true"><span class="hop__label">Alerts</span><span class="hop__line"><i class="hop__token"></i></span></li>
-      <li class="node node--phone">
-        <div class="node__top">
-          <span class="node__icon node__icon--gold"><Icon name="lock" size={22} stroke={1.8} /></span>
-          <span class="node__holds">Encrypts</span>
-        </div>
-        <div class="node__text">
-          <h3>Your iPhone</h3>
-          <p class="node__where">Where the work happens.</p>
-          <p class="node__short">Reads, sorts, budgets, then encrypts</p>
-        </div>
-        <ul class="node__checks" role="list">
-          <li><Icon name="check" size={16} stroke={1.9} />Reads your bank alerts</li>
-          <li><Icon name="check" size={16} stroke={1.9} />Sorts and budgets</li>
-          <li><Icon name="check" size={16} stroke={1.9} />Encrypts your data before it syncs</li>
-        </ul>
-      </li>
-      <li class="hop hop--gold" aria-hidden="true"><span class="hop__label">Encrypted</span><span class="hop__line"><i class="hop__token"></i></span></li>
-      <li class="node node--glass node--server">
-        <svg class="node__coins" width="244" height="62" viewBox="0 0 252 64" aria-hidden="true">
-          <defs
-            ><linearGradient id="srv-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"></stop><stop offset="1" stop-color="#EBB04A"></stop></linearGradient
-            ><clipPath id="srv-c"><rect x="0" y="-24" width="252" height="74"></rect></clipPath></defs
-          >
-          <rect class="srv-plate" x="0" y="34" width="252" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.08"></rect>
-          <rect x="8" y="41" width="236" height="16" rx="8" fill="#070E26"></rect>
-          <rect x="18" y="52" width="216" height="2.5" rx="1.25" fill="#FFFFFF" opacity="0.18"></rect>
-          <g clip-path="url(#srv-c)">
-            <circle cx="66" cy="36" r="20" fill="#C98A1E"></circle>
-            <circle cx="66" cy="34" r="20" fill="url(#srv-g)" opacity="0.55"></circle>
-            <g class="srv-coin">
-              <circle cx="126" cy="24" r="20" fill="#C98A1E"></circle>
-              <circle cx="126" cy="22" r="20" fill="url(#srv-g)"></circle>
-              <path d="M118.5 18.5h15M118.5 25.5h15" stroke="#8A5A05" stroke-width="3" stroke-linecap="round"></path>
-            </g>
-            <circle cx="186" cy="40" r="20" fill="#C98A1E"></circle>
-            <circle cx="186" cy="38" r="20" fill="url(#srv-g)" opacity="0.35"></circle>
-          </g>
-        </svg>
-        <span class="node__icon node__icon--slot" aria-hidden="true"><span></span></span>
-        <div class="node__text">
-          <h3>Hasala server <small>behind Cloudflare</small></h3>
-          <p class="node__long">Our own server. Stores your encrypted data but can’t read it. Knows your email address and name. Never your emails, amounts, merchants or budget.</p>
-          <p class="node__brief">Our own, behind Cloudflare. Stores your encrypted data but can’t read it. Knows your email and name.</p>
-        </div>
-      </li>
-      <li class="hop hop--gold" aria-hidden="true"><span class="hop__label">Encrypted</span><span class="hop__line"><i class="hop__token"></i></span></li>
-      <li class="node node--glass">
-        <span class="node__icon"><Icon name="phone" size={22} stroke={1.5} /></span>
-        <div class="node__text">
-          <h3>A new iPhone</h3>
-          <p>Unlocks your data with your passkey or your 12‑word recovery phrase.</p>
-        </div>
-        <span class="node__chip">We can’t reset the phrase</span>
-      </li>
-    </ol>
-
-    <div class="who-wrap" data-reveal>
-      <h2 id="who-title" class="who-title">Who can see what</h2>
-      <div class="who">
-        <table aria-labelledby="who-title">
-          <thead>
-            <tr><th scope="col">Who</th><th scope="col">Can see</th><th scope="col">Can’t see</th></tr>
-          </thead>
-          <tbody>
-            {
-              VISIBILITY.map((row) => (
-                <tr class:list={[!row.never && 'who__you']}>
-                  <th scope="row">{row.who}</th>
-                  <td class="who__sees">
-                    <span class="who__label">Sees: </span>
-                    {row.sees}
-                  </td>
-                  <td class="who__never">
-                    {row.never ? (
-                      <>
-                        <span class="who__label">Never: </span>
-                        {row.never}
-                      </>
-                    ) : (
-                      <span aria-label="Nothing">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            }
-          </tbody>
-        </table>
-      </div>
+<ol class="flow" role="list" aria-label="Where your data goes">
+  <li data-play-in class="flow__card flow__card--glass flow__card--side">
+    <span class="flow__icon"><Icon name="mail" size={22} stroke={1.5} /></span>
+    <div class="flow__text">
+      <h3 class="flow__title">Your Gmail</h3>
+      <p class="flow__copy">Your iPhone downloads only the emails from your bank, read‑only. The rest of your inbox is never downloaded.</p>
     </div>
-  </div>
-</section>
+    <p class="flow__pill">Google API Limited Use</p>
+  </li>
+  <li data-play-in class="flow__hop flow__hop--blue" aria-hidden="true">
+    <span class="flow__hop-label">Emails</span>
+    <span class="flow__track">
+      <svg class="flow__arrow flow__arrow--dashed" viewBox="0 0 56 12" width="44" height="12">
+        <path d="M1 6h50" />
+        <path d="M48 1.5 53.5 6 48 10.5" />
+      </svg>
+      <span class="flow__token"></span>
+    </span>
+  </li>
+  <li data-play-in class="flow__card flow__card--phone">
+    <div class="flow__top">
+      <span class="flow__icon flow__icon--gold"><Icon name="key" size={22} stroke={2} /></span>
+      <p class="flow__holds">Holds the key</p>
+    </div>
+    <div class="flow__text">
+      <h3 class="flow__title">Your iPhone</h3>
+      <p class="flow__copy">Where all the work happens.</p>
+    </div>
+    <ul class="flow__checks" role="list">
+      <li><Icon name="check" size={16} stroke={1.9} />Reads your bank emails</li>
+      <li><Icon name="check" size={16} stroke={1.9} />Sorts and budgets</li>
+      <li><Icon name="check" size={16} stroke={1.9} />Locks it before backup</li>
+    </ul>
+  </li>
+  <li data-play-in class="flow__hop flow__hop--gold" aria-hidden="true">
+    <span class="flow__hop-label">Locked</span>
+    <span class="flow__track">
+      <svg class="flow__arrow" viewBox="0 0 56 12" width="44" height="12">
+        <path d="M1 6h50" />
+        <path d="M48 1.5 53.5 6 48 10.5" />
+      </svg>
+      <span class="flow__token"></span>
+    </span>
+  </li>
+  <li data-play-in class="flow__card flow__card--glass flow__card--server">
+    <svg class="flow__coins" width="244" height="62" viewBox="0 0 252 64" aria-hidden="true">
+      <defs>
+        <linearGradient id="hpw-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"></stop><stop offset="1" stop-color="#EBB04A"></stop></linearGradient>
+        <clipPath id="hpw-c"><rect x="0" y="-80" width="252" height="130"></rect></clipPath>
+      </defs>
+      <rect x="0" y="34" width="252" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.08"></rect>
+      <rect class="flow__slot" x="8" y="41" width="236" height="16" rx="8" fill="#070E26"></rect>
+      <rect x="18" y="52" width="216" height="2.5" rx="1.25" fill="#FFFFFF" opacity="0.18"></rect>
+      <g clip-path="url(#hpw-c)">
+        <g class="flow__coin">
+          <circle cx="66" cy="36" r="20" fill="#C98A1E"></circle>
+          <circle cx="66" cy="34" r="20" fill="url(#hpw-g)" opacity="0.55"></circle>
+        </g>
+        <g class="flow__coin">
+          <circle cx="126" cy="24" r="20" fill="#C98A1E"></circle>
+          <circle cx="126" cy="22" r="20" fill="url(#hpw-g)"></circle>
+          <path d="M118.5 18.5h15M118.5 25.5h15" stroke="#8A5A05" stroke-width="3" stroke-linecap="round"></path>
+        </g>
+        <g class="flow__coin">
+          <circle cx="186" cy="40" r="20" fill="#C98A1E"></circle>
+          <circle cx="186" cy="38" r="20" fill="url(#hpw-g)" opacity="0.35"></circle>
+        </g>
+      </g>
+    </svg>
+    <div class="flow__text">
+      <h3 class="flow__title flow__title--row">Our server <small>behind Cloudflare</small></h3>
+      <p class="flow__copy">Stores your locked data but can’t open it. Knows your email address. Never sees your emails, amounts, shops or budget.</p>
+    </div>
+  </li>
+  <li data-play-in class="flow__hop flow__hop--gold" aria-hidden="true">
+    <span class="flow__hop-label">Locked</span>
+    <span class="flow__track">
+      <svg class="flow__arrow" viewBox="0 0 56 12" width="44" height="12">
+        <path d="M1 6h50" />
+        <path d="M48 1.5 53.5 6 48 10.5" />
+      </svg>
+      <span class="flow__token"></span>
+    </span>
+  </li>
+  <li data-play-in class="flow__card flow__card--glass flow__card--side">
+    <span class="flow__icon"><Icon name="phone" size={22} stroke={1.5} /></span>
+    <div class="flow__text">
+      <h3 class="flow__title">A new iPhone</h3>
+      <p class="flow__copy">Unlock your data with your passkey or your 12‑word recovery phrase.</p>
+    </div>
+    <p class="flow__pill">We can’t reset it for you</p>
+  </li>
+</ol>
 
 <style>
-  .privacy {
-    position: relative;
-    padding: 88px 0;
-    background: var(--wash-navy);
-    color: var(--white);
-    overflow: clip;
-  }
-  /* The default blue-600 ring is too dark on navy; a light ring reaches 3:1. */
-  .privacy :global(:focus-visible) {
-    outline-color: var(--blue-300);
-  }
-  .privacy__glow {
-    position: absolute;
-    left: calc(50% - 300px);
-    top: -240px;
-    width: 600px;
-    height: 520px;
-    border-radius: 50%;
-    background: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(62.2% -0.006 -0.203 / 35%) 0%, oklab(62.2% -0.006 -0.203 / 0%) 70%);
-    pointer-events: none;
-  }
-  .privacy__inner {
-    position: relative;
+  .flow {
     display: flex;
     flex-direction: column;
-    gap: 36px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
-  .privacy__head {
+  .flow__card {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-  }
-  .privacy__title {
-    font-size: clamp(34px, 25.09px + 2.286vw, 60px);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: calc(1em + 4px);
-  }
-  .privacy__intro {
-    color: rgb(255 255 255 / 74%);
-    font-size: clamp(17px, 16.26px + 0.19vw, 19px);
-    line-height: 1.55;
-  }
-
-  /* Diagram: vertical on small screens, a row from lg */
-  .diagram {
-    display: flex;
-    flex-direction: column;
-  }
-  .node {
-    display: flex;
-    align-items: center;
     gap: 16px;
-    padding: 18px 20px;
-    border-radius: 24px;
-  }
-  .node--glass {
+    padding: 24px;
+    border-radius: 28px;
     background: rgb(255 255 255 / 6%);
     box-shadow: rgb(255 255 255 / 14%) 0 0 0 1px inset;
+    color: var(--white);
   }
-  .node--phone {
+  .flow__card--phone {
     background: var(--white);
-    color: var(--text-primary);
     box-shadow: rgb(0 0 0 / 30%) 0 24px 48px;
+    color: var(--text-primary);
   }
-  .node__icon {
-    display: inline-flex;
-    flex: none;
+  .flow__icon {
+    display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
     width: 44px;
@@ -197,508 +142,416 @@ import { VISIBILITY } from '../../data/site';
     border-radius: 14px;
     background: rgb(255 255 255 / 10%);
   }
-  .node__icon--gold {
-    border-radius: 50%;
+  .flow__icon--gold {
+    border-radius: 22px;
     background: var(--coin);
-    box-shadow: rgb(201 138 30 / 50%) 0 0 0 1px inset, var(--gold-edge) 0 3px 0;
+    box-shadow:
+      rgb(201 138 30 / 50%) 0 0 0 1px inset,
+      var(--gold-edge) 0 3px 0;
     color: var(--gold-ink);
   }
-  .node__icon--slot {
-    background: #070e26;
+  .flow__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
-  .node__icon--slot span {
-    width: 28px;
-    height: 8px;
-    border-radius: 4px;
-    background: #142659;
-    box-shadow: rgb(255 255 255 / 18%) 0 2px 0 inset;
+  .flow__holds {
+    margin: 0;
+    padding: 5px 10px;
+    border-radius: var(--r-pill);
+    background: var(--accent-subtle);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
   }
-  .node__top {
-    display: contents;
-  }
-  .node__holds,
-  .node__where,
-  .node__checks,
-  .node__chip,
-  .node__coins {
-    display: none;
-  }
-  .node__text {
+  .flow__text {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    min-width: 0;
+    gap: 6px;
   }
-  .node__text h3 {
-    font-size: 18px;
+  .flow__title {
+    margin: 0;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: -0.01em;
-    line-height: 24px;
+    line-height: 26px;
   }
-  .node__text h3 small {
-    display: none;
+  .flow__title--row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 8px;
   }
-  .node__text p {
+  .flow__title small {
+    color: rgb(255 255 255 / 60%);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 18px;
+  }
+  .flow__copy {
+    margin: 0;
     color: rgb(255 255 255 / 72%);
     font-size: 15px;
-    line-height: 21px;
+    line-height: 22px;
   }
-  .node--phone .node__text p {
+  .flow__card--phone .flow__copy {
     color: var(--text-secondary);
   }
-  /* Small screens get a short, complete line instead of the long one (Paper 390). */
-  .node--server .node__long {
-    display: none;
+  .flow__pill {
+    align-self: flex-start;
+    margin: 4px 0 0;
+    padding: 5px 10px;
+    border-radius: var(--r-pill);
+    background: rgb(255 255 255 / 10%);
+    color: rgb(255 255 255 / 86%);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
   }
-  .hop {
+  .flow__checks {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .flow__checks li {
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 46px;
-    margin-left: 38px;
-    padding-left: 12px;
-    border-left: 1.5px solid var(--hop-color);
-    color: var(--hop-color);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .flow__checks :global(.icon) {
+    color: var(--green-700);
+  }
+  .flow__coins {
+    display: block;
+    overflow: visible;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 244 / 62;
+  }
+
+  .flow__hop {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 76px;
+    color: var(--amber-300);
+  }
+  .flow__hop--blue {
+    color: var(--blue-300);
+  }
+  .flow__hop-label {
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.04em;
     line-height: 16px;
     text-transform: uppercase;
+  }
+  .flow__track {
     position: relative;
-    transition:
-      opacity 240ms var(--ease-out-soft),
-      clip-path 360ms var(--ease-out-soft);
-    /* Loose enough that the travelling token and its glow aren't cropped. */
-    clip-path: inset(-12px);
+    display: block;
+    flex-shrink: 0;
+    width: 44px;
+    height: 12px;
+    margin-block: 16px;
+    transform: rotate(90deg);
   }
-  .hop--blue {
-    --hop-color: var(--blue-300);
+  .flow__arrow {
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
-  .hop--gold {
-    --hop-color: var(--amber-300);
+  .flow__arrow--dashed path:first-child {
+    stroke-dasharray: 3 4;
   }
-  .hop__line {
-    display: none;
-  }
-  .hop[data-undrawn] {
-    opacity: 0;
-    clip-path: inset(0 0 100% 0);
-    transition: none;
-  }
-
-  /* Who can see what */
-  .who-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .who-title {
-    font-size: var(--t-display-panel);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: calc(1em + 4px);
-  }
-  .who {
-    border-radius: 24px;
-    background: rgb(255 255 255 / 4%);
-    box-shadow: rgb(255 255 255 / 12%) 0 0 0 1px inset;
-    padding: 4px 20px;
-  }
-  .who table {
-    width: 100%;
-  }
-  .who thead {
-    display: none;
-  }
-  .who tr {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 20px 0;
-  }
-  .who tr + tr {
-    border-top: 1px solid rgb(255 255 255 / 12%);
-  }
-  .who__you {
-    display: none !important;
-  }
-  /* The You row is hidden on phones, so the first row shown has no rule. */
-  .who .who__you + tr {
-    border-top: 0;
-  }
-  .who th[scope='row'] {
-    font-size: 17px;
-    font-weight: 600;
-    line-height: 24px;
-    text-align: left;
-  }
-  .who td {
-    font-size: 15px;
-    line-height: 21px;
-  }
-  .who__sees {
-    color: rgb(255 255 255 / 80%);
-  }
-  .who__never {
-    color: var(--amber-300);
-  }
-
-  @media (min-width: 768px) {
-    .who {
-      padding: 12px 32px;
-      border-radius: 32px;
-    }
-    .who table {
-      table-layout: fixed;
-    }
-    .who thead {
-      display: table-header-group;
-    }
-    .who tr {
-      display: table-row;
-    }
-    .who tr + tr {
-      border-top: 0;
-    }
-    .who th,
-    .who td {
-      padding: 20px 32px 20px 0;
-      vertical-align: top;
-      border-bottom: 1px solid rgb(255 255 255 / 12%);
-    }
-    .who tbody tr:last-child th,
-    .who tbody tr:last-child td {
-      border-bottom: 0;
-    }
-    .who td:last-child {
-      padding-right: 0;
-    }
-    .who thead th {
-      padding: 18px 32px 18px 0;
-      color: rgb(255 255 255 / 60%);
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      line-height: 16px;
-      text-align: left;
-      text-transform: uppercase;
-    }
-    .who thead th:first-child {
-      width: 26%;
-    }
-    .who thead th:nth-child(2) {
-      width: 42%;
-    }
-    .who__you {
-      display: table-row !important;
-    }
-    .who__label {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-    .who td {
-      font-size: 16px;
-      line-height: 24px;
-    }
-    .who__sees {
-      color: rgb(255 255 255 / 86%);
-    }
+  .flow__hop {
+    flex-direction: row;
   }
 
   @media (min-width: 1024px) {
-    .privacy {
-      padding: 140px 0;
+    .flow {
+      flex-direction: row;
     }
-    .privacy__inner {
-      gap: 64px;
+    .flow__card--side {
+      flex: 222 1 0;
+      min-width: 0;
     }
-    .privacy__head {
-      gap: 20px;
+    .flow__card--phone,
+    .flow__card--server {
+      flex: 292 1 0;
+      min-width: 0;
     }
-    .privacy__intro {
-      max-width: 680px;
-      color: rgb(255 255 255 / 74%);
-      line-height: 30px;
-    }
-    .diagram {
-      display: grid;
-      /* The arrow columns fit "ENCRYPTED" on one line. */
-      grid-template-columns: minmax(0, 222fr) 84px minmax(0, 292fr) 84px minmax(0, 292fr) 84px minmax(0, 222fr);
-      align-items: stretch;
-    }
-    .node {
+    .flow__hop {
       flex-direction: column;
-      align-items: stretch;
-      gap: 16px;
-      padding: 24px;
-      border-radius: 28px;
-    }
-    .node--phone {
-      align-self: center;
-    }
-    .node__top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .node__holds {
-      display: inline-block;
-      padding: 5px 10px;
-      border-radius: var(--r-pill);
-      background: var(--accent-subtle);
-      color: var(--accent);
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 16px;
-    }
-    .node__short,
-    .node__icon--slot {
-      display: none;
-    }
-    .node__where {
-      display: block;
-    }
-    .node__text {
-      gap: 6px;
-    }
-    .node__text h3 {
-      font-size: 20px;
-      line-height: 26px;
-    }
-    .node__text h3 small {
-      display: inline;
-      margin-left: 8px;
-      color: rgb(255 255 255 / 60%);
-      font-size: 13px;
-      font-weight: 400;
-      letter-spacing: 0;
-      line-height: 18px;
-      white-space: nowrap;
-    }
-    .node__text p {
-      font-size: 15px;
-      line-height: 22px;
-    }
-    .node--server .node__long {
-      display: block;
-    }
-    .node--server .node__brief {
-      display: none;
-    }
-    .node__checks {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      font-size: 15px;
-      line-height: 20px;
-    }
-    .node__checks li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .node__checks :global(.icon) {
-      color: var(--success);
-    }
-    .node__chip {
-      display: inline-block;
-      align-self: flex-start;
-      margin-top: auto;
-      padding: 5px 10px;
-      border-radius: var(--r-pill);
-      background: rgb(255 255 255 / 10%);
-      color: rgb(255 255 255 / 86%);
-      font-size: 12px;
-      font-weight: 500;
-      line-height: 16px;
-    }
-    .node__coins {
-      display: block;
-      width: 100%;
+      width: 57px;
       height: auto;
-      max-width: 244px;
-      overflow: visible;
     }
-    .hop {
-      flex-direction: column;
-      justify-content: center;
-      gap: 8px;
-      height: auto;
-      margin: 0;
-      padding: 0;
-      border: 0;
-      text-align: center;
+    .flow__track {
+      margin-block: 0;
+      transform: none;
     }
-    .hop[data-undrawn] {
+  }
+  /* The token that flows down each arrow: an email (blue), a locked coin (gold). */
+  .flow__token {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 10px currentColor;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .flow__hop--gold .flow__token {
+    width: 10px;
+    height: 10px;
+    margin-top: -5px;
+    background: var(--coin);
+    box-shadow:
+      var(--gold-edge) 0 1.5px 0,
+      0 0 10px rgb(241 202 120 / 60%);
+  }
+
+  /*
+   * Motion. Hidden only while JS runs and motion is allowed, until the script
+   * sets data-play on each item as it comes into view; with reduced motion (or
+   * no JS) the diagram is simply there. Reveals: 480 ms ease-out-soft, rise
+   * 24 px; the iPhone lifts on the spring. From 1024 the whole row is in view
+   * at once, so the items draw left to right, 120 ms per hop (--k); stacked on
+   * a phone, each draws as it scrolls in.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    .flow > li {
+      --k: 0;
+    }
+    .flow__hop:nth-child(4) {
+      --h: 1;
+    }
+    .flow__hop:nth-child(6) {
+      --h: 2;
+    }
+
+    :global(.js) .flow > .flow__card:not([data-play]),
+    :global(.js) .flow > li:not([data-play]) .flow__hop-label,
+    :global(.js) .flow > li:not([data-play]) .flow__coin,
+    :global(.js) .flow > li:not([data-play]) .flow__holds,
+    :global(.js) .flow > li:not([data-play]) .flow__checks li {
+      opacity: 0;
+    }
+    :global(.js) .flow > li:not([data-play]) .flow__arrow {
       clip-path: inset(0 100% 0 0);
     }
-    .hop__line {
-      position: relative;
-      display: block;
-      width: 44px;
-      height: 12px;
+
+    .flow > .flow__card[data-play] {
+      animation: flow-rise var(--t-reveal) var(--ease-out-soft) calc(var(--k) * 120ms) both;
     }
-    .hop__line::before {
-      content: '';
-      position: absolute;
-      left: 1px;
-      right: 6px;
-      top: 5.25px;
-      border-top: 1.5px solid currentColor;
+    .flow > .flow__card--phone[data-play] {
+      animation: flow-lift 760ms var(--ease-spring) calc(var(--k) * 120ms) both;
     }
-    .hop--blue .hop__line::before {
-      border-top-style: dashed;
+    .flow__hop[data-play] .flow__hop-label {
+      animation: flow-fade 320ms var(--ease-out-soft) calc(var(--k) * 120ms + 80ms) both;
     }
-    .hop__line::after {
-      content: '';
-      position: absolute;
-      right: 1px;
-      top: 2px;
-      width: 7px;
-      height: 7px;
-      border-top: 1.5px solid currentColor;
-      border-right: 1.5px solid currentColor;
-      rotate: 45deg;
+    .flow__hop[data-play] .flow__arrow {
+      animation: flow-draw 360ms var(--ease-out-soft) calc(var(--k) * 120ms) both;
+    }
+
+    /* The iPhone: the key turns, "Holds the key" pops, the checks tick in. */
+    .flow__card--phone[data-play] .flow__icon--gold {
+      animation: flow-turn 640ms var(--ease-spring) calc(var(--k) * 120ms + 280ms) both;
+    }
+    .flow__card--phone[data-play] .flow__holds {
+      animation: flow-pop 420ms var(--ease-spring) calc(var(--k) * 120ms + 400ms) both;
+    }
+    .flow__card--phone[data-play] .flow__checks li {
+      animation: flow-tick 320ms var(--ease-out-soft) calc(var(--k) * 120ms + 480ms + var(--c, 0) * 90ms) both;
+    }
+    .flow__checks li:nth-child(2) {
+      --c: 1;
+    }
+    .flow__checks li:nth-child(3) {
+      --c: 2;
+    }
+
+    /* The server: the coins drop into the slot, one after another. */
+    .flow__card--server[data-play] .flow__coin {
+      animation: flow-drop 620ms var(--ease-spring) calc(var(--k) * 120ms + 300ms + var(--c, 0) * 110ms) both;
+    }
+    .flow__coin:nth-child(2) {
+      --c: 1;
+    }
+    .flow__coin:nth-child(3) {
+      --c: 2;
+    }
+
+    /* Then the data flows: each arrow carries one token, in turn, and the
+       diagram is still again within 5 s (WCAG 2.2.2). */
+    .flow__hop[data-play] .flow__token {
+      animation: flow-token 3600ms var(--ease-in-out) calc(1200ms + var(--h, 0) * 600ms) 1;
+    }
+  }
+  @media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+    .flow > li:nth-child(2) {
+      --k: 1;
+    }
+    .flow > li:nth-child(3) {
+      --k: 2;
+    }
+    .flow > li:nth-child(4) {
+      --k: 3;
+    }
+    .flow > li:nth-child(5) {
+      --k: 4;
+    }
+    .flow > li:nth-child(6) {
+      --k: 5;
+    }
+    .flow > li:nth-child(7) {
+      --k: 6;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .flow__token {
+      display: none;
     }
   }
 
-  /* The diagram plays once (motion.ts arms it only below the fold): cards
-     and arrows draw left to right, a token travels each arrow (an alert dot,
-     then a sealed mini dirham), and the sealed coin drops into the server's
-     slot. Down the left rule on small screens, across the arrows from lg. */
-  @media (prefers-reduced-motion: no-preference) {
-    .node {
-      transition:
-        opacity 400ms var(--ease-out-soft),
-        translate 400ms var(--ease-out-soft);
-    }
-    .node[data-undrawn] {
+  @keyframes flow-rise {
+    from {
       opacity: 0;
-      translate: 0 12px;
-      transition: none;
+      transform: translateY(24px);
     }
-    .hop::before,
-    .hop__token {
-      content: '';
-      position: absolute;
-      display: none;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--coin);
-      box-shadow: var(--gold-edge) 0 1px 0;
-      opacity: 0;
-      pointer-events: none;
-    }
-    /* The alert dot: a light blue bead with a soft ring, so it reads on navy
-       as clearly as the gold coins do. */
-    .hop--blue::before,
-    .hop--blue .hop__token {
-      width: 8px;
-      height: 8px;
-      background: linear-gradient(in oklab 180deg, var(--blue-50), var(--blue-300));
-      box-shadow:
-        rgb(172 190 255 / 45%) 0 0 0 2px,
-        rgb(172 190 255 / 55%) 0 0 8px 1px;
-    }
-    .hop::before {
-      --travel: 0 36px;
-      left: -5.75px;
-      top: 0;
-    }
-    .hop--blue::before {
-      left: -4.75px;
-    }
-    [data-play] .hop::before,
-    [data-play] .hop__token {
-      display: block;
-      animation: hop-token 380ms var(--ease-in-out) both;
-    }
-    [data-play] .hop:nth-child(2)::before,
-    [data-play] .hop:nth-child(2) .hop__token {
-      animation-delay: 900ms;
-    }
-    [data-play] .hop:nth-child(4)::before,
-    [data-play] .hop:nth-child(4) .hop__token {
-      animation-delay: 1280ms;
-    }
-    [data-play] .hop:nth-child(6)::before,
-    [data-play] .hop:nth-child(6) .hop__token {
-      animation-delay: 2100ms;
-    }
-    @media (min-width: 1024px) {
-      [data-play] .hop::before {
-        display: none;
-      }
-      .hop__token {
-        --travel: 38px 0; /* the 44 px arrow, less the token */
-        left: 1px;
-        top: 6px;
-        margin: -5px 0 0 -5px;
-      }
-      .hop--blue .hop__token {
-        margin: -4px 0 0 -4px;
-      }
-      [data-play] .srv-coin {
-        animation: srv-drop 560ms 1600ms both;
-      }
-      [data-play] .srv-plate {
-        animation: srv-plate 560ms 1600ms linear both;
-      }
-    }
-  }
-  @keyframes hop-token {
-    0% {
-      opacity: 0;
-      translate: 0 0;
-    }
-    20%,
-    80% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-      translate: var(--travel);
-    }
-  }
-  /* SVG user units; the slot's clip swallows the +6 overshoot. */
-  @keyframes srv-drop {
-    0% {
-      opacity: 0;
-      transform: translateY(-18px);
-      animation-timing-function: cubic-bezier(0.5, 0, 1, 1);
-    }
-    20% {
-      opacity: 1;
-    }
-    45% {
-      transform: translateY(6px);
-      animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
-    }
-    75% {
-      transform: translateY(-2px);
-      animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); /* --ease-in-out: var() is not read inside @keyframes */
-    }
-    100% {
+    to {
       opacity: 1;
       transform: none;
     }
   }
-  @keyframes srv-plate {
-    0%,
-    38% {
-      fill-opacity: 0.08;
+  @keyframes flow-lift {
+    from {
+      opacity: 0;
+      transform: translateY(48px) scale(0.94);
+      box-shadow: rgb(0 0 0 / 0%) 0 4px 8px;
     }
-    45% {
-      fill-opacity: 0.2;
+    40% {
+      opacity: 1;
     }
-    75%,
+    to {
+      opacity: 1;
+      transform: none;
+      box-shadow: rgb(0 0 0 / 30%) 0 24px 48px;
+    }
+  }
+  @keyframes flow-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes flow-draw {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes flow-turn {
+    from {
+      transform: rotate(-70deg) scale(0.8);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes flow-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.7);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes flow-tick {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes flow-drop {
+    from {
+      opacity: 0;
+      transform: translateY(-56px);
+    }
+    30% {
+      opacity: 1;
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes flow-token {
+    0% {
+      opacity: 0;
+      transform: translateX(0) scale(0.6);
+    }
+    6% {
+      opacity: 1;
+      transform: translateX(2px) scale(1);
+    }
+    24% {
+      opacity: 1;
+      transform: translateX(30px) scale(1);
+    }
+    30%,
     100% {
-      fill-opacity: 0.08;
+      opacity: 0;
+      transform: translateX(34px) scale(0.6);
     }
   }
 </style>
+
+<script>
+  /* Sets data-play on each [data-play-in] once a fifth of it is in view (the
+     diagram's cards and arrows, the who-can-see rows). Without
+     IntersectionObserver it plays at once; with reduced motion the CSS keeps
+     everything still whatever this sets. */
+  import { onPage, observe } from '../../scripts/page';
+
+  onPage((signal) => {
+    const els = document.querySelectorAll('[data-play-in]');
+    const io = observe(
+      signal,
+      (entries, obs) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          obs.unobserve(e.target);
+          e.target.setAttribute('data-play', '');
+        }
+      },
+      { threshold: 0.2 },
+    );
+    els.forEach((el) => (io ? io.observe(el) : el.setAttribute('data-play', '')));
+  });
+</script>

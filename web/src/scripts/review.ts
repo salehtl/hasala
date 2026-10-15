@@ -1,9 +1,13 @@
 /**
- * Motion moment D, "Review · the swipe loop". The first time the stage is
- * in view, three cards are swiped (Need, Want, Save) and the deck rests on
- * the fourth. It plays once, in under five seconds, and stops for good on
- * hover, focus, a hidden tab or any interaction, so nothing moves on its own
- * for long (WCAG 2.2.2). The pills and dragging work too. Only the visitor's
+ * The review deck (components/detail/Review.astro), on the landing and on
+ * /how-it-works. Motion moment D, "Review · the swipe loop": the first time
+ * the stage is in view, three cards are swiped (each to its own direction)
+ * and the deck rests on the fourth. It plays once, in under five seconds, and
+ * stops for good on hover, focus, a hidden tab or any interaction, so nothing
+ * moves on its own for long (WCAG 2.2.2). After that the visitor sorts: drag
+ * or flick the top card, tap a pill, a legend chip or Use, or press an arrow
+ * key on the focused deck. After the last card the deck says "All caught up"
+ * and offers Start again; Undo puts the last card back. Only the visitor's
  * own choices are announced to screen readers. With reduced motion nothing
  * plays on its own and a choice crossfades to the next card.
  */
@@ -11,13 +15,16 @@ import { reducedMotion } from './motion';
 import { onPage, observe } from './page';
 
 type Dir = 'need' | 'want' | 'save' | 'transfer';
+const DIRS: Dir[] = ['need', 'want', 'save', 'transfer'];
 const LABEL: Record<Dir, string> = { need: 'Need', want: 'Want', save: 'Save', transfer: 'Transfer' };
+const KEYS: Record<string, Dir> = { ArrowRight: 'need', ArrowLeft: 'want', ArrowDown: 'save', ArrowUp: 'transfer' };
 const OUT: Record<Dir, [number, number, number]> = {
   need: [1.4, 0, 16],
   want: [-1.4, 0, -16],
   save: [0, 1.2, 4],
   transfer: [0, -1.2, -4],
 };
+const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';
 
 export function initReview(): void {
   onPage(setup);
@@ -26,17 +33,23 @@ export function initReview(): void {
 function setup(signal: AbortSignal): void {
   const stage = document.querySelector<HTMLElement>('[data-review]');
   if (!stage) return;
+  const $ = <T extends HTMLElement>(s: string) => stage.querySelector<T>(s);
   const cards = [...stage.querySelectorAll<HTMLElement>('.rcard')];
-  const toast = stage.querySelector<HTMLElement>('.toast')!;
-  const toastText = stage.querySelector<HTMLElement>('[data-toast-text]')!;
-  const counter = stage.querySelector<HTMLElement>('[data-review-count]');
-  const progress = stage.querySelector<HTMLElement>('[data-review-progress]');
-  const live = stage.querySelector<HTMLElement>('[data-review-live]');
+  const n = cards.length;
+  const total = Number(stage.dataset.total) || n + 1;
+  const deck = $('.deck')!;
+  const done = $('[data-review-done]')!;
+  const toast = $('.toast')!;
+  const toastText = $('[data-toast-text]')!;
+  const counter = $('[data-review-count]');
+  const progress = $('[data-review-progress]');
+  const live = $('[data-review-live]');
   const pills = new Map<Dir, HTMLElement>();
   stage.querySelectorAll<HTMLElement>('[data-sort]').forEach((b) => pills.set(b.dataset.sort as Dir, b));
+  // The legend beside the stage: lights up with the swipe and sorts on tap.
   const section = stage.closest('section') ?? document;
   const legends = new Map<Dir, HTMLElement>();
-  (['need', 'want', 'save', 'transfer'] as Dir[]).forEach((d) => {
+  DIRS.forEach((d) => {
     const l = section.querySelector<HTMLElement>(`.dir--${d}`);
     if (l) legends.set(d, l);
   });
@@ -48,10 +61,15 @@ function setup(signal: AbortSignal): void {
   let inView = false;
   let paused = false;
   let played = false;
+  // The demo's lean, while it runs: a touch on the card cancels it.
+  let autoLean: (() => void) | null = null;
+
+  const say = (s: string) => live && (live.textContent = s);
+  const lit = (dir: Dir | null) => DIRS.forEach((d) => legends.get(d)?.toggleAttribute('data-active', d === dir));
 
   const layout = () => {
     cards.forEach((c, i) => {
-      const pos = i === top ? '0' : i === (top + 1) % cards.length ? '1' : 'x';
+      const pos = i === top ? '0' : i === top + 1 ? '1' : 'x';
       c.dataset.pos = pos;
       c.style.transform = '';
       c.style.opacity = '';
@@ -59,15 +77,20 @@ function setup(signal: AbortSignal): void {
       else c.setAttribute('aria-hidden', 'true');
       c.querySelectorAll<HTMLElement>('.rcard__tint').forEach((t) => (t.style.opacity = ''));
     });
-    const n = top + 2; // "2 of 6" for the first card, as in the app
-    if (counter) counter.textContent = String(n);
+    const end = top >= n;
+    deck.dataset.left = String(n - top);
+    done.hidden = !end;
+    stage.toggleAttribute('data-done', end);
+    legends.forEach((l) => l.toggleAttribute('aria-disabled', end));
+    const at = Math.min(top + 2, total); // "2 of 6" for the first card, as in the app
+    if (counter) counter.textContent = String(at);
     // The first card's 2/6 is the stylesheet's, so nothing moves on load.
-    if (progress) progress.style.clipPath = top ? `inset(0 ${((1 - n / 6) * 100).toFixed(3)}% 0 0 round 3px)` : '';
+    if (progress) progress.style.clipPath = top ? `inset(0 ${((1 - (end ? 1 : at / total)) * 100).toFixed(3)}% 0 0 round 3px)` : '';
   };
 
   const showToast = (dir: Dir, announce: boolean) => {
     toastText.textContent = `Sorted as ${LABEL[dir]}`;
-    if (announce && live) live.textContent = `Sorted as ${LABEL[dir]}. Undo is available.`;
+    if (announce) say(`Sorted as ${LABEL[dir]}. ${top + 1 >= n ? 'All caught up. ' : ''}Undo is available.`);
     toast.toggleAttribute('data-show', true);
     window.clearTimeout(Number(toast.dataset.t));
     toast.dataset.t = String(window.setTimeout(() => toast.removeAttribute('data-show'), 2200));
@@ -78,23 +101,28 @@ function setup(signal: AbortSignal): void {
     if (t) t.style.opacity = String(amount);
   };
 
+  // The next card, or the "All caught up" panel, settles into place.
+  const advance = () => {
+    history.push(top);
+    top++;
+    layout();
+    if (top >= n) done.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });
+  };
+
   async function swipe(dir: Dir, opts: { drag?: boolean; auto?: boolean; v?: number } = {}) {
-    if (busy) return;
+    if (busy || top >= n) return;
     busy = true;
     const card = cards[top];
-    const next = cards[(top + 1) % cards.length];
+    const next = cards[top + 1];
     const pill = pills.get(dir);
-    // The legend beside the stage answers with the pill.
     const legend = legends.get(dir);
     if (reducedMotion()) {
       const fade = card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
       await fade.finished;
       showToast(dir, !opts.auto);
-      history.push(top);
-      top = (top + 1) % cards.length;
-      layout();
+      advance();
       fade.cancel();
-      cards[top].animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+      (cards[top] ?? done).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
       busy = false;
       return;
     }
@@ -106,10 +134,23 @@ function setup(signal: AbortSignal): void {
       legend?.toggleAttribute('data-active', true);
       const lean = card.animate(
         [{ transform: 'none' }, { transform: `translate(${ox * 40}px, ${oy * 40}px) rotate(${rot * 0.38}deg)` }],
-        { duration: 520, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' },
+        { duration: 520, easing: EASE_OUT, fill: 'forwards' },
       );
       card.querySelector<HTMLElement>(`.rcard__tint--${dir}`)?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 520, fill: 'forwards' });
-      await lean.finished;
+      if (opts.auto)
+        autoLean = () => {
+          autoLean = null;
+          card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+          pill?.removeAttribute('data-active');
+          legend?.removeAttribute('data-active');
+          busy = false;
+        };
+      const leaned = await lean.finished.then(
+        () => true,
+        () => false,
+      );
+      autoLean = null;
+      if (!leaned) return; // grabbed mid-lean: the card is the visitor's now
     }
     // 1220 → 1500 ms: commit. Out it goes; the toast rises with Undo. A
     // drag leaves from where the finger let go at the finger's speed: this
@@ -134,10 +175,10 @@ function setup(signal: AbortSignal): void {
     );
     showToast(dir, !opts.auto);
     // 1500 → 1740 ms: the peek card scales up and lifts into place.
-    next.animate([{ transform: 'translateY(10px) scale(0.96)' }, { transform: 'none' }], {
+    next?.animate([{ transform: 'translateY(10px) scale(0.96)' }, { transform: 'none' }], {
       duration: 240,
       delay: 200,
-      easing: 'cubic-bezier(.22,1,.36,1)',
+      easing: EASE_OUT,
       fill: 'forwards',
     });
     await fly.finished;
@@ -145,24 +186,38 @@ function setup(signal: AbortSignal): void {
     pill?.removeAttribute('data-active');
     legend?.removeAttribute('data-active');
     card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
-    next.getAnimations().forEach((a) => a.cancel());
-    history.push(top);
-    top = (top + 1) % cards.length;
-    layout();
+    next?.getAnimations().forEach((a) => a.cancel());
+    advance();
     busy = false;
   }
+
+  const appear = (el: HTMLElement) => {
+    if (!reducedMotion()) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'ease-out' });
+  };
 
   const undo = () => {
     if (busy || !history.length) return;
     top = history.pop()!;
     layout();
     toast.removeAttribute('data-show');
-    if (live) live.textContent = 'Undone.';
-    if (!reducedMotion()) cards[top].animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'ease-out' });
+    say('Undone.');
+    appear(cards[top]);
   };
 
-  // Autoplay, once: Need, Want, Save, then rest on the fourth card.
-  const PLAN: Dir[] = ['need', 'want', 'save'];
+  const restart = () => {
+    if (busy) return;
+    top = 0;
+    history = [];
+    layout();
+    toast.removeAttribute('data-show');
+    // The button that was pressed is gone; keep focus on the deck.
+    deck.focus();
+    say(`Back to the first card, ${cards[0].querySelector('.rcard__merchant')?.textContent}.`);
+    appear(cards[0]);
+  };
+
+  // Autoplay, once: the first three cards, each to its own direction.
+  const PLAN = cards.slice(0, 3).map((c) => c.dataset.to as Dir);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   let running = false;
   async function play() {
@@ -187,10 +242,11 @@ function setup(signal: AbortSignal): void {
   };
 
   // Hover, focus or a touch stops the demo for good: the visitor is in charge.
+  const stop = () => (paused = true);
   stage.addEventListener('pointerenter', (e) => {
-    if (e.pointerType === 'mouse') paused = true;
+    if (e.pointerType === 'mouse') stop();
   });
-  stage.addEventListener('focusin', () => (paused = true));
+  stage.addEventListener('focusin', stop);
   document.addEventListener('visibilitychange', schedule, { signal });
 
   observe(
@@ -202,13 +258,27 @@ function setup(signal: AbortSignal): void {
     { threshold: 0.4 },
   )?.observe(stage);
 
-  pills.forEach((btn, dir) =>
+  // Pills in the stage and legend chips beside it.
+  section.querySelectorAll<HTMLElement>('[data-sort]').forEach((btn) =>
     btn.addEventListener('click', () => {
-      paused = true;
-      void swipe(dir);
+      stop();
+      void swipe(btn.dataset.sort as Dir);
     }),
   );
-  stage.querySelector('[data-undo]')?.addEventListener('click', undo);
+  $('[data-undo]')?.addEventListener('click', undo);
+  $('[data-review-restart]')?.addEventListener('click', restart);
+  // Use takes Hasala's guess: the card goes where it belongs.
+  stage.addEventListener('click', (e) => {
+    const card = (e.target as Element).closest('[data-use]')?.closest<HTMLElement>('.rcard[data-pos="0"]');
+    if (card) void swipe(card.dataset.to as Dir);
+  });
+  deck.addEventListener('keydown', (e) => {
+    const dir = KEYS[e.key];
+    if (!dir || e.target !== deck) return;
+    e.preventDefault();
+    stop();
+    void swipe(dir);
+  });
 
   // Drag to try. A flick commits as well as a long drag: the release speed
   // comes from the last few pointer samples. Past 140 px the card drags with
@@ -225,11 +295,13 @@ function setup(signal: AbortSignal): void {
     return a <= 0 ? d : Math.sign(d) * (140 + (a * 0.55 * 300) / (300 + 0.55 * a));
   };
   stage.addEventListener('pointerdown', (e) => {
-    if (dragging) return;
+    // Use is a tap, not a drag: no capture, so its click lands on it.
+    stop();
+    if (dragging || (e.target as Element).closest('[data-use]')) return;
     const card = (e.target as Element).closest<HTMLElement>('.rcard[data-pos="0"]');
+    if (card) autoLean?.();
     if (!card || busy) return;
     dragging = true;
-    paused = true;
     id = e.pointerId;
     startX = e.clientX;
     startY = e.clientY;
@@ -246,12 +318,10 @@ function setup(signal: AbortSignal): void {
     const x = band(dx);
     card.style.transform = `translate(${x}px, ${band(dy)}px) rotate(${x / 14}deg)`;
     const dir = dirFor(dx, dy);
-    const far = Math.hypot(dx, dy) > 24;
-    (['need', 'want', 'save', 'transfer'] as Dir[]).forEach((d) => {
-      tint(card, d, d === dir ? Math.min(1, Math.hypot(dx, dy) / 120) : 0);
-      // The legend beside the stage answers the drag, as it does the pills.
-      legends.get(d)?.toggleAttribute('data-active', far && d === dir);
-    });
+    const d = Math.hypot(dx, dy);
+    DIRS.forEach((k) => tint(card, k, k === dir ? Math.min(1, d / 120) : 0));
+    // The legend beside the stage answers the drag, as it does the pills.
+    lit(d > 24 ? dir : null);
   });
   const end = (e: PointerEvent) => {
     if (!dragging || e.pointerId !== id) return;
@@ -265,13 +335,13 @@ function setup(signal: AbortSignal): void {
     const dir = dirFor(dx, dy);
     const commit = Math.hypot(dx, dy) > 90 || flick;
     // The chosen direction's legend stays lit until the card has gone.
-    legends.forEach((l, d) => l.toggleAttribute('data-active', commit && d === dir));
+    lit(commit ? dir : null);
     if (commit) {
       void swipe(dir, { drag: true, v });
-    } else {
+    } else if (dx || dy) {
       card.animate([{ transform: card.style.transform }, { transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.34,1.56,.64,1)' });
       card.style.transform = '';
-      (['need', 'want', 'save', 'transfer'] as Dir[]).forEach((d) => tint(card, d, 0));
+      DIRS.forEach((k) => tint(card, k, 0));
     }
   };
   stage.addEventListener('pointerup', end);

@@ -1,5 +1,4 @@
 ---
-import { NAV } from '../data/site';
 import Wordmark from './Wordmark.astro';
 import Icon from './Icon.astro';
 
@@ -8,6 +7,18 @@ interface Props {
   variant?: 'full' | 'invite' | 'minimal';
 }
 const { variant = 'full' } = Astro.props;
+/* How it works and FAQ are landing-page sections: hash links from every page;
+   the router scrolls to the section. They carry no data-nav-link, so nav.ts
+   leaves them unmarked (all of them would match "/"). Privacy (the How privacy works page) is
+   its own page, so nav.ts marks it current there. Banks stays a homepage
+   section, not a nav item. */
+const NAV: readonly { href: string; label: string; page?: true }[] = [
+  { href: '/#how-it-works', label: 'How it works' },
+  { href: '/how-privacy-works', label: 'Privacy', page: true },
+  { href: '/#faq', label: 'FAQ' },
+];
+/* /i keeps its own "How privacy works" button, so its links leave it out. */
+const links = variant === 'invite' ? NAV.filter((item) => !item.page) : NAV;
 /*
  * Client-side navigation (<ClientRouter /> in Base.astro): the header is kept,
  * not re-rendered, between pages with the same variant, so its markup must be
@@ -28,9 +39,9 @@ const { variant = 'full' } = Astro.props;
     {
       variant !== 'minimal' && (
         <ul class="nav__links" role="list">
-          {NAV.map((item) => (
+          {links.map((item) => (
             <li>
-              <a class="nav__link" href={item.href} data-nav-link>
+              <a class="nav__link" href={item.href} data-nav-link={item.page ? '' : undefined}>
                 {item.label}
               </a>
             </li>
@@ -42,8 +53,12 @@ const { variant = 'full' } = Astro.props;
     {
       variant === 'full' && (
         <div class="nav__cta">
+          <a class="nav__code" href="/#invite">
+            Have a code?
+          </a>
           <a class="btn btn--primary btn--nav" href="/#invite" data-invite-cta>
-            Request an invite
+            <span class="nav__cta-long">Request an invite</span>
+            <span class="nav__cta-short">Get an invite</span>
           </a>
         </div>
       )
@@ -73,7 +88,7 @@ const { variant = 'full' } = Astro.props;
         <ul role="list">
           {NAV.map((item) => (
             <li>
-              <a href={item.href} data-nav-link>
+              <a href={item.href} data-nav-link={item.page ? '' : undefined}>
                 {item.label}
               </a>
             </li>
@@ -90,7 +105,7 @@ const { variant = 'full' } = Astro.props;
 <style>
   .site-nav {
     position: fixed;
-    inset: 16px 0 auto;
+    inset: calc(16px + env(safe-area-inset-top)) 0 auto;
     z-index: 50;
     pointer-events: none;
   }
@@ -102,11 +117,11 @@ const { variant = 'full' } = Astro.props;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    width: min(1200px, 100% - 32px);
+    width: min(1200px, 100% - max(32px, 2 * env(safe-area-inset-left), 2 * env(safe-area-inset-right)));
     height: 56px;
     margin-inline: auto;
     padding: 0 6px 0 16px;
-    border-radius: 34px;
+    border-radius: 28px;
     background-color: var(--frost);
     -webkit-backdrop-filter: blur(var(--blur)) saturate(180%) brightness(104%);
     backdrop-filter: blur(var(--blur)) saturate(180%) brightness(104%);
@@ -159,8 +174,8 @@ const { variant = 'full' } = Astro.props;
   /* Below 560 px only the mark and "Hasala" show: the lockup is cropped. */
   .nav__wordmark {
     display: block;
-    height: 30px;
-    width: calc(30px * 368 / 86);
+    height: 25px;
+    width: calc(25px * 368 / 86);
     overflow: hidden;
   }
   .nav__wordmark :global(svg) {
@@ -224,7 +239,26 @@ const { variant = 'full' } = Astro.props;
     --btn-h: 44px;
     --btn-px: 16px;
   }
-  .nav__privacy {
+  .nav__privacy,
+  .nav__code {
+    display: none;
+  }
+  .nav__code {
+    padding: 10px 14px;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 20px;
+    transition: color var(--t-hover-out);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .nav__code:hover {
+      color: var(--text-primary);
+      transition-duration: var(--t-hover-in);
+    }
+  }
+  /* "Get an invite" on a phone, "Request an invite" from 1024. */
+  .nav__cta-long {
     display: none;
   }
   .nav__menu-btn {
@@ -287,6 +321,9 @@ const { variant = 'full' } = Astro.props;
     border-radius: 16px;
     font-size: 17px;
     font-weight: 500;
+  }
+  .nav__menu li a[aria-current='page'] {
+    color: var(--accent);
   }
   .nav__menu li a:active {
     background: var(--glass-selected);
@@ -354,37 +391,48 @@ const { variant = 'full' } = Astro.props;
       padding: 0 4px 0 14px;
     }
     .nav__cta .btn--nav {
-      --btn-px: 14px;
-      font-size: 14px;
-    }
-    .nav__menu-btn {
-      width: 40px;
+      --btn-px: 16px;
     }
   }
   @media (max-width: 379px) {
     .nav__wordmark {
-      width: calc(30px * 136 / 86);
+      width: calc(25px * 136 / 86);
     }
   }
   @media (min-width: 560px) {
     .nav__wordmark {
-      height: 32px;
-      width: calc(32px * 576.3 / 86);
+      height: 30px;
+      width: calc(30px * 576.3 / 86);
     }
   }
   @media (min-width: 1024px) {
+    .nav__wordmark {
+      height: 28px;
+      width: calc(28px * 576.3 / 86);
+    }
     .site-nav {
-      top: 24px;
+      top: calc(24px + env(safe-area-inset-top));
     }
     .nav {
       height: var(--nav-h);
       padding: 0 10px 0 24px;
+      border-radius: 34px;
     }
+    /* Paper: lockup, links and the CTA group spread with equal gaps. */
     .nav__links {
       display: flex;
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
+    }
+    .nav__cta {
+      margin-left: 0;
+    }
+    .nav__cta-long {
+      display: inline;
+    }
+    .nav__cta-short {
+      display: none;
+    }
+    .nav__code {
+      display: block;
     }
     .nav__cta .btn--nav {
       --btn-h: 48px;

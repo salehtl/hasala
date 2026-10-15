@@ -1,287 +1,467 @@
 # Hasala
 
-Hasala (حصّالة) is a private, iOS-native budgeting app for the UAE. It is the
-public successor to ledgerd (ledger 2.0). Today it ships to a small TestFlight
-beta; every deployment is **QA** until a production VPS exists.
+Hasala (حصّالة) is a private budget app for iPhone users in the UAE. It is a
+native iOS app. It replaces ledgerd (ledger 2.0) and it is public.
+
+At this time, Hasala goes to a small TestFlight beta. All deployments are
+**QA**. This stays true until there is a production VPS.
 
 ## Layout
 
-| Path | What it is |
+| Path | Contents |
 | --- | --- |
-| `server/` | The Go backend `hasalad` (module `github.com/salehtl/hasala/server`), forked from ledgerd at `4b01e36`. Postgres. |
-| `server/oracle/` | A separate Go module: ledgerd's frozen v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Test-time oracle only; the server's build graph cannot reach it. |
-| `ios/` | The native SwiftUI app and its Swift packages (`HasalaCore` = the ported client core; `HasalaKit` = the design system, read models and the Maya mock). |
-| `conformance/` | Shared fixtures. Go, the TypeScript reference and Swift must all produce byte-identical output against them. |
-| `reference/ledgerd-client/` | ledgerd's TypeScript client core. **Reference and fixture oracle only** — the Swift port must match it. Not shipped. |
-| `reference/ledgerd-pwa/` | ledgerd's React PWA. Reference for product logic (`src/lib/`) only. Not shipped. |
-| `web/` | The hasala.app website: Astro + Bun, static output. See "Website" below. |
-| `design/` | Logo and exported assets. Not in this tree yet. The UI source of truth is a private Paper design file. |
-| `infra/qa/` | The QA deployment as code: `nix/module.nix` is `nixosModules.hasala` (`services.hasala`: Hasala's own PostgreSQL 17 on a unix socket, migrations, `hasalad serve` and `hasalad console` on loopback, the tunnel, encrypted backups), `cloudflared/` the ingress golden file, lint and fixtures, `nix/tests/` the eval and VM checks, `HOST-PR.md` the host-side change (placeholders only). Host names, addresses, accounts and credentials never go here. |
-| `docs/` | `docs/legal/` holds the privacy policy, terms, security and support pages that the website renders (`status: "final"`; a page that still has an `[[OWNER: ...]]` note must go back to `status: "draft"`). Hasala's architecture and decisions will live in `docs/` too; not in this tree yet. ledgerd's design history (plans, specs, task reports, reviews) is archived privately and is not part of this repository; code comments that cite it say "ledgerd design archive". |
+| `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
+| `server/oracle/` | A different Go module. It contains the frozen ledgerd v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Use it only as a test oracle. The server build graph cannot get access to it. |
+| `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models and the Maya mock. |
+| `conformance/` | Shared fixtures. Go, the TypeScript reference and Swift must all give output that is the same, byte for byte. |
+| `reference/ledgerd-client/` | The ledgerd TypeScript client core. **Use it only as a reference and a fixture oracle.** The Swift port must agree with it. Do not ship it. |
+| `reference/ledgerd-pwa/` | The ledgerd React PWA. Use only its product logic (`src/lib/`) as a reference. Do not ship it. |
+| `web/` | The hasala.app website: Astro and Bun, static output. Refer to "Website" below. |
+| `design/` | The logo and exported assets. They are not in this tree yet. The UI source of truth is a private Paper design file. |
+| `infra/qa/` | The QA deployment as code. `nix/module.nix` is `nixosModules.hasala` (`services.hasala`). It contains: a PostgreSQL 17 for Hasala only, on a unix socket; the migrations; `hasalad serve` and `hasalad console` on loopback; the tunnel; and encrypted backups. `cloudflared/` contains the ingress golden file, the lint and the fixtures. `nix/tests/` contains the eval check and the VM check. `HOST-PR.md` is the change on the host side (placeholders only). Do not put host names, addresses, accounts or credentials here. |
+| `docs/` | `docs/legal/` contains the privacy policy, the terms, the security page and the support page. The website shows them (`status: "final"`). If a page has an `[[OWNER: ...]]` note, set it to `status: "draft"` again. The Hasala architecture and decisions will also go in `docs/`. They are not in this tree yet. The ledgerd design history (plans, specs, task reports, reviews) is in a private archive. It is not part of this repository. Code comments that refer to it say "ledgerd design archive". |
 
 ## Build and test
 
-Every tool comes from `flake.nix` (nixpkgs `nixos-26.05`, pinned by
-`flake.lock`); the same devShell serves the QA host (x86_64-linux) and the Mac
-(aarch64-darwin). Run `direnv allow` once, then prefix commands with
-`direnv exec .` in non-interactive shells. The one exception to 26.05 is Go,
-taken from `nixos-unstable` (1.27.2) because 26.05's 1.26.8 still has reachable
-standard-library advisories; gopls, govulncheck and golangci-lint are rebuilt
-with it. `server/go.mod`'s `toolchain` line is that security floor, and
-`govulncheck ./...` in `server/` should report nothing reachable.
+All tools come from `flake.nix` (nixpkgs `nixos-26.05`, locked by
+`flake.lock`). The QA host (x86_64-linux) and the Mac (aarch64-darwin) use the
+same devShell.
 
-- `scripts/check.sh` is the gate: real-mail fence, toolchain floor, the
-  hasalad fences (`server/cmd/hasalad/fence_test.go`), `go vet` and `go test`
-  in `server/` and then `server/oracle/` against one throwaway Postgres (unix
-  socket only), the reference client's typecheck and `bun test`, and the
-  conformance suites. Once per checkout first:
-  `(cd reference/ledgerd-client && bun install --frozen-lockfile)`.
-- CI is `.github/workflows/ci.yml`, on every pull request and push to `main`
-  (and by hand, `workflow_dispatch`), without the private fixtures. Jobs
-  `gate` (`check.sh --fence-only` before anything else, then
-  `nix flake check --no-build`, a build of every check except `qa-vm`, and
-  `scripts/check.sh` in the devShell), `vuln`
-  (`govulncheck ./...` in `server/` and `server/oracle/`, failing on anything
-  reachable) and `secrets` (the real-mail fence and the HasalaCore lints
-  `ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`, then
-  gitleaks over the full history) are the required checks. Keep those job
-  names: required status checks match them by name. `swift` (HasalaCore on a
-  Mac), `ios` and `ios-ui` (the app on a Mac, below), `web` (the website, see
-  "Website") and `nixos-vm` (builds `checks.x86_64-linux.qa-vm` with KVM) are
-  not required.
-- CI is path-aware on pull requests and fails closed. Its first job,
-  `changes`, lists the pull request's changed paths (`git diff -z`, so any
-  file name matches as written), and each of `gate`/`vuln`, `swift`, `web`
-  and `nixos-vm` is skipped only when every changed path is on that job's
-  list of paths it does not read; any other path, including one nobody
-  anticipated (a new top-level directory, `go.work`, `.gitattributes`), runs
-  it. No job reads `LICENSES/`, `design/`, root `*.md`, `NOTICE` or
-  `private-fixtures.lock`. `gate` and `vuln` also skip `docs/`, `web/` and
-  `ios/` (except any `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work`,
-  `go.work.sum`), so `infra/` runs them; `swift` reads only `ios/` and
-  `conformance/`; `web` reads only `web/`, `docs/legal/` and the flake;
-  `nixos-vm` reads only `infra/`, `server/` and the flake. `.github/` runs
-  everything, and `secrets` always runs. Jobs are skipped by a
-  job-level `if:` (a skipped required check counts as passing), never by a
-  workflow-level `paths:` filter (that leaves required checks pending
-  forever), and unless `changes` succeeded every job runs. A push to `main` or
-  a manual run runs every job. When a job starts reading a path on its
-  inert list, take it off that list in `changes`.
-- `.github/workflows/vuln-weekly.yml` runs the same govulncheck on `main`
-  every Monday (job `vuln-weekly`, not required), because Go advisories land
-  without commits; it is a separate workflow so it never records checks on
-  `main`'s head under the required names.
-- `.gitleaks.toml` allowlists known public test vectors only, each scoped to
-  its rule, its files and its exact value; never widen it to pass a real
-  secret.
-- Real bank mail is **not** in this repository. The real-mail conformance cases
-  and the signed `.eml` fixtures live in the private `salehtl/hasala-fixtures`
-  repo under the same paths; set `HASALA_PRIVATE_FIXTURES` to an absolute path
-  of a checkout to run the tests that read them (they skip, by name, without
-  it, and `scripts/check.sh` says how many ran or were skipped). The checkout
-  must match `private-fixtures.lock`; after changing the private repo, refresh it
-  with `scripts/private-fixtures-lock.sh write` and commit both. Never commit a
-  real message, account or card number (masked or not), name, amount, date or
-  reference here — use synthetic stand-ins. No real transaction amount or date
-  is committed anywhere in this tree, `server/oracle/v1ref` included.
-  `scripts/check.sh`'s first step (the real-mail fence) refuses the private
-  paths; CI runs it alone (`scripts/check.sh --fence-only`, no fixtures and no
-  toolchain needed) in `secrets` on every push and pull request, and in `gate`
-  before anything else.
-- The iOS app (`ios/`, macOS only) builds with Xcode 27 from the system. The
-  `Hasala.xcodeproj` is generated from `ios/project.yml` by XcodeGen **2.46.0**
-  (`ios/scripts/generate-project.sh`; `--check` verifies the committed project)
-  and committed. The flake pins that XcodeGen (`nix build .#xcodegen`, on PATH in
-  the darwin devShell); nixpkgs' own 2.44.1 writes a project without resources.
-  Tests: `swift test --package-path ios/HasalaKit` (design tokens, money
-  formatting, the Maya mock, text contrast) and `xcodebuild test -project
-  ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
-  (unit tests, and UI tests that run the accessibility audit at the default
-  and `.accessibility3` text sizes). Design tokens are generated from
-  `design/tokens/paper-tokens.json` by `swift ios/tools/tokens/generate.swift`
-  (`--check` in CI). Debug builds run the synthetic Maya scenario
-  (`-HasalaScenario maya|mayaHidden|mayaSample`); Release builds do not link HasalaMocks
-  (`ios/Config/Shared.xcconfig` excludes it from every configuration but Debug).
-  Release shows only what works (`BuildSurface`: no placeholder screens or
-  controls without a screen) and only the account actions in
-  `AccountSession.capabilities`; `-HasalaReleaseSurface` gives a Debug run the
-  same surface, and `ios/scripts/test-release-surface.sh <simulator udid>` runs
-  `ReleaseSurfaceTests` on a Release-configuration simulator build that links the
-  mock. `ios/scripts/archive.sh` (below) runs a gate before it builds anything
-  (exit 13): no `IntegrationStub` left under `ios/`, then
-  `ios/scripts/privacy-lint.sh` (required-reason API use against the privacy
-  manifest).
-  `ios/scripts/check-bundle.sh <.app|.xcarchive|.ipa>` checks what a build carries:
-  no test data, no resource over 5 MB but fonts and the merchant dictionary, and
-  the sample seed equal to `ios/scripts/golden/maya-v1.sha256`, which must equal
-  `SampleManifest.sha256` (update both when the seed is regenerated).
-  inspect-ipa.sh runs it as I6b; its I9 refuses third-party crypto symbols (the
-  export-compliance guard, `docs/decisions/export-compliance.md`).
-  `ios/scripts/archive.sh` archives and exports a signed .ipa on the owner's Mac
-  and `ios/scripts/upload.sh` uploads it; both read the App Store Connect key
-  from `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` only. archive.sh inspects
-  the export with `ios/scripts/inspect-ipa.sh`, whose `summary.txt` ends in
-  `PASS <n>/<n> sha256=<the .ipa's>` only when every check passed; upload.sh
-  uploads nothing else. inspect-ipa.sh's content checks (secrets, dev hosts,
-  mock data) search every file's bytes and every plist as XML; the dev-host
-  search ignores case. They do not search text that a non-plist resource holds
-  as UTF-16, or compressed resources (zip, gzip, LZFSE, compressed data in
-  `Assets.car`), so the endpoint guard is the exact `HasalaAPIBaseURL` check,
-  not the dev-host search. `ios/scripts/tests/run.sh` runs the release-script tests
-  offline (stub xcodebuild and altool, fake keys, synthetic .ipa files), and
-  `ios/scripts/tests/devshell_test.sh` runs them again inside the devShell, where
-  GNU coreutils come first on PATH. CI job `ios` builds and tests unsigned in
-  the simulator and also runs `ios/scripts/tests/run.sh`,
-  `ios/scripts/tests/devshell_test.sh` and shellcheck over `ios/scripts`; job
-  `ios-ui` runs the two longest UI test classes (`CoreScreensTests`,
-  `SmokeTests`) on a second runner, and `ios` skips exactly those two
-  (`ios/scripts/ci-simulator-test.sh`). Neither is a required check.
-- `nix build .#hasalad` builds `cmd/hasalad`, `nix flake check` builds it and
-  checks formatting, `nix fmt` formats Nix and Go (never `server/oracle/v1ref`,
-  which is byte-frozen). The infra checks: `ingress-lint` (both systems; the
-  module's rendered tunnel config against `infra/qa/cloudflared/config.golden.yml`
-  plus `lint.sh`), and on x86_64-linux `module-eval` (every module assertion
-  fires on its misuse) and `qa-vm` (needs KVM). On a Mac,
-  `nix flake check --no-build --all-systems` evaluates the Linux ones.
-- `hasalad <mode>`: `serve`, `migrate`, `verify`, `purge-user`, `invite`
-  (`mint [--review | --email]`, `list`, `revoke`), `waitlist`, `email test`,
-  `console` (spec 07's operator console, minimal: waitlist approve, invites,
-  email log) and `version`; configuration
-  is `HASALA_*` environment variables over an optional TOML file
-  (`server/config.example.toml`). Two Postgres roles: `hasala_migrate` owns the
-  schema and is the only role `hasalad migrate` runs as; `hasala_runtime`
-  serves, and every other mode refuses to start as the owner, as a superuser
-  or behind the embedded migrations. Tests boot their own throwaway cluster
-  (`internal/pgtest`; `HASALA_TEST_POSTGRES_URL` reuses one).
+1. Run `direnv allow` one time.
+2. In a non-interactive shell, put `direnv exec .` before each command.
+
+Go is the only tool that does not come from 26.05. Go comes from
+`nixos-unstable` (1.27.2), because Go 1.26.8 in 26.05 has standard-library
+advisories that are reachable. The flake builds gopls, govulncheck and
+golangci-lint again with this Go. The `toolchain` line in `server/go.mod` is
+the security floor. In `server/`, `govulncheck ./...` must show nothing that
+is reachable.
+
+### The gate
+
+`scripts/check.sh` is the gate. It does these steps:
+
+- The real-mail fence.
+- The toolchain floor.
+- The hasalad fences (`server/cmd/hasalad/fence_test.go`).
+- `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
+  temporary Postgres (unix socket only).
+- The typecheck and `bun test` of the reference client.
+- The conformance suites.
+
+Before the first run in a checkout, run
+`(cd reference/ledgerd-client && bun install --frozen-lockfile)` one time.
+
+### CI
+
+CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
+push to `main`. You can also start it manually (`workflow_dispatch`). CI does
+not have the private fixtures.
+
+The required checks are these three jobs:
+
+- `gate`: first `check.sh --fence-only`, then `nix flake check --no-build`,
+  then a build of each check except `qa-vm`, then `scripts/check.sh` in the
+  devShell.
+- `vuln`: `govulncheck ./...` in `server/` and in `server/oracle/`. The job
+  fails if it finds a reachable advisory.
+- `secrets`: the real-mail fence, the HasalaCore lints
+  (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
+  then gitleaks on the full history.
+
+Do not change these job names. The required status checks find the jobs by
+their names.
+
+These jobs are not required: `swift` (HasalaCore on a Mac), `ios` and
+`ios-ui` (the app on a Mac, refer to "The iOS app" below), `web` (the
+website, refer to "Website") and `nixos-vm` (it builds
+`checks.x86_64-linux.qa-vm` with KVM).
+
+### Path rules in CI
+
+On a pull request, CI examines the changed paths. If it is not sure, it runs
+the job.
+
+- The first job, `changes`, makes a list of the changed paths in the pull
+  request (`git diff -z`, thus each file name agrees exactly as it is
+  written).
+- CI skips `gate`/`vuln`, `swift`, `web` or `nixos-vm` only when all changed
+  paths are on the list of paths that the job does not read. All other paths
+  start the job. This includes paths that nobody expected (for example a new
+  top-level directory, `go.work`, `.gitattributes`).
+- No job reads `LICENSES/`, `design/`, root `*.md`, `NOTICE` or
+  `private-fixtures.lock`.
+- `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
+  all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
+  in those directories. A change in `infra/` starts them.
+- `swift` reads only `ios/` and `conformance/`.
+- `web` reads only `web/`, `docs/legal/` and the flake.
+- `nixos-vm` reads only `infra/`, `server/` and the flake.
+- A change in `.github/` starts all jobs. `secrets` always runs.
+- If `changes` does not succeed, all jobs run.
+- A push to `main` or a manual run starts all jobs.
+
+Rules for a change to the CI:
+
+1. Use a job-level `if:` to skip a job. A required check that CI skips counts
+   as a pass.
+2. Do not use a workflow-level `paths:` filter. It keeps the required checks
+   in the pending state permanently.
+3. If a job starts to read a path on its list of paths that it does not read,
+   remove that path from the list in `changes`.
+
+`.github/workflows/vuln-weekly.yml` runs the same govulncheck on `main` each
+Monday (job `vuln-weekly`, not required). This is necessary because new Go
+advisories occur without new commits. It is a different workflow, thus it
+does not record checks on the head of `main` with the required names.
+
+### Secrets and real mail
+
+`.gitleaks.toml` lets through only known public test vectors. Each entry
+applies only to its rule, its files and its exact value.
+
+> **WARNING:** Do not make the `.gitleaks.toml` allowlist larger to let a
+> real secret through.
+
+Real bank mail is **not** in this repository. The real-mail conformance cases
+and the signed `.eml` fixtures are in the private repository
+`salehtl/hasala-fixtures`, at the same paths.
+
+1. To run the tests that read them, set `HASALA_PRIVATE_FIXTURES` to the
+   absolute path of a checkout of the private repository. Without it, these
+   tests skip by name. `scripts/check.sh` shows how many ran and how many
+   skipped.
+2. Make sure that the checkout agrees with `private-fixtures.lock`.
+3. After you change the private repository, run
+   `scripts/private-fixtures-lock.sh write`. Commit the two changes.
+
+> **WARNING:** Do not commit a real message, account number, card number
+> (masked or not masked), name, amount, date or reference in this
+> repository. Use synthetic data. No real transaction amount or date is in
+> this tree. This is also true for `server/oracle/v1ref`.
+
+The first step of `scripts/check.sh` is the real-mail fence. It stops the
+private paths. CI runs this step alone (`scripts/check.sh --fence-only`, with
+no fixtures and no toolchain). It runs in `secrets` on each push and pull
+request, and in `gate` before all other steps.
+
+### The iOS app
+
+The iOS app (`ios/`) builds only on macOS, with the Xcode 27 of the system.
+
+Project file:
+
+1. Do not edit `Hasala.xcodeproj` manually. XcodeGen **2.46.0** makes it from
+   `ios/project.yml`. The project is in the repository.
+2. To make the project again, run `ios/scripts/generate-project.sh`. To
+   examine the committed project, add `--check`.
+3. Use only the XcodeGen from the flake (`nix build .#xcodegen`; it is on
+   PATH in the darwin devShell). The nixpkgs XcodeGen 2.44.1 makes a project
+   without resources.
+
+Tests:
+
+- `swift test --package-path ios/HasalaKit` tests the design tokens, the money
+  format, the Maya mock and the text contrast.
+- `xcodebuild test -project ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
+  runs the unit tests and the UI tests. The UI tests do the accessibility
+  audit at the default text size and at the `.accessibility3` text size.
+
+Design tokens: `swift ios/tools/tokens/generate.swift` makes them from
+`design/tokens/paper-tokens.json`. CI runs it with `--check`.
+
+Debug and Release:
+
+- Debug builds run the synthetic Maya scenario
+  (`-HasalaScenario maya|mayaHidden|mayaSample`).
+- Release builds do not link HasalaMocks. `ios/Config/Shared.xcconfig`
+  removes it from all configurations except Debug.
+- Release shows only the parts that operate (`BuildSurface`): no placeholder
+  screens, and no controls that do not have a screen. It shows only the
+  account actions in `AccountSession.capabilities`.
+- `-HasalaReleaseSurface` gives a Debug run the same surface as Release.
+- `ios/scripts/test-release-surface.sh <simulator udid>` runs
+  `ReleaseSurfaceTests` on a simulator build with the Release configuration
+  that links the mock.
+
+Release scripts:
+
+- `ios/scripts/archive.sh` runs a gate before it builds (exit 13). First, no
+  `IntegrationStub` must be in `ios/`. Then it runs
+  `ios/scripts/privacy-lint.sh`. This lint compares the use of
+  required-reason APIs with the privacy manifest.
+- `ios/scripts/check-bundle.sh <.app|.xcarchive|.ipa>` examines the contents
+  of a build:
+  - No test data.
+  - No resource larger than 5 MB, except fonts and the merchant dictionary.
+  - The sample seed must agree with `ios/scripts/golden/maya-v1.sha256`. That
+    value must agree with `SampleManifest.sha256`. When you make the seed
+    again, update the two values.
+- `inspect-ipa.sh` runs `check-bundle.sh` as check I6b. Its check I9 stops
+  third-party crypto symbols (the export-compliance guard,
+  `docs/decisions/export-compliance.md`).
+- `ios/scripts/archive.sh` makes an archive and exports a signed .ipa on the
+  Mac of the owner. `ios/scripts/upload.sh` uploads it. The two scripts read
+  the App Store Connect key only from `ASC_KEY_ID`, `ASC_ISSUER_ID` and
+  `ASC_KEY_PATH`.
+- `archive.sh` examines the export with `ios/scripts/inspect-ipa.sh`. Its
+  `summary.txt` ends with `PASS <n>/<n> sha256=<the .ipa's>` only when all
+  checks pass. `upload.sh` uploads only that .ipa.
+- The content checks of `inspect-ipa.sh` (secrets, dev hosts, mock data)
+  search the bytes of each file and each plist as XML. The dev-host search
+  does not use case. These checks do not search UTF-16 text in a resource
+  that is not a plist. They also do not search compressed resources (zip,
+  gzip, LZFSE, compressed data in `Assets.car`). Thus the endpoint guard is
+  the exact `HasalaAPIBaseURL` check, not the dev-host search.
+- `ios/scripts/tests/run.sh` runs the release-script tests offline (stub
+  xcodebuild and altool, fake keys, synthetic .ipa files).
+  `ios/scripts/tests/devshell_test.sh` runs them again in the devShell, where
+  GNU coreutils are first on PATH.
+
+CI for iOS:
+
+- Job `ios` builds and tests without a signature in the simulator. It also
+  runs `ios/scripts/tests/run.sh`, `ios/scripts/tests/devshell_test.sh` and
+  shellcheck on `ios/scripts`.
+- Job `ios-ui` runs the two longest UI test classes (`CoreScreensTests`,
+  `SmokeTests`) on a second runner. Job `ios` skips only these two classes
+  (`ios/scripts/ci-simulator-test.sh`).
+- `ios` and `ios-ui` are not required checks.
+
+### Nix
+
+- `nix build .#hasalad` builds `cmd/hasalad`.
+- `nix flake check` builds it and examines the format.
+- `nix fmt` formats Nix and Go. It does not format `server/oracle/v1ref`.
+  Do not change the bytes of `server/oracle/v1ref`.
+- The infra checks:
+  - `ingress-lint` (on the two systems). It compares the tunnel configuration
+    from the module with `infra/qa/cloudflared/config.golden.yml`, and runs
+    `lint.sh`.
+  - `module-eval` (on x86_64-linux). Each module assertion must fail when you
+    use the module incorrectly.
+  - `qa-vm` (on x86_64-linux). It must have KVM.
+- On a Mac, `nix flake check --no-build --all-systems` evaluates the Linux
+  checks.
+
+### hasalad
+
+`hasalad <mode>` has these modes: `serve`, `migrate`, `verify`,
+`purge-user`, `invite` (`mint [--review | --email]`, `list`, `revoke`),
+`waitlist`, `email test`, `console` and `version`. `console` is the operator
+console of spec 07. It is minimal: waitlist approval, invites and the email
+log.
+
+The configuration is in `HASALA_*` environment variables. These have
+priority over an optional TOML file (`server/config.example.toml`).
+
+There are two Postgres roles:
+
+- `hasala_migrate` owns the schema. `hasalad migrate` runs only as this role.
+- `hasala_runtime` operates the server. All other modes do not start as the
+  owner, as a superuser, or when the database is behind the embedded
+  migrations.
+
+Tests start their own temporary cluster (`internal/pgtest`). To use one
+cluster again, set `HASALA_TEST_POSTGRES_URL`.
 
 ## Website
 
-`web/` is the hasala.app marketing site and the public pages under it
-(`/privacy`, `/terms`, `/security` and `/support` are rendered from
-`docs/legal/*.md`): Astro, static output, Bun as the package manager, from the
-same devShell. From `web/`:
+`web/` is the hasala.app marketing site and its public pages. The pages
+`/privacy`, `/terms`, `/security` and `/support` come from
+`docs/legal/*.md`. The site uses Astro with static output. The package
+manager is Bun, from the same devShell.
 
-- `bun install --frozen-lockfile` once, then `bun run dev` while editing.
-- `bun run check` is `astro check`. `bun run build` writes `dist/` and then
-  runs `scripts/check-dist.ts`, which fails the build if any inline script or
-  style is not covered by the one CSP every page shares, if any element has a
-  `style=""` attribute, if `/` loads more than 15 KB of JavaScript (gzip), or
-  if a page whose address carries a code or a token could run Web Analytics
-  (below).
-  The CSP (`astro.config.mjs`) also admits Cloudflare Web Analytics, whose
-  beacon Cloudflare injects at the edge (it is not in `dist/`); the privacy
-  policy describes it. Nothing else third-party, except Turnstile in "api"
-  mode. Web Analytics records paths, so it must never run on `/i`, `/i/*`,
-  `/freeze` or `/waitlist/*`: `public/_headers` gives them a CSP header
-  whose script-src and connect-src are the page's without Web Analytics
-  (the build fills them in, `src/lib/csp-union.mjs`), `src/scripts/router.ts`
-  always loads them in full, and the pages take their code or token out of
-  the address bar. A new page that carries one needs the same: send no
-  referrer (`referrer="no-referrer"` on `Base`) and add it to `_headers` and
-  the router.
-- `bun run preview` (Astro's preview server) or `bun scripts/serve-dist.ts`,
-  which serves `dist/` on 127.0.0.1:4321 with the `_headers`, `_redirects`
-  and trailing-slash handling of production, and gzip.
-- `web/lighthouse/run.sh` runs Lighthouse CI on `/` (mobile and desktop)
-  against that server. It needs Node and Chrome, so it runs in CI (job `web`),
-  which keeps the reports as a workflow artifact; it asserts performance
-  >= 0.9 and accessibility, best practices and SEO >= 0.95.
-- PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
-  `web/.env.example`; they are public and baked into the build.
-  `PUBLIC_WAITLIST_MODE` is `api` (the default: the invite form, which is
-  also where people name a bank we don't read yet, posts to the API, the
-  page says "Request sent", and the request appears on the waitlist in
-  `hasalad console`) or `email` (a fallback while the API is down: it opens
-  a pre-filled email to support@hasala.app, posts nothing and loads no
-  Turnstile; without JavaScript it lands on `/joined`, which says to email
-  us). Switching to `email` also needs sentences in `docs/legal/privacy.md`
-  ("Asking for an invite") and `docs/legal/support.md` (asking for and
-  leaving the waitlist) that say sign-ups are handled by email.
+From `web/`:
 
-The legal pages stay `noindex` and out of the sitemap while their front
-matter says `status: "draft"`; resolve every `[[OWNER: ...]]` note before
-changing that. `/licenses` lists the third-party code and font the built
-site ships (`web/src/data/licenses.ts`); update it, and `NOTICE`, when a new
-dependency reaches `dist/`.
+1. Run `bun install --frozen-lockfile` one time.
+2. When you edit, run `bun run dev`.
+3. Run `bun run check` (this is `astro check`).
+4. Run `bun run build`. It writes `dist/` and then runs
+   `scripts/check-dist.ts`. The build fails if one of these conditions
+   occurs:
+   - The CSP that all pages share does not include an inline script or
+     style.
+   - An element has a `style=""` attribute.
+   - `/` loads more than 15 KB of JavaScript (gzip).
+   - Web Analytics can run on a page with a code or a token in its address
+     (refer to below).
 
-Deploying is done only with the owner's approval, for that deploy; CI never
-deploys, and an agent deploys only when the owner has approved it. The site
-is Workers Static Assets on the `hasala-aasa` Worker, on the zone route
-`hasala.app/*` (`web/wrangler.jsonc`). To deploy:
+### Third-party scripts
 
-1. On the QA host, in its checkout of this repository, check out the commit
-   to ship (normally `main`) and enter the devShell.
-2. In `web/`: `bun install --frozen-lockfile`, then `bun run deploy`. It runs
-   `bun run build` (so the CSP and JS-budget checks gate it), then the
-   wrangler pinned in `package.json`, under the devShell's Node.
-   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` come from the
-   environment, never from a file in this repository.
-3. Verify the live site:
+The CSP (`astro.config.mjs`) also lets Cloudflare Web Analytics run.
+Cloudflare adds its beacon at the edge (it is not in `dist/`). The privacy
+policy tells about it. No other third-party code is on the site, except
+Turnstile in "api" mode.
+
+Web Analytics records paths.
+
+> **WARNING:** Do not let Web Analytics run on `/i`, `/i/*`, `/freeze` or
+> `/waitlist/*`.
+
+These controls keep Web Analytics off these pages:
+
+- `public/_headers` gives them a CSP header. Its script-src and connect-src
+  are the values of the page without Web Analytics. The build adds these
+  values (`src/lib/csp-union.mjs`).
+- `src/scripts/router.ts` always loads these pages fully.
+- The pages remove their code or token from the address bar.
+
+If you add a page with a code or a token in its address, do these steps:
+
+1. Set `referrer="no-referrer"` on `Base`.
+2. Add the page to `_headers`.
+3. Add the page to the router.
+
+### Local servers and Lighthouse
+
+- To serve the build, use `bun run preview` (the Astro preview server) or
+  `bun scripts/serve-dist.ts`. `serve-dist.ts` serves `dist/` on
+  127.0.0.1:4321. It uses the `_headers`, the `_redirects`, the
+  trailing-slash rules of production and gzip.
+- `web/lighthouse/run.sh` runs Lighthouse CI on `/` (mobile and desktop) on
+  that server. It must have Node and Chrome, thus it runs in CI (job `web`).
+  CI keeps the reports as a workflow artifact. The minimum scores are 0.9
+  for performance, and 0.95 for accessibility, best practices and SEO.
+
+### Settings
+
+The PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
+`web/.env.example`. They are public. The build puts them in the output.
+
+`PUBLIC_WAITLIST_MODE` has two values:
+
+- `api` (the default). The invite form sends to the API. People also use
+  this form to tell us about a bank that we do not read yet. The page shows
+  "Request sent". The request shows on the waitlist in `hasalad console`.
+- `email` (use this only when the API does not operate). The form opens a
+  prepared email to support@hasala.app. It sends nothing and does not load
+  Turnstile. Without JavaScript, the form goes to `/joined`, which tells
+  people to send us an email.
+
+If you change to `email`, also add sentences to `docs/legal/privacy.md`
+("Asking for an invite") and `docs/legal/support.md` (how to ask for and
+leave the waitlist). These sentences must say that we do sign-ups by email.
+
+### Legal pages and licences
+
+When the front matter of a legal page says `status: "draft"`, the page is
+`noindex` and it is not in the sitemap. Before you change this status,
+resolve all `[[OWNER: ...]]` notes.
+
+`/licenses` shows the third-party code and fonts that the built site
+contains (`web/src/data/licenses.ts`). When a new dependency goes into
+`dist/`, update this file and `NOTICE`.
+
+### Deployment
+
+The site is Workers Static Assets on the `hasala-aasa` Worker, on the zone
+route `hasala.app/*` (`web/wrangler.jsonc`). Cloudflare deploys it from
+GitHub with Workers Builds (the Git integration of the Worker). The owner set
+it up in the Cloudflare dashboard. There is no token in GitHub. The root
+directory is `web`. The build command is
+`bun install --frozen-lockfile && bun run build`. Thus the dist checks are a
+gate for each deployment.
+
+- Each branch except `main` gets a preview URL (on `workers.dev`, behind
+  Cloudflare Access). Cloudflare puts the URL on the pull request. Examine
+  the change there.
+- A push to `main` deploys hasala.app. Usually, this push is the merge of a
+  pull request. Thus a merge is a deployment to production. Only the owner
+  can decide to merge. Cloudflare builds on the push. It does not wait for
+  GitHub CI.
+- After a production deployment, run `web/scripts/verify-live.sh`. It
+  examines the live site (refer to the list below).
+
+### Manual deployment
+
+You can do a manual deployment from any machine. An agent can do it only with
+the approval of the owner for that deployment.
+
+1. In a clean checkout, check out the commit that you will ship (usually
+   `main`). Go into the devShell.
+2. In `web/`, run `bun install --frozen-lockfile`. Then run `bun run deploy`.
+   This runs `bun run build` first (thus the CSP and JS-budget checks are a
+   gate). Then it runs the wrangler version in `package.json`, with the Node
+   of the devShell. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` must
+   come from the environment. Do not put them in a file in this repository.
+3. Examine the live site. `web/scripts/verify-live.sh` does all the checks
+   that follow:
    - `curl -sI https://hasala.app/`: 200, with `strict-transport-security`,
      `permissions-policy` and one `content-security-policy` header
-     (`frame-ancestors 'none'`);
-   - `curl -s https://hasala.app/ | grep -c 'http-equiv="content-security-policy"'`: 1;
-   - `curl -sI https://hasala.app/privacy`: 200, and `/privacy/`: a redirect
-     to `/privacy`;
+     (`frame-ancestors 'none'`).
+   - `curl -s https://hasala.app/ | grep -c 'http-equiv="content-security-policy"'`: 1.
+   - `curl -sI https://hasala.app/privacy`: 200. `/privacy/` must redirect to
+     `/privacy`.
    - `curl -sI https://hasala.app/i/test`: 200, `cache-control: no-store` and
-     one `referrer-policy: no-referrer`;
+     one `referrer-policy: no-referrer`.
    - `curl -s -D- -o /dev/null https://hasala.app/i/test | grep -i '^content-security-policy'`:
      one line, with `script-src`, `connect-src` and `frame-ancestors 'none'`,
-     and no `cloudflareinsights` (the page's `<meta>` still names it; the
-     browser enforces both, so Web Analytics cannot run). The same for
-     `/freeze` and `/waitlist/confirm`;
+     and without `cloudflareinsights`. (The `<meta>` of the page has
+     `cloudflareinsights`, but the browser applies the two policies, thus Web
+     Analytics cannot run.) Do the same check for `/freeze` and
+     `/waitlist/confirm`.
    - `curl -sI https://hasala.app/.well-known/apple-app-site-association`: 200
-     (no redirect), `content-type: application/json`;
+     (no redirect), `content-type: application/json`.
    - `curl -sI https://hasala.app/no-such-page`: 404.
 
 ## Decisions (2026-10-11)
 
-- **Native Swift client**, full parity with the Paper design. The TS client core
-  is **ported** to Swift (no JavaScriptCore), proven by the conformance fixtures.
-- **The server is blind.** The phone encrypts every op before upload; the server
-  checks framing, position and the hash chain, and **refuses plaintext**. No
-  feature may need the server to read a transaction, amount, merchant or email.
-- **Transactions come from Gmail, read on the phone.** OAuth tokens live in the
-  device Keychain. The server only relays Gmail Pub/Sub change notices
-  (`emailAddress` + `historyId`) into content-free APNs wakes. Raw bank email
-  never enters the op log — store the Gmail message id and parsed fields.
-  Email forwarding / SMTP ingest is retired for this iteration.
-- **Categorization is on device**: user rules → shipped UAE merchant dictionary
-  → Apple Foundation Models (Latin-script merchants only; it cannot read Arabic)
-  → review queue.
-- **Auth**: passkeys (RP ID `hasala.app`) + 12-word recovery phrase; invite
-  codes; WebAuthn step-up for every auth/key/mailbox management operation.
+- **Native Swift client.** It must agree fully with the Paper design. The
+  TypeScript client core has a **port** to Swift (no JavaScriptCore). The
+  conformance fixtures prove that the port is correct.
+- **The server is blind.** The phone encrypts each op before it uploads it.
+  The server examines only the framing, the position and the hash chain. It
+  **does not accept plaintext**. Do not add a feature that makes the server
+  read a transaction, an amount, a merchant or an email.
+- **Transactions come from Gmail. The phone reads Gmail.** The OAuth tokens
+  are in the Keychain of the device. The server only relays Gmail Pub/Sub
+  change notices (`emailAddress` and `historyId`) as APNs wakes that contain
+  no data. Do not put raw bank email in the op log. Keep only the Gmail
+  message id and the parsed fields. Email forwarding and SMTP ingest are not
+  used in this version.
+- **Categorization occurs on the device**, in this sequence: user rules, then
+  the UAE merchant dictionary in the app, then Apple Foundation Models (only
+  for merchants in Latin script; it cannot read Arabic), then the review
+  queue.
+- **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
+  invite codes; a WebAuthn step-up for each operation that changes auth,
+  keys or mailboxes.
 - **Outbound mail**: Cloudflare Email Service.
-- **Hosting (QA)**: the QA host behind Cloudflare Tunnel; hasalad listens on
-  loopback only and has no TLS code.
-- Bundle ID `app.hasala.ios`. Google OAuth consent: production, unverified
-  (≤100 users).
+- **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
+  only on loopback. It has no TLS code.
+- The bundle ID is `app.hasala.ios`. The Google OAuth consent is production
+  and not verified (100 users or fewer).
 
-## Core principles (inherited from ledgerd — do not violate)
+## Core principles (from ledgerd; do not break them)
 
-- The op log is append-only and nothing validates its payload server-side. Op
-  authoring is the highest-risk code in the repo.
-- Money is integer minor units (fils), never a float.
-- Push payloads are content-free.
-- Nothing is silently dropped: unparsed or unverified mail goes to review.
-- Secrets come from the environment / Keychain, never config files or the bundle.
-- Two Postgres roles: `*_migrate` owns the schema, `*_runtime` serves.
+- The op log is append-only. The server does not validate its payload. The
+  code that writes ops has the highest risk in the repository.
+- Money is integer minor units (fils). Do not use a float for money.
+- Push payloads contain no data.
+- Do not drop data silently. Mail that the app cannot parse or verify goes to
+  review.
+- Secrets come from the environment or the Keychain. Do not put secrets in
+  configuration files or in the bundle.
+- There are two Postgres roles: `*_migrate` owns the schema, `*_runtime`
+  operates the server.
 
 ## Design source of truth
 
-The UI source of truth is a private Paper design file. It is not linked from
-this repository.
+The UI source of truth is a private Paper design file. This repository does
+not have a link to it.
 
 ## Security
 
-Security reviews are kept private until their findings are closed, and every
-finding must be closed before a non-developer tester installs a build. Report
-vulnerabilities to security@hasala.app, not in a public issue.
+Keep security reviews private until all their findings are closed. Close all
+findings before a tester who is not a developer installs a build. Send
+vulnerability reports to security@hasala.app. Do not open a public issue.
 
 ## Licence
 
-Source-available under the Functional Source License, Version 1.1, ALv2 Future
-License (`LICENSE.md`); each version becomes Apache-2.0 two years after it is
-made available. The name and marks are not licensed (`TRADEMARKS.md`). Outside
-contributions are not accepted during the beta (`CONTRIBUTING.md`).
-Third-party notices are in `NOTICE` and `LICENSES/`.
+The source is available under the Functional Source License, Version 1.1,
+ALv2 Future License (`LICENSE.md`). Each version becomes Apache-2.0 two years
+after its release. The license does not include the name and the marks
+(`TRADEMARKS.md`). During the beta, the project does not accept contributions
+from other persons (`CONTRIBUTING.md`). The third-party notices are in
+`NOTICE` and `LICENSES/`.
