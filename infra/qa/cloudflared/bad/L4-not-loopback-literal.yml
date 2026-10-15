@@ -13,6 +13,6 @@ originRequest:
   keepAliveTimeout: 90s
 ingress:
   - hostname: api.hasala.app
-    path: '^/(api/v1/.*|hooks/gmail/pubsub)$'
+    path: '^/(api/v1/.*|hooks/gmail/pubsub|hooks/outlook/graph(/lifecycle)?)$'
     service: http://localhost:8471
   - service: http_status:404

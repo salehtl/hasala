@@ -288,6 +288,27 @@ in
           assert "gmail-link" in journal and "gmail-push" not in journal, journal
           assert "Pub/Sub push is not configured" in journal, journal
 
+      with subtest("AT-V2d: with Outlook off, the Graph hooks are not mounted"):
+          # outlook.* is unset in this VM, so serve mounts neither Graph hook:
+          # each path cloudflared would route answers the 404 of an unmounted
+          # route, with or without a validationToken.
+          for path in [
+              "/hooks/outlook/graph",
+              "/hooks/outlook/graph?validationToken=abc",
+              "/hooks/outlook/graph/lifecycle",
+              "/hooks/outlook/graph/lifecycle?validationToken=abc",
+          ]:
+              hook = f"curl -X POST -H 'Content-Type: application/json' --data '{{}}' '{API}{path}'"
+              assert http_code(hook) == "404", path
+              assert json.loads(machine.succeed(hook + " -s")) == {"error": "not_found", "detail": "no such endpoint"}, path
+          # TODO(WP3b): once the Graph hook routes are on main, add a second
+          # node (or a specialisation) with outlook.clientId and both URLs set,
+          # and assert the validation echo: POST <hook>?validationToken=abc with
+          # an empty body answers 200, the body "abc", Content-Type
+          # text/plain; charset=utf-8, X-Content-Type-Options: nosniff and
+          # Cache-Control: no-store, on both /hooks/outlook/graph and
+          # /hooks/outlook/graph/lifecycle; and /api/v1/meta reports both URLs.
+
       with subtest("AT-V3: nothing listens on a non-loopback address"):
           for line in machine.succeed("ss -ltnH").splitlines():
               local = line.split()[3]
