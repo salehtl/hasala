@@ -49,6 +49,11 @@ func TestIdentifyRefusesAnythingButTheProxiedOwner(t *testing.T) {
 	if w := req(c, "GET", "/", nil, nil); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "<script") {
 		t.Fatalf("owner: %d", w.Code)
 	}
+	// The forms' POSTs only carry the console's Origin (which action
+	// requires) when the policy is not no-referrer.
+	if p := req(c, "GET", "/", nil, nil).Header().Get("Referrer-Policy"); p != "same-origin" {
+		t.Fatalf("Referrer-Policy %q", p)
+	}
 	for name, m := range map[string]func(*http.Request){
 		"peer":      func(r *http.Request) { r.RemoteAddr = "192.0.2.5:1" },
 		"cf":        func(r *http.Request) { r.Header.Set("Cf-Connecting-Ip", "1.2.3.4") },
@@ -92,6 +97,9 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 	// Without same-origin evidence, or with a token for another path: refused.
 	if w := req(c, "POST", path, url.Values{"csrf": {m[1]}}, func(r *http.Request) { r.Header.Del("Sec-Fetch-Site") }); w.Code != http.StatusForbidden {
 		t.Fatalf("no Sec-Fetch-Site: %d", w.Code)
+	}
+	if w := req(c, "POST", path, url.Values{"csrf": {m[1]}}, func(r *http.Request) { r.Header.Set("Origin", "null") }); w.Code != http.StatusForbidden {
+		t.Fatalf("Origin null: %d", w.Code)
 	}
 	if w := req(c, "POST", path, url.Values{"csrf": {c.csrf("owner@github", "/invites/mint", "", c.now())}}, nil); w.Code != http.StatusForbidden {
 		t.Fatalf("token for another path: %d", w.Code)
