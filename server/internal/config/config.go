@@ -9,7 +9,7 @@
 // production posture) a secret supplied as a raw environment value is refused
 // too.
 //
-// The [apns], [gmail] and [email] groups and the console's environment are
+// The [apns], [gmail], [outlook] and [email] groups and the console's environment are
 // loaded and validated here so that later workstreams (WS-4 push and Gmail, the
 // mail sender, spec 07's console) only wire them in; nothing in this tree uses
 // them yet.
@@ -46,6 +46,7 @@ type Config struct {
 	Headroom HeadroomConfig `toml:"headroom"`
 	APNs     APNsConfig     `toml:"apns"`
 	Gmail    GmailConfig    `toml:"gmail"`
+	Outlook  OutlookConfig  `toml:"outlook"`
 	Email    EmailConfig    `toml:"email"`
 	// Web is spec 07's website routes and mail limits (environment only).
 	Web WebConfig `toml:"-"`
@@ -190,19 +191,50 @@ type GmailConfig struct {
 	PubSubSubscription   string `toml:"pubsub_subscription"`
 	PubSubAudience       string `toml:"pubsub_audience"`
 	PubSubServiceAccount string `toml:"pubsub_service_account"`
-	// RouteKeyFile (HASALA_MAILBOX_ROUTE_KEY_FILE): 64 hex. Never TOML.
+	// RouteKeyFile (HASALA_MAILBOX_ROUTE_KEY_FILE): 64 hex. Never TOML. It is
+	// the route key of every mailbox link, Outlook's included.
 	RouteKeyFile string `toml:"-"`
 }
 
-// LinkEnabled reports whether any of the link part is configured; a loaded
-// Config has either both of its values or neither.
-func (g GmailConfig) LinkEnabled() bool { return g.IOSClientID != "" || g.RouteKeyFile != "" }
+// LinkEnabled reports whether the link part is configured; a loaded Config
+// that has ios_client_id has the route key too.
+func (g GmailConfig) LinkEnabled() bool { return g.IOSClientID != "" }
 
 // PushEnabled reports whether any of the push part is configured; a loaded
 // Config has either all four of its values, and the link, or none of them.
 func (g GmailConfig) PushEnabled() bool {
 	return g.PubSubTopic != "" || g.PubSubSubscription != "" || g.PubSubAudience != "" || g.PubSubServiceAccount != ""
 }
+
+// OutlookConfig is the Outlook mailbox link (personal Microsoft accounts) and
+// its Microsoft Graph push. It is two parts:
+//
+//   - the link: client_id (the Outlook application id, the audience of the
+//     app's Microsoft ID token) and the route key ([gmail]'s
+//     HASALA_MAILBOX_ROUTE_KEY_FILE). It mounts the mailbox-link routes for
+//     provider "outlook".
+//   - the push: notification_url and lifecycle_url, both or neither, only
+//     with the link. They are the public https URLs of the Graph hooks that
+//     the device names when it subscribes, and they let the watch route
+//     record a subscription's expiry.
+type OutlookConfig struct {
+	ClientID        string `toml:"client_id"`
+	NotificationURL string `toml:"notification_url"`
+	LifecycleURL    string `toml:"lifecycle_url"`
+}
+
+// The Graph hook paths the push URLs must name.
+const (
+	OutlookNotificationPath = "/hooks/outlook/graph"
+	OutlookLifecyclePath    = "/hooks/outlook/graph/lifecycle"
+)
+
+// LinkEnabled reports whether the link part is configured.
+func (o OutlookConfig) LinkEnabled() bool { return o.ClientID != "" }
+
+// PushEnabled reports whether any of the push part is configured; a loaded
+// Config has both URLs, and the link, or neither.
+func (o OutlookConfig) PushEnabled() bool { return o.NotificationURL != "" || o.LifecycleURL != "" }
 
 // EmailConfig is outbound mail through Cloudflare Email Service (spec 02
 // §14.4). The account id and the API token are all or nothing; none means
@@ -463,6 +495,10 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_GMAIL_PUBSUB_SA_EMAIL", &c.Gmail.PubSubServiceAccount)
 	str("HASALA_MAILBOX_ROUTE_KEY_FILE", &c.Gmail.RouteKeyFile)
 
+	str("HASALA_OUTLOOK_CLIENT_ID", &c.Outlook.ClientID)
+	str("HASALA_OUTLOOK_NOTIFICATION_URL", &c.Outlook.NotificationURL)
+	str("HASALA_OUTLOOK_LIFECYCLE_URL", &c.Outlook.LifecycleURL)
+
 	str("HASALA_EMAIL_CF_ACCOUNT_ID", &c.Email.CloudflareAccountID)
 	str("HASALA_EMAIL_FROM_NAME", &c.Email.FromName)
 	str("HASALA_EMAIL_FROM", &c.Email.From)
@@ -535,6 +571,9 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 		return err
 	}
 	if err := c.validateGmail(); err != nil {
+		return err
+	}
+	if err := c.validateOutlook(); err != nil {
 		return err
 	}
 	if err := c.validateEmail(prod); err != nil {
@@ -658,7 +697,9 @@ func (c Config) validateGmail() error {
 		}
 		return strings.Join(sortedCopy(out), ", ")
 	}
-	if g.LinkEnabled() {
+	// The route key is shared with [outlook]: with neither link it would key
+	// nothing, which is a half-configured link.
+	if g.LinkEnabled() || (g.RouteKeyFile != "" && !c.Outlook.LinkEnabled()) {
 		if m := missing(map[string]string{
 			"gmail.ios_client_id (HASALA_GOOGLE_IOS_CLIENT_ID)": g.IOSClientID,
 			"HASALA_MAILBOX_ROUTE_KEY_FILE":                     g.RouteKeyFile,
@@ -704,6 +745,57 @@ func (c Config) validateGmail() error {
 		return fmt.Errorf("gmail.pubsub_service_account %q: want <name>@<P>.iam.gserviceaccount.com", g.PubSubServiceAccount)
 	}
 	return nil
+}
+
+// uuidShape is an application (client) id as Microsoft writes it in aud:
+// lower case, so the audience check, which is exact, cannot miss on case.
+var uuidShape = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// validateOutlook is OutlookConfig's rule set: the link needs the route key,
+// the push needs both URLs and the link, then each value's shape.
+func (c Config) validateOutlook() error {
+	o := c.Outlook
+	if o.PushEnabled() {
+		switch {
+		case o.NotificationURL == "" || o.LifecycleURL == "":
+			return errors.New("the [outlook] push needs outlook.notification_url (HASALA_OUTLOOK_NOTIFICATION_URL) " +
+				"and outlook.lifecycle_url (HASALA_OUTLOOK_LIFECYCLE_URL) together")
+		case !o.LinkEnabled():
+			return errors.New("the [outlook] push needs the mailbox link: set outlook.client_id (HASALA_OUTLOOK_CLIENT_ID) " +
+				"and HASALA_MAILBOX_ROUTE_KEY_FILE too")
+		}
+	}
+	if !o.LinkEnabled() {
+		return nil
+	}
+	if c.Gmail.RouteKeyFile == "" {
+		return errors.New("the [outlook] mailbox link needs HASALA_MAILBOX_ROUTE_KEY_FILE too")
+	}
+	if !uuidShape.MatchString(o.ClientID) {
+		return fmt.Errorf("outlook.client_id %q is not an application (client) id in lower case", o.ClientID)
+	}
+	if !o.PushEnabled() {
+		return nil
+	}
+	for _, u := range []struct{ name, v, path string }{
+		{"outlook.notification_url", o.NotificationURL, OutlookNotificationPath},
+		{"outlook.lifecycle_url", o.LifecycleURL, OutlookLifecyclePath},
+	} {
+		p, err := url.Parse(u.v)
+		if err != nil || p.Scheme != "https" || p.Host == "" || p.User != nil || p.Path != u.path ||
+			p.RawQuery != "" || p.ForceQuery || p.Fragment != "" {
+			return fmt.Errorf("%s %q: want https://<host>%s", u.name, u.v, u.path)
+		}
+	}
+	if a, b := hostOf(o.NotificationURL), hostOf(o.LifecycleURL); a != b {
+		return fmt.Errorf("outlook.notification_url and outlook.lifecycle_url name different hosts (%s, %s)", a, b)
+	}
+	return nil
+}
+
+func hostOf(raw string) string {
+	u, _ := url.Parse(raw)
+	return u.Host
 }
 
 // isServiceAccountEmail reports whether s has the shape of a Google Cloud
