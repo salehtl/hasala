@@ -125,7 +125,15 @@ func schemaShape(t *testing.T, pool *pgxpool.Pool) []string {
 
 // 00022's Down is pgtest-only, but it must give back exactly what 00021 left,
 // or a Down to 21 followed by work at 21 tests a schema no deploy ever had.
-func TestDownTo21IsWhat00021Left(t *testing.T) {
+func TestDownTo21IsWhat00021Left(t *testing.T) { downIsWhatUpLeft(t, 21) }
+
+// 00023's Down is pgtest-only too, and gives back exactly what 00022 left.
+func TestDownTo22IsWhat00022Left(t *testing.T) { downIsWhatUpLeft(t, 22) }
+
+// downIsWhatUpLeft compares a database migrated up to version with one
+// migrated all the way up and then down to version.
+func downIsWhatUpLeft(t *testing.T, version int64) {
+	t.Helper()
 	open := func() *pgxpool.Pool {
 		t.Helper()
 		dsn, _ := pgtest.NewEmpty(t)
@@ -137,24 +145,24 @@ func TestDownTo21IsWhat00021Left(t *testing.T) {
 		return p
 	}
 	up, down := open(), open()
-	if err := pg.MigrateTo(bg, up, 21); err != nil {
-		t.Fatalf("up to 21: %v", err)
+	if err := pg.MigrateTo(bg, up, version); err != nil {
+		t.Fatalf("up to %d: %v", version, err)
 	}
 	if err := pg.Migrate(bg, down); err != nil {
 		t.Fatalf("up: %v", err)
 	}
-	if err := pg.MigrateDownTo(bg, down, 21); err != nil {
-		t.Fatalf("down to 21: %v", err)
+	if err := pg.MigrateDownTo(bg, down, version); err != nil {
+		t.Fatalf("down to %d: %v", version, err)
 	}
 	want, got := schemaShape(t, up), schemaShape(t, down)
 	for _, s := range want {
 		if !slices.Contains(got, s) {
-			t.Errorf("after the Down to 21, missing: %s", s)
+			t.Errorf("after the Down to %d, missing: %s", version, s)
 		}
 	}
 	for _, s := range got {
 		if !slices.Contains(want, s) {
-			t.Errorf("after the Down to 21, extra: %s", s)
+			t.Errorf("after the Down to %d, extra: %s", version, s)
 		}
 	}
 }
@@ -613,9 +621,9 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	}
 	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
 	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links,
-	// 00021_waitlist_invites_mail and 00022_accounts.
+	// 00021_waitlist_invites_mail, 00022_accounts and 00023_mailbox_outlook.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 22 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 22", latest, err)
+	if err != nil || latest != 23 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 23", latest, err)
 	}
 }
