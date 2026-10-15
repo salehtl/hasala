@@ -60,9 +60,8 @@ not have the private fixtures.
 
 The required checks are these three jobs:
 
-- `gate`: first `check.sh --fence-only`, then `nix flake check --no-build`,
-  then a build of each check except `qa-vm`, then `scripts/check.sh` in the
-  devShell.
+- `gate`: first `nix flake check --no-build`, then a build of each check
+  except `qa-vm`, then `scripts/check.sh` in the devShell.
 - `vuln`: `govulncheck ./...` in `server/` and in `server/oracle/`. The job
   fails if it finds a reachable advisory.
 - `secrets`: the real-mail fence, the HasalaCore lints
@@ -142,8 +141,8 @@ and the signed `.eml` fixtures are in the private repository
 
 The first step of `scripts/check.sh` is the real-mail fence. It stops the
 private paths. CI runs this step alone (`scripts/check.sh --fence-only`, with
-no fixtures and no toolchain). It runs in `secrets` on each push and pull
-request, and in `gate` before all other steps.
+no fixtures and no toolchain) in `secrets` on each push and pull request.
+`gate` runs it again as the first step of `scripts/check.sh`.
 
 ### The iOS app
 
