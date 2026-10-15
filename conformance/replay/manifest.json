@@ -505,6 +505,12 @@
       "note": "A complete mailbox provenance keeps its message id; a malformed one folds to null without an anomaly; a supersede carries its own."
     },
     {
+      "file": "fold-mailbox-message-id-outlook.json",
+      "name": "mailbox-message-id-outlook",
+      "group": "fold",
+      "note": "An Outlook provenance (a synthetic Graph immutable id) keeps its message id exactly as a Gmail one does; an empty id folds to null; a supersede carries its own."
+    },
+    {
       "file": "fold-verified-origin-domain.json",
       "name": "verified-origin-domain",
       "group": "fold",

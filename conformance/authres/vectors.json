@@ -1,18 +1,35 @@
 {
-  "note": "Written by reference/ledgerd-client/scripts/gen-authres-conformance.ts from the TypeScript oracle (src/mail/authres.ts); do not hand-edit. Each vector is one Gmail header block: `headers`, or `headers_parts` (concatenate each part's `text` repeated `repeat` times). `expect` is gmailVerdict(block) {trusted, reason} and verifiedDomain(block). All inputs are synthetic. See README.md.",
-  "schema_version": 1,
+  "note": "Written by reference/ledgerd-client/scripts/gen-authres-conformance.ts from the TypeScript oracle (src/mail/authres.ts); do not hand-edit. Each vector is one header block: `headers`, or `headers_parts` (concatenate each part's `text` repeated `repeat` times). `provider` is \"outlook\" for an Outlook.com vector and absent for a Gmail one. `expect` is that provider's verdict {trusted, reason} and verified domain (gmailVerdict / outlookVerdict, verifiedDomain). All inputs are synthetic. See README.md.",
+  "schema_version": 2,
   "authserv_id": "mx.google.com",
+  "outlook": {
+    "auth_as_field": "X-MS-Exchange-Organization-AuthAs",
+    "auth_as_values": [
+      "anonymous"
+    ],
+    "auth_source_field": "X-MS-Exchange-Organization-AuthSource",
+    "auth_source_suffix": ".prod.outlook.com",
+    "required": {
+      "compauth": "pass",
+      "dmarc": "pass"
+    }
+  },
   "limits": {
     "max_raw_utf16_units": 262144,
     "max_continuation_lines": 512
   },
+  "providers": [
+    "gmail",
+    "outlook"
+  ],
   "reasons": [
     "pass",
     "no_ar",
     "multiple_ar",
     "not_topmost",
     "fail",
-    "parse_error"
+    "parse_error",
+    "no_eop"
   ],
   "vectors": [
     {
@@ -821,6 +838,618 @@
         "trusted": true,
         "reason": "pass",
         "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-pass",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "EOP's A-R topmost, EOP fields present, compauth=pass and dmarc=pass for the From domain.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-pass-dkim-fail-spf-fail",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "SPF and DKIM are not trust inputs.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=fail smtp.mailfrom=bank.example; dkim=fail header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-dmarc-fail",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=fail action=oreject header.from=bank.example; compauth=fail reason=000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-dmarc-bestguesspass",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "bestguesspass is not a pass.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=bestguesspass action=none header.from=bank.example; compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-compauth-fail",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=fail reason=001\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-compauth-softpass",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "softpass is not a pass.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=softpass reason=201\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-compauth-missing",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-dmarc-twice",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "Each required method exactly once.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=pass reason=100; dmarc=pass header.from=bank.example\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-dmarc-pass-without-header-from",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none; compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-spf-pass-only",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "spf=pass is a method in Microsoft form, never an authserv-id, and never trust.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-forged-ms-ar-above",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "A sender-written Microsoft-form A-R above EOP's.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=pass reason=100\r\nAuthentication-Results: spf=fail smtp.mailfrom=evil.example; dkim=none; dmarc=fail action=none header.from=bank.example; compauth=fail reason=000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "multiple_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-forged-ms-ar-below",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "A sender-written Microsoft-form A-R below EOP's.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=fail smtp.mailfrom=evil.example; dkim=none; dmarc=fail action=none header.from=bank.example; compauth=fail reason=000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=pass reason=100\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "multiple_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authserv-id-ar-above",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "not_topmost",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authserv-id-ar-below",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "An authserv-id A-R below EOP's is not read.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nAuthentication-Results: relay.evil.example; dkim=fail\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-no-ar",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-only-authserv-id-ar",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "A Gmail-trusted block is not an Outlook one.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-arc-ar-only",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "ARC-Authentication-Results is not an A-R.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nARC-Authentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-empty-first-segment",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "An empty first segment is an (empty) authserv-id, not Microsoft form.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: ; dmarc=pass header.from=bank.example; compauth=pass\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-comment-before-first-method",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "Comments are stripped before the form is decided.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: (EOP) spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example; compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-authas-missing",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "The missing EOP corroborating header.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authsource-missing",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authas-internal",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Internal\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authas-twice",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authsource-twice",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authsource-foreign",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: relay.evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authsource-suffix-lookalike",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: prod.outlook.com.evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authsource-bare-suffix",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "The suffix alone is not an LDH name.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: .prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-authsource-with-port",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com:25\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-x-original-authas-is-not-authas",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "Field names match exactly.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-Original-X-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_eop",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-eop-fields-case-folded",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nx-ms-exchange-organization-authas:   ANONYMOUS  \r\nX-MS-EXCHANGE-ORGANIZATION-AUTHSOURCE: am0pr01mb0001.EURPRD01.PROD.OUTLOOK.COM\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-eop-value-nbsp-trimmed",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "JavaScript trim() strips U+00A0.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs:\u00a0Anonymous\u00a0\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-from-domain-mismatch",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "compauth evaluated a domain that is not this From's.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@evil.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-from-subdomain-mismatch",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "Exact domain match: no organisational-domain relaxation.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@mail.bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-two-from-fields",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nFrom: x@evil.example\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-no-from",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-from-bare-upper-case-trailing-dot",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: ALERTS@BANK.EXAMPLE.\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-from-display-name-at-sign",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "The domain is after the LAST '@'.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: \"alerts@bank.example\" <x@evil.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-header-from-address",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "header.from is reduced to a lower-case domain.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=alerts@Bank.Example; compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-forwarded",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "A genuine alert forwarded from another mailbox: DKIM survived, so DMARC passes at EOP.",
+      "headers": "Received: from relay.forwarder.example (198.51.100.7) by AM0PR01MB0001.eurprd01.prod.outlook.com\r\nAuthentication-Results: spf=fail (sender IP is 198.51.100.7) smtp.mailfrom=bank.example; dkim=pass (signature was verified) header.d=bank.example; dmarc=pass action=none header.from=bank.example; compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nARC-Authentication-Results: i=1; mx.forwarder.example; dkim=pass header.d=bank.example\r\nAuthentication-Results: mx.forwarder.example; dkim=pass header.d=bank.example\r\nReceived: from mail.bank.example (192.0.2.1) by mx.forwarder.example\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-forwarded-dkim-broken",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "The forwarder's pass below is not read; EOP's fail decides, so the message goes to review.",
+      "headers": "Received: from relay.forwarder.example (198.51.100.7) by AM0PR01MB0001.eurprd01.prod.outlook.com\r\nAuthentication-Results: spf=fail smtp.mailfrom=bank.example; dkim=fail (body hash did not verify) header.d=bank.example; dmarc=fail action=none header.from=bank.example; compauth=fail reason=000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nAuthentication-Results: mx.forwarder.example; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-lf-line-endings",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\n header.d=bank.example;dmarc=pass action=none\n header.from=bank.example;compauth=pass reason=100\nX-MS-Exchange-Organization-AuthAs: Anonymous\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\nFrom: Bank <alerts@bank.example>\n\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-ar-after-blank-line-is-body",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-empty-input",
+      "group": "outlook",
+      "provider": "outlook",
+      "headers": "",
+      "expect": {
+        "trusted": false,
+        "reason": "no_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-exactly-256-kib",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "262144 characters, the largest block that is parsed.",
+      "headers_parts": [
+        {
+          "text": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-Pad: ",
+          "repeat": 1
+        },
+        {
+          "text": "a",
+          "repeat": 261629
+        },
+        {
+          "text": "\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-one-past-256-kib",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "262145 characters: refused before parsing.",
+      "headers_parts": [
+        {
+          "text": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-Pad: ",
+          "repeat": 1
+        },
+        {
+          "text": "a",
+          "repeat": 261630
+        },
+        {
+          "text": "\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "outlook-512-continuation-lines",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "A field may have 512 continuation lines.",
+      "headers_parts": [
+        {
+          "text": "Authentication-Results: spf=pass smtp.mailfrom=bank.example;\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "\tdkim=none;\r\n",
+          "repeat": 510
+        },
+        {
+          "text": "\tdmarc=pass header.from=bank.example;\r\n\tcompauth=pass reason=100\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-513-continuation-lines",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "The 513th continuation line refuses the whole block.",
+      "headers_parts": [
+        {
+          "text": "Authentication-Results: spf=pass smtp.mailfrom=bank.example;\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "\tdkim=none;\r\n",
+          "repeat": 511
+        },
+        {
+          "text": "\tdmarc=pass header.from=bank.example;\r\n\tcompauth=pass reason=100\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
       }
     }
   ]

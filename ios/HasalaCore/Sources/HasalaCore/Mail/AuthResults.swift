@@ -1,6 +1,8 @@
-// Gmail's own Authentication-Results, read as the trust primitive of the Gmail lane (spec 04
-// §7.6; spec 01's trust rule, security inventory G3): a port of
-// reference/ledgerd-client/src/mail/authres.ts.
+// The mailbox provider's own Authentication-Results, read as the trust primitive of the mailbox
+// lane (spec 04 §7.6; spec 01's trust rule, security inventory G3): a port of
+// reference/ledgerd-client/src/mail/authres.ts. Gmail's rule is below; Outlook.com's is
+// `analyzeOutlook` (the WP1 decision, docs/decisions/outlook-mailbox.md §3). `analyze(_:provider:)`
+// picks the rule.
 //
 // # Why this is sound here
 //
@@ -27,6 +29,12 @@
 import HasalaText
 
 public enum AuthResults {
+  /// The mailbox provider whose rule decides. The raw values are the provider ids of the wire,
+  /// provenance and database (CoreMailbox's `MailProviderID` maps onto these).
+  public enum Provider: String, Sendable, Equatable, CaseIterable {
+    case gmail, outlook
+  }
+
   /// The one authserv-id whose verdict the lane trusts. Bare match only.
   public static let gmailAuthservID = "mx.google.com"
   /// Bounds the header block (UTF-16 code units, as in the twin) before it is walked.
@@ -46,6 +54,8 @@ public enum AuthResults {
     case fail
     /// The header block could not be read (over the bounds).
     case parseError = "parse_error"
+    /// Outlook only: the EOP-only fields do not prove the message crossed EOP inbound.
+    case noEOP = "no_eop"
   }
 
   public struct Verdict: Sendable, Equatable {
@@ -63,11 +73,30 @@ public enum AuthResults {
   /// The trust decision for a message's raw header block. Never throws.
   public static func gmailVerdict(_ rawHeaders: String) -> Verdict { analyze(rawHeaders).verdict }
 
+  /// Outlook.com's trust decision for a message's raw header block. Never throws.
+  public static func outlookVerdict(_ rawHeaders: String) -> Verdict { analyzeOutlook(rawHeaders).verdict }
+
+  /// The trust decision of `provider`'s rule.
+  public static func verdict(_ rawHeaders: String, provider: Provider) -> Verdict {
+    analyze(rawHeaders, provider: provider).verdict
+  }
+
   /// The domain the trusted verdict vouched for, or nil (always nil when untrusted).
-  public static func verifiedDomain(_ rawHeaders: String) -> String? { analyze(rawHeaders).domain }
+  public static func verifiedDomain(_ rawHeaders: String, provider: Provider = .gmail) -> String? {
+    analyze(rawHeaders, provider: provider).domain
+  }
+
+  /// The verdict and verified domain of `provider`'s rule, from one reading of the bytes.
+  public static func analyze(_ rawHeaders: String, provider: Provider) -> Analysis {
+    switch provider {
+    case .gmail: analyze(rawHeaders)
+    case .outlook: analyzeOutlook(rawHeaders)
+    }
+  }
 
   static func untrusted(_ r: Reason) -> Analysis { Analysis(verdict: Verdict(trusted: false, reason: r), domain: nil) }
 
+  /// Gmail's rule.
   public static func analyze(_ rawHeaders: String) -> Analysis {
     if rawHeaders.isEmpty { return untrusted(.noAR) }
     if rawHeaders.utf16.count > maxRawUnits { return untrusted(.parseError) }
@@ -98,6 +127,96 @@ public enum AuthResults {
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
   }
 
+  // MARK: - Outlook.com
+
+  /// The EOP-only fields that prove inbound EOP processing (lower case). Exchange's header
+  /// firewall removes sender-supplied `X-MS-Exchange-Organization-*` fields (UNVERIFIED for
+  /// Outlook.com until the owner's checks C2/C3).
+  static let outlookAuthAs = Array("x-ms-exchange-organization-authas".unicodeScalars)
+  static let outlookAuthSource = Array("x-ms-exchange-organization-authsource".unicodeScalars)
+  /// The AuthAs values accepted (lower case). Internet mail is Anonymous.
+  static let outlookAuthAsValues = [Array("anonymous".unicodeScalars)]
+  /// AuthSource must be an LDH name under this suffix (lower case).
+  static let outlookAuthSourceSuffix = Array(".prod.outlook.com".unicodeScalars)
+  /// The results the Microsoft-form A-R must report, each method exactly once, each result
+  /// exactly (`bestguesspass` and `softpass` are not passes).
+  static let outlookRequired: [(method: String, result: String)] = [("compauth", "pass"), ("dmarc", "pass")]
+
+  /// Outlook.com's rule. Its own A-R has no authserv-id ("Microsoft form"), so content cannot
+  /// tell it from one a sender wrote; position and the EOP-only fields have to. The first step
+  /// that applies decides:
+  ///
+  /// 1. over the bounds or unreadable: `parse_error`;
+  /// 2. no Microsoft-form A-R: `no_ar`;
+  /// 3. more than one Microsoft-form A-R: `multiple_ar`;
+  /// 4. the topmost A-R (any form) is not the Microsoft one: `not_topmost`;
+  /// 5. not exactly one AuthAs (Anonymous) and exactly one AuthSource (an LDH name under
+  ///    `.prod.outlook.com`): `no_eop`;
+  /// 6. not exactly one `compauth=pass` and one `dmarc=pass` with a valid DMARC `header.from`:
+  ///    `fail`;
+  /// 7. not exactly one `From`, or its domain is not that `header.from`: `fail`;
+  /// 8. trusted; the verified domain is the DMARC `header.from`.
+  ///
+  /// SPF and DKIM are parsed but are not trust inputs; ARC is ignored. Each step is one block
+  /// and its constants are above, so tightening or loosening it after the owner's samples is a
+  /// local change (and a vector). The rule rests on premises real mail has not yet proven, so
+  /// the Outlook lane sends every message to review until they are (`outlookTrustProven`).
+  public static func analyzeOutlook(_ rawHeaders: String) -> Analysis {
+    // 1. Bounds.
+    if rawHeaders.isEmpty { return untrusted(.noAR) }
+    if rawHeaders.utf16.count > maxRawUnits { return untrusted(.parseError) }
+    guard let fields = unfold(Array(rawHeaders.unicodeScalars)) else { return untrusted(.parseError) }
+
+    func named(_ want: Scalars) -> [Field] { fields.filter { jsLower(jsTrim($0.name)) == want } }
+    let parsed = named(Array("authentication-results".unicodeScalars)).map { parseARValue($0.value) }
+
+    // 2–4. Exactly one Microsoft-form A-R, and it is the topmost A-R.
+    let ms = parsed.indices.filter { parsed[$0].microsoftForm }
+    if ms.isEmpty { return untrusted(.noAR) }
+    if ms.count > 1 { return untrusted(.multipleAR) }
+    guard ms[0] == 0 else { return untrusted(.notTopmost) }
+    let ar = parsed[0]
+
+    // 5. EOP proof.
+    let authAs = named(outlookAuthAs).map { jsLower(jsTrim($0.value)) }
+    let authSource = named(outlookAuthSource).map { jsLower(jsTrim($0.value)) }
+    guard authAs.count == 1, outlookAuthAsValues.contains(authAs[0]),
+      authSource.count == 1, authSource[0].count >= outlookAuthSourceSuffix.count,
+      Array(authSource[0].suffix(outlookAuthSourceSuffix.count)) == outlookAuthSourceSuffix,
+      isLDHDomain(authSource[0])
+    else { return untrusted(.noEOP) }
+
+    // 6. The verdict: each required method exactly once, with the exact result.
+    for req in outlookRequired {
+      let specs = ar.methods.filter { same($0.method, req.method) }
+      guard specs.count == 1, same(specs[0].result, req.result) else { return untrusted(.fail) }
+    }
+    guard let dmarc = ar.methods.first(where: { same($0.method, "dmarc") }) else { return untrusted(.fail) }
+    let domain = domainProp(dmarc, "header.from")
+    if domain.isEmpty { return untrusted(.fail) }
+
+    // 7. From binding: the domain compauth evaluated is the From the lane will read.
+    let from = named(Array("from".unicodeScalars))
+    guard from.count == 1, same(string(fromDomain(from[0].value)), domain) else { return untrusted(.fail) }
+
+    // 8.
+    return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
+  }
+
+  /// The domain of a `From` value: after the last `@`, cut at `>`, space, tab, CR, LF, `"` or
+  /// `)`, ASCII lower-cased, trailing dots dropped; empty when there is no `@`. CoreMailbox's
+  /// `BankDomains.domainOf`, which the sender-trust match uses on the same `From`.
+  static func fromDomain(_ value: Scalars) -> Scalars {
+    guard let at = value.lastIndex(of: "@") else { return [] }
+    var out: Scalars = []
+    for c in value[(at + 1)...] {
+      if c == ">" || c == " " || c == "\t" || c == "\r" || c == "\n" || c == "\"" || c == ")" { break }
+      out.append(c.value >= 0x41 && c.value <= 0x5a ? Unicode.Scalar(UInt8(c.value + 0x20)) : c)
+    }
+    while out.last == "." { out.removeLast() }
+    return out
+  }
+
   // MARK: - Parsing
 
   typealias Scalars = [Unicode.Scalar]
@@ -118,6 +237,9 @@ public enum AuthResults {
   struct ARHeader {
     let authservID: String
     let methods: [MethodSpec]
+    /// Microsoft form: the first segment is a method spec, not an authserv-id. `methods` then
+    /// holds the first segment's spec too, and `authservID` (the raw first token) never matches.
+    let microsoftForm: Bool
   }
 
   /// Splits a header block into fields (`split(/\r\n|\r|\n/)`), joining folded continuation
@@ -178,13 +300,17 @@ public enum AuthResults {
     let segments = splitTop(stripComments(value), ";")
     let idToken = tokenize(segments.first ?? []).first ?? []
     let authservID = string(jsLower(unquote(idToken)))
+    // Microsoft's form has no authserv-id: its first token is already a method=result
+    // (`spf=pass`). An authserv-id is a value token and cannot contain `=`, so the two forms
+    // cannot be confused; in this form every segment, the first included, is a method spec.
+    let microsoftForm = idToken.contains("=")
     var methods: [MethodSpec] = []
-    for seg in segments.dropFirst() {
+    for seg in segments.dropFirst(microsoftForm ? 0 : 1) {
       let toks = tokenize(seg)
       if toks.isEmpty { continue }
       if let spec = parseMethodSpec(toks) { methods.append(spec) }
     }
-    return ARHeader(authservID: authservID, methods: methods)
+    return ARHeader(authservID: authservID, methods: methods, microsoftForm: microsoftForm)
   }
 
   static func parseMethodSpec(_ tokens: [Scalars]) -> MethodSpec? {

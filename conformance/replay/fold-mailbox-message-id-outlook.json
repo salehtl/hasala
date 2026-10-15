@@ -1,0 +1,359 @@
+{
+  "name": "mailbox-message-id-outlook",
+  "group": "fold",
+  "note": "An Outlook provenance (a synthetic Graph immutable id) keeps its message id exactly as a Gmail one does; an empty id folds to null; a supersede carries its own.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-outlook-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "ol"
+          },
+          "parent_version": null,
+          "ingest_id": "dad498a994fffe62e4e44f8bb1bb0013f8ec0422a470e9a364d96cab1ea90fef",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": {
+              "provider": "outlook",
+              "grant_id": "acct-1",
+              "message_id": "AAkALgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASyntheticOutlookId1="
+            }
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "mailbox-message-id-outlook-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "ol0"
+          },
+          "parent_version": null,
+          "ingest_id": "42f71fab5b0ae3dab69ba67ba403635b3c177a7bc6a168df9369f17c8d69a932",
+          "payload": {
+            "amount_minor": "0",
+            "currency": "",
+            "direction": "",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "",
+            "last4": "",
+            "is_transfer": false,
+            "tier": "none",
+            "needs_review": true,
+            "unparsed": true,
+            "normalizer_version": 3,
+            "provenance": {
+              "provider": "outlook",
+              "grant_id": "acct-1",
+              "message_id": ""
+            }
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_superseded",
+          "op_id": "mailbox-message-id-outlook-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "ol1"
+          },
+          "parent_version": null,
+          "ingest_id": "dad498a994fffe62e4e44f8bb1bb0013f8ec0422a470e9a364d96cab1ea90fef",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642",
+            "tier": "template",
+            "needs_review": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_superseded",
+          "op_id": "mailbox-message-id-outlook-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "ol2"
+          },
+          "parent_version": null,
+          "ingest_id": "42f71fab5b0ae3dab69ba67ba403635b3c177a7bc6a168df9369f17c8d69a932",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "B",
+            "last4": "8642",
+            "provenance": {
+              "provider": "outlook",
+              "grant_id": "acct-1",
+              "message_id": "AAkALgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASyntheticOutlookId2="
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|25000|debit|B|2026-06-05",
+          [
+            "ol2"
+          ]
+        ],
+        [
+          "8642|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "ol1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "4"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000ol",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "ol",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-outlook-1",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000ol0",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "ol0",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-outlook-2",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000ol1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "ol1",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-outlook-3",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000ol2",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "ol2",
+            "kind": "txn",
+            "op_id": "mailbox-message-id-outlook-4",
+            "version": 1,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "42f71fab5b0ae3dab69ba67ba403635b3c177a7bc6a168df9369f17c8d69a932",
+          "ol2"
+        ],
+        [
+          "dad498a994fffe62e4e44f8bb1bb0013f8ec0422a470e9a364d96cab1ea90fef",
+          "ol1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "ol1",
+            "ol2"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "ol",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "ol",
+            "ingest_id": "dad498a994fffe62e4e44f8bb1bb0013f8ec0422a470e9a364d96cab1ea90fef",
+            "last4": "",
+            "mailbox_message_id": "AAkALgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASyntheticOutlookId1=",
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": "mailbox-message-id-outlook-3",
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "ol0",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "0",
+            "category": null,
+            "currency": "",
+            "direction": "",
+            "duplicate_disposition": null,
+            "id": "ol0",
+            "ingest_id": "42f71fab5b0ae3dab69ba67ba403635b3c177a7bc6a168df9369f17c8d69a932",
+            "last4": "",
+            "mailbox_message_id": null,
+            "merchant_raw": "",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": "mailbox-message-id-outlook-4",
+            "tier": "none",
+            "unparsed": true,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "ol1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "ol1",
+            "ingest_id": "dad498a994fffe62e4e44f8bb1bb0013f8ec0422a470e9a364d96cab1ea90fef",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": false,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "template",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "ol2",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "ol2",
+            "ingest_id": "42f71fab5b0ae3dab69ba67ba403635b3c177a7bc6a168df9369f17c8d69a932",
+            "last4": "8642",
+            "mailbox_message_id": "AAkALgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASyntheticOutlookId2=",
+            "merchant_raw": "B",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "a0016674e805820f08e3e1c7277595d7943b690e8b864b538cb22d55390b30f6",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "a0016674e805820f08e3e1c7277595d7943b690e8b864b538cb22d55390b30f6",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}
