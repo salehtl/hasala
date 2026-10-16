@@ -8,8 +8,9 @@ import SwiftUI
 extension StoriesView {
   init(store: OnboardingStore) {
     self.init(
-      onGetStarted: { store.signup.go(.welcome) }, onSignIn: { store.signup.go(.signIn) },
-      page: Bindable(store).storyPage)
+      page: Bindable(store).storyPage, whoSeesOpen: Bindable(store.signup).whoCanSeeOpen,
+      outlook: store.services.mailbox.connectable.contains(.outlook),
+      onGetStarted: { store.signup.go(.welcome) }, onSignIn: { store.signup.go(.signIn) })
   }
 }
 
@@ -68,6 +69,9 @@ extension PhraseShowView {
 
 extension AccountReadyView {
   init(store: OnboardingStore) {
-    self.init(profile: store.signup.profile) { store.session().accountCreated() }
+    self.init(profile: store.signup.profile, outlook: store.services.mailbox.connectable.contains(.outlook),
+              capabilities: store.signup.capabilities) {
+      store.session().accountCreated()
+    }
   }
 }

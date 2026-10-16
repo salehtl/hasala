@@ -8,11 +8,23 @@
       Screen("welcome.story2", scenario: "newUser", prepare: { $0.onboarding.storyPage = 1 }),
       Screen("welcome.story3", scenario: "newUser", prepare: { $0.onboarding.storyPage = 2 }),
       Screen("welcome.story4", scenario: "newUser", prepare: { $0.onboarding.storyPage = 3 }),
+      // Story 3's link, as the person taps it.
+      Screen("welcome.whoSees", scenario: "newUser", prepare: { graph in
+        graph.onboarding.storyPage = 2
+        graph.onboarding.signup.whoCanSeeOpen = true
+      }),
       Screen("join.welcome", scenario: "newUser", prepare: { $0.onboarding.signup.path = [.welcome] }),
-      Screen("join.invite", scenario: "newUser", prepare: { $0.onboarding.signup.path = [.welcome, .invite] }),
+      // The code pasted from the invite email (Paper E47-0 "pasted").
+      Screen("join.invite", scenario: "newUser") { graph in
+        let signup = graph.onboarding.signup
+        signup.path = [.welcome, .invite]
+        signup.paste(InviteCode.group(inviteCode))
+      },
       Screen("join.inviteNotFound", scenario: "newUser") { await signUp($0, to: .verifyEmail, invite: "ZZZZ") },
       Screen("join.inviteReady", scenario: "newUser", prepare: { $0.session.pendingInvite = inviteLink }),
       Screen("join.aboutTyped", scenario: "newUser") { await signUp($0, to: .aboutYou) },
+      // The link confirmed the address: Continue went straight to the method, and Back shows
+      // About you with the "Confirmed" chip (Paper E7J-0).
       Screen("join.aboutLink", scenario: "newUser") { graph in
         let signup = graph.onboarding.signup
         if let inviteLink { signup.applyInviteLink(inviteLink) }
@@ -20,11 +32,17 @@
         signup.submitInvite()
         signup.displayName = "Maya Rahman"
         signup.email = "maya@example.com"
+        await signup.submitAboutYou()
+        signup.back()
       },
-      Screen("join.code", scenario: "newUser") { await signUp($0, to: .verifyEmail) },
+      // Three digits typed (Paper EDW-0).
+      Screen("join.code", scenario: "newUser") { graph in
+        await signUp(graph, to: .verifyEmail)
+        graph.onboarding.signup.code = "482"
+      },
       Screen("join.codeWrong", scenario: "newUser") { graph in
         await signUp(graph, to: .verifyEmail)
-        graph.onboarding.signup.code = "000000"
+        graph.onboarding.signup.code = "482931"
         await graph.onboarding.signup.submitCode()
       },
       Screen("join.codeExpired", scenario: "newUser") { graph in
@@ -38,12 +56,15 @@
       Screen("join.method", scenario: "newUser") { await signUp($0, to: .method) },
       Screen("join.passwordShort", scenario: "newUser") { graph in
         await signUp(graph, to: .password)
-        graph.onboarding.signup.newPassword = "maya2026"
+        // Eight characters, none of them the name or the address (Paper EQ6-0).
+        graph.onboarding.signup.newPassword = "lantern4"
       },
       Screen("join.passwordStrong", scenario: "newUser") { graph in
         await signUp(graph, to: .password)
         graph.onboarding.signup.newPassword = "copper lantern quietly 42"
         graph.onboarding.signup.confirmPassword = "copper lantern quietly 42"
+        // Shown in clear, as Paper EZU-0 draws it (the person tapped "Show").
+        graph.onboarding.signup.passwordShown = true
       },
       Screen("phrase.why", scenario: "newUser") { await signUp($0, to: .phraseIntro) },
       Screen("phrase.hidden", scenario: "newUser") { await signUp($0, to: .phraseShow) },
@@ -52,12 +73,27 @@
         graph.onboarding.signup.phraseRevealed = true
       },
       Screen("phrase.saved", scenario: "newUser") { await signUp($0, to: .accountReady) },
+      // A password account (Paper FJI draws the passkey one): "Password · Set", and whether
+      // this build can show the words again.
+      Screen("phrase.savedPassword", scenario: "newUser") { graph in
+        await signUp(graph, to: .password)
+        let signup = graph.onboarding.signup
+        signup.newPassword = "copper lantern quietly 42"
+        signup.confirmPassword = "copper lantern quietly 42"
+        signup.submitPassword()
+        signup.go(.phraseShow)
+        signup.phraseRevealed = true
+        await signup.finish()
+      },
       Screen("resume.interrupted", scenario: "relaunchInterrupted"),
     ]
 
+    /// The synthetic invite code every join screen uses.
+    static let inviteCode = "ABCDEFGHIJKLMNOPQRSTUVWX"
+
     /// A synthetic invite link with a link key, as the invite email opens the app.
     static let inviteLink: InviteLink? = InviteLink.parse(
-      URL(string: "https://hasala.app/i/ABCDEFGHIJKLMNOPQRSTUVWX#" + String(repeating: "k", count: 43))!)
+      URL(string: "https://hasala.app/i/\(inviteCode)#" + String(repeating: "k", count: 43))!)
 
     enum JoinStop: Int, Comparable {
       case aboutYou, verifyEmail, method, password, phraseIntro, phraseShow, accountReady
@@ -69,7 +105,7 @@
     static func signUp(_ graph: MockGraph, to stop: JoinStop, invite prefix: String = "") async {
       let signup = graph.onboarding.signup
       signup.path = [.welcome, .invite]
-      signup.inviteText = prefix + String("ABCDEFGHIJKLMNOPQRSTUVWX".dropFirst(prefix.count))
+      signup.inviteText = prefix + String(inviteCode.dropFirst(prefix.count))
       signup.submitInvite()
       signup.displayName = "Maya Rahman"
       signup.email = "maya@example.com"

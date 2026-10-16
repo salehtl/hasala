@@ -75,8 +75,10 @@ struct AccountRulesTests {
   @Test func shortPasswordsAreRefusedFirst() {
     let a = PasswordRules.assess("short pw")
     #expect(a.strength == .tooShort)
-    #expect(a.message == "Use at least 12 characters.")
+    // Paper EQ6: "Too short. 8 of 12 characters." (one scalar per composed character).
+    #expect(a.message == "Too short. 8 of 12 characters.")
     #expect(!a.acceptable)
+    #expect(PasswordRules.assess("cafe\u{301} latte").message == "Too short. 10 of 12 characters.")
   }
 
   @Test(arguments: ["Password2026!!!", "HasalaBudgeting1", "passwordpassword", "123456789012"])

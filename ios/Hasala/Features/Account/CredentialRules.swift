@@ -203,8 +203,10 @@ enum PasswordRules {
     }
     switch violation {
     case .tooShort:
+      // Paper EQ6: how far there is to go, counted as the rule counts (scalars after NFC).
+      let typed = password.precomposedStringWithCanonicalMapping.unicodeScalars.count
       return PasswordAssessment(strength: .tooShort, longEnough: false, notPersonal: notPersonal, notCommon: true,
-                                message: "Use at least 12 characters.")
+                                message: "Too short. \(typed) of \(PasswordPolicy.minScalars) characters.")
     case .tooLong:
       return PasswordAssessment(strength: .weak, longEnough: false, notPersonal: notPersonal, notCommon: true,
                                 message: "Use 128 characters or fewer.")

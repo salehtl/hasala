@@ -22,14 +22,20 @@ final class SignupModel {
   /// grouped (`InviteCodeEntry.text`).
   var inviteText = "" {
     didSet {
+      guard oldValue != inviteText else { return }
       // Any edit drops a link key: a typed code is never proven by a stale key.
-      if oldValue != inviteText, inviteFromLink, InviteCode.normalize(inviteText) != linkCode {
+      if inviteFromLink, InviteCode.normalize(inviteText) != linkCode {
         linkKey = nil
         inviteFromLink = false
       }
+      // "Not found" goes as soon as the code changes (page 11: clear the error on fixing).
+      if failure == .notInvited { failure = nil }
     }
   }
   private(set) var inviteFromLink = false
+  /// The link's key, held until the account is made: a new signup on the link's path (Back,
+  /// then a changed name) sends it again, so the invite's address still needs no code and
+  /// About you's "no code" stays true. Editing the code drops it (above).
   private var linkKey: String?
   private var linkCode: String?
   private(set) var invitePasted = false
@@ -41,13 +47,32 @@ final class SignupModel {
   var emailError: String?
 
   // Email code (§6.1.4)
-  var code = ""
+  /// The digits typed so far. Typing again after a wrong code clears the error (page 11:
+  /// "Typing again clears it").
+  var code = "" {
+    didSet {
+      guard !code.isEmpty, case .codeWrong = failure else { return }
+      failure = nil
+      wrongCode = ""
+    }
+  }
   private(set) var codeSentAt: Date?
+  /// The six digits the server refused, kept on screen with the error ring so they can be
+  /// compared with the email, until the person types again (Paper EID-0).
+  private(set) var wrongCode = ""
+  /// The current ticket's address was proven by its six-digit code.
+  private(set) var emailVerified = false
+  /// Five wrong tries used the current code up (the server refuses it from then on). Kept
+  /// through Back and Forward like the other signup facts, so Check your email comes back
+  /// expired with "Send a new code"; a new code or a new signup clears it.
+  private(set) var codeUsedUp = false
 
   // Sign-in method and password (§6.1.2)
   var method: SignInMethod = .passkey
   var newPassword = ""
   var confirmPassword = ""
+  /// "Show" on the new password: the person's choice stays through Back and Forward.
+  var passwordShown = false
 
   // Phrase (§6.7)
   private(set) var phrase: RecoveryPhrase?
@@ -69,13 +94,22 @@ final class SignupModel {
   private(set) var phraseSeen = false
 
   private(set) var ticket: SignupTicket?
+  /// The invite the current ticket was begun with, so Back and Forward through About you
+  /// reuse it rather than begin (and email) again.
+  private var ticketInvite: String?
   /// C1 interrupted (spec 04 §6.2): a NEW phrase for an account that exists without
   /// keys; `finish()` publishes it with step-up `keys.bootstrap` instead of a signup.
   private(set) var replacing = false
   private(set) var profile: AccountProfile?
-  private(set) var passkeyRegistered = false
+  /// The ticket a passkey was saved for: Back and Forward through the method screen never
+  /// asks Face ID to save a second one for the same signup.
+  private var passkeyTicketID: String?
+  var passkeyRegistered: Bool { ticket != nil && passkeyTicketID == ticket?.id }
   var busy = false
   var failure: AuthFailure?
+
+  /// The welcome stories' "Who can see what" sheet is open (the stories pause under it).
+  var whoCanSeeOpen = false
 
   /// What this build can do (`AccountService.capabilities`); the copy follows it.
   var capabilities: AccountCapabilities { account.capabilities }
@@ -138,30 +172,82 @@ final class SignupModel {
 
   var aboutYouReady: Bool { !displayName.trimmingCharacters(in: .whitespaces).isEmpty && !email.isEmpty }
 
+  /// The code in the field came from an invite link that carries its key: a signup with it
+  /// needs no code for the address the invite went to (spec 04 §13.5).
+  var linkProvesAddress: Bool { inviteFromLink && linkKey != nil }
+
+  /// The open ticket, when Continue on About you carries on with it: the same invite, name
+  /// and address, and still alive. Anything else begins a new signup.
+  private func reusableTicket(now: Date) -> SignupTicket? {
+    guard let t = ticket, let invite = inviteCode, ticketInvite == invite.value, !t.isExpired(now: now),
+      t.email == AccountFields.email(email), t.displayName == AccountFields.displayName(displayName)
+    else { return nil }
+    return t
+  }
+
+  /// The address in the field is confirmed, and Continue keeps it so (the "Confirmed" chip,
+  /// Paper E7J-0): the open ticket carries on with its link or its code, or a new signup sends
+  /// the link's key again for the same address. A changed name on the typed-code path is a new
+  /// signup with a new code, so the chip goes.
+  var emailConfirmed: Bool {
+    if let t = reusableTicket(now: .now) { return t.emailProven || emailVerified }
+    guard let t = ticket, t.emailProven, linkProvesAddress, ticketInvite == inviteCode?.value else { return false }
+    return t.email == AccountFields.email(email)
+  }
+
+  /// About you's line under the email (spec 07 S6a, S6b): whether a code is coming, said as
+  /// Continue will act on it.
+  var emailHelp: String {
+    if emailConfirmed {
+      return ticket?.emailProven == true
+        ? "Your invite link confirmed it, so there's no code. Security alerts go here."
+        : "Your code confirmed it. Security alerts go here."
+    }
+    return linkProvesAddress
+      ? "If it's the address your invite went to, there's no code. Security alerts go here."
+      : "We'll send a code to confirm it. Security alerts go here too."
+  }
+
+  /// Continue on About you. Back and Forward never begin a second signup for the same
+  /// name, email and invite: the open ticket carries on where it was (its code, or the
+  /// method once the address is confirmed). A changed value begins again.
   func submitAboutYou() async {
     nameError = AccountFields.displayName(displayName) == nil ? AuthFailure.badName.message : nil
     emailError = AccountFields.email(email) == nil ? AuthFailure.badEmail.message : nil
     guard nameError == nil, emailError == nil, let invite = inviteCode else { return }
+    if let t = reusableTicket(now: .now) {
+      failure = nil
+      go(t.emailProven || emailVerified ? .method : .verifyEmail)
+      return
+    }
     busy = true
     defer { busy = false }
     do {
-      let t = try await account.beginSignup(code: invite, linkKey: inviteFromLink ? linkKey : nil, email: email,
+      let t = try await account.beginSignup(code: invite, linkKey: linkProvesAddress ? linkKey : nil, email: email,
                                             displayName: displayName)
       ticket = t
+      ticketInvite = invite.value
+      emailVerified = false
+      codeUsedUp = false
       email = t.email
-      linkKey = nil
       failure = nil
       if t.emailProven {
         go(.method)
       } else {
         codeSentAt = .now
         code = ""
+        wrongCode = ""
         go(.verifyEmail)
       }
     } catch .notInvited {
-      // Back to the code with Paper's "Not found" state.
+      // Back to the code with Paper's "Not found" state (E6F-0); a link's code is shown in
+      // the same field, so it can be checked character by character.
       failure = .notInvited
-      path.removeAll { $0 == .aboutYou }
+      if path.contains(.inviteReady) {
+        path = [.welcome, .invite]
+      } else {
+        path.removeAll { $0 == .aboutYou }
+      }
     } catch {
       failure = error
     }
@@ -169,6 +255,7 @@ final class SignupModel {
 
   // MARK: Email code
 
+  /// "Resend code" and "Send a new code": a fresh ceremony, a fresh code, five fresh tries.
   func resendCode() async {
     guard let ticket else { return }
     busy = true
@@ -177,12 +264,27 @@ final class SignupModel {
       self.ticket = try await account.resendSignupCode(ticket)
       codeSentAt = .now
       code = ""
+      wrongCode = ""
+      emailVerified = false
+      codeUsedUp = false
       failure = nil
     } catch {
       failure = error
     }
   }
 
+  /// How the code cells look: typing, wrong (every cell ringed, the digits kept) or expired
+  /// (empty cells, no keyboard, "Send a new code"). A code also expires 10 minutes after it
+  /// was sent (spec 04 §6.1.4), whatever the last answer was, and stays used up after five
+  /// wrong tries however the person came back to it.
+  func codeState(now: Date) -> CodeCells.State {
+    if codeUsedUp || failure == .codeExpired || ticket?.codeExpired(now: now) == true { return .expired }
+    if case .codeWrong = failure { return .wrong }
+    return .typing
+  }
+
+  /// Checked on the sixth digit (page 11). A wrong code keeps its digits on screen; an
+  /// expired one empties the cells.
   func submitCode() async {
     guard let ticket, code.count == 6 else { return }
     busy = true
@@ -190,8 +292,11 @@ final class SignupModel {
     do {
       try await account.verifySignupEmail(ticket, code: code)
       failure = nil
+      emailVerified = true
       go(.method)
     } catch {
+      if error == .codeExpired { codeUsedUp = true }
+      wrongCode = error == .codeExpired ? "" : code
       failure = error
       code = ""
     }
@@ -212,14 +317,29 @@ final class SignupModel {
     guard let ticket else { return }
     if ticket.isExpired(now: .now) {
       failure = .signupExpired
-      path = [.welcome, .invite, .aboutYou]
+      // Back to About you, on the way the person came (a typed code or a link).
+      if let about = path.firstIndex(of: .aboutYou) { path = Array(path.prefix(through: about)) }
+      return
+    }
+    // Saved already for this signup (the person went Back, then Forward): no second sheet.
+    if passkeyRegistered {
+      if phrase == nil {
+        do {
+          try startPhrase()
+        } catch {
+          failure = error
+          return
+        }
+      }
+      failure = nil
+      go(.phraseIntro)
       return
     }
     busy = true
     defer { busy = false }
     do {
       try await account.registerPasskey(ticket)
-      passkeyRegistered = true
+      passkeyTicketID = ticket.id
       try startPhrase()
       go(.phraseIntro)
     } catch .unsupported {
@@ -283,10 +403,12 @@ final class SignupModel {
       } else if let ticket {
         profile = try await account.finishAccount(ticket, credential: credential, phrase: phrase)
       }
-      // The phrase leaves memory once it is published.
+      // The phrase leaves memory once it is published, and the link's key is no longer needed.
       self.phrase = nil
+      linkKey = nil
       newPassword = ""
       confirmPassword = ""
+      passwordShown = false
       failure = nil
       go(.accountReady)
     } catch {
