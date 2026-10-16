@@ -153,56 +153,6 @@ struct DockTextButton: View {
   }
 }
 
-// MARK: - Actions at the largest text sizes
-
-extension AccountScreen {
-  /// The account template with its actions docked as Paper draws them, except at the
-  /// accessibility text sizes: there two wrapped buttons would fill half the screen and
-  /// still clip, so they follow the content and scroll with it (spec 07 §8, plan 0.1 rule 11).
-  init<Main: View, Actions: View>(
-    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, back: AccountBack = .none,
-    trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
-    @ViewBuilder content: @escaping () -> Main, @ViewBuilder actions: @escaping () -> Actions
-  ) where Content == ActionsAfterContent<Main, Actions>, Footer == DockedActions<Actions> {
-    self.init(
-      title: title, subtitle: subtitle, steps: steps, back: back, trailing: trailing, wash: wash,
-      content: { ActionsAfterContent(content: content(), actions: actions) },
-      footer: { DockedActions(actions: actions) })
-  }
-}
-
-/// The page's content, then (at the accessibility sizes only) its actions, 32 under it.
-struct ActionsAfterContent<Main: View, Actions: View>: View {
-  let content: Main
-  let actions: () -> Actions
-
-  @Environment(\.dynamicTypeSize) private var typeSize
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      content
-      if typeSize.isAccessibilitySize {
-        VStack(spacing: 4) { actions() }
-          .frame(maxWidth: .infinity)
-          .padding(.top, 32)
-      }
-    }
-  }
-}
-
-/// The dock's actions, 4 apart, below the accessibility sizes.
-struct DockedActions<Actions: View>: View {
-  let actions: () -> Actions
-
-  @Environment(\.dynamicTypeSize) private var typeSize
-
-  var body: some View {
-    if !typeSize.isAccessibilitySize {
-      VStack(spacing: 4) { actions() }
-    }
-  }
-}
-
 /// A text field that is one line as Paper draws it, and wraps at the accessibility sizes,
 /// where a name or an address no longer fits the box (a one-line field would cut it off). It
 /// stays one value: a return typed into the wrapping field is dropped.
