@@ -160,6 +160,9 @@ struct AccountReadyView: View {
   var profile: AccountProfile?
   /// Outlook can be connected in this build ("Who can see what" names Microsoft only then).
   var outlook: Bool
+  /// What this build can do for the account (`AccountService.capabilities`): whether the
+  /// words can be shown again, and how.
+  var capabilities: AccountCapabilities
   var onContinue: () -> Void
 
   @State private var whoSeesOpen = false
@@ -167,17 +170,28 @@ struct AccountReadyView: View {
 
   private var passkey: Bool { profile?.method != .password }
 
+  /// Where the words can be seen again, said only as far as this build can do it: Sign-in &
+  /// security shows them after Face ID, so a password account first adds a passkey (Debug's
+  /// `.all`); without that it can't (the beta). No line is longer than Paper's, so the
+  /// screen still fits above the dock.
+  private var subtitle: String {
+    let keep = "Keep the paper safe, away from this iPhone."
+    guard capabilities.contains(.viewPhrase) else { return "\(keep) It's the only copy of your words." }
+    if passkey { return "\(keep) You can see the words again in Profile after Face ID." }
+    return capabilities.contains(.addPasskey)
+      ? "\(keep) Add Face ID in Profile to see the words again."
+      : "\(keep) Your words can't be shown again on this account."
+  }
+
   var body: some View {
     CelebrationScreen(
       badge: .check,
       title: "Your account is ready.",
-      subtitle: passkey
-        ? "Keep the paper safe, away from this iPhone. You can see the words again in Profile after Face ID."
-        : "Keep the paper safe, away from this iPhone. It's the only copy: your words can't be shown again on this account.",
+      subtitle: subtitle,
       // Paper's 76 / 36, less the line the title takes when it wraps (the bundled Inter
-      // sets "Your account is ready." wider than Paper does), so the summary clears the
-      // hand-off at the default size.
-      spacing: (56, 28)
+      // sets "Your account is ready." wider than Paper does), so the summary ends above the
+      // hand-off and the dock's scroll edge doesn't show over a screen that fits.
+      spacing: (40, 24)
     ) {
       VStack(spacing: 16) {
         summary

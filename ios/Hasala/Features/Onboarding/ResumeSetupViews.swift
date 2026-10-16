@@ -84,7 +84,8 @@ struct InterruptedSetupFlowView: View {
         case .phraseShow:
           PhraseShowView(signup: model)
         case .accountReady:
-          AccountReadyView(profile: model.profile, outlook: store.services.mailbox.connectable.contains(.outlook)) {
+          AccountReadyView(profile: model.profile, outlook: store.services.mailbox.connectable.contains(.outlook),
+                           capabilities: model.capabilities) {
             session.accountCreated()
           }
           .navigationBarBackButtonHidden()

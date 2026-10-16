@@ -73,6 +73,18 @@
         graph.onboarding.signup.phraseRevealed = true
       },
       Screen("phrase.saved", scenario: "newUser") { await signUp($0, to: .accountReady) },
+      // A password account (Paper FJI draws the passkey one): "Password · Set", and whether
+      // this build can show the words again.
+      Screen("phrase.savedPassword", scenario: "newUser") { graph in
+        await signUp(graph, to: .password)
+        let signup = graph.onboarding.signup
+        signup.newPassword = "copper lantern quietly 42"
+        signup.confirmPassword = "copper lantern quietly 42"
+        signup.submitPassword()
+        signup.go(.phraseShow)
+        signup.phraseRevealed = true
+        await signup.finish()
+      },
       Screen("resume.interrupted", scenario: "relaunchInterrupted"),
     ]
 
