@@ -17,8 +17,10 @@ struct MailboxDetailPage: View {
   @State private var failure: MailConnectFailure?
   /// The sign-in again, made once for this page.
   @State private var signIn: MailConnectCoordinator?
-  /// Each sign-in again that worked (the success haptic's trigger).
+  /// Each sign-in again that worked, counted once the page has turned (the success
+  /// haptic's trigger).
   @State private var signedIn = 0
+  @Environment(\.hMotion) private var motion
 
   init(app: AppModel, mailboxID: String) {
     self.app = app
@@ -213,12 +215,15 @@ struct MailboxDetailPage: View {
   private func signInAgain(_ provider: MailProviderKind) {
     guard let signIn else { return }
     failure = nil
+    let policy = motion
     Task {
       await signIn.connect(provider)
       if case .connected? = signIn.outcome {
         app.say(MailCopy.signedInAgain(provider))
-        signedIn += 1
         signIn.reset()
+        // The page turns into the working layout; the haptic once it has.
+        try? await Task.sleep(for: policy.settleDelay(.stateSwap))
+        signedIn += 1
       }
     }
   }

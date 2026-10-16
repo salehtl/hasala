@@ -10,24 +10,29 @@ import SwiftUI
 /// The hero says it in a word ("Working", "Sign in again", "Needs you"); when a provider
 /// ended Hasala's access it carries that provider's button, aimed at the first mailbox that
 /// needs it (plan decision 10), and the sign-in runs from here. A mailbox just added lands
-/// once, with the success haptic (motion policy "celebrate").
+/// once, with the success haptic as it settles (motion policy "celebrate"); one read again
+/// after a sign-in on another screen plays the haptic once this page shows
+/// (`MailboxMoment`).
 struct BankAlertsPage: View {
   @Bindable var app: AppModel
   /// The rows this page has shown, to tell a new one when it comes back from Add a mailbox.
   @State private var known: Set<String>?
-  /// A new row before it lands, then once it landed (the haptic's trigger).
+  /// A new row before it lands.
   @State private var arriving: String?
-  @State private var landed: String?
   /// Whether this page is the one on screen (not under a pushed page).
   @State private var visible = false
   /// The hero's sign-in again, while it runs or after it failed.
   @State private var signIn: MailConnectCoordinator?
-  /// Each sign-in again that worked (the success haptic's trigger).
-  @State private var signedIn = 0
+  /// Each mailbox connected or read again, counted once its motion settles (the success
+  /// haptic's trigger: a count, so the same mailbox twice plays twice).
+  @State private var successes = 0
   @Environment(\.hMotion) private var motion
 
   init(app: AppModel) {
     self.app = app
+    // A page made in the place of the one that connected (the Profile card's "Connect your
+    // email") holds the new row back from its first frame, so it lands rather than flashes.
+    _arriving = State(initialValue: MailboxMoment.pendingAddition)
   }
 
   private var lane: (any MailboxConnecting)? { app.mailbox }
@@ -58,13 +63,13 @@ struct BankAlertsPage: View {
     .onAppear {
       visible = true
       noteRows(mailboxes.map(\.id))
+      takeMoment()
       if let arriving { land(arriving) }
     }
     .onDisappear { visible = false }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
     // A mailbox connected or signed in again: the motion policy's success, once each.
-    .hHaptic(.success, trigger: landed) { _, new in new != nil }
-    .hHaptic(.success, trigger: signedIn) { old, new in new > old }
+    .hHaptic(.success, trigger: successes) { old, new in new > old }
   }
 
   // MARK: Hero
@@ -200,13 +205,16 @@ struct BankAlertsPage: View {
   private func signInAgain(_ id: String, _ provider: MailProviderKind) {
     guard let lane else { return }
     let attempt = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: id))
+    let policy = motion
     signIn = attempt
     Task {
       await attempt.connect(provider)
       if case .connected? = attempt.outcome {
         app.say(MailCopy.signedInAgain(provider))
-        signedIn += 1
         signIn = nil
+        // The hero turns to Working; the haptic once it has.
+        try? await Task.sleep(for: policy.settleDelay(.stateSwap))
+        successes += 1
       }
     }
   }
@@ -268,13 +276,44 @@ struct BankAlertsPage: View {
   }
 
   private func land(_ id: String) {
+    let policy = motion
     Task {
       // After the pop back settles, so the person sees it land.
-      try? await Task.sleep(for: .milliseconds(motion.settled ? 0 : 200))
+      try? await Task.sleep(for: Self.popSettle(policy))
       guard arriving == id else { return }
-      withHMotion(.celebrate, motion) { arriving = nil }
-      landed = id
+      withHMotion(.celebrate, policy) { arriving = nil }
+      // The haptic as the row comes to rest, not as it starts (spec 01 §4.11).
+      try? await Task.sleep(for: policy.settleDelay(.celebrate))
+      successes += 1
     }
+  }
+
+  /// A moment a screen that went handed over (`ConnectMailPage`): a new row lands; a mailbox
+  /// read again plays the haptic once the way back has settled (its chip changed while
+  /// this page was out of sight).
+  private func takeMoment() {
+    switch MailboxMoment.take() {
+    case .added(let id)?:
+      // A row this page already saw arrive is the same one; a mailbox gone since lands nothing.
+      if mailboxes.contains(where: { $0.id == id }) {
+        arriving = id
+      } else if arriving == id {
+        arriving = nil
+      }
+    case .signedInAgain?:
+      let policy = motion
+      Task {
+        try? await Task.sleep(for: Self.popSettle(policy))
+        successes += 1
+      }
+    case nil:
+      break
+    }
+  }
+
+  /// The system push or pop back to this page, near enough (none when motion is settled).
+  static func popSettle(_ policy: MotionPolicy) -> Duration {
+    .milliseconds(policy.settled ? 0 : 200)
   }
 
   // MARK: Banks

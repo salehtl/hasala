@@ -1,4 +1,5 @@
 import Foundation
+import HasalaDesign
 import HasalaModels
 import Testing
 
@@ -171,6 +172,30 @@ struct MailboxFlowTests: AccountSuite {
     #expect(ConnectMailPage.context(.gmail, offer: offer) == .addMailbox)
     #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: [broken]) == "maya.k@example.com needs a new sign-in.")
     #expect(ConnectMailPage.context(.outlook, offer: .connect) == .addMailbox)
+  }
+
+  /// A connect or a new sign-in on a screen that goes as it ends hands its moment to Bank
+  /// alerts, which takes it once.
+  @Test func bankAlertsTakesTheMomentOnce() {
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"))
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+    #expect(MailboxMoment.take() == .added(mailboxID: "outlook-2"))
+    #expect(MailboxMoment.take() == nil)
+    MailboxMoment.hand(.signedInAgain(mailboxID: "outlook-1"))
+    #expect(MailboxMoment.pendingAddition == nil)
+    #expect(MailboxMoment.take() == .signedInAgain(mailboxID: "outlook-1"))
+    #expect(MailboxMoment.pending == nil)
+  }
+
+  /// The success haptic waits for the motion it marks to come to rest: the celebrate
+  /// spring, the Reduce Motion fade, nothing when motion is settled.
+  @Test func theHapticWaitsForTheMotionToSettle() {
+    #expect(MotionPolicy().settleDelay(.celebrate) == .seconds(HMotion.celebrateResponse))
+    #expect(MotionPolicy(reduceMotion: true).settleDelay(.celebrate) == .seconds(HMotion.reduceMotionFade))
+    #expect(MotionPolicy(settled: true).settleDelay(.celebrate) == .zero)
+    #expect(MotionPolicy().settleDelay(.stateSwap) == .seconds(HMotion.fade))
+    #expect(BankAlertsPage.popSettle(MotionPolicy(settled: true)) == .zero)
+    #expect(BankAlertsPage.popSettle(MotionPolicy()) == .milliseconds(200))
   }
 
   /// Bank alerts' hero in a word, from the same summary as the Profile card: Working (one

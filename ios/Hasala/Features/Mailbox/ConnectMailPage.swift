@@ -96,16 +96,20 @@ struct ConnectMailPage: View {
   }
 
   /// Back to Bank alerts with a toast; a new mailbox's first import starts and outlives
-  /// this screen.
+  /// this screen. This screen goes as it ends, so Bank alerts plays the success moment
+  /// once it shows (`MailboxMoment`): the new row lands, or the haptic plays for a mailbox
+  /// read again. That holds when Bank alerts is made new in this screen's place, too.
   private func connected(_ id: String, _ mailbox: MailboxConnecting, _ context: MailConnectCoordinator.Context) {
     if context == .addMailbox {
       app.say(MailCopy.added(provider))
+      MailboxMoment.hand(.added(mailboxID: id))
       Task {
         guard await mailbox.linkState() == .scanning else { return }
         for await _ in mailbox.firstScan() {}
       }
     } else {
       app.say(MailCopy.signedInAgain(provider))
+      MailboxMoment.hand(.signedInAgain(mailboxID: id))
     }
     if let i = app.router.profile.lastIndex(of: .bankAlerts) {
       app.router.profile.removeSubrange((i + 1)...)

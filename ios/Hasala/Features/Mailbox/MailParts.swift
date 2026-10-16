@@ -59,6 +59,46 @@ enum MailCopy {
   }
 }
 
+// MARK: - The success moment
+
+/// A mailbox connected, or read again after a new sign-in, on a screen that goes as it
+/// ends (`ConnectMailPage`: Add a mailbox's provider screen, the Profile card's "Connect
+/// your email" or "Sign in again"). Bank alerts takes it once it shows, whether it was
+/// under that screen or is made new in its place, and plays the motion policy's success:
+/// the new row lands with the haptic, or the haptic plays for the mailbox read again.
+/// One at a time, for the process, like `MailLaunch`'s Debug taps.
+enum MailboxMoment: Equatable {
+  case added(mailboxID: String)
+  case signedInAgain(mailboxID: String)
+
+  /// The moment no Bank alerts has shown yet.
+  private(set) static var pending: MailboxMoment?
+
+  static func hand(_ moment: MailboxMoment) {
+    pending = moment
+  }
+
+  /// The pending moment, once.
+  static func take() -> MailboxMoment? {
+    defer { pending = nil }
+    return pending
+  }
+
+  /// The mailbox a pending `added` lands (Bank alerts holds its row back from the first frame).
+  static var pendingAddition: String? {
+    if case .added(let id)? = pending { return id }
+    return nil
+  }
+}
+
+extension MotionPolicy {
+  /// How long `kind` takes to come to rest under this policy (none when it shows at once),
+  /// so the success haptic plays as the motion settles, never as it starts (motion policy).
+  func settleDelay(_ kind: HMotion.Kind) -> Duration {
+    .seconds(curve(kind)?.nominalDuration ?? 0)
+  }
+}
+
 // MARK: - Glyphs Paper draws that the icon set doesn't hold
 
 /// A 24-grid glyph from a Paper board, drawn from its path data: the hero's check and "!",
