@@ -61,6 +61,11 @@ public enum AuthResults {
   public struct Verdict: Sendable, Equatable {
     public let trusted: Bool
     public let reason: Reason
+
+    public init(trusted: Bool, reason: Reason) {
+      self.trusted = trusted
+      self.reason = reason
+    }
   }
 
   /// The verdict and, only when trusted, the verified domain, from ONE reading of the bytes.
@@ -68,6 +73,11 @@ public enum AuthResults {
     public let verdict: Verdict
     /// The DKIM `header.d` of the passing verdict, else the DMARC `header.from`; lower case.
     public let domain: String?
+
+    public init(verdict: Verdict, domain: String?) {
+      self.verdict = verdict
+      self.domain = domain
+    }
   }
 
   /// The trust decision for a message's raw header block. Never throws.

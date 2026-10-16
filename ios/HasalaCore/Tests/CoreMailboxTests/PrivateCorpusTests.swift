@@ -84,6 +84,52 @@ struct PrivateGmailDeliveredTests {
   }
 }
 
+/// Real alerts as Outlook.com delivered them (`outlook-*.eml`, exported with Graph `$value`, WP0
+/// check C6), when the private repository has them. Skipped by name until it does.
+private let outlookDelivered: [URL] = {
+  guard let root = privateRoot?.deletingLastPathComponent().deletingLastPathComponent()
+    .appendingPathComponent("conformance/outlook", isDirectory: true),
+    let names = try? FileManager.default.contentsOfDirectory(atPath: root.path)
+  else { return [] }
+  return names.filter { $0.hasPrefix("outlook-") && $0.hasSuffix(".eml") }.sorted().map {
+    root.appendingPathComponent($0)
+  }
+}()
+
+@Suite(.enabled(if: !outlookDelivered.isEmpty, "needs HASALA_PRIVATE_FIXTURES with conformance/outlook/outlook-*.eml"))
+struct PrivateOutlookDeliveredTests {
+  /// Bank mail is never set aside under the Outlook rule, and while the trust gate is closed
+  /// nothing files without review, whatever the rule says.
+  @Test func outlookDeliveredBankMailIsReadAndWaitsForReview() throws {
+    let templates = BundledTemplates.load().templates
+    let banks = ["dib.ae", "emiratesnbd.com"]
+    let gate = OutlookProvider(
+      oauth: MicrosoftOAuthClient(config: MicrosoftOAuthConfig(clientID: "unset", redirectScheme: "unset"), http: NoHTTP()),
+      http: NoHTTP(), link: MemoryOutlookLinkStore(), clock: FixedClockForTest())
+    for url in outlookDelivered {
+      let f = url.lastPathComponent
+      let raw = [UInt8](try Data(contentsOf: url))
+      let r = MessageDisposer.parse(
+        raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
+        templates: templates, bankDomains: banks, trusted: banks, analyze: gate.analyzeAuthResults)
+      guard case .mail(let m) = r else {
+        Issue.record("\(f): set aside")
+        continue
+      }
+      let d = MessageDisposer.finalize(m, provider: .outlook, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      #expect(d.needsReview, "\(f)")
+    }
+  }
+}
+
+private struct NoHTTP: HTTPExchange {
+  func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse { throw .offline }
+}
+
+private struct FixedClockForTest: Clock {
+  func nowMs() -> Int64 { 1_750_000_000_000 }
+}
+
 private func parseInstantMsForTest(_ s: String) throws -> Int64 { try parseInstantMs(s) }
 
 private enum MailHeadersForTest {

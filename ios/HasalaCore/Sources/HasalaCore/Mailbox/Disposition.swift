@@ -29,7 +29,8 @@ public enum MailboxLimits {
 
 /// The trust and parse facts a row records in its `gates` object (03c §3.1), display only.
 public struct MailGates: Sendable, Equatable, Codable {
-  /// AuthResults.Reason raw value: pass | no_ar | multiple_ar | not_topmost | fail | parse_error.
+  /// AuthResults.Reason raw value: pass | no_ar | multiple_ar | not_topmost | fail | parse_error |
+  /// no_eop (Outlook).
   public var ar: String
   /// The verified domain is in the trusted set T.
   public var senderTrusted: Bool

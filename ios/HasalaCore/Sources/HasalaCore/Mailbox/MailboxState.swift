@@ -29,7 +29,12 @@ public enum MailboxHaltCode: String, Sendable, Codable {
   case templatesUnavailable = "templates_unavailable"
   case stagingFull = "staging_full"
   case offline
+  /// The mail provider refused in a way retrying won't fix (named for the first provider; the
+  /// stored value stays "gmail" for every provider).
   case gmail
+  /// The account has no mailbox the provider's API reads (Outlook: a Microsoft account on a
+  /// non-Microsoft address).
+  case noMailbox = "no_mailbox"
 }
 
 /// The `mailbox_state` row, column for column (§4.2; `list_page_token` is not kept: a listing
