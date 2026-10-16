@@ -121,8 +121,10 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     signOut.tap()
     let alert = app.alerts["Sign out of this iPhone?"]
     XCTAssertTrue(alert.waitForExistence(timeout: 5))
-    XCTAssertTrue(alert.staticTexts["You'll need your passkey or password to sign back in. Your data stays on this iPhone."]
-      .exists)
+    // Sign-in & security's words for the same action (P4); Paper's "erased" isn't said.
+    XCTAssertTrue(alert.staticTexts[
+      "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
+    ].exists)
     alert.buttons["Sign out"].tap()
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15), "Welcome did not appear")
   }

@@ -73,9 +73,10 @@ struct ProfileSheet: View {
         Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
       } message: {
-        // Paper I1C-0 says the data is erased; this build keeps it, so the alert says what
-        // happens (the same words as Sign-in & security's).
-        Text("You'll need your passkey or password to sign back in. Your data stays on this iPhone.")
+        // Paper I1C-0 says the data is erased; signing out keeps this iPhone's data (S-26), so
+        // the alert says what happens, in the words P4's Sign-in & security uses for the same
+        // action (`SecurityView.alertMessage(.signOut)`), whichever page it starts from.
+        Text(Self.signOutMessage)
       }
     }
     .environment(\.inProfileSheet, true)
@@ -83,6 +84,11 @@ struct ProfileSheet: View {
     .presentationDragIndicator(.visible)
     .presentationCornerRadius(HRadius.sheetLarge)
   }
+
+  /// The Sign out alert's message. Stage I can point P4's Sign-in & security at this one
+  /// string (request 4), so the two entry points can't drift apart.
+  static let signOutMessage =
+    "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
 
   /// Signs out of this iPhone (S-26): the session ends, local data stays. The account gate
   /// then shows the welcome screens in place of the app, this sheet with it.
