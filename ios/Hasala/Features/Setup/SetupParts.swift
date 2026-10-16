@@ -163,31 +163,6 @@ struct StepCard<Rows: View>: View {
   }
 }
 
-/// The Hasala app icon as a tile (Paper "App icon tile"): the blue tile with the dirham
-/// going into the slot, drawn from the brand artwork (the icon's own colours), clipped to
-/// `radius`. The scan's count card draws it at 52, the Lock Screen preview at 38.
-struct AppIconTile: View {
-  var size: CGFloat
-  var radius: CGFloat
-
-  // The app icon's gradient (brand artwork, like `HasalaMark`; no token names it).
-  private static let top = Color(HRGBA(0x54, 0x79, 0xFF, 1))
-  private static let bottom = Color(HRGBA(0x2B, 0x4A, 0xD2, 1))
-
-  var body: some View {
-    ZStack {
-      LinearGradient(colors: [Self.top, Self.bottom], startPoint: .topLeading,
-                     endPoint: UnitPoint(x: 0.4, y: 1))
-      // The mark at 1.1 × its place in the 1024 icon grid: 616 × 368 units wide and tall.
-      HasalaMark()
-        .frame(width: size * 616 * 1.1 / 1024, height: size * 368 * 1.1 / 1024)
-    }
-    .frame(width: size, height: size)
-    .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-    .accessibilityHidden(true)
-  }
-}
-
 /// The note above a step's button (Paper "Note row"): a 16 lock in a 20 lane and 15/20
 /// secondary text, 8 in from the dock's edges.
 struct DockNote: View {

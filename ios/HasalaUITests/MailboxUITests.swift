@@ -26,16 +26,14 @@ final class MailboxUITests: XCTestCase {
   }
 
   /// Outlook in setup: Choose your email › Outlook › its read-only screen (with the work
-  /// account line) › Continue with Microsoft › the first scan. Setup's chooser is P2's; until
-  /// it hosts this package's sheet the test says so and stops.
+  /// account line) › Continue with Microsoft › the first scan, through the chooser that
+  /// setup (P2) presents over the bank step.
   @MainActor
   func testSetupConnectsOutlookToTheFirstScan() throws {
     let app = launch(scenario: "setupBank")
     tap(app, "bank.continue", timeout: 15)
     let outlook = el(app, "mail.choose.outlook")
-    guard outlook.waitForExistence(timeout: 5) else {
-      throw XCTSkip("setup's email step doesn't host Choose your email yet (P2, Stage I)")
-    }
+    XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
     attach(app, "Setup · Choose your email")
     try audit(app)
     outlook.tap()
@@ -246,17 +244,15 @@ final class MailboxUITests: XCTestCase {
       .waitForExistence(timeout: 5)
   }
 
-  /// The provider's read-only screen after the bank step: through setup's chooser when it
-  /// has one (P2), else straight on. Its button names the company.
+  /// The provider's read-only screen after the bank step: through setup's chooser when the
+  /// build offers more than one provider, else straight on. Its button names the company.
   @MainActor
   private func connectScreen(_ app: XCUIApplication, _ provider: Provider) throws -> XCUIElement {
     let chooser = el(app, "mail.choose.\(provider.rawValue)")
     let button = el(app, "mail.connect.\(provider.rawValue)")
-    let before = el(app, "gmail.connect")  // setup's own Gmail step, until P2 hosts these views
     for _ in 0..<30 {
       if chooser.exists { chooser.tap(); break }
       if button.exists { break }
-      if before.exists { return before }
       Thread.sleep(forTimeInterval: 0.5)
     }
     XCTAssertTrue(button.waitForExistence(timeout: 10), "the read-only screen did not open")

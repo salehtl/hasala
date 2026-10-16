@@ -86,6 +86,8 @@ private struct EmailErrorStep: View {
       onRetry: { Task { await model.retryConnect(provider) } },
       onChooseDifferent: {
         if model.canChooseEmail { model.chooseEmail() } else { openURL(BuildSurface.supportMail) }
-      })
+      },
+      // Paper draws setup's error screens as step 2 of 4 (1MUP-0, 1NQF-0; requests/p3.md 1).
+      steps: model.steps(2))
   }
 }
