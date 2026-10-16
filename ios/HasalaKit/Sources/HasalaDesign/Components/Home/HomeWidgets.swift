@@ -74,9 +74,10 @@ extension HFigure {
   static let widgetUnit = HFigure.compact.weight(.semibold)
 }
 
-/// A row's whole-dirham figure with what it means: "3,309 left", "770 over", "5,000 to save".
-private func wholeDirhams(_ m: Money, _ word: String, hidden: Bool) -> String {
-  (hidden ? MoneyFormat.hidden(count: 3) : MoneyFormat.string(m.minor, style: .rounded)) + " " + word
+/// A row's whole-dirham figure with what it means: "3,309 left", "770 over", "5,000 to save";
+/// 3 dots when hidden.
+private func wholeDirhams(_ m: Money, _ word: String) -> MoneyPhrase {
+  MoneyPhrase([.amount(m, .rounded, hidden: 3), .text(" " + word)])
 }
 
 // MARK: - Budget pace (Medium)
@@ -139,18 +140,28 @@ public struct BudgetPaceWidgetView: View {
         Text("Done").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusSuccessForeground)
       }
     case .overBudget:
-      Text(wholeDirhams(Money(minor: -row.left.minor), "over", hidden: hidden))
+      Text(leftPhrase(row).rendered(hidden: hidden))
         .hFigure(.compact).foregroundStyle(HColor.paceOverBudget).singleLineAtDefaultTextSize()
     case .onTrack, .overPace:
-      Text(wholeDirhams(row.left, row.bucket == .savings ? "to save" : "left", hidden: hidden))
+      Text(leftPhrase(row).rendered(hidden: hidden))
         .hFigure(.compact).foregroundStyle(HColor.textPrimary).singleLineAtDefaultTextSize()
     }
   }
 
   /// "9,041 of 12,350"; hidden "•••• of •••".
   private func spentOfPlan(_ row: BucketPaceRow) -> String {
+    spentOfPlanPhrase(row).rendered(hidden: hidden)
+  }
+
+  private func spentOfPlanPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
     MoneyPhrase([.amount(row.spent, .rounded), .text(" of "), .amount(row.budget, .rounded, hidden: 3)])
-      .rendered(hidden: hidden)
+  }
+
+  /// The right of a row that is not done: "770 over", "5,000 to save" or "3,309 left".
+  private func leftPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
+    row.verdict == .overBudget
+      ? wholeDirhams(Money(minor: -row.left.minor), "over")
+      : wholeDirhams(row.left, row.bucket == .savings ? "to save" : "left")
   }
 
   private func fill(_ row: BucketPaceRow) -> Color {
@@ -164,14 +175,9 @@ public struct BudgetPaceWidgetView: View {
   /// "Needs, 9,041 of 12,350, 3,309 left" (page 18 §15); hidden "Needs, amount hidden".
   private func rowSummary(_ row: BucketPaceRow) -> String {
     if hidden { return row.verdict == .done ? "Amount hidden, done" : "Amount hidden" }
-    let spent = MoneyFormat.string(row.spent.minor, style: .rounded)
-    let budget = MoneyFormat.string(row.budget.minor, style: .rounded)
-    switch row.verdict {
-    case .done: return "\(spent) of \(budget), done"
-    case .overBudget: return "\(spent) of \(budget), \(wholeDirhams(Money(minor: -row.left.minor), "over", hidden: false))"
-    case .onTrack, .overPace:
-      return "\(spent) of \(budget), \(wholeDirhams(row.left, row.bucket == .savings ? "to save" : "left", hidden: false))"
-    }
+    let spentOfPlan = spentOfPlanPhrase(row).spoken(hidden: false)
+    return row.verdict == .done
+      ? "\(spentOfPlan), done" : "\(spentOfPlan), \(leftPhrase(row).spoken(hidden: false))"
   }
 }
 

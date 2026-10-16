@@ -29,8 +29,8 @@ public struct StatTile: View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
           MoneyText(tile.value, figure: .stat, style: tile.style, hidden: hidden, hiddenGlyphs: 4,
                     color: HColor.textPrimary)
-          if let of = tile.of {
-            Text("of " + (hidden ? MoneyFormat.hidden(count: 3) : MoneyFormat.string(of.minor, style: .rounded)))
+          if let of = ofPhrase {
+            Text(of.rendered(hidden: hidden))
               .hType(.footnote).foregroundStyle(HColor.textOnWashSecondary)
               .singleLineAtDefaultTextSize()
           }
@@ -46,11 +46,17 @@ public struct StatTile: View {
     .accessibilityValue(spoken)
   }
 
+  /// "of 5,000" in whole dirhams, 3 dots when hidden.
+  private var ofPhrase: MoneyPhrase? {
+    tile.of.map { MoneyPhrase([.text("of "), .amount($0, .rounded, hidden: 3)]) }
+  }
+
+  /// "AED 9,040.80", or "2,000.00 of 5,000"; hidden, one "Amount hidden" for the tile.
   private var spoken: String {
     if skeleton { return "Getting your transactions" }
     if hidden { return "Amount hidden" }
-    let value = MoneyFormat.string(tile.value.minor, style: tile.style)
-    if let of = tile.of { return "\(value) of \(MoneyFormat.string(of.minor, style: .rounded))" }
+    let value = MoneyPhrase([.amount(tile.value, tile.style)]).spoken(hidden: false)
+    if let of = ofPhrase { return "\(value) \(of.spoken(hidden: false))" }
     return "\(tile.value.currency) \(value)"
   }
 }
