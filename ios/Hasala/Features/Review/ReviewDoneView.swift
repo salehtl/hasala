@@ -114,10 +114,11 @@ struct ReviewDoneView: View {
       .accessibilityLabel(phrase.spoken(hidden: model.hidden))
   }
 
-  /// "AED 327.28" in the compact figure face, dots when amounts are hidden.
+  /// "AED 327.28" in the compact figure face, set inside the sentence. It is drawn from the
+  /// shared `MoneyPhrase`, so Hide amounts and its dot count (4, a figure) come from the same
+  /// place as every other phrase's.
   private func figure(_ m: Money) -> Text {
-    let digits = model.hidden ? MoneyFormat.hidden(count: 4) : MoneyFormat.string(m.minor)
-    return Text("AED \(digits)")
+    Text(verbatim: MoneyPhrase([.text("AED "), .amount(m)]).rendered(hidden: model.hidden))
       .font(.system(.subheadline, design: .rounded, weight: .bold).monospacedDigit())
       .foregroundStyle(HColor.textPrimary)
   }
