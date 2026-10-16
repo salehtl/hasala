@@ -146,6 +146,7 @@ extension XCTestCase {
   ///   `.accessibility3` on purpose (spec 04 §14.4; marked `hasala.cappedFigure`), and
   ///   on text inside the navigation and tab bars, which keep their size and offer
   ///   the Large Content Viewer instead, as system bars do.
+  /// - The keyboard and its prediction bar (system UI, laid out by iOS).
   /// - An issue with no element while content is scrolled under the header. Labelled
   ///   text there shows faintly through the bar's scroll-edge blur, and the audit reads
   ///   those pixels as text it cannot match to an element ("Potentially inaccessible
@@ -158,12 +159,24 @@ extension XCTestCase {
   ) throws {
     let bars = [app.navigationBars.firstMatch, app.tabBars.firstMatch].filter(\.exists).map(\.frame)
     let underHeader = contentUnderHeader(app)
+    // The keyboard's top edge, when it is up: its prediction bar sits on it.
+    let keyboard = app.keyboards.firstMatch
+    let keyboardTop = keyboard.exists ? keyboard.frame.minY : nil
     var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
     if !atLargeText { types.remove(.textClipped) }
     var issues: [String] = []
     try app.performAccessibilityAudit(for: types) { issue in
       // The keyboard is the system's, not ours.
       if let e = issue.element, e.elementType == .key || e.elementType == .keyboard { return true }
+      // So is its prediction bar: three empty cells (TUIPredictionViewCell, "Element has no
+      // description") along the keyboard's top edge, which turning autocorrection off on the
+      // field does not remove on iOS 27. Only unlabelled elements in that band are skipped, so
+      // the app's own controls just above the keyboard (a dock, the word list) are still audited.
+      if issue.auditType == .sufficientElementDescription, let e = issue.element, e.label.isEmpty,
+        let keyboardTop, e.frame.minY >= keyboardTop - 44
+      {
+        return true
+      }
       // The system search field (UISearchBarTextField) sizes its own text.
       if issue.auditType == .textClipped, issue.element?.elementType == .searchField { return true }
       if issue.auditType == .dynamicType, let element = issue.element {
