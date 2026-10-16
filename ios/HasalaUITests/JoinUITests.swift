@@ -285,6 +285,10 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     attach(app, "AX3 · Stories")
     try audit(app, atLargeText: true)
+    // The copy fills the screen at this size, so the stories wait for the person: still the
+    // first after longer than a story plays.
+    sleep(7)
+    XCTAssertEqual(el(app, "stories.progress").label, "Page 1 of 4", "the stories moved on mid-read")
     tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: 10))
     attach(app, "AX3 · Welcome")

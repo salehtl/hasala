@@ -61,7 +61,9 @@ final class StoryPagerMotion {
 /// plays a selection haptic as it settles; the timer never buzzes. Each story plays 6 s,
 /// then the pager moves on, and stops after story 4. It pauses while the person drags, under
 /// the "Who can see what" sheet, under a pushed screen, in the background, and while
-/// VoiceOver runs (no auto-advance; the progress reads "Page n of 4"). Reduce Motion: pages
+/// VoiceOver runs (no auto-advance; the progress reads "Page n of 4"). At the accessibility
+/// text sizes it doesn't auto-advance either: a story's copy then fills the screen and takes
+/// longer than 6 s to read, so the words would change mid-read. Reduce Motion: pages
 /// cross-fade, nothing turns or counts, the cards stop floating; the haptics stay.
 ///
 /// The page is the onboarding store's, so it is where the person left it.
@@ -116,8 +118,12 @@ struct StoriesView: View {
   /// background.
   private var visible: Bool { onScreen && !whoSeesOpen && scenePhase == .active }
 
-  /// The clock runs only while someone can watch the story.
-  private var shouldRun: Bool { visible && !voiceOver && !dragging }
+  /// Reading a story takes longer than it plays (VoiceOver, the accessibility text sizes):
+  /// the person moves on, and the progress marks where they are.
+  private var handPaced: Bool { voiceOver || typeSize.isAccessibilitySize }
+
+  /// The clock runs only while someone can watch the story, and never when it is hand-paced.
+  private var shouldRun: Bool { visible && !handPaced && !dragging }
 
   var body: some View {
     Group {
@@ -188,7 +194,7 @@ struct StoriesView: View {
   /// around the 3 pt bars, so it is a size people can reach, without moving the header.
   private var progress: some View {
     TimelineView(.animation(minimumInterval: nil, paused: !clock.isRunning)) { context in
-      StoryProgress(count: count, current: page, fill: clock.progress(at: context.date))
+      StoryProgress(count: count, current: page, fill: handPaced ? 1 : clock.progress(at: context.date))
     }
     .frame(height: 3)
     .padding(.top, 4)
