@@ -235,7 +235,7 @@ final class SecurityModel {
     notice = Self.notice(for: action)
     switch action {
     case .freeze:
-      session.froze(FreezeInfo(by: .holder, when: "just now"))
+      session.froze(FreezeInfo(by: .holder, when: "just now", inApp: true))
     case .deleteAccount, .signOutEverywhere:
       // Delete ends the account; sign out everywhere ends this iPhone's session too
       // (`02` §9.3: every session, the caller's included). Its keys stay here.

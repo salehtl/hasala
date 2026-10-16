@@ -19,9 +19,7 @@ struct FrozenWall: View {
         title: "Your account is frozen",
         subtitle: info.by == .operator
           ? "We froze your account to protect it. Talk to us to unfreeze it."
-          : (info.when.map { "\u{201C}Freeze my account\u{201D} was used \($0). " }
-            ?? "\u{201C}Freeze my account\u{201D} was used. ")
-            + "Nobody can sign in or change your keys until you sign in fully."
+          : Self.holderBody(info)
       ) {
         VStack(alignment: .leading, spacing: 12) {
           if info.by == .holder {
@@ -46,6 +44,15 @@ struct FrozenWall: View {
         if (session.account as? MockAccountService)?.takeLaunchStep(.unfreeze) == true { path = [.unfreeze] }
       }
     #endif
+  }
+
+  /// MTO's body: where the freeze came from ("from our email", the cue for "Didn't freeze it
+  /// yourself? Someone may be reading your email"), when, and what it stops.
+  static func holderBody(_ info: FreezeInfo) -> String {
+    let source = info.inApp ? "" : " from our email"
+    let when = info.when.map { " \($0)" } ?? ""
+    return "\u{201C}Freeze my account\u{201D} was used\(source)\(when). "
+      + "Nobody can sign in or change your keys until you sign in fully."
   }
 }
 

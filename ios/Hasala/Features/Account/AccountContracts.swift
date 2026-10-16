@@ -94,6 +94,11 @@ struct FreezeInfo: Equatable, Sendable {
   var by: By
   /// Already formatted for display ("on Sun 11 Oct at 21:20"), or nil when unknown.
   var when: String?
+  /// The holder froze it here, from Sign-in & security, not with the "Freeze my account"
+  /// link in our email (Paper MTO says "from our email"). Only this app's own Freeze sets
+  /// it: `GET /account` doesn't say where a freeze came from, and the beta's only way to
+  /// freeze is the email's link.
+  var inApp = false
 }
 
 /// One row of Sign-in & security › Passkeys.

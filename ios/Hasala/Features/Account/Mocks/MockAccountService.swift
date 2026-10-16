@@ -297,7 +297,7 @@
         // Every session ends, this iPhone's too (`02` §9.3); devices keep their keys.
         profile = nil
       case .freeze:
-        security.frozen = FreezeInfo(by: .holder, when: "today")
+        security.frozen = FreezeInfo(by: .holder, when: "today", inApp: true)
       case .unfreeze:
         security.frozen = nil
       case .deleteAccount:

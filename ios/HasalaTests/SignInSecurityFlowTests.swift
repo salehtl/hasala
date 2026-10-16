@@ -186,13 +186,36 @@ struct SignInSecurityFlowTests: AccountSuite {
     await m.confirm()
     guard case .frozen = session.phase else { Issue.record("not frozen: \(session.phase)"); return }
     session.leaveFrozen()
-    #expect(session.leftFrozen == FreezeInfo(by: .holder, when: "just now"))
+    #expect(session.leftFrozen == FreezeInfo(by: .holder, when: "just now", inApp: true))
     await m.request(.addPasskey)
     #expect(m.failure == .frozen)
     #expect(m.confirming == nil)
     await m.request(.deleteAccount)
     await m.confirm()
     #expect(session.phase == .signedOut)
+  }
+
+  /// Paper MTO: the holder's wall says the freeze came from our email (the cue for
+  /// "Someone may be reading your email"), unless it was made here.
+  @Test func theHolderWallSaysWhereTheFreezeCameFrom() {
+    #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20"))
+      == "\u{201C}Freeze my account\u{201D} was used from our email on Sun 11 Oct at 21:20. Nobody can sign in or change your keys until you sign in fully.")
+    #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: nil))
+      == "\u{201C}Freeze my account\u{201D} was used from our email. Nobody can sign in or change your keys until you sign in fully.")
+    #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "just now", inApp: true))
+      == "\u{201C}Freeze my account\u{201D} was used just now. Nobody can sign in or change your keys until you sign in fully.")
+  }
+
+  /// H9F's other-device row promises only what that device can do: without a build that
+  /// adds passkeys, only a passkey account's device shows the words.
+  @Test func theHonestEndPromisesOnlyWhatTheOtherDeviceCanDo() {
+    let paper = "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
+    #expect(HonestEndScreen.otherDevice(addsPasskeys: true, method: .password) == paper)
+    #expect(HonestEndScreen.otherDevice(addsPasskeys: false, method: .passkey).contains("can show your words"))
+    let passwordOnly = HonestEndScreen.otherDevice(addsPasskeys: false, method: .password)
+    #expect(!passwordOnly.contains("can show your words"))
+    #expect(passwordOnly.contains("can't be shown again"))
+    #expect(HonestEndScreen.otherDevice(addsPasskeys: false, method: nil).contains("where your passkey works"))
   }
 
   @Test func anOperatorFreezeStaysAnOperatorFreeze() async {
