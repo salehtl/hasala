@@ -368,17 +368,17 @@ public enum SyntheticMail {
 
 // MARK: - Through URLSession
 
-/// Serves a `FakeGmail` to a real `URLSession` (spec 04 §2.2 "FakeGmail (URLProtocol)"), so the
-/// production `URLSessionHTTPExchange` is exercised too: request encoding, headers, status and
-/// body handling, with no socket and no network.
+/// Serves a `FakeGmail` (or any in-process fake, e.g. `FakeGraph`) to a real `URLSession` (spec
+/// 04 §2.2 "FakeGmail (URLProtocol)"), so the production `URLSessionHTTPExchange` is exercised
+/// too: request encoding, headers, status and body handling, with no socket and no network.
 public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
   static let header = "X-Hasala-Fake-Gmail"
   private static let registry = NSLock()
-  nonisolated(unsafe) private static var fakes: [String: FakeGmail] = [:]
+  nonisolated(unsafe) private static var fakes: [String: any HTTPExchange] = [:]
   nonisolated(unsafe) private static var next = 0
 
   /// An ephemeral-configured exchange whose every request is answered by `fake`.
-  public static func exchange(for fake: FakeGmail) -> URLSessionHTTPExchange {
+  public static func exchange(for fake: any HTTPExchange) -> URLSessionHTTPExchange {
     let id = registry.withLock { () -> String in
       next += 1
       let id = "fake-\(next)"
@@ -421,9 +421,9 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
     Task {
       do {
         let res = try await fake.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
-        let http = HTTPURLResponse(url: url, statusCode: res.status, httpVersion: "HTTP/1.1", headerFields: [
-          "Content-Type": "application/json"
-        ])!
+        var fields = ["Content-Type": "application/json"]
+        for (k, v) in res.headers { fields[k] = v }
+        let http = HTTPURLResponse(url: url, statusCode: res.status, httpVersion: "HTTP/1.1", headerFields: fields)!
         client?.urlProtocol(protocolSelf.value, didReceive: http, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(protocolSelf.value, didLoad: res.body)
         client?.urlProtocolDidFinishLoading(protocolSelf.value)

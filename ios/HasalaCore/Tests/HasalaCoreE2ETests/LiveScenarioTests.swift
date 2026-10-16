@@ -6,6 +6,7 @@
 //   LiveGmailToReplayTests  FakeGmail alerts → the real MailboxEngine on A (stub
 //                           link server and step-up) → the real Outbox and
 //                           SyncEngine → hasalad → B pulls, folds and projects
+//   LiveOutlookToReplayTests  the same with FakeGraph and an OutlookProvider
 //
 // The account comes the way LiveHasaladTests' does: seeded in Postgres until
 // this base mounts the signup and sign-in routes (#43-#47, server PR #22), then
@@ -97,5 +98,15 @@ struct LiveGmailToReplayTests {
     let clock = FakeClock(ms: Scenarios.anchor)
     let (a, b) = try await Live.twoRuntimes(clock: clock)
     try await Scenarios.gmailToReplay(a, b, clock: clock)
+  }
+}
+
+@Suite("LiveOutlookToReplayTests", .enabled(if: Live.enabled), .serialized)
+struct LiveOutlookToReplayTests {
+  @Test("Outlook alerts read on A reach B through hasalad")
+  func outlook() async throws {
+    let clock = FakeClock(ms: Scenarios.anchor)
+    let (a, b) = try await Live.twoRuntimes(clock: clock)
+    try await Scenarios.outlookToReplay(a, b, clock: clock)
   }
 }
