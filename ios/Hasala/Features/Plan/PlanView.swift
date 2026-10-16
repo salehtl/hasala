@@ -81,13 +81,17 @@ private struct ReadyToAssignCard: View {
 
   private var poster: some View {
     VStack(alignment: .leading, spacing: 14) {
-      HStack(spacing: 8) {
-        // The plate goes at the accessibility sizes, so the overline can wrap on its own.
-        if !typeSize.isAccessibilitySize {
-          Circle().fill(HColor.posterGlyph).frame(width: 32, height: 32)
-            .overlay { PlanGlyph(kind: .wallet, size: 18, color: Hue.mint.ink, stroke: 2) }
-        }
+      // The plate beside the overline; at the accessibility sizes above it, so the overline
+      // has the card's width to wrap in. One layout either way, so the views keep their
+      // identity while the text size changes.
+      let header = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+        : AnyLayout(HStackLayout(spacing: 8))
+      header {
+        Circle().fill(HColor.posterGlyph).frame(width: 32, height: 32)
+          .overlay { PlanGlyph(kind: .wallet, size: 18, color: Hue.mint.ink, stroke: 2) }
         Text("Ready to assign").hType(.overline).foregroundStyle(Hue.mint.ink)
+          .fixedSize(horizontal: false, vertical: true)
           .accessibilityAddTraits(.isHeader)
       }
       VStack(alignment: .leading, spacing: 2) {
@@ -111,14 +115,17 @@ private struct ReadyToAssignCard: View {
       let layout = typeSize.isAccessibilitySize
         ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
       layout {
+        // Each pill takes the height its label needs (two lines at the largest sizes).
         Button("Assign") { model.moveMoney(to: nil) }
           .buttonStyle(.pill(.primary, size: .medium, fill: true))
+          .fixedSize(horizontal: false, vertical: true)
           .disabled(snap.readyToAssign.minor <= 0)
           .accessibilityIdentifier("plan.assign")
         // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
         if BuildSurface.showsUnfinished {
           Button("Auto-assign") { model.autoAssign() }
             .buttonStyle(.pill(.secondary, size: .medium, fill: typeSize.isAccessibilitySize))
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
       if BuildSurface.showsUnfinished {
