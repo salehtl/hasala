@@ -269,11 +269,6 @@ struct RuledNewPasswordField: UIViewRepresentable {
     f.spellCheckingType = .no
     f.font = .preferredFont(forTextStyle: .body)
     f.adjustsFontForContentSizeCategory = true
-    // One line can't wrap: at the accessibility sizes a shown long password ("copper lantern
-    // quietly 42") would end in "…" while the field isn't edited. It shrinks to fit instead,
-    // never below the default body size (requests/p1.md 2, Paper EZU-0 at AX3).
-    f.adjustsFontSizeToFitWidth = true
-    f.minimumFontSize = 17
     f.textColor = UIColor(HColor.fieldText)
     f.tintColor = UIColor(HColor.actionAccent)
     f.accessibilityIdentifier = identifier

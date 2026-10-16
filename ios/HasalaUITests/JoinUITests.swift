@@ -326,32 +326,6 @@ final class JoinUITests: XCTestCase {
     try audit(app, atLargeText: true)
   }
 
-  /// The password path's Create a password at AX3 (Paper EZU-0), with a long password shown:
-  /// the one-line field shrinks it to fit rather than ending it in "…".
-  @MainActor
-  func testThePasswordScreenAtLargeTextSizes() throws {
-    let app = launch(
-      scenario: "newUser", arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
-    tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
-    type(app, "invite.field", Self.invite)
-    tap(app, "invite.continue")
-    type(app, "about.name", "Maya Rahman")
-    type(app, "about.email", "maya@example.com")
-    tap(app, "about.continue")
-    type(app, "code.field", "123456")
-    tap(app, "method.password", timeout: 10)
-    tap(app, "method.continue")
-    type(app, "password.new", "copper lantern quietly 42")
-    type(app, "password.confirm", "copper lantern quietly 42")
-    app.buttons["Show password"].firstMatch.tap()
-    XCTAssertTrue(app.buttons["Hide password"].firstMatch.waitForExistence(timeout: 5))
-    // The keyboard down, so the audit sees the screen and not the system's keys.
-    app.swipeDown()
-    attach(app, "AX3 · Create a password")
-    try audit(app, atLargeText: true)
-  }
-
   /// Some element's label is `label` or contains it (combined rows read as one).
   @MainActor
   func has(_ app: XCUIApplication, _ label: String) -> Bool {
