@@ -8,13 +8,14 @@ import { WAITLIST_MODE } from '../lib/env';
 /**
  * The mail services the app reads bank alerts from, as shipped. The site
  * says "your email" everywhere; only MAIL and MAIL_NOTE name the services, so
- * adding one (Outlook) is a change to this list. Also update the footer's
- * trademark line and the legal pages (docs/legal) then.
+ * adding one is a change to this list. Also update the footer's trademark
+ * line and the legal pages (docs/legal) then. Outlook means personal Microsoft
+ * accounts only (MAIL_NOTE says so).
  */
-export const MAIL_PROVIDERS = ['Gmail'] as const;
-/** "Gmail", then "Gmail or Outlook". */
+export const MAIL_PROVIDERS = ['Gmail', 'Outlook'] as const;
+/** "Gmail or Outlook". */
 export const MAIL = new Intl.ListFormat('en', { type: 'disjunction' }).format(MAIL_PROVIDERS);
-export const MAIL_NOTE = `Hasala works with ${MAIL} for now.`;
+export const MAIL_NOTE = 'Hasala works with Gmail and with personal Outlook accounts (outlook.com, hotmail.com and live.com) for now. Work and school accounts aren’t supported yet.';
 
 export const SITE = {
   name: 'Hasala',
@@ -159,7 +160,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'email',
     q: 'What exactly can Hasala read in my email?',
     short: "Only your bank's alert emails, read-only.",
-    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. If the search also returns an email that only looks like your bank's, Hasala checks just its sender details on the phone and sets it aside. Hasala can't send, change or delete mail, and nothing is sent to an AI service. ${MAIL_NOTE}`,
+    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. Before it uses an email, your iPhone checks that it really came from your bank, and sets aside any that only looks like it did. Hasala can't send, change or delete mail, and nothing is sent to an AI service. ${MAIL_NOTE}`,
     more: { href: '/how-it-works#email', label: 'Connecting your email' },
   },
   {

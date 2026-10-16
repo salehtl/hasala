@@ -10,7 +10,7 @@ Both come from **review invites**. A review invite is an ordinary printed
 invite with one difference: the account it creates is a *review account*.
 `GET /api/v1/account` reports `review_account: true` for it, and only then
 (and only while the account has no transactions) does the app offer
-**"Use sample data"** at the Gmail step. Nothing else about a review account
+**"Use sample data"** at the email step (Connect your email). Nothing else about a review account
 differs, and the flag has no other effect on the server.
 
 Every command below runs on the QA host as the operator, through
@@ -26,6 +26,7 @@ placeholders; nothing real belongs in this file.
 | `<OLD_ACCOUNT_ID>` | the previous demo account's id, if one exists |
 | `<ACCOUNT_ID>` | an account id (36 lowercase characters) |
 | `<INVITE_ID>` | the first 8 hex characters `invite list` prints for an invite |
+| `<MS_TEST_ACCOUNT>` | the test Microsoft account's address: a personal outlook.com mailbox made for review, holding no real mail |
 
 ## 0. Before you start
 
@@ -87,8 +88,8 @@ step 3 uses it.
 4. The 12 recovery words: save them in the password manager entry, in order,
    exactly as shown. Confirm the four words the app asks for.
 5. Bank: pick a supported bank.
-6. At the Gmail step, **Use sample data** (it appears because the account is a
-   review account and has no transactions). Do not connect Gmail.
+6. At the email step, **Use sample data** (it appears because the account is a
+   review account and has no transactions). Do not connect Gmail or Outlook.
 7. Notifications: **Not now**. Then **Done**.
 8. Check Home shows the sample month and the **Sample data** label.
 
@@ -123,15 +124,39 @@ sudo hasala-admin invite mint --review --note app-review --ttl 336h
     verbatim, in order). Home shows sample data.
   - Path B, a new account: Join with one of the two invite codes (listed
     here) → any address you can read → the emailed code → "Use a password
-    instead" → keep the 12 words → at the Gmail step choose "Use sample
-    data". Gmail is optional; Google shows an "unverified app" screen, so
-    please skip it.
+    instead" → keep the 12 words → at the email step choose "Use sample
+    data". Connecting email is optional; Google shows an "unverified app"
+    screen for Gmail, so please skip Gmail.
+  - Outlook (optional): at the email step choose Outlook and sign in with
+    the test Microsoft account (address and password listed here). Only personal Microsoft accounts
+    (outlook.com, hotmail.com, live.com) work; work and school accounts are
+    refused by design. The test mailbox holds only synthetic mail, so it may
+    show no transactions. Connecting Outlook replaces any Gmail connection.
   - "Use sample data" appears only for review accounts: it fills the app with
     a sample month so the screens have something to show. There is no email
     behind those transactions.
   - To try account deletion, delete an account you created with Path B
     (Profile › Delete your account). Please do not delete the demo account:
     other reviewers sign in to it.
+
+### The test Microsoft account (Outlook)
+
+Give reviewers a test Microsoft account only when the build ships Outlook.
+
+1. Create a personal Microsoft account `<MS_TEST_ACCOUNT>` (outlook.com) for
+   review only. Never use the owner's account or the WP0 corpus mailbox, and
+   never put real bank mail in it.
+2. Turn off two-step verification on it, or Apple's reviewer cannot sign in.
+   Use a generated password of at least 20 characters, saved in the password
+   manager.
+3. Sign in with it once on the spare iPhone (Path B account, Outlook) to check
+   that Microsoft's consent screen lists only the read-mail permissions and
+   that the account has a mailbox.
+4. App Store Connect has one sign-in field, which holds the demo account.
+   Put `<MS_TEST_ACCOUNT>` and its password in the review notes, after the
+   Outlook line above. Never in this file or the repository.
+5. After the verdict, change its password and, at
+   account.live.com/consent/Manage, remove Hasala's permission.
 
 ## 6. While the build is in review
 
@@ -184,3 +209,4 @@ in Test Information:
 
 4. Remove the recovery words and the password from the review notes when the
    account is purged, and rotate the password-manager entry.
+5. Rotate the test Microsoft account (see "The test Microsoft account").
