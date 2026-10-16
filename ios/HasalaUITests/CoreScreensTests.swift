@@ -208,6 +208,27 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(element(app, "review.tab.count").waitForLabel("5 to sort · about a minute"))
   }
 
+  /// Let go before the commit point and the card springs back: no pick sheet, nothing
+  /// filed, the same card in front. Slow drags each way, short of the 100 pt point.
+  @MainActor
+  func testAShortDragSpringsBack() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    start.tap()
+    let merchant = element(app, "review.merchant")
+    XCTAssertTrue(merchant.waitForLabel(containing: "ADCB ATM withdrawal"), merchant.debugDescription)
+    let middle = element(app, "review.card").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    for offset in [CGVector(dx: 60, dy: 0), CGVector(dx: -60, dy: 0), CGVector(dx: 0, dy: -50), CGVector(dx: 0, dy: 50)] {
+      middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(offset), withVelocity: 120,
+                   thenHoldForDuration: 0.3)
+      XCTAssertFalse(element(app, "pick.sort").waitForExistence(timeout: 1), "a short drag committed")
+    }
+    XCTAssertTrue(merchant.label.contains("ADCB ATM withdrawal"))
+    XCTAssertEqual(element(app, "review.position").label, "1 of 6")
+  }
+
   /// The deck with Reduce Motion (`-HasalaMotion reduce`): nothing travels, but every sort
   /// still works, by drag, pill and Use, through to All caught up.
   @MainActor
