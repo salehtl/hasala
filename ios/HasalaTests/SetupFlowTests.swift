@@ -38,6 +38,9 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.step == .mail)
     // Two providers and none chosen yet: "Choose your email" over the bank step.
     #expect(m.choosingEmail && m.path.isEmpty)
+    // The view resumes when the derived step changes: nothing is pushed under the chooser.
+    m.resume()
+    #expect(m.choosingEmail && m.path.isEmpty)
     m.pickProvider(.gmail)
     #expect(!m.choosingEmail && m.path == [.connect(.gmail)])
     await m.connectMail(.gmail)

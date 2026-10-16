@@ -35,7 +35,7 @@ final class MailboxUITests: XCTestCase {
     let outlook = el(app, "mail.choose.outlook")
     XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
     attach(app, "Setup · Choose your email")
-    try audit(app)
+    try audit(app, overSheet: true)
     outlook.tap()
     let connect = el(app, "mail.connect.outlook")
     XCTAssertTrue(connect.waitForExistence(timeout: 5))

@@ -257,6 +257,10 @@ final class SetupModel {
   /// then Continue sends nothing again), then your email.
   func continueWithBanks() async {
     guard !chosenBanks.isEmpty, !busy else { return }
+    // The person moved on from the bank step here, so the stack follows them from now on:
+    // `resume()`, which the view runs when the derived step changes, must not build one
+    // under them (it pushed the email step behind "Choose your email", or twice).
+    didResume = true
     let banks = orderedBanks
     if draft.authored.banks != banks {
       busy = true

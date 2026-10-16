@@ -21,7 +21,7 @@ final class SetupUITests: XCTestCase {
     // Debug reads Gmail and Outlook: "Choose your email" over the bank step.
     XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: 5))
     attach(app, "Choose your email")
-    try audit(app)
+    try audit(app, overSheet: true)
     tap(app, "mail.choose.gmail")
     let connect = el(app, "mail.connect.gmail")
     XCTAssertTrue(connect.waitForExistence(timeout: 5))

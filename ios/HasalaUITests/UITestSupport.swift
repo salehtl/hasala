@@ -153,9 +153,15 @@ extension XCTestCase {
   ///   text: no element"), depending on which glyphs the blur lets through. Every screen
   ///   is also audited at the top, where nothing sits under the header, so text drawn
   ///   without an element is still caught there.
+  /// - With `overSheet`, an issue with no element while a sheet that fits its content is up
+  ///   (setup's "Choose your email"). The page behind shows above the sheet, dimmed and,
+  ///   rightly, out of the accessibility tree, so the audit reads its text as text with no
+  ///   element. That page is audited on its own before the sheet opens; an issue that names
+  ///   an element of the sheet still fails.
   @MainActor
   func audit(
-    _ app: XCUIApplication, atLargeText: Bool = false, file: StaticString = #filePath, line: UInt = #line
+    _ app: XCUIApplication, atLargeText: Bool = false, overSheet: Bool = false, file: StaticString = #filePath,
+    line: UInt = #line
   ) throws {
     let bars = [app.navigationBars.firstMatch, app.tabBars.firstMatch].filter(\.exists).map(\.frame)
     let underHeader = contentUnderHeader(app)
@@ -183,7 +189,7 @@ extension XCTestCase {
         if element.identifier == "hasala.cappedFigure" { return true }
         if bars.contains(where: { $0.intersects(element.frame) }) { return true }
       }
-      if issue.element == nil, underHeader { return true }
+      if issue.element == nil, underHeader || overSheet { return true }
       let element = issue.element.map { "'\($0.label)' [\($0.identifier)] \($0.elementType.rawValue) \($0.frame)" }
       issues.append("\(issue.compactDescription): \(element ?? "no element") — \(issue.detailedDescription)")
       return true
