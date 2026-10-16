@@ -155,7 +155,7 @@ struct BillsView: View {
       ? (unfinished ? .init(title: "Remind me", id: "bills.remind.\(item.id)") { model.remind(item.id) } : nil)
       : .init(title: "Details", id: "bills.details.\(item.id)") { open(item.id) }
     return BillCard(
-      hue: isLate ? .rose : .sand, icon: Self.posterIcon(item.glyph), name: item.name, pill: item.pill,
+      hue: isLate ? .rose : .sand, glyph: Self.posterGlyph(item), name: item.name, pill: item.pill,
       amount: item.amount, message: item.body, hidden: model.hidden,
       primary: isLate
         ? .init(title: "I paid it", id: "bills.paid.\(item.id)") { model.markPaid(item.id) }
@@ -163,10 +163,19 @@ struct BillsView: View {
       secondary: secondary, id: "bills.attention.\(item.id)")
   }
 
-  /// On a poster, insurance draws the plain shield (Paper's AXA card); rows and the bill's
-  /// own hero keep the shield with its tick.
-  static func posterIcon(_ glyph: Glyph) -> HIcon {
-    glyph == .insurance ? .shield : glyph.icon
+  /// On a poster, insurance draws the plain shield (Paper's AXA card) and a phone or internet
+  /// bill the wifi arcs (du's card, spec 13 B1); rows and the bill's own hero keep the
+  /// category's glyph (the shield with its tick, du's bolt). Live bills are named by their
+  /// category ("Utilities"), so there du keeps the bolt.
+  static func posterGlyph(_ item: BillAttention) -> PosterGlyph {
+    if item.glyph == .insurance { return .icon(.shield) }
+    if item.glyph == .utilities, isConnectivity(item.billKind) { return .wifi }
+    return .icon(item.glyph.icon)
+  }
+
+  private static func isConnectivity(_ kind: String) -> Bool {
+    let words = kind.lowercased()
+    return ["internet", "mobile", "phone", "telecom", "broadband"].contains { words.contains($0) }
   }
 
   // MARK: Found in your history
@@ -176,7 +185,8 @@ struct BillsView: View {
       HSectionHeader("Found in your history")
       ForEach(snap.found) { candidate in
         BillCard(
-          hue: .sky, icon: .subscriptions, name: candidate.name, pill: StatusPill("New bill found", tone: .accent),
+          hue: .sky, glyph: .icon(.subscriptions), name: candidate.name,
+          pill: StatusPill("New bill found", tone: .accent),
           amount: candidate.amount, caption: "every month", message: nil, hidden: model.hidden,
           primary: .init(title: "Track this bill", id: "bills.track.\(candidate.id)") { model.track(candidate.id) },
           secondary: .init(title: "Dismiss", id: "bills.dismiss.\(candidate.id)") { model.dismiss(candidate.id) },

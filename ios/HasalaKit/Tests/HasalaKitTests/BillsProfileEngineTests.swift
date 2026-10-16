@@ -16,6 +16,7 @@ struct BillsProfileEngineParityTests {
     #expect(b.income == BillsIncome(label: "Salary", amount: .aed(25_000_00), expected: "expected Wed 28 Oct"))
     #expect(b.needsALook.map(\.name) == ["AXA Insurance", "du"])
     #expect(b.needsALook.map(\.pill.text) == ["3 days past usual", "Price change"])
+    #expect(b.needsALook.map(\.billKind) == ["Car insurance", "Mobile and internet"])
     #expect(b.needsALook[0].body.rendered(hidden: false) == "Car insurance usually arrives on the 7th. No bank email yet.")
     #expect(b.needsALook[1].body.rendered(hidden: false) == "Charged 38.90 more than usual (389.00) on Mon 5 Oct.")
     #expect(b.needsALook[1].body.rendered(hidden: true) == "Charged •••• more than usual (••••) on Mon 5 Oct.")

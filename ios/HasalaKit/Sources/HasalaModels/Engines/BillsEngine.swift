@@ -12,6 +12,9 @@ public struct BillAttention: Sendable, Hashable, Identifiable {
   public var name: String
   public var glyph: Glyph
   public var kind: Kind
+  /// What the bill pays for, as the ledger names it ("Car insurance", "Mobile and internet");
+  /// the poster's glyph follows it where Paper's card does (du's wifi).
+  public var billKind: String
   public var amount: Money
   /// "Car insurance usually arrives on the 7th. No bank email yet."
   public var body: MoneyPhrase
@@ -160,7 +163,7 @@ public enum BillsEngine {
     for b in tracked where !b.isIncome && b.nextDue < today {
       let days = b.nextDue.days(until: today)
       attention.append(BillAttention(
-        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .late(days: days),
+        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .late(days: days), billKind: b.kind,
         amount: b.amount,
         body: MoneyPhrase(stringLiteral:
           "\(b.kind) usually arrives on the \(PlanEngine.ordinal(b.usualDay)). No bank email yet."),
@@ -171,7 +174,8 @@ public enum BillsEngine {
       guard let usual = b.priceChangeFrom else { continue }
       attention.append(BillAttention(
         id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .priceChange(usual: usual),
-        amount: b.amount, body: priceChange(b, usual: usual), pill: StatusPill("Price change", tone: .warning)
+        billKind: b.kind, amount: b.amount, body: priceChange(b, usual: usual),
+        pill: StatusPill("Price change", tone: .warning)
       ))
     }
 

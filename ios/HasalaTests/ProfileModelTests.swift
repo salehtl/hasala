@@ -1,3 +1,4 @@
+import HasalaDesign
 import HasalaMocks
 import HasalaModels
 import Testing
@@ -111,6 +112,20 @@ struct ProfileModelTests {
     bills.stopTracking("axa")
     #expect(bills.detail("axa") == nil)
     #expect(bills.snapshot.tracked == 8)
+  }
+
+  /// Needs a look's posters draw Paper's glyphs (1K9-0): the plain shield on AXA's, the wifi
+  /// arcs on du's (a phone and internet bill); a utility that isn't one keeps the bolt.
+  @Test func thePostersDrawTheirBoardsGlyphs() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let looks = BillsViewModel(app: app).snapshot.needsALook
+    let axa = try #require(looks.first { $0.id == "axa" })
+    let du = try #require(looks.first { $0.id == "du" })
+    #expect(BillsView.posterGlyph(axa) == .icon(.shield))
+    #expect(BillsView.posterGlyph(du) == .wifi)
+    var power = du
+    power.billKind = "Electricity & water"
+    #expect(BillsView.posterGlyph(power) == .icon(.utilities))
   }
 
   /// Accounts' view model: net worth and its parts, hidden with Hide amounts.

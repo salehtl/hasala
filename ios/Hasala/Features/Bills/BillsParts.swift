@@ -4,7 +4,7 @@ import SwiftUI
 
 // The parts Bills, one bill and Accounts share (Paper row 07 "Bills and accounts"): the pushed
 // page with its wash, the bill card with its poster, the bill row with a tag after its title,
-// and a line glyph the kit's icon set doesn't have.
+// and the line glyphs the kit's icon set doesn't have.
 
 /// A page pushed inside a tab or the profile sheet (Paper "Header · Pushed": Bills, AXA
 /// Insurance, Accounts): the system bar with the back button and the title, the wash that
@@ -64,7 +64,7 @@ struct BillCard<Extra: View>: View {
   }
 
   let hue: Hue
-  let icon: HIcon
+  let glyph: PosterGlyph
   let name: String
   let pill: StatusPill
   let amount: Money
@@ -114,7 +114,7 @@ struct BillCard<Extra: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       ReflowingRow(spacing: 6) {
         HStack(spacing: 8) {
-          GlyphPlate(icon: icon, hue: hue, size: 32)
+          plate
           Text(name).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
             .singleLineAtDefaultTextSize()
         }
@@ -136,6 +136,20 @@ struct BillCard<Extra: View>: View {
     .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
     .fixedSize(horizontal: false, vertical: true)
     .background(hue.perceptualGradient)
+  }
+
+  /// The 32 plate in `--color-poster-glyph` with the glyph at 18, stroke 2, in the hue's ink.
+  @ViewBuilder private var plate: some View {
+    switch glyph {
+    case .icon(let icon):
+      GlyphPlate(icon: icon, hue: hue, size: 32)
+    case .path(let stroke, let fill):
+      Circle()
+        .fill(HColor.posterGlyph)
+        .frame(width: 32, height: 32)
+        .overlay { PathGlyph(d: stroke, filled: fill, size: 18, color: hue.ink, lineWidth: 2) }
+        .accessibilityHidden(true)
+    }
   }
 
   @ViewBuilder private var buttons: some View {
@@ -166,12 +180,25 @@ struct BillCard<Extra: View>: View {
 }
 
 extension BillCard where Extra == EmptyView {
-  init(hue: Hue, icon: HIcon, name: String, pill: StatusPill, amount: Money, message: MoneyPhrase?, hidden: Bool,
-       primary: Action, secondary: Action?, id: String)
+  init(hue: Hue, glyph: PosterGlyph, name: String, pill: StatusPill, amount: Money, message: MoneyPhrase?,
+       hidden: Bool, primary: Action, secondary: Action?, id: String)
   {
-    self.init(hue: hue, icon: icon, name: name, pill: pill, amount: amount, caption: nil, message: message,
+    self.init(hue: hue, glyph: glyph, name: name, pill: pill, amount: amount, caption: nil, message: message,
               hidden: hidden, primary: primary, secondary: secondary, id: id) { EmptyView() }
   }
+}
+
+/// What a bill card's poster plate draws: one of the kit's icons, or a Paper path the kit
+/// doesn't carry (du's wifi).
+enum PosterGlyph: Equatable {
+  case icon(HIcon)
+  /// Stroked path data on the 24 grid, and an optional part that is filled.
+  case path(stroke: String, fill: String?)
+
+  /// Paper 1K9-0 · BillCard · Price change (du): three arcs and a dot at (12, 19.4), r 1.3.
+  static let wifi = PosterGlyph.path(
+    stroke: "M2.8 9.2a13.5 13.5 0 0 1 18.4 0M5.9 12.6a9 9 0 0 1 12.2 0M9 16a4.6 4.6 0 0 1 6 0",
+    fill: "M13.3 19.4a1.3 1.3 0 1 1-2.6 0a1.3 1.3 0 1 1 2.6 0Z")
 }
 
 /// A bill or income line (page 16 §12 BillRow): the 40 disc, the name with an optional tag
@@ -262,19 +289,25 @@ struct BillDetailParts: View {
 }
 
 /// A line glyph from Paper path data that the kit's icon set doesn't carry (the net worth
-/// arrow), on the 24 grid with round caps and joins. Decorative.
+/// arrow, du's wifi), on the 24 grid with round caps and joins, and an optional filled part
+/// (the wifi's dot). Decorative.
 struct PathGlyph: View {
   let d: String
+  var filled: String?
   var size: CGFloat = 16
   var color: Color
   var lineWidth: CGFloat = 2.4
 
   var body: some View {
     Canvas { context, canvas in
-      guard let svg = try? SVGPath(parsing: d) else { return }
-      let path = svg.path(in: CGRect(origin: .zero, size: canvas))
-      context.stroke(path, with: .color(color), style: StrokeStyle(
-        lineWidth: lineWidth * canvas.width / 24, lineCap: .round, lineJoin: .round))
+      let box = CGRect(origin: .zero, size: canvas)
+      if let svg = try? SVGPath(parsing: d) {
+        context.stroke(svg.path(in: box), with: .color(color), style: StrokeStyle(
+          lineWidth: lineWidth * canvas.width / 24, lineCap: .round, lineJoin: .round))
+      }
+      if let filled, let svg = try? SVGPath(parsing: filled) {
+        context.fill(svg.path(in: box), with: .color(color))
+      }
     }
     .frame(width: size, height: size)
     .accessibilityHidden(true)
