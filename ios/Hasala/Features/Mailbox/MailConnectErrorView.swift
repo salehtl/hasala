@@ -35,7 +35,7 @@ struct MailConnectErrorView: View {
     let copy = Self.copy(failure, provider)
     AccountScreen(title: copy.title, subtitle: copy.subtitle, steps: steps, back: .system) {
       if let reasons = copy.reasons {
-        ReasonsCard(title: reasons.title, items: reasons.items, numbered: reasons.numbered)
+        MailReasonsCard(title: reasons.title, items: reasons.items, numbered: reasons.numbered)
       }
     } footer: {
       if case .adminApprovalNeeded = failure {
@@ -57,7 +57,7 @@ struct MailConnectErrorView: View {
   struct Copy: Equatable {
     struct Reasons: Equatable {
       let title: String
-      let items: [ReasonsCard.Item]
+      let items: [MailReasonsCard.Item]
       let numbered: Bool
     }
 
@@ -87,8 +87,8 @@ struct MailConnectErrorView: View {
         reasons: Copy.Reasons(
           title: "What you can do",
           items: [
-            ReasonsCard.Item(title: "Ask your IT admin", detail: approve),
-            ReasonsCard.Item(title: "Use another mailbox", detail: other),
+            MailReasonsCard.Item(title: "Ask your IT admin", detail: approve),
+            MailReasonsCard.Item(title: "Use another mailbox", detail: other),
           ],
           numbered: true))
     case .cancelled:
@@ -98,8 +98,8 @@ struct MailConnectErrorView: View {
         reasons: Copy.Reasons(
           title: "Common reasons",
           items: [
-            ReasonsCard.Item(title: "Cancel or Back on \(provider.company)'s screen", detail: "Fine. Try again when you're ready."),
-            ReasonsCard.Item(
+            MailReasonsCard.Item(title: "Cancel or Back on \(provider.company)'s screen", detail: "Fine. Try again when you're ready."),
+            MailReasonsCard.Item(
               title: "Permissions not accepted",
               detail: "Hasala needs read-only mail access to see your bank alerts. Without it, it can't connect."),
           ],

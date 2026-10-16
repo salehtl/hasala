@@ -165,24 +165,6 @@ struct PaperGlyph: View {
   }
 }
 
-/// The Hasala app icon as a small tile (Paper "Slot mark · tile"): the coin over its slot on
-/// the icon's blue. The blues are the app icon's own artwork, as `HasalaMark`'s colours are,
-/// not interface tokens.
-struct AppIconTile: View {
-  var size: CGFloat = 36
-  var radius: CGFloat = 10
-
-  var body: some View {
-    RoundedRectangle(cornerRadius: radius, style: .continuous)
-      .fill(LinearGradient(
-        colors: [Color(HRGBA(84, 121, 255, 1)), Color(HRGBA(43, 74, 210, 1))],
-        startPoint: .top, endPoint: UnitPoint(x: 0.4, y: 1)))
-      .frame(width: size, height: size)
-      .overlay { HasalaMark().frame(width: size * 0.645, height: size * 0.38) }
-      .accessibilityHidden(true)
-  }
-}
-
 // MARK: - The read-only screen's parts
 
 /// "Gmail → This iPhone" (Paper "Flow · Gmail to this iPhone"): where the alerts come from
@@ -203,7 +185,10 @@ struct FlowStrip: View {
           .overlay { HIconView(.envelope, size: 20, color: Hue.sky.ink, strokeWidth: 1.9) }
       }
       arrow
-      chip(title: "This iPhone", detail: "Reads and sorts", lifted: true) { AppIconTile() }
+      chip(title: "This iPhone", detail: "Reads and sorts", lifted: true) {
+        // P1's tile (Paper "Slot mark · tile"), the one the join screens draw.
+        AppIconTile(size: 36, radius: 10)
+      }
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("From \(provider.appName), read-only, to this iPhone, which reads and sorts")
@@ -404,7 +389,7 @@ extension View {
 
 /// "What you can do" / "Common reasons" (Paper 1MUP, 1NQF): numbered or "?" badges, a title
 /// and a line each.
-struct ReasonsCard: View {
+struct MailReasonsCard: View {
   struct Item: Hashable {
     let title: String
     let detail: String
