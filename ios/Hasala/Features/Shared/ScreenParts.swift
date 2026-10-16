@@ -107,28 +107,6 @@ struct SectionTitle: View {
   }
 }
 
-/// "TODAY ……… 91.50": a day's overline with its total. At the accessibility sizes the total
-/// goes under the day, so the day never has to squeeze beside it (spec 04 §17).
-struct DayOverline: View {
-  let title: String
-  let total: Money
-  let hidden: Bool
-
-  var body: some View {
-    ReflowingRow {
-      Text(title).hType(.overline).foregroundStyle(HColor.textSecondary).accessibilityAddTraits(.isHeader)
-        .fixedSize(horizontal: false, vertical: true)
-    } trailing: {
-      MoneyText(total, figure: .badge, hidden: hidden, hiddenGlyphs: 3, color: HColor.textSecondary,
-                sign: total.isNegative ? .income : .none)
-    }
-    .padding(.horizontal, 4)
-    // One heading per day, not a small static figure on its own.
-    .accessibilityElement(children: .combine)
-    .accessibilityAddTraits(.isHeader)
-  }
-}
-
 /// A two-line navigation row: disc, title over detail, trailing value and chevron. A row
 /// that opens nothing (yet) leaves the chevron out, so it doesn't look tappable.
 struct NavRow<Leading: View, Trailing: View>: View {

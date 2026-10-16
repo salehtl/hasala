@@ -143,9 +143,9 @@ extension ReviewDeckModel {
 }
 
 /// Where the next review session starts. A To sort row asks for its own card first; the
-/// cover's route has no payload (`CoverRoute.review` is frozen, plan B7.2), so the request
-/// waits here for the session the cover makes (`requests/p6.md` asks for
-/// `CoverRoute.review(from:)` in Stage I).
+/// cover's route has no payload (`CoverRoute.review`, plan B7.2), so the request waits here
+/// for the session the cover makes. (Stage I kept this rather than give the route a payload,
+/// `requests/p6.md` 1: it works, its tests pass, and the change would touch every opener.)
 @MainActor
 enum ReviewEntry {
   private static weak var requester: AppModel?

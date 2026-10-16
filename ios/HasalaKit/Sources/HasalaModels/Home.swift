@@ -152,44 +152,12 @@ public struct SpendHero: Sendable, Hashable {
   public var left: Money { Money(minor: plan.minor - spent.minor, currency: plan.currency) }
 }
 
-/// The big figure on a Needs-you poster: a count ("6 to sort"), an amount, or a word
+/// The big figure on a brief card's poster: a count ("6 to sort"), an amount, or a word
 /// ("Gmail") when the card is about something with no number.
 public enum PosterFigure: Sendable, Hashable {
   case count(Int, unit: String)
   case money(Money)
   case word(String)
-}
-
-/// A brief card's content. Home no longer has a Needs-you rail (the bell's sheet replaced it,
-/// decided 14 Oct); the type stays for the design system's `BriefCard` initializer until
-/// Stage I removes it.
-public struct NeedsYouCard: Sendable, Hashable, Identifiable {
-  public var id: String
-  public var hue: Hue
-  public var glyph: Glyph
-  public var label: String
-  public var status: StatusPill
-  public var figure: PosterFigure
-  public var title: String
-  public var subtitle: MoneyPhrase
-  public var primaryAction: String
-  public var secondaryAction: String
-
-  public init(
-    id: String, hue: Hue, glyph: Glyph, label: String, status: StatusPill, figure: PosterFigure,
-    title: String, subtitle: MoneyPhrase, primaryAction: String, secondaryAction: String
-  ) {
-    self.id = id
-    self.hue = hue
-    self.glyph = glyph
-    self.label = label
-    self.status = status
-    self.figure = figure
-    self.title = title
-    self.subtitle = subtitle
-    self.primaryAction = primaryAction
-    self.secondaryAction = secondaryAction
-  }
 }
 
 // MARK: - Widgets (Paper "Widgets · launch set", the Home canvas)

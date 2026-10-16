@@ -59,12 +59,6 @@ public extension Hue {
   var end: Color { Color(tokens.end) }
   var ink: Color { Color(tokens.ink) }
 
-  /// The 160° poster/disc gradient Paper draws for this hue, interpolated in sRGB. New parts
-  /// draw `perceptualGradient`; this stays for the screens that still use it (until Stage I).
-  var gradient: LinearGradient {
-    LinearGradient(colors: [start, end], startPoint: Self.gradientStart, endPoint: Self.gradientEnd)
-  }
-
   /// The 160° gradient as Paper draws it: `linear-gradient(in oklab 160deg, start, end)`.
   var perceptualGradient: some ShapeStyle {
     Self.perceptual(start, end)

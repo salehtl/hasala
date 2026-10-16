@@ -425,7 +425,7 @@ public struct HIconView: View {
 }
 
 public extension Glyph {
-  /// The drawing for this semantic glyph (replaces `symbolName`, which stays until Stage I).
+  /// The drawing for this semantic glyph.
   var icon: HIcon {
     switch self {
     case .review: .monitor

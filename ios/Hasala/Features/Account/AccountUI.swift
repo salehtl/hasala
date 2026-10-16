@@ -814,23 +814,6 @@ struct LockNote: View {
   }
 }
 
-/// A round icon disc for rows and cards.
-struct IconDisc: View {
-  var systemImage: String
-  var tint: Color = HColor.actionAccentSubtle
-  var ink: Color = HColor.actionAccent
-  var size: CGFloat = 40
-
-  var body: some View {
-    Image(systemName: systemImage)
-      .font(.system(size: size * 0.42, weight: .medium))
-      .foregroundStyle(ink)
-      .frame(width: size, height: size)
-      .background(tint, in: Circle())
-      .accessibilityHidden(true)
-  }
-}
-
 /// A filling pill for a step's main action: the kit's loading state (spinner and label,
 /// same size, taps blocked) while `busy`, and Paper's disabled fill until `enabled`.
 struct BusyButton: View {

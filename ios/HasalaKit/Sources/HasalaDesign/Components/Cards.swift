@@ -49,29 +49,6 @@ public struct BriefCard: View {
   @Environment(\.dynamicTypeSize) private var typeSize
   private var accessibilityLayout: Bool { typeSize.isAccessibilitySize }
 
-  /// A Needs-you card on the 272 rail (identifier "needsYou.<id>"). Kept until Stage I.
-  public init(
-    _ card: NeedsYouCard, hidden: Bool, onPrimary: @escaping () -> Void = {}, onSecondary: @escaping () -> Void = {}
-  ) {
-    self.id = "needsYou.\(card.id)"
-    self.hue = card.hue
-    self.icon = card.glyph.icon
-    self.label = card.label
-    self.status = card.status
-    self.figure = card.figure
-    self.figureCaption = nil
-    self.title = card.title
-    self.message = card.subtitle
-    self.primaryTitle = card.primaryAction
-    self.secondaryTitle = card.secondaryAction
-    self.secondaryWidth = 88
-    self.poster = .tall120
-    self.width = HContainer.briefCard
-    self.hidden = hidden
-    self.onPrimary = onPrimary
-    self.onSecondary = onSecondary
-  }
-
   /// A decision card. `figureCaption` follows the figure in on-hue secondary ("every month");
   /// `title` is the tall poster's headline. Rose is for a bill that may be late only, sand for a
   /// price change, sky for a new bill.

@@ -19,12 +19,7 @@ public struct GlassToast: View {
     case ink(HIcon)
   }
 
-  private enum Leading {
-    case disc(Disc)
-    case symbol(String)
-  }
-
-  private let leading: Leading
+  private let disc: Disc
   let title: String
   let subtitle: String?
   let actionTitle: String?
@@ -36,19 +31,7 @@ public struct GlassToast: View {
   public init(_ disc: Disc = .accent(.check), title: String, subtitle: String? = nil, actionTitle: String? = nil,
               action: (() -> Void)? = nil)
   {
-    self.leading = .disc(disc)
-    self.title = title
-    self.subtitle = subtitle
-    self.actionTitle = actionTitle
-    self.action = action
-  }
-
-  /// The first kit's toast, with an SF Symbol on an ink disc (kept until Stage I).
-  public init(
-    systemImage: String, title: String, subtitle: String? = nil, actionTitle: String? = nil,
-    action: (() -> Void)? = nil
-  ) {
-    self.leading = .symbol(systemImage)
+    self.disc = disc
     self.title = title
     self.subtitle = subtitle
     self.actionTitle = actionTitle
@@ -96,22 +79,15 @@ public struct GlassToast: View {
   }
 
   @ViewBuilder private var discView: some View {
-    switch leading {
-    case .disc(.accent(let icon)):
+    switch disc {
+    case .accent(let icon):
       Circle().fill(HColor.actionAccent).frame(width: 36, height: 36)
         .overlay { HIconView(icon, size: HSpacing.iconInline, color: HColor.iconOnAccent, strokeWidth: 2.6) }
         .accessibilityHidden(true)
-    case .disc(.ink(let icon)):
+    case .ink(let icon):
       Circle().fill(HColor.textPrimary).frame(width: 36, height: 36)
         .overlay { HIconView(icon, size: HSpacing.iconInline, color: HColor.white, strokeWidth: 2.1) }
         .accessibilityHidden(true)
-    case .symbol(let name):
-      Circle()
-        .fill(HColor.surfaceInverse)
-        .frame(width: 36, height: 36)
-        .overlay {
-          Image(systemName: name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HColor.white)
-        }
     }
   }
 }

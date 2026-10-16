@@ -113,8 +113,6 @@ public struct HType: Sendable, Hashable {
   /// Small button (36-tall pills, chips): 15/20, 600, no tracking.
   public static let smallButton = HType(size: HFontSize.subheadline, leading: HLeading.subheadline,
                                         weight: .semibold, textStyle: .subheadline)
-  /// The old name of `smallButton` (kept until Stage I).
-  public static let buttonSmall = smallButton
   /// Text button (header links "See all", "Edit"): 17/24, 500, −0.15, in `--color-text-link`.
   public static let textButton = HType(size: HFontSize.body, leading: HLeading.body, weight: .medium,
                                        tracking: HTracking.body, textStyle: .body)

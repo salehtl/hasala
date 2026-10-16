@@ -15,17 +15,6 @@ public struct AmbientWash: View {
     self.height = height ?? wash.height
   }
 
-  /// The hue form: sky, sand and rose are the three verdict washes (on track, over pace,
-  /// over budget); lilac, peach and mint tint a category or project detail.
-  public init(_ hue: Hue, height: CGFloat = 420) {
-    switch hue {
-    case .sky: self.init(.onTrack, height: height)
-    case .sand: self.init(.overPace, height: height)
-    case .rose: self.init(.overBudget, height: height)
-    default: self.init(.hue(hue), height: height)
-    }
-  }
-
   public var body: some View {
     ZStack {
       WashLayer(wash: wash)

@@ -18,9 +18,10 @@ extension View {
       .presentationCornerRadius(HRadius.sheet)
       .presentationBackground(HColor.sheetSurface)
       .presentationDragIndicator(.visible)
-      // The shell presents this sheet with `.presentationDetents([.large])` (MainView, frozen),
-      // and the outer modifier wins over this one; until Stage I drops it (requests/p7.md),
-      // the sheet's own controller is fitted to the content directly.
+      // The shell presents this sheet with `.presentationDetents([.large])` (MainView), and
+      // the outer modifier wins over this one, so the sheet's own controller is fitted to the
+      // content directly. Stage I kept both (requests/p7.md): the controller also takes the
+      // bottom safe area off the detent, which SwiftUI's `.height` alone would not.
       .background {
         if !large { FittedSheetDetent(height: height, large: large).frame(width: 0, height: 0) }
       }
