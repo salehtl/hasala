@@ -138,6 +138,21 @@ struct RuntimeGlueTests {
         == #"{"provider":"outlook","id_token":"id","step_up":{"kind":"device"}}"#)
   }
 
+  @Test("route 37 names the link's provider; an older server's link is Gmail; no link has none")
+  func linkProvider() async throws {
+    let (s, _) = try Self.secrets()
+    func server(_ status: Int, _ body: String) -> HTTPMailboxServer {
+      let t = Recorder(.success(APIResponse(status: status, body: Data(body.utf8))))
+      return HTTPMailboxServer(http: SessionHTTPExchange(transport: t, secrets: s), base: "https://api.hasala.app")
+    }
+    let outlook = try await server(200, #"{"provider":"outlook","holder":{"is_this_device":false}}"#).linkStatusAndProvider()
+    #expect(outlook.0 == .holder(isThisDevice: false, watchExpiresAtMs: nil) && outlook.1 == .outlook)
+    let older = try await server(200, #"{"holder":{"is_this_device":true}}"#).linkStatusAndProvider()
+    #expect(older.1 == .gmail)
+    let none = try await server(404, #"{"error":"no_link"}"#).linkStatusAndProvider()
+    #expect(none.0 == .noLink && none.1 == nil)
+  }
+
   @Test("meta's push settings, per provider: a topic, both Outlook URLs, or none")
   func pushConfig() async throws {
     let (s, _) = try Self.secrets()

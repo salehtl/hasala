@@ -12,14 +12,15 @@ import SwiftUI
 /// A Release build shows only rows that work (`BuildSurface`): the pages still to come
 /// (bank alerts, accounts, privacy) and the settings with nothing behind them yet (Face ID
 /// lock, notifications) are left out, and account actions follow `capabilities`. The bank
-/// alerts card offers "Connect Gmail" or "Reconnect Gmail" when Gmail needs it, in every build.
+/// alerts card names the linked mailbox and offers "Connect your email" or "Reconnect Gmail"
+/// when it needs it, or another provider while it works, in every build.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
   @State private var model: ProfileViewModel
   @State private var path: [ProfileRoute] = []
   @State private var confirmSignOut = false
-  /// The Gmail connect sheet, over this one.
-  @State private var connecting: GmailOffer?
+  /// The mailbox connect sheet, over this one.
+  @State private var connecting: MailboxOffer?
   /// Sign-in & security's state, for its row's status; nil until read.
   @State private var security: SecurityState?
   @Environment(\.dismiss) private var dismiss
@@ -76,7 +77,7 @@ struct ProfileSheet: View {
       .navigationDestination(for: ProfileRoute.self) { route in
         ProfilePage(app: app, model: model, route: route)
       }
-      .sheet(item: $connecting) { GmailConnectSheet(app: app, offer: $0) }
+      .sheet(item: $connecting) { MailboxConnectSheet(app: app, offer: $0) }
       // Read again each time the profile shows, so a change on Sign-in & security shows.
       .task { security = try? await session?.account.securityState() }
       .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
@@ -120,10 +121,15 @@ struct ProfileSheet: View {
   }
 
   /// The bank alerts status. It opens Profile › Bank alerts where that page exists; a
-  /// Release build shows the status alone. When Gmail needs connecting or reconnecting, the
-  /// card says so and offers it (spec 04 §7.4).
+  /// Release build shows the status alone. When the mailbox needs connecting or reconnecting,
+  /// the card says so and offers it (spec 04 §7.4); while it works, and the build connects
+  /// another provider, it offers that one (a switch, confirmed first).
   private var mailboxCard: some View {
-    let offer = app.gmailOffer
+    let offer = app.mailboxOffer
+    let shown: MailboxOffer? = {
+      if case .change? = offer { return nil }
+      return offer
+    }()
     return VStack(alignment: .leading, spacing: 12) {
       if unfinished {
         Button { path.append(.bankAlerts) } label: { mailboxStatus(offer, chevron: true) }
@@ -136,20 +142,20 @@ struct ProfileSheet: View {
       }
       if let offer {
         Button(offer.action) { connecting = offer }
-          .buttonStyle(.pill(.primary, size: .small))
-          .accessibilityIdentifier("profile.connectGmail")
+          .buttonStyle(.pill(shown == nil ? .tertiary : .primary, size: .small))
+          .accessibilityIdentifier(shown == nil ? "profile.changeMailbox" : "profile.connectMailbox")
       }
     }
     .padding(16)
-    .background(Self.hue(snap.mailbox.status, offer).gradient,
+    .background(Self.hue(snap.mailbox.status, shown).gradient,
                 in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
   }
 
-  static func hue(_ status: MailboxHealth.Status, _ offer: GmailOffer?) -> Hue {
+  static func hue(_ status: MailboxHealth.Status, _ offer: MailboxOffer?) -> Hue {
     switch offer {
     case .connect: return .sky
     case .reconnect: return .rose
-    case nil: break
+    case .change, nil: break
     }
     switch status {
     case .working, .importing: return .mint
@@ -159,20 +165,28 @@ struct ProfileSheet: View {
     }
   }
 
-  /// The card's title: what Gmail needs, when it needs something, else the status.
-  static func title(_ status: MailboxHealth.Status, _ offer: GmailOffer?) -> String {
+  /// The card's title: what the mailbox needs, when it needs something, else the status.
+  static func title(_ status: MailboxHealth.Status, _ offer: MailboxOffer?, linked: MailboxProvider? = nil) -> String {
     if let offer { return offer.status }
     switch status {
     case .working: return "Bank alerts are working"
     case .importing: return "Importing your bank alerts"
     case .quiet: return "Bank alerts went quiet"
-    case .reconnect: return GmailOffer.reconnect.status
-    case .notConnected: return GmailOffer.connect.status
+    case .reconnect: return MailboxOffer.reconnect(linked ?? .gmail).status
+    case .notConnected: return MailboxOffer.connect.status
     }
   }
 
-  private func mailboxStatus(_ offer: GmailOffer?, chevron: Bool) -> some View {
+  /// "From Gmail" (or Outlook): which mailbox the alerts are read from.
+  static func source(_ linked: MailboxProvider?) -> String? { linked.map { "From \($0.name)" } }
+
+  private func mailboxStatus(_ offer: MailboxOffer?, chevron: Bool) -> some View {
     let m = snap.mailbox
+    let offer: MailboxOffer? = {
+      if case .change? = offer { return nil }
+      return offer
+    }()
+    let linked = app.mailbox?.linkedProvider
     let hue = Self.hue(m.status, offer)
     return HStack(spacing: 12) {
       Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
@@ -181,7 +195,15 @@ struct ProfileSheet: View {
         }
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 0) {
-        Text(Self.title(m.status, offer)).hType(.headline).foregroundStyle(HColor.textPrimary)
+        Text(Self.title(m.status, offer, linked: linked)).hType(.headline).foregroundStyle(HColor.textPrimary)
+        if let halt = app.mailbox?.haltMessage {
+          Text(halt).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("profile.mailboxHalt")
+        }
+        if let source = Self.source(linked) {
+          Text(source).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        }
         if !m.lastEmail.isEmpty {
           Text("Last email \(m.lastEmail)").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
         }
@@ -343,8 +365,8 @@ private struct ProfilePage: View {
       NotificationSettingsPage(model: model)
     case .bankAlerts:
       // TODO(spec 04 §16.1 "Profile · Bank alerts", §7.10): BankAlertsView (Gmail status, banks, Needs a look,
-      // disconnect, read here instead) from the Gmail lane's MailboxSource.
-      placeholder("Profile · Bank alerts", "envelope", "Your Gmail connection, banks and any email we couldn't read.")
+      // disconnect, read here instead) from the mailbox lane's MailboxSource.
+      placeholder("Profile · Bank alerts", "envelope", "Your email connection, banks and any email we couldn't read.")
     case .accounts:
       // TODO(spec 04 §16.1 "Accounts", "Accounts · Check in"): AccountsView and Check in.
       placeholder("Accounts", "building.columns", "Net worth, your accounts and check-ins.")

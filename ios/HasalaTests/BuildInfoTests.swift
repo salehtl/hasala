@@ -15,6 +15,8 @@ struct BuildInfoTests {
     "HasalaGoogleClientID": "unset",
     "HasalaGoogleRedirectScheme": "unset",
     "HasalaGmailPubSubTopic": "projects/example-project/topics/example-topic",
+    "HasalaOutlookClientID": "unset",
+    "HasalaOutlookRedirectScheme": "msauth.app.hasala.ios",
   ]
 
   @Test func parsesAndFormatsTheFooter() throws {
@@ -102,5 +104,19 @@ struct BuildInfoTests {
     #expect(!id.isEmpty)
     #expect(info.googleRedirectScheme == "com.googleusercontent.apps.\(id)")
     #expect(info.gmailPubSubTopic == "unset")
+  }
+
+  /// The Outlook redirect scheme is the contract's; the client id is a UUID once the owner
+  /// registers the Entra app, `unset` until then (Outlook is then not offered).
+  @Test func theBundleCarriesTheOutlookSettings() throws {
+    let info = try BuildInfo(infoDictionary: Bundle.main.infoDictionary ?? [:])
+    #expect(info.outlookRedirectScheme == "msauth.app.hasala.ios")
+    #expect(info.outlookClientID == "unset" || UUID(uuidString: info.outlookClientID) != nil)
+  }
+
+  @Test func theOutlookKeysAreRequired() {
+    var d = good
+    d["HasalaOutlookClientID"] = nil
+    #expect(throws: BuildInfo.Problem.missing("HasalaOutlookClientID")) { try BuildInfo(infoDictionary: d) }
   }
 }

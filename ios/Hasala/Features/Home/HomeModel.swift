@@ -31,7 +31,7 @@ final class HomeViewModel: HomeModel {
   var snapshot: HomeSnapshot {
     var snap = app.snapshot
     // A card put off with "Later" leaves the rail's count and subtitle as they were.
-    if let offer = app.gmailOffer, !app.snoozed.contains(offer.cardID) {
+    if let offer = app.mailboxOffer, offer.onHome, !app.snoozed.contains(offer.cardID) {
       snap.needsYou = offer.adding(to: snap.needsYou)
     }
     snap.needsYou.cards.removeAll { app.snoozed.contains($0.id) }
@@ -45,8 +45,8 @@ final class HomeViewModel: HomeModel {
   var hidden: Bool { app.amountsHidden }
 
   func needsYou(_ card: String, primary: Bool) -> HomeRoute? {
-    if let offer = GmailOffer(cardID: card) {
-      if primary { app.sheet = .connectGmail(offer) } else { app.snooze(card) }
+    if let offer = app.mailboxOffer, offer.cardID == card {
+      if primary { app.sheet = .connectMailbox(offer) } else { app.snooze(card) }
       return nil
     }
     if card == "review" {
@@ -90,14 +90,14 @@ final class HomeViewModel: HomeModel {
   }
 }
 
-/// Home's Gmail card (spec 04 §6.6 row 4: Gmail was skipped; §7.4: Google wants a new
-/// sign-in), first in Needs you.
-extension GmailOffer {
-  var cardID: String { "gmail.\(rawValue)" }
+/// Home's mailbox card (spec 04 §6.6 row 4: the mailbox step was skipped; §7.4: the provider
+/// wants a new sign-in), first in Needs you. A change of provider is Profile's only.
+extension MailboxOffer {
+  var cardID: String { id }
 
-  init?(cardID: String) {
-    guard cardID.hasPrefix("gmail.") else { return nil }
-    self.init(rawValue: String(cardID.dropFirst("gmail.".count)))
+  var onHome: Bool {
+    if case .change = self { return false }
+    return true
   }
 
   var card: NeedsYouCard {
@@ -105,14 +105,14 @@ extension GmailOffer {
     case .connect:
       NeedsYouCard(
         id: cardID, hue: .sky, glyph: .envelope, label: "Bank alerts",
-        status: StatusPill("Not connected", tone: .warning), figure: .word("Gmail"),
-        title: "Connect Gmail", subtitle: "Your bank alerts aren't read yet",
+        status: StatusPill("Not connected", tone: .warning), figure: .word("Email"),
+        title: "Connect your email", subtitle: "Your bank alerts aren't read yet",
         primaryAction: "Connect", secondaryAction: "Later")
-    case .reconnect:
+    case .reconnect(let p), .change(let p):
       NeedsYouCard(
         id: cardID, hue: .rose, glyph: .envelope, label: "Bank alerts",
-        status: StatusPill("Stopped", tone: .error), figure: .word("Gmail"),
-        title: "Reconnect Gmail", subtitle: "New bank alerts aren't read",
+        status: StatusPill("Stopped", tone: .error), figure: .word(p.name),
+        title: "Reconnect \(p.name)", subtitle: "New bank alerts aren't read",
         primaryAction: "Reconnect", secondaryAction: "Later")
     }
   }

@@ -48,48 +48,55 @@ struct ScreenModelTests {
     #expect(app.tab == .activity)
   }
 
-  /// Gmail skipped at setup: Home's Needs you leads with "Connect Gmail" (spec 04 §6.6 row 4);
-  /// "Connect" opens the connect sheet and "Later" puts it off.
-  @Test func homeOffersConnectGmailWhenTheLaneSaysSo() throws {
+  /// The mailbox skipped at setup: Home's Needs you leads with "Connect your email" (spec 04
+  /// §6.6 row 4); "Connect" opens the connect sheet and "Later" puts it off.
+  @Test func homeOffersConnectMailboxWhenTheLaneSaysSo() throws {
     let mailbox = MockMailbox()
     let app = AppModel(store: InMemoryLedger(), mailbox: mailbox)
     let home = HomeViewModel(app: app)
     #expect(home.snapshot == Maya.home)
-    mailbox.gmailOffer = .connect
+    mailbox.mailboxOffer = .connect
     let rail = home.snapshot.needsYou
     let card = try #require(rail.cards.first)
-    #expect(card.id == "gmail.connect" && card.title == "Connect Gmail" && card.primaryAction == "Connect")
+    #expect(card.id == "mailbox.connect" && card.title == "Connect your email" && card.primaryAction == "Connect")
     #expect(rail.count == Maya.home.needsYou.count + 1)
     #expect(rail.subtitle == Maya.home.needsYou.subtitle)
     #expect(home.needsYou(card.id, primary: true) == nil)
-    #expect(app.sheet == .connectGmail(.connect))
+    #expect(app.sheet == .connectMailbox(.connect))
     app.sheet = nil
     #expect(home.needsYou(card.id, primary: false) == nil)
     #expect(app.sheet == nil)
-    #expect(!home.snapshot.needsYou.cards.contains { $0.id == "gmail.connect" })
+    #expect(!home.snapshot.needsYou.cards.contains { $0.id == "mailbox.connect" })
     #expect(home.snapshot == Maya.home)  // the count and subtitle too
 
-    mailbox.gmailOffer = .reconnect
+    mailbox.mailboxOffer = .reconnect(.gmail)
     #expect(home.snapshot.needsYou.cards.first?.title == "Reconnect Gmail")
-    mailbox.gmailOffer = nil
+    mailbox.mailboxOffer = .reconnect(.outlook)
+    #expect(home.snapshot.needsYou.cards.first?.title == "Reconnect Outlook")
+    #expect(home.snapshot.needsYou.cards.first?.id == "mailbox.reconnect.outlook")
+    // A change of provider is Profile's only.
+    mailbox.mailboxOffer = .change(.gmail)
+    #expect(home.snapshot == Maya.home)
+    mailbox.mailboxOffer = nil
     #expect(home.snapshot == Maya.home)
   }
 
   @Test func theGmailCardSaysWhatNeedsDoingWhenItIsAlone() {
-    let rail = GmailOffer.reconnect.adding(to: NeedsYouRail(count: 0, subtitle: "All caught up", cards: []))
-    #expect(rail.count == 1 && rail.cards.map(\.id) == ["gmail.reconnect"])
+    let rail = MailboxOffer.reconnect(.gmail).adding(to: NeedsYouRail(count: 0, subtitle: "All caught up", cards: []))
+    #expect(rail.count == 1 && rail.cards.map(\.id) == ["mailbox.reconnect.gmail"])
     #expect(rail.subtitle == "Gmail needs reconnecting")
-    #expect(GmailOffer(cardID: "gmail.connect") == .connect)
-    #expect(GmailOffer(cardID: "review") == nil && GmailOffer(cardID: "gmail.other") == nil)
   }
 
   /// The Profile card says what Gmail needs before its status; Sign-in & security's row
   /// shows that page's own status.
   @Test func theProfileCardsSayWhatIsTrue() {
     #expect(ProfileSheet.title(.working, nil) == "Bank alerts are working")
-    #expect(ProfileSheet.title(.working, .connect) == "Gmail isn't connected")
+    #expect(ProfileSheet.title(.working, .connect) == "Email isn't connected")
     #expect(ProfileSheet.title(.reconnect, nil) == "Gmail needs reconnecting")
-    #expect(ProfileSheet.hue(.working, .reconnect) == .rose)
+    #expect(ProfileSheet.title(.reconnect, nil, linked: .outlook) == "Outlook needs reconnecting")
+    #expect(ProfileSheet.hue(.working, .reconnect(.gmail)) == .rose)
+    #expect(ProfileSheet.hue(.working, .change(.gmail)) == .mint)
+    #expect(ProfileSheet.source(.outlook) == "From Outlook" && ProfileSheet.source(nil) == nil)
     let passkey = MockAccountService.securityState(for: .passkey)
     #expect(ProfileSheet.securityStatus(passkey).text == "Protected")
     #expect(ProfileSheet.securityStatus(passkey).tone == .success)

@@ -468,7 +468,7 @@ final class LiveAccountService: AccountService {
         // (users.stop, then the revoke), so a cancelled step-up keeps Gmail working; the
         // server drops the link with the account.
         let ctx = try hooks.context() ?? Enrolment.context(env, binding: b)
-        let grant = GmailLane.heldGrant(secrets: env.secrets, userID: ctx.userID)
+        let grant = MailboxLane.heldGrant(secrets: env.secrets, userID: ctx.userID)
         await hooks.pause()
         do {
           try await AccountManagement.deleteAccount(env, ctx: ctx, factor: factor, binding: b)
@@ -485,7 +485,7 @@ final class LiveAccountService: AccountService {
         // writer is revoked at its verified head (#25) and the local data is wiped. A
         // cancelled or failed step-up registers for wakes again.
         guard let engine = hooks.engine() else { throw AuthFailure.refused }
-        let grant = b.userID.flatMap { GmailLane.heldGrant(secrets: env.secrets, userID: $0) }
+        let grant = b.userID.flatMap { MailboxLane.heldGrant(secrets: env.secrets, userID: $0) }
         await hooks.pause()
         await PushRegistrar.shared.unregister()
         do {
@@ -610,11 +610,11 @@ final class LiveAccountService: AccountService {
   /// The account's data left this iPhone (deleted, removed): the session item, what the
   /// iPhone noted about the account, and this iPhone's Google grant (ended at Google
   /// in the background; `users.stop` only when the account itself is gone).
-  private func leftThisIPhone(grant: String?, stopWatch: Bool) {
+  private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) {
     try? env.secrets.deleteSession()
     LocalAccountData.forget()
     clearSignedIn()
-    if let grant, let build { Task { await GmailLane.endGrant(grant, build: build, stopWatch: stopWatch) } }
+    if let grant, let build { Task { await MailboxLane.endGrant(grant, build: build, stopWatch: stopWatch) } }
   }
 
   /// Forgets everything held in memory for the account (the gate erased this iPhone's data).

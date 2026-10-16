@@ -20,6 +20,12 @@ nonisolated public struct BuildInfo: Sendable, Equatable {
   public let googleRedirectScheme: String
   /// `HasalaGmailPubSubTopic`; the server's value wins on a mismatch (spec 04 §7.2).
   public let gmailPubSubTopic: String
+  /// `HasalaOutlookClientID`: the Entra app's client id (a public client, no secret); `unset`
+  /// until the owner registers the app, and then "Outlook" is not offered.
+  public let outlookClientID: String
+  /// `HasalaOutlookRedirectScheme`: `msauth.app.hasala.ios`; deliberately not registered in
+  /// CFBundleURLTypes (inspect-ipa.sh I4), like Google's.
+  public let outlookRedirectScheme: String
 
   public enum Problem: Error, Equatable {
     case missing(String)
@@ -47,6 +53,8 @@ nonisolated public struct BuildInfo: Sendable, Equatable {
     googleClientID = try string("HasalaGoogleClientID")
     googleRedirectScheme = try string("HasalaGoogleRedirectScheme")
     gmailPubSubTopic = try string("HasalaGmailPubSubTopic")
+    outlookClientID = try string("HasalaOutlookClientID")
+    outlookRedirectScheme = try string("HasalaOutlookRedirectScheme")
   }
 
   /// This build's values. A missing or malformed key is a build defect, so it traps.
