@@ -2,9 +2,9 @@ import HasalaDesign
 import HasalaModels
 import Observation
 
-/// Activity · Overview and Filtered (spec 04 §16.1 "Activity · Overview", "Activity · Filtered"; §15.1 pattern).
-/// Views bind to this protocol; `ActivityViewModel` is the one implementation, over any
-/// `LedgerStore` (the Maya mock now, the projection later).
+/// Activity · Overview and Filtered (Paper 1QG-0, 7LT-0). Views bind to this protocol;
+/// `ActivityViewModel` is the one implementation, over any `LedgerStore` (the Maya mock in
+/// Debug, the projection in every real build).
 @MainActor
 protocol ActivityModel: AnyObject, Observable {
   var snapshot: ActivitySnapshot { get }
@@ -13,7 +13,12 @@ protocol ActivityModel: AnyObject, Observable {
   var exportRows: [ExportRow] { get }
   func select(_ kind: TxnFilter.Kind)
   func search(_ text: String)
+  /// Narrows the list to one category ("Activity · Filtered"); nil goes back to everything.
+  func show(category: CategoryID?)
+  /// Shows exactly this filter (a request from Search).
+  func apply(_ filter: TxnFilter)
   func open(_ txn: TxnID)
+  func openBill(_ bill: BillID)
   func startReview()
   func addTransaction()
 }
@@ -43,19 +48,53 @@ final class ActivityViewModel: ActivityModel {
   var exportRows: [ExportRow] {
     exportMemo.value(for: [app.store.revision, filter]) {
       let s = app.store.state
-      let ids = Set(snapshot.days.flatMap(\.rows).map(\.id))
+      let snap = snapshot
+      let ids = Set(snap.days.flatMap(\.rows).map(\.id) + snap.rows.map(\.id))
       return s.txns.filter { ids.contains($0.id) }.map { ExportRow($0, s) }
     }
   }
 
   func select(_ kind: TxnFilter.Kind) { filter.kind = kind }
   func search(_ text: String) { filter.text = text }
-  func open(_ txn: TxnID) { app.open(txn) }
-  func startReview() { app.startReview() }
 
-  // TODO(spec 04 §16.1 "Add transaction"): AddTransactionSheet (keypad, merchant, category, date,
-  // paid with) authoring `txn_ingested` with entry_method manual.
+  func show(category: CategoryID?) {
+    filter = TxnFilter(kind: .all, category: category, text: "")
+  }
+
+  func apply(_ filter: TxnFilter) { self.filter = filter }
+
+  func open(_ txn: TxnID) { app.open(txn) }
+  func openBill(_ bill: BillID) { app.router.activity.append(.bill(bill)) }
+  func startReview() { ReviewEntry.open(app, at: nil) }
+
+  // TODO(spec 04 §16.1 "Add transaction", plan D.2): AddTransactionSheet (keypad, merchant,
+  // category, date, paid with) authoring `txn_ingested` with entry_method manual.
   func addTransaction() {
     app.say("Adding by hand isn't in this build yet", icon: .add)
+  }
+}
+
+/// Asks the Activity tab to show a filter from elsewhere (Search's category row, a Debug
+/// screen launch). The Activity view model lives in the shell (`MainView`, frozen), so a
+/// request waits here until the Activity screen applies it.
+@MainActor
+@Observable
+final class ActivityRequests {
+  static let shared = ActivityRequests()
+
+  private(set) var pending: (app: ObjectIdentifier, filter: TxnFilter)?
+
+  /// Switches to Activity, at its root, showing `filter` (a category, or a search's text).
+  func show(_ filter: TxnFilter, in app: AppModel) {
+    pending = (ObjectIdentifier(app), filter)
+    app.router.activity = []
+    app.tab = .activity
+  }
+
+  /// The filter waiting for `app`'s Activity screen; the request is used up.
+  func take(for app: AppModel) -> TxnFilter? {
+    guard let p = pending, p.app == ObjectIdentifier(app) else { return nil }
+    pending = nil
+    return p.filter
   }
 }
