@@ -321,6 +321,44 @@ final class CoreScreensTests: XCTestCase {
     element(app, "review.close").tap()
   }
 
+  /// The Debug Search: Ready under its large title with the field focused (Paper "Search ·
+  /// Ready"); the first letters swap "Try asking" for results and the title makes room
+  /// (S3 has none); a transaction result opens its sheet.
+  @MainActor
+  func testDebugSearchReadyThenResults() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Search"].tap()
+    XCTAssertTrue(element(app, "search.placeholder").waitForExistence(timeout: 5))
+    let title = app.navigationBars.staticTexts["Search"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5) && title.isHittable, "Ready has no large title")
+    attach(app, "Search · Ready")
+    // Search's own parts are audited with the keyboard put away: with it up, the audit
+    // flags the keyboard's empty prediction cells, system UI the shared filter does not
+    // skip yet (requests/p6.md 4).
+    // (A drag from the content down through the keys: Search dismisses it interactively.)
+    element(app, "search.placeholder").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "the keyboard stayed up")
+    try audit(app)
+
+    let field = app.searchFields["Ask about your money"]
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    field.tap()
+    field.typeText("carre")
+    let result = element(app, "search.txn.carrefour")
+    XCTAssertTrue(result.waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "search.top").exists)
+    XCTAssertFalse(element(app, "search.placeholder").exists)
+    let titleGone = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == false OR hittable == false"), object: title)
+    XCTAssertEqual(XCTWaiter().wait(for: [titleGone], timeout: 5), .completed, "results kept the large title")
+    attach(app, "Search · Results as you type")
+
+    result.tap()
+    XCTAssertTrue(element(app, "txn.merchant").waitForLabel("Carrefour"))
+    element(app, "txn.close").tap()
+  }
+
   /// The caught-up scenario has nothing to review: no To review card, no Start, no deck.
   @MainActor
   func testCaughtUpScenarioHasNothingToReview() throws {

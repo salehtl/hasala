@@ -40,6 +40,13 @@ struct SearchView: View {
       .background(HColor.surfaceSecondary)
       .navigationTitle("Search")
       .searchable(text: $query, isPresented: $searching, prompt: "Ask about your money")
+      // Ready keeps its large title over the field (Paper "Search · Ready", spec 13 S1);
+      // results take the room from the first letter (S3, no large title).
+      .searchPresentationToolbarBehavior(query.trimmedSpaces.isEmpty ? .avoidHidingContent : .automatic)
+      // Merchant names and words as typed ("carre", "talabat"): no capital, no correction,
+      // so no QuickType bar over the keys either (Paper's keyboard has none).
+      .textInputAutocapitalization(.never)
+      .autocorrectionDisabled()
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
     }
