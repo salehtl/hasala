@@ -4,7 +4,9 @@ import UIKit
 
 /// The walls the live gate puts in front of everything (spec 04 §6.5): data on this
 /// iPhone that the gate can't open, or that belongs to another account, a store that
-/// failed to open, and a build the server no longer takes.
+/// failed to open, and a build the server no longer takes. On the account template (no
+/// board draws them): the question, a note, and the ways out in the dock; removing the
+/// data asks first in a system alert, as every loss does (page 14).
 struct BootWallView: View {
   let boot: BootController
   let wall: BootController.Wall
@@ -13,31 +15,29 @@ struct BootWallView: View {
   var body: some View {
     NavigationStack {
       AccountScreen(title: title, subtitle: subtitle) {
-        VStack(alignment: .leading, spacing: 14) {
-          if let note {
-            LockNote(text: note, systemImage: "iphone")
-          }
-          if offersTryAgain {
-            BusyButton(title: "Try again", busy: false, identifier: "wall.tryAgain") { boot.tryAgain() }
-          }
-          if offersErase {
-            BusyButton(
-              title: "Remove this iPhone's data", busy: boot.erasing, kind: offersTryAgain ? .secondary : .primary,
-              identifier: "wall.erase"
-            ) { confirmingErase = true }
-          }
+        if let note {
+          NoteRow(icon: .phone, text: note)
         }
       } footer: {
+        if offersTryAgain {
+          BusyButton(title: "Try again", busy: false, identifier: "wall.tryAgain") { boot.tryAgain() }
+        }
+        if offersErase {
+          BusyButton(
+            title: "Remove this iPhone's data", busy: boot.erasing, kind: offersTryAgain ? .onGrouped : .primary,
+            identifier: "wall.erase"
+          ) { confirmingErase = true }
+        }
         if case .otherAccount = wall {
-          LinkButton(title: "Back", identifier: "wall.back") { boot.dismissWall() }
+          SecondaryLink(title: "Back", identifier: "wall.back") { boot.dismissWall() }
         } else {
           WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "wall.talk")
         }
       }
-      .confirmationDialog("Remove this iPhone's Hasala data?", isPresented: $confirmingErase, titleVisibility: .visible) {
+      .alert("Remove this iPhone's Hasala data?", isPresented: $confirmingErase) {
+        Button("Cancel", role: .cancel) {}
         Button("Remove", role: .destructive) { Task { await boot.eraseThisIPhone() } }
           .accessibilityIdentifier("wall.erase.confirm")
-        Button("Cancel", role: .cancel) {}
       } message: {
         Text("Your account and everything already uploaded stay. Changes on this iPhone that haven't uploaded yet are lost.")
       }
