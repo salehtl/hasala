@@ -142,7 +142,7 @@ struct CategoryPickerView: View {
       Text(title).hType(.overline).foregroundStyle(HColor.textGroupedHeader)
         .padding(.leading, 4).padding(.top, 2)
         .accessibilityAddTraits(.isHeader)
-      FlowLayout(spacing: 8) {
+      ChipFlow(spacing: 8) {
         ForEach(options) { o in
           ChoiceChip(o.name, dot: o.hue, selected: selected == o.id) { selected = o.id }
             .accessibilityIdentifier(title == "Suggested" ? "picker.suggested.\(o.id)" : "picker.\(o.id)")

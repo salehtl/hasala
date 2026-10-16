@@ -16,6 +16,7 @@ struct TransactionSheet: View {
   let model: any TransactionModel
   @State private var confirmArchive = false
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).transaction) {
@@ -71,6 +72,8 @@ struct TransactionSheet: View {
     }
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     .presentationBackground(HColor.sheetSurfaceLarge)
+    // Paper "Large sheet": the grabber over the header.
+    .presentationDragIndicator(.visible)
   }
 
   private func push(_ route: TransactionRoute) { app.router.transaction.append(route) }
@@ -122,12 +125,17 @@ struct TransactionSheet: View {
       }
       let tags = tags(d)
       if !tags.isEmpty {
-        FlowLayout(spacing: 6) {
-          ForEach(tags, id: \.text) { StatusPillView($0, size: .s26, surface: .tinted) }
-        }
+        // One or two short pills, centred; a column at the accessibility sizes.
+        let layout = typeSize.isAccessibilitySize
+          ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 6))
+        layout { pills(tags) }
       }
     }
     .frame(maxWidth: .infinity)
+  }
+
+  private func pills(_ tags: [StatusPill]) -> some View {
+    ForEach(tags, id: \.text) { StatusPillView($0, size: .s26, surface: .tinted) }
   }
 
   /// What the details don't say on their own: still to review, a refund, a transfer,

@@ -39,7 +39,7 @@ struct SplitEditorView: View {
           ForEach($lines) { $line in lineCard($line) }
           addCard
         }
-        FlowLayout(spacing: 8) {
+        ChipFlow(spacing: 8) {
           FilterChip("Split evenly", selected: false) { splitEvenly() }
           if let first = lines.first, let name = name(first.category) {
             FilterChip("Put the rest in \(name)", selected: false) { putRest() }
@@ -100,8 +100,10 @@ struct SplitEditorView: View {
       Circle().fill(tone == .warning ? HColor.paceFillOverPace : tone.foreground).frame(width: 7, height: 7)
       Text(words).hType(.subheadline.weight(.semibold)).foregroundStyle(tone.foreground)
     }
+    // Words, not a control: without the trait the audit takes the element for a small target.
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(spoken)
+    .accessibilityAddTraits(.isStaticText)
     .accessibilityIdentifier("split.verdict")
   }
 
