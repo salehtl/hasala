@@ -1,6 +1,7 @@
 import XCTest
 
-/// Plan on the Maya mock: Ready to assign, a category's month, Move money and a budget.
+/// Plan on the Maya mock: Ready to assign, a category's month, Move money, a budget and where
+/// its money comes from, the project, and the large-text layouts.
 final class PlanUITests: XCTestCase {
   override func setUp() {
     continueAfterFailure = false
@@ -14,7 +15,8 @@ final class PlanUITests: XCTestCase {
     return app
   }
 
-  /// Plan: Ready to assign, a category's month, Move money from Ready to assign, Undo.
+  /// Plan: Ready to assign, Groceries' month, Move money from Ready to assign, then Dining's
+  /// budget from Ready to assign (with the shortfall it would leave) and saved.
   @MainActor
   func testPlanMoveMoneyAndBudget() throws {
     let app = launchHome()
@@ -27,11 +29,14 @@ final class PlanUITests: XCTestCase {
 
     let groceries = el(app, "plan.row.groceries")
     XCTAssertTrue(reveal(app, groceries))
+    XCTAssertTrue(groceries.label.hasPrefix("Groceries, AED 1,387.60 left. 812.40 of 2,200, Over pace"), groceries.label)
     attach(app, "Plan · Needs")
     groceries.tap()
-    let total = el(app, "activity.summary.total")
-    XCTAssertTrue(total.waitForExistence(timeout: 5))
-    XCTAssertEqual(total.label, "AED 812.40")
+    let hero = el(app, "category.hero")
+    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    XCTAssertTrue(hero.label.contains("AED 1,387.60 left of 2,200 this month. Over pace, on course for 2,518"),
+                  hero.label)
+    XCTAssertTrue(app.navigationBars["Groceries"].exists)
     attach(app, "Plan · Groceries")
     try audit(app)
 
@@ -41,6 +46,7 @@ final class PlanUITests: XCTestCase {
     let save = el(app, "move.save")
     XCTAssertTrue(save.waitForExistence(timeout: 5))
     XCTAssertEqual(save.label, "Move AED 318.00")
+    XCTAssertTrue(el(app, "move.to").label.contains("On course for 2,518 of 2,200"))
     XCTAssertTrue(el(app, "move.preview").exists)
     // Paper's sources: Ready to assign, Travel, Shopping, Entertainment; Dining is over pace.
     for id in ["rta", "travel", "shopping", "entertainment"] {
@@ -48,11 +54,12 @@ final class PlanUITests: XCTestCase {
     }
     XCTAssertFalse(el(app, "move.from.dining").exists)
     XCTAssertFalse(el(app, "move.from.transport").exists)
+    XCTAssertTrue(el(app, "move.from.rta").isSelected)
     attach(app, "Plan · Move money")
     try audit(app)
     save.tap()
     XCTAssertTrue(app.staticTexts["Moved to Groceries"].waitForExistence(timeout: 5))
-    app.navigationBars.buttons.firstMatch.tap()
+    back(app)
     XCTAssertTrue(rta.waitForExistence(timeout: 5))
     XCTAssertTrue(scroll(app, toShow: rta))
     XCTAssertEqual(rta.label, "AED 682.00")
@@ -66,23 +73,147 @@ final class PlanUITests: XCTestCase {
     change.tap()
     let field = el(app, "budget.amount")
     XCTAssertTrue(field.waitForExistence(timeout: 5))
-    app.buttons["+ 200"].tap()
+    XCTAssertEqual(field.value as? String, "1,600")
+    attach(app, "Plan · Dining budget")
+    try audit(app)
+    app.buttons["Add 200"].tap()
     XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
-    attach(app, "Plan · Dining budget")
     // Over-assigning shows the shortfall with its minus sign.
-    for _ in 0..<4 { app.buttons["+ 200"].tap() }
+    for _ in 0..<4 { app.buttons["Add 200"].tap() }
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes \u{2212}AED 318.00")
     for _ in 0..<8 { app.buttons["Less"].tap() }
     XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
     el(app, "budget.save").tap()
     XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "category.hero").label.contains("AED 1,157.25 left of 1,800 this month"))
   }
 
-  /// Plan at `.accessibility3`, down to the projects (spec 04 §17).
+  /// "Take it from" pushes the sources inside the budget sheet; a rise from Travel moves the
+  /// money from Travel, and Travel's row says what is left.
+  @MainActor
+  func testABudgetRiseCanComeFromAnotherCategory() throws {
+    let app = launch(screen: "plan.budget")
+    let field = el(app, "budget.amount")
+    XCTAssertTrue(field.waitForExistence(timeout: 15))
+    app.buttons["Add 200"].tap()
+    let source = el(app, "budget.source")
+    XCTAssertTrue(source.label.hasPrefix("Take it from"))
+    source.tap()
+    let travel = el(app, "source.travel")
+    XCTAssertTrue(travel.waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "source.rta").isSelected)
+    attach(app, "Plan · Dining budget · Take it from")
+    try audit(app)
+    travel.tap()
+    XCTAssertTrue(el(app, "budget.consequence").waitForExistence(timeout: 5))
+    XCTAssertEqual(el(app, "budget.consequence").label, "Travel keeps AED 2,300.00")
+    // More than Travel has is refused here, before anything is sent.
+    for _ in 0..<12 { app.buttons["Add 200"].tap() }
+    XCTAssertTrue(el(app, "budget.refusal").waitForExistence(timeout: 5))
+    XCTAssertFalse(el(app, "budget.save").isEnabled)
+    for _ in 0..<24 { app.buttons["Less"].tap() }
+    XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
+    el(app, "budget.save").tap()
+    XCTAssertTrue(app.staticTexts["Moved to Dining"].waitForExistence(timeout: 5))
+    back(app)
+    let row = el(app, "plan.row.travel")
+    XCTAssertTrue(reveal(app, row))
+    XCTAssertTrue(row.label.hasPrefix("Travel, AED 2,300.00 left"), row.label)
+  }
+
+  /// Plan · Dining's rows: a payment opens its transaction sheet, a rule opens Categories
+  /// and rules in Your profile; Day by day is one element with its summary.
+  @MainActor
+  func testDiningOpensItsPaymentsAndRules() throws {
+    let app = launch(screen: "plan.dining")
+    let chart = el(app, "plan.chart")
+    XCTAssertTrue(chart.waitForExistence(timeout: 15))
+    XCTAssertEqual(chart.label, "Day by day, 1–10 Oct")
+    XCTAssertEqual(chart.value as? String, "Largest day Wed 7 Oct, Zuma, AED 412.00. Daily budget AED 51.61.")
+    attach(app, "Plan · Dining")
+    try audit(app)
+
+    let zuma = el(app, "plan.txn.zuma")
+    XCTAssertTrue(reveal(app, zuma))
+    attach(app, "Plan · Dining · This month")
+    zuma.tap()
+    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: 5))
+    tap(app, "txn.close")
+
+    let rule = el(app, "plan.rule.r-talabat")
+    XCTAssertTrue(reveal(app, rule))
+    XCTAssertTrue(rule.label.contains("Merchant contains"))
+    attach(app, "Plan · Dining · Rules")
+    try audit(app)
+    rule.tap()
+    XCTAssertTrue(el(app, "rule.r-talabat").waitForExistence(timeout: 5))
+  }
+
+  /// Assign from Ready to assign: Move money with "To" to choose, pushed inside the sheet.
+  @MainActor
+  func testAssignChoosesWhereTheMoneyGoes() throws {
+    let app = launch(screen: "plan.assign")
+    let to = el(app, "move.to")
+    XCTAssertTrue(to.waitForExistence(timeout: 15))
+    XCTAssertFalse(el(app, "move.save").isEnabled)
+    attach(app, "Plan · Assign")
+    to.tap()
+    tap(app, "destination.shopping")
+    XCTAssertTrue(to.waitForLabel(containing: "Shopping"))
+    XCTAssertFalse(el(app, "move.from.shopping").exists)
+    XCTAssertTrue(el(app, "move.save").isEnabled)
+    XCTAssertEqual(el(app, "move.save").label, "Move AED 1,000.00")
+    try audit(app)
+  }
+
+  /// With amounts hidden, the figures are dots and the words stay; VoiceOver hears "Amount
+  /// hidden" (spec 04 §12).
+  @MainActor
+  func testHiddenAmountsReachEveryPlanFigure() throws {
+    let app = launch(scenario: "mayaHidden", screen: "plan.dining")
+    let hero = el(app, "category.hero")
+    XCTAssertTrue(hero.waitForExistence(timeout: 15))
+    XCTAssertTrue(hero.label.hasPrefix("Dining, Amount hidden left of Amount hidden this month. Over pace"), hero.label)
+    XCTAssertFalse(hero.label.contains("957"))
+    XCTAssertEqual(el(app, "plan.chart").value as? String,
+                   "Largest day Wed 7 Oct, Zuma, Amount hidden. Daily budget Amount hidden.")
+    attach(app, "Plan · Dining · Amounts hidden")
+    tap(app, "category.changeBudget")
+    // The chip's figure hides; the field it fills is an input and shows its real value.
+    XCTAssertTrue(app.buttons["Cover the pace, Amount hidden"].waitForExistence(timeout: 5))
+    XCTAssertEqual(el(app, "budget.amount").value as? String, "1,600")
+    attach(app, "Plan · Dining budget · Amounts hidden")
+  }
+
+  /// The project from its card: hero, the plan setting, By category and Transactions.
+  @MainActor
+  func testJapanTripFromItsCard() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Plan"].tap()
+    let card = el(app, "plan.project.japan")
+    XCTAssertTrue(reveal(app, card))
+    XCTAssertEqual(card.label,
+                   "Japan trip, 14–28 Dec, 65 days to go. AED 7,140.00 left of 12,000. Not counted in your monthly plan.")
+    card.tap()
+    let hero = el(app, "project.hero")
+    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    XCTAssertEqual(hero.label, "Japan trip, AED 7,140.00 left of 12,000. 14–28 Dec, 65 days to go.")
+    XCTAssertTrue(el(app, "project.countInPlan").exists)
+    attach(app, "Plan · Japan trip")
+    try audit(app)
+    let jr = el(app, "project.txn.jr-pass")
+    XCTAssertTrue(reveal(app, jr))
+    attach(app, "Plan · Japan trip · Transactions")
+    try audit(app)
+  }
+
+  /// Plan at `.accessibility3`, down to the projects, then the detail and both sheets
+  /// (spec 04 §17).
   @MainActor
   func testPlanAtLargeTextSizes() throws {
-    let app = launchHome(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    let large = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+    let app = launchHome(arguments: large)
 
     // Plan, down to the projects.
     app.tabBars.firstMatch.buttons["Plan"].tap()
@@ -94,5 +225,33 @@ final class PlanUITests: XCTestCase {
       attach(app, "AX3 · Plan · \(id)")
       try audit(app, atLargeText: true)
     }
+
+    // Dining's month, down to its actions.
+    let dining = el(app, "plan.row.dining")
+    XCTAssertTrue(scroll(app, toShow: dining) || reveal(app, dining))
+    dining.tap()
+    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: 5))
+    try audit(app, atLargeText: true)
+    for id in ["plan.chart", "plan.txn.talabat-3", "plan.rule.r-zuma", "category.moveMoney"] {
+      XCTAssertTrue(reveal(app, el(app, id)), "could not reach \(id)")
+      attach(app, "AX3 · Plan · Dining · \(id)")
+      try audit(app, atLargeText: true)
+    }
+
+    // Both sheets.
+    tap(app, "category.changeBudget")
+    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: 5))
+    attach(app, "AX3 · Plan · Dining budget")
+    try audit(app, atLargeText: true)
+    XCTAssertTrue(reveal(app, el(app, "budget.save")))
+    try audit(app, atLargeText: true)
+    tap(app, "budget.close")
+
+    tap(app, "category.moveMoney")
+    XCTAssertTrue(el(app, "move.amount").waitForExistence(timeout: 5))
+    attach(app, "AX3 · Plan · Move money")
+    try audit(app, atLargeText: true)
+    XCTAssertTrue(reveal(app, el(app, "move.save")))
+    try audit(app, atLargeText: true)
   }
 }
