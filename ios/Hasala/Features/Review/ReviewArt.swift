@@ -58,14 +58,19 @@ struct PathGlyph: View {
 /// card's 56 (letter 24), the To sort list's 32 (14/18 600) and the mini card's 20 (11). The
 /// letter follows Dynamic Type and shrinks to stay inside the disc, which keeps its size; the
 /// row or card around it says the merchant's name.
+///
+/// The card's 56 and the mini card's 20 sit on white with Paper's inset 1 pt
+/// `--color-border-subtle` ring; the To sort row's 32 is a plain disc (Paper NTY-0), so a
+/// list passes `ring: false`.
 struct MerchantMonogram: View {
   let letter: String
   let size: CGFloat
+  var ring = true
 
   var body: some View {
     Circle()
       .fill(HColor.listRowMonogram)
-      .overlay { Circle().strokeBorder(HColor.borderSubtle, lineWidth: 1) }
+      .overlay { if ring { Circle().strokeBorder(HColor.borderSubtle, lineWidth: 1) } }
       .frame(width: size, height: size)
       .overlay {
         Text(verbatim: letter)

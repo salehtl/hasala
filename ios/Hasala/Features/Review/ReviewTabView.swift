@@ -107,9 +107,11 @@ struct ReviewTabView: View {
       Button {
         app.say("Using every suggestion at once comes in a later build", icon: .info)
       } label: {
-        // Paper sets this one smaller (15/18) so the pair fits side by side: on one line it
-        // shrinks to fit; at the larger sizes it wraps instead, as every pill does.
+        // Paper sets this one smaller than Start (15/18 600, NTB-0) so the pair fits side by
+        // side; on one line it may shrink a little more, and at the larger sizes it wraps
+        // instead, as every pill does.
         Text("Use \(suggestions) suggestion\(suggestions == 1 ? "" : "s")")
+          .hType(HType(size: 15, leading: 18, weight: .semibold, textStyle: .subheadline))
           .minimumScaleFactor(0.8)
       }
       .buttonStyle(.pill(.secondary, fill: true))
@@ -146,11 +148,11 @@ struct ReviewTabView: View {
     .background(cardSurface)
   }
 
-  /// Monogram 32, name 15/20 600 over "Looks like Groceries" in accent (or what the person
-  /// decides, in grey), the amount 15/20 bold. 52 tall.
+  /// Monogram 32 (no ring), name 15/20 600 over "Looks like Groceries" in accent (or what the
+  /// person decides, in grey), the amount 15/20 bold. 52 tall.
   private func row(_ card: ReviewCardModel) -> some View {
     HStack(spacing: 12) {
-      MerchantMonogram(letter: card.monogram, size: 32)
+      MerchantMonogram(letter: card.monogram, size: 32, ring: false)
       VStack(alignment: .leading, spacing: 0) {
         Text(card.merchant).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
