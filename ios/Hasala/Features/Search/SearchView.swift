@@ -10,6 +10,8 @@ import SwiftUI
 struct SearchView: View {
   let app: AppModel
   @State private var query = ""
+  /// The field is up and focused when Search opens (Paper "Search · Ready": keyboard up).
+  @State private var searching = false
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
   /// questions (the fourth row, "Compare October with September", needs an answer card).
@@ -37,18 +39,19 @@ struct SearchView: View {
       .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
       .background(HColor.surfaceSecondary)
       .navigationTitle("Search")
-      .searchable(text: $query, prompt: "Ask about your money")
+      .searchable(text: $query, isPresented: $searching, prompt: "Ask about your money")
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
     }
-    #if HASALA_MOCKS
-      .onAppear {
+    .onAppear {
+      searching = true
+      #if HASALA_MOCKS
         if let q = SearchHistory.launchQuery {
           SearchHistory.launchQuery = nil
           query = q
         }
-      }
-    #endif
+      #endif
+    }
   }
 
   // MARK: Ready
@@ -91,7 +94,7 @@ struct SearchView: View {
               .foregroundStyle(HColor.textLink)
               .frame(minHeight: HSpacing.targetMinimum)
           }
-          FlowLayout(spacing: 8) {
+          ChipFlow(spacing: 8) {
             ForEach(recent, id: \.self) { r in
               Button { query = r } label: {
                 HStack(spacing: 6) {
@@ -228,16 +231,7 @@ struct SearchView: View {
       CategoryDisc(hue: row.hue, icon: row.glyph.icon)
       VStack(alignment: .leading, spacing: 1) {
         highlighted(row.merchant, q).hType(.body).foregroundStyle(HColor.textPrimary)
-        // "Groceries · 342.15 on Fri 9 Oct".
-        let parts = row.detail.components(separatedBy: " · ")
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text("\(parts.first ?? "") ·").hType(.footnote).foregroundStyle(HColor.textSecondary)
-          MoneyText(row.amount, figure: HFigure(size: 13, leading: 18, weight: .bold, textStyle: .footnote, tabular: true),
-                    hidden: app.amountsHidden, hiddenGlyphs: 3, color: HColor.textPrimary,
-                    sign: row.isIncome ? .income : .none)
-            .fixedSize()
-          Text("on \(parts.last ?? "")").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        }
+        topResultLine(row)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       Button("See all") {
@@ -254,6 +248,21 @@ struct SearchView: View {
     .hElevation(.nearFar)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("search.top")
+  }
+
+  /// "Groceries · 342.15 on Fri 9 Oct": one line of words with the figure in the rounded
+  /// bold face, dots when amounts are hidden.
+  private func topResultLine(_ row: MiniTxnRow) -> some View {
+    let parts = row.detail.components(separatedBy: " · ")
+    let what = "\(parts.first ?? "") · ", when = " on \(parts.last ?? "")"
+    let digits = app.amountsHidden
+      ? MoneyFormat.hidden(count: 3) : (row.isIncome ? "+" : "") + MoneyFormat.string(row.amount.minor)
+    let figure = Text(verbatim: digits)
+      .font(.system(.footnote, design: .rounded, weight: .bold).monospacedDigit())
+      .foregroundStyle(HColor.textPrimary)
+    return Text("\(Text(verbatim: what).foregroundStyle(HColor.textSecondary))\(figure)\(Text(verbatim: when).foregroundStyle(HColor.textSecondary))")
+      .hType(.footnote)
+      .accessibilityLabel(MoneyPhrase([.text(what), .amount(row.amount), .text(when)]).spoken(hidden: app.amountsHidden))
   }
 
   private func resultRow(_ row: MiniTxnRow, _ q: String, detail: String) -> some View {
