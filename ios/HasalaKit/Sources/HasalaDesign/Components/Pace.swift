@@ -486,16 +486,16 @@ struct PaceFillSequence: ViewModifier {
       return
     }
     // Track, then fill (300 ms ease-in-out, the figure counting with it), then the tick drops
-    // (120 ms), then the verdict fades in (150 ms). Nothing moves after this.
+    // (120 ms), then the verdict fades in (150 ms). Nothing moves after this. The three start
+    // together, the tick and the verdict on delays, so the render clock keeps their spacing:
+    // started from each step's completion, every step landed two or three frames late (a
+    // frame trace put the tick at 375 ms and the verdict at 540 instead of 300 and 420;
+    // requests/p5.md 4).
     phase = PaceFillPhase()
-    withAnimation(policy.animation(.fill)) {
-      phase.fill = target
-    } completion: {
-      withAnimation(policy.animation(.marker)) {
-        phase.tickVisible = true
-      } completion: {
-        withAnimation(policy.animation(.verdict)) { phase.verdictVisible = true }
-      }
+    withAnimation(policy.animation(.fill)) { phase.fill = target }
+    withAnimation(policy.animation(.marker)?.delay(HMotion.fill)) { phase.tickVisible = true }
+    withAnimation(policy.animation(.verdict)?.delay(HMotion.fill + HMotion.marker)) {
+      phase.verdictVisible = true
     }
   }
 }

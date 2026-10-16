@@ -8,14 +8,12 @@ import SwiftUI
 /// plays once per process. Every later appearance, Reduce Motion and settled motion show the
 /// final state at once; a later change of `target` moves the bar on `fillUpdate`.
 ///
-/// Home runs its own sequence, not the design system's `paceFillSequence`, which starts each
-/// step from the completion of the step before. A frame trace of a launch showed each
-/// completion's change reaching the screen two or three frames after the step before had
-/// landed: the tick first showed at 375 ms and the verdict at 540, from the fill's first frame.
-/// Here the three steps start together, the tick and the verdict on delays, so the render
-/// clock keeps their spacing whatever else the main thread does. The fill waits for the first
-/// frame to be on screen, so the launch's own work cannot take the fill's first frames.
-/// TODO(Stage I, requests/p5.md): once the design system's helper works this way, use it again.
+/// The three steps start together, the tick and the verdict on delays, so the render clock
+/// keeps their spacing whatever else the main thread does (started from each step's
+/// completion, a frame trace of a launch put the tick at 375 ms and the verdict at 540). The
+/// design system's `paceFillSequence` now starts them the same way (requests/p5.md 4), but
+/// Home keeps its own sequence for the launch: its fill waits for the first frame to be on
+/// screen, so the launch's own work cannot take the fill's first frames.
 struct HeroReveal: ViewModifier {
   @Binding var phase: PaceFillPhase
   let target: Double
