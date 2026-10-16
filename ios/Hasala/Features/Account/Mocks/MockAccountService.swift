@@ -52,21 +52,28 @@
       }
     }
 
+    /// Paper's Sign-in & security boards (HB9, HNJ), synthetic: this iPhone and Maya's iPad;
+    /// a passkey account also has a passkey from another Apple Account ("Work iPad").
     static func securityState(for account: Account) -> SecurityState {
-      let thisPhone = DeviceRow(id: "ios-this", title: "This iPhone", detail: "iPhone · Active now", isThisDevice: true)
-      let other = DeviceRow(id: "ios-other", title: "iPhone", detail: "Added 2 Oct", isThisDevice: false)
+      let thisPhone = DeviceRow(id: "ios-this", title: "This iPhone", detail: "iPhone 16 Pro · Dubai · Active now",
+                                isThisDevice: true)
+      let other = DeviceRow(id: "ios-other", title: "Maya\u{2019}s iPad", detail: "iPad Air · Dubai · 2 days ago",
+                            isThisDevice: false, isTablet: true)
       switch account {
       case .passkey, .none:
         return SecurityState(
           email: existingEmail, emailVerified: true,
-          passkeys: [PasskeyRow(id: "pk-1", provider: "iCloud Keychain", detail: "Added 11 Sep · Used today",
-                                isThisCredential: true)],
+          passkeys: [
+            PasskeyRow(id: "pk-1", provider: "iCloud Keychain", detail: "Added 11 Sep · Used today", isThisCredential: true),
+            PasskeyRow(id: "pk-2", provider: "Work iPad", detail: "Other Apple Account · 2 Oct", isThisCredential: false),
+          ],
           passwordChanged: nil, devices: [thisPhone, other], lastSignIn: "today at 09:12, here",
           phraseConfirmed: "Confirmed 11 Sep", frozen: nil)
       case .passwordOnly:
         return SecurityState(
-          email: existingEmail, emailVerified: true, passkeys: [], passwordChanged: "Changed 11 Sep",
-          devices: [thisPhone], lastSignIn: "today at 09:12, here", phraseConfirmed: "Confirmed 11 Sep", frozen: nil)
+          email: existingEmail, emailVerified: true, passkeys: [], passwordChanged: "Changed 3 Oct",
+          devices: [thisPhone, other], lastSignIn: "today at 09:12, here", phraseConfirmed: "Confirmed 11 Sep",
+          frozen: nil)
       }
     }
 
@@ -267,11 +274,7 @@
       if security.frozen != nil, action != .unfreeze, action != .deleteAccount { throw .frozen }
       // As the live service: an operator freeze is refused before any step-up.
       if action == .unfreeze, security.frozen?.by == .operator { throw .frozenByOperator }
-      // The step-up: a passkey account asserts (always succeeds here); a password-only
-      // account proves the password with this iPhone's key.
-      if !security.hasPasskey {
-        guard let given, given == password else { throw .stepUpFailed }
-      }
+      try stepUp(password: given)
       switch action {
       case .addPasskey:
         security.passkeys.append(PasskeyRow(id: "pk-\(security.passkeys.count + 1)", provider: "iCloud Keychain",
@@ -303,6 +306,63 @@
         security = Self.securityState(for: .none)
       }
     }
+
+    /// The step-up: a passkey account asserts (always succeeds here); a password-only
+    /// account proves the password with this iPhone's key, which a sealed iPhone lacks.
+    private func stepUp(password given: String?) throws(AuthFailure) {
+      guard !security.hasPasskey else { return }
+      if deviceKeyMissing { throw .noDeviceKey }
+      guard let given, given == password else { throw .stepUpFailed }
+    }
+
+    /// Scenario hook: this iPhone has no key yet (its data is still sealed), so a password
+    /// step-up can't be signed here (Paper IYT "This iPhone can't confirm yet").
+    var deviceKeyMissing = false
+
+    // MARK: Change the email address
+
+    private var emailChange: EmailChangeTicket?
+
+    func beginEmailChange(password given: String?) async throws(AuthFailure) -> EmailChangeTicket {
+      await pause()
+      if security.frozen != nil { throw .frozen }
+      try stepUp(password: given)
+      let t = EmailChangeTicket(id: "email-1", currentEmail: security.email)
+      emailChange = t
+      return t
+    }
+
+    func sendEmailChangeCodes(_ ticket: EmailChangeTicket, to newEmail: String) async throws(AuthFailure)
+      -> EmailChangeTicket
+    {
+      await pause()
+      guard emailChange?.id == ticket.id else { throw .refused }
+      guard let norm = AccountFields.email(newEmail), norm != ticket.currentEmail else { throw .badEmail }
+      if norm == Self.takenEmail { throw .emailInUse }
+      codeTries = 5
+      var t = ticket
+      t.newEmail = norm
+      t.sentAt = .now
+      emailChange = t
+      return t
+    }
+
+    func finishEmailChange(_ ticket: EmailChangeTicket, currentCode: String, newCode: String) async throws(AuthFailure)
+    {
+      await pause()
+      guard let t = emailChange, t.id == ticket.id, let new = t.newEmail else { throw .refused }
+      guard codeTries > 0 else { throw .codeExpired }
+      guard currentCode == Self.emailCode, newCode == Self.emailCode else {
+        codeTries -= 1
+        throw codeTries == 0 ? .codeExpired : .codeWrong(triesLeft: codeTries)
+      }
+      security.email = new
+      if let p = profile { profile = AccountProfile(displayName: p.displayName, email: new, method: p.method) }
+      emailChange = nil
+    }
+
+    /// An address that already has an account.
+    static let takenEmail = "taken@example.com"
 
     func viewRecoveryPhrase() async throws(AuthFailure) -> [String] {
       await pause()
@@ -342,5 +402,23 @@
     }
 
     var frozenInfo: FreezeInfo? { security.frozen }
+
+    // MARK: Screen launches
+
+    /// A Debug screen launch's step for a view that owns its model (`ScreenLaunch+SignIn`).
+    var launchStep: SignInLaunchStep?
+
+    /// The waiting step, once: the view that takes it drives its model.
+    func takeLaunchStep() -> SignInLaunchStep? {
+      defer { launchStep = nil }
+      return launchStep
+    }
+
+    /// Takes the step if it is `step`.
+    func takeLaunchStep(_ step: SignInLaunchStep) -> Bool {
+      guard launchStep == step else { return false }
+      launchStep = nil
+      return true
+    }
   }
 #endif
