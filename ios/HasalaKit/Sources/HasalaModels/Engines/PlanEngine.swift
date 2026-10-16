@@ -290,12 +290,13 @@ public struct DayByDay: Sendable, Hashable {
   /// The first of the month to today.
   public var days: [DaySpend]
   public var today: Int
-  /// The budget spread over the month's days (1,600 over 31 days is 51.61), rounded down.
+  /// The budget spread over the month's days (1,600 over 31 days is 51.61), rounded down;
+  /// zero for a category without a pace (a bill, savings, a goal), which draws no line.
   public var dailyBudget: Money
   /// "1–10 Oct".
   public var range: String
   public var peak: Peak?
-  /// "Zuma on Wed 7 Oct was 64% of this month's dining."
+  /// "Zuma on Wed 7 Oct was 64% of this month's dining."; none when one payment is all of it.
   public var caption: String?
 
   /// The day the chart's height is drawn against: the tallest day or the daily budget.
@@ -417,14 +418,14 @@ public extension PlanEngine {
       id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, bucket: c.bucket, month: month,
       budget: .aed(budget), spent: .aed(spent), left: .aed(left), progress: Permille.ratio(spent, of: budget),
       tick: paced ? Pace.monthGone(day: day, days: days) : nil, verdict: verdict, verdictWord: word,
-      verdictFact: fact, advice: advice, chart: dayByDay(c, s, now: now, budget: budget, spent: spent),
+      verdictFact: fact, advice: advice, chart: dayByDay(c, s, now: now, budget: budget, spent: spent, paced: paced),
       transactions: monthRows(c, s, month: month), rules: rules(c, s)
     )
   }
 
   /// Day by day from the first of the month to today.
   static func dayByDay(
-    _ c: Category, _ s: LedgerState, now: LocalDateTime, budget: Int64, spent: Int64
+    _ c: Category, _ s: LedgerState, now: LocalDateTime, budget: Int64, spent: Int64, paced: Bool
   ) -> DayByDay {
     let month = now.date.yearMonth
     let today = now.date.day
@@ -451,12 +452,14 @@ public extension PlanEngine {
        big.minor > 0
     {
       let share = percentRounded(big.minor, of: spent)
-      caption = "\(big.txn.merchant) on \(big.txn.postedAt.date.short) was \(share)% of this month's "
-        + "\(c.name.lowercased())."
+      if share < 100 {
+        caption = "\(big.txn.merchant) on \(big.txn.postedAt.date.short) was \(share)% of this month's "
+          + "\(c.name.lowercased())."
+      }
     }
     let short = CivilCalendar.monthShortNames[month.month - 1]
     return DayByDay(
-      days: days, today: today, dailyBudget: .aed(max(0, budget) / Int64(month.days)),
+      days: days, today: today, dailyBudget: .aed(paced ? max(0, budget) / Int64(month.days) : 0),
       range: today == 1 ? "1 \(short)" : "1–\(today) \(short)", peak: peak, caption: caption)
   }
 

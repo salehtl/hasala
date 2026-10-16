@@ -142,7 +142,8 @@ struct DayByDayChart: View {
     } else {
       parts.append("Nothing spent yet")
     }
-    parts.append("Daily budget \(spoken(chart.dailyBudget))")
+    // A category without a pace (a bill, savings) has no daily budget to say.
+    if chart.dailyBudget.minor > 0 { parts.append("Daily budget \(spoken(chart.dailyBudget))") }
     return parts.joined(separator: ". ") + "."
   }
 

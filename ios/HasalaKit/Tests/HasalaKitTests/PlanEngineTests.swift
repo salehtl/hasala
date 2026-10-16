@@ -126,9 +126,13 @@ struct PlanDetailParityTests {
     let transport = try #require(PlanEngine.category("transport", s, now: now))
     #expect(transport.verdict == .onTrack && transport.verdictWord == "On track")
 
-    // A bill has no pace: no tick, no projection, and paid reads "Paid".
+    // A bill has no pace: no tick, no projection, no daily budget line, and paid reads
+    // "Paid". Its one payment is all of the month, so no caption says so.
     let rent = try #require(PlanEngine.category("rent", s, now: now))
     #expect(rent.tick == nil && rent.verdictWord == "Paid" && rent.verdictFact == nil && rent.advice == nil)
+    #expect(rent.chart.dailyBudget == .aed(0))
+    #expect(rent.chart.peak?.day == 1)
+    #expect(rent.chart.caption == nil)
 
     // Nothing spent yet: an empty chart with no peak and no caption.
     let travel = try #require(PlanEngine.category("travel", s, now: now))
