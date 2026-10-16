@@ -159,6 +159,39 @@ final class SmokeTests: XCTestCase {
     }
   }
 
+  /// The first reveal after launch keeps the owner's timing with amounts shown, so the figure
+  /// rolls with the fill: the bar fills over 300 ms, the tick starts to drop as it lands, the
+  /// verdict fades in after the tick and is in by 570 ms (0–300–420–570). The app stamps the
+  /// frames it draws (Debug, `-HasalaRevealTiming`), in milliseconds from the frame the fill
+  /// started on. A frame is 17 ms; each bound allows a frame or two dropped on a busy machine.
+  @MainActor
+  func testTheFirstRevealKeepsItsTimingWithAmountsShown() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaRevealTiming"])
+    let timing = el(app, "home.hero.revealTiming")
+    XCTAssertTrue(timing.waitForExistence(timeout: 15), "the hero did not appear")
+    let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS 'done'"), object: timing)
+    XCTAssertEqual(XCTWaiter().wait(for: [finished], timeout: 10), .completed, "\(timing.value ?? "")")
+
+    let value = timing.value as? String ?? ""
+    XCTContext.runActivity(named: "Reveal timing: \(value)") { _ in }
+    var marks: [String: Int] = [:]
+    for mark in value.split(separator: ", ") {
+      let words = mark.split(separator: " ")
+      if words.count == 2, let ms = Int(words[1]) { marks[String(words[0])] = ms }
+    }
+    let filled = try XCTUnwrap(marks["filled"], value)
+    let tick = try XCTUnwrap(marks["tick"], value)
+    let verdict = try XCTUnwrap(marks["verdict"], value)
+    let done = try XCTUnwrap(marks["done"], value)
+    // The bar fills in 300 ms; the tick waits for it, and nothing holds the tick back.
+    XCTAssertTrue((250...350).contains(filled), value)
+    XCTAssertTrue((280...370).contains(tick), value)
+    // The verdict follows the tick's 120 ms and is fully in by 570 ms.
+    XCTAssertTrue((tick + 90...490).contains(verdict), value)
+    XCTAssertTrue((verdict...620).contains(done), value)
+    XCTAssertEqual(el(app, "home.hero.left").label, "AED 10,288.34")
+  }
+
   @MainActor
   func testHiddenScenarioStartsHidden() throws {
     let app = launch(scenario: "mayaHidden")

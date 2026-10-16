@@ -125,4 +125,14 @@ struct HomeModelTests {
     #expect(home.hidden)
     #expect(home.bell.needsALook[0].line.rendered(hidden: home.hidden) == "AED ••• isn't in your plan yet")
   }
+
+  /// The hero's first reveal keeps the owner's sequence (motion policy): the tick starts as
+  /// the 300 ms fill lands, the verdict as the 120 ms tick lands, and the 150 ms verdict is in
+  /// by 570 ms. The steps start together on these delays, never from completion handlers.
+  @Test func theRevealKeepsTheOwnersSequence() {
+    let ms = { (s: Double) in Int((s * 1000).rounded()) }
+    #expect(ms(HeroReveal.schedule.tick) == 300)
+    #expect(ms(HeroReveal.schedule.verdict) == 420)
+    #expect(ms(HeroReveal.schedule.end) == 570)
+  }
 }

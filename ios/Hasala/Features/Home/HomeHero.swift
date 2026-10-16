@@ -6,12 +6,13 @@ import SwiftUI
 /// 31", the figure, the caption, one bar for the month, the verdict in words and the Needs,
 /// Wants and Savings tiles. 20 from the screen edges, 16 between its blocks.
 ///
-/// Motion (owner's motion policy, B1.3): the first time Home appears after launch, the bar
-/// fills over 300 ms while the figure rolls with it, the tick drops in (120 ms), then the
-/// verdict fades in (150 ms). Home is seen many times a day, so every later appearance, a tab
-/// switch or a return from a sheet shows the final state at once. A change while Home is open
-/// (a new transaction) moves the bar on `fillUpdate` (250 ms) and rolls the figure; the wash and
-/// the verdict cross-fade when the verdict changes. Reduce Motion shows the final state.
+/// Motion (owner's motion policy, B1.3; `HeroReveal`): the first time Home appears after
+/// launch, the bar fills over 300 ms with the figure rolling on it, the tick drops in (120 ms)
+/// as the bar lands, then the verdict fades in (150 ms): 0–300–420–570 ms. Home is seen many
+/// times a day, so every later appearance, a tab switch or a return from a sheet shows the
+/// final state at once. A change while Home is open (a new transaction) moves the bar on
+/// `fillUpdate` (250 ms) and rolls the figure; the wash and the verdict cross-fade when the
+/// verdict changes. Reduce Motion shows the final state.
 struct HomeHero: View {
   let hero: SpendHero
   let hidden: Bool
@@ -28,9 +29,6 @@ struct HomeHero: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var typeSize
   @State private var phase = PaceFillPhase()
-
-  /// The once-per-process key of the first reveal.
-  static let revealKey = "home.hero"
 
   private var motion: MotionPolicy {
     MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
@@ -57,7 +55,10 @@ struct HomeHero: View {
       tiles
     }
     .padding(.horizontal, HSpacing.insetPage)
-    .paceFillSequence($phase, target: target, policy: motion, once: .perProcess(Self.revealKey))
+    .heroReveal($phase, target: target, policy: motion)
+    #if HASALA_MOCKS
+      .modifier(RevealTimingProbe(phase: phase, target: target))
+    #endif
   }
 
   // MARK: Figure
@@ -71,7 +72,8 @@ struct HomeHero: View {
         // 6 dots at Paper's 38 pt when hidden (page 06 §6.3). The figure is its own element
         // (`home.hero.left`, plan decision 8) and carries the caption as its value, so VoiceOver
         // reads "AED 10,288.34, spent of 19,000 on needs and wants".
-        // A live change rolls the figure on the bar's own 250 ms curve, so both land together.
+        // The figure is zero until the reveal's fill starts, so it rolls on the fill's curve. A
+        // live change rolls it on the bar's own 250 ms curve, so both land together.
         HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
           .hAnimation(.fillUpdate, value: hero.spent)
           .accessibilityValue(hero.caption.spoken(hidden: hidden))
