@@ -14,12 +14,26 @@ import SwiftUI
 struct BudgetEditSheet: View {
   let model: any BudgetSheetModel
   @State private var draft = ""
+  /// Ready to assign while it has money (Paper's default), else the first place that has some.
   @State private var source: CategoryID?
   @State private var picking = false
   @State private var fitted: CGFloat = 0
+  /// Large at the accessibility sizes, decided when the sheet opens: a text size changed
+  /// while it is up resizes the content, not the kind of sheet.
+  @State private var opensLarge: Bool?
   @FocusState private var typing: Bool
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
+
+  init(model: any BudgetSheetModel) {
+    self.model = model
+    // The budget and where it comes from are there from the first frame, so the fitted
+    // sheet is measured once, at its final height, and does not resize after it rises.
+    if let row = model.row {
+      _draft = State(initialValue: PlanAmountField.text(for: row.budget.minor))
+      _source = State(initialValue: model.sources(to: row.id).first?.id)
+    }
+  }
 
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
 
@@ -33,12 +47,8 @@ struct BudgetEditSheet: View {
           }
           .scrollBounceBehavior(.basedOnSize)
           // The fitted detent leaves the bottom safe area out; the content's own 28 is the
-          // margin under the button (page 14 §06).
-          .ignoresSafeArea(.container, edges: .bottom)
-          .onAppear {
-            if draft.isEmpty { draft = PlanAmountField.text(for: row.budget.minor) }
-            if source == nil { source = defaultSource(row) }
-          }
+          // margin under the button (page 14 §06). Large, it scrolls clear of the indicator.
+          .ignoresSafeArea(.container, edges: (opensLarge ?? typeSize.isAccessibilitySize) ? [] : .bottom)
         } else {
           EmptyStateCard(icon: .tag, tone: .neutral, title: "This category is gone",
                          message: "It was archived or removed.")
@@ -54,7 +64,9 @@ struct BudgetEditSheet: View {
         }
       }
     }
-    .planMediumSheet(height: fitted)
+    // At the accessibility sizes the sheet is large and scrolls (page 14 §10).
+    .planMediumSheet(height: fitted, large: opensLarge ?? typeSize.isAccessibilitySize)
+    .onAppear { if opensLarge == nil { opensLarge = typeSize.isAccessibilitySize } }
   }
 
   // MARK: Content
@@ -83,28 +95,49 @@ struct BudgetEditSheet: View {
     }
   }
 
-  /// "Budget 1,600 | Spent 642.75 | Left 957.25" on the grey strip.
+  /// "Budget 1,600 | Spent 642.75 | Left 957.25" on the grey strip. At the accessibility
+  /// sizes the three go one under the other, each figure on its label's line, so none has to
+  /// shrink into a third of the width.
   private func mathRow(_ row: PlanRowModel) -> some View {
     let left = row.budget.minor - row.spent.minor
     let cells: [(String, Money, MoneyStyle)] = [
       ("Budget", row.budget, .compact), ("Spent", row.spent, .exact),
       (left < 0 ? "Over" : "Left", .aed(abs(left)), .exact),
     ]
-    return HStack(spacing: 0) {
+    let stacked = typeSize.isAccessibilitySize
+    func figure(_ i: Int) -> some View {
+      MoneyText(cells[i].1, figure: .stat, style: cells[i].2, hidden: model.hidden, hiddenGlyphs: 4,
+                color: i == 2 && left < 0 ? HColor.statusErrorForeground : HColor.textPrimary)
+    }
+    let layout = stacked ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+    return layout {
       ForEach(Array(cells.enumerated()), id: \.offset) { i, cell in
         if i > 0 {
-          Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(width: 1, height: 32)
+          Rectangle().fill(HColor.appleSeparatorsNonOpaque)
+            .frame(width: stacked ? nil : 1, height: stacked ? 1 : 32)
         }
-        VStack(spacing: 2) {
-          Text(cell.0).hType(.footnote).foregroundStyle(HColor.textSecondary)
-          MoneyText(cell.1, figure: .stat, style: cell.2, hidden: model.hidden, hiddenGlyphs: 4,
-                    color: i == 2 && left < 0 ? HColor.statusErrorForeground : HColor.textPrimary)
+        Group {
+          if stacked {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+              Text(cell.0).hType(.footnote).foregroundStyle(HColor.textSecondary)
+              Spacer(minLength: 0)
+              figure(i)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+          } else {
+            VStack(spacing: 2) {
+              Text(cell.0).hType(.footnote).foregroundStyle(HColor.textSecondary)
+              figure(i)
+            }
+            .frame(maxWidth: .infinity)
+          }
         }
-        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isStaticText)
       }
     }
-    .padding(.vertical, 14)
+    .padding(.vertical, stacked ? 4 : 14)
     .padding(.horizontal, 4)
     .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
   }
@@ -154,11 +187,6 @@ struct BudgetEditSheet: View {
   private var sources: [MoveSource] { model.sources(to: model.row?.id) }
   private var chosen: MoveSource? { sources.first { $0.id == source } }
 
-  /// Ready to assign while it has money (Paper's default), else the first place that has some.
-  private func defaultSource(_ row: PlanRowModel) -> CategoryID? {
-    sources.first?.id
-  }
-
   private func rise(_ row: PlanRowModel) -> Int64? { amount.map { $0 - row.budget.minor } }
 
   /// "Take it from ……… Ready to assign 1,000.00 ›" on the field fill; it pushes the sources.
@@ -166,7 +194,7 @@ struct BudgetEditSheet: View {
   @ViewBuilder private func sourceField(_ row: PlanRowModel) -> some View {
     let cut = (rise(row) ?? 0) < 0
     let label = Text(cut ? "Goes back to" : "Take it from").hType(.callout).foregroundStyle(HColor.textSecondary)
-    let value = HStack(spacing: 6) {
+    let value = SideBySideOrStacked(spacing: 6, spreads: false) {
       Text(cut ? "Ready to assign" : (chosen?.name ?? "Ready to assign"))
         .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
       if !cut, let chosen {
@@ -174,21 +202,13 @@ struct BudgetEditSheet: View {
                   color: HColor.textSecondary)
       }
     }
-    .fixedSize(horizontal: false, vertical: true)
     let content = HStack(spacing: 6) {
       // Side by side while both fit; the value goes under the words when they don't (spec 04 §17).
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 6) {
-          label.fixedSize()
-          Spacer(minLength: 6)
-          value.fixedSize()
-        }
-        VStack(alignment: .leading, spacing: 2) {
-          label
-          value
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+      SideBySideOrStacked(spacing: 12) {
+        label
+        value
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
       if !cut, sources.count > 1 {
         HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
       }
@@ -264,20 +284,15 @@ struct BudgetEditSheet: View {
     let sign = after < 0 && !model.hidden ? "\u{2212}" : ""
     let figure = MoneyPhrase([.text("\(sign)AED "), .amount(.aed(abs(after)), hidden: 3)])
     return AnyView(
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text(words).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-          Text(figure.rendered(hidden: model.hidden)).hFigure(.compact)
-            .foregroundStyle(after < 0 ? HColor.statusErrorForeground : HColor.textPrimary)
-        }
-        VStack(spacing: 2) {
-          Text(words).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-          Text(figure.rendered(hidden: model.hidden)).hFigure(.compact)
-            .foregroundStyle(after < 0 ? HColor.statusErrorForeground : HColor.textPrimary)
-        }
+      // On one line, centred, while it fits; the figure goes under the words when it doesn't.
+      SideBySideOrStacked(spacing: 4, spreads: false, stackedAlignment: .center) {
+        Text(words).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        Text(figure.rendered(hidden: model.hidden)).hFigure(.compact)
+          .foregroundStyle(after < 0 ? HColor.statusErrorForeground : HColor.textPrimary)
       }
       .accessibilityElement(children: .ignore)
       .accessibilityLabel("\(words) \(figure.spoken(hidden: model.hidden))")
+      .accessibilityAddTraits(.isStaticText)
     )
   }
 

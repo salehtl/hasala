@@ -9,18 +9,21 @@ import SwiftUI
 
 extension View {
   /// A medium sheet (page 14 §02 "Medium · Dining budget"): white, floating 8 from three
-  /// edges, radius 40, one detent the height of its content (it never drags up to large). At
-  /// the accessibility sizes the content grows past the screen and the sheet stops at large
-  /// and scrolls. `height` is the content's measured height.
-  func planMediumSheet(height: CGFloat) -> some View {
-    presentationDetents([height > 0 ? .height(height) : .medium])
+  /// edges, radius 40, one detent the height of its content (it never drags up to large).
+  /// `height` is the content's measured height (0 until it is measured). `large` is the large
+  /// detent, which the sheet takes at the accessibility text sizes ("Dynamic Type: medium
+  /// sheets grow to large, then scroll", page 14 §10).
+  func planMediumSheet(height: CGFloat, large: Bool = false) -> some View {
+    presentationDetents([large ? .large : (height > 0 ? .height(height) : .medium)])
       .presentationCornerRadius(HRadius.sheet)
       .presentationBackground(HColor.sheetSurface)
       .presentationDragIndicator(.visible)
       // The shell presents this sheet with `.presentationDetents([.large])` (MainView, frozen),
       // and the outer modifier wins over this one; until Stage I drops it (requests/p7.md),
       // the sheet's own controller is fitted to the content directly.
-      .background { FittedSheetDetent(height: height).frame(width: 0, height: 0) }
+      .background {
+        if !large { FittedSheetDetent(height: height, large: large).frame(width: 0, height: 0) }
+      }
   }
 
   /// A large sheet (page 14 §02 "Large · Template"): full height, grey, top corners 34, the
@@ -34,39 +37,50 @@ extension View {
 }
 
 /// Fits the presenting sheet to `height` through its `UISheetPresentationController`: one
-/// custom detent, never more than the screen allows (at the accessibility sizes the content
-/// is taller, so the sheet stops at the top and scrolls). It is applied when the sheet appears
-/// and whenever the height changes.
+/// custom detent, never more than the screen allows; `large` puts the large detent back. It
+/// is applied when the sheet appears and whenever the height changes.
 struct FittedSheetDetent: UIViewControllerRepresentable {
   let height: CGFloat
+  let large: Bool
 
   func makeUIViewController(context: Context) -> Controller { Controller() }
 
   func updateUIViewController(_ controller: Controller, context: Context) {
-    controller.height = height
+    controller.height = large ? -1 : height
     controller.apply()
   }
 
   final class Controller: UIViewController {
+    /// The content's height; -1 for the large detent, 0 before the content is measured.
     var height: CGFloat = 0
-    private var applied: CGFloat = -1
+    private var applied: CGFloat = 0
     private static let fitted = UISheetPresentationController.Detent.Identifier("hasala.plan.fitted")
 
     override func viewWillAppear(_ animated: Bool) {
       super.viewWillAppear(animated)
-      applied = -1
+      applied = 0
       apply()
     }
 
     override func viewDidAppear(_ animated: Bool) {
       super.viewDidAppear(animated)
-      applied = -1
+      applied = 0
       apply()
     }
 
     func apply() {
-      guard height > 0, height != applied, let sheet = presentingSheet else { return }
+      guard height != 0, height != applied, let sheet = presentingSheet else { return }
       applied = height
+      guard height > 0 else {
+        // The accessibility sizes: the large detent, as the shell set it.
+        if sheet.detents.contains(where: { $0.identifier == Self.fitted }) {
+          sheet.animateChanges {
+            sheet.detents = [.large()]
+            sheet.selectedDetentIdentifier = .large
+          }
+        }
+        return
+      }
       // The detent is the height above the sheet's bottom safe area; the content runs into
       // that area itself (it ignores it), so the sheet ends 28 under the button, as drawn.
       let h = max(1, height - (sheet.presentedViewController.view.safeAreaInsets.bottom))
@@ -107,8 +121,11 @@ struct PlanSheetHeader: View {
     HStack(spacing: 8) {
       GlassIconButton(.close, label: "Close", action: close)
         .accessibilityIdentifier(closeID)
+      // One line, truncating, as page 14 §08 says; at the larger sizes it wraps instead.
       Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-        .lineLimit(1)
+        .singleLineAtDefaultTextSize()
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity)
         .accessibilityAddTraits(.isHeader)
       Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)

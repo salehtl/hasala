@@ -20,6 +20,15 @@ struct MoveMoneySheet: View {
   @FocusState private var typing: Bool
   @Environment(\.dismiss) private var dismiss
 
+  init(model: any BudgetSheetModel) {
+    self.model = model
+    // To and the amount are there from the first frame: the shortfall when the pace runs
+    // past the budget, all of Ready to assign for Assign, else 100.00.
+    _destination = State(initialValue: model.row?.id)
+    let start = model.shortfall?.minor ?? (model.row == nil ? max(0, model.plan.readyToAssign.minor) : 100_00)
+    _draft = State(initialValue: PlanAmountField.text(for: start, style: .exact))
+  }
+
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
   /// Never the destination: choosing Shopping as "To" takes it off "Take from".
   private var sources: [MoveSource] { model.sources(to: destination) }
@@ -63,13 +72,6 @@ struct MoveMoneySheet: View {
         DestinationPickerPage(destinations: model.destinations, selected: destination) { id in
           destination = id
           choosingDestination = false
-        }
-      }
-      .onAppear {
-        if destination == nil { destination = model.row?.id }
-        if draft.isEmpty {
-          let start = model.shortfall?.minor ?? (assigning ? max(0, model.plan.readyToAssign.minor) : 100_00)
-          draft = PlanAmountField.text(for: start, style: .exact)
         }
       }
     }
