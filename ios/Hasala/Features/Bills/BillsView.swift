@@ -224,9 +224,15 @@ struct BillsView: View {
     VStack(alignment: .leading, spacing: 12) {
       // TODO(spec 04 §16.2 B1): "All schedules · N ›" opens AllSchedulesView (Debug only until
       // it exists); a Release build says how many bills are tracked instead.
-      HSectionHeader("Upcoming", trailing: unfinished
-        ? .link("All schedules · \(snap.tracked)") { app.say("Every schedule comes in a later build", icon: .calendar) }
-        : .fact("\(snap.tracked) tracked"))
+      if unfinished {
+        ReflowingRow(alignment: .firstTextBaseline) {
+          Text("Upcoming").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
+        } trailing: {
+          allSchedules
+        }
+      } else {
+        HSectionHeader("Upcoming", trailing: .fact("\(snap.tracked) tracked"))
+      }
       HStack(spacing: 8) {
         ForEach(BillsSnapshot.Range.allCases) { r in
           FilterChip(r.title, selected: snap.range == r) { model.setRange(r) }
@@ -246,6 +252,23 @@ struct BillsView: View {
         }
       }
     }
+  }
+
+  /// Paper 7U6-0 "Link · All schedules": 17/24 500 in the link colour, then the 16 chevron,
+  /// 2 apart (the kit's section link draws neither the size nor the chevron). 44 tall.
+  private var allSchedules: some View {
+    Button { app.say("Every schedule comes in a later build", icon: .calendar) } label: {
+      HStack(spacing: 2) {
+        Text("All schedules · \(snap.tracked)").hType(.body.weight(.medium))
+        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.textLink)
+      }
+      .foregroundStyle(HColor.textLink)
+      .frame(minHeight: HSpacing.targetMinimum)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("All schedules, \(snap.tracked)")
+    .accessibilityIdentifier("bills.allSchedules")
   }
 
   // MARK: Recently paid
