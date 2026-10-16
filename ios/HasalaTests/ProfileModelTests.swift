@@ -128,11 +128,11 @@ struct ProfileModelTests {
     #expect(BillsView.posterGlyph(power) == .icon(.utilities))
   }
 
-  /// Signing out keeps this iPhone's data (S-26), so the alert never says "erased", and it
-  /// uses P4's words for the same action.
+  /// Signing out keeps this iPhone's data (S-26), so the alert never says "erased"; the
+  /// profile and Sign-in & security say the same words.
   @Test func signingOutSaysTheDataStays() {
-    #expect(ProfileSheet.signOutMessage.contains("Hasala's data stays on this iPhone"))
-    #expect(!ProfileSheet.signOutMessage.contains("erased"))
+    #expect(AccountCopy.signOutMessage.contains("Hasala's data stays on this iPhone"))
+    #expect(!AccountCopy.signOutMessage.contains("erased"))
   }
 
   /// Accounts' view model: net worth and its parts, hidden with Hide amounts.

@@ -73,22 +73,18 @@ struct ProfileSheet: View {
         Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
       } message: {
-        // Paper I1C-0 says the data is erased; signing out keeps this iPhone's data (S-26), so
-        // the alert says what happens, in the words P4's Sign-in & security uses for the same
-        // action (`SecurityView.alertMessage(.signOut)`), whichever page it starts from.
-        Text(Self.signOutMessage)
+        // The words Sign-in & security says for the same action, whichever page it starts from.
+        Text(AccountCopy.signOutMessage)
       }
     }
     .environment(\.inProfileSheet, true)
+    // Delete your account's "Keep a copy first" (Paper IAM), on Profile › Delete and on
+    // Sign-in & security › Delete: the same CSV as "Export your data" (requests/p4.md 2).
+    .environment(\.accountExport, CSVFile(rows: model.exportRows, name: CSVExport.fileName(model.today)))
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     .presentationDragIndicator(.visible)
     .presentationCornerRadius(HRadius.sheetLarge)
   }
-
-  /// The Sign out alert's message. Stage I can point P4's Sign-in & security at this one
-  /// string (request 4), so the two entry points can't drift apart.
-  static let signOutMessage =
-    "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
 
   /// Signs out of this iPhone (S-26): the session ends, local data stays. The account gate
   /// then shows the welcome screens in place of the app, this sheet with it.

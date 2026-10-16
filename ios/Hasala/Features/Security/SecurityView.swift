@@ -344,8 +344,8 @@ struct SecurityView: View {
     case .removePassword:
       return "You'll sign in with your passkey only. You'll confirm with Face ID next."
     case .signOut:
-      // Signing out keeps this iPhone's data (S-26), so Paper's "erased" isn't said.
-      return "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
+      // The profile's Sign out says the same (requests/p8.md 4).
+      return AccountCopy.signOutMessage
     case .signOutEverywhere:
       // Every session ends; each device keeps its copy and its keys (`02` §9.3).
       return "Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in."
