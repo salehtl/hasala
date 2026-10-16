@@ -314,32 +314,45 @@ struct DestinationPickerPage: View {
 }
 
 /// Quick chips that share their line (Paper "Quick chips": each grows to fill its row; one
-/// that doesn't fit takes the next line, full width). 8 apart both ways.
+/// that doesn't fit takes the next line, full width). `spacing` apart side by side,
+/// `lineSpacing` between lines (the chips carry 2 of their 44 pt target above and below the
+/// drawn 40, so 4 here draws Paper's 8).
 struct GrowingChipRows: Layout {
   var spacing: CGFloat = 8
+  var lineSpacing: CGFloat = 8
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     let width = proposal.width ?? .infinity
     let lines = self.lines(subviews, width: width)
     let height = lines.reduce(CGFloat(0)) { sum, line in
-      sum + (line.map { subviews[$0].sizeThatFits(.unspecified).height }.max() ?? 0)
-    } + spacing * CGFloat(max(0, lines.count - 1))
+      sum + placements(line, subviews, width: width).map(\.height).max()!
+    } + lineSpacing * CGFloat(max(0, lines.count - 1))
     return CGSize(width: proposal.width ?? lines.map { lineWidth($0, subviews) }.max() ?? 0, height: height)
   }
 
   func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
     var y = bounds.minY
     for line in lines(subviews, width: bounds.width) {
-      let natural = line.map { subviews[$0].sizeThatFits(.unspecified).width }
-      let extra = max(0, bounds.width - natural.reduce(0, +) - spacing * CGFloat(line.count - 1)) / CGFloat(line.count)
-      let height = line.map { subviews[$0].sizeThatFits(.unspecified).height }.max() ?? 0
+      let sizes = placements(line, subviews, width: bounds.width)
+      let height = sizes.map(\.height).max() ?? 0
       var x = bounds.minX
       for (k, i) in line.enumerated() {
-        let w = natural[k] + extra
-        subviews[i].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: w, height: height))
-        x += w + spacing
+        subviews[i].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: sizes[k].width, height: height))
+        x += sizes[k].width + spacing
       }
-      y += height + spacing
+      y += height + lineSpacing
+    }
+  }
+
+  /// Each chip of a line grown to share the line's room, never wider than the line (a chip
+  /// alone on a line that its words overflow wraps them instead), and its height there.
+  private func placements(_ line: [Int], _ subviews: Subviews, width: CGFloat) -> [CGSize] {
+    let natural = line.map { subviews[$0].sizeThatFits(.unspecified).width }
+    let room = width.isFinite ? width : natural.reduce(0, +) + spacing * CGFloat(line.count - 1)
+    let extra = max(0, room - natural.reduce(0, +) - spacing * CGFloat(line.count - 1)) / CGFloat(line.count)
+    return line.enumerated().map { k, i in
+      let w = min(natural[k] + extra, room)
+      return CGSize(width: w, height: subviews[i].sizeThatFits(ProposedViewSize(width: w, height: nil)).height)
     }
   }
 
@@ -367,7 +380,9 @@ struct GrowingChipRows: Layout {
 }
 
 /// A quick chip on a sheet (Paper "+ 200", "Cover the pace 1,992"): 40 tall, 16 in, the
-/// on-card chip fill; words 15/20 600, a figure in rounded compact. The hit area reaches 44.
+/// on-card chip fill; words 15/20 600, a figure in rounded compact. The button is 44 tall (2
+/// above and below the drawn chip), so the target is its own frame; pressed, the drawn chip
+/// darkens.
 struct QuickChip: View {
   let title: String
   /// A figure after the words, rounded 600 in the count colour ("1,992"), or nil.
@@ -377,13 +392,17 @@ struct QuickChip: View {
   var titleIsFigure = false
   let action: () -> Void
 
+  /// How far the target reaches past the drawn chip, above and below.
+  static let reach: CGFloat = (HSpacing.targetMinimum - HSpacing.chipHeight) / 2
+
   var body: some View {
     Button(action: action) {
-      HStack(spacing: 6) {
+      // The words and the figure on one line; at the larger sizes the figure goes under them.
+      SideBySideOrStacked(spacing: 6, lineSpacing: 0, spreads: false, stackedAlignment: .center) {
         if titleIsFigure {
           Text(title).hFigure(.compact)
         } else {
-          Text(title).hType(.smallButton)
+          Text(title).hType(.smallButton).multilineTextAlignment(.center)
         }
         if let figure {
           Text(figure.rendered(hidden: hidden)).hFigure(HFigure.compact.weight(.semibold))
@@ -392,11 +411,23 @@ struct QuickChip: View {
       }
       .foregroundStyle(HColor.chipText)
       .padding(.horizontal, HSpacing.chipInset)
+      .padding(.vertical, 4)
       .frame(maxWidth: .infinity, minHeight: HSpacing.chipHeight)
-      .background(HColor.chipSurfaceOnCard, in: Capsule())
-      .contentShape(Capsule().inset(by: -2))
+      .fixedSize(horizontal: false, vertical: true)
     }
-    .buttonStyle(HPressStyle(scales: false))
+    .buttonStyle(ChipStyle())
     .accessibilityLabel(figure.map { "\(title), \($0.spoken(hidden: hidden))" } ?? title)
+  }
+
+  /// The chip's fill (and its pressed layer) on the drawn 40, inside a 44 target.
+  private struct ChipStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+      configuration.label
+        .background(HColor.chipSurfaceOnCard, in: Capsule())
+        .overlay { Capsule().fill(HColor.stateLayerPressed).opacity(configuration.isPressed ? 1 : 0) }
+        .hAnimation(.highlight, value: configuration.isPressed)
+        .padding(.vertical, QuickChip.reach)
+        .contentShape(Rectangle())
+    }
   }
 }
