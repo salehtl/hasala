@@ -1,10 +1,17 @@
 import XCTest
 
+/// How long a UI test waits for the app to show what a step expects. Not 5 s: on a
+/// loaded CI runner one snapshot of the hierarchy can take seconds, so a 5 s wait can
+/// end after one or two looks at a screen that is still on its way (seen: a sheet's
+/// saved note, the split sheet's verdict).
+let uiWait: TimeInterval = 15
+
 /// Helpers every UI test shares: scrolling an element into view, the accessibility audit
 /// (spec 04 §17) and screenshot attachments.
 extension XCTestCase {
   /// Drags the page until the top of `element` sits in the upper part of the screen,
-  /// below the header. Returns whether it got there.
+  /// below the header. Each drag rests before the finger lifts, so the page does not
+  /// coast on past the measured distance. Returns whether it got there.
   @MainActor
   func scroll(_ app: XCUIApplication, toShow element: XCUIElement) -> Bool {
     let height = app.frame.height
@@ -15,7 +22,7 @@ extension XCTestCase {
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.35))
       let distance = min(0.35, abs(top - height * 0.3) / height)
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 - distance : 0.35 + distance))
-      from.press(forDuration: 0.05, thenDragTo: to)
+      from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
     }
     return false
   }
@@ -65,10 +72,44 @@ extension XCTestCase {
   ///   text: no element"), depending on which glyphs the blur lets through. Every screen
   ///   is also audited at the top, where nothing sits under the header, so text drawn
   ///   without an element is still caught there.
+  ///
+  /// The audit runs once the screen stands still (`waitForStill`), and again when it
+  /// reports issues or does not finish in time; only issues that a second audit of the
+  /// same still screen reports again fail the test. An audit of content that is still
+  /// moving (a tab's or a sheet's transition, a scroll coasting, a figure's animation)
+  /// sees text change place while it changes the text size, and reports Dynamic Type as
+  /// "partially unsupported" on text that does scale, the page's title included (seen
+  /// on a slow CI runner); a real defect reports again on a still screen. On a slow
+  /// runner the audit can also stop with "Audit failed to complete in time" (code -56);
+  /// it gets three tries.
   @MainActor
   func audit(
     _ app: XCUIApplication, atLargeText: Bool = false, file: StaticString = #filePath, line: UInt = #line
   ) throws {
+    var reported: [[String]] = []
+    for attempt in 1...3 {
+      waitForStill(app)
+      do {
+        let issues = try auditIssues(app, atLargeText: atLargeText)
+        if issues.isEmpty { return }
+        reported.append(issues)
+        if reported.count == 2 { break }
+        // In the log, so a run shows how often the retry was needed and for what.
+        print("audit attempt \(attempt) reported, auditing again:\n" + issues.joined(separator: "\n"))
+      } catch let error as NSError where error.domain == "com.apple.xcode.xctest.accessibilityAudit"
+        && error.code == -56 && attempt < 3
+      {
+        print("audit attempt \(attempt) did not finish in time, auditing again")
+      }
+    }
+    if let issues = reported.last {
+      XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
+    }
+  }
+
+  /// One run of the system accessibility audit; the issues that count, described.
+  @MainActor
+  private func auditIssues(_ app: XCUIApplication, atLargeText: Bool) throws -> [String] {
     let bars = [app.navigationBars.firstMatch, app.tabBars.firstMatch].filter(\.exists).map(\.frame)
     let underHeader = contentUnderHeader(app)
     var types = XCUIAccessibilityAuditType.all.subtracting(.contrast)
@@ -88,9 +129,45 @@ extension XCTestCase {
       issues.append("\(issue.compactDescription): \(element ?? "no element") — \(issue.detailedDescription)")
       return true
     }
-    if !issues.isEmpty {
-      XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
+    return issues
+  }
+
+  /// Waits, up to `timeout`, until nothing on screen moves: two snapshots of the
+  /// hierarchy in a row put every element in the same place. For the end of a
+  /// transition, a scroll's coast or an animation, before an audit or a drag that
+  /// measures where things are.
+  @MainActor
+  func waitForStill(_ app: XCUIApplication, timeout: TimeInterval = 10) {
+    let deadline = Date(timeIntervalSinceNow: timeout)
+    var last: [CGRect]?
+    while Date() < deadline {
+      guard let root = try? app.snapshot() else { return }
+      var frames: [CGRect] = []
+      var stack = [root]
+      while let node = stack.popLast() {
+        frames.append(node.frame)
+        stack.append(contentsOf: node.children)
+      }
+      if frames == last { return }
+      last = frames
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
     }
+  }
+
+  /// Taps `field` until it has the keyboard focus, then types `text` into it. One tap
+  /// is not always enough on a slow CI runner: a tap that lands while a sheet still
+  /// settles, or while the app is busy, can leave the field without focus, and
+  /// `typeText` then fails ("Neither element nor any descendant has keyboard focus").
+  @MainActor
+  func type(_ text: String, into field: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    for _ in 0..<3 {
+      field.tap()
+      if field.waitForKeyboardFocus() {
+        field.typeText(text)
+        return
+      }
+    }
+    XCTFail("\(field) did not get the keyboard focus after 3 taps", file: file, line: line)
   }
 
   /// Whether any labelled element outside the bars lies under the navigation bar (or
