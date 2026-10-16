@@ -210,8 +210,12 @@ final class AccountRuntime {
       prefs: DevicePrefsStore())
     // The running lane's cycle (nil in a build that connects no mailbox). Typed apart: the
     // coordinator's initializer is too much for the type checker with it inline.
-    let mailboxStage: WorkCoordinator.MailboxStage? =
-      lanes.isEmpty ? nil : { @Sendable trigger, deadlineMs in await active.cycle(trigger, deadlineMs) }
+    var mailboxStage: WorkCoordinator.MailboxStage?
+    if !lanes.isEmpty {
+      mailboxStage = { @Sendable (trigger: MailboxTrigger, deadlineMs: Int64?) async -> CycleReport in
+        await active.cycle(trigger, deadlineMs)
+      }
+    }
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
