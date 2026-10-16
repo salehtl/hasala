@@ -240,6 +240,7 @@ struct ForgotCheckView: View {
         NoteRow(icon: .shield,
                 text: "Why not just the code? The company that delivers our email also carries our web traffic, so a code alone can't be the proof.")
       }
+      .accountContentTop(20)
     } footer: {
       SecondaryLink(title: "I have neither", identifier: "forgot.neither", action: onNeither)
     }
@@ -338,6 +339,7 @@ struct ForgotWaitingView: View {
         .accessibilityElement(children: .combine)
         FailureBanner(failure: model.failure(on: .forgotWaiting))
       }
+      .accountContentTop(20)
     } footer: {
       SecondaryLink(title: "Use my 12 words instead", identifier: "forgot.useWords", action: onWords)
     }
@@ -435,6 +437,8 @@ struct RecoverWordsView: View {
         }
         FailureBanner(failure: model.failure(on: .recoverWords))
       }
+      .id(PhraseEntryGrid.revealID)
+      .accountContentTop(16)
     } footer: {
       // Return sends the twelfth word (Paper draws no button); the button shows once the
       // keyboard is down, or while the code goes out.
@@ -446,6 +450,7 @@ struct RecoverWordsView: View {
         }
       }
     }
+    .revealsPhraseEntry(model.phraseText)
   }
 
   private func submit() {

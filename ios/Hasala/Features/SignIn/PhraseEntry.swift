@@ -104,8 +104,15 @@ struct PhraseEntryState: Equatable {
 /// Paper draws no button under the grid: Return moves to the next cell and sends the
 /// twelfth, and the word-list suggestions sit on the keyboard. The screen owns `focused`,
 /// so while the keyboard is up its dock holds `PhraseSuggestions` (it rides on the
-/// keyboard and the grid scrolls clear of it), and its button once the keyboard goes.
+/// keyboard), and its button once the keyboard goes. The screen also marks its entry block
+/// with `revealID` and applies `revealsPhraseEntry(_:)`, so the grid, the helper and Paste
+/// scroll clear of that bar.
 struct PhraseEntryGrid: View {
+  /// The screen's entry block (the grid and what follows it) and each cell, for
+  /// `revealsPhraseEntry(_:)`.
+  static let revealID = "phraseEntry.block"
+  static func cellID(_ index: Int) -> String { "phraseEntry.cell.\(index)" }
+
   @Binding var text: String
   /// The pasteboard's `changeCount` when a paste landed here (nil until one does).
   @Binding var pastedChangeCount: Int?
@@ -180,6 +187,7 @@ struct PhraseEntryGrid: View {
           ForEach(0..<perColumn, id: \.self) { r in
             let i = c * perColumn + r
             cell(i, word: i < words.count ? words[i] : "")
+              .id(Self.cellID(i))
           }
         }
         .frame(maxWidth: .infinity)
@@ -250,6 +258,58 @@ struct PhraseEntryGrid: View {
   }
 }
 
+extension View {
+  /// Keeps the 12-word entry in sight above its screen's dock (Paper GDD, GZT draw the grid,
+  /// the helper and Paste clear of the keyboard). The suggestion bar sits over the keyboard,
+  /// and the system keyboard is taller than Paper's, so the entry can't all fit under the
+  /// title: when the keyboard comes up the page scrolls until the bottom of the screen's
+  /// entry block (`PhraseEntryGrid.revealID`: the grid, the helper with Paste, and a failure
+  /// under them) sits just above the bar; the title goes under the header. At the
+  /// accessibility sizes the grid is one long column, so the active cell is kept in the
+  /// middle instead, as the words go in.
+  func revealsPhraseEntry(_ text: String) -> some View {
+    let state = PhraseEntryState(text)
+    return modifier(PhraseEntryReveal(activeIndex: state.activeIndex, unknownIndex: state.unknownIndex))
+  }
+}
+
+private struct PhraseEntryReveal: ViewModifier {
+  let activeIndex: Int
+  /// A word off the list adds its line under the grid: the block grows, so it is shown again.
+  let unknownIndex: Int?
+  @Environment(\.hMotion) private var motion
+  @Environment(\.dynamicTypeSize) private var typeSize
+  @State private var keyboardUp = false
+
+  func body(content: Content) -> some View {
+    ScrollViewReader { proxy in
+      content
+        .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.bottom > 120 } action: { up in
+          keyboardUp = up
+          if up { reveal(proxy) }
+        }
+        .onChange(of: activeIndex) {
+          if keyboardUp, typeSize.isAccessibilitySize { reveal(proxy) }
+        }
+        .onChange(of: unknownIndex) {
+          // After the line is laid out.
+          if keyboardUp { Task { reveal(proxy) } }
+        }
+    }
+  }
+
+  private func reveal(_ proxy: ScrollViewProxy) {
+    withAnimation(motion.animation(.fade)) {
+      if typeSize.isAccessibilitySize {
+        proxy.scrollTo(PhraseEntryGrid.cellID(activeIndex), anchor: .center)
+      } else {
+        // The bottom anchor lines the block's foot up with the top of the dock.
+        proxy.scrollTo(PhraseEntryGrid.revealID, anchor: .bottom)
+      }
+    }
+  }
+}
+
 /// The word-list suggestions on the keyboard (Paper "Suggestions (phrase words only)"), for
 /// an entry screen's dock while the grid is focused: a 44 glass bar of three slots split
 /// by hairlines, the middle one (or the only one) in a white pill. Only recovery-list words
@@ -263,6 +323,8 @@ struct PhraseSuggestions: View {
     SuggestionBar(words: state.suggestions, cell: state.activeIndex + 1) { text = state.completing(with: $0) }
       .frame(maxWidth: .infinity, minHeight: 44)
       .hGlass(in: Capsule())
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("phraseEntry.suggestions")
   }
 }
 

@@ -52,6 +52,7 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
     tap(app, "unlock.words")
     XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: 10))
+    assertEntryClearOfTheBar(app)
     attach(app, "Unlock · 12 words")
     try audit(app)
     type(app, "phraseEntry.field", Self.phrase.joined(separator: " ") + "\n")
@@ -121,7 +122,13 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Recover · what you need")
     try audit(app)
     tap(app, "recover.start")
-    type(app, "phraseEntry.field", Self.phrase.joined(separator: " ") + "\n")
+    XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: 10))
+    assertEntryClearOfTheBar(app)
+    attach(app, "Recover · 12 words")
+    type(app, "phraseEntry.field", Self.phrase.prefix(6).joined(separator: " ") + " ")
+    // The twelfth row (6 and 12) stays clear too once half the words are in (Paper GZT).
+    assertEntryClearOfTheBar(app)
+    el(app, "phraseEntry.field").typeText(Self.phrase.dropFirst(6).joined(separator: " ") + "\n")
     XCTAssertTrue(el(app, "code.field").waitForExistence(timeout: 10))
     type(app, "code.field", "123456")
     XCTAssertTrue(el(app, "recover.passkey").waitForExistence(timeout: 10))
@@ -414,5 +421,28 @@ extension SignInSecurityUITests {
     if !issues.isEmpty {
       XCTFail("accessibility audit:\n" + issues.joined(separator: "\n"), file: file, line: line)
     }
+  }
+
+  // MARK: - Helpers
+
+  /// Paper GDD, GZT: with the keyboard up, the grid's helper line and Paste sit clear above
+  /// the word-list bar, never half-hidden under its glass. The page scrolls with the
+  /// keyboard, so this waits a moment for it to settle.
+  @MainActor
+  private func assertEntryClearOfTheBar(_ app: XCUIApplication, line: UInt = #line) {
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "no keyboard", line: line)
+    let bar = el(app, "phraseEntry.suggestions")
+    XCTAssertTrue(bar.waitForExistence(timeout: 5), "no suggestion bar", line: line)
+    let paste = el(app, "phraseEntry.paste")
+    let helper = app.staticTexts["Suggestions come from the recovery word list, never your keyboard history."]
+    func clear() -> Bool {
+      paste.exists && helper.exists && paste.frame.maxY <= bar.frame.minY + 0.5
+        && helper.frame.maxY <= bar.frame.minY + 0.5
+    }
+    let deadline = Date().addingTimeInterval(5)
+    while !clear(), Date() < deadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+    XCTAssertTrue(clear(), "under the bar (\(bar.frame)): Paste \(paste.frame), helper \(helper.frame)", line: line)
   }
 }

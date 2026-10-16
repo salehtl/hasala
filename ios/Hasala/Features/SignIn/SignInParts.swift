@@ -98,6 +98,18 @@ struct AccountDock<Content: View>: View {
   }
 }
 
+extension View {
+  /// The account template puts its content 24 under the question block; some boards draw it
+  /// closer (spec 08 §5: KH7 and KIL 20, GDD and GZT 16). `AccountScreen` is shared, so a
+  /// page pulls its own content up by the difference.
+  func accountContentTop(_ top: CGFloat) -> some View {
+    padding(.top, top - accountTemplateContentTop)
+  }
+}
+
+/// `AccountScreen`'s gap between the question block and the content.
+private let accountTemplateContentTop: CGFloat = 24
+
 // MARK: - Small parts
 
 /// "or use your email" between the passkey and the password (Paper "OrDivider"): two
