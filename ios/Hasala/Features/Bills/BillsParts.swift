@@ -147,7 +147,7 @@ struct BillCard<Extra: View>: View {
       Circle()
         .fill(HColor.posterGlyph)
         .frame(width: 32, height: 32)
-        .overlay { PathGlyph(d: stroke, filled: fill, size: 18, color: hue.ink, lineWidth: 2) }
+        .overlay { StrokeGlyph(d: stroke, filled: fill, size: 18, color: hue.ink, lineWidth: 2) }
         .accessibilityHidden(true)
     }
   }
@@ -291,7 +291,7 @@ struct BillDetailParts: View {
 /// A line glyph from Paper path data that the kit's icon set doesn't carry (the net worth
 /// arrow, du's wifi), on the 24 grid with round caps and joins, and an optional filled part
 /// (the wifi's dot). Decorative.
-struct PathGlyph: View {
+struct StrokeGlyph: View {
   let d: String
   var filled: String?
   var size: CGFloat = 16

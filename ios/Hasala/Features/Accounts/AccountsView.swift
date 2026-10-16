@@ -72,7 +72,7 @@ struct AccountsView: View {
         let figure = MoneyText(change, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3, color: color,
                                sign: up ? .income : .debt)
         HStack(spacing: 6) {
-          PathGlyph(d: up ? "M12 19V5M5.5 11.5 12 5l6.5 6.5" : "M12 5v14M5.5 12.5 12 19l6.5-6.5", color: color)
+          StrokeGlyph(d: up ? "M12 19V5M5.5 11.5 12 5l6.5 6.5" : "M12 5v14M5.5 12.5 12 19l6.5-6.5", color: color)
           figure
           Text("this month").hType(.subheadline).foregroundStyle(color)
         }
