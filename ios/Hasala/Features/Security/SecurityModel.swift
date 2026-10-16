@@ -45,8 +45,16 @@ final class SecurityModel {
   /// This iPhone has no key to sign with (its data is still sealed): the sheet says so.
   private(set) var lacksDeviceKey = false
 
-  /// Set or change the password: the page is open.
-  var editingPassword = false
+  /// Set or change the password: the page is open. However it closes (Back, a swipe, the
+  /// change through), the typed passwords leave memory with it (c2 §12 rule 7).
+  var editingPassword = false {
+    didSet {
+      if !editingPassword {
+        newPassword = ""
+        confirmNewPassword = ""
+      }
+    }
+  }
   var newPassword = ""
   var confirmNewPassword = ""
 
@@ -180,7 +188,9 @@ final class SecurityModel {
         pendingEmailChange = ticket
       }
     } catch .cancelled {
-      // Face ID or the passkey sheet closed: still up, nothing to say.
+      // Face ID or the passkey sheet closed: still up, nothing to say. A password that was
+      // sent is used, so it goes; the person types it again to retry.
+      confirmPassword = ""
     } catch .stepUpFailed {
       confirmPassword = ""
       failure = .stepUpFailed
@@ -244,8 +254,7 @@ final class SecurityModel {
     case .unfreeze:
       session.unfroze()
     case .setPassword, .changePassword:
-      newPassword = ""
-      confirmNewPassword = ""
+      // Closing the page empties the new password and its repeat.
       editingPassword = false
     default:
       break
@@ -323,8 +332,8 @@ final class SecurityModel {
   /// closes once the change is through.
   func savePassword() async {
     guard newPasswordReady, let state else { return }
-    // The typed password stays until the change is through: a cancelled confirmation
-    // leaves the page as it was.
+    // The typed password stays while the page is open: a cancelled confirmation leaves the
+    // page as it was. Closing the page empties it (`editingPassword`).
     let pw = newPassword
     await request(state.hasPassword ? .changePassword(new: pw) : .setPassword(new: pw), host: .passwordEditor)
   }

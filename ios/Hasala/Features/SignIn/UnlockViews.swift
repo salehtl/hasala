@@ -139,7 +139,9 @@ final class UnlockModel {
       addingPasskey = false
       failure = nil
     } catch .cancelled {
-      // Face ID or the passkey sheet closed: the sheet stays.
+      // Face ID or the passkey sheet closed: the sheet stays, and the password that was
+      // sent goes (it is typed again to retry).
+      confirmPassword = ""
     } catch {
       confirmPassword = ""
       failure = error

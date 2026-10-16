@@ -154,6 +154,56 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(m.state?.hasPasskey == true)
   }
 
+  /// c2 §12 rule 7: a typed password leaves memory once it was used or its page closed.
+  @Test func typedPasswordsGoWhenTheirPageOrSheetCloses() async {
+    let account = MockAccountService(existing: .passwordOnly, signedIn: true)
+    account.delay = .zero
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    // Back from the Change password page: the new password and its repeat go with it.
+    m.editingPassword = true
+    m.newPassword = "harbor lights at dawn 7"
+    m.confirmNewPassword = "harbor lights at dawn 7"
+    await m.savePassword()
+    #expect(m.confirming == .perform(.changePassword(new: "harbor lights at dawn 7")))
+    m.cancelConfirmation()
+    // A cancelled confirmation leaves the page as it was...
+    #expect(m.newPassword == "harbor lights at dawn 7")
+    m.editingPassword = false
+    // ...and closing the page empties it.
+    #expect(m.newPassword.isEmpty)
+    #expect(m.confirmNewPassword.isEmpty)
+    // The passkey sheet closed after the password step-up: the sheet stays, emptied.
+    await m.request(.addPasskey)
+    m.confirmPassword = MockAccountService.existingPassword
+    account.closesNextSystemSheet = true
+    await m.confirm()
+    #expect(m.confirming == .perform(.addPasskey))
+    #expect(m.confirmPassword.isEmpty)
+    #expect(m.failure == nil)
+    #expect(m.state?.hasPasskey == false)
+    // Welcome back's "Add a passkey" does the same.
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false, onUnlocked: {})
+    unlock.addingPasskey = true
+    unlock.confirmPassword = MockAccountService.existingPassword
+    account.closesNextSystemSheet = true
+    await unlock.addPasskey()
+    #expect(unlock.addingPasskey)
+    #expect(unlock.confirmPassword.isEmpty)
+  }
+
+  /// Paper IHY names the passkey being removed; a row that's gone doesn't read "the this".
+  @Test func removingAPasskeyNamesIt() {
+    let state = MockAccountService.securityState(for: .passkey)
+    let named = SecurityModel.words(for: .perform(.removePasskey(id: "pk-2")), email: "maya@example.com", state: state)
+    #expect(named.0 == "Remove the Work iPad passkey")
+    #expect(named.1 == ["The Work iPad passkey can't sign in any more", "We email maya@example.com about it"])
+    let unknown = SecurityModel.words(for: .perform(.removePasskey(id: "gone")), email: "", state: state)
+    #expect(unknown.0 == "Remove this passkey")
+    #expect(unknown.1 == ["This passkey can't sign in any more", "We email you about it"])
+  }
+
   @Test func theLastWayInCannotBeRemoved() async {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero

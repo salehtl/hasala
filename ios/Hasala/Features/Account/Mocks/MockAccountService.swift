@@ -275,6 +275,11 @@
       // As the live service: an operator freeze is refused before any step-up.
       if action == .unfreeze, security.frozen?.by == .operator { throw .frozenByOperator }
       try stepUp(password: given)
+      if closesNextSystemSheet {
+        // The system's Face ID or passkey sheet was closed after the step-up was asked for.
+        closesNextSystemSheet = false
+        throw .cancelled
+      }
       switch action {
       case .addPasskey:
         security.passkeys.append(PasskeyRow(id: "pk-\(security.passkeys.count + 1)", provider: "iCloud Keychain",
@@ -318,6 +323,10 @@
     /// Scenario hook: this iPhone has no key yet (its data is still sealed), so a password
     /// step-up can't be signed here (Paper IYT "This iPhone can't confirm yet").
     var deviceKeyMissing = false
+
+    /// Test hook: the next change's system sheet (Face ID, or iOS's passkey sheet after a
+    /// password step-up) is closed, so the change answers `.cancelled`.
+    var closesNextSystemSheet = false
 
     // MARK: Change the email address
 
