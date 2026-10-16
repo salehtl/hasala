@@ -59,7 +59,8 @@ struct WhoCanSeeSheet: View {
 
   private var parties: some View {
     VStack(spacing: 0) {
-      PartyRow(tile: AnyView(AppIconTile(size: 36, radius: 10)), title: "Hasala, our server", top: 14) {
+      // Paper EW0-0: this row's column sets its title and both lists 8 apart.
+      PartyRow(tile: AnyView(AppIconTile(size: 36, radius: 10)), title: "Hasala, our server", top: 14, titleGap: 8) {
         VStack(alignment: .leading, spacing: 8) {
           section("Can see", color: HColor.textSecondary) {
             VStack(alignment: .leading, spacing: 4) {
@@ -185,16 +186,18 @@ struct WhoCanSeeSheet: View {
 }
 
 /// One party: a 36 tile, a 16/22 title and what it sees (Paper ListRow, 64 divider inset).
+/// The title sits 2 over a one-line answer, 8 over the server's "Can see" lists.
 private struct PartyRow<Content: View>: View {
   let tile: AnyView
   let title: String
   var top: CGFloat = 12
+  var titleGap: CGFloat = 2
   @ViewBuilder let content: () -> Content
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
       tile.accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: titleGap) {
         Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
         content()
       }
