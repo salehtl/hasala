@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -314,6 +315,35 @@ func TestOutlookHookLinkLimiter(t *testing.T) {
 	}
 }
 
+// Made-up clientStates never reach hook-link: a flood of them cannot fill the
+// limiter and push a real link into its shared fallback, so the real link is
+// still woken and nothing is counted as link-limited.
+func TestOutlookHookUnknownClientStatesSpendNoLinkBudget(t *testing.T) {
+	h := newHarness(t)
+	wk, o, _ := withOutlook(h, outlookPushOn())
+	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
+	o.Push.HookGlobal = NewLimiter(1e6, 1e6, 1, time.Now)
+	o.Push.HookLink = NewLimiter(hookLinkRate, hookLinkBurst, 4, time.Now)
+	u := outlookLinkRow(h, o, "flood", "ios-66666666-6666-4666-8666-666666666666", testClientState)
+	for i := range 20 {
+		entries := make([]map[string]any, 0, 100)
+		for j := range 100 {
+			entries = append(entries, note(strings.Repeat("A", 32)+fmt.Sprintf("%011d", i*100+j)))
+		}
+		wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, entries...)), http.StatusAccepted)
+	}
+	if n := o.Push.Counters.Unknown.Load(); n != 2000 {
+		t.Fatalf("unknown %d, want 2000", n)
+	}
+	for range 3 {
+		wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(testClientState))), http.StatusAccepted)
+	}
+	ws := wk.take()
+	if len(ws) != 3 || ws[0].user != u || o.Push.Counters.LinkLimited.Load() != 0 {
+		t.Fatalf("after the flood the real link woke %d times (limited %d)", len(ws), o.Push.Counters.LinkLimited.Load())
+	}
+}
+
 // A route that cannot be read is 503, so Graph retries; nobody is woken.
 func TestOutlookHookDatabaseFailure(t *testing.T) {
 	h := newHarness(t)
@@ -392,9 +422,12 @@ func TestGmailHookIgnoresOutlookLinks(t *testing.T) {
 	if ws := wk.take(); len(ws) != 0 || g.Push.Counters.Unknown.Load() != 1 {
 		t.Fatalf("the Gmail hook woke an Outlook link: %+v", ws)
 	}
-	// And the two hooks share one per-IP and one global budget.
-	if g.Push.HookPerIP != o.Push.HookPerIP || g.Push.HookGlobal != o.Push.HookGlobal {
-		t.Fatal("the hooks have separate per-IP or global budgets")
+	// And the two hooks share one per-IP budget, but not the global one.
+	if g.Push.HookPerIP != o.Push.HookPerIP {
+		t.Fatal("the hooks have separate per-IP budgets")
+	}
+	if g.Push.HookGlobal == nil || o.Push.HookGlobal == nil || g.Push.HookGlobal == o.Push.HookGlobal {
+		t.Fatal("the hooks share one global budget")
 	}
 }
 

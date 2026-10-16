@@ -164,6 +164,7 @@ final class LiveMailboxConnecting: MailboxConnecting {
     switch f {
     case .offline: "You're offline. Connect Gmail when you're back online."
     case .permissionMissing: "Hasala needs permission to read your bank alerts. Try again and allow it."
+    case .noMailbox: "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
     case .notConfigured: "Gmail isn't available in this build."
     case .stateMismatch, .nonceMismatch, .serverRefused, .keychain, .google:

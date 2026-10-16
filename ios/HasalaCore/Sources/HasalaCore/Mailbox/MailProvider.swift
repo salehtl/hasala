@@ -29,6 +29,24 @@ public protocol MailProvider: Sendable {
   /// The Authentication-Results verdict for a header block (the trust gate, spec 04 §7.6): which
   /// header the provider's own receiving server wrote, and what it said. Fails closed.
   func analyzeAuthResults(_ headerBlock: String) -> AuthResults.Analysis
+  /// At most this many message downloads at once (the engine's width is capped by it).
+  var maxDownloadWidth: Int { get }
+  /// Whether `MailSource.stop` ends only this iPhone's push (Outlook: one subscription id, kept
+  /// here). Gmail's `users.stop` ends the mailbox's watch for every client, so an iPhone that
+  /// lost the link must not call it.
+  var stopIsDeviceScoped: Bool { get }
+  /// Keeps what `PUT /mailbox/link` returned for this provider (Outlook: the `clientState`).
+  func installLink(_ result: MailboxLinkResult) throws(MailAuthError)
+  /// Forgets what `installLink` kept (unlink, takeover, a link deleted elsewhere). The refresh
+  /// token is the token provider's, not this.
+  func forgetLink()
+}
+
+extension MailProvider {
+  public var maxDownloadWidth: Int { Int.max }
+  public var stopIsDeviceScoped: Bool { false }
+  public func installLink(_ result: MailboxLinkResult) throws(MailAuthError) {}
+  public func forgetLink() {}
 }
 
 // MARK: - OAuth
@@ -140,10 +158,23 @@ public enum MailAPIError: Error, Sendable, Equatable {
   case offline
   /// The caller asked for an unfiltered listing (a programming error, refused locally).
   case unfilteredListing
+  /// "Slow down" with a `Retry-After` (seconds): the run stops at once, with no quick retry, and
+  /// the engine starts no cycle before it has passed. Counts as a 429.
+  case throttled(retryAfterSec: Int64, op: String)
+  /// The account has no mailbox this provider's API can read (Graph's
+  /// `MailboxNotEnabledForRESTAPI`: a Microsoft account on a non-Microsoft address). The user is
+  /// told; retrying cannot fix it.
+  case noMailbox
+  /// A listing page held a message from outside the requested senders: the provider ignored the
+  /// filter. The page is dropped unread (PO G) and the run halts.
+  case filterNotApplied
 
   public var status: Int? {
-    if case .status(let s, _) = self { return s }
-    return nil
+    switch self {
+    case .status(let s, _): s
+    case .throttled: 429
+    default: nil
+    }
   }
 }
 
@@ -236,4 +267,11 @@ public protocol MailSource: Sendable {
   func renew(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription?
   /// Ends push for this mailbox.
   func stop() async throws(MailAPIError)
+  /// Proves the account has a mailbox this API reads, before anything is linked (`noMailbox`
+  /// when it has none). Reads no message.
+  func checkMailbox() async throws(MailAPIError)
+}
+
+extension MailSource {
+  public func checkMailbox() async throws(MailAPIError) {}
 }

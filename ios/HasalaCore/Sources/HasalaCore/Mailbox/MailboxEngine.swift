@@ -14,8 +14,9 @@
 //     accounted AND the outbox flushed; a cut run keeps the old watermark and re-lists;
 //   - 404/410 is `gone` (accounted, the cycle moves past it); 429/5xx/transport retry
 //     400 ms then 1200 ms and a 429 narrows the download width to 1 (a 403 whose reason is a
-//     rate or quota limit counts as a 429, the provider's MailSource); 401/403 is fatal; any
-//     other 4xx halts;
+//     rate or quota limit counts as a 429, the provider's MailSource); a 429 or 503 that names
+//     its `Retry-After` stops the run at once and no cycle starts before it has passed; 401/403
+//     is fatal; any other 4xx halts;
 //   - 413 on flush halts `account_full` with the watermark intact;
 //   - no token is `reconnect_required`, an unreadable Keychain is "not now";
 //   - a deadline or background-processing run lists page by page, downloading each page before
@@ -116,6 +117,9 @@ public enum ConnectFailure: String, Sendable, Equatable {
   case offline
   /// The token response lacked the mail-read scope (gmail.readonly) or a refresh token.
   case permissionMissing = "permission_missing"
+  /// The signed-in account has no mailbox the provider's API reads (Outlook's
+  /// `MailboxNotEnabledForRESTAPI`). Nothing was linked.
+  case noMailbox = "no_mailbox"
   case stateMismatch = "state_mismatch"
   case nonceMismatch = "nonce_mismatch"
   case stepUpFailed = "step_up_failed"
@@ -180,6 +184,8 @@ public actor MailboxEngine {
   private var pushReadAtMs: Int64 = 0
   /// Set when the last cycle saw the server's topic differ from the build's (diagnostics).
   public private(set) var topicMismatch = false
+  /// No cycle starts before this (engine clock): the provider's last `Retry-After`. Process-local.
+  private var notBeforeMs: Int64 = 0
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
@@ -254,11 +260,19 @@ public actor MailboxEngine {
   /// step-up `mailbox.link` over SHA-256(id_token) → `PUT /mailbox/link` → Keychain. A first
   /// connect then starts the scan over `backfillDays` (30, 90 or 365; §7.7); a reconnect or a
   /// takeover resumes the normal cycle from the kept watermark.
-  public func connect(presenter: any MailAuthSessionPresenter, backfillDays: Int) async -> ConnectResult {
-    await exclusive { await connectLocked(presenter: presenter, backfillDays: backfillDays) }
+  ///
+  /// `replacing`: the mailbox tables hold another provider's lane (the account switches
+  /// provider). Only once the new link is made are they cleared, in the same commit as the new
+  /// state, so this is a first connect; a cancelled or failed switch leaves them as they were.
+  public func connect(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false) async
+    -> ConnectResult
+  {
+    await exclusive { await connectLocked(presenter: presenter, backfillDays: backfillDays, replacing: replacing) }
   }
 
-  private func connectLocked(presenter: any MailAuthSessionPresenter, backfillDays: Int) async -> ConnectResult {
+  private func connectLocked(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool) async
+    -> ConnectResult
+  {
     let oauth = provider.oauth
     guard oauth.isConfigured else { return .failed(.notConfigured) }
     let nonce: String
@@ -293,20 +307,36 @@ public actor MailboxEngine {
     guard let n = claims.nonce, constantTimeEquals(Data(n.utf8), Data(nonce.utf8)) else {
       return .failed(.nonceMismatch)
     }
+    // An account with no mailbox is refused before the step-up: linking it would replace a
+    // working link to the other provider with one that can read nothing.
+    let probe = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
+    do throws(MailAPIError) { try await source(probe).checkMailbox() } catch .noMailbox {
+      return .failed(.noMailbox)
+    } catch .offline {
+      return .failed(.offline)
+    } catch {
+      // Any other answer is the cycle's to handle (it halts with a reason the user sees).
+    }
     let proof: JSONValue
     do { proof = try await stepUp.proof(kind: "mailbox.link", payloadHash: sha256(Data(idToken.utf8))) } catch {
       return .failed(.stepUpFailed)
     }
+    let link: MailboxLinkResult
     do {
-      _ = try await server.putLink(provider: provider.id, idToken: idToken, stepUp: proof)
+      link = try await server.putLink(provider: provider.id, idToken: idToken, stepUp: proof)
     } catch .offline {
       return .failed(.offline)
     } catch {
       return .failed(.serverRefused)
     }
-    do { try await tokens.install(grant: grant) } catch { return .failed(.keychain) }
+    do {
+      try await tokens.install(grant: grant)
+      try provider.installLink(link)
+    } catch {
+      return .failed(.keychain)
+    }
 
-    var s = (try? await store.loadState()) ?? MailboxState()
+    var s = replacing ? MailboxState() : ((try? await store.loadState()) ?? MailboxState())
     switch s.phase {
     case .scanning, .awaitingCards, .authoringBackfill, .active:
       break  // a re-link mid-setup (or while active) keeps its place
@@ -332,8 +362,23 @@ public actor MailboxEngine {
         s.profileHistoryID = try? await source(token).changeToken()
       }
     }
-    do { try await store.commit(commitState(s)) } catch { return .failed(.keychain) }
+    var c = commitState(s)
+    c.clearAll = replacing
+    do { try await store.commit(c) } catch { return .failed(.keychain) }
     return .connected(address: claims.email)
+  }
+
+  /// Ends this provider's grant on this iPhone after another provider's link replaced it: stops
+  /// push, revokes the refresh token where the provider can (best effort) and forgets it and the
+  /// link's items. The mailbox tables are the new provider's and are not touched.
+  public func endGrant() async {
+    await exclusive {
+      if let token = try? await tokens.accessToken(forceRefresh: false) {
+        try? await source(token).stop()
+      }
+      await tokens.revokeAndForget()
+      provider.forgetLink()
+    }
   }
 
   /// Disconnect (Bank alerts › Disconnect): step-up `mailbox.unlink` → stop push (users.stop) →
@@ -346,6 +391,7 @@ public actor MailboxEngine {
         try? await source(token).stop()
       }
       await tokens.revokeAndForget()
+      provider.forgetLink()
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)
       } catch .noLink {
@@ -376,6 +422,12 @@ public actor MailboxEngine {
       return report
     }
     report.phase = state.phase
+    if clock.nowMs() < notBeforeMs {
+      // The provider asked for a pause (`Retry-After`): every request now would count against
+      // the same limit. Nothing changes; a later trigger runs.
+      report.haltedOn = .gmail
+      return report
+    }
     if state.phase == .halted {
       guard trigger == .retry else {
         report.haltedOn = state.haltedOn
@@ -411,12 +463,14 @@ public actor MailboxEngine {
       do {
         switch try await server.linkStatus() {
         case .noLink:
+          await endLocalPush()
           return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
         case .holder(isThisDevice: false, _):
           // Delete this phone's refresh token but do NOT revoke it at the provider: both iPhones
           // share the iOS client id, and Google's revoke ends the whole grant for that client and
           // Google account, which would sign the new holder out too (deviation from §7.4's
           // "revoke OWN refresh token"; to confirm with an AT-GMAIL run on a real account).
+          await endLocalPush()
           await tokens.forget()
           return await setPhase(&state, .otherDevice, halt: .notHolder, report)
         case .holder(isThisDevice: true, let watch):
@@ -760,6 +814,16 @@ public actor MailboxEngine {
 
   func source(_ token: AccessToken) -> any MailSource { provider.source(accessToken: token) }
 
+  /// This iPhone no longer holds the link (another took it over, or it was deleted): end this
+  /// iPhone's own push where that cannot touch the new holder's (best effort), and forget what
+  /// the link kept. The new holder's subscription replaces a leftover one in any case.
+  func endLocalPush() async {
+    if provider.stopIsDeviceScoped, let token = try? await tokens.accessToken(forceRefresh: false) {
+      try? await source(token).stop()
+    }
+    provider.forgetLink()
+  }
+
   struct Run {
     var trusted: [String]
     var cards: [CardKey: CardState]
@@ -859,7 +923,7 @@ public actor MailboxEngine {
     let projected = await ledger.projectedMessageIDs(among: all)
     let todo = all.filter { !accounted.contains($0) && !projected.contains($0) }
     var i = 0
-    run.width = config.downloadWidth
+    run.width = max(1, min(config.downloadWidth, provider.maxDownloadWidth))
     let skipped = all.count - todo.count
     emit(.downloading, skipped, all.count)
     while i < todo.count {
@@ -925,6 +989,8 @@ public actor MailboxEngine {
         do { return .success(try await op()) } catch let e {
           let s = e.status
           if s == 429 { rateLimited = true }
+          // The provider named its pause: a quick retry would only count against it again.
+          if case .throttled = e { return .failure(e) }
           let transient = e == .offline || s == 429 || (s ?? 0) >= 500
           if !transient || n >= backoff.count { return .failure(e) }
           await sleep(backoff[n])
@@ -1065,6 +1131,17 @@ public actor MailboxEngine {
 
   func mailFailure(_ e: MailAPIError, _ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
+    switch e {
+    case .throttled(let sec, _):
+      notBeforeMs = clock.nowMs() + min(max(sec, 1), 600) * 1000
+    case .noMailbox:
+      return await halt(&state, .noMailbox, report)
+    case .filterNotApplied:
+      // The provider listed mail outside the trusted senders. The page was dropped unread; halt
+      // loudly (shown with "Try again") rather than list on as if nothing happened.
+      return await halt(&state, .gmail, report)
+    default: break
+    }
     switch e.status {
     case 401?:
       // A stale access token: one forced refresh decides between a blip and a dead grant.

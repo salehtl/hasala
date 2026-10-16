@@ -123,18 +123,7 @@ public struct GoogleOAuthClient: Sendable {
   /// time before anything else is read. An `error=` redirect is `denied`, except
   /// `access_denied` (the user pressed Cancel on Google's page), which is `cancelled`.
   public func code(fromCallback callback: URL, for auth: GmailAuthorization) throws(GmailOAuthError) -> String {
-    guard callback.scheme == config.redirectScheme,
-      let comps = URLComponents(url: callback, resolvingAgainstBaseURL: false)
-    else { throw .malformedCallback }
-    let items = comps.queryItems ?? []
-    func item(_ n: String) -> String? { items.first { $0.name == n }?.value }
-    let state = item("state") ?? ""
-    guard constantTimeEquals(Data(state.utf8), Data(auth.state.utf8)) else { throw .stateMismatch }
-    if let err = item("error") {
-      throw err == "access_denied" ? .cancelled : .denied(String(err.prefix(64)))
-    }
-    guard let code = item("code"), !code.isEmpty else { throw .malformedCallback }
-    return code
+    try OAuthWire.code(fromCallback: callback, scheme: config.redirectScheme, state: auth.state)
   }
 
   /// `grant_type=authorization_code` (no secret). The response must carry a refresh token, an
@@ -173,8 +162,38 @@ public struct GoogleOAuthClient: Sendable {
   }
 
   func token(_ form: [(String, String)]) async throws(GmailOAuthError) -> GmailTokenGrant {
+    try await OAuthWire.token(http: http, endpoint: config.tokenEndpoint, form: form)
+  }
+}
+
+/// The OAuth 2.0 wire both providers share (RFC 6749 §4.1 with PKCE, a public client): the
+/// redirect check and the token endpoint's request and answer.
+enum OAuthWire {
+  /// Checks the redirect and returns the authorization code. `state` is compared in constant
+  /// time before anything else is read. An `error=` redirect is `denied`, except
+  /// `access_denied` (the user pressed Cancel on the provider's page), which is `cancelled`.
+  static func code(fromCallback callback: URL, scheme: String, state want: String) throws(MailOAuthError) -> String {
+    guard callback.scheme == scheme, let comps = URLComponents(url: callback, resolvingAgainstBaseURL: false) else {
+      throw .malformedCallback
+    }
+    let items = comps.queryItems ?? []
+    func item(_ n: String) -> String? { items.first { $0.name == n }?.value }
+    let state = item("state") ?? ""
+    guard constantTimeEquals(Data(state.utf8), Data(want.utf8)) else { throw .stateMismatch }
+    if let err = item("error") {
+      throw err == "access_denied" ? .cancelled : .denied(String(err.prefix(64)))
+    }
+    guard let code = item("code"), !code.isEmpty else { throw .malformedCallback }
+    return code
+  }
+
+  /// One form POST to the token endpoint. `invalid_grant` is `invalidGrant`; any other non-2xx
+  /// is its status only (the body is never kept).
+  static func token(http: any HTTPExchange, endpoint: String, form: [(String, String)]) async throws(MailOAuthError)
+    -> MailTokenGrant
+  {
     let req = HTTPRequest(
-      method: .post, url: URL(string: config.tokenEndpoint)!,
+      method: .post, url: URL(string: endpoint)!,
       headers: [("Content-Type", "application/x-www-form-urlencoded"), ("Accept", "application/json")],
       body: Data(FormEncoding.encode(form).utf8))
     let res: HTTPResponse
@@ -188,9 +207,18 @@ public struct GoogleOAuthClient: Sendable {
       throw .malformedResponse
     }
     let expires = b["expires_in"]?.numberValue?.int64Value ?? 3600
-    return GmailTokenGrant(
+    return MailTokenGrant(
       accessToken: access, expiresIn: max(0, expires), refreshToken: b["refresh_token"]?.stringValue,
       idToken: b["id_token"]?.stringValue, scope: b["scope"]?.stringValue)
+  }
+
+  /// The payload of a JWT, unverified (the server verifies; the app only reads it).
+  static func claims(_ jwt: String) -> JSONObject? {
+    let parts = jwt.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 3, let payload = try? Base64.decodeURL(String(parts[1])),
+      let v = try? JSONParser.parse([UInt8](payload))
+    else { return nil }
+    return v.objectValue
   }
 }
 

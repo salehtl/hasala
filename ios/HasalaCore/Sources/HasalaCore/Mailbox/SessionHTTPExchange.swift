@@ -42,6 +42,7 @@ public struct SessionHTTPExchange: HTTPExchange {
     case .post: method = .post
     case .put: method = .put
     case .delete: method = .delete
+    case .patch: throw .offline  // no hasalad route takes PATCH
     }
     do {
       let r = try await transport.send(APIRequest(method: method, path: path, body: request.body, bearer: bearer))

@@ -378,8 +378,9 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
-	// The step-up is checked before the ID token is: a request without one
-	// costs no JWKS work.
+	// A request without a step-up is refused before the ID token is
+	// verified, so it costs no JWKS work. The step-up assertion itself is
+	// verified later, inside StepUp.Run, before anything is written.
 	if su == nil {
 		writeErr(w, http.StatusForbidden, "step_up_required", "")
 		return
