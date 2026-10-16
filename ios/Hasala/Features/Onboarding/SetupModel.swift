@@ -1,22 +1,7 @@
 import Foundation
+import HasalaDesign
 import HasalaModels
 import Observation
-
-/// The salary day the income step offers (Paper "Setup · 3 of 4 · Monthly income"): a day
-/// of the month, or the last working day.
-enum PaydayChoice: Hashable, Sendable {
-  case day(Int)
-  case lastWorkingDay
-
-  /// The day the income op carries. The op has no "last working day"; it is sent as the
-  /// 28th until it does.
-  var day: Int {
-    switch self {
-    case .day(let d): d
-    case .lastWorkingDay: 28
-    }
-  }
-}
 
 /// What setup last sent, so an unchanged value isn't sent again (plan B3.2 rule 3).
 struct AuthoredSetup: Equatable, Sendable {
@@ -28,17 +13,17 @@ struct AuthoredSetup: Equatable, Sendable {
 
 /// Everything typed or chosen in setup (plan B3.2), kept for the life of the process with
 /// the model (`OnboardingStore`): Back never reverts it and Forward shows it again. A value
-/// left nil was never chosen, so a relaunch can fill it from what the account holds
-/// (`SetupModel.reconcile`).
+/// left nil (or an empty entry) was never chosen, so a relaunch can fill it from what the
+/// account holds (`SetupModel.reconcile`).
 struct SetupDraft: Equatable, Sendable {
   /// The banks picked; nil shows both picked.
   var chosenBanks: Set<SupportedBank>?
   var bankRequestSent = false
-  /// The provider the person connected or chose; it skips "Choose your email" next time.
+  /// The provider the person connected or picked in "Choose your email"; it skips the
+  /// chooser next time (plan B3.2 rule 5).
   var provider: MailProviderKind?
-  /// The salary typed, whole dirhams.
-  // TODO(plan P2): `AmountEntry` (HasalaDesign's keypad) once the keypad is in.
-  var incomeText = ""
+  /// The salary as typed on the keypad, whole dirhams.
+  var incomeEntry = AmountEntry()
   var payday: PaydayChoice?
   var split: StartingPlan?
   var showDetails = false
@@ -74,7 +59,16 @@ final class SetupModel {
   // Bank
   var bankRequest = ""
 
-  // The email and the scan
+  // Your email
+  /// "Choose your email" is up: a sheet over the step it was asked from (plan decision 5).
+  var choosingEmail = false
+  /// The lane as the email step's coordinators see it (plan B3.2 rule 2).
+  @ObservationIgnored private let mailLink: SetupMailLink
+  /// One connect attempt per provider, kept for the process, so the connect screen shows
+  /// what happened there when the person comes back to it.
+  @ObservationIgnored private var coordinators: [MailProviderKind: MailConnectCoordinator] = [:]
+
+  // The scan
   private(set) var scan: ScanProgress?
   /// One per account: the first scan starts once (plan B3.2 rule 4).
   private var scanTask: Task<Void, Never>?
@@ -93,9 +87,14 @@ final class SetupModel {
     self.displayName = displayName
     self.facts = facts
     self.onFinished = onFinished
+    mailLink = SetupMailLink(base: services.mailbox)
+    mailLink.isLinked = { [weak self] in self?.mailConnected ?? false }
   }
 
   var step: OnboardingStep { OnboardingStep.derive(facts) }
+
+  /// Today in the ledger's clock (the payday line, the plan's month).
+  var today: LocalDate { (services.setup as? SetupClock)?.today() ?? LedgerToday.device() }
 
   // MARK: The draft, as the steps bind it
 
@@ -104,14 +103,37 @@ final class SetupModel {
     set { draft.chosenBanks = newValue }
   }
   var bankRequestSent: Bool { draft.bankRequestSent }
-  var incomeText: String {
-    get { draft.incomeText }
-    set { draft.incomeText = newValue }
+
+  /// The salary on the keypad. Whole dirhams only on this step: the decimal key is
+  /// ignored, as page 11 ignores any key that breaks the rules.
+  var incomeEntry: AmountEntry {
+    get { draft.incomeEntry }
+    set {
+      guard !newValue.text.contains(".") else { return }
+      draft.incomeEntry = newValue
+    }
   }
+
+  /// The salary as text ("25000"), for callers that type it.
+  var incomeText: String {
+    get { draft.incomeEntry.text }
+    set { incomeEntry = AmountEntry(typing: newValue.filter { $0 != "." }) }
+  }
+
+  var paydayChoice: PaydayChoice {
+    get { draft.payday ?? .standard }
+    set { draft.payday = newValue }
+  }
+
+  /// The payday as the income op carries it (a day of the month).
   var payday: Int {
-    get { draft.payday?.day ?? 28 }
+    get { paydayChoice.opDay(today: today) }
     set { draft.payday = .day(newValue) }
   }
+
+  /// The next payday from today ("Next one Wed, 28 Oct").
+  var nextPayday: LocalDate { paydayChoice.next(onOrAfter: today) }
+
   var plan: StartingPlan {
     get { draft.split ?? StartingPlan() }
     set { draft.split = newValue }
@@ -121,8 +143,21 @@ final class SetupModel {
     set { draft.showDetails = newValue }
   }
 
-  /// The provider setup connects: the one remembered, else the first this build can.
-  var provider: MailProviderKind { draft.provider ?? services.mailbox.connectable.first ?? .gmail }
+  /// The provider setup connects: the one remembered or connected, else the first this
+  /// build can.
+  var provider: MailProviderKind {
+    draft.provider ?? readingMailbox?.provider ?? services.mailbox.connectable.first ?? .gmail
+  }
+
+  /// The providers this build connects (live: Gmail only, plan B4.6).
+  var connectable: [MailProviderKind] { services.mailbox.connectable }
+
+  /// The mailbox the account reads, the one setup connected first.
+  private var readingMailbox: MailboxSnapshot? {
+    let reading = services.mailbox.mailboxes.filter { $0.state != .disconnected }
+    if let provider = draft.provider, let m = reading.first(where: { $0.provider == provider }) { return m }
+    return reading.first
+  }
 
   // MARK: Reconciling (plan B3.3)
 
@@ -139,7 +174,10 @@ final class SetupModel {
     facts.sampleLoaded = facts.sampleLoaded || new.sampleLoaded
     facts.notificationsAsked = facts.notificationsAsked || new.notificationsAsked || draft.notificationsDecision != nil
     facts.mailbox = new.mailbox
-    if draft.incomeText.isEmpty, let minor = readBack.incomeMinor, minor > 0 { draft.incomeText = String(minor / 100) }
+    if draft.incomeEntry.isEmpty, let minor = readBack.incomeMinor, minor > 0 {
+      // Whole dirhams on this step: fils a later edit added are dropped from the figure only.
+      draft.incomeEntry = AmountEntry(minor: minor - minor % 100)
+    }
     if draft.payday == nil, let day = readBack.payday { draft.payday = .day(day) }
     if draft.split == nil, let split = readBack.split { draft.split = split }
     if draft.chosenBanks == nil, !banks.isEmpty { draft.chosenBanks = Set(banks) }
@@ -180,6 +218,11 @@ final class SetupModel {
     if target >= .notifications { stack.append(.notifications) }
     if target >= .done { stack.append(.done) }
     path = stack
+    // The email step under the stack shows its connected state when Back reaches it.
+    if !manual, mailConnected {
+      let provider = provider
+      Task { await settle(provider) }
+    }
   }
 
   /// Setup's step numbers ("2 of 4").
@@ -197,9 +240,12 @@ final class SetupModel {
 
   var firstName: String { displayName.split(separator: " ").first.map(String.init) ?? displayName }
 
-  // MARK: Bank (step 3)
+  // MARK: Bank (step 1)
 
   var orderedBanks: [SupportedBank] { SupportedBank.allCases.filter { chosenBanks.contains($0) } }
+
+  /// "Emirates NBD and DIB".
+  var bankList: String { orderedBanks.map(\.shortName).formatted(.list(type: .and)) }
 
   func toggle(_ bank: SupportedBank) {
     var banks = chosenBanks
@@ -210,7 +256,7 @@ final class SetupModel {
   /// "Continue with N banks": the bank ops, unless these banks were sent already (Back
   /// then Continue sends nothing again), then your email.
   func continueWithBanks() async {
-    guard !chosenBanks.isEmpty else { return }
+    guard !chosenBanks.isEmpty, !busy else { return }
     let banks = orderedBanks
     if draft.authored.banks != banks {
       busy = true
@@ -224,7 +270,7 @@ final class SetupModel {
       }
     }
     facts.banksChosen = true
-    go(.connect(provider))
+    await openEmailStep()
   }
 
   /// "Skip": manual-entry mode; your email and the scan are skipped too.
@@ -245,7 +291,7 @@ final class SetupModel {
     }
   }
 
-  // MARK: Your email (step 4) and the scan (step 5)
+  // MARK: Your email (step 2)
 
   var offersSampleData: Bool { services.mailbox.offersSampleData }
 
@@ -253,25 +299,132 @@ final class SetupModel {
   /// never a second sign-in (plan B3.2 rule 2).
   var mailConnected: Bool { facts.mailbox != .unlinked }
 
-  /// The provider's sign-in, then the first scan; or, once connected, on to the scan.
-  func connectMail(_ provider: MailProviderKind) async {
-    guard !mailConnected else {
-      go(scanTask != nil ? .scan : .income)
-      return
+  /// The mailbox the email step connected, as the first scan shows it.
+  var connectedMailbox: MailboxSnapshot? { mailConnected ? readingMailbox : nil }
+
+  /// The lane as the connect screens see it.
+  var mailbox: MailboxConnecting { services.mailbox }
+
+  /// The email step after the banks: the provider connected or remembered, the only one
+  /// this build reads, or "Choose your email" (plan B4.6 rule 2, decision 5).
+  private func openEmailStep() async {
+    if mailConnected {
+      let provider = provider
+      await settle(provider)
+      go(.connect(provider))
+    } else if draft.provider != nil || connectable.count <= 1 {
+      go(.connect(provider))
+    } else {
+      failure = nil
+      choosingEmail = true
     }
-    busy = true
-    defer { busy = false }
-    do {
-      try await services.mailbox.connect(provider)
-    } catch {
-      failure = Self.setupFailure(error, provider)
-      return
-    }
+  }
+
+  /// Whether "Choose a different one" can open the chooser (more than one provider).
+  var canChooseEmail: Bool { connectable.count > 1 }
+
+  /// "Not your email? Choose a different one.": the chooser over the screen it was asked
+  /// from.
+  func chooseEmail() {
+    guard canChooseEmail else { return }
+    choosingEmail = true
+  }
+
+  /// A row in "Choose your email": the sheet goes, and that provider's read-only screen
+  /// takes the email step's place in the stack.
+  func pickProvider(_ provider: MailProviderKind) {
     draft.provider = provider
-    facts.mailSkipped = false
-    facts.mailbox = .scanning
-    startScan()
-    go(.scan)
+    choosingEmail = false
+    if case .failed? = coordinators[provider]?.outcome { coordinators[provider]?.reset() }
+    showEmailScreen(provider)
+  }
+
+  /// The email step's screen for `provider`, in place of any email screen on the stack.
+  private func showEmailScreen(_ provider: MailProviderKind) {
+    choosingEmail = false
+    failure = nil
+    let kept = path.prefix { !$0.isEmailStep }
+    path = Array(kept) + [.connect(provider)]
+  }
+
+  /// The connect attempt for `provider`'s screen, made once and kept.
+  func coordinator(_ provider: MailProviderKind) -> MailConnectCoordinator {
+    if let c = coordinators[provider] { return c }
+    let c = MailConnectCoordinator(mailbox: mailLink, context: .setup(stepOf: (2, 4)))
+    coordinators[provider] = c
+    return c
+  }
+
+  /// Gives a connect that already happened its connected state on its screen, without
+  /// any sign-in (the link answers at once).
+  func settle(_ provider: MailProviderKind) async {
+    let c = coordinator(provider)
+    guard c.outcome == nil, !c.busy, mailLink.existing(provider) != nil else { return }
+    await c.connect(provider)
+  }
+
+  /// How the last connect of `provider` failed, for its error screen.
+  func connectFailure(_ provider: MailProviderKind) -> MailConnectFailure? {
+    if case .failed(let f)? = coordinators[provider]?.outcome { return f }
+    return nil
+  }
+
+  /// The provider's sign-in, then the first scan; once connected, on to the scan without
+  /// a second sign-in. (The connect screen's button runs the same coordinator.)
+  func connectMail(_ provider: MailProviderKind) async {
+    if path.last != .connect(provider), path.last != .connectError(provider) {
+      draft.provider = provider
+      showEmailScreen(provider)
+    }
+    await coordinator(provider).connect(provider)
+    switch coordinators[provider]?.outcome {
+    case .connected?: emailConnected(provider)
+    case .failed?: connectFailed(provider)
+    case nil: break
+    }
+  }
+
+  /// "Continue with Google" on the error screen: on success the error screen gives way to
+  /// the first scan.
+  func retryConnect(_ provider: MailProviderKind) async {
+    await connectMail(provider)
+  }
+
+  /// The connect screen's own button connected, or its "Continue" was tapped once it had.
+  func continueFromEmail(_ provider: MailProviderKind) {
+    guard path.last == .connect(provider) else { return }
+    emailConnected(provider)
+  }
+
+  private func emailConnected(_ provider: MailProviderKind) {
+    if path.last == .connectError(provider) { path.removeLast() }
+    if facts.mailbox == .unlinked {
+      draft.provider = provider
+      facts.mailSkipped = false
+      facts.mailbox = .scanning
+      startScan()
+      go(.scan)
+    } else {
+      go(scanTask != nil ? .scan : .income)
+    }
+  }
+
+  /// A connect that didn't happen: the two the design draws a screen for (an admin's
+  /// approval, a Microsoft sign-in that didn't finish) push it; the rest stay on the
+  /// connect screen as a line beside its button ("Errors sit next to the thing that
+  /// failed", page 17). A closed Google sign-in is not a failure.
+  func connectFailed(_ provider: MailProviderKind) {
+    guard let f = connectFailure(provider) else { return }
+    if Self.showsErrorScreen(f), path.last != .connectError(provider) { go(.connectError(provider)) }
+    failure = Self.setupFailure(f, provider)
+  }
+
+  /// The failures with a screen of their own (Paper P2.9 row 2).
+  static func showsErrorScreen(_ f: MailConnectFailure) -> Bool {
+    switch f {
+    case .adminApprovalNeeded, .cancelled: true
+    default: false
+    }
   }
 
   /// A connect failure as the setup banner shows it (a closed sign-in shows nothing), in
@@ -290,6 +443,7 @@ final class SetupModel {
   }
 
   func useSampleData() async {
+    guard !busy else { return }
     busy = true
     defer { busy = false }
     do {
@@ -300,6 +454,8 @@ final class SetupModel {
       failure = error
     }
   }
+
+  // MARK: The scan (step 2)
 
   private func startScan() {
     guard scanTask == nil else { return }
@@ -326,28 +482,35 @@ final class SetupModel {
     go(.income)
   }
 
-  // MARK: Income (step 6) and plan (step 7)
+  /// The import still runs behind the later steps (their pill, page 17 §04 A).
+  var scanRunning: Bool {
+    guard let scan else { return false }
+    return scan.isRunning || scan.phase == .background
+  }
 
-  /// The income in fils, from the digits typed (whole dirhams).
+  // MARK: Income (step 3) and plan (step 4)
+
+  /// The income in fils, from the whole dirhams typed; nil at 0.
   var incomeMinor: Int64? {
-    let digits = incomeText.filter(\.isNumber)
-    guard !digits.isEmpty, let v = Int64(digits.prefix(9)), v > 0 else { return nil }
-    return v * 100
+    guard let minor = draft.incomeEntry.minor, minor > 0 else { return nil }
+    return minor
   }
 
-  var incomeDisplay: String {
-    guard let v = incomeMinor else { return "0" }
-    return (v / 100).formatted(.number.grouping(.automatic))
-  }
+  /// The income the plan uses and sends: nil when the step was skipped (what was typed
+  /// stays on the keypad for Back).
+  var savedIncomeMinor: Int64? { facts.incomeSkipped ? nil : incomeMinor }
+
+  var incomeDisplay: String { draft.incomeEntry.display }
 
   func continueWithIncome() {
-    facts.incomeSet = incomeMinor != nil
-    facts.incomeSkipped = incomeMinor == nil
+    guard incomeMinor != nil else { return }
+    facts.incomeSet = true
+    facts.incomeSkipped = false
     go(.plan)
   }
 
+  /// "Skip": no income is sent, but what was typed stays for Back.
   func skipIncome() {
-    incomeText = ""
     facts.incomeSkipped = true
     go(.plan)
   }
@@ -355,8 +518,9 @@ final class SetupModel {
   /// "Use this plan" (or Skip): one enqueue of the income and plan ops, unless exactly
   /// these were sent already (a changed value is a real change, and is sent again).
   func savePlan(skip: Bool = false) async {
-    let values = SetupReadBack(incomeMinor: incomeMinor, payday: incomeMinor == nil ? nil : payday,
-                               split: skip ? nil : plan)
+    guard !busy else { return }
+    let income = savedIncomeMinor
+    let values = SetupReadBack(incomeMinor: income, payday: income == nil ? nil : payday, split: skip ? nil : plan)
     if draft.authored.plan != values {
       busy = true
       defer { busy = false }
@@ -391,7 +555,7 @@ final class SetupModel {
   /// "Continue" on the result, whether or not the scan has finished.
   func afterResult() { go(.notifications) }
 
-  // MARK: Notifications (step 9) and done (step 10)
+  // MARK: Notifications and done
 
   /// The system was asked here already: the step shows "Continue" (plan B3.2 rule 2).
   var notificationsAllowed: Bool { draft.notificationsDecision == .allowed }
@@ -419,5 +583,15 @@ final class SetupModel {
     didResume = true  // the step it derives now is `.finished`: `resume()` must not finish again
     scanTask?.cancel()
     onFinished()
+  }
+}
+
+extension SetupRoute {
+  /// The email step's screens, which replace each other on the stack.
+  var isEmailStep: Bool {
+    switch self {
+    case .connect, .connectError: true
+    default: false
+    }
   }
 }
