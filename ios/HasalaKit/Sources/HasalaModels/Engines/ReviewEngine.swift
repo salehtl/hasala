@@ -33,6 +33,21 @@ public enum ReviewChoice: String, Sendable, Hashable, CaseIterable, Codable {
     case .transfer: .sky
     }
   }
+
+  /// The hue of the direction's pill dot, active pill and glow (Paper "Review · Deck":
+  /// Transfer is the not-spending grey, not the sky of income).
+  public var pillHue: Hue { self == .transfer ? .other : hue }
+
+  /// The direction a category files under: its bucket's, and Transfer for everything that
+  /// isn't spending or saving (transfers, refunds, income). "Use" sends the card that way.
+  public init(filing bucket: Bucket) {
+    switch bucket {
+    case .needs: self = .need
+    case .wants: self = .want
+    case .savings: self = .save
+    case .income, .project, .other: self = .transfer
+    }
+  }
 }
 
 /// A screen direction of a swipe.
@@ -63,6 +78,24 @@ public enum SwipePhysics {
 
   /// The direction the card leans toward while dragging (20 pt is enough to hint).
   public static func preview(dx: Double, dy: Double) -> SwipeEdge? { detect(dx: dx, dy: dy, threshold: 20) }
+
+  /// 0…1 strength of the lean, unquantised: the glow and the pill follow the finger
+  /// frame by frame.
+  public static func strength(dx: Double, dy: Double) -> Double {
+    min(1, max(abs(dx), abs(dy)) / commitDistance)
+  }
+
+  /// The edge the card is past the commit point toward, while it is dragged (no flick):
+  /// its pill turns active and a light haptic plays as it crosses.
+  public static func pastCommit(dx: Double, dy: Double) -> SwipeEdge? {
+    detect(dx: dx, dy: dy, threshold: commitDistance)
+  }
+
+  /// The live card's tilt in degrees: it follows the horizontal drag and reaches
+  /// `atCommit` at the commit point, never more.
+  public static func tilt(dx: Double, atCommit: Double) -> Double {
+    max(-atCommit, min(atCommit, dx / commitDistance * atCommit))
+  }
 
   /// 0…1 strength of the lean, quantised to tenths so the deck redraws in steps.
   public static func progress(dx: Double, dy: Double) -> Double {
@@ -126,6 +159,8 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var isIncome: Bool
   /// "Spent · Fri 9 Oct, 18:42 · DIB card ···8891".
   public var meta: String
+  /// The same moment as VoiceOver says it: "spent Friday 9 October".
+  public var spokenWhen: String
   /// "Looks like Groceries".
   public var suggestion: CategoryOption?
 }
@@ -156,16 +191,29 @@ public enum ReviewEngine {
     queue(s).map { card($0, s) }
   }
 
+  /// A session's order when it starts at one card (a To sort row): that card, the ones
+  /// after it, then the ones before it, so the deck reads on down the list.
+  public static func order(_ ids: [TxnID], startingAt start: TxnID?) -> [TxnID] {
+    guard let start, let i = ids.firstIndex(of: start) else { return ids }
+    return Array(ids[i...] + ids[..<i])
+  }
+
   public static func card(_ t: Txn, _ s: LedgerState) -> ReviewCardModel {
     let verb = t.direction == .in ? "Received" : "Spent"
     var meta = "\(verb) · \(t.postedAt.date.short), \(t.postedAt.time)"
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
+    let d = t.postedAt.date
+    let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
     return ReviewCardModel(
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
       isNewMerchant: t.isNewMerchant, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
-      isIncome: t.direction == .in, meta: meta, suggestion: s.category(t.suggestion).map(CategoryOption.init)
+      isIncome: t.direction == .in, meta: meta, spokenWhen: when,
+      suggestion: s.category(t.suggestion).map(CategoryOption.init)
     )
   }
+
+  /// Monday first, as `LocalDate.weekday` counts.
+  static let weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
   /// The categories a pick sheet offers for a direction. Transfer offers the
   /// not-spending categories, and income ones for money in (PWA `panelGroups`).

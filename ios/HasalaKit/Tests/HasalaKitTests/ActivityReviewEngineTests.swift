@@ -16,6 +16,10 @@ struct ActivityReviewEngineParityTests {
     #expect(a.review?.unplanned == .aed(827_28))
     #expect(a.chips.first { $0.kind == .toReview }?.count == 6)
     #expect(a.comingUp.map(\.name) == ["DEWA", "AXA Insurance"])
+    #expect(a.chips.map(\.kind) == [.all, .toReview, .bills, .transfers, .income, .archived])
+    // A bill that hasn't come yet is past its usual day; Hasala can't know it is late.
+    #expect(a.comingUp.last?.trailingNote == .status("3 days past usual", .error))
+    #expect(a.comingUp.first?.trailingNote == .text("in 4 days"))
     let days = a.days.prefix(4)
     #expect(days.map(\.title) == ["Today", "Yesterday, Fri 9 Oct", "Thu 8 Oct", "Wed 7 Oct"])
     #expect(days.map { MoneyFormat.string($0.total.minor) } == ["91.50", "388.15", "116.99", "601.00"])
@@ -43,8 +47,27 @@ struct ActivityReviewEngineParityTests {
     #expect(a.summary?.caption.rendered(hidden: false) == "40% of Dining's 1,600")
     #expect(a.summary?.verdict == .overPace)
     #expect(a.review == nil)
+    // One card, newest first, each row naming its day instead of the category.
+    #expect(a.rows.map(\.merchant) == ["Talabat", "Starbucks DIFC", "Zuma", "Common Grounds", "Talabat"])
+    #expect(a.rows.prefix(2).map(\.detail) == ["Sat 10 Oct · 13:20", "Sat 10 Oct · 09:05"])
+    #expect(ActivityEngine.snapshot(s, now: now, filter: .all).rows.isEmpty)
     let groceries = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries"))
     #expect(groceries.summary?.caption.rendered(hidden: false) == "36% of Groceries' 2,200")
+  }
+
+  /// Income: money that came in and stays in. Maya's only money in this month is the
+  /// transfer still waiting in review, so the list is empty until it is sorted as income.
+  @Test func theIncomeChipListsMoneyIn() throws {
+    #expect(ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .income)).rowCount == 0)
+    var sorted = s
+    let i = try #require(sorted.txns.firstIndex { $0.id == "transfer-in" })
+    sorted.txns[i].needsReview = false
+    sorted.txns[i].categoryID = "freelance"
+    let income = ActivityEngine.snapshot(sorted, now: now, filter: TxnFilter(kind: .income))
+    #expect(income.days.flatMap(\.rows).map(\.merchant) == ["Transfer from ···7890"])
+    // A transfer between accounts is not income.
+    sorted.txns[i].isTransfer = true
+    #expect(ActivityEngine.snapshot(sorted, now: now, filter: TxnFilter(kind: .income)).rowCount == 0)
   }
 
   @Test func searchingFindsAcrossMonthsAndRawMerchants() {
@@ -69,12 +92,48 @@ struct ActivityReviewEngineParityTests {
     #expect(cards.count == 6)
     let lulu = cards.first { $0.id == "lulu" }
     #expect(lulu?.meta == "Spent · Fri 9 Oct, 18:42 · DIB card ···8891")
+    #expect(lulu?.spokenWhen == "spent Friday 9 October")
+    #expect(cards.first { $0.id == "transfer-in" }?.spokenWhen == "received Wednesday 7 October")
     #expect(lulu?.suggestion?.name == "Groceries")
     #expect(lulu?.isNewMerchant == true)
     #expect(ReviewEngine.options(for: .need, s).map(\.name).prefix(3) == ["Rent", "Utilities", "Groceries"])
     let incoming = s.txn("transfer-in")
     #expect(ReviewEngine.options(for: .transfer, s, txn: incoming).map(\.name) ==
       ["Salary", "Freelance", "Transfer", "Refunds"])
+  }
+}
+
+/// The queue is oldest first, so nothing waits longest; a To sort row starts the deck at its
+/// own card and reads on down the list.
+@Suite("Review queue order")
+struct ReviewQueueOrderTests {
+  let s = MayaLedger.state
+
+  @Test func theQueueIsOldestFirst() {
+    #expect(ReviewEngine.queue(s).map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
+  }
+
+  @Test func skippedCardsLeaveTheQueueForToday() {
+    var skipped = s
+    skipped.skippedReview = ["transfer-in"]
+    #expect(ReviewEngine.queue(skipped).map(\.id) == ["atm", "apple", "lulu", "dubai-taxi", "steam"])
+  }
+
+  @Test func aSessionStartsAtTheRowTapped() {
+    let ids = ReviewEngine.queue(s).map(\.id)
+    #expect(ReviewEngine.order(ids, startingAt: "apple") == ["apple", "lulu", "dubai-taxi", "steam", "atm", "transfer-in"])
+    #expect(ReviewEngine.order(ids, startingAt: nil) == ids)
+    #expect(ReviewEngine.order(ids, startingAt: "gone") == ids)
+  }
+
+  @Test func useFilesTowardTheCategorysBucket() {
+    #expect(ReviewChoice(filing: .needs) == .need)
+    #expect(ReviewChoice(filing: .wants) == .want)
+    #expect(ReviewChoice(filing: .savings) == .save)
+    #expect(ReviewChoice(filing: .other) == .transfer)
+    #expect(ReviewChoice(filing: .income) == .transfer)
+    #expect(ReviewChoice.transfer.pillHue == .other)
+    #expect(ReviewChoice.need.pillHue == .sand)
   }
 }
 
@@ -103,6 +162,18 @@ struct SwipePhysicsTests {
     #expect(SwipePhysics.progress(dx: 47, dy: 0) == 0.5)
     #expect(SwipePhysics.progress(dx: 250, dy: 0) == 1)
     #expect(SwipePhysics.preview(dx: 25, dy: 5) == .right)
+  }
+
+  /// The card follows the finger: the lean grows continuously, the tilt reaches 3° at
+  /// the commit point and stops there, and the pill wakes past the commit distance.
+  @Test func theLiveCardFollowsTheFinger() {
+    #expect(SwipePhysics.strength(dx: 47, dy: 0) == 0.47)
+    #expect(SwipePhysics.strength(dx: 0, dy: -250) == 1)
+    #expect(SwipePhysics.tilt(dx: 50, atCommit: 3) == 1.5)
+    #expect(SwipePhysics.tilt(dx: -400, atCommit: 3) == -3)
+    #expect(SwipePhysics.pastCommit(dx: 99, dy: 0) == nil)
+    #expect(SwipePhysics.pastCommit(dx: 100, dy: 20) == .right)
+    #expect(SwipePhysics.pastCommit(dx: 30, dy: -120) == .up)
   }
 
   @Test func directionsFollowThePreference() {

@@ -6,498 +6,830 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Review · Deck (Paper board): a focused full-screen mode, one card at a time. Drag
-/// right for Need, left for Want, down for Save, up for Transfer (the horizontal pair
-/// follows the Swipe directions setting); a far drag or a flick commits (spec 04 §14.7,
-/// `SwipePhysics`), then the pick sheet asks which category. Every sort has Undo.
+/// Review · Deck (Paper 26H-0): a focused full-screen flow, one card at a time. Drag right
+/// for Need, left for Want, down for Save, up for Transfer (the horizontal pair follows the
+/// Swipe directions setting), or tap the pill on that side: both do the same thing.
+///
+/// The card follows the finger and tilts, 3° at the commit point; the glow and the pill on
+/// that side wake as it goes, and the pill turns active with a light tap as the card crosses
+/// the commit point. Let go before it and the card springs back (`.cardReturn`); let go past
+/// it (or flick) and the pick sheet asks which category. Filing flies the card out (200 ms,
+/// `.cardCommit`, 140% of its width and 16°, fading) while the next one rises into place on
+/// spring-drop (`.cardNext`, 0.96 → 1, lifting 8). "Use" files the suggestion the same way.
+/// With Reduce Motion nothing tilts or travels: the card fades and the next fades in.
 struct ReviewDeckView: View {
   @Bindable var app: AppModel
   let model: any ReviewDeckModel
 
+  /// Where the finger has the top card.
   @State private var drag: CGSize = .zero
-  @State private var picking: Pick?
-  @State private var sortedCount = 0
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// The edge the card is dragged past the commit point toward.
+  @State private var crossed: SwipeEdge?
+  /// The edge the card is held toward while its pick sheet is up.
+  @State private var held: SwipeEdge?
+  /// Cards on their way out, drawn over the deck until their flight ends.
+  @State private var flights: [Flight] = []
+  /// The edge each filed card left by, so Undo brings it back from that side.
+  @State private var departures: [TxnID: SwipeEdge] = [:]
+  /// One light tap per commit (`HHaptic.impactLight`, plan B1.4).
+  @State private var tap = 0
+  /// The pick sheet's choice, filed once the sheet has gone.
+  @State private var pendingSort: PendingSort?
+
+  private struct PendingSort {
+    let pick: ReviewPick
+    let category: CategoryID
+    let alwaysUse: Bool
+    let project: ProjectID?
+  }
+
+  @Environment(\.hMotion) private var policy
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  struct Pick: Identifiable {
-    let card: ReviewCardModel
-    let choice: ReviewChoice
-    var id: String { card.id + "." + choice.rawValue }
+  /// The deck's motion: the app's policy, honouring the system setting even without it.
+  private var motion: MotionPolicy {
+    MotionPolicy(reduceMotion: policy.reduceMotion || systemReduceMotion, settled: policy.settled)
   }
+
+  /// Cards remain, or the last one is still flying out.
+  private var showsDeck: Bool { !model.cards.isEmpty || !flights.isEmpty }
 
   var body: some View {
+    let top = model.cards.first
     VStack(spacing: 0) {
-      header
-      ProgressLine(Permille.ratio(Int64(done), of: Int64(max(1, model.total))), fill: HColor.actionAccent)
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.top, 10)
-        .accessibilityHidden(true)
-      if let top = model.cards.first {
-        deck(top)
-      } else {
-        ReviewDoneView(model: model)
+      header(done: !showsDeck)
+      progress
+      Group {
+        if showsDeck {
+          deck(top)
+            .transition(.opacity)
+        } else {
+          ReviewDoneView(model: model)
+            .transition(.opacity)
+        }
       }
+      .frame(maxHeight: .infinity)
+      .animation(motion.animation(.stateSwap), value: showsDeck)
     }
-    .background(alignment: .top) { AmbientWash(.sky).ignoresSafeArea() }
+    .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
     .background(HColor.surfaceSecondary)
-    // Above "Skip for now", so the toast never covers it.
-    .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom).padding(.bottom, model.cards.isEmpty ? 0 : 56) }
-    .sensoryFeedback(.impact(weight: .light), trigger: sortedCount)
-    .sheet(item: $picking, onDismiss: settle) { pick in
-      BucketPickSheet(model: model, pick: pick) { category, alwaysUse, project in
-        model.sort(pick.card.id, into: category, alwaysUse: alwaysUse, project: project)
-        sortedCount += 1
-        picking = nil
-      }
-      .presentationDetents([.medium, .large])
-      .presentationCornerRadius(HRadius.sheet)
+    // On the bottom safe area for All caught up and the scrolling deck at the largest
+    // text sizes; otherwise the deck carries it just above its footer (`deck`).
+    .overlay(alignment: .bottom) {
+      if !showsDeck || typeSize.isAccessibilitySize { ToastHost(app: app, placement: .bottom) }
     }
-    .onChange(of: model.cards.first?.id) { drag = .zero }
+    .hHaptic(.impactLight, trigger: tap)
+    .sheet(item: pickBinding, onDismiss: pickClosed) { pick in
+      ReviewPickSheet(model: model, pick: pick) { category, alwaysUse, project in
+        sortPicked(pick, into: category, alwaysUse: alwaysUse, project: project)
+      }
+    }
+    .onAppear {
+      // A pick sheet already up (a Debug screen launch): hold the card toward it.
+      if let p = model.picking { holdToward(edge(for: p.choice), animated: false) }
+    }
   }
 
-  private var done: Int { model.total - model.cards.count }
+  private var pickBinding: Binding<ReviewPick?> {
+    Binding(get: { model.picking }, set: { model.picking = $0 })
+  }
 
-  // MARK: Header
+  // MARK: Header and progress
 
-  private var header: some View {
+  /// Close, "Review" over "2 of 6", More (Paper "Header · Review").
+  private func header(done: Bool) -> some View {
     HStack {
-      Button { model.close(goToActivity: false) } label: {
-        Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(MainHeader.iconColor)
-          .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
-      }
-      .glassEffect(.regular.interactive(), in: Circle())
-      .accessibilityLabel("Close")
-      .accessibilityIdentifier("review.close")
+      GlassIconButton(.close, label: "Close") { model.close(goToActivity: false) }
+        .accessibilityIdentifier("review.close")
       Spacer()
       VStack(spacing: 0) {
-        Text("Review").hType(.headline).foregroundStyle(HColor.textPrimary)
-        if !model.cards.isEmpty {
-          Text("\(model.position) of \(model.total)").hType(.footnote).foregroundStyle(HColor.textSecondary)
+        Text("Review")
+          .hType(.headline.weight(.semibold))
+          .foregroundStyle(HColor.textPrimary)
+          .accessibilityAddTraits(.isHeader)
+        if model.total > 0 {
+          Text("\(model.position) of \(model.total)")
+            .hFigure(HFigure(size: 13, leading: 18, weight: .medium, textStyle: .footnote, tabular: true))
+            .foregroundStyle(HColor.textSecondary)
+            .numberRoll(Double(model.position))
             .accessibilityIdentifier("review.position")
         }
       }
       Spacer()
-      Menu {
-        if let top = model.cards.first {
-          Button("Skip for now", systemImage: "forward") { model.skip(top.id) }
-        }
-        // TODO(spec 04 §16.2 T3): the rest of the review "…" menu (swipe directions, view the email).
-      } label: {
-        Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold)).foregroundStyle(MainHeader.iconColor)
-          .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
-      }
-      .glassEffect(.regular.interactive(), in: Circle())
-      .accessibilityLabel("More")
-      .opacity(model.cards.isEmpty ? 0 : 1)
+      moreMenu
+        .opacity(done ? 0 : 1)
+        .disabled(done)
     }
     .padding(.horizontal, HSpacing.insetPage)
     .padding(.top, 6)
+    .frame(minHeight: 54)
+  }
+
+  private var moreMenu: some View {
+    Menu {
+      if let top = model.cards.first {
+        Button("Skip for now") { skip(top) }
+        if BuildSurface.showsUnfinished {
+          // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
+          Button("View bank email") { app.say("The bank email opens in a later build", icon: .envelope) }
+        }
+      }
+    } label: {
+      HIconView(.more, size: HSpacing.iconGlass, color: HColor.iconGlass)
+        .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+        .hGlass(in: Circle())
+        .contentShape(Circle())
+    }
+    .accessibilityLabel("More")
+    .accessibilityIdentifier("review.more")
+  }
+
+  /// "2 of 6" as a bar: 6 tall, radius 3, accent on the pace track, filled to the card in
+  /// front (Paper: 121 of 362 at 2 of 6, full at All caught up).
+  private var progress: some View {
+    let step = showsDeck ? model.position : model.total
+    let share = model.total > 0 ? Double(step) / Double(model.total) : 1
+    return GeometryReader { geo in
+      ZStack(alignment: .leading) {
+        Capsule().fill(HColor.paceTrack)
+        Capsule().fill(HColor.actionAccent)
+          .frame(width: geo.size.width * share)
+          .hAnimation(.fillUpdate, value: step)
+      }
+    }
+    .frame(height: HSpacing.progressHeight)
+    .padding(.horizontal, HSpacing.insetPage)
+    .padding(.top, 16)
+    .accessibilityHidden(true)
   }
 
   // MARK: Deck
 
-  private var lean: SwipeEdge? { SwipePhysics.preview(dx: drag.width, dy: drag.height) }
-  private var strength: Double { SwipePhysics.progress(dx: drag.width, dy: drag.height) }
-  private var leanChoice: ReviewChoice? { lean.map { SwipePhysics.choice(for: $0, needOnRight: model.needOnRight) } }
-
   /// At the accessibility text sizes the deck scrolls, the card does not drag (the pills,
-  /// "Use" and the VoiceOver actions sort it), and Want/Need sit under the card instead of
-  /// over its text (spec 04 §17).
+  /// "Use" and the VoiceOver actions sort it), and Want and Need sit under the card instead
+  /// of over its text (spec 04 §17).
   @ViewBuilder
-  private func deck(_ top: ReviewCardModel) -> some View {
+  private func deck(_ top: ReviewCardModel?) -> some View {
     if typeSize.isAccessibilitySize {
-      ScrollView { deckContent(top) }
-    } else {
-      deckContent(top).frame(maxHeight: .infinity)
-    }
-  }
-
-  private func deckContent(_ top: ReviewCardModel) -> some View {
-    VStack(spacing: 10) {
-      pill(.up)
-      ZStack {
-        // Two peeks behind the top card (Paper: 324 and 308 wide).
-        if model.cards.count > 2 { peek(width: 308, y: 16) }
-        if model.cards.count > 1 { peek(width: 324, y: 8) }
-        ReviewCardView(card: top, hidden: model.hidden, lean: leanChoice, strength: strength) {
-          model.useSuggestion(top.id)
-          sortedCount += 1
-        }
-        .offset(drag)
-        .rotationEffect(.degrees(reduceMotion ? 0 : max(-3, min(3, drag.width / 30))))
-        .gesture(
-          DragGesture()
-            .onChanged { drag = $0.translation }
-            .onEnded { end($0, top) },
-          including: typeSize.isAccessibilitySize ? .subviews : .all
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityActions {
-          ForEach(ReviewChoice.allCases, id: \.self) { choice in
-            Button(choice.label) { pick(top, choice, animated: false) }
-          }
-          Button("Skip for now") { model.skip(top.id) }
-        }
-        .accessibilityIdentifier("review.card")
-        if !typeSize.isAccessibilitySize {
-          HStack {
+      ScrollView {
+        VStack(spacing: 12) {
+          pill(.up)
+          stack(top)
+          HStack(spacing: 12) {
             pill(.left)
-            Spacer()
             pill(.right)
           }
-          .padding(.horizontal, -8)
+          pill(.down)
+          footer(top)
+        }
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+      }
+    } else {
+      VStack(spacing: 0) {
+        // Transfer and Save keep Paper's 44 slot: active, a pill grows to 48 about its
+        // middle instead of pushing the card 4 down (a jump with Reduce Motion).
+        pill(.up).frame(height: Self.pillSlot).padding(.top, 20)
+        stack(top)
+          .overlay {
+            // Want and Need ride the card's middle, 10 from the screen's edges.
+            HStack {
+              pill(.left)
+              Spacer(minLength: 0)
+              pill(.right)
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, Self.peekDepth)
+          }
+          .padding(.top, 20)
+          .layoutPriority(1)
+        pill(.down).frame(height: Self.pillSlot).padding(.top, 22)
+        Spacer(minLength: 12)
+        footer(top)
+          .padding(.bottom, 2)
+          // The toast after a sort sits just above Skip, in the room under the Save pill,
+          // so neither Skip nor the pills are covered while its Undo waits.
+          .overlay(alignment: .top) {
+            ToastHost(app: app, placement: .bottom)
+              .padding(.horizontal, -HSpacing.insetPage)
+              .alignmentGuide(.top) { $0[.bottom] + 4 }
+          }
+      }
+    }
+  }
+
+  /// The two peeks a further 10 down each.
+  private static let peekDepth: CGFloat = 20
+  /// The idle direction pill's height (Paper "Direction pill · Transfer (top)", 402 × 44).
+  private static let pillSlot: CGFloat = 44
+
+  /// The top card over two peeks (Paper: 340 × 430, peeks 324 and 308 wide, 10 steps down),
+  /// and any card still flying out.
+  private func stack(_ top: ReviewCardModel?) -> some View {
+    let count = model.cards.count
+    return ZStack(alignment: .top) {
+      if count > 2 { peek(inset: 16, depth: 20, far: true) }
+      if count > 1 { peek(inset: 8, depth: 10, far: false) }
+      if let top {
+        live(top)
+          .id(top.id)
+          .transition(arrival(for: top.id))
+      }
+      ForEach(flights) { flight in
+        FlyingCard(flight: flight, hidden: model.hidden, motion: motion) {
+          flights.removeAll { $0.id == flight.id }
         }
       }
-      .frame(maxWidth: 340)
-      .padding(.horizontal, HSpacing.insetPage)
-      if typeSize.isAccessibilitySize {
-        pill(.left)
-        pill(.right)
-      }
-      pill(.down)
-      Spacer(minLength: 8)
-      Button("Skip for now") { model.skip(top.id) }
-        .buttonStyle(.plain)
-        .hType(.body.weight(.medium))
-        .foregroundStyle(HColor.textLink)
-        .frame(minHeight: 44)
-        .accessibilityIdentifier("review.skip")
-      // TODO(spec 04 §16.2 G7): "View bank email" beside Skip, once the holder re-fetch exists.
     }
-    .padding(.top, 12)
+    // At the accessibility sizes the card grows with its words and the deck scrolls.
+    .frame(maxWidth: Self.cardWidth, minHeight: typeSize.isAccessibilitySize ? Self.cardHeight : 300,
+           maxHeight: typeSize.isAccessibilitySize ? .infinity : Self.cardHeight)
+    .padding(.bottom, Self.peekDepth)
+    .padding(.horizontal, 31)
+    // Undo, a skip or a sort from elsewhere: the card that arrives rises on spring-drop.
+    .animation(motion.animation(.cardNext), value: top?.id)
+    .animation(motion.animation(.fade), value: count)
   }
 
-  private func peek(width: CGFloat, y: CGFloat) -> some View {
-    RoundedRectangle(cornerRadius: 28, style: .continuous)
-      .fill(HColor.surfacePrimary.opacity(0.85))
-      .frame(width: width, height: 400)
-      .offset(y: y)
-      .shadow(color: HColor.elevationFar, radius: 10, y: 6)
+  static let cardWidth: CGFloat = 340
+  static let cardHeight: CGFloat = 430
+
+  private func peek(inset: CGFloat, depth: CGFloat, far: Bool) -> some View {
+    RoundedRectangle(cornerRadius: HRadius.reviewCard, style: .continuous)
+      .fill(HColor.surfacePrimary)
+      .shadow(color: .black.opacity(0.03), radius: 1, y: 1)
+      .shadow(color: .black.opacity(far ? 0.04 : 0.05), radius: far ? 8 : 10, y: far ? 6 : 8)
+      .padding(.horizontal, inset)
+      .offset(y: depth)
       .accessibilityHidden(true)
+      .transition(.opacity)
   }
 
-  /// A direction pill: glass, the bucket's dot, an arrow. The one the card leans to grows
-  /// and takes its hue.
-  private func pill(_ edge: SwipeEdge) -> some View {
-    let choice = SwipePhysics.choice(for: edge, needOnRight: model.needOnRight)
-    let active = leanChoice == choice && strength > 0
-    let arrow: String = switch edge {
-    case .left: "arrow.left"
-    case .right: "arrow.right"
-    case .up: "arrow.up"
-    case .down: "arrow.down"
-    }
-    return Button {
-      if let top = model.cards.first { pick(top, choice, animated: true) }
-    } label: {
-      HStack(spacing: 6) {
-        if edge != .right { Image(systemName: arrow).font(.system(size: 13, weight: .semibold)) }
-        Circle().fill(choice.hue.end).frame(width: 8, height: 8)
-        Text(choice.label).hType(.subheadline.weight(.semibold))
-        if edge == .right { Image(systemName: arrow).font(.system(size: 13, weight: .semibold)) }
+  /// The top card: it follows the finger, tilts with the horizontal drag, and carries the
+  /// VoiceOver actions that do what the swipes do.
+  private func live(_ card: ReviewCardModel) -> some View {
+    let lean = leanEdge
+    return ReviewCardView(
+      card: card, hidden: model.hidden, lean: lean.map(choice(for:)), leanEdge: lean, strength: leanStrength,
+      use: { use(card) },
+      actions: {
+        ForEach(ReviewChoice.allCases, id: \.self) { c in
+          Button(c.label) { send(card, c) }
+        }
+        if let s = card.suggestion {
+          Button("Use \(s.name)") { use(card) }
+        }
+        Button("Skip") { skip(card) }
       }
-      .foregroundStyle(HColor.textPrimary)
-      .padding(.horizontal, 14)
-      .frame(minHeight: active ? 48 : 44)
-      .background(active ? choice.hue.start.opacity(0.9) : .clear, in: Capsule())
-      .glassEffect(.regular.interactive(), in: Capsule())
-      .scaleEffect(active ? 1 + 0.08 * strength : 1)
+    )
+    .offset(drag)
+    .rotationEffect(.degrees(tilt))
+    .gesture(dragGesture(card), including: typeSize.isAccessibilitySize || held != nil ? .subviews : .all)
+    // A container, so the identifier names the card without replacing its elements' own
+    // (`review.merchant`, `review.use`).
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("review.card")
+  }
+
+  /// The live card's angle: with the horizontal drag, 3° at the commit point and no more;
+  /// held toward Need or Want while its pick sheet is up, the full 3° (Paper "Pick a need").
+  private var tilt: Double {
+    if motion.isStill { return 0 }
+    switch held {
+    case .right: return HMotion.commitTilt
+    case .left: return -HMotion.commitTilt
+    case .up, .down: return 0
+    case nil: return SwipePhysics.tilt(dx: drag.width, atCommit: HMotion.commitTilt)
     }
-    .buttonStyle(.plain)
+  }
+
+  /// Where the card leans: the finger's direction, or the side it is held toward.
+  private var leanEdge: SwipeEdge? {
+    if let held { return held }
+    guard drag != .zero else { return nil }
+    return SwipePhysics.preview(dx: drag.width, dy: drag.height)
+  }
+
+  private var leanStrength: Double {
+    held != nil ? 1 : SwipePhysics.strength(dx: drag.width, dy: drag.height)
+  }
+
+  /// The arriving card: back from the side it left by (Undo), or up from the peek.
+  private func arrival(for id: TxnID) -> AnyTransition {
+    if motion.settled { return .identity }
+    if motion.reduceMotion { return .asymmetric(insertion: .opacity, removal: .identity) }
+    if let edge = departures[id] {
+      let far = Flight.target(edge, width: Self.cardWidth, height: Self.cardHeight)
+      return .asymmetric(insertion: .offset(far).combined(with: .opacity), removal: .identity)
+    }
+    return .asymmetric(insertion: motion.transition(.cardNext), removal: .identity)
+  }
+
+  // MARK: Pills
+
+  private func choice(for edge: SwipeEdge) -> ReviewChoice {
+    SwipePhysics.choice(for: edge, needOnRight: model.needOnRight)
+  }
+
+  private func edge(for choice: ReviewChoice) -> SwipeEdge {
+    SwipePhysics.edge(for: choice, needOnRight: model.needOnRight)
+  }
+
+  /// A direction pill: idle glass, waking toward 1.06 as the card leans its way, active
+  /// (48, the bucket's tint and ring) past the commit point. A real button, 44 at least.
+  private func pill(_ edge: SwipeEdge) -> some View {
+    let choice = choice(for: edge)
+    let active = crossed == edge || held == edge
+    let waking = !active && leanEdge == edge ? leanStrength : 0
+    return Button {
+      if let top = model.cards.first { send(top, choice) }
+    } label: {
+      DirectionPillLabel(choice: choice, edge: edge, active: active)
+    }
+    .buttonStyle(HPressStyle(in: Capsule()))
+    .scaleEffect(motion.isStill ? 1 : 1 + 0.06 * waking)
+    .hAnimation(.thumbSlide, value: active)
+    // Paper's Pick a need draws the deck without its pills or footer behind the sheet.
+    .opacity(model.picking == nil ? 1 : 0)
+    .hAnimation(.fade, value: model.picking == nil)
+    .disabled(model.cards.isEmpty)
     .accessibilityLabel("Sort as \(choice.label)")
     .accessibilityIdentifier("review.pill.\(choice.rawValue)")
-    .animation(.snappy, value: active)
   }
 
-  private func end(_ value: DragGesture.Value, _ top: ReviewCardModel) {
-    let edge = SwipePhysics.commit(
-      dx: value.translation.width, dy: value.translation.height,
-      vx: value.velocity.width, vy: value.velocity.height
-    )
-    guard let edge else {
-      withAnimation(.snappy) { drag = .zero }
+  // MARK: Footer
+
+  /// "Skip for now" and, in Debug until the email view exists, "View bank email".
+  private func footer(_ top: ReviewCardModel?) -> some View {
+    HStack(spacing: 0) {
+      Button {
+        if let top { skip(top) }
+      } label: {
+        Text("Skip for now")
+          .hType(.callout.weight(.semibold))
+          .foregroundStyle(HColor.textLink)
+          .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("review.skip")
+      if BuildSurface.showsUnfinished {
+        HColor.borderSubtle.frame(width: 1, height: 20)
+        Button {
+          // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
+          app.say("The bank email opens in a later build", icon: .envelope)
+        } label: {
+          HStack(spacing: 6) {
+            PathGlyph(PathGlyph.envelope, size: 18, color: HColor.textLink, stroke: 1.9)
+            Text("View bank email").hType(.callout.weight(.semibold)).foregroundStyle(HColor.textLink)
+          }
+          .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("review.viewEmail")
+      }
+    }
+    .disabled(top == nil)
+    .padding(.horizontal, HSpacing.insetPage)
+    .opacity(model.picking == nil ? 1 : 0)
+    .hAnimation(.fade, value: model.picking == nil)
+  }
+
+  // MARK: Gesture
+
+  private func dragGesture(_ card: ReviewCardModel) -> some Gesture {
+    DragGesture(minimumDistance: 6)
+      .onChanged { value in
+        drag = value.translation
+        let past = SwipePhysics.pastCommit(dx: drag.width, dy: drag.height)
+        if past != crossed {
+          // The light tap plays as the card crosses into a commit, not as it comes back.
+          if past != nil { tap += 1 }
+          crossed = past
+        }
+      }
+      .onEnded { value in
+        let edge = SwipePhysics.commit(
+          dx: value.translation.width, dy: value.translation.height,
+          vx: value.velocity.width, vy: value.velocity.height)
+        guard let edge else {
+          withAnimation(motion.animation(.cardReturn)) {
+            drag = .zero
+            crossed = nil
+          }
+          return
+        }
+        // A flick commits without crossing: it still gets its tap.
+        if crossed != edge { tap += 1 }
+        crossed = nil
+        // The card settles on its side, leaning, while the sheet asks which category.
+        holdToward(edge, animated: true)
+        model.pick(card.id, choice(for: edge))
+      }
+  }
+
+  // MARK: Filing
+
+  /// A pill (or a VoiceOver action) sends the card one way: it leans there and the pick
+  /// sheet asks which category.
+  private func send(_ card: ReviewCardModel, _ choice: ReviewChoice) {
+    tap += 1
+    holdToward(edge(for: choice), animated: true)
+    model.pick(card.id, choice)
+  }
+
+  /// Holds the card toward its pill while the pick sheet is up. With Reduce Motion the card
+  /// stays at rest (spec 12: a static card): only the pill and the glow show the choice, and
+  /// a card the finger let go of elsewhere goes back to rest at once.
+  private func holdToward(_ edge: SwipeEdge, animated: Bool) {
+    let lean: CGFloat = motion.reduceMotion ? 0 : 40
+    let pose: CGSize = switch edge {
+    case .left: CGSize(width: -lean, height: 0)
+    case .right: CGSize(width: lean, height: 0)
+    case .up: CGSize(width: 0, height: -lean)
+    case .down: CGSize(width: 0, height: lean)
+    }
+    withAnimation(animated ? motion.animation(.cardReturn) : nil) {
+      held = edge
+      drag = pose
+    }
+  }
+
+  /// The pick sheet's "Sort into Groceries": the sheet goes, then the card flies to its side
+  /// and the toast comes up (Paper: "files the card, closes the sheet, and advances the
+  /// deck"; "a toast may appear after a sheet closes, never on top of one"). Filing once the
+  /// sheet is down also keeps the fly-out from sharing frames with the sheet's own motion.
+  private func sortPicked(_ pick: ReviewPick, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) {
+    pendingSort = PendingSort(pick: pick, category: category, alwaysUse: alwaysUse, project: project)
+    model.picking = nil
+  }
+
+  /// The sheet has gone: file what it chose, or, closed without a sort (close, swipe down,
+  /// the scrim), spring the card back.
+  private func pickClosed() {
+    if let p = pendingSort {
+      pendingSort = nil
+      let edge = held ?? edge(for: p.pick.choice)
+      file(p.pick.card, toward: edge, as: p.pick.choice.label) {
+        model.sort(p.pick.card.id, into: p.category, alwaysUse: p.alwaysUse, project: p.project)
+      }
       return
     }
-    pick(top, SwipePhysics.choice(for: edge, needOnRight: model.needOnRight), animated: true)
+    guard held != nil else { return }
+    withAnimation(motion.animation(.cardReturn)) {
+      drag = .zero
+      held = nil
+    }
   }
 
-  /// Sends the card toward its edge and asks which category.
-  private func pick(_ card: ReviewCardModel, _ choice: ReviewChoice, animated: Bool) {
-    let edge = SwipePhysics.edge(for: choice, needOnRight: model.needOnRight)
-    let distance: CGFloat = 120
-    let target: CGSize = switch edge {
-    case .left: CGSize(width: -distance, height: drag.height)
-    case .right: CGSize(width: distance, height: drag.height)
-    case .up: CGSize(width: drag.width, height: -distance)
-    case .down: CGSize(width: drag.width, height: distance)
+  /// "Use": files the suggestion, flying the card toward its bucket's side.
+  private func use(_ card: ReviewCardModel) {
+    guard let s = card.suggestion else { return }
+    tap += 1
+    file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name) {
+      model.useSuggestion(card.id)
     }
-    if animated && !reduceMotion {
-      withAnimation(.snappy) { drag = target }
-    }
-    picking = Pick(card: card, choice: choice)
   }
 
-  /// After the pick sheet: a sorted card has left the deck; otherwise it springs back.
-  private func settle() {
-    withAnimation(.snappy) { drag = .zero }
+  private func skip(_ card: ReviewCardModel) {
+    file(card, toward: nil, as: nil) {
+      model.skip(card.id)
+      return true
+    }
+  }
+
+  /// Takes the card off the deck: it flies from where it is now (or fades, for a skip and
+  /// with Reduce Motion) while the edit lands and the next card rises.
+  private func file(_ card: ReviewCardModel, toward edge: SwipeEdge?, as filedAs: String?, _ edit: () -> Bool) {
+    let from = drag
+    let tilt = tilt
+    var done = false
+    withAnimation(motion.animation(.cardNext)) {
+      done = edit()
+      if done {
+        drag = .zero
+        held = nil
+        crossed = nil
+      }
+    }
+    guard done else {
+      withAnimation(motion.animation(.cardReturn)) {
+        drag = .zero
+        held = nil
+      }
+      return
+    }
+    if let edge { departures[card.id] = edge }
+    if !motion.settled {
+      flights.append(Flight(card: card, from: from, tilt: tilt, edge: edge))
+    }
+    if let filedAs { announce(model.filedAnnouncement(filedAs)) }
+  }
+
+  /// After the toast's own announcement ("Sorted into Groceries. Undo available."), queued.
+  private func announce(_ text: String) {
+    var line = AttributedString(text)
+    line.accessibilitySpeechAnnouncementPriority = .low
+    AccessibilityNotification.Announcement(line).post()
   }
 }
 
-/// The top card (340 × 430, r28): merchant, the raw bank text, the amount, and the
-/// suggestion strip with "Use".
-struct ReviewCardView: View {
+/// A card on its way out: it starts where the finger left it and flies 140% of its size
+/// toward its edge, turning to 16° and fading, over 200 ms; a skip only fades and settles
+/// back a little. With Reduce Motion it fades in place.
+struct Flight: Identifiable {
+  let id = UUID()
+  let card: ReviewCardModel
+  let from: CGSize
+  let tilt: Double
+  let edge: SwipeEdge?
+
+  static func target(_ edge: SwipeEdge, width: CGFloat, height: CGFloat) -> CGSize {
+    switch edge {
+    case .left: CGSize(width: -width * HMotion.cardFlyOut, height: 0)
+    case .right: CGSize(width: width * HMotion.cardFlyOut, height: 0)
+    case .up: CGSize(width: 0, height: -height * HMotion.cardFlyOut)
+    case .down: CGSize(width: 0, height: height * HMotion.cardFlyOut)
+    }
+  }
+}
+
+private struct FlyingCard: View {
+  let flight: Flight
+  let hidden: Bool
+  let motion: MotionPolicy
+  let landed: () -> Void
+  /// Travelled and turned.
+  @State private var gone = false
+  /// Faded out.
+  @State private var faded = false
+
+  var body: some View {
+    ReviewCardView(card: flight.card, hidden: hidden, lean: nil, leanEdge: nil, strength: 0, use: {})
+      .scaleEffect(gone && flight.edge == nil && travels ? HMotion.nextCardScale : 1)
+      .offset(gone && travels ? offset : flight.from)
+      .rotationEffect(.degrees(gone && travels ? angle : flight.tilt))
+      .opacity(faded ? 0 : 1)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+      .onAppear(perform: fly)
+  }
+
+  /// The card always leaves from rest (held toward its pill, or still for "Use"), so the
+  /// fly-out cannot ride ease-out-soft: that curve covers 60% of the way in the first two
+  /// frames and the card was gone before it was seen. It travels and turns at an even pace
+  /// over the 200 ms instead, readable for about eight frames before it clears the screen,
+  /// and fades on ease-in-out, so it stays solid while it starts and thins as it goes. A
+  /// skip, and every card with Reduce Motion, only fades, in place.
+  private func fly() {
+    guard flight.edge != nil, travels, let curve = motion.curve(.cardCommit) else {
+      withAnimation(motion.animation(flight.edge == nil ? .fade : .cardCommit)) {
+        gone = true
+        faded = true
+      } completion: {
+        landed()
+      }
+      return
+    }
+    let length = curve.nominalDuration
+    withAnimation(HMotion.Curve.linear(duration: length).animation) { gone = true }
+    withAnimation(HMotion.easeInOut(length)) {
+      faded = true
+    } completion: {
+      landed()
+    }
+  }
+
+  /// With Reduce Motion nothing travels, turns or shrinks.
+  private var travels: Bool { !motion.reduceMotion }
+
+  private var offset: CGSize {
+    guard let edge = flight.edge else { return flight.from }
+    let t = Flight.target(edge, width: ReviewDeckView.cardWidth, height: ReviewDeckView.cardHeight)
+    return CGSize(width: flight.from.width + t.width, height: flight.from.height + t.height)
+  }
+
+  private var angle: Double {
+    switch flight.edge {
+    case .left: -HMotion.cardFlyTilt
+    case .right: HMotion.cardFlyTilt
+    case .up, .down, nil: flight.tilt
+    }
+  }
+}
+
+/// The inside of a direction pill (Paper "Direction pill · …"): arrow, bucket dot and label
+/// on glass; active, the bucket's start tint with a 1 pt end ring, the label 16/22 bold in
+/// the bucket's ink. The arrow sits on the side the card goes.
+private struct DirectionPillLabel: View {
+  let choice: ReviewChoice
+  let edge: SwipeEdge
+  let active: Bool
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+  var body: some View {
+    let hue = choice.pillHue
+    let arrowTrails = edge == .right
+    HStack(spacing: 8) {
+      if !arrowTrails { arrow(hue) }
+      HStack(spacing: 6) {
+        Circle().fill(hue.dotGradient).frame(width: 10, height: 10)
+          .overlay { if active { Circle().strokeBorder(hue.ink.opacity(0.12), lineWidth: 1) } }
+        Text(choice.label)
+          .hType(active ? .callout.weight(.bold) : .subheadline.weight(.semibold))
+          .foregroundStyle(active ? hue.ink : HColor.textPrimary)
+          .fixedSize()
+      }
+      if arrowTrails { arrow(hue) }
+    }
+    .padding(.leading, arrowTrails ? (active ? 18 : 16) : (active ? 18 : 12))
+    .padding(.trailing, arrowTrails ? (active ? 14 : 12) : (active ? 14 : 16))
+    .frame(minHeight: active ? 48 : 44)
+    .background {
+      if active {
+        Capsule().fill(hue.start.opacity(reduceTransparency ? 1 : 0.9))
+          .overlay { Capsule().strokeBorder(hue.end, lineWidth: 1) }
+          .shadow(color: hue.ink.opacity(0.16), radius: 11, y: 8)
+          .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
+      }
+    }
+    .hGlass(in: Capsule(), interactive: false)
+    .contentShape(Capsule())
+  }
+
+  private func arrow(_ hue: Hue) -> some View {
+    PathGlyph(PathGlyph.arrow(edge), size: 18, color: active ? hue.ink : HColor.iconGlass, stroke: active ? 2.4 : 2.2)
+  }
+}
+
+/// The top card (Paper "Card · Lulu Hypermarket", 340 × 430, radius 28): who and what, the
+/// bank's own words, the amount at hero size, and the suggestion strip with "Use". The glow of
+/// the bucket it leans toward fades in from that edge.
+struct ReviewCardView<Actions: View>: View {
   let card: ReviewCardModel
   let hidden: Bool
   let lean: ReviewChoice?
+  let leanEdge: SwipeEdge?
   let strength: Double
   let use: () -> Void
+  @ViewBuilder let actions: () -> Actions
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack(alignment: .top) {
-          MonogramDisc(card.monogram, size: 56)
-          Spacer()
-          if card.isNewMerchant {
-            StatusPillView(StatusPill("New merchant", tone: .accent), surface: .tinted)
-          }
-        }
-        Text(card.merchant).hType(.title2).foregroundStyle(HColor.textPrimary)
-        if let raw = card.rawMerchant {
-          Text(verbatim: raw)
-            .font(.system(.footnote, design: .monospaced))
-            .foregroundStyle(HColor.textPrimary)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .accessibilityLabel("As your bank wrote it: \(raw)")
-        }
+      VStack(alignment: .leading, spacing: 0) {
+        identity
         Spacer(minLength: 24)
-        MoneyText(card.amount, figure: .hero, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 5,
-                  color: card.isIncome ? HColor.moneyIn : HColor.textPrimary, sign: card.isIncome ? .income : .none)
-        Text(card.meta).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        amount
       }
-      .padding(20)
-      // The card drags, so its texts read as one element rather than many small targets.
+      .padding(.top, 24)
+      .padding(.horizontal, 24)
+      .padding(.bottom, 22)
+      // The card drags, so its words read as one element; the sorts are its actions.
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(spoken)
+      .accessibilityActions { actions() }
       .accessibilityIdentifier("review.merchant")
-      if let s = card.suggestion {
-        let strip = typeSize.isAccessibilitySize
-          ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-          : AnyLayout(HStackLayout(spacing: 12))
-        strip {
-          HStack(spacing: 12) {
-            HueDisc(hue: s.hue, glyph: s.glyph, size: 32, iconSize: 16)
-            Text("Looks like \(s.name)").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-          }
-          .frame(minHeight: 44)
-          .accessibilityElement(children: .combine)
-          if !typeSize.isAccessibilitySize { Spacer() }
-          Button("Use", action: use)
-            .buttonStyle(.pill(.primary, size: .small))
-            .accessibilityLabel("Use \(s.name)")
-            .accessibilityIdentifier("review.use")
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, typeSize.isAccessibilitySize ? 12 : 0)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .background(HColor.surfaceCanvas.opacity(0.72))
-        .overlay(alignment: .top) { Rectangle().fill(HColor.listRowSeparator).frame(height: 0.5) }
-      }
+      if let s = card.suggestion { strip(s) }
     }
-    .frame(maxWidth: .infinity, minHeight: 430, alignment: .top)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(HColor.surfacePrimary)
-    .overlay {
-      // The lean glow: the bucket's hue from the edge the card leans toward.
-      if let lean, strength > 0 {
-        LinearGradient(colors: [lean.hue.end.opacity(0.58 * strength), .clear],
-                       startPoint: glowStart(lean), endPoint: .center)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
-      }
+    .overlay { glow }
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.reviewCard, style: .continuous))
+    .background {
+      RoundedRectangle(cornerRadius: HRadius.reviewCard, style: .continuous)
+        .fill(HColor.surfacePrimary)
+        .shadow(color: .black.opacity(0.04), radius: 2, y: 2)
+        .shadow(color: .black.opacity(0.11), radius: 22, y: 18)
+        .shadow(color: (lean?.pillHue.end ?? .clear).opacity(0.9 * strength), radius: 20,
+                x: glowShift.width, y: glowShift.height)
     }
-    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-    .shadow(color: .black.opacity(0.04), radius: 2, y: 2)
-    .shadow(color: .black.opacity(0.11), radius: 22, y: 18)
   }
 
-  /// "Lulu Hypermarket, new merchant, AED 214.30, Spent · Fri 9 Oct, 18:42 · DIB card ···8891".
+  private var identity: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .top) {
+        if !card.isNewMerchant, let s = card.suggestion {
+          CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: .s56)
+        } else {
+          MerchantMonogram(letter: card.monogram, size: 56)
+        }
+        Spacer(minLength: 8)
+        if card.isNewMerchant {
+          InfoChip("New merchant", style: .reason)
+        }
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        Text(card.merchant)
+          .hType(.section)
+          .foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+        if let raw = card.rawMerchant {
+          InfoChip(raw, style: .rawText)
+        }
+      }
+      .padding(.top, 16)
+    }
+  }
+
+  private var amount: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      MoneyText(card.amount, figure: .hero, unit: .unit, hidden: hidden,
+                color: card.isIncome ? HColor.moneyIn : HColor.moneyOut,
+                unitColor: card.isIncome ? HColor.moneyIn : HColor.textPrimary, unitGap: 6,
+                sign: card.isIncome ? .income : .none)
+      Text(card.meta).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// "Looks like Groceries" with "Use" (Paper "Suggestion strip": 14 / 16 / 14 / 24, gap 12).
+  private func strip(_ s: CategoryOption) -> some View {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+      : AnyLayout(HStackLayout(spacing: 12))
+    return layout {
+      HStack(spacing: 12) {
+        CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: .s32)
+        Text("Looks like \(s.name)")
+          .hType(.subheadline.weight(.semibold))
+          .foregroundStyle(HColor.textPrimary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .accessibilityElement(children: .combine)
+      Button("Use", action: use)
+        .buttonStyle(.pill(.primary, size: .small))
+        .accessibilityLabel("Use \(s.name)")
+        .accessibilityIdentifier("review.use")
+    }
+    .padding(.top, 14)
+    .padding(.bottom, 14)
+    .padding(.leading, 24)
+    .padding(.trailing, 16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.reviewSuggestionSurface)
+    .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
+  }
+
+  /// The bucket's hue from the edge the card leans toward: 170 deep, end 58% at the edge,
+  /// start 26% halfway, then clear.
+  @ViewBuilder private var glow: some View {
+    if let lean, let leanEdge, strength > 0 {
+      let hue = lean.pillHue
+      let stops = Gradient(stops: [
+        .init(color: hue.end.opacity(0.58), location: 0),
+        .init(color: hue.start.opacity(0.26), location: 0.5),
+        .init(color: hue.start.opacity(0), location: 1),
+      ])
+      let (from, to, alignment): (UnitPoint, UnitPoint, Alignment) = switch leanEdge {
+      case .right: (.trailing, .leading, .trailing)
+      case .left: (.leading, .trailing, .leading)
+      case .up: (.top, .bottom, .top)
+      case .down: (.bottom, .top, .bottom)
+      }
+      let horizontal = leanEdge == .left || leanEdge == .right
+      Rectangle().fill(.linearGradient(stops.colorSpace(.perceptual), startPoint: from, endPoint: to))
+        .frame(width: horizontal ? 170 : nil, height: horizontal ? nil : 170)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+        .opacity(strength)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+  }
+
+  /// The glow's shadow sits toward the lean (Paper: 18 right, 4 down for Need).
+  private var glowShift: CGSize {
+    switch leanEdge {
+    case .right: CGSize(width: 18, height: 4)
+    case .left: CGSize(width: -18, height: 4)
+    case .up: CGSize(width: 0, height: -14)
+    case .down: CGSize(width: 0, height: 22)
+    case nil: .zero
+    }
+  }
+
+  /// "Lulu Hypermarket, AED 214.30, spent Friday 9 October. New merchant. Looks like
+  /// Groceries." (Paper 16 · 06).
   private var spoken: String {
     let amount = hidden
       ? "Amount hidden"
       : (card.isIncome ? "plus " : "") + "\(card.amount.currency) \(MoneyFormat.string(card.amount.minor))"
-    return [card.merchant, card.isNewMerchant ? "new merchant" : nil,
-            card.rawMerchant.map { "as your bank wrote it: \($0)" }, amount, card.meta]
-      .compactMap { $0 }.joined(separator: ", ")
-  }
-
-  private func glowStart(_ c: ReviewChoice) -> UnitPoint {
-    switch c {
-    case .need: .trailing
-    case .want: .leading
-    case .save: .bottom
-    case .transfer: .top
-    }
+    var line = "\(card.merchant), \(amount), \(card.spokenWhen)."
+    if card.isNewMerchant { line += " New merchant." }
+    if let raw = card.rawMerchant { line += " Bank text: \(raw)." }
+    if let s = card.suggestion { line += " Looks like \(s.name)." }
+    return line
   }
 }
 
-/// Pick a need (Paper board), and its Want, Save and Transfer equivalents: which
-/// category, an optional project, and "Always use X for M".
-struct BucketPickSheet: View {
-  let model: any ReviewDeckModel
-  let pick: ReviewDeckView.Pick
-  let sort: (CategoryID, Bool, ProjectID?) -> Void
-
-  @State private var selected: CategoryID?
-  @State private var project: ProjectID?
-  @State private var alwaysUse = true
-  @Environment(\.dismiss) private var dismiss
-
-  private var options: [CategoryOption] { model.options(for: pick.choice, card: pick.card.id) }
-
-  var body: some View {
-    NavigationStack {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          ListCard {
-            ForEach(options) { o in
-              Button { selected = o.id } label: {
-                HStack(spacing: HSpacing.listRowGap) {
-                  HueDisc(hue: o.hue, glyph: o.glyph)
-                  Text(o.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-                  if pick.card.suggestion?.id == o.id { InfoTag("Suggested", tone: .accent) }
-                  Spacer()
-                  if selected == o.id {
-                    Image(systemName: "checkmark").font(.system(size: 15, weight: .bold))
-                      .foregroundStyle(HColor.listRowCheck)
-                  }
-                }
-                .padding(.horizontal, HSpacing.listRowInsetInline)
-                .frame(minHeight: HSpacing.listRowMinHeight)
-                .contentShape(Rectangle())
-              }
-              .buttonStyle(.plain)
-              .accessibilityAddTraits(selected == o.id ? .isSelected : [])
-              .accessibilityIdentifier("pick.\(o.id)")
-            }
-          }
-          if !model.projects.isEmpty, pick.choice != .transfer {
-            Text("Project").hType(.overline).foregroundStyle(HColor.textSecondary)
-            HStack(spacing: 8) {
-              FilterChip("None", selected: project == nil) { project = nil }
-              ForEach(model.projects, id: \.id) { p in
-                FilterChip(p.name, selected: project == p.id) { project = p.id }
-              }
-            }
-          }
-          Toggle(isOn: $alwaysUse) {
-            Text("Always use \(selectedName ?? "it") for \(pick.card.merchant)").hType(.callout)
-              .foregroundStyle(HColor.textPrimary)
-          }
-          .toggleStyle(CheckboxToggleStyle())
-          .accessibilityIdentifier("pick.alwaysUse")
-        }
-        .padding(HSpacing.insetPage)
-      }
-      .background(HColor.surfaceSecondary)
-      .safeAreaInset(edge: .bottom) {
-        Button(selectedName.map { "Sort into \($0)" } ?? "Choose a category") {
-          if let selected { sort(selected, alwaysUse, project) }
-        }
-        .buttonStyle(.pill(.primary, fill: true))
-        .disabled(selected == nil)
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.bottom, 8)
-        .accessibilityIdentifier("pick.sort")
-      }
-      .navigationTitle("\(pick.choice.label) · which one?")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar { SheetCloseButton(identifier: "pick.close") { dismiss() } }
-      .onAppear {
-        selected = options.first { $0.id == pick.card.suggestion?.id }?.id ?? options.first?.id
-        alwaysUse = pick.choice != .transfer
-      }
-    }
-  }
-
-  private var selectedName: String? { options.first { $0.id == selected }?.name }
-}
-
-/// A blue r6 checkbox (spec 04 §14.6 `CheckboxSquare`).
-struct CheckboxToggleStyle: ToggleStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    Button { configuration.isOn.toggle() } label: {
-      HStack(alignment: .top, spacing: 12) {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .fill(configuration.isOn ? HColor.actionAccent : HColor.surfacePrimary)
-          .overlay {
-            if configuration.isOn {
-              Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(HColor.white)
-            } else {
-              RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(HColor.iconTertiary, lineWidth: 1.5)
-            }
-          }
-          .frame(width: 24, height: 24)
-        configuration.label
-        Spacer(minLength: 0)
-      }
-      .frame(minHeight: 44)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
-  }
-}
-
-/// All caught up (Paper board): what this session sorted and what the plan now counts.
-struct ReviewDoneView: View {
-  let model: any ReviewDeckModel
-  @State private var celebrated = 0
-
-  var body: some View {
-    let sorted = model.sorted
-    let rules = sorted.filter(\.learnedRule).count
-    let counted = sorted.reduce(Int64(0)) { $0 + $1.counted }
-    ScrollView {
-      VStack(spacing: 18) {
-        Circle().fill(Hue.mint.gradient).frame(width: 72, height: 72)
-          .overlay { Image(systemName: "checkmark").font(.system(size: 30, weight: .bold)).foregroundStyle(Hue.mint.ink) }
-          .accessibilityHidden(true)
-          .padding(.top, 24)
-        VStack(spacing: 4) {
-          Text("All caught up").hType(.title1).foregroundStyle(HColor.textPrimary)
-            .accessibilityIdentifier("review.done")
-          Text(sorted.isEmpty ? "Nothing waiting to sort."
-            : "\(sorted.count) sorted" + (rules > 0 ? " · \(rules) new rule\(rules == 1 ? "" : "s")" : ""))
-            .hType(.body).foregroundStyle(HColor.textSecondary)
-        }
-        if !sorted.isEmpty {
-          VStack(alignment: .leading, spacing: 0) {
-            PhraseText(MoneyPhrase([.text("Your plan now counts AED "), .amount(.aed(counted)), .text(" more")]),
-                       hidden: model.hidden)
-              .hType(.headline).foregroundStyle(HColor.textPrimary)
-              .padding(16)
-            ForEach(sorted) { line in
-              Divider().padding(.leading, 68)
-              TxnRow(MiniTxnRow(id: line.id, merchant: line.merchant, glyph: line.glyph, hue: line.hue,
-                                detail: line.detail, amount: line.amount, isIncome: line.isIncome),
-                     hidden: model.hidden)
-                .padding(.horizontal, 16)
-            }
-          }
-          .listCard()
-        }
-        Button("Back to Activity") { model.close(goToActivity: true) }
-          .buttonStyle(.pill(.primary, fill: true))
-          .accessibilityIdentifier("review.backToActivity")
-      }
-      .padding(.horizontal, HSpacing.insetPage)
-      .padding(.bottom, 40)
-    }
-    .sensoryFeedback(.success, trigger: celebrated)
-    .onAppear { celebrated += 1 }
+extension ReviewCardView where Actions == EmptyView {
+  init(card: ReviewCardModel, hidden: Bool, lean: ReviewChoice?, leanEdge: SwipeEdge?, strength: Double,
+       use: @escaping () -> Void)
+  {
+    self.init(card: card, hidden: hidden, lean: lean, leanEdge: leanEdge, strength: strength, use: use,
+              actions: { EmptyView() })
   }
 }
 
