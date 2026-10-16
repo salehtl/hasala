@@ -98,7 +98,13 @@ public struct MonogramDisc: View {
 }
 
 /// A bank's plate: a 40 pt rounded square (radius 12) in a hue, with its initials in the hue's
-/// ink ("ENBD", "DIB"). One line always: a four-letter code shrinks rather than wraps.
+/// ink ("ENBD", "DIB"). One line always: a four-letter code too wide for the plate is drawn a
+/// little smaller rather than wrapped (Paper's own drift note on "ENBD").
+///
+/// The initials are a picture of the bank's mark, drawn in a canvas, not set as text: the
+/// plate keeps its size at every text size, as the glyph plates do, and a shrunk text node
+/// inside it read as "Dynamic Type partially unsupported" to the accessibility audit even in a
+/// row that hides it (requests/p8.md 1). The row beside it names the bank in text that grows.
 public struct BankPlate: View {
   let initials: String
   let hue: Hue
@@ -109,17 +115,25 @@ public struct BankPlate: View {
   }
 
   public var body: some View {
+    let long = initials.count > 3
+    let mark = Text(verbatim: initials)
+      .font(.custom(HWeight.bold.interFace, fixedSize: long ? 11 : 12))
+      .tracking(long ? -0.2 : 0.2)
+      .foregroundStyle(hue.ink)
     RoundedRectangle(cornerRadius: 12, style: .continuous)
       .fill(hue.perceptualGradient)
       .frame(width: 40, height: 40)
       .overlay {
-        Text(initials)
-          .font(.custom(HWeight.bold.interFace, size: initials.count > 3 ? 11 : 12))
-          .tracking(initials.count > 3 ? -0.2 : 0.2)
-          .lineLimit(1)
-          .minimumScaleFactor(0.7)
-          .foregroundStyle(hue.ink)
-          .padding(.horizontal, 3)
+        Canvas { context, size in
+          let text = context.resolve(mark)
+          // 3 pt clear on each side, as the text had.
+          let room = size.width - 6
+          let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: size.height))
+          let scale = measured.width > room ? room / measured.width : 1
+          context.translateBy(x: size.width / 2, y: size.height / 2)
+          context.scaleBy(x: scale, y: scale)
+          context.draw(text, at: .zero, anchor: .center)
+        }
       }
       .accessibilityHidden(true)
   }
