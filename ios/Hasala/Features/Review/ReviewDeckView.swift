@@ -136,16 +136,17 @@ struct ReviewDeckView: View {
     .accessibilityIdentifier("review.more")
   }
 
-  /// "2 of 6" as a bar: 6 tall, radius 3, accent on the pace track.
+  /// "2 of 6" as a bar: 6 tall, radius 3, accent on the pace track, filled to the card in
+  /// front (Paper: 121 of 362 at 2 of 6, full at All caught up).
   private var progress: some View {
-    let done = model.total - model.cards.count
-    let share = model.total > 0 ? Double(done) / Double(model.total) : 1
+    let step = showsDeck ? model.position : model.total
+    let share = model.total > 0 ? Double(step) / Double(model.total) : 1
     return GeometryReader { geo in
       ZStack(alignment: .leading) {
         Capsule().fill(HColor.paceTrack)
         Capsule().fill(HColor.actionAccent)
           .frame(width: geo.size.width * share)
-          .hAnimation(.fillUpdate, value: done)
+          .hAnimation(.fillUpdate, value: step)
       }
     }
     .frame(height: HSpacing.progressHeight)
@@ -336,6 +337,9 @@ struct ReviewDeckView: View {
     .buttonStyle(HPressStyle(in: Capsule()))
     .scaleEffect(motion.isStill ? 1 : 1 + 0.06 * waking)
     .hAnimation(.thumbSlide, value: active)
+    // Paper's Pick a need draws the deck without its pills or footer behind the sheet.
+    .opacity(model.picking == nil ? 1 : 0)
+    .hAnimation(.fade, value: model.picking == nil)
     .disabled(model.cards.isEmpty)
     .accessibilityLabel("Sort as \(choice.label)")
     .accessibilityIdentifier("review.pill.\(choice.rawValue)")
@@ -376,6 +380,8 @@ struct ReviewDeckView: View {
     }
     .disabled(top == nil)
     .padding(.horizontal, HSpacing.insetPage)
+    .opacity(model.picking == nil ? 1 : 0)
+    .hAnimation(.fade, value: model.picking == nil)
   }
 
   // MARK: Gesture
