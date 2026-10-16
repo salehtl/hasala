@@ -22,6 +22,11 @@
       },
       Screen("mail.errorAdmin", scenario: "outlookAdmin") { await setupOutlookFails($0) },
       Screen("mail.errorCancelled", scenario: "outlookCancelled") { await setupOutlookFails($0) },
+      // An App Review account: "Use sample data" leads, the provider's sign-in follows.
+      Screen("mail.connectGmail.review", scenario: "reviewAccount") { graph in
+        let model = setupModel(graph)
+        model.navigationPath = [.connect(.gmail)]
+      },
       // The profile.
       Screen("bankAlerts", scenario: "mailboxes2", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.oneGmail", scenario: "passkeyUser", prepare: profile([.bankAlerts])),
