@@ -322,6 +322,8 @@ struct TellUsWhichLink: View {
   /// leading edge (Paper 1MZG, 1NW2). Otherwise the dock's text link row, 15/20, centred.
   var small = false
   var leading = false
+  /// The small link's text height, so its 44 pt target can overhang it (see `body`).
+  @State private var textHeight: CGFloat = 0
 
   static let mail: URL = {
     var parts = URLComponents()
@@ -339,7 +341,9 @@ struct TellUsWhichLink: View {
           .foregroundStyle(HColor.textLink)
           .multilineTextAlignment(leading ? .leading : .center)
           .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum, alignment: leading ? .leading : .center)
+          .frame(maxWidth: .infinity, alignment: leading ? .leading : .center)
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
+          .frame(minHeight: HSpacing.targetMinimum)
           .contentShape(Rectangle())
       } else {
         TextLinkLabel(lead: "Use a different email?", link: "Tell us which.", leading: leading)
@@ -348,6 +352,9 @@ struct TellUsWhichLink: View {
     .accessibilityLabel("Use a different email? Tell us which.")
     .accessibilityAddTraits(.isLink)
     .accessibilityIdentifier("mail.choose.other")
+    // The chooser's footnote sits 6 above the link (Paper 1N2A): the 44 pt target
+    // overhangs the text above and below instead of pushing it 13 pt down.
+    .padding(.vertical, small && textHeight > 0 ? -max(0, HSpacing.targetMinimum - textHeight) / 2 : 0)
   }
 }
 
