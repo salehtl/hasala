@@ -4,7 +4,7 @@
 /// What Activity lists (spec 04 §13.2 `.activityFiltered(TxnFilter)`).
 public struct TxnFilter: Sendable, Hashable, Codable {
   public enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
-    case all, toReview, bills, transfers, archived
+    case all, toReview, bills, transfers, income, archived
 
     public var title: String {
       switch self {
@@ -12,6 +12,7 @@ public struct TxnFilter: Sendable, Hashable, Codable {
       case .toReview: "To review"
       case .bills: "Bills"
       case .transfers: "Transfers"
+      case .income: "Income"
       case .archived: "Archived"
       }
     }
@@ -50,7 +51,7 @@ public struct BillRowModel: Sendable, Hashable, Identifiable {
   public var amount: Money
   public var approximate: Bool
   public var isIncome: Bool
-  /// Under the amount: "in 4 days", "● 3 days late".
+  /// Under the amount: "in 4 days", "● 3 days past usual".
   public var trailingNote: PlanDetailPart?
 
   public init(
@@ -81,6 +82,8 @@ public struct DayGroup: Sendable, Hashable, Identifiable {
 /// The summary card on a category filter ("Activity · Filtered").
 public struct FilterSummary: Sendable, Hashable {
   public var title: String
+  /// The category's bucket hue, for its chip's dot.
+  public var hue: Hue
   public var count: Int
   public var total: Money
   public var progress: Permille
@@ -107,6 +110,10 @@ public struct ActivitySnapshot: Sendable, Hashable {
   public var review: ReviewSummary?
   public var comingUp: [BillRowModel]
   public var days: [DayGroup]
+  /// A category filter lists its rows in one card, newest first, without day overlines;
+  /// each row says its day ("Sat 10 Oct · 13:20", Paper "Activity · Filtered"). Empty
+  /// otherwise.
+  public var rows: [MiniTxnRow]
   public var summary: FilterSummary?
 
   public var rowCount: Int { days.reduce(0) { $0 + $1.rows.count } }
@@ -124,6 +131,7 @@ public enum ActivityEngine {
       ActivityChip(kind: .toReview, count: reviewQueue.count, accentCount: true),
       ActivityChip(kind: .bills, count: billCount, accentCount: false),
       ActivityChip(kind: .transfers, count: nil, accentCount: false),
+      ActivityChip(kind: .income, count: nil, accentCount: false),
       ActivityChip(kind: .archived, count: nil, accentCount: false),
     ]
 
@@ -139,6 +147,7 @@ public enum ActivityEngine {
       review: showsOverview && !reviewQueue.isEmpty ? reviewSummary(s, now: now) : nil,
       comingUp: showsOverview ? comingUp(s, today: now.date, within: 7) : [],
       days: days,
+      rows: filter.category == nil ? [] : listed.map { dated($0, s) },
       summary: filter.category.flatMap { summary($0, listed, s, now: now) }
     )
   }
@@ -170,6 +179,8 @@ public enum ActivityEngine {
     case .toReview: return !t.archived && t.needsReview
     case .bills: return !t.archived && !t.needsReview && isBill(t, s)
     case .transfers: return !t.archived && t.isTransfer
+    // Money that came in and stays in: not a transfer between accounts, not a refund.
+    case .income: return !t.archived && !t.needsReview && t.direction == .in && !t.isTransfer && !t.isRefund
     case .archived: return t.archived
     }
   }
@@ -218,6 +229,15 @@ public enum ActivityEngine {
     )
   }
 
+  /// A row of a category's list: the day takes the category's place ("Sat 10 Oct · 13:20").
+  public static func dated(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
+    var r = row(t, s)
+    if !t.needsReview && t.splits.isEmpty {
+      r.detail = "\(t.postedAt.date.short) · \(t.detailOverride ?? t.postedAt.time)"
+    }
+    return r
+  }
+
   /// Bills and income due within `days` of today, and late ones (`within` 7 on Activity).
   public static func comingUp(_ s: LedgerState, today: LocalDate, within days: Int) -> [BillRowModel] {
     let horizon = today.adding(days: days)
@@ -238,7 +258,9 @@ public enum ActivityEngine {
         id: b.id, name: b.name, glyph: glyph(b, s), hue: hue(b, s),
         detail: [.text(MoneyPhrase(stringLiteral: "Usually the \(PlanEngine.ordinal(b.usualDay))"))],
         amount: b.amount, approximate: b.approximate, isIncome: false,
-        trailingNote: .status("\(n) day\(n == 1 ? "" : "s") late", .error)
+        // Paper's words for a bill that hasn't come yet: past its usual day, never "late"
+        // (spec 01 §07: Hasala can't know for sure).
+        trailingNote: .status("\(n) day\(n == 1 ? "" : "s") past usual", .error)
       )
     }
   }
@@ -270,7 +292,7 @@ public enum ActivityEngine {
                                paced: cat.role == .everyday)
     let pct = budget > 0 ? total * 100 / budget : 0
     return FilterSummary(
-      title: cat.name, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
+      title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
       today: Pace.monthGone(day: now.date.day, days: month.days), verdict: verdict,
       caption: MoneyPhrase([
         .text("\(pct)% of \(cat.name)\(cat.name.hasSuffix("s") ? "'" : "'s") "), .amount(.aed(budget), .compact),
