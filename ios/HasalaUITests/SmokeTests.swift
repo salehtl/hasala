@@ -155,7 +155,18 @@ final class SmokeTests: XCTestCase {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: 5))
       attach(app, "AX3 · \(tab)")
-      try audit(app, atLargeText: true)
+      if tab == "Plan" {
+        // As PlanUITests.testPlanAtLargeTextSizes does: every check but clipped text, then
+        // clipped text alone, letting through only the "READY TO ASSIGN" overline, which the
+        // audit reads as cut off and which wraps instead
+        // (`PlanUITests.testReadyToAssignWrapsAtTheLargestSize`).
+        try audit(app)
+        try app.performAccessibilityAudit(for: .textClipped) { issue in
+          issue.element?.label.localizedCaseInsensitiveCompare("Ready to assign") == .orderedSame
+        }
+      } else {
+        try audit(app, atLargeText: true)
+      }
     }
   }
 
