@@ -1,4 +1,5 @@
 import CoreMailbox
+import CoreTime
 import Foundation
 import HasalaModels
 import Observation
@@ -13,7 +14,7 @@ import Observation
 /// link per account, so there is no second mailbox. The lane's status gives the one row.
 @MainActor
 @Observable
-final class LiveMailboxConnecting: MailboxConnecting {
+final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   @ObservationIgnored private let runtime: @MainActor () -> AccountRuntime?
 
   init(runtime: @escaping @MainActor () -> AccountRuntime?) {
@@ -56,6 +57,36 @@ final class LiveMailboxConnecting: MailboxConnecting {
     return BootController.mailboxFact(await lane.status().phase)
   }
 
+  // MARK: Bank by bank (Bank alerts)
+
+  /// How long ago the lane's newest alert from `bank` arrived, from its bank health rows.
+  func lastEmail(_ bank: SupportedBank) -> String? {
+    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return nil }
+    return Self.lastEmail(bank, health: status.health, nowMs: rt.context.clock.nowMs())
+  }
+
+  /// The alerts the lane read this month, from its bank health rows.
+  var readThisMonth: MonthRead? {
+    guard let rt = runtime(), let status = rt.store.mailboxStatus else { return nil }
+    return Self.readThisMonth(status.health, nowMs: rt.context.clock.nowMs())
+  }
+
+  /// The newest `lastEmailAtMs` among the rows of `bank`'s sender domains, as "4 min ago".
+  static func lastEmail(_ bank: SupportedBank, health: [BankHealthRow], nowMs: Int64) -> String? {
+    let domains = GmailLane.senderDomains(bank: bank.rawValue)
+    let newest = health.filter { BankDomains.isMember($0.domain, of: domains) }.compactMap(\.lastEmailAtMs).max()
+    return newest.map { LedgerStateMapper.ago(nowMs - $0) }
+  }
+
+  /// The rows' `readThisMonth` for the local month of `nowMs` ("214 read in October"); a
+  /// row last bumped in an earlier month read none this month.
+  static func readThisMonth(_ health: [BankHealthRow], nowMs: Int64) -> MonthRead? {
+    guard let month = LocalClock.localMonth(nowMs) else { return nil }
+    let count = health.filter { $0.month == month.description }.reduce(0) { $0 + $1.readThisMonth }
+    guard count > 0 else { return nil }
+    return MonthRead(count: count, month: YearMonth(month.year, month.month).name)
+  }
+
   // MARK: The row (plan B4.4's table)
 
   /// The lane's one mailbox as a row, or none while it is unlinked.
@@ -64,15 +95,18 @@ final class LiveMailboxConnecting: MailboxConnecting {
               bankDomains: s.health.map(\.domain), nowMs: nowMs)
   }
 
-  /// The row from the status's parts (the table in plan B4.4).
+  /// The row from the status's parts (the table in plan B4.4). The mailbox page's "Last
+  /// checked" is the last good run on this iPhone's clock, at the ledger's local time
+  /// (`LocalClock`, as every transaction time is).
   static func mailboxes(
     phase: MailboxPhase, halt: MailboxHaltCode?, address: String?, lastSuccessAtMs: Int64?, bankDomains: [String],
-    nowMs: Int64
+    nowMs: Int64, timeZone: TimeZone = localTimeZone
   ) -> [MailboxSnapshot] {
     let checked = lastSuccessAtMs.map { "Checked \(LedgerStateMapper.ago(nowMs - $0))" } ?? "Not checked yet"
     var row = MailboxSnapshot(
       id: gmailID, provider: .gmail, address: address ?? "Gmail", state: .connected, meta: checked,
-      banks: Set(bankDomains.compactMap { LedgerStateMapper.bankName(domain: $0) }).sorted())
+      banks: Set(bankDomains.compactMap { LedgerStateMapper.bankName(domain: $0) }).sorted(),
+      lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) })
     switch phase {
     case .unlinked:
       return []
@@ -93,6 +127,20 @@ final class LiveMailboxConnecting: MailboxConnecting {
       row.note = "Read on your other iPhone"
     }
     return [row]
+  }
+
+  /// The ledger's local time (+04:00, `LocalClock`), in which every date the app shows is
+  /// written.
+  static let localTimeZone = TimeZone(secondsFromGMT: Int(LocalClock.offsetMinutes) * 60) ?? .gmt
+
+  /// "Wed 7 Oct, 09:14": when the lane last read the mailbox, as the mailbox page says it.
+  static func checkedAt(_ ms: Int64, timeZone: TimeZone = localTimeZone) -> String {
+    let format = Date.FormatStyle(date: .omitted, time: .omitted, locale: Locale(identifier: "en_GB"),
+                                  calendar: Calendar(identifier: .gregorian), timeZone: timeZone)
+    let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
+    let day = date.formatted(format.weekday(.abbreviated).day(.defaultDigits).month(.abbreviated))
+    let time = date.formatted(format.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
+    return "\(day), \(time)"
   }
 
   /// What the bell, Profile and Bank alerts offer for a lane `phase` (spec 04 §6.6 row 4,
@@ -151,8 +199,8 @@ final class LiveMailboxConnecting: MailboxConnecting {
 
   @discardableResult
   func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
-    // Unreachable in Release: Outlook is not in `connectable`.
-    guard provider == .gmail else { throw .failed("Outlook isn't available in this build.") }
+    // Unreachable: only Gmail is in `connectable`, and no copy here names another provider.
+    guard provider == .gmail else { throw .failed("Hasala reads Gmail only.") }
     let lane = try lane()
     // The offer may be older than another iPhone's link: ask the server again first.
     if await lane.status().phase == .unlinked, let rt = runtime() {
