@@ -7,7 +7,7 @@
   /// function leaves it on the scenario's account mock; the view takes it on appearing and
   /// drives its real model with it.
   enum SignInLaunchStep: Equatable {
-    case unlockEntry, unlockUnlocking, unlockWelcomeBack
+    case unlockEntry, unlockUnlocking, unlockWelcomeBack, unlockHonestEnd
     case alertRemovePasskey, alertRemoveDevice, alertSignOut, alertSignOutAll
     case viewWords, lockdown, changeEmail, changeEmailCodes
     case confirmFaceID, confirmPassword, confirmNoKey
@@ -34,6 +34,7 @@
       Screen("unlock.entry", scenario: "unlockPasswordOnly", prepare: step(.unlockEntry)),
       Screen("unlock.unlocking", scenario: "unlockPasswordOnly", prepare: step(.unlockUnlocking)),
       Screen("unlock.welcomeBack", scenario: "unlockPasswordOnly", prepare: step(.unlockWelcomeBack)),
+      Screen("unlock.honestEnd", scenario: "unlockPasswordOnly", prepare: step(.unlockHonestEnd)),
       // Forgot password.
       Screen("forgot.email", scenario: "signInPassword", prepare: { graph in
         // The address typed on Sign in carries over (Paper GQL).
@@ -158,6 +159,8 @@
       case .unlockWelcomeBack:
         model.phraseText = words.joined(separator: " ")
         await model.unlockWithWords()
+      case .unlockHonestEnd:
+        model.noWords()
       default:
         break
       }

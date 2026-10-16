@@ -29,7 +29,9 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
   }
 
   /// Unlocking on a new iPhone: the words only (no passkey without its capability), and
-  /// the honest end points to a person, not a start-fresh the beta can't do.
+  /// the honest end points to a person, not a start-fresh the beta can't do. A
+  /// password-only account's other device can't show the words, so the page doesn't say it
+  /// can.
   @MainActor
   func testUnlockAndTheHonestEndPromiseOnlyWhatWorks() throws {
     let app = launchRelease("unlockPasswordOnly", waitForHome: false)
@@ -41,7 +43,8 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Honest end")
     assertNoPlaceholders(app, "Honest end")
     assertAbsent(app, ["honest.startFresh"], "Honest end")
-    assertNoText(app, ["Starting fresh", "add a passkey"], "Honest end")
+    assertNoText(app, ["Starting fresh", "add a passkey", "can show your words"], "Honest end")
+    assertText(app, "can't be shown again", "Honest end")
     assertPresent(app, ["honest.talk"], "Honest end")
     try audit(app)
   }
