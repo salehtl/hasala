@@ -106,6 +106,11 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     let alert = app.alerts["Delete your Hasala account?"]
     XCTAssertTrue(alert.waitForExistence(timeout: 5))
     alert.buttons["Delete"].tap()
+    // "Confirm it's you" (Paper P2.6, spec 09 §12) asks before the passkey's Face ID.
+    let confirm = el(app, "confirm.submit")
+    XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Confirm it's you did not ask")
+    attach(app, "Release · Confirm it's you")
+    confirm.tap()
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15), "Welcome did not appear")
     attach(app, "Release · Deleted")
   }

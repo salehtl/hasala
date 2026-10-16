@@ -5,18 +5,14 @@ import XCTest
 /// alerts through the Profile card, as a person does.
 final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
   /// Bank alerts with an account's scenario, its hero on screen: through the Profile card,
-  /// a button in Release once P8's card lands. Until then (the foundation's card is a
-  /// status line in Release) the page opens directly (`-HasalaScreen bankAlerts`).
+  /// a button in Release too.
   @MainActor
   private func bankAlerts(_ scenario: String) -> XCUIApplication {
-    var app = launchRelease(scenario)
+    let app = launchRelease(scenario)
     app.buttons["header.profile"].firstMatch.tap()
     let card = app.buttons["profile.bankAlerts"]
-    if card.waitForExistence(timeout: 5) {
-      card.tap()
-    } else {
-      app = launchRelease(scenario, waitForHome: false, screen: "bankAlerts")
-    }
+    XCTAssertTrue(card.waitForExistence(timeout: 10), "the Profile card is not a button")
+    card.tap()
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 15), "Bank alerts did not open")
     return app
   }
