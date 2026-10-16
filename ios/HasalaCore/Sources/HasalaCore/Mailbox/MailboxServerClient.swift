@@ -53,6 +53,17 @@ public struct HTTPMailboxServer: MailboxServer {
     }
   }
 
+  /// Route 37 with the link's provider (`provider`; absent from a server before the Outlook
+  /// link, which links only Gmail). The provider is nil with no link.
+  public func linkStatusAndProvider() async throws(MailboxServerError) -> (MailboxLinkStatus, MailProviderID?) {
+    do {
+      let o = try await call(.get, "/api/v1/mailbox/link", body: nil)
+      return (Self.status(o), MailProviderID(rawValue: o["provider"]?.stringValue ?? "gmail"))
+    } catch .noLink {
+      return (.noLink, nil)
+    }
+  }
+
   public func linkChallenge() async throws(MailboxServerError) -> String {
     let o = try await call(.post, "/api/v1/mailbox/link/challenge", body: .object(JSONObject()))
     guard let n = o["nonce"]?.stringValue, !n.isEmpty else { throw .refused(200, "bad_response") }

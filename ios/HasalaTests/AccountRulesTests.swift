@@ -153,7 +153,7 @@ struct OnboardingStepTests {
     f.keysReady = true
     #expect(OnboardingStep.derive(f) == .bank)
     f.banksChosen = true
-    #expect(OnboardingStep.derive(f) == .gmail)
+    #expect(OnboardingStep.derive(f) == .mailbox)
     f.mailbox = .scanning
     #expect(OnboardingStep.derive(f) == .scan)
     f.scanDeferred = true

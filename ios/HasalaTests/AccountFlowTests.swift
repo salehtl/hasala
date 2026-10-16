@@ -504,8 +504,9 @@ struct AccountFlowTests {
     m.toggle(.dib)
     await m.continueWithBanks()
     #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib])
-    #expect(m.step == .gmail)
-    await m.connectGmail()
+    #expect(m.step == .mailbox)
+    #expect(m.providers == [.gmail, .outlook])
+    await m.choose(.gmail)
     #expect(m.step == .scan)
     m.planWhileScanning()
     #expect(m.step == .income)
@@ -542,14 +543,16 @@ struct AccountFlowTests {
     #expect(m.step == .notifications)
   }
 
-  // MARK: Connect Gmail after setup (spec 04 §6.6 row 4, §7.4)
+  // MARK: Connect a mailbox after setup (spec 04 §6.6 row 4, §7.4)
 
-  func connectServices(_ offer: GmailOffer?, banks: [SupportedBank] = SupportedBank.allCases)
-    -> (AccountServices, MockMailbox)
-  {
+  func connectServices(
+    _ offer: MailboxOffer?, banks: [SupportedBank] = SupportedBank.allCases, linked: MailboxProvider? = nil
+  ) -> (AccountServices, MockMailbox) {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let mailbox = s.mailbox as! MockMailbox
-    mailbox.gmailOffer = offer
+    mailbox.providers = MailboxProvider.allCases
+    if let linked { mailbox.linkTo(linked) }
+    mailbox.mailboxOffer = offer
     mailbox.banks = banks
     return (s, mailbox)
   }
@@ -557,17 +560,17 @@ struct AccountFlowTests {
   @Test func connectingGmailAfterSetupRunsGmailThenTheResult() async throws {
     let (s, mailbox) = connectServices(.connect, banks: [.dib])
     var finished = 0, closed = 0
-    let m = SetupModel.connectingGmail(.connect, services: s, onClose: { closed += 1 }, onFinished: { finished += 1 })
+    let m = SetupModel.connectingMailbox(.connect, services: s, onClose: { closed += 1 }, onFinished: { finished += 1 })
     #expect(!m.startsAtBank)
     #expect(m.orderedBanks == [.dib])
     #expect(m.steps(2) == nil)
-    #expect(m.gmailIsFirst)
-    #expect(m.connectTitle == "Connect Gmail")
+    #expect(m.mailboxIsFirst)
+    #expect(m.connectTitle(.gmail) == "Connect Gmail" && m.connectTitle(.outlook) == "Connect Outlook")
     await m.openConnect()
     #expect(m.path.isEmpty)
-    await m.connectGmail()
+    await m.choose(.gmail)
     #expect(m.path == [.result])
-    #expect(mailbox.gmailOffer == nil)
+    #expect(mailbox.linkedProvider == .gmail && mailbox.mailboxOffer == .change(.gmail))
     #expect(finished == 0)
     // "Continue" doesn't wait for the import.
     m.afterResult()
@@ -575,25 +578,27 @@ struct AccountFlowTests {
   }
 
   @Test func reconnectingGmailIsDoneOnceGoogleSaysYes() async {
-    let (s, mailbox) = connectServices(.reconnect)
+    let (s, mailbox) = connectServices(.reconnect(.gmail), linked: .gmail)
     var finished = 0
-    let m = SetupModel.connectingGmail(.reconnect, services: s, onClose: {}, onFinished: { finished += 1 })
-    #expect(m.connectTitle == "Reconnect Gmail")
-    await m.connectGmail()
+    let m = SetupModel.connectingMailbox(.reconnect(.gmail), services: s, onClose: {}, onFinished: { finished += 1 })
+    #expect(m.providers == [.gmail, .outlook])
+    #expect(m.connectTitle(.gmail) == "Reconnect Gmail" && m.connectTitle(.outlook) == "Use Outlook instead")
+    await m.choose(.gmail)
+    #expect(m.confirmingSwitch == nil)
     #expect(finished == 1)
     #expect(m.path.isEmpty)
-    #expect(mailbox.gmailOffer == nil)
+    #expect(mailbox.linkedProvider == .gmail)
   }
 
   @Test func connectingGmailWithNoBankStartsAtTheBank() async {
     let (s, _) = connectServices(.connect, banks: [])
     var closed = 0
-    let m = SetupModel.connectingGmail(.connect, services: s, onClose: { closed += 1 }, onFinished: {})
+    let m = SetupModel.connectingMailbox(.connect, services: s, onClose: { closed += 1 }, onFinished: {})
     #expect(m.startsAtBank)
     await m.continueWithBanks()
     #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib])
-    #expect(m.path == [.gmail])
-    #expect(!m.gmailIsFirst)
+    #expect(m.path == [.mailbox])
+    #expect(!m.mailboxIsFirst)
     m.close()
     #expect(closed == 1)
   }
@@ -601,8 +606,8 @@ struct AccountFlowTests {
   /// Opened again during the scan (a reconnect cut short mid-scan): the result shows it.
   @Test func connectingGmailResumesAtTheResult() async throws {
     let (s, mailbox) = connectServices(.connect)
-    try await mailbox.connectGmail(banks: [.enbd])
-    let m = SetupModel.connectingGmail(.connect, services: s, onClose: {}, onFinished: {})
+    try await mailbox.connectMailbox(.gmail, banks: [.enbd])
+    let m = SetupModel.connectingMailbox(.connect, services: s, onClose: {}, onFinished: {})
     await m.openConnect()
     #expect(m.path == [.result])
     for _ in 0..<400 where !m.scanDone { try await Task.sleep(for: .milliseconds(10)) }
@@ -624,10 +629,52 @@ struct AccountFlowTests {
   @Test func resumesAtTheDerivedStep() {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.gmailSkipped = true
+    facts.mailboxSkipped = true
     let m = SetupModel(services: s, displayName: "Maya", facts: facts) {}
     m.resume()
     #expect(m.path == [.income])
+  }
+
+  /// Gmail skipped at setup, Outlook connected later from Home: a first connect, no
+  /// confirmation (nothing is replaced), then the scan's result.
+  @Test func connectingOutlookAfterSkippingScans() async throws {
+    let (s, mailbox) = connectServices(.connect, banks: [.enbd])
+    let m = SetupModel.connectingMailbox(.connect, services: s, onClose: {}, onFinished: {})
+    await m.choose(.outlook)
+    #expect(m.confirmingSwitch == nil)
+    #expect(m.path == [.result])
+    #expect(mailbox.linkedProvider == .outlook)
+  }
+
+  /// Gmail works; Profile's "Use another email" offers Outlook alone, and switching asks
+  /// first ("This replaces your Gmail connection."). Cancelling changes nothing.
+  @Test func switchingFromGmailToOutlookIsConfirmed() async throws {
+    let (s, mailbox) = connectServices(.change(.gmail), linked: .gmail)
+    let m = SetupModel.connectingMailbox(.change(.gmail), services: s, onClose: {}, onFinished: {})
+    #expect(m.providers == [.outlook])
+    #expect(m.connectTitle(.outlook) == "Use Outlook instead")
+    await m.choose(.outlook)
+    #expect(m.confirmingSwitch == .outlook)
+    #expect(m.switchMessage?.hasPrefix("This replaces your Gmail connection.") == true)
+    #expect(mailbox.linkedProvider == .gmail)
+    m.confirmingSwitch = nil
+    #expect(mailbox.linkedProvider == .gmail && m.path.isEmpty)
+    await m.choose(.outlook)
+    m.confirmingSwitch = nil  // the dialog closes before its button's action runs
+    await m.confirmSwitch(.outlook)
+    #expect(mailbox.linkedProvider == .outlook)
+    #expect(m.path == [.result])  // a switch scans the new mailbox
+  }
+
+  /// Reconnecting Outlook offers Outlook first; Gmail instead is a switch, confirmed.
+  @Test func reconnectingOutlookOffersItFirst() async {
+    let (s, _) = connectServices(.reconnect(.outlook), linked: .outlook)
+    let m = SetupModel.connectingMailbox(.reconnect(.outlook), services: s, onClose: {}, onFinished: {})
+    #expect(m.providers == [.outlook, .gmail])
+    #expect(m.connectTitle(.outlook) == "Reconnect Outlook")
+    await m.choose(.gmail)
+    #expect(m.confirmingSwitch == .gmail)
+    #expect(m.switchMessage?.hasPrefix("This replaces your Outlook connection.") == true)
   }
 }
 

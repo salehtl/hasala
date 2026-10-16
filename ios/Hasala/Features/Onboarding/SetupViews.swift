@@ -14,7 +14,7 @@ struct SetupFlowView: View {
       BankView(model: model)
         .navigationDestination(for: SetupRoute.self) { route in
           switch route {
-          case .gmail: GmailView(model: model)
+          case .mailbox: MailboxView(model: model)
           case .scan: ScanView(model: model)
           case .income: IncomeView(model: model)
           case .plan: StartingPlanView(model: model)
@@ -80,7 +80,7 @@ struct BankView: View {
         failureText(model.failure)
       }
     } footer: {
-      LockNote(text: "Next you'll connect Gmail, read-only. Only alerts from the banks you pick are downloaded, straight to this iPhone.")
+      LockNote(text: "Next you'll connect your email, read-only. Only alerts from the banks you pick are downloaded, straight to this iPhone.")
         .padding(.bottom, 8)
       BusyButton(title: model.chosenBanks.count == 1 ? "Continue with 1 bank" : "Continue with \(model.chosenBanks.count) banks",
                  busy: model.busy, enabled: !model.chosenBanks.isEmpty, identifier: "bank.continue") {
@@ -126,18 +126,23 @@ struct BankView: View {
   }
 }
 
-// MARK: - Gmail (2 of 5)
+// MARK: - The mailbox (2 of 5)
 
-struct GmailView: View {
+struct MailboxView: View {
   @Bindable var model: SetupModel
+
+  /// Only Gmail: this build has no Outlook client (`HASALA_OUTLOOK_CLIENT_ID` unset).
+  private var gmailOnly: Bool { model.providers == [.gmail] }
 
   var body: some View {
     AccountScreen(
-      title: "Read-only Gmail, on your iPhone.",
-      subtitle: "Your bank alerts are fetched from Gmail by this iPhone. Our server never receives your emails.",
+      title: gmailOnly ? "Read-only Gmail, on your iPhone." : "Read-only email, on your iPhone.",
+      subtitle: gmailOnly
+        ? "Your bank alerts are fetched from Gmail by this iPhone. Our server never receives your emails."
+        : "Your bank alerts are fetched from your mailbox by this iPhone. Our server never receives your emails.",
       steps: model.steps(2),
-      onBack: model.backButton(on: .gmail),
-      trailing: model.topAction(skip: model.skipGmail)
+      onBack: model.backButton(on: .mailbox),
+      trailing: model.topAction(skip: model.skipMailbox)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 10) {
@@ -152,36 +157,59 @@ struct GmailView: View {
         }
         .padding(18)
         .listCard()
-        Text(Self.permissionNote)
+        Text(Self.permissionNote(gmailOnly: gmailOnly))
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
         failureText(model.failure)
       }
     } footer: {
+      let providers = model.providers
       if model.offersSampleData {
         BusyButton(title: "Use sample data", busy: model.busy, identifier: "gmail.sample") {
           Task { await model.useSampleData() }
         }
-        BusyButton(title: model.connectTitle, busy: false, kind: .tertiary, identifier: "gmail.connect") {
-          Task { await model.connectGmail() }
+        ForEach(providers) { p in
+          BusyButton(title: model.connectTitle(p), busy: false, kind: .tertiary, identifier: "\(p.rawValue).connect") {
+            Task { await model.choose(p) }
+          }
         }
       } else {
-        BusyButton(title: model.connectTitle, busy: model.busy, identifier: "gmail.connect") {
-          Task { await model.connectGmail() }
+        ForEach(Array(providers.enumerated()), id: \.element) { i, p in
+          BusyButton(
+            title: model.connectTitle(p), busy: i == 0 && model.busy, kind: i == 0 ? .primary : .tertiary,
+            identifier: "\(p.rawValue).connect"
+          ) {
+            Task { await model.choose(p) }
+          }
         }
-        Text("Not on Gmail? Hasala works with Gmail for now.")
+        Text(gmailOnly ? "Not on Gmail? Hasala works with Gmail for now." : "Outlook: personal Microsoft accounts only.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .frame(minHeight: 28)
       }
     }
+    .confirmationDialog(
+      "Change your email?",
+      isPresented: Binding(get: { model.confirmingSwitch != nil }, set: { if !$0 { model.confirmingSwitch = nil } }),
+      titleVisibility: .visible,
+      presenting: model.confirmingSwitch
+    ) { p in
+      Button("Use \(p.name)") { Task { await model.confirmSwitch(p) } }
+        .accessibilityIdentifier("mailbox.confirmSwitch")
+      Button("Cancel", role: .cancel) { model.confirmingSwitch = nil }
+    } message: { _ in
+      Text(model.switchMessage ?? "")
+    }
   }
 
-  /// Gmail push (the server told when new mail arrives) is off in this build, so a Release
-  /// build says how new alerts are really caught: when the app opens, and in the background.
-  static var permissionNote: String {
-    let scope = "Google's permission screen still asks to let Hasala read your email, because Gmail offers nothing narrower."
+  /// Push (the server told when new mail arrives) is off in this build, so a Release build
+  /// says how new alerts are really caught: when the app opens, and in the background.
+  static func permissionNote(gmailOnly: Bool = true) -> String {
+    let scope =
+      gmailOnly
+      ? "Google's permission screen still asks to let Hasala read your email, because Gmail offers nothing narrower."
+      : "The permission screen still asks to let Hasala read your email, because Gmail and Outlook offer nothing narrower."
     return BuildSurface.showsUnfinished
       ? scope + " To catch new alerts quickly, our server is told when new mail arrives, never what it says."
       : scope + " This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
@@ -501,7 +529,7 @@ struct SplitEditor: View {
 struct ScanResultView: View {
   var model: SetupModel
 
-  /// The window the first scan reads (`LiveMailboxConnecting.connectGmail`).
+  /// The window the first scan reads (`LiveMailboxConnecting.connectMailbox`).
   static let windowDays = 90
 
   var body: some View {
@@ -686,32 +714,34 @@ struct DoneView: View {
   }
 }
 
-// MARK: - Connect Gmail after setup
+// MARK: - Connect a mailbox after setup
 
-/// "Connect Gmail" or "Reconnect Gmail" once setup is done (spec 04 §6.6 row 4, §7.4), from
-/// Home's Needs-you card or the Profile card: setup's own steps through the live Gmail lane
-/// (Google's sign-in, the `mailbox.link` step-up, the first scan and its result), in a sheet.
-struct GmailConnectSheet: View {
+/// "Connect your email", "Reconnect Gmail" or a change of provider once setup is done (spec
+/// 04 §6.6 row 4, §7.4), from Home's Needs-you card or the Profile card: setup's own steps
+/// through the live mailbox lanes, in a sheet.
+struct MailboxConnectSheet: View {
   let app: AppModel
-  let offer: GmailOffer
+  let offer: MailboxOffer
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     if let session {
-      GmailConnectFlow(
-        model: .connectingGmail(
+      MailboxConnectFlow(
+        model: .connectingMailbox(
           offer, services: session.services, onClose: { dismiss() },
           onFinished: {
             dismiss()
-            if offer == .reconnect { app.say("Gmail reconnected") }
+            if case .reconnect(let p) = offer, session.services.mailbox.linkedProvider == p {
+              app.say("\(p.name) reconnected")
+            }
           }))
     }
   }
 }
 
 /// The connect's navigation stack: the bank step first only when the account reads no bank.
-private struct GmailConnectFlow: View {
+private struct MailboxConnectFlow: View {
   @State private var model: SetupModel
 
   init(model: SetupModel) {
@@ -721,11 +751,11 @@ private struct GmailConnectFlow: View {
   var body: some View {
     NavigationStack(path: $model.path) {
       Group {
-        if model.startsAtBank { BankView(model: model) } else { GmailView(model: model) }
+        if model.startsAtBank { BankView(model: model) } else { MailboxView(model: model) }
       }
       .navigationDestination(for: SetupRoute.self) { route in
         switch route {
-        case .gmail: GmailView(model: model)
+        case .mailbox: MailboxView(model: model)
         case .result: ScanResultView(model: model)
         case .scan, .income, .plan, .notifications, .done: EmptyView()
         }

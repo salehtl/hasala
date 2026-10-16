@@ -339,7 +339,7 @@ nonisolated enum LedgerStateMapper {
   /// Each bank's sender domains, from its bundled templates (03c §7.2), e.g. Emirates NBD
   /// → emiratesnbd.com: a health row names its bank by the template it matched.
   static let bankDomains: [(name: String, domains: [String])] = bankNames.sorted { $0.key < $1.key }.map {
-    (name: $0.value, domains: GmailLane.senderDomains(bank: $0.key))
+    (name: $0.value, domains: MailboxLane.senderDomains(bank: $0.key))
   }
 
   /// The bank a sender domain belongs to, if it is one the beta reads.

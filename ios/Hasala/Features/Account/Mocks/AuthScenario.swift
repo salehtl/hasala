@@ -37,10 +37,14 @@
     /// Signed in on the App Review demo account (`review_account`), over HasalaMocks'
     /// `mayaSample` ledger: Home says "Sample data".
     case mayaSample
-    /// Signed in after skipping the Gmail step: Home and Profile offer "Connect Gmail".
+    /// Signed in after skipping the mailbox step: Home and Profile offer "Connect your email".
     case gmailSkipped
     /// Signed in; Google wants a new sign-in: Home and Profile offer "Reconnect Gmail".
     case gmailReconnect
+    /// Signed in; Microsoft wants a new sign-in: Home and Profile offer "Reconnect Outlook".
+    case outlookReconnect
+    /// Signed in with Gmail working: Profile offers another provider (when the build has one).
+    case gmailLinked
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -65,13 +69,23 @@
     private static func makeSession(for scenario: AuthScenario?) -> AccountSession {
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount)
       mailbox.sortsWithModel = BuildSurface.showsUnfinished
-      mailbox.gmailOffer = scenario == .gmailSkipped ? .connect : scenario == .gmailReconnect ? .reconnect : nil
+      switch scenario {
+      case .gmailSkipped: mailbox.mailboxOffer = .connect
+      case .gmailReconnect:
+        mailbox.linkTo(.gmail)
+        mailbox.mailboxOffer = .reconnect(.gmail)
+      case .outlookReconnect:
+        mailbox.linkTo(.outlook)
+        mailbox.mailboxOffer = .reconnect(.outlook)
+      case .gmailLinked: mailbox.linkTo(.gmail)
+      default: break
+      }
       func services(_ account: MockAccountService) -> AccountServices {
         AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
                         notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })
       }
       switch scenario {
-      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect:
+      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .outlookReconnect, .gmailLinked:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),

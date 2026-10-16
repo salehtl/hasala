@@ -59,8 +59,8 @@ struct MainView: View {
         MoveMoneySheet(model: BudgetSheetViewModel(app: app, category: id))
       case .profile:
         ProfileSheet(app: app)
-      case .connectGmail(let offer):
-        GmailConnectSheet(app: app, offer: offer)
+      case .connectMailbox(let offer):
+        MailboxConnectSheet(app: app, offer: offer)
       }
     }
     .fullScreenCover(item: $app.cover) { cover in

@@ -89,7 +89,7 @@ final class AppEnvironment {
     let secrets = account.secrets
     let binding = try? secrets.binding()
     let session = try? secrets.session()
-    let grant = binding?.userID.flatMap { GmailLane.heldGrant(secrets: secrets, userID: $0) }
+    let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: secrets, userID: $0) }
     let confirmed = await AccountSignIn.signOut(account)
     let pending = confirmed ? nil : (try? secrets.session())
     if let b = binding, let u = b.userID { AccountWipe.wipe(account, userID: u, writerID: b.writerID) }
@@ -104,7 +104,7 @@ final class AppEnvironment {
     if let pending { try? secrets.writeSession(pending) }
     if let grant {
       let build = self.build
-      Task { await GmailLane.endGrant(grant, build: build, stopWatch: false) }
+      Task { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
     }
   }
 
