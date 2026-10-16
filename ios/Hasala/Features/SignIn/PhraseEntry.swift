@@ -100,15 +100,20 @@ struct PhraseEntryState: Equatable {
 /// keyboard; the keyboard neither corrects nor learns. "Paste" is the system paste button,
 /// so iOS reads the clipboard once, on the person's tap, without a prompt; whoever accepts
 /// the words clears it with `clearPastedPhrase(changeCount:)`.
+///
+/// Paper draws no button under the grid: Return moves to the next cell and sends the
+/// twelfth, and the word-list suggestions sit on the keyboard. The screen owns `focused`,
+/// so while the keyboard is up its dock holds `PhraseSuggestions` (it rides on the
+/// keyboard and the grid scrolls clear of it), and its button once the keyboard goes.
 struct PhraseEntryGrid: View {
   @Binding var text: String
   /// The pasteboard's `changeCount` when a paste landed here (nil until one does).
   @Binding var pastedChangeCount: Int?
+  var focused: FocusState<Bool>.Binding
   var identifier = "phraseEntry.field"
   /// Return on the twelfth word.
   var onSubmit: () -> Void = {}
 
-  @FocusState private var focused: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var state: PhraseEntryState { PhraseEntryState(text) }
@@ -122,7 +127,7 @@ struct PhraseEntryGrid: View {
           .accessibilityHidden(true)
       }
       .contentShape(Rectangle())
-      .onTapGesture { focused = true }
+      .onTapGesture { focused.wrappedValue = true }
       .environment(\.layoutDirection, .leftToRight)
       if let unknown = state.unknownIndex {
         FieldErrorLine(text: "Word \(unknown + 1) isn't on the recovery list. Check the spelling on your paper.")
@@ -130,12 +135,7 @@ struct PhraseEntryGrid: View {
       }
       helper
     }
-    .onAppear { focused = true }
-    .toolbar {
-      ToolbarItemGroup(placement: .keyboard) {
-        SuggestionBar(words: state.suggestions) { text = state.completing(with: $0) }
-      }
-    }
+    .onAppear { focused.wrappedValue = true }
   }
 
   private var field: some View {
@@ -157,10 +157,10 @@ struct PhraseEntryGrid: View {
       } else {
         // Return moves on, as "next" says.
         if !state.current.isEmpty { text = PhraseEntryState.normalised(text + " ") }
-        focused = true
+        focused.wrappedValue = true
       }
     }
-    .focused($focused)
+    .focused(focused)
     .foregroundStyle(.clear)
     .tint(.clear)
     .frame(maxWidth: .infinity)
@@ -192,7 +192,7 @@ struct PhraseEntryGrid: View {
   @ScaledMetric(relativeTo: .callout) private var caretHeight: CGFloat = 20
 
   private func cell(_ i: Int, word: String) -> some View {
-    let active = focused && i == state.activeIndex && !(state.isComplete && i == PhraseEntryState.wordCount - 1)
+    let active = focused.wrappedValue && i == state.activeIndex && !(state.isComplete && i == PhraseEntryState.wordCount - 1)
     let unknown = state.unknownIndex == i
     let filled = !word.isEmpty
     return HStack(spacing: 8) {
@@ -246,18 +246,43 @@ struct PhraseEntryGrid: View {
   private func paste(_ pasted: String) {
     text = PhraseEntryState.normalised(pasted)
     pastedChangeCount = UIPasteboard.general.changeCount
-    focused = true
+    focused.wrappedValue = true
   }
 }
 
-/// The word-list suggestions over the keyboard (Paper "Suggestions (phrase words only)"):
-/// three slots split by hairlines, the middle one (or the only one) in a white pill.
+/// The word-list suggestions on the keyboard (Paper "Suggestions (phrase words only)"), for
+/// an entry screen's dock while the grid is focused: a 44 glass bar of three slots split
+/// by hairlines, the middle one (or the only one) in a white pill. Only recovery-list words
+/// are offered; picking one fills the cell and moves on. Before a letter is typed the bar
+/// says which cell is next, so it doesn't come and go with each word.
+struct PhraseSuggestions: View {
+  @Binding var text: String
+
+  var body: some View {
+    let state = PhraseEntryState(text)
+    SuggestionBar(words: state.suggestions, cell: state.activeIndex + 1) { text = state.completing(with: $0) }
+      .frame(maxWidth: .infinity, minHeight: 44)
+      .hGlass(in: Capsule())
+  }
+}
+
 private struct SuggestionBar: View {
   let words: [String]
+  /// The active cell, 1-based.
+  let cell: Int
   let pick: (String) -> Void
 
   var body: some View {
     HStack(spacing: 0) {
+      if words.isEmpty {
+        Text("Word \(cell) of 12")
+          .font(.body)
+          .foregroundStyle(HColor.appleLabelsSecondary)
+          .lineLimit(1)
+          .padding(.horizontal, 18)
+          .frame(maxWidth: .infinity, minHeight: 44)
+          .accessibilityHidden(true)
+      }
       ForEach(Array(words.enumerated()), id: \.element) { i, w in
         if i > 0 {
           Rectangle().fill(HColor.appleLabelsPrimary.opacity(0.16)).frame(width: 1, height: 24)
@@ -266,9 +291,11 @@ private struct SuggestionBar: View {
         let picked = i == (words.count == 3 ? 1 : 0)
         Button { pick(w) } label: {
           Text(w)
-            .font(.system(size: 17, weight: picked ? .semibold : .regular))
+            .font(.body.weight(picked ? .semibold : .regular))
             .foregroundStyle(HColor.appleLabelsPrimary)
-            .padding(.horizontal, 18)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 16)
             .frame(minHeight: 34)
             .background(picked ? HColor.white : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -279,7 +306,7 @@ private struct SuggestionBar: View {
         .accessibilityIdentifier("phraseEntry.suggestion.\(w)")
       }
     }
-    .frame(maxWidth: .infinity)
+    .padding(.horizontal, 6)
   }
 }
 

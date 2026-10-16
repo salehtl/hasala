@@ -107,16 +107,14 @@ struct OrDivider: View {
 
   var body: some View {
     HStack(spacing: 12) {
-      Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1)
+      Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1).accessibilityHidden(true)
       Text(label)
         .hType(.footnote.weight(.semibold))
         .foregroundStyle(HColor.textSecondary)
         .fixedSize()
-      Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1)
+      Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1).accessibilityHidden(true)
     }
     .padding(.vertical, 8)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(label)
   }
 }
 

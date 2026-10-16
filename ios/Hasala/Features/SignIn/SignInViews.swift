@@ -113,7 +113,6 @@ struct SignInView: View {
         Text("Password")
           .hType(.footnote.weight(.semibold))
           .foregroundStyle(HColor.textSecondary)
-          .accessibilityHidden(true)
         Spacer(minLength: 8)
         if capabilities.contains(.resetPassword) {
           // A 44 target that keeps the label row at Paper's 20.
@@ -136,20 +135,31 @@ struct SignInView: View {
         .foregroundStyle(HColor.fieldText)
         .tint(HColor.actionAccent)
         .focused($focus, equals: .password)
+        .submitLabel(.go)
+        .onSubmit {
+          // Return signs in, as the keyboard says.
+          guard model.passwordSignInReady, !model.busy else { return }
+          focus = nil
+          Task { await model.signInWithPassword() }
+        }
         .onChange(of: model.password) { _, _ in model.passwordEdited() }
         .accessibilityIdentifier("signIn.password")
-        .accessibilityLabel("Password")
         .accessibilityHint(wrongPassword.map { "Error: \($0)" } ?? "")
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // The label above is read as text (it shares its row with "Forgot password?", so
+        // it can't be the field's name, and hidden it would be drawn text with no
+        // element); the field reads its placeholder. It fills the box's height.
+        .frame(maxWidth: .infinity, minHeight: HSpacing.fieldMinHeight, alignment: .leading)
         ShowHidePill(visible: $passwordVisible)
       }
       .padding(.leading, HSpacing.fieldInsetInline)
       .padding(.trailing, 8)
-      .frame(minHeight: HSpacing.fieldMinHeight)
       .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
       .overlay {
         FieldRing(color: wrongPassword != nil ? HColor.fieldError : focus == .password ? HColor.fieldFocus : .clear)
       }
+      // A tap anywhere in the box focuses the field, alongside the field's own tap.
+      .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .simultaneousGesture(TapGesture().onEnded { focus = .password })
       if let wrongPassword {
         FieldErrorLine(text: wrongPassword)
           .padding(.top, 2)
@@ -410,6 +420,7 @@ struct RecoverIntroView: View {
 struct RecoverWordsView: View {
   @Bindable var model: SignInModel
   var onNext: () -> Void
+  @FocusState private var typing: Bool
 
   var body: some View {
     let state = PhraseEntryState(model.phraseText)
@@ -419,12 +430,20 @@ struct RecoverWordsView: View {
       steps: (1, 3), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount) { submit() }
+        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount, focused: $typing) {
+          submit()
+        }
         FailureBanner(failure: model.failure(on: .recoverWords))
       }
     } footer: {
-      BusyButton(title: "Send code", busy: model.busy, enabled: state.finished == 12, identifier: "recover.words") {
-        submit()
+      // Return sends the twelfth word (Paper draws no button); the button shows once the
+      // keyboard is down, or while the code goes out.
+      if typing, !model.busy {
+        PhraseSuggestions(text: $model.phraseText)
+      } else {
+        BusyButton(title: "Send code", busy: model.busy, enabled: state.isComplete, identifier: "recover.words") {
+          submit()
+        }
       }
     }
   }
@@ -474,6 +493,8 @@ struct RecoverMethodView: View {
         } else {
           BusyButton(title: "Continue", busy: false, identifier: "recover.password", action: onPassword)
         }
+        // As on join's "How do you want to sign in?" (Paper H43 "What's a passkey?").
+        WebLink(title: "What's a passkey?", url: "https://support.apple.com/102195", identifier: "recover.whatsAPasskey")
       }
     }
   }

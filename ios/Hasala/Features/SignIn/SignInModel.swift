@@ -119,8 +119,9 @@ final class SignInModel {
   }
 
   /// Typing again clears a wrong-password answer (page 11 §05: errors go when the person
-  /// fixes the field).
+  /// fixes the field). The model emptying the field after the failure isn't typing.
   func passwordEdited() {
+    guard !password.isEmpty else { return }
     if failureOn == .signIn, lastTried == .password, failure == .wrongCredentials { clearFailure() }
   }
 

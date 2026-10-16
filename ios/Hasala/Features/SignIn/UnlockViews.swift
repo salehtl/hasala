@@ -152,6 +152,7 @@ final class UnlockModel {
 struct UnlockView: View {
   @State private var model: UnlockModel
   var onSignOut: () -> Void
+  @FocusState private var typing: Bool
 
   /// A password reset another iPhone approved led here (Paper GUM: "You're in. Your data
   /// is still locked.").
@@ -263,14 +264,20 @@ struct UnlockView: View {
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedChangeCount) {
+        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedChangeCount, focused: $typing) {
           Task { await model.unlockWithWords() }
         }
         if model.failedOnWords { FailureBanner(failure: model.failure) }
       }
     } footer: {
-      BusyButton(title: "Unlock", busy: model.busy, enabled: state.finished == 12, identifier: "unlock.submit") {
-        Task { await model.unlockWithWords() }
+      // Return opens with the twelfth word (Paper draws no button); the button shows once
+      // the keyboard is down.
+      if typing, !model.busy {
+        PhraseSuggestions(text: $model.phraseText)
+      } else {
+        BusyButton(title: "Unlock", busy: model.busy, enabled: state.isComplete, identifier: "unlock.submit") {
+          Task { await model.unlockWithWords() }
+        }
       }
     }
   }
