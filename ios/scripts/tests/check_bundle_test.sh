@@ -85,7 +85,7 @@ tail44="$(printf 'x%.0s' {1..44})"
 for prefix in AAMkAD AQMkAD AAkALgAA; do
 	a="$(app "outlook-$prefix")"
 	printf '{"id":"%s%s"}\n' "$prefix" "$tail44" >"$a/HasalaCore_CoreResources.bundle/cached.json"
-	check "an Outlook message id ($prefix…) in a resource" 1 "$a"
+	check "an Outlook message id (${prefix}...) in a resource" 1 "$a"
 	said "shaped like an Outlook message id"
 done
 a="$(app outlook-short)"

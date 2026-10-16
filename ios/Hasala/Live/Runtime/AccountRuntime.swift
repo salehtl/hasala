@@ -208,6 +208,10 @@ final class AccountRuntime {
     let store = LiveLedgerStore(
       reader: projection.reader, author: LedgerEditAuthor(observer: observer, outbox: outbox), profile: profile,
       prefs: DevicePrefsStore())
+    // The running lane's cycle (nil in a build that connects no mailbox). Typed apart: the
+    // coordinator's initializer is too much for the type checker with it inline.
+    let mailboxStage: WorkCoordinator.MailboxStage? =
+      lanes.isEmpty ? nil : { @Sendable trigger, deadlineMs in await active.cycle(trigger, deadlineMs) }
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
@@ -215,11 +219,7 @@ final class AccountRuntime {
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
           return (out.newData, out.stop)
         },
-        mailbox: lanes.isEmpty
-          ? nil
-          : { @Sendable trigger, deadlineMs in
-            await active.lane?.cycle(trigger: trigger, deadlineMs: deadlineMs) ?? CycleReport()
-          },
+        mailbox: mailboxStage,
         committed: {
           if let lane = active.lane {
             let status = await lane.status()
@@ -391,4 +391,10 @@ nonisolated final class ActiveLane: @unchecked Sendable {
 
   var lane: MailboxLane? { lock.withLock { current } }
   func set(_ lane: MailboxLane) { lock.withLock { current = lane } }
+
+  /// One cycle of the running lane; an empty report when there is none.
+  func cycle(_ trigger: MailboxTrigger, _ deadlineMs: Int64?) async -> CycleReport {
+    guard let lane else { return CycleReport() }
+    return await lane.cycle(trigger: trigger, deadlineMs: deadlineMs)
+  }
 }
