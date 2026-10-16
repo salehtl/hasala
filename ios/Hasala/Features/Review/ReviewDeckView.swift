@@ -188,7 +188,9 @@ struct ReviewDeckView: View {
       }
     } else {
       VStack(spacing: 0) {
-        pill(.up).padding(.top, 20)
+        // Transfer and Save keep Paper's 44 slot: active, a pill grows to 48 about its
+        // middle instead of pushing the card 4 down (a jump with Reduce Motion).
+        pill(.up).frame(height: Self.pillSlot).padding(.top, 20)
         stack(top)
           .overlay {
             // Want and Need ride the card's middle, 10 from the screen's edges.
@@ -202,7 +204,7 @@ struct ReviewDeckView: View {
           }
           .padding(.top, 20)
           .layoutPriority(1)
-        pill(.down).padding(.top, 22)
+        pill(.down).frame(height: Self.pillSlot).padding(.top, 22)
         Spacer(minLength: 12)
         footer(top)
           .padding(.bottom, 2)
@@ -219,6 +221,8 @@ struct ReviewDeckView: View {
 
   /// The two peeks a further 10 down each.
   private static let peekDepth: CGFloat = 20
+  /// The idle direction pill's height (Paper "Direction pill · Transfer (top)", 402 × 44).
+  private static let pillSlot: CGFloat = 44
 
   /// The top card over two peeks (Paper: 340 × 430, peeks 324 and 308 wide, 10 steps down),
   /// and any card still flying out.
@@ -436,8 +440,11 @@ struct ReviewDeckView: View {
     model.pick(card.id, choice)
   }
 
+  /// Holds the card toward its pill while the pick sheet is up. With Reduce Motion the card
+  /// stays at rest (spec 12: a static card): only the pill and the glow show the choice, and
+  /// a card the finger let go of elsewhere goes back to rest at once.
   private func holdToward(_ edge: SwipeEdge, animated: Bool) {
-    let lean: CGFloat = 40
+    let lean: CGFloat = motion.reduceMotion ? 0 : 40
     let pose: CGSize = switch edge {
     case .left: CGSize(width: -lean, height: 0)
     case .right: CGSize(width: lean, height: 0)

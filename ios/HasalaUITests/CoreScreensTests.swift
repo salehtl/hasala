@@ -241,10 +241,15 @@ final class CoreScreensTests: XCTestCase {
     let position = element(app, "review.position")
     XCTAssertTrue(position.waitForLabel("1 of 6"))
 
-    // Need by a drag right, for the ATM withdrawal: Rent.
+    // Need by a drag right, for the ATM withdrawal: Rent. Let go, the card goes back to
+    // rest and waits there under the sheet (a static card, spec 12), not leaning.
+    let card = element(app, "review.card")
+    let rest = card.frame
     drag(app, to: CGVector(dx: 0.98, dy: 0.5))
     let sort = element(app, "pick.sort")
     XCTAssertTrue(sort.waitForExistence(timeout: 5))
+    XCTAssertEqual(card.frame.midX, rest.midX, accuracy: 1, "the card leans with Reduce Motion")
+    XCTAssertEqual(card.frame.midY, rest.midY, accuracy: 1, "the card leans with Reduce Motion")
     attach(app, "Reduce Motion · Pick a need")
     element(app, "pick.rent").tap()
     sort.tap()
@@ -252,9 +257,11 @@ final class CoreScreensTests: XCTestCase {
     attach(app, "Reduce Motion · Deck")
     try audit(app)
 
-    // Money in: the Transfer pill; then Use for the four suggestions.
+    // Money in: the Transfer pill (the card stays put); then Use for the four suggestions.
+    let second = card.frame
     element(app, "review.pill.transfer").tap()
     XCTAssertTrue(sort.waitForExistence(timeout: 5))
+    XCTAssertEqual(card.frame.midY, second.midY, accuracy: 1, "the card rises with Reduce Motion")
     element(app, "pick.salary").tap()
     sort.tap()
     for _ in 0..<4 {
