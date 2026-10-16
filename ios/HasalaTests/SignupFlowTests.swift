@@ -251,6 +251,117 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .verifyEmail)
   }
 
+  /// The link path, Back to About you, then a changed name: the screen still promises no
+  /// code, and Continue keeps the promise. The new signup (the name is part of it) sends the
+  /// link's key again, so the address is proven and no code is emailed. A changed address
+  /// loses the "Confirmed" chip and says when there's no code.
+  @Test func aChangedNameOnTheLinkPathStillNeedsNoCode() async throws {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    let key = String(repeating: "k", count: 43)
+    m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)#\(key)")!)))
+    m.path = [.welcome, .inviteReady]
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    #expect(m.emailHelp == "If it's the address your invite went to, there's no code. Security alerts go here.")
+    await m.submitAboutYou()
+    #expect(m.ticket?.emailProven == true && m.path.last == .method)
+
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .aboutYou)
+    m.displayName = "Maya K Rahman"
+    #expect(m.emailConfirmed)
+    #expect(m.emailHelp == "Your invite link confirmed it, so there's no code. Security alerts go here.")
+    await m.submitAboutYou()
+    #expect(account.signupsBegun == 2)
+    #expect(m.ticket?.emailProven == true && m.ticket?.displayName == "Maya K Rahman")
+    #expect(m.path.last == .method)
+
+    m.navigationPath = Array(m.path.dropLast())
+    m.email = "maya.k@example.com"
+    #expect(!m.emailConfirmed)
+    #expect(m.emailHelp == "If it's the address your invite went to, there's no code. Security alerts go here.")
+  }
+
+  /// The typed-code path, Back to About you, then a changed name: a new signup needs a new
+  /// code, so "Your code confirmed it." and the chip go before Continue, not after.
+  @Test func aChangedNameOnTheTypedPathSaysANewCodeIsComing() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.welcome, .invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.navigationPath = Array(m.path.dropLast(2))
+    #expect(m.path.last == .aboutYou)
+    #expect(m.emailConfirmed)
+    #expect(m.emailHelp == "Your code confirmed it. Security alerts go here.")
+
+    m.displayName = "Maya K Rahman"
+    #expect(!m.emailConfirmed)
+    #expect(m.emailHelp == "We'll send a code to confirm it. Security alerts go here too.")
+    await m.submitAboutYou()
+    #expect(account.signupsBegun == 2)
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.codeState(now: .now) == .typing)
+  }
+
+  /// A link without its key proves nothing, so About you doesn't promise "no code".
+  @Test func aLinkWithoutItsKeyPromisesACode() async throws {
+    let m = SignupModel(account: CountingAccount())
+    m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)")!)))
+    #expect(m.inviteFromLink && !m.linkProvesAddress)
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    #expect(m.emailHelp == "We'll send a code to confirm it. Security alerts go here too.")
+    await m.submitAboutYou()
+    #expect(m.ticket?.emailProven == false && m.path.last == .verifyEmail)
+  }
+
+  /// Five wrong codes use the code up. "Change email" (or the system back), then Continue
+  /// with nothing changed, comes back to the same signup with the code still used up: the
+  /// cells stay expired with "Send a new code", not ready for a seventh try the server would
+  /// refuse. A new code starts clean.
+  @Test func aUsedUpCodeStaysUsedUpThroughBackAndForward() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.welcome, .invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    for _ in 0..<5 {
+      m.code = "000000"
+      await m.submitCode()
+    }
+    #expect(m.codeState(now: .now) == .expired)
+
+    m.back()  // "Change email"
+    #expect(m.path.last == .aboutYou && m.failure == nil)
+    await m.submitAboutYou()
+    #expect(account.signupsBegun == 1)
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.codeState(now: .now) == .expired)
+
+    // The system back and Forward again: still used up.
+    m.navigationPath = Array(m.path.dropLast())
+    await m.submitAboutYou()
+    #expect(m.codeState(now: .now) == .expired)
+
+    await m.resendCode()
+    #expect(m.codeState(now: .now) == .typing)
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(m.path.last == .method)
+  }
+
   /// The password and the "Show" choice stay through Back and Forward, so Create account is
   /// ready again without typing.
   @Test func backAndForwardKeepThePassword() async {

@@ -97,7 +97,8 @@ struct InviteCodeView: View {
 /// Create your account · 1 of 3 · About you (Paper E7J-0 with an invite link, JYI-0 with a
 /// typed code; spec 07 S6a, S6b). The email is typed, because the app doesn't know where the
 /// invite went; once a link or a code has confirmed it, the box carries Paper's "Confirmed"
-/// chip (seen when the person comes Back here).
+/// chip (seen when the person comes Back here). The chip and the line under the box say what
+/// Continue will do (`SignupModel.emailHelp`): a changed name or address may mean a new code.
 struct AboutYouView: View {
   @Bindable var model: SignupModel
   var onSignIn: () -> Void
@@ -119,7 +120,7 @@ struct AboutYouView: View {
             .autocorrectionDisabled()
             .accessibilityIdentifier("about.name")
         }
-        AccountField("Email", help: emailHelp, error: model.emailError) {
+        AccountField("Email", help: model.emailHelp, error: model.emailError) {
           WrappingTextField(placeholder: "you@example.com", text: $model.email)
             .textContentType(.username)
             .keyboardType(.emailAddress)
@@ -141,18 +142,6 @@ struct AboutYouView: View {
       }
       LinkButton(title: "Already have an account? Sign in", identifier: "about.signIn", action: onSignIn)
     }
-  }
-
-  /// Where security mail goes, and whether a code is coming (spec 07 S6a, S6b).
-  private var emailHelp: String {
-    if model.emailConfirmed {
-      return model.ticket?.emailProven == true
-        ? "Your invite link confirmed it, so there's no code. Security alerts go here."
-        : "Your code confirmed it. Security alerts go here."
-    }
-    return model.inviteFromLink
-      ? "If it's the address your invite went to, there's no code. Security alerts go here."
-      : "We'll send a code to confirm it. Security alerts go here too."
   }
 }
 
