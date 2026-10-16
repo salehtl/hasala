@@ -1,6 +1,7 @@
 import HasalaDesign
 import HasalaModels
 import SwiftUI
+import UIKit
 
 /// Profile › Categories and rules (Paper "Profile · Categories and rules" 68S-0): the rules
 /// Hasala learned, most used first, each with a switch that pauses it at once (its
@@ -110,13 +111,7 @@ private struct RuleRow: View {
         HuePlate(hue: rule.hue, icon: rule.glyph.icon)
         VStack(alignment: .leading, spacing: 2) {
           title
-          ViewThatFits(in: .horizontal) {
-            Text(rule.detail).lineLimit(1)
-            Text("\(rule.match)\n\(rule.matchesLabel)")
-          }
-          .hType(.footnote)
-          .foregroundStyle(HColor.listRowSupporting)
-          .fixedSize(horizontal: false, vertical: true)
+          MatchLine(rule: rule)
         }
       }
     }
@@ -149,5 +144,35 @@ private struct RuleRow: View {
       .replacingOccurrences(of: "\u{201D}", with: "")
     return [pattern, rule.learnedToday ? "learned today" : nil, rule.detail].compactMap { $0 }
       .joined(separator: ", ")
+  }
+}
+
+/// A rule's match line: "Contains · Groceries · 41 matches" on one line when it fits, else
+/// how it matches over its count ("Exact match · Subscriptions⏎12 matches"), where Paper
+/// breaks it. One text whose words change, never a second one in its place, so it keeps
+/// growing with the text size (the accessibility audit follows the text node); whether the
+/// line fits is measured in the face and size it is drawn in.
+private struct MatchLine: View {
+  let rule: RuleRowModel
+  @ScaledMetric(relativeTo: HType.footnote.textStyle) private var size = HType.footnote.size
+  @Environment(\.legibilityWeight) private var legibilityWeight
+  @State private var width = CGFloat.infinity
+
+  var body: some View {
+    Text(fits ? rule.detail : "\(rule.match)\n\(rule.matchesLabel)")
+      .hType(.footnote)
+      .foregroundStyle(HColor.listRowSupporting)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+  }
+
+  private var fits: Bool {
+    let type = HType.footnote
+    let weight = legibilityWeight == .bold ? type.weight.bolder : type.weight
+    let font = UIFont(name: weight.interFace, size: size) ?? .systemFont(ofSize: size)
+    let tracking = type.resolvedTracking * size / type.size
+    let measured = (rule.detail as NSString).size(withAttributes: [.font: font, .kern: tracking]).width
+    return measured.rounded(.up) <= width
   }
 }

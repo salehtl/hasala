@@ -63,8 +63,12 @@ struct ProfileSheet: View {
       .navigationDestination(for: ProfileRoute.self) { route in
         ProfilePage(app: app, model: model, route: route)
       }
-      // Read again each time the profile shows, so a change on Sign-in & security shows.
-      .task { security = try? await session?.account.securityState() }
+      // Read when the sheet opens and again each time it is back at its first page, so a
+      // passkey added on Sign-in & security shows on the way back.
+      .task(id: app.router.profile.isEmpty) {
+        guard app.router.profile.isEmpty else { return }
+        security = try? await session?.account.securityState()
+      }
       .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
         Button("Sign out", role: .destructive) { signOut() }
         Button("Cancel", role: .cancel) {}
@@ -198,6 +202,7 @@ struct ProfileSheet: View {
       if can(.signOut) {
         Button("Sign out") { confirmSignOut = true }
           .buttonStyle(.pill(.destructiveQuiet, fill: true))
+          .pillHeight()
           .accessibilityIdentifier("profile.signOut")
       }
       if can(.deleteAccount) {
