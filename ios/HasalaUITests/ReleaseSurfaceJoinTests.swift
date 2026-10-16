@@ -42,6 +42,10 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     assertNoPlaceholders(app, "Account ready")
     assertNoOutlook(app, "Account ready")
+    // The beta can't add a passkey, so a password account can't see its words again.
+    assertText(app, "Keep the paper safe, away from this iPhone. Your words can't be shown again on this account.",
+               "Account ready")
+    assertNoText(app, ["Add Face ID in Profile"], "Account ready")
     // "What Hasala reads, and what it doesn't": Google alone (plan B4.6 rule 4).
     tap(app, "ready.whoSees")
     XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 10))
