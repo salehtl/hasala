@@ -279,7 +279,13 @@ final class SecurityModel {
       case .addPasskey:
         return ("Add a passkey", ["iOS asks where to save it next", weEmail])
       case .removePasskey(let id):
-        let name = state?.passkeys.first { $0.id == id }?.provider ?? "this"
+        // Paper IHY says "The Work iPad can't sign in any more": its mock passkey is named
+        // after a device. Live rows are named by their provider ("iCloud Keychain",
+        // "1Password"), which can still sign in to everything else, so the bullet names the
+        // passkey.
+        guard let name = state?.passkeys.first(where: { $0.id == id })?.provider else {
+          return ("Remove this passkey", ["This passkey can't sign in any more", weEmail])
+        }
         return ("Remove the \(name) passkey", ["The \(name) passkey can't sign in any more", weEmail])
       case .setPassword:
         return ("Set a password", ["It signs you in; it never unlocks your data", weEmail])
