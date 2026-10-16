@@ -12,6 +12,11 @@
       Screen("profile.hidden", scenario: "mayaHidden", prepare: profile([])),
       // Categories and rules (68S-0).
       Screen("profile.rules", scenario: "maya", prepare: profile([.rules])),
+      // A rule learned today: Lulu's card sorted into Groceries with "Always use", as the
+      // review deck files it, then the rules (68S-0's "Learned today" chip).
+      Screen("profile.rulesLearned", scenario: "maya", drive: { graph in
+        graph.app.perform(.categorize("lulu", "groceries", learnRule: true, project: nil))
+      }, prepare: profile([.rules])),
       // Delete your account (69M-0; Sign-in & security's view).
       Screen("profile.delete", scenario: "passkeyUser", prepare: profile([.deleteAccount])),
       Screen("profile.help", scenario: "maya", prepare: profile([.help])),

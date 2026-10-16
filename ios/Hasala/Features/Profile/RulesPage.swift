@@ -126,12 +126,19 @@ private struct RuleRow: View {
   @ViewBuilder private var title: some View {
     let pattern = Text(rule.pattern).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
     if rule.learnedToday {
-      ReflowingRow(spacing: 8) {
-        pattern
-      } trailing: {
-        StatusPillView(StatusPill("Learned today", tone: .accent, showsDot: false), size: .s22, surface: .tinted)
+      let chip = StatusPillView(StatusPill("Learned today", tone: .accent, showsDot: false), size: .s22,
+                                surface: .tinted)
+      let stacked = VStack(alignment: .leading, spacing: 4) { pattern; chip }
+      // Paper's title row: the chip 8 after the pattern, hugging it; under it when the two
+      // don't fit, and always at the accessibility sizes. Never wider than the row.
+      if typeSize.isAccessibilitySize {
+        stacked
+      } else {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 8) { pattern; chip }
+          stacked
+        }
       }
-      .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: false)
     } else {
       pattern
     }

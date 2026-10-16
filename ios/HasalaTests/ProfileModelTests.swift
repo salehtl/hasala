@@ -71,6 +71,19 @@ struct ProfileModelTests {
     #expect(profile.exportRows.count == app.store.state.txns.count)
   }
 
+  /// Sorting a new merchant with "Always use" writes a rule the list marks as learned today,
+  /// with its match line in Paper's words.
+  @Test func aRuleLearnedTodaySaysSo() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let profile = ProfileViewModel(app: app)
+    #expect(!profile.rules.contains { $0.learnedToday })
+    #expect(app.perform(.categorize("lulu", "groceries", learnRule: true, project: nil)))
+    let learned = try #require(profile.rules.first { $0.learnedToday })
+    #expect(learned.pattern == "\u{201C}lulu hypermarket\u{201D}")
+    #expect(learned.detail == "Contains · Groceries · 1 match")
+    #expect(profile.snapshot.categoriesAndRules == "18 categories · 7 rules")
+  }
+
   /// The money rows read the ledger: Bills counts what's tracked after a found bill is
   /// tracked; Hide amounts reaches the figures in the rows.
   @Test func theMoneyRowsFollowTheLedger() {

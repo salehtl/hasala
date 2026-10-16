@@ -140,6 +140,21 @@ final class ProfileUITests: XCTestCase {
     XCTAssertFalse(el(app, "bills.attention.axa").exists)
   }
 
+  /// A rule learned today (Lulu sorted into Groceries with "Always use") carries its chip, and
+  /// the list still passes the audit.
+  @MainActor
+  func testARuleLearnedTodayShowsItsChip() throws {
+    let app = launch(scenario: nil, screen: "profile.rulesLearned")
+    let row = el(app, "rule.learned-lulu")
+    XCTAssertTrue(row.waitForExistence(timeout: 15))
+    XCTAssertTrue(row.label.contains("learned today"), row.label)
+    // The chip goes under a pattern too long to share its line; the page keeps its width.
+    XCTAssertLessThanOrEqual(row.frame.maxX, app.frame.width - 20, "the learned rule widens the page")
+    XCTAssertTrue(bringUp(app, row))
+    attach(app, "Categories and rules · Learned today")
+    try audit(app)
+  }
+
   /// A price change opens its bill from "Details"; Home's Bills pushes the bill in Home.
   @MainActor
   func testAPriceChangeOpensItsBill() throws {
