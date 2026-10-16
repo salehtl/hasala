@@ -152,7 +152,8 @@ final class SecurityModel {
   var confirmRequest: ConfirmRequest? {
     guard let confirming else { return nil }
     let (title, bullets) = Self.words(for: confirming, email: email, state: state)
-    return ConfirmRequest(title: title, factor: confirmFactor, bullets: bullets)
+    return ConfirmRequest(title: title, factor: confirmFactor, bullets: bullets,
+                          otherDevice: state?.devices.first { !$0.isThisDevice }?.title)
   }
 
   /// The sheet's primary: the change, behind its step-up. A wrong password or a closed

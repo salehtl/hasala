@@ -147,6 +147,9 @@ struct ResetApprovalSheet: View {
           .frame(minHeight: 48)
           .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
           .overlay { FieldRing(color: model.failure == .codeMismatch ? HColor.fieldError : codeFocused ? HColor.fieldFocus : .clear) }
+          // A tap anywhere in the box focuses the field, alongside the field's own tap.
+          .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+          .simultaneousGesture(TapGesture().onEnded { codeFocused = true })
           .environment(\.layoutDirection, .leftToRight)
           .accessibilityLabel("The code on your new iPhone")
           .accessibilityIdentifier("approval.code")

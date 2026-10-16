@@ -62,7 +62,9 @@ struct PhraseViewer: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
+          // Paper ICI's glass Close draws its cross in ink, not the accent.
           Button(role: .close) { close() }
+            .tint(HColor.appleLabelsVibrantPrimary)
             .accessibilityIdentifier("phrase.close")
         }
       }
@@ -77,7 +79,9 @@ struct PhraseViewer: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
       screenshotWarning = model.phraseRevealed
     }
-    .onDisappear { model.phraseRevealed = false }
+    // However the cover goes (Done, Close, the session ending under it), the words go
+    // with it.
+    .onDisappear { model.closePhrase() }
   }
 
   private func close() {

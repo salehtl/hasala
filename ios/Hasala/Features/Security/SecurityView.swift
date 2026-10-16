@@ -376,8 +376,10 @@ struct SecurityView: View {
 // MARK: - Rows
 
 /// A Sign-in & security row (Paper "ListRow (two-line, with leading tile)"): a 40 tile, a
-/// 16/22 title over a 13/18 line, and a trailing pill, action or status. At least 64 tall;
-/// the trailing part moves under the text when both don't fit.
+/// 16/22 title over a 13/18 line, and a trailing pill, action or status. At least 64 tall.
+/// The line wraps beside the trailing part (Paper HB9 "Optional. Signs you in where / Face
+/// ID can't." next to "Set one"); at the accessibility sizes the trailing part moves under
+/// the text.
 struct SecurityRow<Trailing: View>: View {
   enum Tile {
     /// Radius 12 (a key, an address, a device).
@@ -392,29 +394,45 @@ struct SecurityRow<Trailing: View>: View {
   var titleLabel: String?
   @ViewBuilder var trailing: () -> Trailing
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   var body: some View {
     HStack(alignment: .center, spacing: 12) {
       tileView
-      ReflowingRow {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(title)
-            .hType(.rowTitle)
-            .foregroundStyle(HColor.textPrimary)
-            .lineLimitAtDefaultTextSize(1)
-            .truncationMode(.middle)
-            .accessibilityLabel(titleLabel ?? title)
-          if let detail {
-            Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
-          }
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 4) {
+          text
+          trailing()
         }
-        .accessibilityElement(children: .combine)
-      } trailing: {
-        trailing()
+        .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        HStack(spacing: 12) {
+          text.frame(maxWidth: .infinity, alignment: .leading)
+          trailing().fixedSize()
+        }
       }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
     .frame(minHeight: 64)
+  }
+
+  private var text: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(title)
+        .hType(.rowTitle)
+        .foregroundStyle(HColor.textPrimary)
+        .lineLimitAtDefaultTextSize(1)
+        .truncationMode(.middle)
+        .accessibilityLabel(titleLabel ?? title)
+      if let detail {
+        Text(detail)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .accessibilityElement(children: .combine)
   }
 
   @ViewBuilder private var tileView: some View {
@@ -564,7 +582,8 @@ struct PasswordEditPage: View {
         Task { await model.savePassword() }
       }
     }
-    .confirmSheet(model, host: .passwordEditor)
+    .confirmSheet(model, host: .passwordEditor,
+                  onEnterWords: BuildSurface.showsUnfinished ? { model.enterWordsToUnlock() } : nil)
   }
 }
 

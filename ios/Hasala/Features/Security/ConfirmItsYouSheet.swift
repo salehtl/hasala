@@ -21,6 +21,9 @@ struct ConfirmRequest: Equatable {
   var factor: Factor
   /// What will happen, one line each (the passkey board's bullet card).
   var bullets: [String] = []
+  /// Another signed-in device, named in the no-key variant's way forward (IYT "Or make the
+  /// change on Maya's iPhone 15").
+  var otherDevice: String?
 }
 
 /// "Confirm it's you" (Paper P2.6 IHY, INK, IT2, IYT): the one confirmation every sensitive
@@ -87,9 +90,10 @@ struct ConfirmItsYouSheet: View {
           passwordField
           DeviceKeyRow()
         case .noKey:
+          let other = request.otherDevice ?? "your other iPhone"
           BulletCard(lines: onEnterWords == nil
-            ? ["Make the change on your other iPhone, where your data is open"]
-            : ["Enter your 12 words to open it here", "Or make the change on your other iPhone"])
+            ? ["Make the change on \(other), where your data is open"]
+            : ["Enter your 12 words to open it here", "Or make the change on \(other)"])
         }
         if let message = otherFailure?.message {
           FieldErrorLine(text: message)

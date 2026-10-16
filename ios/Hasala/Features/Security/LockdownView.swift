@@ -70,18 +70,18 @@ struct LockdownView: View {
     }
   }
 
-  @ScaledMetric(relativeTo: .callout) private var lane: CGFloat = 22
+  /// Paper "StepBadge": 26 at the default size, growing with the numeral.
+  @ScaledMetric(relativeTo: .subheadline) private var badge: CGFloat = 26
 
   private func step(_ n: Int, _ title: String, _ text: String) -> some View {
     let current = n == 1
     return HStack(alignment: .top, spacing: 12) {
       Text("\(n)")
-        .font(.system(size: 14, weight: .bold, design: .rounded))
+        .hFigure(HFigure(size: 14, leading: 18, weight: .bold, textStyle: .subheadline))
         .foregroundStyle(current ? HColor.white : HColor.textPrimary)
-        .frame(width: 26, height: 26)
+        .frame(width: badge, height: badge)
         .background(current ? HColor.actionAccent : HColor.surfacePrimary, in: Circle())
         .overlay { Circle().strokeBorder(HColor.neutral300, lineWidth: 1.5).opacity(current ? 0 : 1) }
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
         Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
