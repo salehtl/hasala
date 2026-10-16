@@ -192,12 +192,12 @@ struct ActivityReviewModelTests {
   /// fits exactly never wraps when it is placed.
   @Test func chipsWrapOnlyWhenTheyDoNotFit() {
     let sizes = [CGSize(width: 77.4, height: 40), CGSize(width: 120.3, height: 40), CGSize(width: 90, height: 40)]
-    let all = ChipFlow.rows(sizes, width: nil, spacing: 8)
+    let all = FlowLayout.rows(sizes, width: nil, spacing: 8)
     #expect(all.map(\.indices) == [[0, 1, 2]])
     let exact = 77.4 + 8 + 120.3
-    #expect(ChipFlow.rows(sizes, width: exact - 0.3, spacing: 8).map(\.indices) == [[0, 1], [2]])
-    #expect(ChipFlow.rows(sizes, width: 150, spacing: 8).map(\.indices) == [[0], [1], [2]])
+    #expect(FlowLayout.rows(sizes, width: exact - 0.3, spacing: 8).map(\.indices) == [[0, 1], [2]])
+    #expect(FlowLayout.rows(sizes, width: 150, spacing: 8).map(\.indices) == [[0], [1], [2]])
     // A chip wider than the row takes a row of its own.
-    #expect(ChipFlow.rows([CGSize(width: 400, height: 40)], width: 300, spacing: 8).count == 1)
+    #expect(FlowLayout.rows([CGSize(width: 400, height: 40)], width: 300, spacing: 8).count == 1)
   }
 }

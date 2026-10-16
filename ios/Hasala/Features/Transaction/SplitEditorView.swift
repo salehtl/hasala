@@ -39,7 +39,7 @@ struct SplitEditorView: View {
           ForEach($lines) { $line in lineCard($line) }
           addCard
         }
-        ChipFlow(spacing: 8) {
+        FlowLayout(spacing: 8) {
           FilterChip("Split evenly", selected: false) { splitEvenly() }
           if let first = lines.first, let name = name(first.category) {
             FilterChip("Put the rest in \(name)", selected: false) { putRest() }

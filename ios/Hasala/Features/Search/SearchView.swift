@@ -101,7 +101,7 @@ struct SearchView: View {
               .foregroundStyle(HColor.textLink)
               .frame(minHeight: HSpacing.targetMinimum)
           }
-          ChipFlow(spacing: 8) {
+          FlowLayout(spacing: 8) {
             ForEach(recent, id: \.self) { r in
               Button { query = r } label: {
                 HStack(spacing: 6) {

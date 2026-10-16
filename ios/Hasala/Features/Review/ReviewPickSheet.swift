@@ -122,7 +122,7 @@ struct ReviewPickSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Project").hType(.overline).foregroundStyle(HColor.textSecondary)
         .accessibilityAddTraits(.isHeader)
-      ChipFlow(spacing: 8) {
+      FlowLayout(spacing: 8) {
         ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
           .accessibilityIdentifier("pick.project.none")
         ForEach(model.projects, id: \.id) { p in
