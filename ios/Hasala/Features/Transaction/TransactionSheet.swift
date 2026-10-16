@@ -42,8 +42,11 @@ struct TransactionSheet: View {
               }
               // TODO(03c §3.8 "…" → Edit amount/date): `txn_edited`.
             } label: {
-              Label("More", systemImage: "ellipsis")
+              // Paper "Glass button · More": the kit's dots in the glass glyph's ink, as on
+              // the deck, not the app tint.
+              HIconView(.more, size: HSpacing.iconGlass, color: HColor.iconGlass)
             }
+            .accessibilityLabel("More")
             .accessibilityIdentifier("txn.more")
           }
         }
