@@ -235,6 +235,34 @@ final class PlanUITests: XCTestCase {
     try audit(app)
   }
 
+  /// Day by day at AX3 and AX5 (spec 04 §17): the daily budget and the tallest day's name
+  /// leave the bars for a key above the plot, and the day numbers thin out rather than run
+  /// into each other. The chart is one element, so the audit cannot look inside it: the
+  /// shots are the check, and the chart grows by the key.
+  @MainActor
+  func testDayByDayKeepsItsLabelsOffTheBarsAtLargeSizes() throws {
+    let plain = launch(screen: "plan.dining", motion: "off")
+    XCTAssertTrue(el(plain, "plan.chart").waitForExistence(timeout: 15))
+    let height = el(plain, "plan.chart").frame.height
+    for (name, size) in [("AX3", "AccessibilityXL"), ("AX5", "AccessibilityXXXL")] {
+      let app = launch(screen: "plan.dining", motion: "off",
+                       arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategory\(size)"])
+      let chart = el(app, "plan.chart")
+      XCTAssertTrue(chart.waitForExistence(timeout: 15))
+      XCTAssertTrue(scroll(app, toShow: chart))
+      // The day numbers above the tab bar too, so the shot holds the whole chart.
+      for _ in 0..<3 where chart.frame.maxY > app.frame.height - 110 {
+        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        let over = min(300, chart.frame.maxY - (app.frame.height - 130))
+        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: -over)))
+      }
+      XCTAssertLessThan(chart.frame.maxY, app.frame.height - 100, "\(name): \(chart.frame)")
+      XCTAssertGreaterThan(chart.frame.height, height + 40, "\(name): \(chart.frame)")
+      XCTAssertLessThanOrEqual(chart.frame.maxX, app.frame.width - 20)
+      attach(app, "\(name) · Plan · Dining · Day by day")
+    }
+  }
+
   /// At the largest text size the "Ready to assign" overline takes two lines rather than
   /// being cut off (the AX3 audit below lets its "may be clipped" through on this proof).
   @MainActor
