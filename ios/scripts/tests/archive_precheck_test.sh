@@ -98,10 +98,14 @@ if [[ "$(archives)" != 0 ]]; then
 	fail=1
 fi
 
-# Two archives in one UTC minute: run both well inside the same minute.
-sec="$(/bin/date -u +%S)"
-if ((10#$sec > 45)); then sleep $((61 - 10#$sec)); fi
-archive "the first archive of the minute reaches xcodebuild archive (the stub refuses it)" 30
+# HASALA_TEST_NOW outside test mode: refused (2), like HASALA_BUILD_DIR.
+archive "HASALA_TEST_NOW without HASALA_TEST_MODE=1" 2 HASALA_TEST_MODE= HASALA_BUILD_DIR= HASALA_TEST_NOW=2026-01-01T00:00:00Z
+said "refusing to run with HASALA_TEST_NOW set outside test mode" "refused for HASALA_TEST_NOW"
+
+# Two archives in one UTC minute: both see the same pinned time, so a slow runner
+# that crosses a minute boundary between them cannot make the second one legitimate.
+minute="$(/bin/date -u +%Y-%m-%dT%H:%M:00Z)"
+archive "the first archive of the minute reaches xcodebuild archive (the stub refuses it)" 30 HASALA_TEST_NOW="$minute"
 dirs=()
 for d in "$root"/[0-9]*; do
 	if [[ -d "$d" ]]; then dirs+=("$d"); fi
@@ -112,7 +116,7 @@ else
 	echo "FAIL the first archive did not claim exactly one build directory"
 	fail=1
 fi
-archive "a second archive in the same UTC minute" 21
+archive "a second archive in the same UTC minute" 21 HASALA_TEST_NOW="$minute"
 said "exists already" "refused because ios/build/<BUILD>/ exists"
 if [[ "$(archives)" == 1 ]]; then echo "ok   ...and never reached xcodebuild archive"; else
 	echo "FAIL the second archive reached xcodebuild archive"
