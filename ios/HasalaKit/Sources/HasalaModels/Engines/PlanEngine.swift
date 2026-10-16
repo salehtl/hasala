@@ -371,7 +371,7 @@ public struct ProjectDetail: Sendable, Hashable {
   /// "65 days to go".
   public var when: String
   public var countInPlan: Bool
-  /// "Japan trip spending stays out of October's budgets. It comes from the 12,000 you set aside."
+  /// "Trip spending stays out of October's budgets. It comes from the 12,000 you set aside."
   public var explainer: MoneyPhrase
   public var categories: [ProjectCategoryRow]
   /// The project's payments in the order they were made, as Paper lists them ("Mon 14 Sep ·
@@ -533,10 +533,11 @@ public extension PlanEngine {
         spent: .aed(ts.reduce(Int64(0)) { $0 + $1.amount.minor }))
     }.sorted { $0.spent.minor > $1.spent.minor }
     let monthName = now.date.yearMonth.name
+    let kind = spendingKind(p)
     let explainer: MoneyPhrase = p.countInPlan
-      ? MoneyPhrase(stringLiteral: "\(p.name) spending counts in \(monthName)'s budgets.")
+      ? MoneyPhrase(stringLiteral: "\(kind) spending counts in \(monthName)'s budgets.")
       : MoneyPhrase([
-        .text("\(p.name) spending stays out of \(monthName)'s budgets. It comes from the "),
+        .text("\(kind) spending stays out of \(monthName)'s budgets. It comes from the "),
         .amount(p.budget, .compact, hidden: 3), .text(" you set aside."),
       ])
     return ProjectDetail(
@@ -549,6 +550,13 @@ public extension PlanEngine {
           id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
           detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount)
       })
+  }
+
+  /// What a project's spending is called in its explainer: "Trip" for a trip (Paper's words on
+  /// Japan trip, 5JD-0), "Project" for any other. Never the name itself, which already heads
+  /// the screen and may not read as a noun ("Dad's 60th spending").
+  static func spendingKind(_ p: Project) -> String {
+    p.glyph == .travel ? "Trip" : "Project"
   }
 
   /// What a project spent: its payments out, not archived.

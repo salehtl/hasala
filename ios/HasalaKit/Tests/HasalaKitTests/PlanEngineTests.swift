@@ -159,12 +159,29 @@ struct PlanDetailParityTests {
     #expect(p.range == "14–28 Dec" && p.when == "65 days to go")
     #expect(!p.countInPlan)
     #expect(p.explainer.rendered(hidden: false)
-      == "Japan trip spending stays out of October's budgets. It comes from the 12,000 you set aside.")
+      == "Trip spending stays out of October's budgets. It comes from the 12,000 you set aside.")
     #expect(p.categories.map(\.name) == ["Travel", "Transport"])
     #expect(p.categories.map(\.detail) == ["Emirates flights", "JR Pass"])
     #expect(p.categories.map(\.spent) == [.aed(4_120_00), .aed(740_00)])
     #expect(p.transactions.map(\.merchant) == ["Emirates", "JR Pass via Klook"])
     #expect(p.transactions.map(\.detail) == ["Mon 14 Sep · Travel", "Sat 19 Sep · Transport"])
     #expect(PlanEngine.project("no-such-project", s, now: now) == nil)
+  }
+
+  /// Paper's "Trip spending" is the kind of project, not its name; any other project says
+  /// "Project spending", and one counted in the plan says so.
+  @Test func aProjectExplainerNamesItsKind() throws {
+    var state = s
+    let i = try #require(state.projects.firstIndex { $0.id == "japan" })
+    state.projects[i].glyph = .flag
+    let other = try #require(PlanEngine.project("japan", state, now: now))
+    #expect(other.explainer.rendered(hidden: false)
+      == "Project spending stays out of October's budgets. It comes from the 12,000 you set aside.")
+    let dots = MoneyFormat.hidden(count: 3)
+    #expect(other.explainer.rendered(hidden: true)
+      == "Project spending stays out of October's budgets. It comes from the \(dots) you set aside.")
+    state.projects[i].countInPlan = true
+    let counted = try #require(PlanEngine.project("japan", state, now: now))
+    #expect(counted.explainer.rendered(hidden: false) == "Project spending counts in October's budgets.")
   }
 }
