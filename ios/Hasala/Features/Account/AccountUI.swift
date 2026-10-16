@@ -127,6 +127,8 @@ private struct AccountHeader: ViewModifier {
             Button(action: run) {
               Image(systemName: "chevron.backward")
             }
+            // Ink like the system back and Paper's glass Back (LPY), not the accent.
+            .tint(HColor.appleLabelsVibrantPrimary)
             .accessibilityLabel("Back")
           }
         }

@@ -147,11 +147,14 @@ private struct LockdownSheetContent: View {
   var body: some View {
     LockdownView(model: model)
       .task { await model.load() }
+      // LockdownView presents its own "Confirm it's you" (`host: .lockdown`).
       .sheet(isPresented: $model.editingPassword) { PasswordEditSheet(model: model) }
-      .confirmSheet(model)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
-          Button(role: .close) { dismiss() }.accessibilityIdentifier("lockdown.close")
+          // In the glass ink, as Paper draws the sheet's close (not the accent).
+          Button(role: .close) { dismiss() }
+            .tint(HColor.iconGlass)
+            .accessibilityIdentifier("lockdown.close")
         }
       }
   }

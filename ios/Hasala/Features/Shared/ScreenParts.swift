@@ -190,6 +190,9 @@ struct SheetCloseButton: ToolbarContent {
   var body: some ToolbarContent {
     ToolbarItem(placement: .topBarLeading) {
       Button(role: .close, action: action)
+        // Paper draws a sheet's close × in the glass ink (`--color-icon-glass`); the system
+        // button would take the app's accent (requests p5 3, p6 3, p8 3).
+        .tint(HColor.iconGlass)
         .accessibilityIdentifier(identifier)
     }
   }
