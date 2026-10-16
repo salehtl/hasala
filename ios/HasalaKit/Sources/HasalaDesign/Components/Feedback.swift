@@ -29,6 +29,7 @@ public struct GlassToast: View {
   let subtitle: String?
   let actionTitle: String?
   let action: (() -> Void)?
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   /// One line + Undo ("Sorted into Groceries"), two lines + Show ("Amounts hidden" / "Until you
   /// tap the eye again"), or one line with no action ("Bill marked as paid").
@@ -82,6 +83,12 @@ public struct GlassToast: View {
     .padding(.trailing, 18)
     .padding(.vertical, 6)
     .frame(minHeight: HSpacing.toastHeight)
+    // Paper's frost-strong layer under the words (white 76%), so what scrolls behind the
+    // toast stays out of them; native glass alone lets a dark widget's title show through
+    // "Show". Reduce Transparency draws the solid fill instead.
+    .background {
+      if !reduceTransparency { Capsule().fill(HColor.materialGlassFrostStrong) }
+    }
     .hGlass(in: Capsule(), interactive: false)
     .shadow(color: HColor.materialGlassShadowFar, radius: 12, x: 0, y: 8)
     // Contain, not combine: the action ("Undo", "Show") stays its own button.
