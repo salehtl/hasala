@@ -138,15 +138,70 @@ struct SignInSecurityFlowTests: AccountSuite {
     await m.load()
     #expect(m.state?.hasPasskey == false)
     await m.request(.signOutEverywhere)
-    #expect(m.confirming == .signOutEverywhere)
+    #expect(m.confirming == .perform(.signOutEverywhere))
+    #expect(m.confirmFactor == .password)
     m.confirmPassword = "not it at all"
     await m.confirm()
+    // A wrong password keeps the sheet up, emptied, with the field's line.
     #expect(m.failure == .stepUpFailed)
+    #expect(m.confirming == .perform(.signOutEverywhere))
+    #expect(m.confirmPassword.isEmpty)
+    #expect(session.phase == .ready)
     await m.request(.addPasskey)
     m.confirmPassword = MockAccountService.existingPassword
     await m.confirm()
     #expect(m.failure == nil)
     #expect(m.state?.hasPasskey == true)
+  }
+
+  /// c2 §12 rule 7: a typed password leaves memory once it was used or its page closed.
+  @Test func typedPasswordsGoWhenTheirPageOrSheetCloses() async {
+    let account = MockAccountService(existing: .passwordOnly, signedIn: true)
+    account.delay = .zero
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    // Back from the Change password page: the new password and its repeat go with it.
+    m.editingPassword = true
+    m.newPassword = "harbor lights at dawn 7"
+    m.confirmNewPassword = "harbor lights at dawn 7"
+    await m.savePassword()
+    #expect(m.confirming == .perform(.changePassword(new: "harbor lights at dawn 7")))
+    m.cancelConfirmation()
+    // A cancelled confirmation leaves the page as it was...
+    #expect(m.newPassword == "harbor lights at dawn 7")
+    m.editingPassword = false
+    // ...and closing the page empties it.
+    #expect(m.newPassword.isEmpty)
+    #expect(m.confirmNewPassword.isEmpty)
+    // The passkey sheet closed after the password step-up: the sheet stays, emptied.
+    await m.request(.addPasskey)
+    m.confirmPassword = MockAccountService.existingPassword
+    account.closesNextSystemSheet = true
+    await m.confirm()
+    #expect(m.confirming == .perform(.addPasskey))
+    #expect(m.confirmPassword.isEmpty)
+    #expect(m.failure == nil)
+    #expect(m.state?.hasPasskey == false)
+    // Welcome back's "Add a passkey" does the same.
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false, onUnlocked: {})
+    unlock.addingPasskey = true
+    unlock.confirmPassword = MockAccountService.existingPassword
+    account.closesNextSystemSheet = true
+    await unlock.addPasskey()
+    #expect(unlock.addingPasskey)
+    #expect(unlock.confirmPassword.isEmpty)
+  }
+
+  /// Paper IHY names the passkey being removed; a row that's gone doesn't read "the this".
+  @Test func removingAPasskeyNamesIt() {
+    let state = MockAccountService.securityState(for: .passkey)
+    let named = SecurityModel.words(for: .perform(.removePasskey(id: "pk-2")), email: "maya@example.com", state: state)
+    #expect(named.0 == "Remove the Work iPad passkey")
+    #expect(named.1 == ["The Work iPad passkey can't sign in any more", "We email maya@example.com about it"])
+    let unknown = SecurityModel.words(for: .perform(.removePasskey(id: "gone")), email: "", state: state)
+    #expect(unknown.0 == "Remove this passkey")
+    #expect(unknown.1 == ["This passkey can't sign in any more", "We email you about it"])
   }
 
   @Test func theLastWayInCannotBeRemoved() async {
@@ -155,9 +210,17 @@ struct SignInSecurityFlowTests: AccountSuite {
     let session = AccountSession(services: services(account), phase: .ready)
     let m = SecurityModel(session: session)
     await m.load()
-    // The only passkey, no password: refused.
+    // The other Apple Account's passkey goes after Face ID.
+    await m.request(.removePasskey(id: "pk-2"))
+    #expect(m.confirmFactor == .faceID)
+    await m.confirm()
+    #expect(m.failure == nil)
+    #expect(m.state?.passkeys.map(\.id) == ["pk-1"])
+    // Then the only passkey, no password: refused.
     await m.request(.removePasskey(id: "pk-1"))
+    await m.confirm()
     #expect(m.failure == .lastAuthenticator)
+    #expect(m.confirming == nil)
     #expect(m.state?.hasPasskey == true)
   }
 
@@ -168,13 +231,41 @@ struct SignInSecurityFlowTests: AccountSuite {
     let m = SecurityModel(session: session)
     await m.load()
     await m.request(.freeze)
+    // Nothing happens before "Confirm it's you".
+    #expect(session.phase == .ready)
+    await m.confirm()
     guard case .frozen = session.phase else { Issue.record("not frozen: \(session.phase)"); return }
     session.leaveFrozen()
-    #expect(session.leftFrozen == FreezeInfo(by: .holder, when: "just now"))
+    #expect(session.leftFrozen == FreezeInfo(by: .holder, when: "just now", inApp: true))
     await m.request(.addPasskey)
     #expect(m.failure == .frozen)
+    #expect(m.confirming == nil)
     await m.request(.deleteAccount)
+    await m.confirm()
     #expect(session.phase == .signedOut)
+  }
+
+  /// Paper MTO: the holder's wall says the freeze came from our email (the cue for
+  /// "Someone may be reading your email"), unless it was made here.
+  @Test func theHolderWallSaysWhereTheFreezeCameFrom() {
+    #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20"))
+      == "\u{201C}Freeze my account\u{201D} was used from our email on Sun 11 Oct at 21:20. Nobody can sign in or change your keys until you sign in fully.")
+    #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: nil))
+      == "\u{201C}Freeze my account\u{201D} was used from our email. Nobody can sign in or change your keys until you sign in fully.")
+    #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "just now", inApp: true))
+      == "\u{201C}Freeze my account\u{201D} was used just now. Nobody can sign in or change your keys until you sign in fully.")
+  }
+
+  /// H9F's other-device row promises only what that device can do: without a build that
+  /// adds passkeys, only a passkey account's device shows the words.
+  @Test func theHonestEndPromisesOnlyWhatTheOtherDeviceCanDo() {
+    let paper = "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
+    #expect(HonestEndScreen.otherDevice(addsPasskeys: true, method: .password) == paper)
+    #expect(HonestEndScreen.otherDevice(addsPasskeys: false, method: .passkey).contains("can show your words"))
+    let passwordOnly = HonestEndScreen.otherDevice(addsPasskeys: false, method: .password)
+    #expect(!passwordOnly.contains("can show your words"))
+    #expect(passwordOnly.contains("can't be shown again"))
+    #expect(HonestEndScreen.otherDevice(addsPasskeys: false, method: nil).contains("where your passkey works"))
   }
 
   @Test func anOperatorFreezeStaysAnOperatorFreeze() async {
@@ -272,10 +363,18 @@ struct SignInSecurityFlowTests: AccountSuite {
     account.delay = .zero
     let m = SecurityModel(session: AccountSession(services: services(account), phase: .ready))
     await m.load()
-    await m.viewPhrase()
+    m.requestPhrase()
+    #expect(m.confirming == .viewPhrase)
+    await m.confirm()
+    // The words wait for the sheet to go: a cover never presents over a sheet.
+    #expect(m.viewedPhrase == nil)
+    m.confirmationDismissed()
     #expect(m.viewedPhrase == MockAccountService.phraseWords)
+    #expect(!m.phraseRevealed)
+    m.phraseRevealed = true
     m.closePhrase()
     #expect(m.viewedPhrase == nil)
+    #expect(!m.phraseRevealed)
   }
 
   @Test func approvingAResetChecksTheCodeFirst() async throws {

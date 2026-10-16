@@ -234,7 +234,7 @@ struct LiveAccountFlowTests {
     await m.load()
     #expect(m.state?.hasPassword == true)
     await m.request(.deleteAccount)
-    #expect(m.confirming == .deleteAccount)
+    #expect(m.confirming == .perform(.deleteAccount))
     m.confirmPassword = Self.password
     await m.confirm()
     #expect(m.failure == nil)
