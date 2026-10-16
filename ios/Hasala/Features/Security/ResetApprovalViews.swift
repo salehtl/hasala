@@ -1,9 +1,10 @@
 import HasalaDesign
+import HasalaModels
 import Observation
 import SwiftUI
 
-/// The approving iPhone (C9 side A; Paper "Signed-in iPhone · Approve a password reset";
-/// spec 04 §6.12): checks the code from the new iPhone, then this iPhone's key approves.
+/// The approving iPhone (C9 side A; Paper P2.4 KJZ "Approve a password reset"; spec 04
+/// §6.12): checks the code from the new iPhone, then this iPhone's key approves.
 @MainActor
 @Observable
 final class ResetApprovalModel {
@@ -39,12 +40,19 @@ final class ResetApprovalModel {
   }
 }
 
+/// "Password reset" (Paper KJZ): a floating medium sheet over the app on the iPhone that is
+/// still signed in. Paper matches a two-digit number; the reset code it binds to is the new
+/// iPhone's 16 characters (spec 04 §6.1.4), so this sheet asks for them: the code is
+/// compared in constant time before any Face ID prompt (`approveReset`), and a person who
+/// can't read the new iPhone's screen can't approve it.
 struct ResetApprovalSheet: View {
   @State private var model: ResetApprovalModel
   /// "No, that's not me": the presenter opens "Let's lock it down" once this sheet is gone.
   var onNotMe: () -> Void
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
   @FocusState private var codeFocused: Bool
+  @State private var height: CGFloat = 600
 
   init(model: ResetApprovalModel, onNotMe: @escaping () -> Void) {
     _model = State(initialValue: model)
@@ -52,122 +60,133 @@ struct ResetApprovalSheet: View {
   }
 
   var body: some View {
-    NavigationStack {
-      Group {
-        if model.approved {
-          CelebrationScreen(
-            badge: .check, title: "Approved",
-            subtitle: "Your other iPhone can set a new password now. Your data stays sealed there until it's unlocked."
-          ) {
-            EmptyView()
-          } footer: {
-            Button("Done") { dismiss() }.buttonStyle(.pill(.primary, fill: true))
-              .accessibilityIdentifier("approval.done")
-          }
-        } else {
-          AccountScreen(
-            title: "Is this you on a new iPhone?",
-            subtitle: "An iPhone asked \(model.request.askedAgo). It typed a code we sent to \(model.request.email)."
-          ) {
-            VStack(alignment: .leading, spacing: 14) {
-              NoteCard(systemImage: "exclamationmark.shield",
-                       text: "A new iPhone wants to reset your Hasala password. Only continue if you're holding that iPhone now. Scan the code on its screen.",
-                       tint: HColor.statusWarningSurface)
-              LabeledField(label: "The code on your new iPhone",
-                           footer: "16 letters and numbers, under the QR code.") {
-                TextField("ABCD EFGH IJKL MNOP", text: $model.code)
-                  .font(.system(.body, design: .monospaced).weight(.semibold))
-                  .keyboardType(.asciiCapable)
-                  .textInputAutocapitalization(.characters)
-                  .autocorrectionDisabled()
-                  .focused($codeFocused)
-                  .accessibilityIdentifier("approval.code")
-              }
-              // TODO(WS-14): the VisionKit QR scanner (spec 04 §6.1.4); typed entry works today.
-              FailureBanner(failure: model.failure)
-            }
-          } footer: {
-            BusyButton(title: "Approve with Face ID", busy: model.busy, enabled: model.codeReady,
-                       identifier: "approval.approve") {
-              // The keyboard goes first, so the answer (the banner) isn't hidden under it.
-              codeFocused = false
-              Task { await model.approve() }
-            }
-            LinkButton(title: "No, that's not me", identifier: "approval.notMe", role: .destructive) {
-              onNotMe()
-              dismiss()
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-/// "Let's lock it down" (Paper "Secure your account"; spec 04 §6.12): an ordered
-/// checklist after an unknown sign-in or a reset the user didn't ask for.
-struct LockdownView: View {
-  let model: SecurityModel
-
-  var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        Text("Let's lock it down").hType(.title1).foregroundStyle(HColor.textPrimary)
-        Text("Do these in order. Each one asks you to confirm it's you.")
-          .hType(.body).foregroundStyle(HColor.textSecondary)
-        VStack(spacing: 0) {
-          step(1, "Sign out everywhere", "Every device has to sign in again, this one too.", "Sign out", "lockdown.signOutAll") {
-            Task { await model.request(.signOutEverywhere) }
-          }
-          Divider().padding(.leading, 60)
-          step(2, "Remove what you don't recognise", "Check passkeys and devices in Sign-in & security.", nil,
-               "lockdown.review") {}
-          Divider().padding(.leading, 60)
-          step(3, "Change your password", "If you have one. Also change it on your email account.",
-               model.state?.hasPassword == true && model.capabilities.contains(.changePassword) ? "Change" : nil,
-               "lockdown.password") {
-            model.editingPassword = true
-          }
-          Divider().padding(.leading, 60)
-          step(4, "Make new words", "Only if someone may have seen your paper.", nil, "lockdown.words") {}
+      VStack(spacing: 0) {
+        header
+        Group {
+          if model.approved { approved } else { ask }
         }
-        .listCard()
-        FailureBanner(failure: model.failure)
-        if let notice = model.notice { StatusLine(text: notice, tone: .success) }
-        if model.capabilities.contains(.freeze) {
-          Button("Freeze my account") { Task { await model.request(.freeze) } }
-            .buttonStyle(.pill(.destructive, fill: true))
-            .accessibilityIdentifier("lockdown.freeze")
-        }
-        WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "lockdown.talk")
+        .padding(.top, 12)
       }
-      .padding(HSpacing.insetPage)
+      .padding(.horizontal, HSpacing.insetPage)
+      .padding(.bottom, 22)
+      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0.rounded(.up) }
     }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle("Secure your account")
-    .navigationBarTitleDisplayMode(.inline)
+    .scrollBounceBehavior(.basedOnSize)
+    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(height)])
+    .presentationCornerRadius(HRadius.sheet)
+    .presentationBackground(HColor.surfaceSecondary)
+    .presentationDragIndicator(.visible)
+    .interactiveDismissDisabled(model.busy)
   }
 
-  private func step(_ n: Int, _ title: String, _ text: String, _ action: String?, _ id: String,
-                    perform: @escaping () -> Void) -> some View {
-    HStack(alignment: .top, spacing: 14) {
-      Text("\(n)")
-        .hType(.headline)
-        .foregroundStyle(HColor.actionAccent)
-        .frame(width: 32, height: 32)
-        .background(HColor.actionAccentSubtle, in: Circle())
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-        Text(text).hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
-      }
+  private var header: some View {
+    HStack {
+      GlassIconButton(.close, label: "Close") { dismiss() }
+        .accessibilityIdentifier("approval.close")
       Spacer(minLength: 8)
-      if let action {
-        Button(action, action: perform)
-          .buttonStyle(.pill(.secondary, size: .small))
-          .accessibilityIdentifier(id)
+      Text("Password reset")
+        .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
+        .foregroundStyle(HColor.textPrimary)
+      Spacer(minLength: 8)
+      Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+    }
+    .padding(.top, 21)
+  }
+
+  private var ask: some View {
+    VStack(spacing: 14) {
+      HeroDisc(icon: .faceID, hue: .sky, shadow: false)
+      VStack(spacing: 6) {
+        Text("Is this you on a new iPhone?")
+          .hType(.section)
+          .foregroundStyle(HColor.textPrimary)
+          .accessibilityAddTraits(.isHeader)
+        Text("An iPhone asked \(model.request.askedAgo). It typed a code we sent to \(model.request.email).")
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textSecondary)
+      }
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
+      matchCard
+      if let message = model.failure?.message {
+        FieldErrorLine(text: message)
+          .accessibilityIdentifier("approval.failure")
+      }
+      Button("Yes, approve with Face ID") {
+        // The keyboard goes first, so the answer (the line) isn't hidden under it.
+        codeFocused = false
+        Task { await model.approve() }
+      }
+      .buttonStyle(.pill(.primary, fill: true, loading: model.busy, leadingIcon: .faceID))
+      .disabled(!model.codeReady)
+      .accessibilityIdentifier("approval.approve")
+      SecondaryLink(title: "No, that's not me", identifier: "approval.notMe", role: .destructive) {
+        onNotMe()
+        dismiss()
       }
     }
-    .padding(16)
+  }
+
+  /// Paper "Match and effect": what the new iPhone shows (here, typed), then what saying
+  /// yes does.
+  private var matchCard: some View {
+    VStack(spacing: 0) {
+      VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("The new iPhone shows a code").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+          Text("Type it here. Only say yes if it matches.").hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        TextField("ABCD EFGH IJKL MNOP", text: $model.code)
+          .font(.system(.body, design: .monospaced).weight(.semibold))
+          .keyboardType(.asciiCapable)
+          .textInputAutocapitalization(.characters)
+          .autocorrectionDisabled()
+          .focused($codeFocused)
+          .padding(.horizontal, 14)
+          .frame(minHeight: 48)
+          .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+          .overlay { FieldRing(color: model.failure == .codeMismatch ? HColor.fieldError : codeFocused ? HColor.fieldFocus : .clear) }
+          .environment(\.layoutDirection, .leftToRight)
+          .accessibilityLabel("The code on your new iPhone")
+          .accessibilityIdentifier("approval.code")
+      }
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      HDivider(inset: .text16)
+      HStack(alignment: .top, spacing: 10) {
+        Circle().fill(HColor.textSecondary).frame(width: 7, height: 7).padding(.top, 7)
+        Text("It can set a new password. Your data stays sealed there.")
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(.vertical, 14)
+      .padding(.horizontal, 16)
+      .accessibilityElement(children: .combine)
+    }
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+  }
+
+  /// Not on a board: the sheet says it's done in its own words, then closes.
+  private var approved: some View {
+    VStack(spacing: 14) {
+      HeroDisc(icon: .check, hue: .mint, shadow: false)
+      VStack(spacing: 6) {
+        Text("Approved")
+          .hType(.section)
+          .foregroundStyle(HColor.textPrimary)
+          .accessibilityAddTraits(.isHeader)
+        Text("Your other iPhone can set a new password now. Your data stays sealed there until it's unlocked.")
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textSecondary)
+      }
+      .multilineTextAlignment(.center)
+      .fixedSize(horizontal: false, vertical: true)
+      Button("Done") { dismiss() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("approval.done")
+    }
   }
 }

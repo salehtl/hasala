@@ -138,10 +138,15 @@ struct SignInSecurityFlowTests: AccountSuite {
     await m.load()
     #expect(m.state?.hasPasskey == false)
     await m.request(.signOutEverywhere)
-    #expect(m.confirming == .signOutEverywhere)
+    #expect(m.confirming == .perform(.signOutEverywhere))
+    #expect(m.confirmFactor == .password)
     m.confirmPassword = "not it at all"
     await m.confirm()
+    // A wrong password keeps the sheet up, emptied, with the field's line.
     #expect(m.failure == .stepUpFailed)
+    #expect(m.confirming == .perform(.signOutEverywhere))
+    #expect(m.confirmPassword.isEmpty)
+    #expect(session.phase == .ready)
     await m.request(.addPasskey)
     m.confirmPassword = MockAccountService.existingPassword
     await m.confirm()
@@ -155,9 +160,17 @@ struct SignInSecurityFlowTests: AccountSuite {
     let session = AccountSession(services: services(account), phase: .ready)
     let m = SecurityModel(session: session)
     await m.load()
-    // The only passkey, no password: refused.
+    // The other Apple Account's passkey goes after Face ID.
+    await m.request(.removePasskey(id: "pk-2"))
+    #expect(m.confirmFactor == .faceID)
+    await m.confirm()
+    #expect(m.failure == nil)
+    #expect(m.state?.passkeys.map(\.id) == ["pk-1"])
+    // Then the only passkey, no password: refused.
     await m.request(.removePasskey(id: "pk-1"))
+    await m.confirm()
     #expect(m.failure == .lastAuthenticator)
+    #expect(m.confirming == nil)
     #expect(m.state?.hasPasskey == true)
   }
 
@@ -168,12 +181,17 @@ struct SignInSecurityFlowTests: AccountSuite {
     let m = SecurityModel(session: session)
     await m.load()
     await m.request(.freeze)
+    // Nothing happens before "Confirm it's you".
+    #expect(session.phase == .ready)
+    await m.confirm()
     guard case .frozen = session.phase else { Issue.record("not frozen: \(session.phase)"); return }
     session.leaveFrozen()
     #expect(session.leftFrozen == FreezeInfo(by: .holder, when: "just now"))
     await m.request(.addPasskey)
     #expect(m.failure == .frozen)
+    #expect(m.confirming == nil)
     await m.request(.deleteAccount)
+    await m.confirm()
     #expect(session.phase == .signedOut)
   }
 
@@ -272,10 +290,18 @@ struct SignInSecurityFlowTests: AccountSuite {
     account.delay = .zero
     let m = SecurityModel(session: AccountSession(services: services(account), phase: .ready))
     await m.load()
-    await m.viewPhrase()
+    m.requestPhrase()
+    #expect(m.confirming == .viewPhrase)
+    await m.confirm()
+    // The words wait for the sheet to go: a cover never presents over a sheet.
+    #expect(m.viewedPhrase == nil)
+    m.confirmationDismissed()
     #expect(m.viewedPhrase == MockAccountService.phraseWords)
+    #expect(!m.phraseRevealed)
+    m.phraseRevealed = true
     m.closePhrase()
     #expect(m.viewedPhrase == nil)
+    #expect(!m.phraseRevealed)
   }
 
   @Test func approvingAResetChecksTheCodeFirst() async throws {
