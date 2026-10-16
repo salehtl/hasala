@@ -165,7 +165,8 @@ struct BudgetEditSheet: View {
   /// "+ 200", "Match September 1,486" (Debug only), "Cover the pace 1,992": each fills the
   /// field. Their figures hide with the amounts; the field they fill shows the real value.
   private func chips(_ row: PlanRowModel) -> some View {
-    // 8 apart as drawn; each chip's target reaches 2 past it, above and below.
+    // 8 apart as drawn, 4 under the stepper (Paper "Quick chips", 4LX-0); each chip's target
+    // reaches 3 past it, above and below, into the gaps rather than adding to them.
     GrowingChipRows(spacing: 8, lineSpacing: 8 - 2 * QuickChip.reach) {
       QuickChip(title: "+ 200", hidden: model.hidden, titleIsFigure: true) { step(200_00) }
         .accessibilityLabel("Add 200")
@@ -180,6 +181,7 @@ struct BudgetEditSheet: View {
       }
     }
     .padding(.top, 4 - QuickChip.reach)
+    .padding(.bottom, -QuickChip.reach)
   }
 
   // MARK: Where it comes from

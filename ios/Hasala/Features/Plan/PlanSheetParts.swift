@@ -147,6 +147,9 @@ struct PlanAmountField: View {
   var focus: FocusState<Bool>.Binding
 
   @ScaledMetric(relativeTo: .largeTitle) private var figure: CGFloat = 44
+  /// The figure's line, 46 (Paper's 44/46), scaled with it. The field's own line is the
+  /// face's natural 52, which made the stepper row and Move money's amount 6 taller.
+  @ScaledMetric(relativeTo: .largeTitle) private var line: CGFloat = 46
   @ScaledMetric(relativeTo: .body) private var unit: CGFloat = 17
 
   var body: some View {
@@ -162,6 +165,9 @@ struct PlanAmountField: View {
         .keyboardType(.decimalPad)
         .focused(focus)
         .fixedSize()
+        // Laid out on Paper's line; the digits (no descenders, a comma's tail of 0.12 em)
+        // stay inside it.
+        .frame(height: line)
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
         .onChange(of: text) { _, new in
@@ -397,7 +403,7 @@ struct GrowingChipRows: Layout {
 }
 
 /// A quick chip on a sheet (Paper "+ 200", "Cover the pace 1,992"): 40 tall, 16 in, the
-/// on-card chip fill; words 15/20 600, a figure in rounded compact. The button is 44 tall (2
+/// on-card chip fill; words 15/20 600, a figure in rounded compact. The button is 46 tall (3
 /// above and below the drawn chip), so the target is its own frame; pressed, the drawn chip
 /// darkens.
 struct QuickChip: View {
@@ -409,8 +415,10 @@ struct QuickChip: View {
   var titleIsFigure = false
   let action: () -> Void
 
-  /// How far the target reaches past the drawn chip, above and below.
-  static let reach: CGFloat = (HSpacing.targetMinimum - HSpacing.chipHeight) / 2
+  /// How far the target reaches past the drawn chip, above and below: 46 in all, because
+  /// the medium sheet the chips sit on is inset and the system draws it at 386/402 of its
+  /// size (`UIDropShadowView` scales it by 0.96), and 46 × 0.96 is the 44 a finger needs.
+  static let reach: CGFloat = (HSpacing.targetMinimum + 2 - HSpacing.chipHeight) / 2
 
   var body: some View {
     Button(action: action) {
@@ -436,7 +444,7 @@ struct QuickChip: View {
     .accessibilityLabel(figure.map { "\(title), \($0.spoken(hidden: hidden))" } ?? title)
   }
 
-  /// The chip's fill (and its pressed layer) on the drawn 40, inside a 44 target.
+  /// The chip's fill (and its pressed layer) on the drawn 40, inside a 46 target.
   private struct ChipStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
       configuration.label

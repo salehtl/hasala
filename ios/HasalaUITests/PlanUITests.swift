@@ -122,6 +122,11 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
     waitUntilStill(el(app, "budget.close"))
     try audit(app)
+    // The medium sheet is drawn at 386/402 of its size (the system's inset sheet); its
+    // small targets still take 44 on the screen.
+    for button in ["Add 200", "Less", "More", "Close"] {
+      XCTAssertGreaterThanOrEqual(app.buttons[button].firstMatch.frame.height, 44, button)
+    }
     app.buttons["Add 200"].tap()
     attach(app, "Plan · Dining budget · 1,800")
     let source = el(app, "budget.source")
