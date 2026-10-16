@@ -189,16 +189,19 @@ struct MoveMoneySheet: View {
         PlanOverline("Take from")
       } trailing: {
         if sources.count > 4, !showAllSources {
-          Button("Show all \(sources.count)") { showAllSources = true }
-            .buttonStyle(.plain)
-            .hType(.footnote.weight(.semibold))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-            // A 44 target that lays out as tall as the overline.
-            .padding(.vertical, -13)
-            .padding(.trailing, 4)
-            .accessibilityIdentifier("move.showAll")
+          // A 44 target that lays out as tall as the overline: the padding is inside the
+          // button (its own frame is the target) and taken back outside it.
+          Button { showAllSources = true } label: {
+            Text("Show all \(sources.count)")
+              .hType(.footnote.weight(.semibold))
+              .foregroundStyle(HColor.textLink)
+              .padding(.vertical, 13)
+              .padding(.horizontal, 4)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .padding(.vertical, -13)
+          .accessibilityIdentifier("move.showAll")
         }
       }
       if sources.isEmpty {
@@ -288,6 +291,7 @@ private struct BeforeAfterRow: View {
     .frame(minHeight: 50)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(spoken)
+    .accessibilityAddTraits(.isStaticText)
   }
 
   private var spoken: String {

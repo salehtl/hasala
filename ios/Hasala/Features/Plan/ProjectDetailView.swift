@@ -46,25 +46,33 @@ struct ProjectDetailView: View {
 
   private func planSetting(_ d: ProjectDetail) -> some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 14) {
-        Text("Count in monthly plan").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-          .frame(maxWidth: .infinity, alignment: .leading)
+      Group {
         if BuildSurface.showsUnfinished {
-          // TODO(spec 12 §10): turning it on needs a project edit (plan D.2).
-          Toggle("Count in monthly plan", isOn: .constant(d.countInPlan))
-            .labelsHidden()
-            .tint(HColor.controlSwitchTrackOn)
-            .disabled(true)
+          // TODO(spec 12 §10): turning it on needs a project edit (plan D.2). The whole row
+          // is the switch, as drawn, and it is the one element ("Count in monthly plan, Off").
+          Toggle(isOn: .constant(d.countInPlan)) {
+            Text("Count in monthly plan").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+              .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+          }
+          .tint(HColor.controlSwitchTrackOn)
+          .disabled(true)
         } else {
-          Text(d.countInPlan ? "On" : "Off").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          // Nothing can change it yet, so Release states it.
+          HStack(spacing: 14) {
+            Text("Count in monthly plan").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            Text(d.countInPlan ? "On" : "Off").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          }
+          .frame(minHeight: 52)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Count in monthly plan")
+          .accessibilityValue(d.countInPlan ? "On" : "Off")
+          .accessibilityAddTraits(.isStaticText)
         }
       }
+      // 56 tall with 4 above (Paper "Row · Count in monthly plan").
       .padding(.horizontal, 16)
       .padding(.top, 4)
-      .frame(minHeight: 56)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("Count in monthly plan")
-      .accessibilityValue(d.countInPlan ? "On" : "Off")
       .accessibilityIdentifier("project.countInPlan")
       PhraseText(d.explainer, hidden: model.hidden).hType(.footnote).foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -90,6 +98,7 @@ struct ProjectDetailView: View {
           Text("spent").hType(.subheadline).foregroundStyle(HColor.textSecondary)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("project.spent")
       }
       PlanListCard {
@@ -170,6 +179,7 @@ private struct ProjectHero: View {
     .padding(.horizontal, HSpacing.insetPage)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(spoken)
+    .accessibilityAddTraits(.isStaticText)
     .accessibilityIdentifier("project.hero")
   }
 

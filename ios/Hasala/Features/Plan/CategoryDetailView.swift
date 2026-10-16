@@ -96,6 +96,7 @@ private struct CategoryHero: View {
     .paceFillSequence($phase, target: min(1, detail.progress.fraction), policy: policy)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(spoken)
+    .accessibilityAddTraits(.isStaticText)
     .accessibilityIdentifier("category.hero")
   }
 

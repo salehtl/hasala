@@ -52,11 +52,27 @@ struct PlanDetailScreen<Content: View>: View {
     .background(HColor.surfaceSecondary)
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      if !more.isEmpty {
+    .modifier(MoreMenu(items: more))
+    .overlay(alignment: .bottom) {
+      if hostsToast { ToastHost(app: app) }
+    }
+  }
+}
+
+/// The More glass button and its native menu, on the trailing side of a pushed screen's bar.
+/// With nothing to offer there is no toolbar at all: an empty one still leaves the bar a
+/// zero-sized item, which the accessibility audit reads as a control too small to tap.
+private struct MoreMenu: ViewModifier {
+  let items: [PlanMenuItem]
+
+  func body(content: Content) -> some View {
+    if items.isEmpty {
+      content
+    } else {
+      content.toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Menu {
-            ForEach(more) { item in Button(item.title, action: item.action) }
+            ForEach(items) { item in Button(item.title, action: item.action) }
           } label: {
             HIconView(.more, size: HSpacing.iconGlass, color: HColor.iconGlass)
           }
@@ -65,8 +81,68 @@ struct PlanDetailScreen<Content: View>: View {
         }
       }
     }
-    .overlay(alignment: .bottom) {
-      if hostsToast { ToastHost(app: app) }
+  }
+}
+
+/// Two parts side by side on one baseline while they fit, else one above the other (Paper
+/// draws them side by side; at larger text sizes they stack). The same views either way, so
+/// their identity holds while the text size changes (a `ViewThatFits` swaps in a second copy,
+/// which VoiceOver and the accessibility audit see as new text that never grew).
+struct SideBySideOrStacked: Layout {
+  /// Side by side: the least room between the parts.
+  var spacing: CGFloat = 6
+  /// Stacked: the room between the lines.
+  var lineSpacing: CGFloat = 2
+  /// Side by side: the first part at the leading edge and the last at the trailing edge
+  /// (a field's label and value); otherwise the parts sit together, centred.
+  var spreads = true
+  /// Stacked: how the lines line up.
+  var stackedAlignment: HorizontalAlignment = .leading
+
+  private func sideBySide(_ subviews: Subviews, width: CGFloat?) -> Bool {
+    let natural = subviews.map { $0.sizeThatFits(.unspecified).width }.reduce(0, +)
+      + spacing * CGFloat(max(0, subviews.count - 1))
+    return natural <= (width ?? .infinity)
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    if sideBySide(subviews, width: proposal.width) {
+      let dims = subviews.map { $0.dimensions(in: .unspecified) }
+      let ascent = dims.map { $0[VerticalAlignment.firstTextBaseline] }.max() ?? 0
+      let descent = dims.map { $0.height - $0[VerticalAlignment.firstTextBaseline] }.max() ?? 0
+      let natural = dims.map(\.width).reduce(0, +) + spacing * CGFloat(max(0, dims.count - 1))
+      return CGSize(width: spreads ? (proposal.width ?? natural) : natural, height: ascent + descent)
+    }
+    let sizes = subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) }
+    let height = sizes.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(0, sizes.count - 1))
+    return CGSize(width: proposal.width ?? sizes.map(\.width).max() ?? 0, height: height)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    if sideBySide(subviews, width: bounds.width) {
+      let dims = subviews.map { $0.dimensions(in: .unspecified) }
+      let ascent = dims.map { $0[VerticalAlignment.firstTextBaseline] }.max() ?? 0
+      let natural = dims.map(\.width).reduce(0, +) + spacing * CGFloat(max(0, dims.count - 1))
+      let gap = spreads && dims.count > 1
+        ? spacing + max(0, bounds.width - natural) / CGFloat(dims.count - 1) : spacing
+      var x = spreads ? bounds.minX : bounds.minX + max(0, bounds.width - natural) / 2
+      for (i, d) in dims.enumerated() {
+        let y = bounds.minY + ascent - d[VerticalAlignment.firstTextBaseline]
+        subviews[i].place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+        x += d.width + gap
+      }
+      return
+    }
+    var y = bounds.minY
+    for subview in subviews {
+      let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+      let x: CGFloat = switch stackedAlignment {
+      case .center: bounds.minX + (bounds.width - size.width) / 2
+      case .trailing: bounds.maxX - size.width
+      default: bounds.minX
+      }
+      subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: bounds.width, height: nil))
+      y += size.height + lineSpacing
     }
   }
 }
@@ -259,6 +335,7 @@ struct DoneMark: View {
       Text(words).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusSuccessForeground)
     }
     .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isStaticText)
   }
 }
 

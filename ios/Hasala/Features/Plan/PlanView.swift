@@ -201,8 +201,10 @@ private struct SplitSection: View {
       Text(share.label).hFigure(.stat).foregroundStyle(HColor.textPrimary)
     }
     .fixedSize()
+    // Read as text: an element with no trait reads to the audit as a control too small to tap.
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(share.bucket.title), \(share.label)")
+    .accessibilityAddTraits(.isStaticText)
   }
 }
 
@@ -255,6 +257,7 @@ private struct BucketSection: View {
         }
       }
       .accessibilityElement(children: .combine)
+      .accessibilityAddTraits(.isStaticText)
     }
   }
 }
@@ -356,12 +359,17 @@ private struct ProjectsSection: View {
         Text("Projects").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
       } trailing: {
         if BuildSurface.showsUnfinished {
-          Button("New project") { model.newProject() }
-            .buttonStyle(.plain)
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
+          // A 20 pt line with a 44 pt target: the padding is inside the button (so the target
+          // is the button's own frame) and taken back outside it, so the header keeps its line.
+          Button { model.newProject() } label: {
+            Text("New project")
+              .hType(.subheadline.weight(.medium))
+              .foregroundStyle(HColor.textLink)
+              .padding(.vertical, 12)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .padding(.vertical, -12)
         }
       }
       ForEach(model.snapshot.projects) { p in
