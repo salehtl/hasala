@@ -15,6 +15,19 @@ final class PlanUITests: XCTestCase {
     return app
   }
 
+  /// Waits until `element` stops moving (a sheet settling into its detent), at most 5 s, so
+  /// an audit reads the frames the screen shows.
+  @MainActor
+  private func waitUntilStill(_ element: XCUIElement) {
+    var last = element.frame
+    for _ in 0..<20 {
+      Thread.sleep(forTimeInterval: 0.25)
+      let now = element.frame
+      if now == last { return }
+      last = now
+    }
+  }
+
   /// Plan: Ready to assign, Groceries' month, Move money from Ready to assign, then Dining's
   /// budget from Ready to assign (with the shortfall it would leave) and saved.
   @MainActor
@@ -46,6 +59,8 @@ final class PlanUITests: XCTestCase {
     let save = el(app, "move.save")
     XCTAssertTrue(save.waitForExistence(timeout: 5))
     XCTAssertEqual(save.label, "Move AED 318.00")
+    // A large sheet: its Close sits at the top of the screen (page 14 §02, top 62).
+    XCTAssertLessThan(el(app, "move.close").frame.minY, app.frame.height * 0.2)
     XCTAssertTrue(el(app, "move.to").label.contains("On course for 2,518 of 2,200"))
     XCTAssertTrue(el(app, "move.preview").exists)
     // Paper's sources: Ready to assign, Travel, Shopping, Entertainment; Dining is over pace.
@@ -74,9 +89,18 @@ final class PlanUITests: XCTestCase {
     let field = el(app, "budget.amount")
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     XCTAssertEqual(field.value as? String, "1,600")
+    // A medium sheet that fits its content, with Dining showing above it (page 14 §02); it
+    // stays that height while the amount changes.
+    let close = el(app, "budget.close")
+    waitUntilStill(close)
+    let top = close.frame.minY
+    XCTAssertGreaterThan(top, app.frame.height * 0.25)
+    // Audited where Paper draws it, over the top of Dining (`testABudgetRiseCanComeFromAnother
+    // Category`): from down here, rows behind the scrim straddle the sheet's edge, and the audit
+    // reads their cut-off words as text no element describes.
     attach(app, "Plan · Dining budget")
-    try audit(app)
     app.buttons["Add 200"].tap()
+    XCTAssertEqual(close.frame.minY, top, accuracy: 1)
     XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
     // Over-assigning shows the shortfall with its minus sign.
@@ -96,7 +120,10 @@ final class PlanUITests: XCTestCase {
     let app = launch(screen: "plan.budget")
     let field = el(app, "budget.amount")
     XCTAssertTrue(field.waitForExistence(timeout: 15))
+    waitUntilStill(el(app, "budget.close"))
+    try audit(app)
     app.buttons["Add 200"].tap()
+    attach(app, "Plan · Dining budget · 1,800")
     let source = el(app, "budget.source")
     XCTAssertTrue(source.label.hasPrefix("Take it from"))
     source.tap()
@@ -208,6 +235,21 @@ final class PlanUITests: XCTestCase {
     try audit(app)
   }
 
+  /// At the largest text size the "Ready to assign" overline takes two lines rather than
+  /// being cut off (the AX3 audit below lets its "may be clipped" through on this proof).
+  @MainActor
+  func testReadyToAssignWrapsAtTheLargestSize() throws {
+    let app = launch(screen: "plan", motion: "off",
+                     arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 15))
+    let overline = app.staticTexts.matching(NSPredicate(format: "label ==[c] 'Ready to assign'")).firstMatch
+    XCTAssertTrue(overline.exists)
+    // One line of the overline at this size is about 44 pt; two are about 88.
+    XCTAssertGreaterThan(overline.frame.height, 70, "\(overline.frame)")
+    XCTAssertLessThanOrEqual(overline.frame.maxX, app.frame.width - 20)
+    attach(app, "AX5 · Plan · Ready to assign")
+  }
+
   /// Plan at `.accessibility3`, down to the projects, then the detail and both sheets
   /// (spec 04 §17).
   @MainActor
@@ -215,10 +257,17 @@ final class PlanUITests: XCTestCase {
     let large = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
     let app = launchHome(arguments: large)
 
-    // Plan, down to the projects.
+    // Plan, down to the projects. At the top, every check but clipped text runs as usual;
+    // then clipped text alone, where the audit reads the "READY TO ASSIGN" overline as text
+    // that may be cut off at larger sizes. It is not: it wraps
+    // (`testReadyToAssignWrapsAtTheLargestSize`). Anything else clipped still fails.
     app.tabBars.firstMatch.buttons["Plan"].tap()
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
-    try audit(app, atLargeText: true)
+    attach(app, "AX3 · Plan")
+    try audit(app)
+    try app.performAccessibilityAudit(for: .textClipped) { issue in
+      issue.element?.label.localizedCaseInsensitiveCompare("Ready to assign") == .orderedSame
+    }
     for id in ["plan.row.rent", "plan.row.insurance", "plan.row.dining", "plan.row.subscriptions",
                "plan.row.emergency-fund", "plan.project.japan"] {
       XCTAssertTrue(reveal(app, el(app, id)), "could not reach \(id)")
