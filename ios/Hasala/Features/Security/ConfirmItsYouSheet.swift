@@ -45,25 +45,12 @@ struct ConfirmItsYouSheet: View {
   var onEnterWords: (() -> Void)?
   var onClose: () -> Void
 
-  @State private var height: CGFloat = 520
   @State private var visible = false
   @FocusState private var passwordFocused: Bool
-  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    ScrollView {
-      content
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0.rounded(.up) }
-    }
-    .scrollBounceBehavior(.basedOnSize)
-    // One detent that fits the content; at the accessibility sizes it grows to large and
-    // scrolls (page 14 §10: "medium sheets grow to large, then scroll").
-    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(height)])
-    .presentationCornerRadius(HRadius.sheet)
-    .presentationBackground(HColor.surfaceSecondary)
-    .presentationDragIndicator(.visible)
-    .interactiveDismissDisabled(busy)
-    .onAppear { if request.factor == .password { passwordFocused = true } }
+    FittedSheet(busy: busy) { content }
+      .onAppear { if request.factor == .password { passwordFocused = true } }
   }
 
   private var content: some View {
@@ -198,6 +185,42 @@ struct ConfirmItsYouSheet: View {
           .accessibilityIdentifier("confirm.close")
       }
     }
+  }
+}
+
+/// A floating sheet with one detent fitted to its content (Paper's medium sheets: IHY, IT2,
+/// KJZ; 8 from the screen's edges, radius 40, the grey sheet surface). iOS adds the bottom
+/// safe area under a custom detent, so the content lays out over that area and the detent
+/// leaves it out: the content's own bottom padding (Paper's 30, KJZ's 22) is then the only
+/// space under its last control. At the accessibility sizes the sheet grows to large and
+/// scrolls (page 14 §10: "medium sheets grow to large, then scroll").
+struct FittedSheet<Content: View>: View {
+  var busy = false
+  @ViewBuilder var content: () -> Content
+
+  @State private var height: CGFloat = 520
+  /// The home indicator's inset under the sheet (a keyboard's, far taller, is not kept: the
+  /// detent mustn't shrink while it is up).
+  @State private var bottomInset: CGFloat = 0
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var fitted: Bool { !typeSize.isAccessibilitySize }
+
+  var body: some View {
+    ScrollView {
+      content()
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0.rounded(.up) }
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .ignoresSafeArea(.container, edges: fitted ? .bottom : [])
+    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset in
+      if inset < 60 { bottomInset = inset }
+    }
+    .presentationDetents(fitted ? [.height(max(height - bottomInset, 200))] : [.large])
+    .presentationCornerRadius(HRadius.sheet)
+    .presentationBackground(HColor.surfaceSecondary)
+    .presentationDragIndicator(.visible)
+    .interactiveDismissDisabled(busy)
   }
 }
 

@@ -50,9 +50,7 @@ struct ResetApprovalSheet: View {
   /// "No, that's not me": the presenter opens "Let's lock it down" once this sheet is gone.
   var onNotMe: () -> Void
   @Environment(\.dismiss) private var dismiss
-  @Environment(\.dynamicTypeSize) private var typeSize
   @FocusState private var codeFocused: Bool
-  @State private var height: CGFloat = 600
 
   init(model: ResetApprovalModel, onNotMe: @escaping () -> Void) {
     _model = State(initialValue: model)
@@ -60,7 +58,7 @@ struct ResetApprovalSheet: View {
   }
 
   var body: some View {
-    ScrollView {
+    FittedSheet(busy: model.busy) {
       VStack(spacing: 0) {
         header
         Group {
@@ -70,14 +68,7 @@ struct ResetApprovalSheet: View {
       }
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.bottom, 22)
-      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0.rounded(.up) }
     }
-    .scrollBounceBehavior(.basedOnSize)
-    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(height)])
-    .presentationCornerRadius(HRadius.sheet)
-    .presentationBackground(HColor.surfaceSecondary)
-    .presentationDragIndicator(.visible)
-    .interactiveDismissDisabled(model.busy)
   }
 
   private var header: some View {
