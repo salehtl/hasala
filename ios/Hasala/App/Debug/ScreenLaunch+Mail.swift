@@ -42,6 +42,9 @@
       // Outlook needs a new sign-in: its row says so, and leads to its sign-in again.
       Screen("mail.add.signIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts, .addMailbox])),
       Screen("mail.add.gmail", scenario: "noMailbox", prepare: profile([.bankAlerts, .addMailbox, .connectMail(.gmail)])),
+      // The Profile card's "Connect your email": Gmail's screen straight away, with
+      // "Not your email? Choose a different one." (no providers behind it).
+      Screen("mail.profile.gmail", scenario: "noMailbox", prepare: profile([.connectMail(.gmail)])),
       Screen("mail.add.outlook", scenario: "passkeyUser",
              prepare: profile([.bankAlerts, .addMailbox, .connectMail(.outlook)])),
       Screen("mail.add.errorAdmin", scenario: "passkeyUser", prepare: { graph in

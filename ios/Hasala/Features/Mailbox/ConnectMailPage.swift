@@ -163,6 +163,7 @@ private struct MailBanksStep: View {
                  busy: busy, enabled: !chosen.isEmpty && setup != nil, identifier: "bank.continue") {
         Task { await choose() }
       }
+      .dockPill()
     }
   }
 

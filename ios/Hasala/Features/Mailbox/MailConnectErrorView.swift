@@ -41,10 +41,12 @@ struct MailConnectErrorView: View {
       if case .adminApprovalNeeded = failure {
         BusyButton(title: "Choose a different email", busy: false, identifier: "mail.error.chooseDifferent",
                    action: onChooseDifferent)
+          .dockPill()
         TextLinkRow(lead: "Approved since?", link: "Try \(provider.company) again", identifier: "mail.error.retry",
                     action: onRetry)
       } else {
         ProviderButton(provider: provider, action: onRetry)
+          .dockPill()
           .accessibilityIdentifier("mail.error.retry")
         TextLinkRow(lead: "Wrong account?", link: "Choose a different email", identifier: "mail.error.chooseDifferent",
                     action: onChooseDifferent)

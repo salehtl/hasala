@@ -90,12 +90,14 @@ struct ConnectProviderView: View {
     } footer: {
       if let connected {
         BusyButton(title: "Continue", busy: false, identifier: "mail.continue") { onConnected(connected.id) }
+          .dockPill()
       } else if let sample {
         // A review account: the sample month is the one pill, as the foundation drew it,
         // and the provider's sign-in is the text button under it. Nothing else to choose,
         // so no footer link: the dock stays as tall as Paper's (a pill and a 44 line), and
         // the caption keeps clear of it.
         BusyButton(title: "Use sample data", busy: false, identifier: "mail.sample", action: sample)
+          .dockPill()
         Button(action: connect) {
           HStack(spacing: 10) {
             if !coordinator.busy { ProviderMark(provider, size: .disc26) }
@@ -103,9 +105,11 @@ struct ConnectProviderView: View {
           }
         }
         .buttonStyle(.pill(.tertiary, size: .medium, fill: true, loading: coordinator.busy))
+        .dockPill()
         .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
       } else {
         ProviderButton(provider: provider, loading: coordinator.busy, action: connect)
+          .dockPill()
           .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
         footerLink
       }

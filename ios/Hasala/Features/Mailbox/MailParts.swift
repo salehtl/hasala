@@ -351,28 +351,46 @@ struct TellUsWhichLink: View {
   }
 }
 
+/// The sentence and its link as one text of two runs, so it grows with Dynamic Type and
+/// wraps as one sentence at every size (two texts side by side, or a fit switch between
+/// layouts, left the accessibility audit reading text that stops growing). Paper's row
+/// wraps the link as a whole ("flex-wrap"): up to the large sizes its words are held
+/// together, so it moves to the next line in one piece, as on 1MRM; at the accessibility
+/// sizes it wraps word by word, as its words may not fit one line.
 private struct TextLinkLabel: View {
   let lead: String?
   let link: String
   var leading = false
+  @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.legibilityWeight) private var legibilityWeight
 
   var body: some View {
-    let type: HType = .subheadline
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: 4) { parts(type) }
-      VStack(alignment: leading ? .leading : .center, spacing: 0) { parts(type) }
-    }
-    .multilineTextAlignment(leading ? .leading : .center)
-    .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum, alignment: leading ? .leading : .center)
-    .contentShape(Rectangle())
+    Self.text(lead: lead, link: link, wholeLink: !typeSize.isAccessibilitySize, boldText: legibilityWeight == .bold)
+      .hType(.subheadline)
+      .foregroundStyle(HColor.textSecondary)
+      .multilineTextAlignment(leading ? .leading : .center)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum, alignment: leading ? .leading : .center)
+      .contentShape(Rectangle())
   }
 
-  @ViewBuilder private func parts(_ type: HType) -> some View {
-    if let lead {
-      Text(lead).hType(type).foregroundStyle(HColor.textSecondary).fixedSize(horizontal: false, vertical: true)
-    }
-    Text(link).hType(type.weight(.semibold)).foregroundStyle(HColor.textLink).fixedSize(horizontal: false, vertical: true)
+  /// The lead in the secondary colour (the type the view sets), then the link at 600 in
+  /// link blue (a weight up under Bold Text, as `hType` steps its own faces).
+  static func text(lead: String?, link: String, wholeLink: Bool, boldText: Bool) -> Text {
+    let weight: HWeight = boldText ? HWeight.semibold.bolder : .semibold
+    let words = wholeLink ? link.replacingOccurrences(of: " ", with: "\u{00A0}") : link
+    let run = Text(words).font(HType.subheadline.weight(weight).font).foregroundStyle(HColor.textLink)
+    guard let lead else { return run }
+    return Text("\(lead) \(run)")
   }
+}
+
+extension View {
+  /// A pill in an account screen's dock takes the height its label needs at every text
+  /// size. The dock doesn't scroll, so a label offered less height than it needs could be
+  /// cut short at the larger sizes (the accessibility audit's "Text clipped" at AX3, where
+  /// "Continue with Microsoft" takes two lines).
+  func dockPill() -> some View { fixedSize(horizontal: false, vertical: true) }
 }
 
 // MARK: - The errors' card

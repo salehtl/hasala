@@ -208,6 +208,37 @@ final class MailboxUITests: XCTestCase {
     try audit(app, atLargeText: true)
   }
 
+  /// The docks of the read-only screen and the two errors, at the default size and AX3:
+  /// "Not your email? Choose a different one." grows with the text as one sentence, and a
+  /// provider's pill takes the two lines it needs (setup's dock draws the same parts). The
+  /// row leads to the providers.
+  @MainActor
+  func testDocksGrowWithTheText() throws {
+    var app = launch(scenario: nil, screen: "mail.profile.gmail")
+    let notYours = el(app, "mail.notYours")
+    XCTAssertTrue(notYours.waitForExistence(timeout: 15))
+    XCTAssertEqual(notYours.label, "Not your email? Choose a different one.")
+    try audit(app)
+    notYours.tap()
+    XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: 5), "the providers did not open")
+
+    app = launch(scenario: nil, screen: "mail.profile.gmail", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.notYours").waitForExistence(timeout: 15))
+    attach(app, "Connect Gmail · AX3")
+    try audit(app, atLargeText: true)
+
+    app = launch(scenario: nil, screen: "mail.add.errorCancelled", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.error.chooseDifferent").waitForExistence(timeout: 15))
+    XCTAssertEqual(el(app, "mail.error.chooseDifferent").label, "Wrong account? Choose a different email")
+    attach(app, "Microsoft sign-in didn't finish · AX3")
+    try audit(app, atLargeText: true)
+
+    app = launch(scenario: nil, screen: "mail.add.errorAdmin", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.error.retry").waitForExistence(timeout: 15))
+    attach(app, "Work or school account needs an admin · AX3")
+    try audit(app, atLargeText: true)
+  }
+
   /// Some element on screen says `text`.
   @MainActor
   private func says(_ app: XCUIApplication, _ text: String) -> Bool {
