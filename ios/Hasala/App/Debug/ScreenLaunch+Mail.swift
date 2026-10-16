@@ -34,6 +34,8 @@
       }),
       Screen("bankAlerts.signIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts])),
       Screen("mail.add", scenario: "passkeyUser", prepare: profile([.bankAlerts, .addMailbox])),
+      // Outlook needs a new sign-in: its row says so, and leads to its sign-in again.
+      Screen("mail.add.signIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts, .addMailbox])),
       Screen("mail.add.gmail", scenario: "noMailbox", prepare: profile([.bankAlerts, .addMailbox, .connectMail(.gmail)])),
       Screen("mail.add.outlook", scenario: "passkeyUser",
              prepare: profile([.bankAlerts, .addMailbox, .connectMail(.outlook)])),

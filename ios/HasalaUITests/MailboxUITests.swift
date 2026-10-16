@@ -131,6 +131,30 @@ final class MailboxUITests: XCTestCase {
     XCTAssertFalse(el(app, "bankAlerts.signInAgain").exists)
   }
 
+  /// While Outlook needs a sign-in, Add a mailbox says so on its Outlook row rather than
+  /// "is connected", and the row leads where it says: Outlook's sign-in again, then back on
+  /// Bank alerts with Outlook working.
+  @MainActor
+  func testAddAMailboxWhileOutlookNeedsASignIn() throws {
+    let app = launch(scenario: "outlookSignIn", screen: "bankAlerts")
+    tap(app, "bankAlerts.addMailbox", timeout: 15)
+    let outlook = el(app, "mail.choose.outlook")
+    XCTAssertTrue(outlook.waitForExistence(timeout: 5))
+    XCTAssertTrue(outlook.label.contains("maya.k@example.com needs a new sign-in. Sign in to Outlook again."),
+                  outlook.label)
+    XCTAssertFalse(outlook.label.contains("is connected"))
+    XCTAssertTrue(el(app, "mail.choose.gmail").label.contains("maya@example.com is connected."))
+    attach(app, "Add a mailbox · Outlook needs sign-in")
+    try audit(app)
+    outlook.tap()
+    XCTAssertTrue(app.staticTexts["Sign in to Outlook again."].waitForExistence(timeout: 5))
+    tap(app, "mail.connect.outlook")
+    XCTAssertTrue(app.staticTexts["Outlook connected again. Catching up from the last check."]
+      .waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForLabel(containing: "Checked just now"))
+  }
+
   /// The Outlook mailbox: signed in again from its page, which turns into the working
   /// layout; then disconnected behind the system alert, back on Bank alerts with a grey row.
   @MainActor

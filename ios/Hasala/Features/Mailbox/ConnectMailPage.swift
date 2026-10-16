@@ -28,14 +28,18 @@ struct ConnectMailPage: View {
   init(app: AppModel, provider: MailProviderKind) {
     self.app = app
     self.provider = provider
-    let context: MailConnectCoordinator.Context
-    if case .signInAgain(let id, let p)? = app.mailOffer, p == provider {
-      context = .signInAgain(mailboxID: id)
-    } else {
-      context = .addMailbox
-    }
+    let context = Self.context(provider, offer: app.mailOffer)
     _coordinator = State(initialValue: app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: context) })
     _banks = State(initialValue: app.mailbox?.chosenBanks() ?? [])
+  }
+
+  /// What a connect of `provider` from the profile does: while the offer (the Home bell's,
+  /// the Profile card's) is a new sign-in for that provider's mailbox, it signs that one in
+  /// again; otherwise it adds a mailbox. Add a mailbox's rows say the same
+  /// (`ChooseEmailSheet.subtitle`).
+  static func context(_ provider: MailProviderKind, offer: MailOffer?) -> MailConnectCoordinator.Context {
+    if case .signInAgain(let id, let p)? = offer, p == provider { return .signInAgain(mailboxID: id) }
+    return .addMailbox
   }
 
   var body: some View {

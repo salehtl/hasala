@@ -147,6 +147,30 @@ struct MailboxFlowTests: AccountSuite {
     var off = MockMailbox.outlook
     off.state = .disconnected
     #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: [off]) == nil)
+    // A first import reads already.
+    var syncing = MockMailbox.outlook
+    syncing.state = .syncing
+    #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: [syncing])
+      == "maya.k@example.com is connected. Add another Microsoft account.")
+  }
+
+  /// A mailbox that needs a new sign-in isn't connected (scenario `outlookSignIn`): Add a
+  /// mailbox's Outlook row says so and where it leads, the sign-in again that the profile's
+  /// connect of Outlook runs; Gmail still adds a mailbox. Setup's chooser (no offer) names
+  /// the state alone.
+  @Test func aMailboxThatNeedsASignInSaysSo() {
+    let broken = MockMailbox.needingSignIn(MockMailbox.outlook)
+    let lane = mailbox([MockMailbox.gmail, broken])
+    let offer = lane.offer
+    #expect(offer == .signInAgain(mailboxID: "outlook-1", provider: .outlook))
+    #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: lane.mailboxes, offer: offer)
+      == "maya.k@example.com needs a new sign-in. Sign in to Outlook again.")
+    #expect(ConnectMailPage.context(.outlook, offer: offer) == .signInAgain(mailboxID: "outlook-1"))
+    #expect(ChooseEmailSheet.subtitle(.gmail, mailboxes: lane.mailboxes, offer: offer)
+      == "maya@example.com is connected. Add another Google account.")
+    #expect(ConnectMailPage.context(.gmail, offer: offer) == .addMailbox)
+    #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: [broken]) == "maya.k@example.com needs a new sign-in.")
+    #expect(ConnectMailPage.context(.outlook, offer: .connect) == .addMailbox)
   }
 
   /// Bank alerts' hero in a word, from the same summary as the Profile card: Working (one

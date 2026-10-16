@@ -33,8 +33,8 @@ enum ChooseEmailTitle: Sendable {
 /// over setup 1)" 1MZG, "Add a mailbox · 2 Choose your email" 1NW2; page 15 §03): one row
 /// per provider, named by the mail app ("Gmail", "Outlook"), the account kinds it covers,
 /// or the address already connected ("maya@example.com is connected. Add another Google
-/// account."). A provider not in `connectable` is never listed. Picking a row moves to the
-/// provider's read-only screen.
+/// account.") or needing a new sign-in. A provider not in `connectable` is never listed.
+/// Picking a row moves to the provider's read-only screen.
 ///
 /// In setup it is a large sheet over the bank step (plan decision 5) that hugs its content:
 /// it sets its own height, grabber, corner radius and grey surface, so present it bare, and
@@ -110,7 +110,9 @@ struct ChooseEmailSheet: View {
       HListCard {
         ForEach(Array(mailbox.connectable.enumerated()), id: \.element) { i, provider in
           if i > 0 { HDivider(inset: .disc68) }
-          ProviderRow(provider: provider, subtitle: Self.subtitle(provider, mailboxes: mailbox.mailboxes)) {
+          // Setup's pick is always a new connect; the profile's follows the offer.
+          ProviderRow(provider: provider, subtitle: Self.subtitle(
+            provider, mailboxes: mailbox.mailboxes, offer: title == .addMailbox ? mailbox.offer : nil)) {
             pick(provider)
           }
             .accessibilityIdentifier("mail.choose.\(provider.rawValue)")
@@ -128,11 +130,23 @@ struct ChooseEmailSheet: View {
 
   /// A connected provider names its address and offers another account of its own (page
   /// 15: "A provider already connected shows its address as the subtitle and stays
-  /// tappable, to add a second mailbox").
-  static func subtitle(_ provider: MailProviderKind, mailboxes: [MailboxSnapshot]) -> String? {
-    guard let connected = mailboxes.first(where: { $0.provider == provider && $0.state != .disconnected })
-    else { return nil }
-    return "\(connected.address) is connected. Add another \(provider.company) account."
+  /// tappable, to add a second mailbox"). A mailbox that needs a new sign-in is not
+  /// connected: while the profile's connect of that provider signs it in again
+  /// (`ConnectMailPage.context`, the offer the bell and the Profile card make), the row
+  /// says so, as the screen it opens does ("Sign in to Outlook again.").
+  static func subtitle(_ provider: MailProviderKind, mailboxes: [MailboxSnapshot], offer: MailOffer? = nil) -> String? {
+    let own = mailboxes.filter { $0.provider == provider }
+    if case .signInAgain(let id) = ConnectMailPage.context(provider, offer: offer),
+       let broken = own.first(where: { $0.id == id }) {
+      return "\(broken.address) needs a new sign-in. Sign in to \(provider.appName) again."
+    }
+    if let connected = own.first(where: { $0.state == .connected || $0.state == .syncing }) {
+      return "\(connected.address) is connected. Add another \(provider.company) account."
+    }
+    if let broken = own.first(where: { $0.state == .needsSignIn }) {
+      return "\(broken.address) needs a new sign-in."
+    }
+    return nil
   }
 
   private func pick(_ provider: MailProviderKind) {
