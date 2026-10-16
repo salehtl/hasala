@@ -224,6 +224,7 @@ public struct NextBillWidgetView: View {
 public struct NetWorthWidgetView: View {
   let model: NetWorthWidget
   let hidden: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   public init(_ model: NetWorthWidget, hidden: Bool) {
     self.model = model
@@ -261,11 +262,15 @@ public struct NetWorthWidgetView: View {
       }
     }
     .smallWidget()
-    // Paper: the 70 pt band from 44 down, across the whole card, behind the words.
+    // Paper: the 70 pt band from 44 down, across the whole card, behind the words. At the
+    // accessibility sizes the title and the figure grow into the band, so the line would run
+    // through the figure; it is decoration, and the change line says the trend in words.
     .smallWidgetChrome(HColor.widgetSurfaceInverse, trailing: 12) {
-      Sparkline(points: model.spark)
-        .frame(height: 70)
-        .padding(.top, 44)
+      if !typeSize.isAccessibilitySize {
+        Sparkline(points: model.spark)
+          .frame(height: 70)
+          .padding(.top, 44)
+      }
     }
     // Its own title, total and change, read together; a fixed label would drop the figures.
     .accessibilityElement(children: .combine)
