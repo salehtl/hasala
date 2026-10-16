@@ -31,11 +31,13 @@
       // New iPhone, signed in, data sealed.
       Screen("unlock.words", scenario: "unlockPasswordOnly"),
       Screen("unlock.options", scenario: "unlockWithPasskey"),
-      Screen("unlock.entry", scenario: "unlockPasswordOnly", drive: step(.unlockEntry)),
-      Screen("unlock.unlocking", scenario: "unlockPasswordOnly", drive: step(.unlockUnlocking)),
-      Screen("unlock.welcomeBack", scenario: "unlockPasswordOnly", drive: step(.unlockWelcomeBack)),
+      Screen("unlock.entry", scenario: "unlockPasswordOnly", prepare: step(.unlockEntry)),
+      Screen("unlock.unlocking", scenario: "unlockPasswordOnly", prepare: step(.unlockUnlocking)),
+      Screen("unlock.welcomeBack", scenario: "unlockPasswordOnly", prepare: step(.unlockWelcomeBack)),
       // Forgot password.
       Screen("forgot.email", scenario: "signInPassword", prepare: { graph in
+        // The address typed on Sign in carries over (Paper GQL).
+        graph.onboarding.signIn.email = MockAccountService.existingEmail
         graph.onboarding.signIn.startReset()
         graph.onboarding.signup.path = [.signIn, .forgotEmail]
       }),
@@ -70,33 +72,37 @@
       // Sign-in & security, inside the profile sheet.
       Screen("security", scenario: "passkeyUser", prepare: profile([.security])),
       Screen("security.passwordOnly", scenario: "passwordOnly", prepare: profile([.security])),
-      Screen("security.removePasskey", scenario: "passkeyUser", drive: step(.alertRemovePasskey),
-             prepare: profile([.security])),
-      Screen("security.removeDevice", scenario: "passkeyUser", drive: step(.alertRemoveDevice),
-             prepare: profile([.security])),
-      Screen("security.signOut", scenario: "passkeyUser", drive: step(.alertSignOut), prepare: profile([.security])),
-      Screen("security.signOutAll", scenario: "passkeyUser", drive: step(.alertSignOutAll),
-             prepare: profile([.security])),
-      Screen("security.viewWords", scenario: "passkeyUser", drive: step(.viewWords), prepare: profile([.security])),
-      Screen("security.lockdown", scenario: "passkeyUser", drive: step(.lockdown), prepare: profile([.security])),
+      Screen("security.removePasskey", scenario: "passkeyUser",
+             prepare: step(.alertRemovePasskey, profile([.security]))),
+      Screen("security.removeDevice", scenario: "passkeyUser", prepare: step(.alertRemoveDevice, profile([.security]))),
+      Screen("security.signOut", scenario: "passkeyUser", prepare: step(.alertSignOut, profile([.security]))),
+      Screen("security.signOutAll", scenario: "passkeyUser", prepare: step(.alertSignOutAll, profile([.security]))),
+      Screen("security.viewWords", scenario: "passkeyUser", prepare: step(.viewWords, profile([.security]))),
+      Screen("security.lockdown", scenario: "passkeyUser", prepare: step(.lockdown, profile([.security]))),
       Screen("security.delete", scenario: "passkeyUser", prepare: profile([.security, .deleteAccount])),
-      Screen("security.changeEmail", scenario: "passkeyUser", drive: step(.changeEmail), prepare: profile([.security])),
-      Screen("security.changeEmailCodes", scenario: "passkeyUser", drive: step(.changeEmailCodes),
-             prepare: profile([.security])),
+      Screen("security.changeEmail", scenario: "passkeyUser", prepare: step(.changeEmail, profile([.security]))),
+      Screen("security.changeEmailCodes", scenario: "passkeyUser",
+             prepare: step(.changeEmailCodes, profile([.security]))),
       // Confirm it's you.
-      Screen("confirm.faceID", scenario: "passkeyUser", drive: step(.confirmFaceID), prepare: profile([.security])),
-      Screen("confirm.password", scenario: "passwordOnly", drive: step(.confirmPassword), prepare: profile([.security])),
-      Screen("confirm.noKey", scenario: "passwordOnly", drive: step(.confirmNoKey), prepare: profile([.security])),
+      Screen("confirm.faceID", scenario: "passkeyUser", prepare: step(.confirmFaceID, profile([.security]))),
+      Screen("confirm.password", scenario: "passwordOnly", prepare: step(.confirmPassword, profile([.security]))),
+      Screen("confirm.noKey", scenario: "passwordOnly", prepare: step(.confirmNoKey, profile([.security]))),
       // Frozen.
       Screen("frozen", scenario: "frozen"),
-      Screen("unfreeze", scenario: "frozen", drive: step(.unfreeze)),
+      Screen("unfreeze", scenario: "frozen", prepare: step(.unfreeze)),
     ]
 
     static func mock(_ graph: MockGraph) -> MockAccountService? { graph.session.account as? MockAccountService }
 
-    /// Leaves `s` for the screen's own view to take.
-    static func step(_ s: SignInLaunchStep) -> @MainActor (MockGraph) async -> Void {
-      { mock($0)?.launchStep = s }
+    /// Leaves `s` for the screen's own view to take, before the window shows (a view that
+    /// appears at launch would otherwise look before the steps run), after `then`.
+    static func step(
+      _ s: SignInLaunchStep, _ then: @escaping @MainActor (MockGraph) -> Void = { _ in }
+    ) -> @MainActor (MockGraph) -> Void {
+      { graph in
+        then(graph)
+        mock(graph)?.launchStep = s
+      }
     }
 
     /// Forgot password as a person goes through it, stopping on `stop`: the address, the
