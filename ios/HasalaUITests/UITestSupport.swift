@@ -226,9 +226,41 @@ extension XCTestCase {
     shot.lifetime = .keepAlways
     add(shot)
   }
+
+  // MARK: Setup's keypad and split, for the setup and the journey tests
+
+  /// Types digits on the app's keypad, key by key.
+  @MainActor
+  func typeOnKeypad(_ app: XCUIApplication, _ digits: String, file: StaticString = #filePath, line: UInt = #line) {
+    for d in digits { tap(app, "keypad.\(d)", file: file, line: line) }
+  }
+
+  /// What setup's salary figure reads ("Amount", "25,000 dirhams").
+  @MainActor
+  func incomeFigure(_ app: XCUIApplication) -> String {
+    let e = el(app, "income.figure")
+    guard e.waitForExistence(timeout: 5) else { return "" }
+    return [e.label, e.value as? String].compactMap { $0 }.joined(separator: " ")
+  }
+
+  /// Drags a split handle sideways by `steps` of 5% (a step is a twentieth of the bar
+  /// between the two 20 pt handle slots, 322 pt on a 402 pt screen), as a finger does.
+  @MainActor
+  func nudge(_ handle: XCUIElement, steps: Int) {
+    let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    let end = start.withOffset(CGVector(dx: 17 * CGFloat(steps), dy: 0))
+    start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+  }
 }
 
 extension XCUIElement {
+  /// Waits until the element's value reads `value` (an adjustable's "55%").
+  func waitForValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
+    let predicate = NSPredicate(format: "value == %@", value)
+    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
+      == .completed
+  }
+
   /// Waits until the element's label reads `label`.
   func waitForLabel(_ label: String, timeout: TimeInterval = 5) -> Bool {
     let predicate = NSPredicate(format: "label == %@", label)

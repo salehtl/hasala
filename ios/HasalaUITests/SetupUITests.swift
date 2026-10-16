@@ -41,7 +41,7 @@ final class SetupUITests: XCTestCase {
     XCTAssertFalse(app.keyboards.firstMatch.exists, "the system keyboard opened for money")
     XCTAssertFalse(el(app, "income.continue").isEnabled, "Continue was on at 0")
     typeOnKeypad(app, "25000")
-    XCTAssertTrue(figure(app).contains("25,000"), "the figure reads \(figure(app))")
+    XCTAssertTrue(incomeFigure(app).contains("25,000"), "the figure reads \(incomeFigure(app))")
     attach(app, "Income")
     try audit(app)
     tap(app, "income.continue")
@@ -116,7 +116,7 @@ final class SetupUITests: XCTestCase {
     // Back to income: the figure, the payday; forward: the split.
     back(app)
     XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: 5))
-    XCTAssertTrue(figure(app).contains("25,000"), "the salary was lost: \(figure(app))")
+    XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th", "the payday was lost")
     attach(app, "Income · after Back")
     tap(app, "income.continue")
@@ -128,7 +128,7 @@ final class SetupUITests: XCTestCase {
     back(app)
     XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: 5))
     tap(app, "scan.setUpPlan")
-    XCTAssertTrue(figure(app).contains("25,000"), "the salary was lost: \(figure(app))")
+    XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th")
     tap(app, "income.continue")
     XCTAssertEqual(el(app, "plan.split.handle.0").value as? String, "55%")
@@ -167,7 +167,7 @@ final class SetupUITests: XCTestCase {
     tap(app, "mail.connect.gmail")
     tap(app, "scan.setUpPlan")
     typeOnKeypad(app, "18000")
-    XCTAssertTrue(figure(app).contains("18,000"))
+    XCTAssertTrue(incomeFigure(app).contains("18,000"))
     tap(app, "income.continue")
     tap(app, "plan.use")
     XCTAssertTrue(app.staticTexts["268 transactions, sorted."].waitForExistence(timeout: 20))
@@ -176,39 +176,5 @@ final class SetupUITests: XCTestCase {
     tap(app, "notifications.notNow")
     XCTAssertTrue(el(app, "done.home").waitForExistence(timeout: 10))
     attach(app, "Done · Reduce Motion")
-  }
-
-  // MARK: Support
-
-  /// Types digits on the app's keypad, key by key.
-  @MainActor
-  func typeOnKeypad(_ app: XCUIApplication, _ digits: String, file: StaticString = #filePath, line: UInt = #line) {
-    for d in digits { tap(app, "keypad.\(d)", file: file, line: line) }
-  }
-
-  /// Drags a split handle sideways by `steps` of 5% (a step is a twentieth of the bar
-  /// between the two 20 pt handle slots, 322 pt on a 402 pt screen), as a finger does.
-  @MainActor
-  func nudge(_ handle: XCUIElement, steps: Int) {
-    let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-    let end = start.withOffset(CGVector(dx: 17 * CGFloat(steps), dy: 0))
-    start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
-  }
-
-  /// What the salary figure reads ("Amount", "25,000 dirhams").
-  @MainActor
-  func figure(_ app: XCUIApplication) -> String {
-    let e = el(app, "income.figure")
-    guard e.waitForExistence(timeout: 5) else { return "" }
-    return [e.label, e.value as? String].compactMap { $0 }.joined(separator: " ")
-  }
-}
-
-extension XCUIElement {
-  /// Waits until the element's value reads `value` (an adjustable's "55%").
-  fileprivate func waitForValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
-    let predicate = NSPredicate(format: "value == %@", value)
-    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
-      == .completed
   }
 }
