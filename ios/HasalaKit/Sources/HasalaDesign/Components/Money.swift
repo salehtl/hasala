@@ -6,7 +6,9 @@ import SwiftUI
 /// One rule set for every figure (spec 01 §6): money out is plain ink with no sign, money in is
 /// "+" and green, money owed is "−" (U+2212); VoiceOver reads "plus AED 25,000" / "minus AED
 /// 4,210.50". Hidden amounts become a fixed count of dots (6 for totals and the hero, 4 for
-/// figures and stats, 3 for bills and rows) and read "Amount hidden".
+/// figures and stats, 3 for bills and rows) and read "Amount hidden". The dots draw at 55% of
+/// a large figure's size with 2 pt tracking, unless the caller states the size Paper draws
+/// them at in its place (`hiddenDots`, `hiddenTracking`: the Home hero's 38 with 3 pt).
 ///
 /// A long figure never cuts or wraps: it scales down to its figure's floor (`minimumScale`),
 /// and the unit scales with it by the same factor so both stay on one baseline. The unit and
@@ -43,6 +45,8 @@ public struct MoneyText: View {
   let style: MoneyStyle
   let hidden: Bool
   let hiddenGlyphs: Int
+  let hiddenDots: CGFloat?
+  let hiddenTracking: CGFloat
   let color: Color
   let unitColor: Color?
   let unitGap: CGFloat
@@ -50,8 +54,8 @@ public struct MoneyText: View {
 
   public init(
     _ money: Money, figure: HFigure, unit: HFigure? = nil, style: MoneyStyle = .exact, hidden: Bool = false,
-    hiddenGlyphs: Int = 4, color: Color = HColor.moneyOut, unitColor: Color? = nil, unitGap: CGFloat = 8,
-    sign: Sign = .none
+    hiddenGlyphs: Int = 4, hiddenDots: CGFloat? = nil, hiddenTracking: CGFloat = 2,
+    color: Color = HColor.moneyOut, unitColor: Color? = nil, unitGap: CGFloat = 8, sign: Sign = .none
   ) {
     self.money = money
     self.figure = figure
@@ -59,6 +63,8 @@ public struct MoneyText: View {
     self.style = style
     self.hidden = hidden
     self.hiddenGlyphs = hiddenGlyphs
+    self.hiddenDots = hiddenDots
+    self.hiddenTracking = hiddenTracking
     self.color = color
     self.unitColor = unitColor
     self.unitGap = unitGap
@@ -77,8 +83,8 @@ public struct MoneyText: View {
   public var body: some View {
     FigureLine(
       unit: unit.map { (shownSign + money.currency, $0, unitColor ?? color) },
-      digits: digits, figure: hidden ? figure.forHiddenGlyphs : figure, color: color, gap: unitGap,
-      hiddenDots: hidden, numericValue: hidden ? nil : Double(money.minor)
+      digits: digits, figure: hidden ? figure.forHiddenGlyphs(hiddenDots) : figure, color: color, gap: unitGap,
+      hiddenTracking: hidden ? hiddenTracking : nil, numericValue: hidden ? nil : Double(money.minor)
     )
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
@@ -88,11 +94,16 @@ public struct MoneyText: View {
 
 extension HFigure {
   /// Bullets at a large figure's full size read far heavier than the digits they replace;
-  /// Paper draws them at about half size on the same baseline, with 2 pt tracking.
-  var forHiddenGlyphs: HFigure {
-    guard size >= 28 else { return self }
+  /// Paper draws them at about half size on the same baseline, or at `dots` points where a
+  /// board states it. The figure's line height stays.
+  func forHiddenGlyphs(_ dots: CGFloat? = nil) -> HFigure {
     var f = self
-    f.size = (size * 0.55).rounded()
+    if let dots {
+      f.size = dots
+    } else {
+      guard size >= 28 else { return self }
+      f.size = (size * 0.55).rounded()
+    }
     f.leading = leading
     return f
   }
@@ -107,7 +118,8 @@ struct FigureLine: View {
   let figure: HFigure
   let color: Color
   let gap: CGFloat
-  let hiddenDots: Bool
+  /// The dots' tracking when the digits are hidden dots; nil for digits.
+  let hiddenTracking: CGFloat?
   /// The value the digits show, for the numeric roll; nil when they show no number.
   let numericValue: Double?
 
@@ -162,7 +174,7 @@ private struct FigureLineBody: View {
     var d = AttributedString(line.digits)
     d.font = Self.font(line.figure, size: figureSize)
     d.foregroundColor = line.color
-    d.tracking = line.hiddenDots ? 2 : line.figure.tracking * scale
+    d.tracking = line.hiddenTracking ?? line.figure.tracking * scale
     out += d
     return out
   }
@@ -198,7 +210,7 @@ public struct AmountFigure: View {
       FigureLine(
         unit: (unit, unitFigure, layout == .docked ? HColor.textSecondary : HColor.textPrimary),
         digits: entry.display, figure: Self.figure, color: HColor.moneyOut, gap: layout == .docked ? 8 : 6,
-        hiddenDots: false, numericValue: nil)
+        hiddenTracking: nil, numericValue: nil)
       if caret {
         RoundedRectangle(cornerRadius: 2)
           .fill(HColor.actionAccent)

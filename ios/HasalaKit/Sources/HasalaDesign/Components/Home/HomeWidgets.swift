@@ -52,18 +52,6 @@ extension View {
   }
 }
 
-public extension HFigure {
-  /// The figure to hand `MoneyText` for a hidden amount, so its dots draw at `dots` points as
-  /// Paper draws them on Home (hero 38, widget heroes 24, net worth 22; page 18 §18.7).
-  /// `MoneyText` draws dots at 55% of a large figure's size; Paper's are bigger.
-  // TODO(Stage I, requests/p5.md): the design system takes Paper's dot sizes; drop this.
-  func hiddenDots(_ dots: CGFloat) -> HFigure {
-    var f = self
-    f.size = dots / 0.55
-    return f
-  }
-}
-
 extension HFigure {
   /// A widget's small heroes: 34/40 bold, −0.5 (Next bill, Project).
   static let widgetSmall = HFigure.large
@@ -202,8 +190,8 @@ public struct NextBillWidgetView: View {
       }
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 2) {
-        MoneyText(model.amount, figure: hidden ? HFigure.widgetSmall.hiddenDots(24) : .widgetSmall, unit: .widgetUnit,
-                  style: .rounded, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary, unitGap: 4)
+        MoneyText(model.amount, figure: .widgetSmall, unit: .widgetUnit, style: .rounded, hidden: hidden,
+                  hiddenGlyphs: 3, hiddenDots: 24, color: HColor.textPrimary, unitGap: 4)
         // Two lines: a 169 pt card (a 390 pt-wide phone) cannot always fit it in one.
         Text(model.caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimitAtDefaultTextSize(2)
       }
@@ -250,9 +238,8 @@ public struct NetWorthWidgetView: View {
       .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 2) {
-        MoneyText(model.total, figure: hidden ? HFigure.widgetNetWorth.hiddenDots(22) : .widgetNetWorth,
-                  unit: .widgetUnit, style: .rounded, hidden: hidden, hiddenGlyphs: 6,
-                  color: HColor.widgetOnInverse, unitColor: HColor.widgetOnInverseSecondary, unitGap: 4)
+        MoneyText(model.total, figure: .widgetNetWorth, unit: .widgetUnit, style: .rounded, hidden: hidden,
+                  hiddenGlyphs: 6, hiddenDots: 22, color: HColor.widgetOnInverse, unitColor: HColor.widgetOnInverseSecondary, unitGap: 4)
         HStack(spacing: 6) {
           Circle().fill(changeColor).frame(width: 7, height: 7)
           Text(model.change.rendered(hidden: hidden)).hType(.footnote.weight(.semibold))
@@ -339,8 +326,8 @@ public struct ProjectWidgetView: View {
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 0) {
           HStack(alignment: .firstTextBaseline, spacing: 5) {
-            MoneyText(model.left, figure: hidden ? HFigure.widgetSmall.hiddenDots(24) : .widgetSmall,
-                      style: .rounded, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
+            MoneyText(model.left, figure: .widgetSmall, style: .rounded, hidden: hidden, hiddenGlyphs: 4,
+                      hiddenDots: 24, color: HColor.textPrimary)
             Text("left").hFigure(.widgetUnit).foregroundStyle(HColor.textPrimary)
           }
           Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)

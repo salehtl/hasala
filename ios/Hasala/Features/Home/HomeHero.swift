@@ -155,8 +155,9 @@ private struct HeroFigureLine: View {
   @ScaledMetric(relativeTo: .largeTitle) private var trim: CGFloat = 4.32
 
   var body: some View {
-    MoneyText(amount, figure: hidden ? HFigure.display.hiddenDots(38) : .display, unit: .displayUnit,
-              hidden: hidden, hiddenGlyphs: 6, color: HColor.textPrimary)
+    // Paper's hidden hero: 38 pt dots, 3 pt apart, on the 58 line (page 18 §18.7).
+    MoneyText(amount, figure: .display, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 38,
+              hiddenTracking: 3, color: HColor.textPrimary)
       .padding(.vertical, hidden ? 0 : -trim)
   }
 }
