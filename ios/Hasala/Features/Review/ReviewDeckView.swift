@@ -33,6 +33,15 @@ struct ReviewDeckView: View {
   @State private var departures: [TxnID: SwipeEdge] = [:]
   /// One light tap per commit (`HHaptic.impactLight`, plan B1.4).
   @State private var tap = 0
+  /// The pick sheet's choice, filed once the sheet has gone.
+  @State private var pendingSort: PendingSort?
+
+  private struct PendingSort {
+    let pick: ReviewPick
+    let category: CategoryID
+    let alwaysUse: Bool
+    let project: ProjectID?
+  }
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -441,17 +450,26 @@ struct ReviewDeckView: View {
     }
   }
 
-  /// The pick sheet's "Sort into Groceries": the sheet goes and the card flies to its side.
+  /// The pick sheet's "Sort into Groceries": the sheet goes, then the card flies to its side
+  /// and the toast comes up (Paper: "files the card, closes the sheet, and advances the
+  /// deck"; "a toast may appear after a sheet closes, never on top of one"). Filing once the
+  /// sheet is down also keeps the fly-out from sharing frames with the sheet's own motion.
   private func sortPicked(_ pick: ReviewPick, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) {
-    let edge = held ?? edge(for: pick.choice)
+    pendingSort = PendingSort(pick: pick, category: category, alwaysUse: alwaysUse, project: project)
     model.picking = nil
-    file(pick.card, toward: edge, as: pick.choice.label) {
-      model.sort(pick.card.id, into: category, alwaysUse: alwaysUse, project: project)
-    }
   }
 
-  /// The sheet went without a sort (close, swipe down, the scrim): the card springs back.
+  /// The sheet has gone: file what it chose, or, closed without a sort (close, swipe down,
+  /// the scrim), spring the card back.
   private func pickClosed() {
+    if let p = pendingSort {
+      pendingSort = nil
+      let edge = held ?? edge(for: p.pick.choice)
+      file(p.pick.card, toward: edge, as: p.pick.choice.label) {
+        model.sort(p.pick.card.id, into: p.category, alwaysUse: p.alwaysUse, project: p.project)
+      }
+      return
+    }
     guard held != nil else { return }
     withAnimation(motion.animation(.cardReturn)) {
       drag = .zero

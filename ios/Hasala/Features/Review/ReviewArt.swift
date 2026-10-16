@@ -23,11 +23,12 @@ struct PathGlyph: View {
   }
 
   var body: some View {
+    // Parsed once per body, not on every draw of the canvas.
+    let parsed = paths.compactMap { try? SVGPath(parsing: $0) }
     Canvas { context, canvasSize in
       let box = CGRect(origin: .zero, size: canvasSize)
       let unit = min(canvasSize.width, canvasSize.height) / 24
-      for d in paths {
-        guard let svg = try? SVGPath(parsing: d) else { continue }
+      for svg in parsed {
         context.stroke(svg.path(in: box), with: .color(color),
                        style: StrokeStyle(lineWidth: stroke * unit, lineCap: .round, lineJoin: .round))
       }
