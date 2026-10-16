@@ -14,9 +14,16 @@
       // Activity · Choose a category (Lulu) (5PR-0): a to-review row's sheet, then Category.
       Screen("activity.category", scenario: "maya",
              prepare: shell(.activity, sheet: .transaction("lulu"), transaction: [.category])),
-      // Activity · Split (Carrefour) (6N5-0).
-      Screen("activity.split", scenario: "maya",
-             prepare: shell(.activity, sheet: .transaction("carrefour"), transaction: [.split])),
+      // Activity · Split (Carrefour) (6N5-0): the board's split, saved earlier (297.00 in
+      // Groceries, 45.15 in Shopping with its note), opened again from the sheet.
+      Screen("activity.split", scenario: "maya", prepare: { graph in
+        graph.app.perform(.split("carrefour", [
+          SplitLine(id: 1, categoryID: "groceries", amount: .aed(297_00)),
+          SplitLine(id: 2, categoryID: "shopping", amount: .aed(45_15), note: "Kitchen towels and batteries"),
+        ]))
+        graph.app.dismissToast()
+        shell(.activity, sheet: .transaction("carrefour"), transaction: [.split])(graph)
+      }),
       // Activity · Filtered (Dining) · October (7LT-0): Search's Dining row opens it.
       Screen("activity.filtered", scenario: "maya", prepare: { graph in
         ActivityRequests.shared.show(TxnFilter(category: "dining"), in: graph.app)
@@ -36,9 +43,9 @@
         }
       }),
       // Review · All caught up (4MY-0): every card sorted in one session, in the board's order,
-      // three of them teaching a rule.
+      // three of them teaching a rule; the last sort's toast stays, as the board draws it.
       Screen("review.done", scenario: "maya", prepare: { graph in
-        startDeck(graph, at: "lulu") { deck in
+        startDeck(graph, at: "lulu", keepsToast: true) { deck in
           deck.sort("lulu", into: "groceries", alwaysUse: true, project: nil)
           deck.sort("dubai-taxi", into: "transport", alwaysUse: true, project: nil)
           deck.useSuggestion("apple")
@@ -59,12 +66,18 @@
     ]
 
     /// The Review tab, then the deck opened at `card`, then `steps` on the deck's session.
+    /// The boards draw no toast over the deck, so the last step's toast goes unless asked to
+    /// stay.
     private static func startDeck(
-      _ graph: MockGraph, at card: TxnID, _ steps: @escaping (ReviewViewModel) -> Void
+      _ graph: MockGraph, at card: TxnID, keepsToast: Bool = false, _ steps: @escaping (ReviewViewModel) -> Void
     ) {
       shell(.review, cover: .review)(graph)
       ReviewEntry.request(graph.app, at: card)
-      ReviewEntry.onNextSession(of: graph.app, steps)
+      let app = graph.app
+      ReviewEntry.onNextSession(of: app) { deck in
+        steps(deck)
+        if !keepsToast { app.dismissToast() }
+      }
     }
   }
 #endif
