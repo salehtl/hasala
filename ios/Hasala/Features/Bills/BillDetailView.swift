@@ -165,12 +165,14 @@ struct BillDetailView: View {
         .padding(.bottom, 8)
         .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
       }
+      // Paper's footnote is 56 in from the actions' 20 (76 from the screen's edge), so its
+      // two lines break where the board's do.
       Text(d.footnote)
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, typeSize.isAccessibilitySize ? 0 : 36)
+        .padding(.horizontal, typeSize.isAccessibilitySize ? 0 : 56)
     }
   }
 }
