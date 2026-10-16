@@ -561,25 +561,49 @@ private struct FlyingCard: View {
   let hidden: Bool
   let motion: MotionPolicy
   let landed: () -> Void
+  /// Travelled and turned.
   @State private var gone = false
+  /// Faded out.
+  @State private var faded = false
 
   var body: some View {
-    let travels = !motion.reduceMotion
     ReviewCardView(card: flight.card, hidden: hidden, lean: nil, leanEdge: nil, strength: 0, use: {})
       .scaleEffect(gone && flight.edge == nil && travels ? HMotion.nextCardScale : 1)
       .offset(gone && travels ? offset : flight.from)
       .rotationEffect(.degrees(gone && travels ? angle : flight.tilt))
-      .opacity(gone ? 0 : 1)
+      .opacity(faded ? 0 : 1)
       .allowsHitTesting(false)
       .accessibilityHidden(true)
-      .onAppear {
-        withAnimation(motion.animation(flight.edge == nil ? .fade : .cardCommit)) {
-          gone = true
-        } completion: {
-          landed()
-        }
-      }
+      .onAppear(perform: fly)
   }
+
+  /// The card always leaves from rest (held toward its pill, or still for "Use"), so the
+  /// fly-out cannot ride ease-out-soft: that curve covers 60% of the way in the first two
+  /// frames and the card was gone before it was seen. It travels and turns at an even pace
+  /// over the 200 ms instead, readable for about eight frames before it clears the screen,
+  /// and fades on ease-in-out, so it stays solid while it starts and thins as it goes. A
+  /// skip, and every card with Reduce Motion, only fades, in place.
+  private func fly() {
+    guard flight.edge != nil, travels, let curve = motion.curve(.cardCommit) else {
+      withAnimation(motion.animation(flight.edge == nil ? .fade : .cardCommit)) {
+        gone = true
+        faded = true
+      } completion: {
+        landed()
+      }
+      return
+    }
+    let length = curve.nominalDuration
+    withAnimation(HMotion.Curve.linear(duration: length).animation) { gone = true }
+    withAnimation(HMotion.easeInOut(length)) {
+      faded = true
+    } completion: {
+      landed()
+    }
+  }
+
+  /// With Reduce Motion nothing travels, turns or shrinks.
+  private var travels: Bool { !motion.reduceMotion }
 
   private var offset: CGSize {
     guard let edge = flight.edge else { return flight.from }
