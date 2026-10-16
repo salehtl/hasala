@@ -134,16 +134,19 @@ struct BillDetailView: View {
           if d.isLate {
             Button("I paid it — find the payment") { model.markPaid(d.id) }
               .buttonStyle(.pill(.primary, fill: true))
+              .pillHeight()
               .accessibilityIdentifier("bills.detail.paid")
             if unfinished {
               Button("Remind me tomorrow") { model.remind(d.id) }
                 .buttonStyle(.pill(.secondary, fill: true))
+                .pillHeight()
                 .accessibilityIdentifier("bills.detail.remind")
             }
           }
           if d.isPriceChange {
             Button("Accept new amount") { model.acceptAmount(d.id) }
               .buttonStyle(.pill(.primary, fill: true))
+              .pillHeight()
               .accessibilityIdentifier("bills.detail.accept")
           }
           Button { confirmStop = true } label: {

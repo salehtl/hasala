@@ -90,7 +90,8 @@ struct BillsView: View {
       if unfinished {
         ToolbarItem(placement: .topBarTrailing) {
           Button { app.say("Adding a bill comes in a later build", icon: .add) } label: {
-            Image(systemName: "plus")
+            // Paper's glass Add: the plus at 22, stroke 2.3, in the glass ink.
+            HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
           }
           .accessibilityLabel("Add a bill")
         }
@@ -194,10 +195,12 @@ struct BillsView: View {
                   HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.textLink)
                 }
                 .foregroundStyle(HColor.textLink)
-                .frame(minHeight: 24)
-                .contentShape(Rectangle().inset(by: -10))
+                .frame(minHeight: HSpacing.targetMinimum)
+                .contentShape(Rectangle())
               }
               .buttonStyle(.plain)
+              // Paper's link is 24 tall; the target is 44, 10 over each edge.
+              .padding(.vertical, -10)
             }
           }
         }

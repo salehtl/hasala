@@ -40,6 +40,7 @@ struct AccountsView: View {
         // TODO(spec 13 B3): "Add an account" (not drawn past the button).
         Button("Add an account") { app.say("Adding an account comes in a later build", icon: .add) }
           .buttonStyle(.pill(.onGrouped, fill: true, leadingIcon: .add))
+          .pillHeight()
           .accessibilityIdentifier("accounts.add")
           .padding(.horizontal, HSpacing.insetPage)
       }
@@ -48,7 +49,8 @@ struct AccountsView: View {
       if unfinished {
         ToolbarItem(placement: .topBarTrailing) {
           Button { app.say("Adding an account comes in a later build", icon: .add) } label: {
-            Image(systemName: "plus")
+            // Paper's glass Add: the plus at 22, stroke 2.3, in the glass ink.
+            HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
           }
           .accessibilityLabel("Add an account")
         }
@@ -67,14 +69,20 @@ struct AccountsView: View {
       if let change = snap.monthChange {
         let up = !change.isNegative
         let color = up ? HColor.moneyIn : HColor.moneyOut
+        let figure = MoneyText(change, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3, color: color,
+                               sign: up ? .income : .debt)
         HStack(spacing: 6) {
           PathGlyph(d: up ? "M12 19V5M5.5 11.5 12 5l6.5 6.5" : "M12 5v14M5.5 12.5 12 19l6.5-6.5", color: color)
-          MoneyText(change, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3, color: color,
-                    sign: up ? .income : .debt)
+          figure
           Text("this month").hType(.subheadline).foregroundStyle(color)
         }
         .padding(.top, 4)
-        .accessibilityElement(children: .combine)
+        // One line of text to VoiceOver, so the audit doesn't take it for a small control.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.hidden
+          ? "Amount hidden this month"
+          : "\(up ? "plus" : "minus") \(change.currency) \(MoneyFormat.string(change.minor)) this month")
+        .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("accounts.change")
       }
     }
@@ -156,32 +164,52 @@ private struct AccountRow: View {
     .accessibilityLabel(spoken)
   }
 
-  @ViewBuilder private var plate: some View {
-    switch row.plate {
-    case .initials(let initials):
-      // Paper sets the initials in Inter 800, 17/22 for a single letter ("S").
-      if initials.count == 1 {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .fill(row.hue.perceptualGradient)
-          .frame(width: 40, height: 40)
-          .overlay { Text(initials).font(.custom(HWeight.bold.interFace, size: 17)).foregroundStyle(row.hue.ink) }
-          .accessibilityHidden(true)
-      } else {
-        BankPlate(initials: initials, hue: row.hue)
+  private var plate: some View {
+    RoundedRectangle(cornerRadius: 12, style: .continuous)
+      .fill(row.hue.perceptualGradient)
+      .frame(width: 40, height: 40)
+      .overlay {
+        switch row.plate {
+        case .initials(let initials): PlateInitials(initials: initials, color: row.hue.ink)
+        case .cash: HIconView(.cash, size: 22, color: row.hue.ink)
+        }
       }
-    case .cash:
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(row.hue.perceptualGradient)
-        .frame(width: 40, height: 40)
-        .overlay { HIconView(.cash, size: 22, color: row.hue.ink) }
-        .accessibilityHidden(true)
-    }
+      .accessibilityHidden(true)
   }
 
   private var spoken: String {
     let sign = row.balance.isNegative ? "minus " : ""
     let balance = hidden ? "Amount hidden" : "\(sign)\(row.balance.currency) \(MoneyFormat.string(row.balance.minor))"
     return [row.name, balance, row.detail].filter { !$0.isEmpty }.joined(separator: ", ")
+  }
+}
+
+/// A bank's initials on its 40 plate, drawn like a logo (1W6-0 · Account plate): Inter bold
+/// (Paper's 800; the app bundles 700) at 17 for one letter ("S"), 12 for two or three
+/// ("DIB"), 11 for four ("ENBD"), tracked 0.02 em, in the hue's ink. The plate keeps its size
+/// at every text size, as the glyph plates do, and a mark too wide for it ("ENBD" is, by
+/// Paper's own drift note) is drawn a little smaller instead of wrapping. Drawn, not set as
+/// text, so it is not read: the row says the account's name.
+private struct PlateInitials: View {
+  let initials: String
+  let color: Color
+
+  var body: some View {
+    Canvas { context, size in
+      let points: CGFloat = initials.count == 1 ? 17 : initials.count > 3 ? 11 : 12
+      let text = context.resolve(
+        Text(initials)
+          .font(.custom(HWeight.bold.interFace, fixedSize: points))
+          .tracking(points * 0.02)
+          .foregroundStyle(color))
+      let room = size.width - 6
+      let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: size.height))
+      let scale = measured.width > room ? room / measured.width : 1
+      context.translateBy(x: size.width / 2, y: size.height / 2)
+      context.scaleBy(x: scale, y: scale)
+      context.draw(text, at: .zero, anchor: .center)
+    }
+    .frame(width: 40, height: 40)
   }
 }
 
@@ -195,7 +223,8 @@ private struct NetWorthChartCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("Last 12 months").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-      VStack(spacing: -6) {
+      // The card's 14 gap, less Paper's −6 margin on the initials row.
+      VStack(spacing: 8) {
         Canvas { context, size in draw(&context, size) }
           .frame(height: 120)
         HStack(spacing: 0) {

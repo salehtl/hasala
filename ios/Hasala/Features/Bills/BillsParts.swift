@@ -110,7 +110,8 @@ struct BillCard<Extra: View>: View {
   }
 
   private var poster: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    // Paper's poster spreads its two rows apart (space-between): 6 at the drawn 104.
+    VStack(alignment: .leading, spacing: 0) {
       ReflowingRow(spacing: 6) {
         HStack(spacing: 8) {
           GlyphPlate(icon: icon, hue: hue, size: 32)
@@ -120,7 +121,7 @@ struct BillCard<Extra: View>: View {
       } trailing: {
         StatusPillView(pill)
       }
-      Spacer(minLength: 0)
+      Spacer(minLength: 6)
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         MoneyText(amount, figure: .large, unit: .unit, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary,
                   unitGap: 5)
@@ -143,11 +144,13 @@ struct BillCard<Extra: View>: View {
     layout {
       Button(primary.title, action: primary.run)
         .buttonStyle(.pill(.primary, size: .medium, fill: true))
+        .pillHeight()
         .layoutPriority(1)
         .accessibilityIdentifier(primary.id)
       if let secondary {
         Button(secondary.title, action: secondary.run)
           .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+          .pillHeight()
           .frame(width: typeSize.isAccessibilitySize ? nil : 128)
           .accessibilityIdentifier(secondary.id)
       }
@@ -276,4 +279,11 @@ struct PathGlyph: View {
     .frame(width: size, height: size)
     .accessibilityHidden(true)
   }
+}
+
+extension View {
+  /// A pill takes the height its label needs at every text size, never a little less than
+  /// it (the accessibility audit's "Text clipped" at AX3 on a two-line label, as P3's docks
+  /// found).
+  func pillHeight() -> some View { fixedSize(horizontal: false, vertical: true) }
 }
