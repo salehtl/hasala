@@ -85,6 +85,7 @@ struct ReviewDoneView: View {
     let counted = sorted.reduce(Int64(0)) { $0 + $1.counted }
     return VStack(alignment: .leading, spacing: 0) {
       header(counted: .aed(counted))
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 2)
         .padding(.bottom, 12)
         .overlay(alignment: .bottom) { HColor.borderSubtle.frame(height: 1) }

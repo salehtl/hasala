@@ -54,9 +54,9 @@ struct PathGlyph: View {
 }
 
 /// The grey disc with a merchant's first letter, for a merchant not sorted yet: the review
-/// card's 56, the To sort list's 32 (letter 14/18 600) and the mini card's 20. The letter is a
-/// drawing at the disc's own size, so it never outgrows the disc at large text sizes; the row
-/// or card around it says the merchant's name.
+/// card's 56 (letter 24), the To sort list's 32 (14/18 600) and the mini card's 20 (11). The
+/// letter follows Dynamic Type and shrinks to stay inside the disc, which keeps its size; the
+/// row or card around it says the merchant's name.
 struct MerchantMonogram: View {
   let letter: String
   let size: CGFloat
@@ -68,8 +68,13 @@ struct MerchantMonogram: View {
       .frame(width: size, height: size)
       .overlay {
         Text(verbatim: letter)
-          .font(.custom(HWeight.semibold.interFace, fixedSize: size >= 56 ? 24 : (size >= 32 ? 14 : 11)))
+          .font(.custom(HWeight.semibold.interFace, size: size >= 56 ? 24 : (size >= 32 ? 14 : 11),
+                        relativeTo: size >= 56 ? .title2 : .subheadline))
           .foregroundStyle(HColor.textPrimary)
+          .lineLimit(1)
+          .minimumScaleFactor(0.3)
+          .padding(size * 0.12)
+          .frame(width: size, height: size)
       }
       .accessibilityHidden(true)
   }

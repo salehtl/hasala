@@ -43,13 +43,16 @@ struct ReviewDeckView: View {
     MotionPolicy(reduceMotion: policy.reduceMotion || systemReduceMotion, settled: policy.settled)
   }
 
+  /// Cards remain, or the last one is still flying out.
+  private var showsDeck: Bool { !model.cards.isEmpty || !flights.isEmpty }
+
   var body: some View {
     let top = model.cards.first
     VStack(spacing: 0) {
-      header(done: top == nil && flights.isEmpty)
+      header(done: !showsDeck)
       progress
       Group {
-        if top != nil || !flights.isEmpty {
+        if showsDeck {
           deck(top)
             .transition(.opacity)
         } else {
@@ -58,13 +61,14 @@ struct ReviewDeckView: View {
         }
       }
       .frame(maxHeight: .infinity)
-      .animation(motion.animation(.stateSwap), value: top == nil && flights.isEmpty)
+      .animation(motion.animation(.stateSwap), value: showsDeck)
     }
     .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
     .background(HColor.surfaceSecondary)
-    // Above the footer while cards remain, so the toast never covers Skip.
+    // On the bottom safe area for All caught up and the scrolling deck at the largest
+    // text sizes; otherwise the deck carries it just above its footer (`deck`).
     .overlay(alignment: .bottom) {
-      ToastHost(app: app, placement: .bottom).padding(.bottom, top == nil ? 0 : HSpacing.targetMinimum + 8)
+      if !showsDeck || typeSize.isAccessibilitySize { ToastHost(app: app, placement: .bottom) }
     }
     .hHaptic(.impactLight, trigger: tap)
     .sheet(item: pickBinding, onDismiss: pickClosed) { pick in
@@ -192,6 +196,13 @@ struct ReviewDeckView: View {
         Spacer(minLength: 12)
         footer(top)
           .padding(.bottom, 2)
+          // The toast after a sort sits just above Skip, in the room under the Save pill,
+          // so neither Skip nor the pills are covered while its Undo waits.
+          .overlay(alignment: .top) {
+            ToastHost(app: app, placement: .bottom)
+              .padding(.horizontal, -HSpacing.insetPage)
+              .alignmentGuide(.top) { $0[.bottom] + 4 }
+          }
       }
     }
   }
@@ -259,9 +270,24 @@ struct ReviewDeckView: View {
       }
     )
     .offset(drag)
-    .rotationEffect(.degrees(motion.isStill ? 0 : SwipePhysics.tilt(dx: drag.width, atCommit: HMotion.commitTilt)))
+    .rotationEffect(.degrees(tilt))
     .gesture(dragGesture(card), including: typeSize.isAccessibilitySize || held != nil ? .subviews : .all)
+    // A container, so the identifier names the card without replacing its elements' own
+    // (`review.merchant`, `review.use`).
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("review.card")
+  }
+
+  /// The live card's angle: with the horizontal drag, 3° at the commit point and no more;
+  /// held toward Need or Want while its pick sheet is up, the full 3° (Paper "Pick a need").
+  private var tilt: Double {
+    if motion.isStill { return 0 }
+    switch held {
+    case .right: return HMotion.commitTilt
+    case .left: return -HMotion.commitTilt
+    case .up, .down: return 0
+    case nil: return SwipePhysics.tilt(dx: drag.width, atCommit: HMotion.commitTilt)
+    }
   }
 
   /// Where the card leans: the finger's direction, or the side it is held toward.
@@ -379,7 +405,8 @@ struct ReviewDeckView: View {
         // A flick commits without crossing: it still gets its tap.
         if crossed != edge { tap += 1 }
         crossed = nil
-        held = edge
+        // The card settles on its side, leaning, while the sheet asks which category.
+        holdToward(edge, animated: true)
         model.pick(card.id, choice(for: edge))
       }
   }
@@ -395,7 +422,6 @@ struct ReviewDeckView: View {
   }
 
   private func holdToward(_ edge: SwipeEdge, animated: Bool) {
-    held = edge
     let lean: CGFloat = 40
     let pose: CGSize = switch edge {
     case .left: CGSize(width: -lean, height: 0)
@@ -403,7 +429,10 @@ struct ReviewDeckView: View {
     case .up: CGSize(width: 0, height: -lean)
     case .down: CGSize(width: 0, height: lean)
     }
-    withAnimation(animated ? motion.animation(.cardReturn) : nil) { drag = pose }
+    withAnimation(animated ? motion.animation(.cardReturn) : nil) {
+      held = edge
+      drag = pose
+    }
   }
 
   /// The pick sheet's "Sort into Groceries": the sheet goes and the card flies to its side.
@@ -444,7 +473,7 @@ struct ReviewDeckView: View {
   /// with Reduce Motion) while the edit lands and the next card rises.
   private func file(_ card: ReviewCardModel, toward edge: SwipeEdge?, as filedAs: String?, _ edit: () -> Bool) {
     let from = drag
-    let tilt = motion.isStill ? 0 : SwipePhysics.tilt(dx: drag.width, atCommit: HMotion.commitTilt)
+    let tilt = tilt
     var done = false
     withAnimation(motion.animation(.cardNext)) {
       done = edit()

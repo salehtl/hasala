@@ -16,7 +16,8 @@ struct ReviewPickSheet: View {
   @State private var selected: CategoryID?
   @State private var project: ProjectID?
   @State private var alwaysUse = true
-  @State private var contentHeight: CGFloat = 640
+  /// The content's measured height, which the one detent fits; an estimate until then.
+  @State private var contentHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -43,7 +44,10 @@ struct ReviewPickSheet: View {
       .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
     }
     .scrollBounceBehavior(.basedOnSize)
-    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight + 20)])
+    // Paper: "Sort into" sits 28 above the sheet's own bottom edge, which floats over the
+    // home indicator; the detent is exactly the content.
+    .ignoresSafeArea(.container, edges: .bottom)
+    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? estimatedHeight)])
     .presentationDragIndicator(.visible)
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
@@ -52,6 +56,15 @@ struct ReviewPickSheet: View {
       // A transfer is not a merchant's habit: no rule unless the person asks for one.
       alwaysUse = pick.choice != .transfer
     }
+  }
+
+  /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
+  /// 56 with 1 dividers, the project block 66, the rule row 44, the button 54, gaps 20, and
+  /// the 8 / 28 insets), so it opens at its size instead of growing into it.
+  private var estimatedHeight: CGFloat {
+    let n = CGFloat(options.count)
+    let projects: CGFloat = model.projects.isEmpty || pick.choice == .transfer ? 0 : 66 + 20
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 20 + 54 + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
@@ -109,7 +122,7 @@ struct ReviewPickSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Project").hType(.overline).foregroundStyle(HColor.textSecondary)
         .accessibilityAddTraits(.isHeader)
-      FlowLayout(spacing: 8) {
+      ChipFlow(spacing: 8) {
         ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
           .accessibilityIdentifier("pick.project.none")
         ForEach(model.projects, id: \.id) { p in

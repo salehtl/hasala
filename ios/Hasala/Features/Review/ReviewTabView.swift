@@ -12,6 +12,7 @@ import SwiftUI
 /// which exists yet (plan D.2).
 struct ReviewTabView: View {
   @Bindable var app: AppModel
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   init(app: AppModel) {
     self.app = app
@@ -72,10 +73,11 @@ struct ReviewTabView: View {
         Spacer(minLength: 0)
         CardStackArt()
       }
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 10) { startButtons(suggestions) }
-        VStack(spacing: 10) { startButtons(suggestions) }
-      }
+      // Side by side, stacked at the accessibility sizes: one layout, so the pills stay the
+      // same views as the text grows.
+      let layout = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+      layout { startButtons(suggestions) }
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,8 +104,13 @@ struct ReviewTabView: View {
       .accessibilityIdentifier("review.tab.start")
     if BuildSurface.showsUnfinished, suggestions > 0 {
       // TODO(plan D.2 "Use N suggestions"): one gesture would author several edits.
-      Button("Use \(suggestions) suggestion\(suggestions == 1 ? "" : "s")") {
+      Button {
         app.say("Using every suggestion at once comes in a later build", icon: .info)
+      } label: {
+        // Paper sets this one smaller (15/18) so the pair fits side by side: on one line it
+        // shrinks to fit; at the larger sizes it wraps instead, as every pill does.
+        Text("Use \(suggestions) suggestion\(suggestions == 1 ? "" : "s")")
+          .minimumScaleFactor(0.8)
       }
       .buttonStyle(.pill(.secondary, fill: true))
       .accessibilityIdentifier("review.tab.useSuggestions")
