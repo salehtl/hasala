@@ -2,8 +2,10 @@ import XCTest
 
 /// Activity, the transaction sheet and Review on the Release surface.
 final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
-  /// Activity has no "+"; a row opens its sheet; every Review control sorts, skips or
-  /// closes.
+  /// Activity has no "+"; a row opens its sheet, which offers no bank email to view yet; the
+  /// Review tab is there with its Start and its rows, and every deck control sorts, skips or
+  /// closes ("Use N suggestions", the unreadable-email card and "View bank email" wait for
+  /// the features behind them).
   @MainActor
   func testActivityAndReviewShowOnlyWhatWorks() throws {
     let app = launchRelease()
@@ -23,19 +25,38 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Transaction")
     // A row read from email shows where it came from, not the sample note.
     XCTAssertTrue(el(app, "txn.rawMerchant").exists)
-    assertAbsent(app, ["txn.sample"], "Transaction")
+    assertAbsent(app, ["txn.sample", "txn.viewEmail"], "Transaction")
+    // Its editors push inside the sheet.
+    el(app, "txn.category").tap()
+    XCTAssertTrue(el(app, "picker.save").waitForExistence(timeout: 5))
+    assertNoPlaceholders(app, "Category")
+    app.navigationBars["Category"].buttons.firstMatch.tap()
+    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: 5))
     el(app, "txn.close").tap()
 
+    XCTAssertTrue(tabBar.buttons["Review"].exists)
     tabBar.buttons["Review"].tap()
     XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: 5))
     attach(app, "Release · Review tab")
     assertNoPlaceholders(app, "Review tab")
     assertNoOutlook(app, "Review tab")
+    assertPresent(app, ["review.tab.count", "review.tab.row.lulu"], "Review tab")
+    assertAbsent(app, ["review.tab.useSuggestions", "review.tab.unreadable"], "Review tab")
     try audit(app)
     el(app, "review.tab.start").tap()
     XCTAssertTrue(el(app, "review.position").waitForExistence(timeout: 5))
     attach(app, "Release · Review")
     assertNoPlaceholders(app, "Review")
+    assertPresent(app, ["review.skip", "review.pill.need", "review.pill.want", "review.pill.save",
+                        "review.pill.transfer"], "Review")
+    assertAbsent(app, ["review.viewEmail"], "Review")
+    // The More menu offers only what works.
+    el(app, "review.more").tap()
+    XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: 5))
+    assertAbsent(app, ["View bank email"], "Review · More")
+    assertNoPlaceholders(app, "Review · More")
+    // Dismiss the menu: tap outside it, on the header.
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
     el(app, "review.close").tap()
   }
 
