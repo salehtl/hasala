@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// The four bundled Inter weights.
+/// The four Inter weights the type scale uses.
 public enum HWeight: Sendable, Hashable, CaseIterable {
   case regular, medium, semibold, bold
 
-  /// PostScript name of the bundled face.
+  /// PostScript name of the bundled variable font's named instance at this weight
+  /// (`HasalaFonts`); its optical size follows the point size it is set at.
   public var interFace: String {
     switch self {
-    case .regular: "Inter-Regular"
-    case .medium: "Inter-Medium"
-    case .semibold: "Inter-SemiBold"
-    case .bold: "Inter-Bold"
+    case .regular: "InterVariable"
+    case .medium: "InterVariable-Medium"
+    case .semibold: "InterVariable-SemiBold"
+    case .bold: "InterVariable-Bold"
     }
   }
 

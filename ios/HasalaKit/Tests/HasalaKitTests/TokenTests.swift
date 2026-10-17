@@ -1,3 +1,4 @@
+import CoreText
 import Foundation
 import HasalaModels
 import SwiftUI
@@ -185,5 +186,32 @@ struct TokenTests {
   @Test func interFacesRegister() {
     #expect(HasalaFonts.register())
     #expect(HasalaFonts.allFacesAvailable)
+  }
+
+  /// Paper sets Inter with automatic optical sizing, so a title takes the display cut.
+  /// Story 4's headline fits its 354 pt column at the large title (3PC-0, about 353 pt);
+  /// Inter's text cut (optical size 14) sets it at about 376 pt and wraps it. Body text
+  /// stays within a percent and a half of the text cut.
+  @Test func titlesTakeTheDisplayCut() {
+    #expect(HasalaFonts.register())
+    func width(_ text: String, _ type: HType, opticalSize: Double? = nil) -> Double {
+      var font = CTFontCreateWithName(type.weight.interFace as CFString, type.size, nil)
+      if let opticalSize {
+        let opsz = 0x6F70_737A  // the 'opsz' axis tag
+        font = CTFontCreateCopyWithAttributes(font, type.size, nil, CTFontDescriptorCreateWithAttributes(
+          [kCTFontVariationAttribute: [opsz: opticalSize]] as CFDictionary))
+      }
+      let attributes = [kCTFontAttributeName as NSAttributedString.Key: font,
+                        kCTKernAttributeName as NSAttributedString.Key: type.resolvedTracking] as [NSAttributedString.Key: Any]
+      let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
+      return CTLineGetTypographicBounds(line, nil, nil, nil)
+    }
+    let story = "Sort a week in a minute."
+    #expect(width(story, .largeTitle) < 354)
+    #expect(width(story, .largeTitle, opticalSize: 14) > 370)
+    #expect(width("How do you want to sign in?", .title1) < 354)
+    let body = "Swipe new transactions into Needs, Wants or Savings."
+    let ratio = width(body, .body) / width(body, .body, opticalSize: 14)
+    #expect(ratio > 0.985 && ratio < 1)
   }
 }

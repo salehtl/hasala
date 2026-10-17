@@ -187,11 +187,7 @@ struct AccountReadyView: View {
     CelebrationScreen(
       badge: .check,
       title: "Your account is ready.",
-      subtitle: subtitle,
-      // Paper's 76 / 36, less the line the title takes when it wraps (the bundled Inter
-      // sets "Your account is ready." wider than Paper does), so the summary ends above the
-      // hand-off and the dock's scroll edge doesn't show over a screen that fits.
-      spacing: (40, 24)
+      subtitle: subtitle
     ) {
       VStack(spacing: 16) {
         summary
