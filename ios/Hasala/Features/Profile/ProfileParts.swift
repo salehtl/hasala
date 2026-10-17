@@ -194,8 +194,10 @@ struct MoneyThingRow: View {
 
 /// A settings row (page 15 · one-line row): a 22 line icon at 1.8, the title, then a value
 /// in words ("AED", "Important only"), a status with its dot ("● Protected") or nothing, and
-/// a chevron when a tap goes somewhere. Min 52, 14 from icon to text. At the accessibility
-/// sizes the value goes under the title.
+/// a chevron when a tap goes somewhere. Min 52, 14 from icon to text. The title is the row's
+/// name, so it is never cut: when it and a longer value can't share the line ("Sign-in &
+/// security" beside "● Password only"), the value goes under the title (the two-line row,
+/// min 64), as it does at the accessibility sizes.
 struct SettingRow: View {
   enum Trailing {
     case none
@@ -227,15 +229,29 @@ struct SettingRow: View {
         }
         .padding(.vertical, 14)
       } else {
-        HStack(spacing: 14) {
-          iconView
-          Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-            .singleLineAtDefaultTextSize()
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 14) {
+            iconView
+            Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+              .singleLineAtDefaultTextSize()
+              .frame(maxWidth: .infinity, alignment: .leading)
+            trailingView
+            if chevron { chevronView }
+          }
+          .frame(minHeight: HSpacing.listRowMinHeight)
+          HStack(spacing: 14) {
+            iconView
+            VStack(alignment: .leading, spacing: 2) {
+              Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+                .fixedSize(horizontal: false, vertical: true)
+              trailingView
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
-          trailingView
-          if chevron { chevronView }
+            if chevron { chevronView }
+          }
+          .padding(.vertical, 10)
+          .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
         }
-        .frame(minHeight: HSpacing.listRowMinHeight)
       }
     }
     .padding(.horizontal, HSpacing.listRowInsetInline)

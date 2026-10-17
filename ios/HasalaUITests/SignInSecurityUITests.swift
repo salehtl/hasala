@@ -160,6 +160,11 @@ final class SignInSecurityUITests: XCTestCase {
     let app = launch(scenario: "passwordOnly")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
     app.buttons["header.profile"].firstMatch.tap()
+    // "Sign-in & security" and "● Password only" can't share a line at the default size:
+    // the status goes under the title (the two-line row) rather than cutting the title.
+    let row = el(app, "profile.security")
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    XCTAssertGreaterThanOrEqual(row.frame.height, 64, "the row title is cut beside its status")
     tap(app, "profile.security")
     XCTAssertTrue(app.staticTexts["Password only"].waitForExistence(timeout: 10))
     // Password-only accounts never see "View your 12 words" (S-41).
