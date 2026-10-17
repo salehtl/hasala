@@ -158,6 +158,34 @@ let day: Int64 = 86_400_000
     #expect(done.ops == 4 && done.review == 0 && done.phase == .active)
     #expect(Set(await rig.enqueued().map(\.messageID)) == ["d0", "d1", "d2", "d3"])
   }
+
+  /// gmail-sync: an account deleted on this iPhone, then a new account linking the SAME
+  /// mailbox here. Nothing the first account's lane kept (its accounted ids, watermark,
+  /// staged rows, refresh token) belongs to the second one, which has its own store and
+  /// Keychain item, so the second scan reads the whole window again and authors it all
+  /// under its own grant id.
+  @Test func aNewAccountOnTheSameMailboxReadsItInFull() async throws {
+    let gmail = FakeGmail()
+    gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 5 * day))
+    gmail.add(SyntheticMail.enbdAlert(id: "e1", dateMs: Rig.t0 - 2 * day))
+    let first = Rig(gmail: gmail) { $0.grantID = "00000000-0000-4000-8000-00000000000a" }
+    await first.connectAndActivate()
+    #expect(Set(await first.enqueued().map(\.messageID)) == ["d1", "e1"])
+    #expect(await first.state().phase == .active)
+
+    // The first account is deleted (its store and Keychain item go); a new one links the
+    // same Google account with a new consent.
+    gmail.refreshToken = "fake-refresh-token-second-account"
+    let second = Rig(gmail: gmail) { $0.grantID = "00000000-0000-4000-8000-00000000000b" }
+    let r = await second.engine.connect(presenter: FakePresenter(gmail: gmail), backfillDays: 90)
+    #expect(r == .connected(address: "synthetic.user@example.com"))
+    let done = await second.engine.runCycle(trigger: .refresh)
+    #expect(done.ops == 2 && done.phase == .active && done.haltedOn == nil)
+    let drafts = await second.enqueued()
+    #expect(Set(drafts.map(\.messageID)) == ["d1", "e1"])
+    #expect(drafts.allSatisfy { $0.payload["provenance"]?["grant_id"] == .string("00000000-0000-4000-8000-00000000000b") })
+    #expect(try second.keychain.read() == "fake-refresh-token-second-account")
+  }
 }
 
 @Suite struct CycleTests {

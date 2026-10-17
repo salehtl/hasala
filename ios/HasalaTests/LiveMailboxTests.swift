@@ -1,6 +1,7 @@
 import CoreMailbox
 import Foundation
 import HasalaModels
+import Synchronization
 import Testing
 
 @testable import Hasala
@@ -274,5 +275,50 @@ struct LiveMailboxTests {
     #expect(noMailbox.title == "Sign in again" && noMailbox.detail == LiveMailboxConnecting.message(.noMailbox))
     let elsewhere = summary(.otherDevice, halt: nil, health: .working)
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
+  }
+}
+
+/// The grant endings of accounts that left this iPhone (gmail-sync): Google's revoke and
+/// `users.stop` act on the Google account, which the next account here may link again, so
+/// they run in order and a connect waits for them.
+@Suite("Mail grant endings")
+struct MailGrantEndsTests {
+  nonisolated final class Log: Sendable {
+    let entries = Mutex<[String]>([])
+    func add(_ s: String) { entries.withLock { $0.append(s) } }
+    var all: [String] { entries.withLock { $0 } }
+  }
+
+  @Test func nothingPendingIsSettledAtOnce() async {
+    #expect(await MailGrantEnds().settled(within: .milliseconds(1)))
+  }
+
+  /// A deleted account's ending, then a wiped one's: one after the other, and a connect's
+  /// wait returns only once both reached the provider.
+  @Test func endingsRunInOrderAndAConnectWaitsForThem() async {
+    let ends = MailGrantEnds()
+    let log = Log()
+    ends.enqueue {
+      try? await Task.sleep(for: .milliseconds(80))
+      log.add("deleted account: users.stop, revoke")
+    }
+    ends.enqueue { log.add("wiped account: revoke") }
+    #expect(await ends.settled(within: .seconds(10)))
+    log.add("connect")
+    #expect(log.all == ["deleted account: users.stop, revoke", "wiped account: revoke", "connect"])
+  }
+
+  /// An ending that hangs (no network) holds a connect only for the limit.
+  @Test func aHungEndingHoldsAConnectOnlyForTheLimit() async {
+    let ends = MailGrantEnds()
+    let release = Mutex<CheckedContinuation<Void, Never>?>(nil)
+    ends.enqueue { await withCheckedContinuation { c in release.withLock { $0 = c } } }
+    let start = ContinuousClock.now
+    #expect(await ends.settled(within: .milliseconds(50)) == false)
+    #expect(ContinuousClock.now - start < .seconds(5))
+    // Let it go, so the queue's task ends with the test.
+    while release.withLock({ $0 == nil }) { await Task.yield() }
+    release.withLock { $0?.resume(); $0 = nil }
+    #expect(await ends.settled(within: .seconds(10)))
   }
 }

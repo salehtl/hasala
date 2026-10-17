@@ -103,8 +103,9 @@ final class AppEnvironment {
     LocalAccountData.forget()
     if let pending { try? secrets.writeSession(pending) }
     if let grant {
+      // Through the queue a later connect waits for (`MailGrantEnds`).
       let build = self.build
-      Task { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
+      MailGrantEnds.shared.enqueue { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
     }
   }
 
