@@ -3,10 +3,11 @@ import HasalaModels
 import SwiftUI
 
 /// Search · Ready and Results as you type (Paper "Search · Ready", "Search · Results as you
-/// type (carre)"), Debug only (plan D.2: no answers yet). The search tab grows into the
+/// type (carre)"), in every build; no answers yet (plan D.2). The search tab grows into the
 /// bottom field; while it is empty, "Try asking" and the recent searches; as you type, the
 /// top result, the matching transactions, the categories and the rules, the typed part in
-/// bold. Everything is found in this iPhone's own ledger (`ActivityEngine`'s search).
+/// bold. Everything is found in this iPhone's own ledger (`ActivityEngine`'s search): no
+/// query leaves the device.
 struct SearchView: View {
   let app: AppModel
   @State private var query = ""
@@ -15,11 +16,17 @@ struct SearchView: View {
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
   /// questions (the fourth row, "Compare October with September", needs an answer card).
-  private static let suggestions: [(question: String, term: String)] = [
+  static let suggestions: [(question: String, term: String)] = [
     ("How much on dining this month?", "dining"),
     ("When is rent due?", "rent"),
     ("What did I spend at Carrefour?", "carrefour"),
   ]
+
+  /// The "Try asking" rows this ledger has an answer for: a row whose word finds nothing
+  /// (no rent, never at Carrefour) would open "No matches", so it is not offered.
+  static func suggestions(in s: LedgerState, now: LocalDateTime) -> [(question: String, term: String)] {
+    suggestions.filter { !SearchResults($0.term, s, now: now).isEmpty }
+  }
 
   var body: some View {
     NavigationStack {
@@ -67,29 +74,33 @@ struct SearchView: View {
 
   private var ready: some View {
     VStack(alignment: .leading, spacing: 24) {
-      VStack(alignment: .leading, spacing: 10) {
-        overline("Try asking")
-        VStack(spacing: 0) {
-          ForEach(Array(Self.suggestions.enumerated()), id: \.offset) { i, s in
-            if i > 0 { HColor.borderSubtle.frame(height: 1).padding(.leading, 46).accessibilityHidden(true) }
-            Button { query = s.term } label: {
-              HStack(spacing: 12) {
-                HIconView(.chat, size: 18, color: HColor.actionAccent, strokeWidth: 2)
-                Text(s.question).hType(.callout).foregroundStyle(HColor.textPrimary)
-                  .frame(maxWidth: .infinity, alignment: .leading)
+      let asks = Self.suggestions(in: app.store.state, now: app.store.now)
+      if !asks.isEmpty {
+        VStack(alignment: .leading, spacing: 10) {
+          overline("Try asking")
+          VStack(spacing: 0) {
+            ForEach(Array(asks.enumerated()), id: \.offset) { i, s in
+              if i > 0 { HColor.borderSubtle.frame(height: 1).padding(.leading, 46).accessibilityHidden(true) }
+              Button { query = s.term } label: {
+                HStack(spacing: 12) {
+                  HIconView(.chat, size: 18, color: HColor.actionAccent, strokeWidth: 2)
+                  Text(s.question).hType(.callout).foregroundStyle(HColor.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 52)
+                .contentShape(Rectangle())
               }
-              .padding(.horizontal, 16)
-              .frame(minHeight: 52)
-              .contentShape(Rectangle())
+              .buttonStyle(HRowPressStyle())
+              .accessibilityIdentifier("search.ask.\(s.term)")
             }
-            .buttonStyle(HRowPressStyle())
           }
+          .background(HColor.surfacePrimary)
+          .clipShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
         }
-        .background(HColor.surfacePrimary)
-        .clipShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("search.placeholder")
       }
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("search.placeholder")
 
       let recent = SearchHistory.shared.recent
       if !recent.isEmpty {
