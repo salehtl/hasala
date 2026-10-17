@@ -18,7 +18,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     tap(app, "bank.continue")
 
     // Two providers: "Choose your email", which offers one mailbox, not a second.
-    XCTAssertTrue(el(app, "mail.choose").waitForExistence(timeout: 10), "setup did not offer Choose your email")
+    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: 10), "setup did not offer Choose your email")
     assertPresent(app, ["mail.choose.gmail", "mail.choose.outlook"], "Choose your email")
     assertText(app, "Outlook.com, Hotmail or Live", "Choose your email")
     assertText(app, "You can change it later in Profile › Bank alerts.", "Choose your email")
@@ -92,7 +92,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 15))
     assertNoPlaceholders(app, "Bank")
     tap(app, "bank.continue")
-    XCTAssertTrue(el(app, "mail.choose").waitForExistence(timeout: 10), "setup did not offer Choose your email")
+    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: 10), "setup did not offer Choose your email")
     tap(app, "mail.choose.gmail")
     XCTAssertTrue(el(app, "mail.sample").waitForExistence(timeout: 10))
     attach(app, "Release · Gmail · review account")

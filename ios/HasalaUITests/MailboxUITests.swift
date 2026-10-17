@@ -38,7 +38,7 @@ final class MailboxUITests: XCTestCase {
     try audit(app, overSheet: true)
     outlook.tap()
     let connect = el(app, "mail.connect.outlook")
-    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Microsoft")
     XCTAssertTrue(el(app, "mail.notYours").label.contains("Work or school account?"))
     attach(app, "Setup · Outlook, read-only")
@@ -56,26 +56,26 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
     app.buttons["header.profile"].firstMatch.tap()
     tap(app, "profile.bankAlerts")
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "bankAlerts.status").label.contains("Working"))
     attach(app, "Bank alerts · one Gmail")
     try audit(app)
     tap(app, "bankAlerts.addMailbox")
     let outlook = el(app, "mail.choose.outlook")
-    XCTAssertTrue(outlook.waitForExistence(timeout: 5))
+    XCTAssertTrue(outlook.waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "mail.choose.gmail").label.contains("maya@example.com is connected. Add another Google account."))
     attach(app, "Add a mailbox")
     try audit(app)
     outlook.tap()
     let connect = el(app, "mail.connect.outlook")
-    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Microsoft")
     XCTAssertFalse(app.staticTexts["Step 2 of 4"].exists, "the profile's connect screen shows setup's step")
     attach(app, "Connect Outlook")
     try audit(app)
     connect.tap()
     XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Outlook connected. Checking for alerts."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Outlook connected. Checking for alerts."].waitForExistence(timeout: uiWait))
     attach(app, "Bank alerts · two mailboxes")
   }
 
@@ -92,7 +92,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Work or school account needs an admin")
     try audit(app)
     tap(app, "mail.error.chooseDifferent")
-    XCTAssertTrue(el(app, "mail.choose.outlook").waitForExistence(timeout: 5), "the providers did not come back")
+    XCTAssertTrue(el(app, "mail.choose.outlook").waitForExistence(timeout: uiWait), "the providers did not come back")
 
     app = launch(scenario: nil, screen: "mail.add.errorCancelled")
     XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 15))
@@ -104,10 +104,10 @@ final class MailboxUITests: XCTestCase {
     tap(app, "mail.error.retry")
     XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 10))
     tap(app, "mail.error.chooseDifferent")
-    tap(app, "mail.choose.gmail", timeout: 5)
-    tap(app, "mail.connect.gmail", timeout: 5)
+    tap(app, "mail.choose.gmail", timeout: uiWait)
+    tap(app, "mail.connect.gmail", timeout: uiWait)
     XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-2").waitForExistence(timeout: 10), "the second Gmail is missing")
-    XCTAssertTrue(app.staticTexts["Gmail connected. Checking for alerts."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Gmail connected. Checking for alerts."].waitForExistence(timeout: uiWait))
   }
 
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue
@@ -137,7 +137,7 @@ final class MailboxUITests: XCTestCase {
     let app = launch(scenario: "outlookSignIn", screen: "bankAlerts")
     tap(app, "bankAlerts.addMailbox", timeout: 15)
     let outlook = el(app, "mail.choose.outlook")
-    XCTAssertTrue(outlook.waitForExistence(timeout: 5))
+    XCTAssertTrue(outlook.waitForExistence(timeout: uiWait))
     XCTAssertTrue(outlook.label.contains("maya.k@example.com needs a new sign-in. Sign in to Outlook again."),
                   outlook.label)
     XCTAssertFalse(outlook.label.contains("is connected"))
@@ -145,7 +145,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Add a mailbox · Outlook needs sign-in")
     try audit(app)
     outlook.tap()
-    XCTAssertTrue(app.staticTexts["Sign in to Outlook again."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Sign in to Outlook again."].waitForExistence(timeout: uiWait))
     tap(app, "mail.connect.outlook")
     XCTAssertTrue(app.staticTexts["Outlook connected again. Catching up from the last check."]
       .waitForExistence(timeout: 10))
@@ -160,7 +160,7 @@ final class MailboxUITests: XCTestCase {
     let app = launch(scenario: "outlookSignIn", screen: "bankAlerts")
     tap(app, "bankAlerts.mailbox.outlook-1")
     let signIn = el(app, "mailbox.signInAgain")
-    XCTAssertTrue(signIn.waitForExistence(timeout: 5))
+    XCTAssertTrue(signIn.waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Microsoft ended Hasala's access"].exists)
     attach(app, "Mailbox · needs sign-in")
     try audit(app)
@@ -170,7 +170,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Mailbox · connected again")
     tap(app, "mailbox.disconnect")
     let alert = app.alerts["Disconnect maya.k@example.com?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: 5))
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     XCTAssertTrue(alert.descendants(matching: .any)
       .matching(NSPredicate(format: "label CONTAINS %@", "account.live.com/consent/Manage")).firstMatch.exists)
     attach(app, "Mailbox · Disconnect")
@@ -178,7 +178,7 @@ final class MailboxUITests: XCTestCase {
     let row = el(app, "bankAlerts.mailbox.outlook-1")
     XCTAssertTrue(row.waitForExistence(timeout: 10), "Bank alerts did not come back")
     XCTAssertTrue(row.waitForLabel(containing: "Off since 10 Oct"))
-    XCTAssertTrue(app.staticTexts["Outlook disconnected. Past transactions stay."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Outlook disconnected. Past transactions stay."].waitForExistence(timeout: uiWait))
     attach(app, "Bank alerts · disconnected row")
   }
 
@@ -218,7 +218,7 @@ final class MailboxUITests: XCTestCase {
     XCTAssertEqual(notYours.label, "Not your email? Choose a different one.")
     try audit(app)
     notYours.tap()
-    XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: 5), "the providers did not open")
+    XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: uiWait), "the providers did not open")
 
     app = launch(scenario: nil, screen: "mail.profile.gmail", arguments: Self.largeText)
     XCTAssertTrue(el(app, "mail.notYours").waitForExistence(timeout: 15))
@@ -241,7 +241,7 @@ final class MailboxUITests: XCTestCase {
   @MainActor
   private func says(_ app: XCUIApplication, _ text: String) -> Bool {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-      .waitForExistence(timeout: 5)
+      .waitForExistence(timeout: uiWait)
   }
 
   /// The provider's read-only screen after the bank step: through setup's chooser when the

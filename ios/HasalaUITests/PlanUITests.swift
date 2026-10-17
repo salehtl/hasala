@@ -35,7 +35,7 @@ final class PlanUITests: XCTestCase {
     let app = launchHome()
     app.tabBars.firstMatch.buttons["Plan"].tap()
     let rta = el(app, "plan.readyToAssign")
-    XCTAssertTrue(rta.waitForExistence(timeout: 5))
+    XCTAssertTrue(rta.waitForExistence(timeout: uiWait))
     XCTAssertEqual(rta.label, "AED 1,000.00")
     attach(app, "Plan · October")
     try audit(app)
@@ -46,7 +46,7 @@ final class PlanUITests: XCTestCase {
     attach(app, "Plan · Needs")
     groceries.tap()
     let hero = el(app, "category.hero")
-    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
     XCTAssertTrue(hero.label.contains("AED 1,387.60 left of 2,200 this month. Over pace, on course for 2,518"),
                   hero.label)
     XCTAssertTrue(app.navigationBars["Groceries"].exists)
@@ -57,7 +57,7 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(reveal(app, move))
     move.tap()
     let save = el(app, "move.save")
-    XCTAssertTrue(save.waitForExistence(timeout: 5))
+    XCTAssertTrue(save.waitForExistence(timeout: uiWait))
     XCTAssertEqual(save.label, "Move AED 318.00")
     // A large sheet: its Close sits at the top of the screen (page 14 §02, top 62).
     XCTAssertLessThan(el(app, "move.close").frame.minY, app.frame.height * 0.2)
@@ -73,9 +73,9 @@ final class PlanUITests: XCTestCase {
     attach(app, "Plan · Move money")
     try audit(app)
     save.tap()
-    XCTAssertTrue(app.staticTexts["Moved to Groceries"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Moved to Groceries"].waitForExistence(timeout: uiWait))
     back(app)
-    XCTAssertTrue(rta.waitForExistence(timeout: 5))
+    XCTAssertTrue(rta.waitForExistence(timeout: uiWait))
     XCTAssertTrue(scroll(app, toShow: rta))
     XCTAssertEqual(rta.label, "AED 682.00")
 
@@ -87,7 +87,7 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(reveal(app, change))
     change.tap()
     let field = el(app, "budget.amount")
-    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     XCTAssertEqual(field.value as? String, "1,600")
     // A medium sheet that fits its content, with Dining showing above it (page 14 §02); it
     // stays that height while the amount changes.
@@ -109,7 +109,7 @@ final class PlanUITests: XCTestCase {
     for _ in 0..<8 { app.buttons["Less"].tap() }
     XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
     el(app, "budget.save").tap()
-    XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "category.hero").label.contains("AED 1,157.25 left of 1,800 this month"))
   }
 
@@ -133,21 +133,21 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(source.label.hasPrefix("Take it from"))
     source.tap()
     let travel = el(app, "source.travel")
-    XCTAssertTrue(travel.waitForExistence(timeout: 5))
+    XCTAssertTrue(travel.waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "source.rta").isSelected)
     attach(app, "Plan · Dining budget · Take it from")
     try audit(app)
     travel.tap()
-    XCTAssertTrue(el(app, "budget.consequence").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "budget.consequence").waitForExistence(timeout: uiWait))
     XCTAssertEqual(el(app, "budget.consequence").label, "Travel keeps AED 2,300.00")
     // More than Travel has is refused here, before anything is sent.
     for _ in 0..<12 { app.buttons["Add 200"].tap() }
-    XCTAssertTrue(el(app, "budget.refusal").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "budget.refusal").waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "budget.save").isEnabled)
     for _ in 0..<24 { app.buttons["Less"].tap() }
     XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
     el(app, "budget.save").tap()
-    XCTAssertTrue(app.staticTexts["Moved to Dining"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Moved to Dining"].waitForExistence(timeout: uiWait))
     back(app)
     let row = el(app, "plan.row.travel")
     XCTAssertTrue(reveal(app, row))
@@ -170,7 +170,7 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(reveal(app, zuma))
     attach(app, "Plan · Dining · This month")
     zuma.tap()
-    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
     tap(app, "txn.close")
 
     let rule = el(app, "plan.rule.r-talabat")
@@ -179,7 +179,7 @@ final class PlanUITests: XCTestCase {
     attach(app, "Plan · Dining · Rules")
     try audit(app)
     rule.tap()
-    XCTAssertTrue(el(app, "rule.r-talabat").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "rule.r-talabat").waitForExistence(timeout: uiWait))
   }
 
   /// Assign from Ready to assign: Move money with "To" to choose, pushed inside the sheet.
@@ -213,7 +213,7 @@ final class PlanUITests: XCTestCase {
     attach(app, "Plan · Dining · Amounts hidden")
     tap(app, "category.changeBudget")
     // The chip's figure hides; the field it fills is an input and shows its real value.
-    XCTAssertTrue(app.buttons["Cover the pace, Amount hidden"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["Cover the pace, Amount hidden"].waitForExistence(timeout: uiWait))
     XCTAssertEqual(el(app, "budget.amount").value as? String, "1,600")
     attach(app, "Plan · Dining budget · Amounts hidden")
   }
@@ -229,7 +229,7 @@ final class PlanUITests: XCTestCase {
                    "Japan trip, 14–28 Dec, 65 days to go. AED 7,140.00 left of 12,000. Not counted in your monthly plan.")
     card.tap()
     let hero = el(app, "project.hero")
-    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
     XCTAssertEqual(hero.label, "Japan trip, AED 7,140.00 left of 12,000. 14–28 Dec, 65 days to go.")
     XCTAssertTrue(el(app, "project.countInPlan").exists)
     attach(app, "Plan · Japan trip")
@@ -295,7 +295,7 @@ final class PlanUITests: XCTestCase {
     // that may be cut off at larger sizes. It is not: it wraps
     // (`testReadyToAssignWrapsAtTheLargestSize`). Anything else clipped still fails.
     app.tabBars.firstMatch.buttons["Plan"].tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Plan")
     try audit(app)
     try app.performAccessibilityAudit(for: .textClipped) { issue in
@@ -312,7 +312,7 @@ final class PlanUITests: XCTestCase {
     let dining = el(app, "plan.row.dining")
     XCTAssertTrue(scroll(app, toShow: dining) || reveal(app, dining))
     dining.tap()
-    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: uiWait))
     try audit(app, atLargeText: true)
     for id in ["plan.chart", "plan.txn.talabat-3", "plan.rule.r-zuma", "category.moveMoney"] {
       XCTAssertTrue(reveal(app, el(app, id)), "could not reach \(id)")
@@ -322,7 +322,7 @@ final class PlanUITests: XCTestCase {
 
     // Both sheets.
     tap(app, "category.changeBudget")
-    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Plan · Dining budget")
     try audit(app, atLargeText: true)
     XCTAssertTrue(reveal(app, el(app, "budget.save")))
@@ -330,7 +330,7 @@ final class PlanUITests: XCTestCase {
     tap(app, "budget.close")
 
     tap(app, "category.moveMoney")
-    XCTAssertTrue(el(app, "move.amount").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "move.amount").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Plan · Move money")
     try audit(app, atLargeText: true)
     XCTAssertTrue(reveal(app, el(app, "move.save")))

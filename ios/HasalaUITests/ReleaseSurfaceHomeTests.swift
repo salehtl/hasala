@@ -29,7 +29,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(bell.exists, "Home has no bell")
     XCTAssertEqual(bell.label, "Notifications, 4 new")
     bell.tap()
-    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     assertText(app, "Needs a look", "Notifications")
     assertPresent(app, ["bell.row.review", "bell.row.bill.axa", "bell.row.found.apple-bill", "bell.row.price.du"],
                   "Notifications")
@@ -40,11 +40,11 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     try audit(app)
     // A row opens its screen: du's new price is in Bills.
     tap(app, "bell.row.price.du")
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Bills")
     assertAbsent(app, ["bills.allSchedules"], "Bills")
     back(app)
-    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
     // Widgets without a detail screen are not buttons; the others go somewhere.
     for id in ["widget.netWorth", "widget.project.Japan trip", "widget.goal.Emergency fund"] {
@@ -56,7 +56,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Home widgets")
     assertNoPlaceholders(app, "Home widgets")
     nextBill.tap()
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
     attach(app, "Release · Bills")
     assertNoPlaceholders(app, "Bills")
     assertAbsent(app, ["bills.allSchedules"], "Home › Bills")
@@ -66,7 +66,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     let pace = app.buttons["widget.budgetPace"]
     XCTAssertTrue(reveal(app, pace))
     pace.tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
   }
 
   /// With nothing to look at the bell has no badge and the sheet says so; mail's row
@@ -81,7 +81,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Notifications · all clear")
     try audit(app)
     el(app, "bell.close").tap()
-    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
     XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications")
 
     // No mailbox: the bell's last row asks to connect it and opens Bank alerts in Profile.

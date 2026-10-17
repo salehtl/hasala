@@ -22,19 +22,19 @@ final class SignInSecurityUITests: XCTestCase {
   func testPasswordSignIn() throws {
     let app = launch(scenario: "signInPassword")
     tap(app, "stories.signIn", timeout: 15)
-    XCTAssertTrue(el(app, "signIn.passkey").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "signIn.passkey").waitForExistence(timeout: uiWait))
     type(app, "signIn.email", "maya@example.com")
     type(app, "signIn.password", "not my password")
     tap(app, "signIn.withPassword")
     // Paper FWD: the password box rings, one line under it, the email isn't marked.
     XCTAssertTrue(app.staticTexts["That email and password don't match. Try again, or reset your password."]
       .waitForExistence(timeout: 10))
-    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait))
     attach(app, "Sign in · wrong password")
     try audit(app)
     // Typing again clears the line; Return signs in.
     type(app, "signIn.password", "c")
-    XCTAssertTrue(el(app, "signIn.wrongPassword").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(el(app, "signIn.wrongPassword").waitForNonExistence(timeout: uiWait))
     el(app, "signIn.password").typeText(String(Self.password.dropFirst()) + "\n")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
@@ -74,9 +74,9 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
     tap(app, "unlock.words")
     type(app, "phraseEntry.field", "absu")
-    XCTAssertTrue(el(app, "phraseEntry.suggestion.absurd").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "phraseEntry.suggestion.absurd").waitForExistence(timeout: uiWait))
     tap(app, "phraseEntry.suggestion.absurd")
-    XCTAssertTrue(app.staticTexts["In the order on your paper. 1 of 12 so far."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["In the order on your paper. 1 of 12 so far."].waitForExistence(timeout: uiWait))
     back(app)
     tap(app, "unlock.passkey")
     // A passkey unlock offers no second passkey on Welcome back.
@@ -146,11 +146,11 @@ final class SignInSecurityUITests: XCTestCase {
   func testTheHonestEndLeadsBackToTheWords() throws {
     let app = launch(scenario: "unlockPasswordOnly")
     tap(app, "unlock.noWords", timeout: 15)
-    XCTAssertTrue(app.staticTexts["Without your recovery phrase, we can't open your data"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Without your recovery phrase, we can't open your data"].waitForExistence(timeout: uiWait))
     attach(app, "Honest end")
     try audit(app)
     tap(app, "honest.foundWords")
-    XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: uiWait))
   }
 
   // MARK: - Sign-in & security
@@ -175,7 +175,7 @@ final class SignInSecurityUITests: XCTestCase {
     // Adding a passkey asks for the password and this iPhone's key (Paper IT2); a wrong
     // password keeps the sheet up with its line.
     tap(app, "security.addPasskey")
-    XCTAssertTrue(app.staticTexts["This iPhone signs it too"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["This iPhone signs it too"].waitForExistence(timeout: uiWait))
     type(app, "confirm.password", "not it at all")
     tap(app, "confirm.submit")
     XCTAssertTrue(app.staticTexts["That didn't confirm. Try again."].waitForExistence(timeout: 10))
@@ -217,15 +217,15 @@ final class SignInSecurityUITests: XCTestCase {
 
     // View your 12 words: Face ID first (Paper INK), then the cover, hidden until tapped.
     tap(app, "security.viewPhrase")
-    XCTAssertTrue(app.staticTexts["Show your 12 words"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Show your 12 words"].waitForExistence(timeout: uiWait))
     tap(app, "confirm.submit")
     tap(app, "phrase.reveal")
-    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
     attach(app, "View your 12 words")
     try audit(app)
     tap(app, "phrase.done")
     // Closed, the words are gone: another look asks again and starts hidden.
-    XCTAssertTrue(el(app, "security.viewPhrase").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "security.viewPhrase").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.staticTexts["scissors"].exists)
     tap(app, "security.viewPhrase")
     tap(app, "confirm.submit")
@@ -242,7 +242,7 @@ final class SignInSecurityUITests: XCTestCase {
     try audit(app)
     // Unfreeze takes a full sign-in (Paper MUT).
     tap(app, "frozen.unfreeze")
-    XCTAssertTrue(el(app, "unfreeze.passkey").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "unfreeze.passkey").waitForExistence(timeout: uiWait))
     attach(app, "Unfreeze")
     try audit(app)
     tap(app, "unfreeze.passkey")
@@ -259,15 +259,15 @@ final class SignInSecurityUITests: XCTestCase {
     tap(app, "profile.security")
     tap(app, "security.removePasskey.pk-2")
     let alert = app.alerts["Remove the Work iPad passkey?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: 5))
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     XCTAssertTrue(alert.staticTexts["It won't be able to sign in to Hasala. You'll confirm with Face ID next."].exists)
     alert.buttons["Remove"].tap()
-    XCTAssertTrue(app.staticTexts["Remove the Work iPad passkey"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Remove the Work iPad passkey"].waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Face ID confirms it's really you, using your passkey."].exists)
     attach(app, "Confirm it's you · Face ID")
     try auditOverThePage(app)
     tap(app, "confirm.cancel")
-    XCTAssertTrue(el(app, "security.removePasskey.pk-2").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "security.removePasskey.pk-2").waitForExistence(timeout: uiWait))
     tap(app, "security.removePasskey.pk-2")
     app.alerts["Remove the Work iPad passkey?"].buttons["Remove"].tap()
     tap(app, "confirm.submit")
@@ -275,10 +275,10 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertFalse(el(app, "security.removePasskey.pk-2").exists)
 
     tap(app, "security.removeDevice.ios-other")
-    XCTAssertTrue(app.alerts["Remove Maya\u{2019}s iPad?"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.alerts["Remove Maya\u{2019}s iPad?"].waitForExistence(timeout: uiWait))
     app.alerts.buttons["Cancel"].tap()
     tap(app, "security.signOutEverywhere")
-    XCTAssertTrue(app.alerts["Sign out everywhere?"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.alerts["Sign out everywhere?"].waitForExistence(timeout: uiWait))
     app.alerts.buttons["Cancel"].tap()
   }
 
@@ -435,9 +435,9 @@ extension SignInSecurityUITests {
   /// keyboard, so this waits a moment for it to settle.
   @MainActor
   private func assertEntryClearOfTheBar(_ app: XCUIApplication, line: UInt = #line) {
-    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "no keyboard", line: line)
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: uiWait), "no keyboard", line: line)
     let bar = el(app, "phraseEntry.suggestions")
-    XCTAssertTrue(bar.waitForExistence(timeout: 5), "no suggestion bar", line: line)
+    XCTAssertTrue(bar.waitForExistence(timeout: uiWait), "no suggestion bar", line: line)
     let paste = el(app, "phraseEntry.paste")
     let helper = app.staticTexts["Suggestions come from the recovery word list, never your keyboard history."]
     func clear() -> Bool {

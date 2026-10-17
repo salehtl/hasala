@@ -34,7 +34,7 @@ final class CoreScreensTests: XCTestCase {
     let app = launchHome()
     app.tabBars.firstMatch.buttons["Activity"].tap()
     let count = element(app, "activity.count")
-    XCTAssertTrue(count.waitForExistence(timeout: 5))
+    XCTAssertTrue(count.waitForExistence(timeout: uiWait))
     XCTAssertEqual(count.label, "26 transactions this month")
     XCTAssertTrue(app.staticTexts["6 to sort"].exists)
     XCTAssertTrue(app.staticTexts["Coming up"].exists)
@@ -43,25 +43,24 @@ final class CoreScreensTests: XCTestCase {
 
     // To review: only the six cards, with the to-review rows.
     element(app, "activity.chip.toReview").tap()
-    XCTAssertTrue(element(app, "txn.lulu").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "txn.lulu").waitForExistence(timeout: uiWait))
     XCTAssertFalse(element(app, "txn.carrefour").exists)
     attach(app, "Activity · To review")
     element(app, "activity.chip.all").tap()
 
     // Search across months: three Carrefour rows, nothing else.
     let search = app.searchFields["Search transactions"]
-    XCTAssertTrue(search.waitForExistence(timeout: 5))
-    search.tap()
-    search.typeText("carrefour")
+    XCTAssertTrue(search.waitForExistence(timeout: uiWait))
+    type("carrefour", into: search)
     let carrefour = element(app, "txn.carrefour")
-    XCTAssertTrue(carrefour.waitForExistence(timeout: 5))
+    XCTAssertTrue(carrefour.waitForExistence(timeout: uiWait))
     XCTAssertFalse(element(app, "txn.talabat").exists)
     attach(app, "Activity · Search")
 
     // The Carrefour sheet: amount, embedded pace, provenance.
     carrefour.tap()
     let merchant = element(app, "txn.merchant")
-    XCTAssertTrue(merchant.waitForExistence(timeout: 5))
+    XCTAssertTrue(merchant.waitForExistence(timeout: uiWait))
     XCTAssertEqual(merchant.label, "Carrefour")
     XCTAssertEqual(element(app, "txn.amount").label, "AED 342.15")
     XCTAssertTrue(app.staticTexts["Groceries this month"].exists)
@@ -71,20 +70,19 @@ final class CoreScreensTests: XCTestCase {
 
     // Choose a category pushes inside the sheet, with its rule switch; Back returns.
     element(app, "txn.category").tap()
-    XCTAssertTrue(element(app, "picker.save").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "picker.save").waitForExistence(timeout: uiWait))
     XCTAssertTrue(element(app, "picker.alwaysUse").exists)
     XCTAssertTrue(element(app, "picker.groceries").isSelected)
     attach(app, "Transaction · Category")
     try audit(app)
     app.navigationBars["Category"].buttons.firstMatch.tap()
-    XCTAssertTrue(merchant.waitForExistence(timeout: 5))
+    XCTAssertTrue(merchant.waitForExistence(timeout: uiWait))
 
     // A note is saved and shown on the sheet.
     element(app, "txn.note").tap()
     let field = element(app, "note.field")
-    XCTAssertTrue(field.waitForExistence(timeout: 5))
-    field.tap()
-    field.typeText("Weekly shop")
+    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
+    type("Weekly shop", into: field)
     element(app, "note.save").tap()
     XCTAssertTrue(element(app, "txn.note").waitForLabel(containing: "Weekly shop"))
 
@@ -92,7 +90,7 @@ final class CoreScreensTests: XCTestCase {
     let split = element(app, "txn.split")
     XCTAssertTrue(reveal(app, split))
     split.tap()
-    XCTAssertTrue(element(app, "split.verdict").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "split.verdict").waitForExistence(timeout: uiWait))
     // The seed puts everything on line 1 and leaves line 2 empty: not savable yet.
     XCTAssertTrue(element(app, "split.verdict").waitForLabel("Every line needs an amount"))
     XCTAssertFalse(element(app, "split.save").isEnabled)
@@ -103,7 +101,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(element(app, "split.verdict").waitForLabel("45 dirhams 15 too much"))
     // Tapping the field again puts the keypad away.
     second.tap()
-    XCTAssertTrue(element(app, "keypad.4").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(element(app, "keypad.4").waitForNonExistence(timeout: uiWait))
     app.buttons["Put the rest in Groceries"].tap()
     XCTAssertTrue(element(app, "split.verdict").waitForLabel("Adds up exactly"))
     attach(app, "Transaction · Split")
@@ -120,13 +118,13 @@ final class CoreScreensTests: XCTestCase {
     let app = launchHome()
     app.tabBars.firstMatch.buttons["Review"].tap()
     let start = element(app, "review.tab.start")
-    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
     XCTAssertEqual(element(app, "review.tab.count").label, "6 to sort · about a minute")
     attach(app, "Review · Tab")
     try audit(app)
     start.tap()
     let position = element(app, "review.position")
-    XCTAssertTrue(position.waitForExistence(timeout: 5))
+    XCTAssertTrue(position.waitForExistence(timeout: uiWait))
     XCTAssertEqual(position.label, "1 of 6")
     attach(app, "Review · Deck")
     try audit(app)
@@ -134,13 +132,13 @@ final class CoreScreensTests: XCTestCase {
     // Drag the first card (the ATM withdrawal) up: Transfer.
     drag(app, to: CGVector(dx: 0.5, dy: 0.05))
     let sort = element(app, "pick.sort")
-    XCTAssertTrue(sort.waitForExistence(timeout: 5))
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Transfer · which one?"].exists)
     attach(app, "Review · Pick transfer")
     try audit(app)
     element(app, "pick.transfer").tap()
     sort.tap()
-    XCTAssertTrue(app.staticTexts["Sorted into Transfer"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Sorted into Transfer"].waitForExistence(timeout: uiWait))
     XCTAssertEqual(position.label, "2 of 6")
 
     // Undo puts it back.
@@ -149,15 +147,15 @@ final class CoreScreensTests: XCTestCase {
 
     // Sort it again from the pill.
     element(app, "review.pill.transfer").tap()
-    XCTAssertTrue(sort.waitForExistence(timeout: 5))
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
     element(app, "pick.transfer").tap()
     sort.tap()
     XCTAssertTrue(position.waitForLabel("2 of 6"))
 
     // Card 2: money in; skip it for now.
-    XCTAssertTrue(sort.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(sort.waitForNonExistence(timeout: uiWait))
     let skip = element(app, "review.skip")
-    XCTAssertTrue(skip.waitForExistence(timeout: 5) && skip.isHittable)
+    XCTAssertTrue(skip.waitForExistence(timeout: uiWait) && skip.isHittable)
     skip.tap()
     let merchant = element(app, "review.merchant")
     XCTAssertTrue(merchant.waitForLabel(containing: "Apple.com"), merchant.debugDescription)
@@ -165,17 +163,17 @@ final class CoreScreensTests: XCTestCase {
     // Card 3 onward: use each suggestion.
     for _ in 0..<4 {
       let use = element(app, "review.use")
-      XCTAssertTrue(use.waitForExistence(timeout: 5))
+      XCTAssertTrue(use.waitForExistence(timeout: uiWait))
       use.tap()
     }
-    XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     XCTAssertEqual(element(app, "review.done.tally").label, "5 sorted")
     attach(app, "Review · All caught up")
     try audit(app)
     element(app, "review.seeActivity").tap()
-    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     // The skipped card is still waiting; the others left the queue.
-    XCTAssertTrue(app.staticTexts["1 to sort"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["1 to sort"].waitForExistence(timeout: uiWait))
   }
 
   /// A To sort row opens the deck at its own card; a pick sheet closed without a choice sends
@@ -185,7 +183,7 @@ final class CoreScreensTests: XCTestCase {
     let app = launchHome()
     app.tabBars.firstMatch.buttons["Review"].tap()
     let row = element(app, "review.tab.row.lulu")
-    XCTAssertTrue(row.waitForExistence(timeout: 5))
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
     XCTAssertTrue(reveal(app, row))
     row.tap()
     let merchant = element(app, "review.merchant")
@@ -194,9 +192,9 @@ final class CoreScreensTests: XCTestCase {
 
     // Drag left: Want asks which one; closing the sheet sorts nothing.
     drag(app, to: CGVector(dx: 0.02, dy: 0.5))
-    XCTAssertTrue(app.staticTexts["Want · which one?"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Want · which one?"].waitForExistence(timeout: uiWait))
     element(app, "pick.close").tap()
-    XCTAssertTrue(element(app, "pick.sort").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(element(app, "pick.sort").waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(merchant.waitForLabel(containing: "Lulu Hypermarket"))
     XCTAssertEqual(element(app, "review.position").label, "1 of 6")
 
@@ -215,7 +213,7 @@ final class CoreScreensTests: XCTestCase {
     let app = launchHome()
     app.tabBars.firstMatch.buttons["Review"].tap()
     let start = element(app, "review.tab.start")
-    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
     start.tap()
     let merchant = element(app, "review.merchant")
     XCTAssertTrue(merchant.waitForLabel(containing: "ADCB ATM withdrawal"), merchant.debugDescription)
@@ -236,7 +234,7 @@ final class CoreScreensTests: XCTestCase {
     let app = launchHome(motion: "reduce")
     app.tabBars.firstMatch.buttons["Review"].tap()
     let start = element(app, "review.tab.start")
-    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
     start.tap()
     let position = element(app, "review.position")
     XCTAssertTrue(position.waitForLabel("1 of 6"))
@@ -247,7 +245,7 @@ final class CoreScreensTests: XCTestCase {
     let rest = card.frame
     drag(app, to: CGVector(dx: 0.98, dy: 0.5))
     let sort = element(app, "pick.sort")
-    XCTAssertTrue(sort.waitForExistence(timeout: 5))
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
     XCTAssertEqual(card.frame.midX, rest.midX, accuracy: 1, "the card leans with Reduce Motion")
     XCTAssertEqual(card.frame.midY, rest.midY, accuracy: 1, "the card leans with Reduce Motion")
     attach(app, "Reduce Motion · Pick a need")
@@ -260,16 +258,16 @@ final class CoreScreensTests: XCTestCase {
     // Money in: the Transfer pill (the card stays put); then Use for the four suggestions.
     let second = card.frame
     element(app, "review.pill.transfer").tap()
-    XCTAssertTrue(sort.waitForExistence(timeout: 5))
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
     XCTAssertEqual(card.frame.midY, second.midY, accuracy: 1, "the card rises with Reduce Motion")
     element(app, "pick.salary").tap()
     sort.tap()
     for _ in 0..<4 {
       let use = element(app, "review.use")
-      XCTAssertTrue(use.waitForExistence(timeout: 5))
+      XCTAssertTrue(use.waitForExistence(timeout: uiWait))
       use.tap()
     }
-    XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     // Need asks to remember the merchant by default: one rule.
     XCTAssertEqual(element(app, "review.done.tally").label, "6 sorted · 1 new rule")
     attach(app, "Reduce Motion · All caught up")
@@ -286,7 +284,7 @@ final class CoreScreensTests: XCTestCase {
 
     // Activity, down the page, then the Carrefour sheet.
     app.tabBars.firstMatch.buttons["Activity"].tap()
-    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     for id in ["activity.startReview", "bill.dewa", "txn.talabat", "txn.carrefour"] {
       let target = element(app, id)
       XCTAssertTrue(reveal(app, target), "could not reach \(id)")
@@ -294,7 +292,7 @@ final class CoreScreensTests: XCTestCase {
       try audit(app, atLargeText: true)
     }
     element(app, "txn.carrefour").tap()
-    XCTAssertTrue(element(app, "txn.merchant").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "txn.merchant").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Transaction")
     try audit(app, atLargeText: true)
     for id in ["txn.note", "txn.rawMerchant", "txn.archive"] {
@@ -306,12 +304,12 @@ final class CoreScreensTests: XCTestCase {
     // The Review tab, then the deck, which scrolls and doesn't drag at these sizes.
     app.tabBars.firstMatch.buttons["Review"].tap()
     let start = element(app, "review.tab.start")
-    XCTAssertTrue(start.waitForExistence(timeout: 5))
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Review tab")
     try audit(app, atLargeText: true)
     XCTAssertTrue(reveal(app, start))
     start.tap()
-    XCTAssertTrue(element(app, "review.card").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "review.card").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Review")
     try audit(app, atLargeText: true)
     for id in ["review.use", "review.pill.save", "review.skip"] {
@@ -328,9 +326,9 @@ final class CoreScreensTests: XCTestCase {
   func testDebugSearchReadyThenResults() throws {
     let app = launchHome()
     app.tabBars.firstMatch.buttons["Search"].tap()
-    XCTAssertTrue(element(app, "search.placeholder").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "search.placeholder").waitForExistence(timeout: uiWait))
     let title = app.navigationBars.staticTexts["Search"]
-    XCTAssertTrue(title.waitForExistence(timeout: 5) && title.isHittable, "Ready has no large title")
+    XCTAssertTrue(title.waitForExistence(timeout: uiWait) && title.isHittable, "Ready has no large title")
     attach(app, "Search · Ready")
     // Search's own parts are audited with the keyboard put away: with it up, the audit
     // flags the keyboard's empty prediction cells, system UI the shared filter does not
@@ -338,20 +336,19 @@ final class CoreScreensTests: XCTestCase {
     // (A drag from the content down through the keys: Search dismisses it interactively.)
     element(app, "search.placeholder").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
       .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
-    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "the keyboard stayed up")
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait), "the keyboard stayed up")
     try audit(app)
 
     let field = app.searchFields["Ask about your money"]
-    XCTAssertTrue(field.waitForExistence(timeout: 5))
-    field.tap()
-    field.typeText("carre")
+    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
+    type("carre", into: field)
     let result = element(app, "search.txn.carrefour")
-    XCTAssertTrue(result.waitForExistence(timeout: 5))
+    XCTAssertTrue(result.waitForExistence(timeout: uiWait))
     XCTAssertTrue(element(app, "search.top").exists)
     XCTAssertFalse(element(app, "search.placeholder").exists)
     let titleGone = XCTNSPredicateExpectation(
       predicate: NSPredicate(format: "exists == false OR hittable == false"), object: title)
-    XCTAssertEqual(XCTWaiter().wait(for: [titleGone], timeout: 5), .completed, "results kept the large title")
+    XCTAssertEqual(XCTWaiter().wait(for: [titleGone], timeout: uiWait), .completed, "results kept the large title")
     attach(app, "Search · Results as you type")
 
     result.tap()
@@ -368,7 +365,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(element(app, "review.tab.empty").exists)
     XCTAssertFalse(element(app, "review.tab.start").exists)
     app.tabBars.firstMatch.buttons["Activity"].tap()
-    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: 5))
+    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.staticTexts["To review"].exists)
   }
 }

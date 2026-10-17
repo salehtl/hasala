@@ -9,7 +9,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
   func testProfileShowsOnlyWhatWorks() throws {
     let app = launchRelease()
     app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
     attach(app, "Release · Profile")
     assertNoPlaceholders(app, "Profile")
     assertPersonalAccountsOnly(app, "Profile")
@@ -22,20 +22,20 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     // The bank alerts card is a button that opens Bank alerts.
     XCTAssertTrue(app.buttons["profile.bankAlerts"].exists, "the bank alerts card is not a button")
     tap(app, "profile.bankAlerts")
-    XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 5), "Bank alerts did not open")
+    XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: uiWait), "Bank alerts did not open")
     assertNoPlaceholders(app, "Profile › Bank alerts")
     assertPersonalAccountsOnly(app, "Profile › Bank alerts")
     back(app)
 
     tap(app, "profile.accounts")
-    XCTAssertTrue(el(app, "accounts.netWorth").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "accounts.netWorth").waitForExistence(timeout: uiWait))
     attach(app, "Release · Accounts")
     assertNoPlaceholders(app, "Profile › Accounts")
     assertAbsent(app, ["accounts.add", "Add an account"], "Profile › Accounts")
     back(app)
 
     tap(app, "profile.bills")
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
     attach(app, "Release · Bills")
     assertNoPlaceholders(app, "Profile › Bills")
     // "All schedules" opens a screen that doesn't exist yet: matched by its identifier,
@@ -43,7 +43,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["bills.remind.axa", "Add a bill", "bills.allSchedules"], "Profile › Bills")
     assertNoButtons(app, ["Remind me"], "Profile › Bills")
     tap(app, "bill.axa")
-    XCTAssertTrue(el(app, "bills.detail.axa").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.detail.axa").waitForExistence(timeout: uiWait))
     attach(app, "Release · AXA Insurance")
     assertNoPlaceholders(app, "Profile › Bills › AXA Insurance")
     assertAbsent(app, ["bills.detail.remind"], "Profile › Bills › AXA Insurance")
@@ -52,14 +52,14 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     back(app)
 
     tap(app, "profile.rules")
-    XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Profile › Categories and rules")
     assertAbsent(app, ["rules.segment", "rules.add", "rules.seeAll"], "Profile › Categories and rules")
     try audit(app)
     back(app)
 
     tap(app, "profile.help")
-    XCTAssertTrue(el(app, "help.email").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "help.email").waitForExistence(timeout: uiWait))
     attach(app, "Release · Get help")
     assertNoPlaceholders(app, "Get help")
     try audit(app)
@@ -71,7 +71,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(footer.label.hasSuffix("never sold"), footer.label)
 
     tap(app, "profile.delete")
-    XCTAssertTrue(el(app, "delete.confirm").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "delete.confirm").waitForExistence(timeout: uiWait))
     attach(app, "Release · Delete your account")
     assertNoPlaceholders(app, "Delete your account")
     back(app)
@@ -84,14 +84,14 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
   func testNoMailboxCardOpensBankAlerts() throws {
     let app = launchRelease("noMailbox")
     app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Your email isn't connected"))
     attach(app, "Release · Profile · No mailbox")
     assertNoPlaceholders(app, "Profile")
     assertPersonalAccountsOnly(app, "Profile")
     assertAbsent(app, ["profile.connectGmail"], "Profile")
     tap(app, "profile.bankAlerts")
-    XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 5), "Bank alerts did not open")
+    XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: uiWait), "Bank alerts did not open")
     assertPersonalAccountsOnly(app, "Profile › Bank alerts")
   }
 
@@ -101,12 +101,12 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     app.buttons["header.profile"].firstMatch.tap()
     let delete = el(app, "profile.delete")
-    XCTAssertTrue(delete.waitForExistence(timeout: 5))
+    XCTAssertTrue(delete.waitForExistence(timeout: uiWait))
     XCTAssertTrue(reveal(app, delete))
     delete.tap()
     el(app, "delete.confirm").tap()
     let alert = app.alerts["Delete your Hasala account?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: 5))
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     alert.buttons["Delete"].tap()
     // "Confirm it's you" (Paper P2.6, spec 09 §12) asks before the passkey's Face ID.
     let confirm = el(app, "confirm.submit")
@@ -123,11 +123,11 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     app.buttons["header.profile"].firstMatch.tap()
     let signOut = el(app, "profile.signOut")
-    XCTAssertTrue(signOut.waitForExistence(timeout: 5))
+    XCTAssertTrue(signOut.waitForExistence(timeout: uiWait))
     XCTAssertTrue(reveal(app, signOut))
     signOut.tap()
     let alert = app.alerts["Sign out of this iPhone?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: 5))
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     // Sign-in & security's words for the same action (P4); Paper's "erased" isn't said.
     XCTAssertTrue(alert.staticTexts[
       "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."

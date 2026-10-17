@@ -36,11 +36,11 @@ final class OnboardingJourneyUITests: XCTestCase {
     tap(app, "bank.continue")
 
     // Debug reads Gmail and Outlook: Choose your email over the bank step (decision 5).
-    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: 5), "Choose your email did not open")
+    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: uiWait), "Choose your email did not open")
     attach(app, "Setup · Choose your email")
     tap(app, "mail.choose.gmail")
     let connect = el(app, "mail.connect.gmail")
-    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Google")
     connect.tap()
 
@@ -51,7 +51,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     tap(app, "scan.setUpPlan")
 
     // Income on the app's keypad, never the system keyboard.
-    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.keyboards.firstMatch.exists, "the system keyboard opened for money")
     typeOnKeypad(app, "25000")
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the figure reads \(incomeFigure(app))")
@@ -60,7 +60,7 @@ final class OnboardingJourneyUITests: XCTestCase {
 
     // The starting plan: 50/30/20 of 25,000.
     let needs = el(app, "plan.split.handle.0")
-    XCTAssertTrue(needs.waitForExistence(timeout: 5))
+    XCTAssertTrue(needs.waitForExistence(timeout: uiWait))
     XCTAssertEqual(needs.value as? String, "50%")
     XCTAssertTrue(says(app, "AED 12,500"), "the needs amount is missing")
     attach(app, "Setup · Starting plan")
@@ -91,10 +91,10 @@ final class OnboardingJourneyUITests: XCTestCase {
     tap(app, "bank.continue")
 
     let outlook = el(app, "mail.choose.outlook")
-    XCTAssertTrue(outlook.waitForExistence(timeout: 5), "Choose your email did not open")
+    XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Choose your email did not open")
     outlook.tap()
     let connect = el(app, "mail.connect.outlook")
-    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Microsoft")
     attach(app, "Setup · Outlook, read-only")
     connect.tap()
@@ -106,15 +106,15 @@ final class OnboardingJourneyUITests: XCTestCase {
 
     // The provider is remembered: Outlook's screen, connected, with no chooser.
     back(app)
-    XCTAssertTrue(app.staticTexts["Outlook is connected."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Outlook is connected."].waitForExistence(timeout: uiWait))
     back(app)
     tap(app, "bank.continue")
-    XCTAssertTrue(app.staticTexts["Outlook is connected."].waitForExistence(timeout: 5), "Outlook was forgotten")
+    XCTAssertTrue(app.staticTexts["Outlook is connected."].waitForExistence(timeout: uiWait), "Outlook was forgotten")
     XCTAssertFalse(el(app, "setup.chooseEmail").exists, "the chooser opened again")
     XCTAssertFalse(el(app, "mail.connect.outlook").exists, "the step offered Microsoft's sign-in again")
     XCTAssertFalse(el(app, "mail.connect.gmail").exists, "the step offered Google's sign-in")
     tap(app, "mail.continue")
-    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: uiWait))
   }
 
   // MARK: - Requirement 4: setup remembers everything
@@ -139,14 +139,14 @@ final class OnboardingJourneyUITests: XCTestCase {
 
     // Back to the bank step: through the email step, connected.
     back(app)
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: 5), "the email step forgot the connect")
+    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait), "the email step forgot the connect")
     back(app)
-    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: uiWait))
     assertBanksAsLeft(app)
 
     // Continue: no chooser (the provider is remembered), no sign-in, the mailbox connected.
     tap(app, "bank.continue")
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: 5), "Continue offered a sign-in again")
+    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait), "Continue offered a sign-in again")
     XCTAssertTrue(app.staticTexts["Gmail is connected."].exists)
     XCTAssertTrue(el(app, "mail.connected").exists, "the connected mailbox isn't shown")
     XCTAssertFalse(el(app, "setup.chooseEmail").exists, "the chooser opened again")
@@ -156,13 +156,13 @@ final class OnboardingJourneyUITests: XCTestCase {
     tap(app, "scan.setUpPlan")
 
     // 25,000; Back twice (the scan, the email step) and Forward twice.
-    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
     typeOnKeypad(app, "25000")
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the figure reads \(incomeFigure(app))")
     back(app)
-    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: uiWait))
     back(app)
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait))
     tap(app, "mail.continue")
     tap(app, "scan.setUpPlan")
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
@@ -174,15 +174,15 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(el(app, "income.payday.25").waitForLabel("Payday, 25th"), "the 25th wasn't chosen")
     tap(app, "income.continue")
     let handle = el(app, "plan.split.handle.0")
-    XCTAssertTrue(handle.waitForExistence(timeout: 5))
+    XCTAssertTrue(handle.waitForExistence(timeout: uiWait))
     nudge(handle, steps: 1)
     XCTAssertTrue(handle.waitForValue("55%"), "the needs handle reads \(handle.value ?? "nothing")")
     back(app)
-    XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: uiWait))
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th", "the payday was lost")
     tap(app, "income.continue")
-    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: uiWait))
     XCTAssertEqual(el(app, "plan.split.handle.0").value as? String, "55%", "the split was lost")
     XCTAssertEqual(el(app, "plan.split.handle.1").value as? String, "25%", "the split was lost")
     attach(app, "Starting plan · after Back and Forward")
@@ -191,7 +191,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     // banks as they were left.
     for screen in ["keypad.1", "scan.setUpPlan", "mail.continue", "bank.continue"] {
       back(app)
-      XCTAssertTrue(el(app, screen).waitForExistence(timeout: 5), "Back did not reach \(screen)")
+      XCTAssertTrue(el(app, screen).waitForExistence(timeout: uiWait), "Back did not reach \(screen)")
     }
     assertBanksAsLeft(app)
     attach(app, "Bank · after Back")
@@ -217,7 +217,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
     app.buttons["header.profile"].firstMatch.tap()
     tap(app, "profile.bankAlerts")
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "bankAlerts.mailbox.gmail-2").exists, "Google's sign-in ran twice")
     XCTAssertTrue(el(app, "bankAlerts.bank.enbd").exists, "the account doesn't read Emirates NBD")
     XCTAssertFalse(el(app, "bankAlerts.bank.dib").exists, "the account reads DIB, which was left out")
@@ -300,7 +300,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(written.waitForExistence(timeout: 10), file: file, line: line)
     XCTAssertFalse(written.isEnabled, "the words could be skipped unseen", file: file, line: line)
     tap(app, "phrase.reveal", file: file, line: line)
-    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: 5), file: file, line: line)
+    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: uiWait), file: file, line: line)
     attach(app, "Recovery phrase · revealed")
     tap(app, "phrase.written", file: file, line: line)
 
@@ -323,6 +323,6 @@ final class OnboardingJourneyUITests: XCTestCase {
   @MainActor
   private func says(_ app: XCUIApplication, _ text: String) -> Bool {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-      .waitForExistence(timeout: 5)
+      .waitForExistence(timeout: uiWait)
   }
 }

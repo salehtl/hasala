@@ -12,7 +12,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     let signIn = el(app, "stories.signIn")
     XCTAssertTrue(signIn.waitForExistence(timeout: 15))
     signIn.tap()
-    XCTAssertTrue(el(app, "signIn.passkey").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "signIn.passkey").waitForExistence(timeout: uiWait))
     attach(app, "Release · Sign in")
     assertNoPlaceholders(app, "Sign in")
     assertPersonalAccountsOnly(app, "Sign in")
@@ -39,7 +39,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["unlock.passkey"], "Unlock")
     assertNoPlaceholders(app, "Unlock")
     tap(app, "unlock.noWords")
-    XCTAssertTrue(el(app, "honest.foundWords").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "honest.foundWords").waitForExistence(timeout: uiWait))
     attach(app, "Release · Honest end")
     assertNoPlaceholders(app, "Honest end")
     assertAbsent(app, ["honest.startFresh"], "Honest end")
@@ -56,7 +56,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     app.buttons["header.profile"].firstMatch.tap()
     let security = el(app, "profile.security")
-    XCTAssertTrue(security.waitForExistence(timeout: 5))
+    XCTAssertTrue(security.waitForExistence(timeout: uiWait))
     XCTAssertTrue(reveal(app, security))
     security.tap()
     XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: 10))
@@ -74,7 +74,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
 
     tap(app, "security.signOut")
     let signOut = app.alerts["Sign out of this iPhone?"]
-    XCTAssertTrue(signOut.waitForExistence(timeout: 5))
+    XCTAssertTrue(signOut.waitForExistence(timeout: uiWait))
     XCTAssertTrue(signOut.staticTexts[
       "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
     ].exists)
@@ -83,13 +83,13 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
 
     tap(app, "security.signOutEverywhere")
     let everywhere = app.alerts["Sign out everywhere?"]
-    XCTAssertTrue(everywhere.waitForExistence(timeout: 5))
+    XCTAssertTrue(everywhere.waitForExistence(timeout: uiWait))
     XCTAssertTrue(everywhere.staticTexts[
       "Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in."
     ].exists)
     assertNoText(app, ["erase"], "Sign out everywhere?")
     everywhere.buttons["Cancel"].tap()
-    XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: uiWait))
   }
 
   /// View your 12 words: "Confirm it's you" with Face ID, then the cover, nothing a
@@ -99,11 +99,11 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     app.buttons["header.profile"].firstMatch.tap()
     let security = el(app, "profile.security")
-    XCTAssertTrue(security.waitForExistence(timeout: 5))
+    XCTAssertTrue(security.waitForExistence(timeout: uiWait))
     XCTAssertTrue(reveal(app, security))
     security.tap()
     tap(app, "security.viewPhrase")
-    XCTAssertTrue(app.staticTexts["Show your 12 words"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Show your 12 words"].waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Confirm it's you")
     tap(app, "confirm.submit")
     XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10))
@@ -111,6 +111,6 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "View your 12 words")
     try audit(app)
     tap(app, "phrase.done")
-    XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: uiWait))
   }
 }

@@ -57,8 +57,7 @@ extension XCTestCase {
   ) {
     let e = el(app, id)
     XCTAssertTrue(e.waitForExistence(timeout: 15), "\(id) is missing", file: file, line: line)
-    e.tap()
-    e.typeText(text)
+    type(text, into: e, file: file, line: line)
   }
 
   /// Replaces a text field's whole contents: the cursor goes to the end (a tap can land
@@ -319,7 +318,7 @@ extension XCTestCase {
   @MainActor
   func incomeFigure(_ app: XCUIApplication) -> String {
     let e = el(app, "income.figure")
-    guard e.waitForExistence(timeout: 5) else { return "" }
+    guard e.waitForExistence(timeout: uiWait) else { return "" }
     return [e.label, e.value as? String].compactMap { $0 }.joined(separator: " ")
   }
 

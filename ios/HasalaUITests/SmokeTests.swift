@@ -25,7 +25,7 @@ final class SmokeTests: XCTestCase {
     attach(app, "Home · Default")
     try audit(app)
     app.swipeUp()
-    XCTAssertTrue(el(app, "widget.budgetPace").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "widget.budgetPace").waitForExistence(timeout: uiWait))
     attach(app, "Home · Widgets")
     try audit(app)
     app.swipeUp()
@@ -36,7 +36,7 @@ final class SmokeTests: XCTestCase {
 
     // The bell: "Needs a look" with its four rows, then "Earlier" (Debug's feed).
     app.buttons["header.notifications"].firstMatch.tap()
-    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Needs a look"].exists)
     for id in ["review", "bill.axa", "found.apple-bill", "price.du"] {
       XCTAssertTrue(el(app, "bell.row.\(id)").exists, "bell.row.\(id) is missing")
@@ -45,17 +45,17 @@ final class SmokeTests: XCTestCase {
     attach(app, "Home · Notifications")
     try audit(app)
     el(app, "bell.close").tap()
-    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
 
     // Hide amounts: the hero reads as hidden, the toast appears and goes by itself.
     app.buttons["header.hideAmounts"].firstMatch.tap()
-    XCTAssertTrue(el(app, "toast").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "toast").waitForExistence(timeout: uiWait))
     XCTAssertEqual(hero.label, "Amount hidden")
     XCTAssertFalse(app.staticTexts["10,288.34"].exists)
     attach(app, "Home · Amounts hidden")
     // Audit the hidden state once the toast has gone by itself, not while it animates away
     // mid-audit.
-    XCTAssertTrue(el(app, "toast").waitForNonExistence(timeout: 10))
+    XCTAssertTrue(el(app, "toast").waitForNonExistence(timeout: 20))
     try audit(app)
     app.buttons["header.hideAmounts"].firstMatch.tap()
     XCTAssertTrue(hero.waitForLabel("AED 10,288.34"), hero.label)
@@ -63,31 +63,31 @@ final class SmokeTests: XCTestCase {
     // Every tab opens; coming back to Home shows the hero as it was (no replay).
     let tabBar = app.tabBars.firstMatch
     tabBar.buttons["Plan"].tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
     try audit(app)
     tabBar.buttons["Review"].tap()
-    XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait))
     try audit(app)
     tabBar.buttons["Activity"].tap()
-    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: uiWait))
     try audit(app)
     tabBar.buttons["Home"].tap()
-    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
     XCTAssertEqual(hero.label, "AED 10,288.34")
 
     // The profile sheet carries the build footer.
     app.buttons["header.profile"].firstMatch.tap()
     let footer = app.staticTexts["profile.buildFooter"]
-    XCTAssertTrue(footer.waitForExistence(timeout: 5))
+    XCTAssertTrue(footer.waitForExistence(timeout: uiWait))
     XCTAssertTrue(footer.label.hasPrefix("Hasala QA · 0.2.0 ("), footer.label)
     try audit(app)
     app.buttons["profile.close"].firstMatch.tap()
 
     // Search last: on iOS 26 the search tab collapses the bar into one button, so
     // there is no "Home" tab button to go back with.
-    XCTAssertTrue(tabBar.buttons["Search"].waitForExistence(timeout: 5))
+    XCTAssertTrue(tabBar.buttons["Search"].waitForExistence(timeout: uiWait))
     tabBar.buttons["Search"].tap()
-    XCTAssertTrue(el(app, "search.placeholder").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "search.placeholder").waitForExistence(timeout: uiWait))
     try audit(app)
   }
 
@@ -100,20 +100,20 @@ final class SmokeTests: XCTestCase {
 
     app.buttons["header.notifications"].firstMatch.tap()
     tap(app, "bell.row.bill.axa")
-    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
     // The bill is pushed inside Home: the tab root's header (and its bell) has gone.
-    XCTAssertTrue(app.buttons["header.notifications"].waitForNonExistence(timeout: 5), "no bill pushed")
+    XCTAssertTrue(app.buttons["header.notifications"].waitForNonExistence(timeout: uiWait), "no bill pushed")
     XCTAssertEqual(app.tabBars.firstMatch.buttons["Home"].isSelected, true)
     attach(app, "Bell · AXA Insurance")
     back(app)
-    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
     app.buttons["header.notifications"].firstMatch.tap()
     tap(app, "bell.row.review")
     XCTAssertTrue(el(app, "review.card").waitForExistence(timeout: 10), "the deck did not open")
     attach(app, "Bell · Review deck")
     el(app, "review.close").tap()
-    XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: 5), "not on the Review tab")
+    XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait), "not on the Review tab")
   }
 
   /// Home and the tabs at `.accessibility3` (UIKit's AccessibilityXL): the layouts reflow
@@ -134,7 +134,7 @@ final class SmokeTests: XCTestCase {
     for id in ["widget.budgetPace", "widget.nextBill", "widget.netWorth", "widget.project.Japan trip",
                "widget.goal.Emergency fund", "widget.today"] {
       let target = el(app, id)
-      XCTAssertTrue(target.waitForExistence(timeout: 5), "\(id) is missing")
+      XCTAssertTrue(target.waitForExistence(timeout: uiWait), "\(id) is missing")
       XCTAssertTrue(scroll(app, toShow: target), "could not scroll to \(id)")
       attach(app, "AX3 · \(id)")
       try audit(app, atLargeText: true)
@@ -143,17 +143,17 @@ final class SmokeTests: XCTestCase {
     // The bell's sheet at AX3: rows stack, nothing clips.
     for _ in 0..<6 where !app.buttons["header.notifications"].firstMatch.isHittable { app.swipeDown() }
     app.buttons["header.notifications"].firstMatch.tap()
-    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Notifications")
     try audit(app, atLargeText: true)
     el(app, "bell.close").tap()
-    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
 
     let tabBar = app.tabBars.firstMatch
     for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count"),
                       ("Search", "search.placeholder")] {
       tabBar.buttons[tab].tap()
-      XCTAssertTrue(el(app, id).waitForExistence(timeout: 5))
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       attach(app, "AX3 · \(tab)")
       if tab == "Plan" {
         // As PlanUITests.testPlanAtLargeTextSizes does: every check but clipped text, then

@@ -11,7 +11,7 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     let tabBar = app.tabBars.firstMatch
     tabBar.buttons["Activity"].tap()
-    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: uiWait))
     attach(app, "Release · Activity")
     assertNoPlaceholders(app, "Activity")
     assertPersonalAccountsOnly(app, "Activity")
@@ -20,7 +20,7 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     let carrefour = el(app, "txn.carrefour")
     XCTAssertTrue(reveal(app, carrefour))
     carrefour.tap()
-    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
     attach(app, "Release · Transaction")
     assertNoPlaceholders(app, "Transaction")
     // A row read from email shows where it came from, not the sample note.
@@ -28,15 +28,15 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["txn.sample", "txn.viewEmail"], "Transaction")
     // Its editors push inside the sheet.
     el(app, "txn.category").tap()
-    XCTAssertTrue(el(app, "picker.save").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "picker.save").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Category")
     app.navigationBars["Category"].buttons.firstMatch.tap()
-    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
     el(app, "txn.close").tap()
 
     XCTAssertTrue(tabBar.buttons["Review"].exists)
     tabBar.buttons["Review"].tap()
-    XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: uiWait))
     attach(app, "Release · Review tab")
     assertNoPlaceholders(app, "Review tab")
     assertPersonalAccountsOnly(app, "Review tab")
@@ -44,7 +44,7 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["review.tab.useSuggestions", "review.tab.unreadable"], "Review tab")
     try audit(app)
     el(app, "review.tab.start").tap()
-    XCTAssertTrue(el(app, "review.position").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "review.position").waitForExistence(timeout: uiWait))
     attach(app, "Release · Review")
     assertNoPlaceholders(app, "Review")
     assertPresent(app, ["review.skip", "review.pill.need", "review.pill.want", "review.pill.save",
@@ -52,7 +52,7 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     assertAbsent(app, ["review.viewEmail"], "Review")
     // The More menu offers only what works.
     el(app, "review.more").tap()
-    XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: uiWait))
     assertAbsent(app, ["View bank email"], "Review · More")
     assertNoPlaceholders(app, "Review · More")
     // Dismiss the menu: tap outside it, on the header.
@@ -65,16 +65,16 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
   @MainActor
   func testTheReviewAccountShowsSampleData() throws {
     let app = launchRelease("mayaSample")
-    XCTAssertTrue(el(app, "home.sampleData").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "home.sampleData").waitForExistence(timeout: uiWait))
     attach(app, "Release · Home · Sample data")
     try audit(app)
     app.tabBars.firstMatch.buttons["Activity"].tap()
     let carrefour = el(app, "txn.carrefour")
-    XCTAssertTrue(carrefour.waitForExistence(timeout: 5))
+    XCTAssertTrue(carrefour.waitForExistence(timeout: uiWait))
     XCTAssertTrue(reveal(app, carrefour))
     carrefour.tap()
     let note = el(app, "txn.sample")
-    XCTAssertTrue(note.waitForExistence(timeout: 5))
+    XCTAssertTrue(note.waitForExistence(timeout: uiWait))
     XCTAssertEqual(note.label, "This is sample data. There's no email behind it.")
     assertAbsent(app, ["txn.rawMerchant"], "Sample transaction")
     attach(app, "Release · Transaction · Sample data")

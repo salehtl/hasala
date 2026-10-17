@@ -32,7 +32,7 @@ final class JoinUITests: XCTestCase {
     try audit(app)
     // A swipe past the last story stays there.
     el(app, "stories.pager").swipeLeft()
-    XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: 5))
+    XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: uiWait))
     tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: 10))
     // Back returns to the story the person left.
@@ -131,7 +131,7 @@ final class JoinUITests: XCTestCase {
     tap(app, "method.continue")
     tap(app, "phrase.start")
     tap(app, "phrase.reveal")
-    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: uiWait))
     tap(app, "phrase.written")
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     attach(app, "Reduce Motion · Account ready")
@@ -167,7 +167,7 @@ final class JoinUITests: XCTestCase {
     type(app, "code.field", "000000")
     XCTAssertTrue(
       app.staticTexts["That code isn't right. Check the newest email from us, or get a new code. 4 tries left."]
-        .waitForExistence(timeout: 5))
+        .waitForExistence(timeout: uiWait))
     attach(app, "Verify email · wrong code")
     try audit(app)
     el(app, "code.field").typeText("123456")
@@ -187,7 +187,7 @@ final class JoinUITests: XCTestCase {
     attach(app, "Recovery phrase · hidden")
     try audit(app)
     tap(app, "phrase.reveal")
-    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
     attach(app, "Recovery phrase · revealed")
     try audit(app)
     // "I've written them down" publishes the account: there is no word check.
@@ -222,19 +222,18 @@ final class JoinUITests: XCTestCase {
     tap(app, "method.continue")
 
     type(app, "password.new", "lantern4")
-    XCTAssertTrue(app.staticTexts["Too short. 8 of 12 characters."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Too short. 8 of 12 characters."].waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "password.create").isEnabled)
     replaceText(app, "password.new", "password2026!")
     XCTAssertTrue(app.staticTexts["That password is too common. Try a longer phrase or let iPhone suggest one."]
-      .waitForExistence(timeout: 5))
+      .waitForExistence(timeout: uiWait))
     attach(app, "Password · too common")
     XCTAssertFalse(el(app, "password.create").isEnabled)
     let field = el(app, "password.new")
-    field.tap()
-    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 13))
+    type(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 13), into: field)
     field.typeText("copper lantern quietly 42")
     type(app, "password.confirm", "copper lantern quietly 42")
-    XCTAssertTrue(app.staticTexts["Passwords match."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Passwords match."].waitForExistence(timeout: uiWait))
     attach(app, "Password · strong, confirmed")
     try audit(app)
     tap(app, "password.create")
@@ -270,7 +269,7 @@ final class JoinUITests: XCTestCase {
     try audit(app)
     tap(app, "resume.start")
     tap(app, "phrase.reveal")
-    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
     tap(app, "phrase.written")
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     tap(app, "ready.continue")
@@ -317,7 +316,7 @@ final class JoinUITests: XCTestCase {
     try audit(app, atLargeText: true)
     tap(app, "phrase.start")
     tap(app, "phrase.reveal")
-    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Write these down")
     try audit(app, atLargeText: true)
     tap(app, "phrase.written")
@@ -330,6 +329,6 @@ final class JoinUITests: XCTestCase {
   @MainActor
   func has(_ app: XCUIApplication, _ label: String) -> Bool {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
-      .waitForExistence(timeout: 5)
+      .waitForExistence(timeout: uiWait)
   }
 }

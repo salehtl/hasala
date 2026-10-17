@@ -9,7 +9,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
   func testPlanShowsOnlyWhatWorks() throws {
     let app = launchRelease()
     app.tabBars.firstMatch.buttons["Plan"].tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
     attach(app, "Release · Plan")
     assertNoPlaceholders(app, "Plan")
     assertPersonalAccountsOnly(app, "Plan")
@@ -21,16 +21,16 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     let row = app.buttons["plan.row.dining"]
     XCTAssertTrue(reveal(app, row))
     row.tap()
-    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: uiWait))
 
     // Its budget sheet, from More, over the top of Dining as Paper draws it: no "Match
     // September" (no last month's figure in a Release build).
     tap(app, "plan.more")
     let changeBudget = app.buttons.matching(
       NSPredicate(format: "label == 'Change budget' AND identifier != 'category.changeBudget'")).firstMatch
-    XCTAssertTrue(changeBudget.waitForExistence(timeout: 5))
+    XCTAssertTrue(changeBudget.waitForExistence(timeout: uiWait))
     changeBudget.tap()
-    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: uiWait))
     waitUntilStill(el(app, "budget.close"))
     assertNoPlaceholders(app, "Plan › Dining budget")
     XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Match'")).count, 0)
@@ -51,7 +51,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(reveal(app, project))
     project.tap()
     let setting = el(app, "project.countInPlan")
-    XCTAssertTrue(setting.waitForExistence(timeout: 5))
+    XCTAssertTrue(setting.waitForExistence(timeout: uiWait))
     XCTAssertEqual(setting.value as? String, "Off")
     XCTAssertEqual(app.switches.count, 0)
     assertNoPlaceholders(app, "Plan › Japan trip")
@@ -79,7 +79,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     app.tabBars.firstMatch.buttons["Plan"].tap()
     tap(app, "plan.assign")
-    XCTAssertTrue(el(app, "move.to").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "move.to").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Plan › Assign")
     assertPersonalAccountsOnly(app, "Plan › Assign")
     assertPresent(app, ["move.from.rta", "move.amount", "move.save"], "Plan › Assign")

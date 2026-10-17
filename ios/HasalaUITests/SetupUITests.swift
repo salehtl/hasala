@@ -19,12 +19,12 @@ final class SetupUITests: XCTestCase {
     tap(app, "bank.continue")
 
     // Debug reads Gmail and Outlook: "Choose your email" over the bank step.
-    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: uiWait))
     attach(app, "Choose your email")
     try audit(app, overSheet: true)
     tap(app, "mail.choose.gmail")
     let connect = el(app, "mail.connect.gmail")
-    XCTAssertTrue(connect.waitForExistence(timeout: 5))
+    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Google")
     attach(app, "Connect Gmail")
     try audit(app)
@@ -37,7 +37,7 @@ final class SetupUITests: XCTestCase {
     tap(app, "scan.setUpPlan")
 
     // Income on the app's keypad: no system keyboard, Continue off at 0.
-    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.keyboards.firstMatch.exists, "the system keyboard opened for money")
     XCTAssertFalse(el(app, "income.continue").isEnabled, "Continue was on at 0")
     typeOnKeypad(app, "25000")
@@ -46,7 +46,7 @@ final class SetupUITests: XCTestCase {
     try audit(app)
     tap(app, "income.continue")
 
-    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: uiWait))
     let needs = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'AED 12,500'"))
     XCTAssertGreaterThan(needs.count, 0, "the needs amount is missing")
     attach(app, "Starting plan")
@@ -59,7 +59,7 @@ final class SetupUITests: XCTestCase {
     attach(app, "Sorted")
     try audit(app)
     tap(app, "result.continue")
-    XCTAssertTrue(el(app, "notifications.allow").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "notifications.allow").waitForExistence(timeout: uiWait))
     attach(app, "Notifications")
     try audit(app)
     tap(app, "notifications.notNow")
@@ -84,13 +84,13 @@ final class SetupUITests: XCTestCase {
 
     // Back to the email step, then to the bank.
     back(app)
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: 5), "the email step forgot the connect")
+    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait), "the email step forgot the connect")
     back(app)
-    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: uiWait))
 
     // Continue again: no chooser (the provider is remembered), and the step shows connected.
     tap(app, "bank.continue")
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: 5), "Continue offered a sign-in again")
+    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait), "Continue offered a sign-in again")
     XCTAssertFalse(el(app, "setup.chooseEmail").exists, "the chooser opened again")
     XCTAssertFalse(el(app, "mail.connect.gmail").exists, "the step offered Google's sign-in again")
     let connected = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'connected'"))
@@ -98,7 +98,7 @@ final class SetupUITests: XCTestCase {
     attach(app, "Connect Gmail · connected again")
     try audit(app)
     tap(app, "mail.continue")
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: uiWait))
     tap(app, "scan.setUpPlan")
 
     // 25,000 and the 25th.
@@ -109,13 +109,13 @@ final class SetupUITests: XCTestCase {
 
     // Needs to 55%.
     let handle = el(app, "plan.split.handle.0")
-    XCTAssertTrue(handle.waitForExistence(timeout: 5))
+    XCTAssertTrue(handle.waitForExistence(timeout: uiWait))
     nudge(handle, steps: 1)
     XCTAssertTrue(handle.waitForValue("55%"), "the needs handle reads \(handle.value ?? "nothing")")
 
     // Back to income: the figure, the payday; forward: the split.
     back(app)
-    XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: uiWait))
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th", "the payday was lost")
     attach(app, "Income · after Back")
@@ -126,7 +126,7 @@ final class SetupUITests: XCTestCase {
     // All the way back to the scan and forward again: still the same.
     back(app)
     back(app)
-    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: uiWait))
     tap(app, "scan.setUpPlan")
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th")
@@ -148,12 +148,12 @@ final class SetupUITests: XCTestCase {
     tap(app, "mail.choose.gmail")
     tap(app, "mail.connect.gmail")
     tap(app, "scan.setUpPlan")
-    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
     typeOnKeypad(app, "25000")
     attach(app, "Income · AX3")
     try audit(app, atLargeText: true)
     tap(app, "income.continue")
-    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: uiWait))
     attach(app, "Starting plan · AX3")
     try audit(app, atLargeText: true)
   }

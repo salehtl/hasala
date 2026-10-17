@@ -63,7 +63,7 @@ class ReleaseSurfaceTestCase: XCTestCase {
   @MainActor
   func assertPresent(_ app: XCUIApplication, _ ids: [String], _ screen: String, line: UInt = #line) {
     for id in ids {
-      XCTAssertTrue(el(app, id).waitForExistence(timeout: 5), "\(screen) is missing \(id)", line: line)
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait), "\(screen) is missing \(id)", line: line)
     }
   }
 
@@ -80,6 +80,6 @@ class ReleaseSurfaceTestCase: XCTestCase {
   @MainActor
   func assertText(_ app: XCUIApplication, _ phrase: String, _ screen: String, line: UInt = #line) {
     let hit = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", phrase)).firstMatch
-    XCTAssertTrue(hit.waitForExistence(timeout: 5), "\(screen) does not say '\(phrase)'", line: line)
+    XCTAssertTrue(hit.waitForExistence(timeout: uiWait), "\(screen) does not say '\(phrase)'", line: line)
   }
 }

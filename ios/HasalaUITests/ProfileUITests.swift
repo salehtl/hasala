@@ -18,7 +18,7 @@ final class ProfileUITests: XCTestCase {
   @MainActor
   private func openProfile(_ app: XCUIApplication) {
     app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
   }
 
   /// Drags the page until `element` sits clear of the header and the tab bar, each drag
@@ -71,7 +71,7 @@ final class ProfileUITests: XCTestCase {
 
     tap(app, "profile.bills")
     let next14 = el(app, "bills.next14")
-    XCTAssertTrue(next14.waitForExistence(timeout: 5))
+    XCTAssertTrue(next14.waitForExistence(timeout: uiWait))
     XCTAssertEqual(next14.label, "AED 1,039.15")
     XCTAssertTrue(el(app, "bills.attention.axa").exists)
     try audit(app)
@@ -79,12 +79,12 @@ final class ProfileUITests: XCTestCase {
     let track = el(app, "bills.track.apple-bill")
     XCTAssertTrue(scroll(app, toShow: track))
     track.tap()
-    XCTAssertTrue(app.staticTexts["Tracking Apple.com/bill"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Tracking Apple.com/bill"].waitForExistence(timeout: uiWait))
     back(app)
     XCTAssertTrue(el(app, "profile.bills").waitForLabel(containing: "10 tracked"))
 
     tap(app, "profile.rules")
-    XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "rules.segment").exists, "Debug shows the Categories segment")
     attach(app, "Categories and rules")
     try audit(app)
@@ -105,7 +105,7 @@ final class ProfileUITests: XCTestCase {
     el(app, "profile.close").tap()
     app.tabBars.firstMatch.buttons["Activity"].tap()
     let talabat = el(app, "txn.talabat")
-    XCTAssertTrue(talabat.waitForExistence(timeout: 5))
+    XCTAssertTrue(talabat.waitForExistence(timeout: uiWait))
     talabat.tap()
     XCTAssertTrue(el(app, "txn.amount").waitForLabel("Amount hidden"))
     attach(app, "Transaction · Amounts hidden")
@@ -120,23 +120,23 @@ final class ProfileUITests: XCTestCase {
     tap(app, "profile.bills")
     tap(app, "bill.axa")
     let hero = el(app, "bills.detail.axa")
-    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
     XCTAssertTrue(hero.label.contains("550.00"))
     XCTAssertTrue(el(app, "3 days past usual").exists)
     try audit(app)
     attachPage(app, "AXA Insurance", screens: 3)
 
     tap(app, "bills.detail.paid")
-    XCTAssertTrue(app.staticTexts["AXA Insurance marked paid"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["AXA Insurance marked paid"].waitForExistence(timeout: uiWait))
     app.buttons["Undo"].firstMatch.tap()
-    XCTAssertTrue(el(app, "bills.detail.paid").waitForExistence(timeout: 5), "Undo brings the late bill back")
+    XCTAssertTrue(el(app, "bills.detail.paid").waitForExistence(timeout: uiWait), "Undo brings the late bill back")
 
     tap(app, "bills.detail.stop")
     let alert = app.alerts["Stop tracking AXA Insurance?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: 5))
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     alert.buttons["Stop tracking"].tap()
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5), "the page went back to Bills")
-    XCTAssertTrue(app.staticTexts["Stopped tracking AXA Insurance"].waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait), "the page went back to Bills")
+    XCTAssertTrue(app.staticTexts["Stopped tracking AXA Insurance"].waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "bills.attention.axa").exists)
   }
 
@@ -161,7 +161,7 @@ final class ProfileUITests: XCTestCase {
     let app = launch(scenario: "maya", screen: "bills")
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 15))
     tap(app, "bills.details.du")
-    XCTAssertTrue(el(app, "bills.detail.du").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.detail.du").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "bills.detail.accept").exists)
     XCTAssertTrue(app.staticTexts["Charged 38.90 more than usual (389.00) on Mon 5 Oct."].exists)
     try audit(app)
@@ -175,7 +175,7 @@ final class ProfileUITests: XCTestCase {
     openProfile(app)
     tap(app, "profile.accounts")
     let netWorth = el(app, "accounts.netWorth")
-    XCTAssertTrue(netWorth.waitForExistence(timeout: 5))
+    XCTAssertTrue(netWorth.waitForExistence(timeout: uiWait))
     XCTAssertEqual(netWorth.label, "AED 227,568.00")
     XCTAssertTrue(el(app, "accounts.change").label.contains("plus AED 2,140.00"))
     XCTAssertTrue(el(app, "accounts.chart").exists)
@@ -202,7 +202,7 @@ final class ProfileUITests: XCTestCase {
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
       .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
     tap(app, "profile.bills")
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
     try audit(app, atLargeText: true)
     for id in ["bills.paid.axa", "bills.track.apple-bill", "bill.dewa"] {
       XCTAssertTrue(bringUp(app, el(app, id)), "could not reach \(id)")
@@ -210,14 +210,14 @@ final class ProfileUITests: XCTestCase {
       try audit(app, atLargeText: true)
     }
     tap(app, "bill.dewa")
-    XCTAssertTrue(el(app, "bills.detail.dewa").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "bills.detail.dewa").waitForExistence(timeout: uiWait))
     try audit(app, atLargeText: true)
     attach(app, "AX3 · DEWA")
     back(app)
     back(app)
 
     tap(app, "profile.accounts")
-    XCTAssertTrue(el(app, "accounts.netWorth").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "accounts.netWorth").waitForExistence(timeout: uiWait))
     try audit(app, atLargeText: true)
     XCTAssertTrue(bringUp(app, el(app, "accounts.row.cash")))
     attach(app, "AX3 · Accounts")
