@@ -38,7 +38,9 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
     attach(app, "Release · Bills")
     assertNoPlaceholders(app, "Profile › Bills")
-    assertAbsent(app, ["bills.remind.axa", "Add a bill", "All schedules · 9"], "Profile › Bills")
+    // "All schedules" opens a screen that doesn't exist yet: matched by its identifier,
+    // since its label ("All schedules, 9") is not the text it draws.
+    assertAbsent(app, ["bills.remind.axa", "Add a bill", "bills.allSchedules"], "Profile › Bills")
     assertNoButtons(app, ["Remind me"], "Profile › Bills")
     tap(app, "bill.axa")
     XCTAssertTrue(el(app, "bills.detail.axa").waitForExistence(timeout: 5))

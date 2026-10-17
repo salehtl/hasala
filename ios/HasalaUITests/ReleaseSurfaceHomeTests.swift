@@ -42,6 +42,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     tap(app, "bell.row.price.du")
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
     assertNoPlaceholders(app, "Bills")
+    assertAbsent(app, ["bills.allSchedules"], "Bills")
     back(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 5))
 
@@ -58,6 +59,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: 5))
     attach(app, "Release · Bills")
     assertNoPlaceholders(app, "Bills")
+    assertAbsent(app, ["bills.allSchedules"], "Home › Bills")
     assertNoButtons(app, ["Remind me"], "Bills")
     try audit(app)
     back(app)
