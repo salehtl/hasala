@@ -12,7 +12,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
     attach(app, "Release · Profile")
     assertNoPlaceholders(app, "Profile")
-    assertNoOutlook(app, "Profile")
+    assertPersonalAccountsOnly(app, "Profile")
     assertAbsent(app, ["profile.notifications", "profile.faceID", "profile.connectGmail"], "Profile")
     assertPresent(app, ["profile.accounts", "profile.bills", "profile.rules", "profile.projects", "profile.security",
                         "profile.export", "profile.privacy", "profile.help", "profile.signOut", "profile.delete",
@@ -24,7 +24,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     tap(app, "profile.bankAlerts")
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 5), "Bank alerts did not open")
     assertNoPlaceholders(app, "Profile › Bank alerts")
-    assertNoOutlook(app, "Profile › Bank alerts")
+    assertPersonalAccountsOnly(app, "Profile › Bank alerts")
     back(app)
 
     tap(app, "profile.accounts")
@@ -88,11 +88,11 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Your email isn't connected"))
     attach(app, "Release · Profile · No mailbox")
     assertNoPlaceholders(app, "Profile")
-    assertNoOutlook(app, "Profile")
+    assertPersonalAccountsOnly(app, "Profile")
     assertAbsent(app, ["profile.connectGmail"], "Profile")
     tap(app, "profile.bankAlerts")
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 5), "Bank alerts did not open")
-    assertNoOutlook(app, "Profile › Bank alerts")
+    assertPersonalAccountsOnly(app, "Profile › Bank alerts")
   }
 
   /// Profile › Delete your account deletes it (Guideline 5.1.1(v)) and lands on Welcome.

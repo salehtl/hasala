@@ -12,7 +12,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
     attach(app, "Release · Plan")
     assertNoPlaceholders(app, "Plan")
-    assertNoOutlook(app, "Plan")
+    assertPersonalAccountsOnly(app, "Plan")
     assertNoButtons(app, ["Auto-assign", "New project"], "Plan")
     XCTAssertTrue(app.buttons["plan.assign"].exists)
     try audit(app)
@@ -81,7 +81,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     tap(app, "plan.assign")
     XCTAssertTrue(el(app, "move.to").waitForExistence(timeout: 5))
     assertNoPlaceholders(app, "Plan › Assign")
-    assertNoOutlook(app, "Plan › Assign")
+    assertPersonalAccountsOnly(app, "Plan › Assign")
     assertPresent(app, ["move.from.rta", "move.amount", "move.save"], "Plan › Assign")
     try audit(app)
   }

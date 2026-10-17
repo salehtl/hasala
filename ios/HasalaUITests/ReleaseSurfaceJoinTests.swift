@@ -9,7 +9,7 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
   func testSignupPromisesOnlyWhatWorks() throws {
     let app = launchRelease("newUser", waitForHome: false)
     tap(app, "stories.getStarted", timeout: 15)
-    assertNoOutlook(app, "Welcome")
+    assertPersonalAccountsOnly(app, "Welcome")
     tap(app, "welcome.join")
     assertNoPlaceholders(app, "Invite code")
     type(app, "invite.field", "ABCDEFGHIJKLMNOPQRSTUVWX")
@@ -41,36 +41,40 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     tap(app, "phrase.written")
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     assertNoPlaceholders(app, "Account ready")
-    assertNoOutlook(app, "Account ready")
+    assertPersonalAccountsOnly(app, "Account ready")
     // The beta can't add a passkey, so a password account can't see its words again.
     assertText(app, "Keep the paper safe, away from this iPhone. Your words can't be shown again on this account.",
                "Account ready")
     assertNoText(app, ["Add Face ID in Profile"], "Account ready")
-    // "What Hasala reads, and what it doesn't": Google alone (plan B4.6 rule 4).
+    // "What Hasala reads, and what it doesn't": Google or Microsoft, as the build connects.
     tap(app, "ready.whoSees")
     XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 10))
-    assertNoOutlook(app, "Who can see what")
+    let mail = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Google or Microsoft'"))
+      .firstMatch
+    XCTAssertTrue(mail.waitForExistence(timeout: uiWait), "the mail row does not name Google or Microsoft")
+    assertPersonalAccountsOnly(app, "Who can see what")
     tap(app, "whoSees.close")
     tap(app, "ready.continue")
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow")
   }
 
-  /// The stories and "Who can see what" name only what a Release build connects: the mail
-  /// row says "Google", never Microsoft (plan B4.6 rule 4), and nothing reads like a
-  /// placeholder.
+  /// The stories and "Who can see what" name what a Release build connects: the mail row
+  /// says "Google or Microsoft" (Outlook is on, for personal accounts), and nothing reads
+  /// like a placeholder.
   @MainActor
-  func testStoriesAndWhoCanSeeWhatNameGoogleOnly() throws {
+  func testStoriesAndWhoCanSeeWhatNameGoogleAndMicrosoft() throws {
     let app = launchRelease("newUser", waitForHome: false, screen: "welcome.whoSees")
     XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 15))
-    let google = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Google'")).firstMatch
-    XCTAssertTrue(google.waitForExistence(timeout: 5), "the mail row does not name Google")
-    assertNoOutlook(app, "Who can see what")
+    let mail = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Google or Microsoft'"))
+      .firstMatch
+    XCTAssertTrue(mail.waitForExistence(timeout: uiWait), "the mail row does not name Google or Microsoft")
+    assertPersonalAccountsOnly(app, "Who can see what")
     assertNoPlaceholders(app, "Who can see what")
     attach(app, "Release · Who can see what")
     try audit(app)
     tap(app, "whoSees.close")
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 10))
-    assertNoOutlook(app, "Stories")
+    assertPersonalAccountsOnly(app, "Stories")
     assertNoPlaceholders(app, "Stories")
   }
 }

@@ -15,7 +15,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "signIn.passkey").waitForExistence(timeout: 5))
     attach(app, "Release · Sign in")
     assertNoPlaceholders(app, "Sign in")
-    assertNoOutlook(app, "Sign in")
+    assertPersonalAccountsOnly(app, "Sign in")
     assertAbsent(app, ["signIn.forgot", "signIn.recover"], "Sign in")
     assertPresent(app, ["signIn.email", "signIn.password", "signIn.withPassword", "signIn.support", "signIn.support.web"],
                   "Sign in")
@@ -62,7 +62,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: 10))
     attach(app, "Release · Sign-in & security")
     assertNoPlaceholders(app, "Sign-in & security")
-    assertNoOutlook(app, "Sign-in & security")
+    assertPersonalAccountsOnly(app, "Sign-in & security")
     assertAbsent(app, ["security.changeEmail", "security.addPasskey", "security.removePasskey.pk-1",
                        "security.removePasskey.pk-2", "security.removeDevice.ios-other", "security.newWords",
                        "security.freeze", "security.lockdown", "security.setPassword", "security.changePassword",

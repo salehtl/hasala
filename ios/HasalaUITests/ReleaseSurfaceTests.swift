@@ -14,6 +14,6 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
     }
     XCTAssertFalse(tabBar.buttons["Search"].exists)
     assertNoPlaceholders(app, "Home")
-    assertNoOutlook(app, "Home")
+    assertPersonalAccountsOnly(app, "Home")
   }
 }

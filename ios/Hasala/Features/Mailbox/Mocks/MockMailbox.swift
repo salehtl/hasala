@@ -16,9 +16,8 @@
   @MainActor
   @Observable
   final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting {
-    /// Narrowed to the live lane's on the Release surface (`AuthScenario.session`): a
-    /// mailbox of a provider this build can't connect can't exist there either, so the
-    /// scenario's go.
+    /// A mailbox of a provider this build can't connect can't exist either, so the
+    /// scenario's go. The Release surface keeps both, as the live build's client ids do.
     var connectable: [MailProviderKind] = MailProviderKind.allCases {
       didSet { mailboxes.removeAll { !connectable.contains($0.provider) } }
     }
@@ -55,6 +54,18 @@
       self.offersSampleData = offersSampleData
       self.mailboxes = mailboxes
       if mailboxes.contains(where: { $0.id == Self.gmail.id }) { unreadableMail = [Self.unreadable] }
+    }
+
+    /// The Release surface's narrowing (`AuthScenario.session`), the live lane's shape: one
+    /// mailbox per account, which a connect of the other provider replaces once confirmed
+    /// (`.replace`, no `.addSecond`). The scenario keeps its first mailbox still read, and the
+    /// disconnected rows (`mailboxes2` and `outlookSignIn` read Gmail only).
+    func holdOneLink() {
+      capabilities.remove(.addSecond)
+      capabilities.insert(.replace)
+      if let first = mailboxes.first(where: { $0.state != .disconnected }) {
+        mailboxes.removeAll { $0.state != .disconnected && $0.id != first.id }
+      }
     }
 
     // MARK: Fixtures
@@ -182,8 +193,11 @@
     func firstScan() -> AsyncStream<ScanProgress> {
       let total = total
       let step = step
-      let dictionary = Int(Double(total) * 0.65)
-      let model = sortsWithModel ? Int(Double(total) * 0.21) : 0
+      // One link held, as live: an Outlook import sends every alert to review while its
+      // trust gate is closed (HasalaCore's Outlook shipping gate).
+      let unproven = holdsOneLink && mailboxes.contains { $0.state == .syncing && $0.provider == .outlook }
+      let dictionary = unproven ? 0 : Int(Double(total) * 0.65)
+      let model = sortsWithModel && !unproven ? Int(Double(total) * 0.21) : 0
       let summary = SortSummary(
         total: total, byRules: 0, byDictionary: dictionary, byModel: model, toReview: total - dictionary - model)
       return AsyncStream { continuation in

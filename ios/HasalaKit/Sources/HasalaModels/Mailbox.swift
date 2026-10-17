@@ -31,7 +31,8 @@ public enum MailProviderKind: String, CaseIterable, Sendable, Identifiable, Coda
   public var chooserSubtitle: String {
     switch self {
     case .gmail: "Any Google account"
-    case .outlook: "Outlook.com, Hotmail, Live, or work or school Microsoft 365"
+    // Personal Microsoft accounts only: the Microsoft app refuses work and school ones.
+    case .outlook: "Outlook.com, Hotmail or Live"
     }
   }
 

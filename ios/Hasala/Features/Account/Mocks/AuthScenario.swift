@@ -56,6 +56,11 @@
     case outlookCancelled
     /// Signed in with no mailbox.
     case noMailbox
+    /// Signed in; Microsoft ended Hasala's access to Outlook, the account's one mailbox.
+    case outlookReconnect
+    /// Signed in, reading Gmail only (the same as `passkeyUser`): a switch to Outlook
+    /// replaces it.
+    case gmailLinked
     /// Signed in after skipping setup's bank step (manual entry): no bank and no mailbox,
     /// so a connect from the profile asks for the banks first.
     case noBanks
@@ -70,8 +75,9 @@
     /// The mock offers every account action, except on the Release surface
     /// (`BuildSurface`), where it offers the beta's, as the live service does (and its
     /// first scan, like the live lane's, sorts nothing with the on-device model). There the
-    /// mailbox mock is narrowed to the live lane too: Gmail only, one mailbox (plan B4.5),
-    /// which keeps Outlook off every Release-surface screen. `releaseSurface` is the build's
+    /// mailbox mock is narrowed to the live lane too: Gmail and Outlook (personal Microsoft
+    /// accounts), as the build's client ids offer them, and one mailbox, which a connect of
+    /// the other provider replaces after a confirmation. `releaseSurface` is the build's
     /// (tests pass it, so they check the narrowing the app runs).
     @MainActor
     static func session(
@@ -80,10 +86,7 @@
       let session = makeSession(for: scenario, releaseSurface: releaseSurface)
       if releaseSurface {
         if let mock = session.account as? MockAccountService { mock.capabilities = .beta }
-        if let mailbox = session.services.mailbox as? MockMailbox {
-          mailbox.connectable = [.gmail]
-          mailbox.capabilities.remove(.addSecond)
-        }
+        if let mailbox = session.services.mailbox as? MockMailbox { mailbox.holdOneLink() }
       }
       return session
     }
@@ -102,8 +105,9 @@
     static func mailboxes(for scenario: AuthScenario?) -> [MailboxSnapshot] {
       switch scenario {
       case nil, .passkeyUser, .passwordOnly, .mayaSample, .resetApproval, .frozen, .frozenOperator,
-        .unlockPasswordOnly, .unlockWithPasskey, .relaunchSignedIn:
+        .unlockPasswordOnly, .unlockWithPasskey, .relaunchSignedIn, .gmailLinked:
         [MockMailbox.gmail]
+      case .outlookReconnect: [MockMailbox.needingSignIn(MockMailbox.outlook)]
       case .gmailReconnect: [MockMailbox.needingSignIn(MockMailbox.gmail)]
       case .mailboxes2: [MockMailbox.gmail, MockMailbox.outlook]
       case .outlookSignIn: [MockMailbox.gmail, MockMailbox.needingSignIn(MockMailbox.outlook)]
@@ -128,7 +132,8 @@
                         notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })
       }
       switch scenario {
-      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks:
+      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,
+        .outlookReconnect, .gmailLinked:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),

@@ -12,7 +12,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // The hero and the bell; no "See month", "Edit" or "Add widget", no Needs-you rail.
     attach(app, "Release · Home")
     assertNoPlaceholders(app, "Home")
-    assertNoOutlook(app, "Home")
+    assertPersonalAccountsOnly(app, "Home")
     XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 10,288.34"))
     assertAbsent(app, ["home.seeMonth", "home.sampleData", "home.editWidgets", "Needs you"], "Home")
     assertNoButtons(app, ["See all", "Edit", "Add widget", "See month"], "Home")
@@ -35,7 +35,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
                   "Notifications")
     assertAbsent(app, ["Earlier", "bell.settings", "Notification settings"], "Notifications")
     assertNoPlaceholders(app, "Notifications")
-    assertNoOutlook(app, "Notifications")
+    assertPersonalAccountsOnly(app, "Notifications")
     attach(app, "Release · Notifications")
     try audit(app)
     // A row opens its screen: du's new price is in Bills.
@@ -69,8 +69,8 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: 5))
   }
 
-  /// With nothing to look at the bell has no badge and the sheet says so; mail's row still
-  /// names Gmail only (plan B4.6).
+  /// With nothing to look at the bell has no badge and the sheet says so; mail's row
+  /// promises no work or school account.
   @MainActor
   func testAllClearAndTheMailRow() throws {
     // All clear: the caught-up queue, AXA paid, du accepted, the found bill dismissed.
@@ -91,7 +91,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     bell.tap()
     tap(app, "bell.row.mail.connect")
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 10), "Bank alerts did not open")
-    assertNoOutlook(app, "Bank alerts from the bell")
+    assertPersonalAccountsOnly(app, "Bank alerts from the bell")
     assertNoPlaceholders(app, "Bank alerts from the bell")
   }
 }

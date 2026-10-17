@@ -3,7 +3,7 @@ import SwiftUI
 
 /// A mail provider's mark in its own colours (page 15 · Mailboxes, page 05): the Google "G" and
 /// the Microsoft four squares, never recoloured, outlined or tinted, and never a generic mail
-/// icon. Microsoft covers Outlook.com, Hotmail, Live and Microsoft 365, so there is no separate
+/// icon. Microsoft covers Outlook.com, Hotmail and Live, so there is no separate
 /// Outlook mark.
 public struct ProviderMark: View {
   public enum Size: Sendable, Hashable {

@@ -314,18 +314,19 @@ struct MailboxFlowTests: AccountSuite {
     #expect(stopped.hue == .sand && stopped.needsYou)
   }
 
-  /// On the Release surface the scenario's mock reads like the live lane: Gmail only, one
-  /// mailbox (plan B4.5), through the same `AuthScenario.session` the app launches with.
-  /// Off it, every provider and a second mailbox.
-  @Test func theReleaseSurfaceListsGmailOnly() throws {
-    for scenario in [AuthScenario.mailboxes2, .setupEmail, .outlookSignIn, .noMailbox, nil] {
+  /// On the Release surface the scenario's mock reads like the live lane: the providers the
+  /// build has a client for (Gmail and Outlook), one mailbox, replaced only on a confirmed
+  /// switch, through the same `AuthScenario.session` the app launches with. Off it, every
+  /// provider and a second mailbox.
+  @Test func theReleaseSurfaceListsTheBuildsProviders() throws {
+    for scenario in [AuthScenario.mailboxes2, .setupEmail, .outlookSignIn, .noMailbox, .outlookReconnect, .gmailLinked, nil] {
       let release = try #require(AuthScenario.session(for: scenario, releaseSurface: true).services.mailbox as? MockMailbox)
-      #expect(release.connectable == [.gmail] && !release.capabilities.contains(.addSecond))
-      #expect(!release.sortsWithModel)
-      // A scenario's Outlook mailbox can't exist where Outlook can't connect.
-      #expect(release.mailboxes.allSatisfy { $0.provider == .gmail })
+      #expect(release.connectable == [.gmail, .outlook])
+      #expect(!release.capabilities.contains(.addSecond) && release.capabilities.contains(.replace))
+      #expect(release.holdsOneLink && !release.sortsWithModel)
+      #expect(release.mailboxes.filter { $0.state != .disconnected }.count <= 1)
       let debug = try #require(AuthScenario.session(for: scenario, releaseSurface: false).services.mailbox as? MockMailbox)
-      #expect(debug.connectable == [.gmail, .outlook] && debug.capabilities == .all)
+      #expect(debug.connectable == [.gmail, .outlook] && debug.capabilities == .all && !debug.holdsOneLink)
     }
   }
 }

@@ -4,8 +4,8 @@ import XCTest
 /// Review Guideline 2.1), checked one area per class. Nothing reads like a placeholder
 /// ("later build", "coming soon"), no control leads nowhere, only the beta's account
 /// actions are offered (`AccountCapabilities.beta`), no copy promises what the beta doesn't
-/// do, and no provider but Gmail is named (Outlook is not connectable in a Release build,
-/// plan B4.6).
+/// do, and the mail is Gmail and Outlook (personal Microsoft accounts), one mailbox: no work
+/// or school account is promised, as the live Microsoft app refuses them.
 ///
 /// The app runs the Maya mock with `-HasalaReleaseSurface`, which gives a Debug build the
 /// Release surface and the mock the beta's capabilities. A Release build ignores the
@@ -37,10 +37,11 @@ class ReleaseSurfaceTestCase: XCTestCase {
     XCTAssertTrue(hits.isEmpty, "\(screen) shows placeholder text: \(hits)", line: line)
   }
 
-  /// No label names a mail provider a Release build can't connect (plan B4.6 rule 5).
+  /// No label promises a work or school Microsoft account: the live Microsoft app takes
+  /// personal accounts only.
   @MainActor
-  func assertNoOutlook(_ app: XCUIApplication, _ screen: String, line: UInt = #line) {
-    assertNoText(app, ["Outlook", "Microsoft"], screen, line: line)
+  func assertPersonalAccountsOnly(_ app: XCUIApplication, _ screen: String, line: UInt = #line) {
+    assertNoText(app, ["work or school", "Work or school", "Microsoft 365", "Entra", "organisation"], screen, line: line)
   }
 
   /// None of `ids` (identifiers or labels) is on screen as anything.

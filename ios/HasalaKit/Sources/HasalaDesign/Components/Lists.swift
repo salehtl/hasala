@@ -87,8 +87,8 @@ public struct HListRow: View {
   public enum Supporting: ExpressibleByStringLiteral {
     /// One line at the default size; above it, it wraps.
     case text(String)
-    /// A longer line that wraps at every size ("Outlook.com, Hotmail, Live, or work or school
-    /// Microsoft 365").
+    /// A longer line that wraps at every size (a status
+    /// sentence, a provider's account kinds).
     case wrapping(String)
     /// A figure-bearing line that Hide amounts reaches ("Japan trip · 7,140.00 left").
     case phrase(MoneyPhrase)

@@ -40,7 +40,9 @@ struct ResultStep: View {
 
   private func title(_ s: SortSummary) -> String {
     if !model.scanDone { return "Importing your last \(Self.windowDays) days." }
-    return s.total == 0 ? "No bank alerts yet." : "\(s.total) transactions, sorted."
+    if s.total == 0 { return "No bank alerts yet." }
+    // None sorted itself (live Outlook while its trust gate is closed: each waits for review).
+    return s.sortedThemselves == 0 ? "\(s.total) transactions found." : "\(s.total) transactions, sorted."
   }
 
   private func subtitle(_ s: SortSummary) -> String {
@@ -51,6 +53,7 @@ struct ResultStep: View {
       return "We found no alerts from \(model.bankList) in the last \(Self.windowDays) days. New ones are read as they arrive."
     }
     if s.toReview == 0 { return "All on this iPhone, and every one sorted itself." }
+    if s.sortedThemselves == 0 { return "All on this iPhone. Each one waits for a quick swipe." }
     return "All on this iPhone. \(s.sortedThemselves) sorted themselves; \(s.toReview) wait for a quick swipe."
   }
 }
