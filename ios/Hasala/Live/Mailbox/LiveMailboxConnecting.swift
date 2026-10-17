@@ -32,6 +32,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   static func connectable(hasLane: Bool) -> [MailProviderKind] { hasLane ? [.gmail] : [] }
 
   /// No `.addSecond`: linking one mailbox replaces the account's link on the server.
+  ///
+  /// `.disconnect` is the one live mailbox action no test reaches (the step-up, Google's
+  /// revoke and the server's link delete; plan D.1 risk 8). It ships only after one run on
+  /// QA with the owner, with a passkey account and with a password-only one; if either
+  /// fails, take `.disconnect` out of this set and the button goes from every surface.
   var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect] }
 
   /// Observed through the runtime: the lane's status is read when the account opens and

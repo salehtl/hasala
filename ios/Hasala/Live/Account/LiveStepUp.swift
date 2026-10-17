@@ -89,12 +89,7 @@ nonisolated struct LiveStepUp: MailboxStepUp {
 enum PasswordPrompt {
   @MainActor
   static func ask(_ reason: String) async -> String? {
-    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-    guard let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow), var top = window.rootViewController
-    else { return nil }
-    while let presented = top.presentedViewController { top = presented }
-    let presenter = top
-    guard !presenter.isBeingDismissed, !presenter.isBeingPresented else { return nil }
+    guard let presenter = await settledPresenter() else { return nil }
     let answer = FirstOf<String?>()
     let alert = UIAlertController(title: reason, message: "Enter your Hasala password.", preferredStyle: .alert)
     alert.addTextField { field in
@@ -115,5 +110,24 @@ enum PasswordPrompt {
       if alert.presentingViewController == nil { answer.finish(nil) }
     }
     return await withCheckedContinuation { answer.install($0) }
+  }
+
+  /// The top view controller of the key window once nothing is coming or going. The
+  /// prompt usually follows a tap in another alert (Bank alerts' "Disconnect", plan D.1
+  /// risk 8): if the step-up's round trip is quicker than that alert's dismissal, the alert
+  /// would still be on top, and UIKit refuses to present over a controller that is being
+  /// dismissed, which reads as a cancel. So it waits for the transition to end, for at
+  /// most two seconds; nil if the window or a settled controller never appears.
+  @MainActor
+  private static func settledPresenter() async -> UIViewController? {
+    for _ in 0..<40 {
+      let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+      guard let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow), var top = window.rootViewController
+      else { return nil }
+      while let presented = top.presentedViewController { top = presented }
+      if !top.isBeingDismissed, !top.isBeingPresented, top.transitionCoordinator == nil { return top }
+      try? await Task.sleep(for: .milliseconds(50))
+    }
+    return nil
   }
 }
