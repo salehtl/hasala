@@ -4,6 +4,7 @@
 // which the engine's waits advance. Every message is synthetic.
 import CoreMailbox
 import CoreTestSupport
+import CoreTime
 import Foundation
 import Testing
 
@@ -140,5 +141,82 @@ final class GmailRateLimit: @unchecked Sendable {
     #expect(reports.count == 1)
     #expect(reports.last?.haltedOn == .reconnectRequired && reports.last?.phase == .reconnectRequired)
     #expect(seen.all.contains(MailboxProgress(stage: .failed(.reconnectRequired), done: 0, total: 0)))
+  }
+}
+
+final class CommitLog: @unchecked Sendable {
+  private let lock = NSLock()
+  private var marks: [Int] = []
+  func mark(_ authored: Int) { lock.withLock { marks.append(authored) } }
+  var all: [Int] { lock.withLock { marks } }
+}
+
+@Suite struct MonthFirstScanTests {
+  static let monthStart = LocalClock.startOfDay(CivilDate(year: 2026, month: 5, day: 1)!)
+
+  static func dates(count: Int) -> [String: Int64] {
+    var out: [String: Int64] = [:]
+    for i in 0..<count {
+      out[i % 2 == 0 ? "d\(i)" : "e\(i)"] = Rig.t0 - 60_000 - Int64(i) * (89 * day / Int64(count))
+    }
+    return out
+  }
+
+  @Test func aFiveHundredAlertBackfillCommitsThisMonthFirstInSmallBatches() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 500)
+    let dates = Self.dates(count: 500)
+    let thisMonth = Set(dates.filter { $0.value >= Self.monthStart }.keys)
+    #expect(thisMonth.count > 100 && thisMonth.count < 200)
+    let seen = ProgressLog()
+    let commits = CommitLog()
+    let authored = rig.authored
+    await rig.engine.setProgressHandler { seen.append($0) }
+    await rig.engine.setCommitHandler { commits.mark(authored.all.count) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+
+    let reports = await rig.engine.runFirstScan()
+    #expect(reports.last?.phase == .active && reports.last?.haltedOn == nil, "\(reports)")
+
+    let order = await rig.enqueued().map(\.messageID)
+    #expect(order.count == 500 && Set(order).count == 500)
+    #expect(Set(order.prefix(thisMonth.count)) == thisMonth)
+    var batches: [[Int64]] = []
+    var at = 0
+    for n in rig.authored.batches {
+      batches.append(order[at..<at + n].compactMap { dates[$0] })
+      at += n
+    }
+    #expect(zip(batches, batches.dropFirst()).allSatisfy { ($0.min() ?? 0) >= ($1.max() ?? 0) })
+
+    let first = rig.listRequests.first?.query.first { $0.0 == "q" }?.1 ?? ""
+    #expect(first.contains("after:\(Self.monthStart / 1000)"), "\(first)")
+
+    #expect(rig.authored.batches.allSatisfy { $0 <= 28 }, "\(rig.authored.batches)")
+    #expect(commits.all.count >= 500 / 28)
+    #expect(commits.all.first ?? 0 <= 28)
+    #expect(commits.all == commits.all.sorted())
+    #expect(await rig.ledger.flushes >= commits.all.count)
+
+    let reading = seen.all.filter { $0.stage == .downloading }
+    #expect(reading.allSatisfy { $0.total == 500 })
+    #expect(reading.map(\.done) == reading.map(\.done).sorted())
+    #expect(reading.last?.done == 500)
+    #expect(seen.all.last == MailboxProgress(stage: .done, done: 500, total: 500))
+  }
+
+  @Test func aStopMidScanKeepsWhatWasCommittedAndTheNextCycleGoesOnWithTheRest() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 120)
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    rig.gmail.fail("/messages/d60", with: [500, 500, 500])
+    let cut = await rig.engine.runCycle(trigger: .refresh)
+    #expect(cut.phase == .scanning && cut.haltedOn != nil, "\(cut)")
+    let early = await rig.enqueued().count
+    #expect(early >= 25 && early < 120)
+    #expect(await rig.stagedCount() == 0)
+    let rest = await rig.engine.runCycle(trigger: .refresh)
+    #expect(rest.phase == .active)
+    #expect(Set(await rig.enqueued().map(\.messageID)).count == 120)
   }
 }

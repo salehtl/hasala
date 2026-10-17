@@ -149,8 +149,15 @@ struct GroceryCategorizer: IngestCategorizer {
 final class AuthoredDrafts: @unchecked Sendable {
   private let lock = NSLock()
   private var drafts: [MailboxIngestDraft] = []
-  func append(_ d: [MailboxIngestDraft]) { lock.withLock { drafts += d } }
+  private var sizes: [Int] = []
+  func append(_ d: [MailboxIngestDraft]) {
+    lock.withLock {
+      drafts += d
+      sizes.append(d.count)
+    }
+  }
   var all: [MailboxIngestDraft] { lock.withLock { drafts } }
+  var batches: [Int] { lock.withLock { sizes } }
 }
 
 enum Backend { case sqlite, memory }
