@@ -1,7 +1,7 @@
 import XCTest
 
-/// Joining on the Release surface: no promise of getting back in with an emailed code (C4
-/// is not in the beta), and no placeholder on any screen.
+/// Joining on the Release surface: no promise of getting back in with an emailed code alone
+/// (the beta's C4 needs the 12 words too), and no placeholder on any screen.
 final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
   /// Path B, as a reviewer meets it: join with a password and the 12 words, up to the
   /// hand-off to setup.
@@ -29,12 +29,13 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Password")
     tap(app, "password.create")
 
-    // The words: no promise of getting back in with an emailed code (C4 is not in the beta).
+    // The words: the beta recovers access to a new passkey (`recoverAccess`), so the screen
+    // carries Paper's line, and still no promise of getting back in with an emailed code.
     XCTAssertTrue(el(app, "phrase.start").waitForExistence(timeout: 10))
     attach(app, "Release · 12 words")
     assertNoPlaceholders(app, "12 words")
     assertNoText(app, ["code we email"], "12 words")
-    assertText(app, "They unlock your data on a new iPhone once you sign in there.", "12 words")
+    assertText(app, "If your passkey isn't there, these words unlock your data.", "12 words")
     try audit(app)
     tap(app, "phrase.start")
     tap(app, "phrase.reveal")
