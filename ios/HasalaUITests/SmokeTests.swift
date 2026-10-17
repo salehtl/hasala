@@ -206,6 +206,50 @@ final class SmokeTests: XCTestCase {
     XCTAssertEqual(el(app, "home.hero.left").label, "AED 10,288.34")
   }
 
+  /// Home's wash sits behind the scroll view (owner's TestFlight report: a pull to refresh
+  /// carried it down with the content). It still scrolls away with the content, as in Paper
+  /// (absolute, 420 tall), and comes back when the content returns to the top.
+  @MainActor
+  func testTheWashScrollsAwayWithHomeAndComesBack() throws {
+    let app = launch(scenario: "maya", release: true, motion: "off")
+    let hero = el(app, "home.hero.left")
+    XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
+    XCTAssertTrue(hero.waitForLabel("AED 10,288.34"), hero.label)
+
+    // Under the bar, at the leading edge (no content there): the wash's blue, or the canvas.
+    let probe = CGPoint(x: 6, y: 150)
+    let atRest = try XCTUnwrap(pixel(app.screenshot(), probe))
+    XCTAssertGreaterThan(atRest[2] - atRest[0], 0.08, "no wash at rest: \(atRest)")
+
+    app.swipeUp()
+    let scrolled = try XCTUnwrap(pixel(app.screenshot(), probe))
+    XCTAssertLessThan(scrolled[2] - scrolled[0], 0.04, "the wash did not scroll away: \(scrolled)")
+
+    app.swipeDown(velocity: .fast)
+    app.swipeDown(velocity: .fast)
+    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    let back = try XCTUnwrap(pixel(app.screenshot(), probe))
+    XCTAssertLessThan(distance(atRest, back), 0.03, "the wash did not come back: \(atRest), \(back)")
+  }
+
+  /// The RGBA (0...1) of a screenshot at a point in points.
+  @MainActor
+  private func pixel(_ shot: XCUIScreenshot, _ point: CGPoint) -> [CGFloat]? {
+    guard let image = shot.image.cgImage else { return nil }
+    let scale = shot.image.scale
+    var rgba = [UInt8](repeating: 0, count: 4)
+    guard let ctx = CGContext(data: &rgba, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    ctx.draw(image, in: CGRect(x: -point.x * scale, y: -(CGFloat(image.height) - point.y * scale),
+                               width: CGFloat(image.width), height: CGFloat(image.height)))
+    return rgba.map { CGFloat($0) / 255 }
+  }
+
+  private func distance(_ a: [CGFloat], _ b: [CGFloat]) -> CGFloat {
+    zip(a, b).map { abs($0 - $1) }.max() ?? 1
+  }
+
   @MainActor
   func testHiddenScenarioStartsHidden() throws {
     let app = launch(scenario: "mayaHidden")

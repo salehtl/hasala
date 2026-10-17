@@ -39,9 +39,6 @@ struct TabScreen<Header: View, Content: View>: View {
     self.content = content
   }
 
-  @State private var topInset: CGFloat = 0
-  @State private var overscroll: CGFloat = 0
-
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: spacing) {
@@ -60,15 +57,10 @@ struct TabScreen<Header: View, Content: View>: View {
       .padding(.top, 20)
       .padding(.bottom, HSpacing.scrollContentBottom)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(alignment: .top) {
-        // The wash starts at the top of the screen, behind the header, and scrolls away with
-        // the content (Paper: absolute, 420 tall). A pull past the top doesn't drag it down:
-        // it stays where it is while the content moves.
-        AmbientWash(wash).padding(.top, -topInset).offset(y: -overscroll)
-      }
     }
-    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
-    .trackingOverscroll($overscroll)
+    // The wash starts at the top of the screen, behind the bar, and scrolls away with the
+    // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
+    .washBehind(wash)
     .refreshable { [app] in await app.refresh() }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
