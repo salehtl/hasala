@@ -49,6 +49,12 @@ struct HomeModelTests {
     #expect(row?.id == "mail.connect")
     #expect(row?.title == "Connect your email")
     #expect(row?.destination == .bankAlerts)
+    // Main's `homeOffersConnectMailboxWhenTheLaneSaysSo`: Outlook's sign-in again is the
+    // Outlook row; a working Outlook mailbox needs no row (v2 has no `.change` to offer).
+    let outlook = MockMailbox.needingSignIn(MockMailbox.outlook)
+    #expect(HomeViewModel.mailItem(.signInAgain(mailboxID: "outlook-1", provider: .outlook), mailboxes: [outlook])?.title
+      == "Sign in again to maya.k@example.com")
+    #expect(HomeViewModel.mailItem(nil, mailboxes: [MockMailbox.outlook]) == nil)
   }
 
   @Test func signInAgainNamesTheMailbox() {

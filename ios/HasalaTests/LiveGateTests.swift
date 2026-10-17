@@ -83,7 +83,11 @@ struct LiveGateTests {
     d.set("x", forKey: "push.apns.registered.v2")
     d.set("x", forKey: "push.apns.registered.v1")
     d.set(Data([1]), forKey: "debug.simulatorApprovalKey.u:w")
+    LocalAccountData.setMailboxProvider(.outlook, d)
+    #expect(LocalAccountData.mailboxProvider(d) == .outlook)
     LocalAccountData.forget(defaults: d)
+    // The provider this iPhone read the account's mail through goes with the account.
+    #expect(d.object(forKey: "app.hasala.prefs.mailbox.provider") == nil)
     #expect(!LocalAccountData.setupFinished(d))
     #expect(d.object(forKey: "prefs.review.skipped.v2") == nil)
     #expect(d.object(forKey: "push.apns.registered.v2") == nil && d.object(forKey: "push.apns.registered.v1") == nil)

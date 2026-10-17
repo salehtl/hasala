@@ -166,6 +166,22 @@ struct MailboxFlowTests: AccountSuite {
     syncing.state = .syncing
     #expect(ChooseEmailSheet.subtitle(.outlook, mailboxes: [syncing])
       == "maya.k@example.com is connected. Add another Microsoft account.")
+    // One link held: no second account of the same provider is offered.
+    #expect(ChooseEmailSheet.subtitle(.gmail, mailboxes: [MockMailbox.gmail], oneLink: true)
+      == "maya@example.com is connected.")
+  }
+
+  /// The chooser's copy with one link held promises no second mailbox (Release, live); the
+  /// Debug copy offers one; "Use another email" says its pick replaces the mailbox read now.
+  @Test func theChooserPromisesOneMailboxWhereOneIsHeld() {
+    #expect(ChooseEmailTitle.setup.footnote(oneLink: true) == "You can change it later in Profile › Bank alerts.")
+    #expect(ChooseEmailTitle.setup.footnote(oneLink: false).contains("add another mailbox"))
+    #expect(ChooseEmailTitle.addMailbox.subtitle(oneLink: true) == ChooseEmailTitle.setup.subtitle(oneLink: true))
+    #expect(!ChooseEmailTitle.addMailbox.subtitle(oneLink: true).contains("also"))
+    #expect(ChooseEmailTitle.addMailbox.footnote(oneLink: true) == "You can disconnect it at any time.")
+    #expect(ChooseEmailTitle.change.title == "Use another email")
+    #expect(ChooseEmailTitle.change.footnote(oneLink: true).contains("replaces"))
+    #expect(MailProviderKind.outlook.chooserSubtitle == "Outlook.com, Hotmail or Live")
   }
 
   /// A mailbox that needs a new sign-in isn't connected (scenario `outlookSignIn`): Add a
@@ -285,6 +301,72 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MockMailbox().unreadableMail.isEmpty)
   }
 
+  /// Main's `connectingOutlookAfterSkippingScans`: the email step skipped, Add a mailbox
+  /// connects Outlook with no confirmation (nothing to replace), its first scan finishes,
+  /// and the account reads one Outlook mailbox.
+  @Test func connectingOutlookAfterSkippingScans() async throws {
+    let lane = try #require(AuthScenario.session(for: .gmailSkipped, releaseSurface: true).services.mailbox as? MockMailbox)
+    lane.connectDelay = .zero
+    lane.step = .milliseconds(1)
+    #expect(lane.offer == .connect && lane.replaced(by: .outlook) == nil)
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    #expect(c.replaced(by: .outlook) == nil)
+    await c.connect(.outlook)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1") && c.inlineMessage == nil && c.errorScreen == nil)
+    var last: ScanProgress?
+    for await p in lane.firstScan() { last = p }
+    #expect(last?.phase == .finished)
+    // Outlook's trust gate is closed: every alert waits for review, as live.
+    #expect(last?.summary?.sortedThemselves == 0 && last?.summary?.toReview == last?.summary?.total)
+    #expect(lane.mailboxes.map(\.provider) == [.outlook] && lane.mailboxes.first?.state == .connected)
+    #expect(lane.linkedProvider == .outlook)
+  }
+
+  /// Main's `switchingFromGmailToOutlookIsConfirmed`, on the one-link (Release) mock: Gmail
+  /// is linked, so Outlook's connect replaces it, which the screen confirms first. Without
+  /// the confirmation the connect is refused and Gmail stays; confirmed, the account reads
+  /// one mailbox, Outlook's. Disconnect then connect replaces nothing.
+  @Test func switchingFromGmailToOutlookIsConfirmed() async throws {
+    let lane = try #require(AuthScenario.session(for: .gmailLinked, releaseSurface: true).services.mailbox as? MockMailbox)
+    lane.connectDelay = .zero
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    #expect(c.replaced(by: .outlook)?.id == "gmail-1")
+    #expect(c.replaced(by: .gmail) == nil)
+    #expect(MailCopy.switchMessage(from: .gmail, to: .outlook)
+      .hasPrefix("This replaces your Gmail connection. Hasala reads your bank alerts from Outlook instead."))
+    await c.connect(.outlook)
+    #expect(c.outcome == .failed(.failed("Disconnect Gmail first, then connect Outlook.")))
+    #expect(lane.mailboxes.map(\.id) == ["gmail-1"] && lane.linkedProvider == .gmail)
+    c.reset()
+    await c.connect(.outlook, replacing: true)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(lane.mailboxes.map(\.provider) == [.outlook] && lane.linkedProvider == .outlook)
+    // Back to Gmail the long way: a disconnect leaves nothing to replace.
+    try await lane.disconnect("outlook-1")
+    #expect(lane.replaced(by: .gmail) == nil)
+    let back = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await back.connect(.gmail)
+    #expect(back.outcome == .connected(mailboxID: "gmail-1"))
+    #expect(lane.mailboxes.filter { $0.state != .disconnected }.map(\.provider) == [.gmail])
+  }
+
+  /// Main's `reconnectingOutlookOffersItFirst`: Microsoft ended access to the account's one
+  /// mailbox, so the offer is Outlook's sign-in again, and it reads Outlook again.
+  @Test func reconnectingOutlookSignsOutlookInAgain() async throws {
+    let lane = try #require(
+      AuthScenario.session(for: .outlookReconnect, releaseSurface: true).services.mailbox as? MockMailbox)
+    lane.connectDelay = .zero
+    #expect(lane.offer == .signInAgain(mailboxID: "outlook-1", provider: .outlook))
+    #expect(lane.linkedProvider == .outlook && lane.replaced(by: .outlook) == nil)
+    // Gmail instead would replace the Outlook link: that asks first.
+    #expect(lane.replaced(by: .gmail)?.id == "outlook-1")
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(c.replaced(by: .outlook) == nil)
+    await c.connect(.outlook)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(lane.mailboxes.map(\.state) == [.connected] && lane.offer == nil)
+  }
+
   /// The one summary the Profile card, Bank alerts and the bell draw from.
   @Test func theSummarySaysWhatIsTrue() {
     let working = MailboxHealth(status: .working, lastEmail: "4 min ago", banks: "Emirates NBD and DIB")
@@ -297,6 +379,13 @@ struct MailboxFlowTests: AccountSuite {
     #expect(broken.title == "Sign in again")
     #expect(broken.detail == "Microsoft ended access to maya.k@example.com. Your Gmail still works.")
     #expect(broken.hue == .sand && broken.needsYou)
+    // A sign-in the provider didn't end (live: no Outlook mailbox on that account) says why.
+    var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
+    noMailbox.note = "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    let empty = MailboxesSummary(
+      [noMailbox], health: working, offer: .signInAgain(mailboxID: "outlook-1", provider: .outlook))
+    #expect(empty.title == "Sign in again" && empty.detail == noMailbox.note)
+    #expect(BankAlertsPage.Hero.signInDetail(noMailbox, live: [noMailbox]) == noMailbox.note)
     let none = MailboxesSummary([], health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: .connect)
     #expect(none.title == "Your email isn't connected" && none.hue == .sky && none.needsYou)
     var syncing = MockMailbox.gmail

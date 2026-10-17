@@ -37,6 +37,7 @@ struct SetupFlowTests: AccountSuite {
     #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib])
     #expect(m.step == .mail)
     // Two providers and none chosen yet: "Choose your email" over the bank step.
+    #expect(m.connectable == [.gmail, .outlook])
     #expect(m.choosingEmail && m.path.isEmpty)
     // The view resumes when the derived step changes: nothing is pushed under the chooser.
     m.resume()
@@ -227,6 +228,24 @@ struct SetupFlowTests: AccountSuite {
     #expect(!single.choosingEmail && single.path == [.connect(.gmail)] && !single.canChooseEmail)
   }
 
+  /// A relaunch whose facts say the mail is linked to Outlook, before the lane's status is
+  /// read (no rows yet): setup's email step is Outlook's and shows it connected; Gmail's
+  /// screen would be a new connect, not "Gmail is connected".
+  @Test func aRelaunchLinkedToOutlookShowsOutlookConnected() async throws {
+    let lane = CountingMailbox(MockMailbox())
+    lane.linkedOverride = .outlook
+    var facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
+    facts.banksChosen = true
+    facts.mailbox = .linked
+    let m = model(services(with: lane), facts: facts)
+    #expect(lane.mailboxes.isEmpty && lane.linkedProvider == .outlook)
+    #expect(m.provider == .outlook)
+    let link = SetupMailLink(base: lane)
+    link.isLinked = { true }
+    #expect(link.existing(.outlook) == "outlook")
+    #expect(link.existing(.gmail) == nil)
+  }
+
   /// Whole dirhams on this step: the decimal key is ignored, as page 11 ignores any key that
   /// breaks the rules. Skip keeps what was typed for Back but sends no income.
   @Test func incomeIsWholeDirhamsAndSkipKeepsWhatWasTyped() async throws {
@@ -396,6 +415,8 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored let base: MockMailbox
   @ObservationIgnored private(set) var scans = 0
   @ObservationIgnored var cancelGmail = false
+  /// The link a relaunch remembers before the lane's rows are read.
+  @ObservationIgnored var linkedOverride: MailProviderKind?
 
   init(_ base: MockMailbox) { self.base = base }
 
@@ -403,7 +424,7 @@ final class CountingMailbox: MailboxConnecting {
   var capabilities: MailboxCapabilities { base.capabilities }
   var mailboxes: [MailboxSnapshot] { base.mailboxes }
   var offer: MailOffer? { base.offer }
-  var linkedProvider: MailProviderKind? { base.linkedProvider }
+  var linkedProvider: MailProviderKind? { linkedOverride ?? base.linkedProvider }
   var offersSampleData: Bool { base.offersSampleData }
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }

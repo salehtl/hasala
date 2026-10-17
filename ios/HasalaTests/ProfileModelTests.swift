@@ -25,6 +25,13 @@ struct ProfileModelTests {
     #expect(signIn.hue == .sand)
     #expect(signIn.needsYou)
 
+    // Main's `theProfileCardsSayWhatIsTrue`: Outlook's sign-in again names Microsoft.
+    let outlook = MailboxesSummary([MockMailbox.needingSignIn(MockMailbox.outlook)], health: health,
+                                   offer: .signInAgain(mailboxID: MockMailbox.outlook.id, provider: .outlook))
+    #expect(outlook.title == "Sign in again")
+    #expect(outlook.detail == "Microsoft ended access to maya.k@example.com.")
+    #expect(outlook.hue == .sand)
+
     let none = MailboxesSummary([], health: health, offer: .connect)
     #expect(none.title == "Your email isn't connected")
     #expect(none.needsYou)
