@@ -258,10 +258,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     return true
   }
 
-  /// Main's `connectMailbox(_:banks:)` behind `admit`: before a first link the server is
-  /// asked whether another iPhone holds one; a confirmed switch replaces the other
-  /// provider's link, and the new lane clears the shared tables only once its link is made;
-  /// then the old lane ends its grant.
+  /// Main's connect, behind `admit`: before a first link the server is asked whether
+  /// another iPhone holds one; a confirmed switch replaces the other provider's link, and
+  /// the new lane clears the shared tables only once its link is made; then the old lane
+  /// ends its grant.
   @discardableResult
   func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
