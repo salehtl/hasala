@@ -114,8 +114,8 @@ struct LiveMailboxTests {
 
   /// One step-up for both lanes: its reason names neither Gmail nor Outlook.
   @Test func theStepUpNamesNoProvider() {
-    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect your email")
-    #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect your email")
+    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect this mailbox to Hasala")
+    #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect this mailbox")
   }
 
   @Test func aLinkTakenElsewhereRefusesTheConnect() throws {
