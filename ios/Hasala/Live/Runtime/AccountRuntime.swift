@@ -50,6 +50,8 @@ final class AccountRuntime {
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
   @ObservationIgnored var onAccount: (@MainActor (AccountInfo) async -> Void)?
+  @ObservationIgnored private var importFollower: Task<Void, Never>?
+  @ObservationIgnored private var importListeners: [(MailboxLane, UUID)] = []
 
   /// The bundled merchant dictionary (`.empty` when its tier is off).
   nonisolated static let dictionary = (try? MerchantDictionary.bundled().get()) ?? .empty
@@ -245,6 +247,7 @@ final class AccountRuntime {
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
+    await rt.followImports()
     return rt
   }
 
@@ -360,7 +363,45 @@ final class AccountRuntime {
 
   /// Stops the runtime's work: no more runs and no background work.
   func close() async {
+    stopFollowingImports()
     await coordinator.close()
+  }
+
+  func followImports() async {
+    let (stream, continuation) = AsyncStream<LaneEvents.Event>.makeStream(bufferingPolicy: .bufferingNewest(64))
+    for lane in lanes.values {
+      importListeners.append((lane, lane.events.add { continuation.yield($0) }))
+      await lane.relayEvents()
+    }
+    importFollower = Task { [weak self] in
+      for await event in stream {
+        guard let self else { return }
+        await self.follow(event)
+      }
+    }
+  }
+
+  private func stopFollowingImports() {
+    for (lane, id) in importListeners { lane.events.remove(id) }
+    importListeners = []
+    importFollower?.cancel()
+    importFollower = nil
+  }
+
+  func follow(_ event: LaneEvents.Event) async {
+    switch event {
+    case .committed:
+      await store.reload()
+    case .progress(let p):
+      store.noteImport(p)
+      switch p.stage {
+      case .done, .failed:
+        if let lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
+        await store.reload()
+      case .listing, .downloading, .authoring:
+        break
+      }
+    }
   }
 }
 

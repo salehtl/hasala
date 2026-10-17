@@ -50,6 +50,10 @@ struct HomeView: View {
                      open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
                      edit: { app.say("Editing widgets isn't in this build yet", icon: .info) })
       }
+      .overlay(alignment: .bottom) {
+        HomeImportPill(work: app.mailbox?.importing)
+          .padding(.bottom, 12)
+      }
       .navigationDestination(for: HomeRoute.self) { route in
         switch route {
         case .bills: BillsScreen(app: app)
@@ -59,6 +63,28 @@ struct HomeView: View {
         }
       }
     }
+  }
+}
+
+struct HomeImportPill: View {
+  var work: MailImport?
+
+  @Environment(\.hMotion) private var policy
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    let motion = MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
+    ZStack {
+      if let work {
+        BackgroundWorkPill(label: work.label, count: work.count, busy: work.busy)
+          .accessibilityAddTraits(.updatesFrequently)
+          .accessibilityIdentifier("home.importPill")
+          .transition(motion.transition(.fade))
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .animation(motion.animation(.fade), value: work != nil)
+    .animation(motion.animation(.stateSwap), value: work?.state)
   }
 }
 

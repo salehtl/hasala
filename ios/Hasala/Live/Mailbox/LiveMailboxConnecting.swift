@@ -78,6 +78,33 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// Observed through the runtime, like `mailboxes`.
   var offer: MailOffer? { runtime()?.mailOffer }
 
+  var importing: MailImport? {
+    guard let rt = runtime(), !rt.store.holdsSample else { return nil }
+    return Self.importing(
+      phase: rt.store.mailboxPhase, halt: rt.store.mailboxHalt, seen: rt.store.importSeen,
+      progress: rt.store.importProgress)
+  }
+
+  static func importing(
+    phase: MailboxPhase?, halt: MailboxHaltCode?, seen: Bool, progress: MailboxProgress?
+  ) -> MailImport? {
+    let read = progress?.done ?? 0
+    let total = progress?.total ?? 0
+    switch phase {
+    case .scanning?, .awaitingCards?, .authoringBackfill?:
+      if case .failed(.offline)? = progress?.stage { return MailImport(state: .offline, read: read, total: total) }
+      return MailImport(state: .reading, read: read, total: total)
+    case .halted?:
+      guard seen else { return nil }
+      return MailImport(state: .stopped(stopped(halt)), read: read, total: total)
+    case .reconnectRequired?:
+      guard seen else { return nil }
+      return MailImport(state: .stopped("Sign in again"), read: read, total: total)
+    case .active?, .unlinked?, .otherDevice?, nil:
+      return nil
+    }
+  }
+
   func chosenBanks() -> [SupportedBank] {
     guard let rt = runtime() else { return [] }
     return Self.banks(trusted: BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:]))

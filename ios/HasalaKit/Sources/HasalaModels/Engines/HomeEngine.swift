@@ -40,8 +40,8 @@ public enum HomeEngine {
     let tiles = heroTiles(needs: needsSpent, wants: wantsSpent, saved: spent(savings),
                           savingsPlan: savings?.budget.minor ?? 0)
 
-    // S9: the first import is still running and nothing has arrived this month: skeletons,
-    // never a fake zero.
+    // S9: the first import is still running and nothing has arrived this month: the figure
+    // fills in as batches land, beside Home's import pill.
     let anyThisMonth = s.txns.contains { $0.postedAt.date.yearMonth == month && !$0.archived }
     if s.mailbox.status == .importing, !anyThisMonth {
       return SpendHero(

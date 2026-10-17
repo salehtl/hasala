@@ -276,6 +276,33 @@ struct LiveMailboxTests {
     let elsewhere = summary(.otherDevice, halt: nil, health: .working)
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
   }
+
+  @Test func homesImportPillFollowsTheFirstScan() {
+    func work(
+      _ phase: MailboxPhase?, halt: MailboxHaltCode? = nil, seen: Bool = true, _ progress: MailboxProgress? = nil
+    ) -> MailImport? {
+      LiveMailboxConnecting.importing(phase: phase, halt: halt, seen: seen, progress: progress)
+    }
+    let reading = MailboxProgress(stage: .downloading, done: 214, total: 268)
+    for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill] {
+      #expect(work(phase, reading) == MailImport(state: .reading, read: 214, total: 268))
+    }
+    let pill = work(.scanning, reading)
+    #expect(pill?.label == "Reading your alerts" && pill?.count == "214 of 268" && pill?.busy == true)
+    #expect(work(.scanning)?.count == nil && work(.scanning)?.busy == true)
+    let offline = work(.scanning, MailboxProgress(stage: .failed(.offline), done: 214, total: 268))
+    #expect(offline?.state == .offline && offline?.label == "Offline" && offline?.count == nil && offline?.busy == false)
+    for phase in [MailboxPhase.active, .unlinked, .otherDevice] {
+      #expect(work(phase, reading) == nil)
+    }
+    #expect(work(nil) == nil)
+    let stopped = work(.halted, halt: .accountFull, reading)
+    #expect(stopped?.label == LiveMailboxConnecting.stopped(.accountFull) && stopped?.busy == false)
+    #expect(stopped?.count == nil)
+    #expect(work(.reconnectRequired, halt: .reconnectRequired)?.label == "Sign in again")
+    #expect(work(.halted, halt: .gmail, seen: false) == nil)
+    #expect(work(.reconnectRequired, seen: false) == nil)
+  }
 }
 
 /// The grant endings of accounts that left this iPhone (gmail-sync): Google's revoke and

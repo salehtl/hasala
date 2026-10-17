@@ -66,21 +66,17 @@ struct HomeHero: View {
   private var figureBlock: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(hero.overline).hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
-      if hero.state == .syncing {
-        HeroFigureSkeleton()
-      } else {
-        // 6 dots at Paper's 38 pt when hidden (page 06 §6.3). The figure is its own element
-        // (`home.hero.left`, plan decision 8) and carries the caption as its value, so VoiceOver
-        // reads "AED 10,288.34, spent of 19,000 on needs and wants".
-        // The figure is zero until the reveal's fill starts, so it rolls on the fill's curve. A
-        // live change rolls it on the bar's own 250 ms curve, so both land together.
-        HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
-          .hAnimation(.fillUpdate, value: hero.spent)
-          .accessibilityValue(hero.caption.spoken(hidden: hidden))
-          .accessibilityIdentifier("home.hero.left")
-        Text(hero.caption.rendered(hidden: hidden)).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
-          .accessibilityHidden(true)
-      }
+      // 6 dots at Paper's 38 pt when hidden (page 06 §6.3). The figure is its own element
+      // (`home.hero.left`, plan decision 8) and carries the caption as its value, so VoiceOver
+      // reads "AED 10,288.34, spent of 19,000 on needs and wants".
+      // The figure is zero until the reveal's fill starts, so it rolls on the fill's curve. A
+      // live change rolls it on the bar's own 250 ms curve, so both land together.
+      HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
+        .hAnimation(.fillUpdate, value: hero.spent)
+        .accessibilityValue(hero.caption.spoken(hidden: hidden))
+        .accessibilityIdentifier("home.hero.left")
+      Text(hero.caption.rendered(hidden: hidden)).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
+        .accessibilityHidden(true)
     }
   }
 
@@ -128,7 +124,7 @@ struct HomeHero: View {
   /// Needs, Wants and Savings (`home.tile.needs`, `.wants`, `.savings`). Not controls.
   private var tileViews: some View {
     ForEach(hero.tiles) { tile in
-      StatTile(tile, hidden: hidden, skeleton: hero.state == .syncing)
+      StatTile(tile, hidden: hidden)
         .accessibilityIdentifier("home.tile.\(tile.label.lowercased())")
     }
   }

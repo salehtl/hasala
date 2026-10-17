@@ -28,7 +28,10 @@ struct MailboxFlowTests: AccountSuite {
     await outlook.connect(.outlook)
     #expect(lane.mailboxes.map(\.address) == ["maya@example.com", "maya.k@example.com"])
     #expect(lane.mailboxes.allSatisfy { $0.state == .syncing })
-    for await _ in lane.firstScan() {}
+    var counts: [String] = []
+    for await _ in lane.firstScan() { if let c = lane.importing?.count { counts.append(c) } }
+    #expect(!counts.isEmpty && counts.allSatisfy { $0.hasSuffix(" of 268") })
+    #expect(lane.importing == nil)
     #expect(lane.mailboxes.allSatisfy { $0.state == .connected })
     #expect(await lane.linkState() == .linked && lane.connectCalls == 2)
   }

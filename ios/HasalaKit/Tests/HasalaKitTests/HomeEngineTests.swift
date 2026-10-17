@@ -168,8 +168,8 @@ struct HomeHeroTests {
     #expect(h.tiles[2].of == nil)
   }
 
-  /// S9: the first import runs and nothing has arrived this month: skeletons, never a fake zero.
-  @Test func theFirstImportShowsSkeletons() {
+  /// S9: the first import runs and nothing has arrived this month: zero that fills in.
+  @Test func theFirstImportFillsInFromZero() {
     let s = Self.maya { s in
       s.mailbox.status = .importing
       s.txns.removeAll { $0.postedAt.date.yearMonth == MayaLedger.october }

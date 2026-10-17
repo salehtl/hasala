@@ -1,6 +1,7 @@
 import CoreAuth
 import CoreDomain
 import CoreInvariants
+import CoreMailbox
 import CoreOutbox
 import CoreProjection
 import CoreReplay
@@ -256,6 +257,18 @@ struct LiveLedgerMapperTests {
     }
     try await Self.eventually { try a.projection.reader.txn(steam.id)?.needsReview == true }
     #expect(try a.projection.reader.txn(steam.id)?.needsReview == true)
+  }
+
+  @Test func aStoppedImportKeepsItsCount() throws {
+    let a = try Self.account()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: nil, profile: Self.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "laneb.tests")!), clock: { MayaLedger.now })
+    store.noteImport(MailboxProgress(stage: .downloading, done: 25, total: 500))
+    store.noteImport(MailboxProgress(stage: .failed(.offline), done: 0, total: 0))
+    #expect(store.importProgress == MailboxProgress(stage: .failed(.offline), done: 25, total: 500))
+    store.noteImport(MailboxProgress(stage: .downloading, done: 50, total: 500))
+    #expect(store.importProgress == MailboxProgress(stage: .downloading, done: 50, total: 500))
   }
 
   /// Polls `condition` for up to 3 s (a write is queued, then re-projected).
