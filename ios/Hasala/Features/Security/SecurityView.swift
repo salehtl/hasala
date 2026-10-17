@@ -173,7 +173,7 @@ struct SecurityView: View {
         SecurityRow(tile: p.isThisCredential ? .plate(.faceID, .sky) : .plate(.passkey, .other), title: p.provider,
                     detail: p.detail) {
           // The passkey in hand isn't removed from here; another way in must remain.
-          if can(.removePasskey), !p.isThisCredential, s.passkeys.count > 1 || s.hasPassword {
+          if can(.removePasskey), s.canRemove(p) {
             InlineDestructive(title: "Remove", identifier: "security.removePasskey.\(p.id)") {
               alert = .removePasskey(p)
             }
@@ -216,7 +216,7 @@ struct SecurityView: View {
               .accessibilityIdentifier("security.changePassword")
           }
         }
-        if s.hasPasskey, can(.changePassword) {
+        if s.canRemovePassword, can(.changePassword) {
           HDivider()
           AddRow(title: "Remove password", identifier: "security.removePassword", plus: false, destructive: true) {
             alert = .removePassword

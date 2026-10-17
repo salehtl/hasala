@@ -427,6 +427,9 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       let t = token()
       s.sessions[t] = (u.id, writer, false)
       return grant(t, u, writer: writer)
+    case "POST /api/v1/auth/recover/begin":
+      // #7 for words whose recovery key no account here has (this fake keeps none).
+      return error(404, "not_found")
     default: break
     }
     guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }

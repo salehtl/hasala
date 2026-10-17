@@ -16,13 +16,15 @@ struct AccountCapabilitiesTests {
 
   @Test func betaIsTheAgreedSubset() {
     let hidden: AccountCapabilities = [
-      .resetPassword, .recoverAccess, .rotatePhrase, .addPasskey, .changeEmail, .freeze,
+      .resetPassword, .recoverWithPassword, .rotatePhrase, .addPasskey, .changeEmail, .freeze,
       .removePasskey, .changePassword, .removeDevice, .removeThisIPhone,
     ]
     #expect(AccountCapabilities.all.isSuperset(of: .beta))
     #expect(AccountCapabilities.beta.isDisjoint(with: hidden))
     #expect(AccountCapabilities.beta.union(hidden) == .all)
-    #expect(AccountCapabilities.all.rawValue.nonzeroBitCount == 19)
+    #expect(AccountCapabilities.all.rawValue.nonzeroBitCount == 20)
+    // Someone who lost their passkey can get back in (and then delete the account).
+    #expect(AccountCapabilities.beta.isSuperset(of: [.recoverAccess, .deleteAccount]))
   }
 
   /// Sign-in & security points to support when the beta hides an action, and doesn't offer
@@ -37,6 +39,31 @@ struct AccountCapabilitiesTests {
     #expect(s.capabilities == .beta)
     #expect(model.lacksAnAction)
     #expect(!model.offersLockdown)
+  }
+
+  /// Sign-in & security never offers removing the account's last way to sign in.
+  @Test func theLastPasskeyIsNeverOfferedForRemoval() {
+    let mine = PasskeyRow(id: "pk-1", provider: "iCloud Keychain", detail: "", isThisCredential: true)
+    let other = PasskeyRow(id: "pk-2", provider: "Work iPad", detail: "", isThisCredential: false)
+    func state(_ passkeys: [PasskeyRow], password: Bool) -> SecurityState {
+      SecurityState(email: "maya@example.com", emailVerified: true, passkeys: passkeys,
+                    passwordChanged: password ? "Set" : nil, devices: [], lastSignIn: "", phraseConfirmed: "",
+                    frozen: nil)
+    }
+    // Passkey-only, one passkey (another device's, say after a recovery here): kept.
+    #expect(!state([other], password: false).canRemove(other))
+    // The passkey in hand is never removed from here.
+    #expect(!state([mine, other], password: true).canRemove(mine))
+    #expect(!state([mine], password: false).canRemove(mine))
+    // Another passkey remains, or a password does: offered.
+    #expect(state([mine, other], password: false).canRemove(other))
+    #expect(state([other], password: true).canRemove(other))
+    // A row that isn't the account's isn't offered.
+    #expect(!state([mine], password: true).canRemove(other))
+    // The password goes only while a passkey stays.
+    #expect(!state([], password: true).canRemovePassword)
+    #expect(state([mine], password: true).canRemovePassword)
+    #expect(!state([mine], password: false).canRemovePassword)
   }
 
   @Test func mocksOfferEverythingByDefault() {

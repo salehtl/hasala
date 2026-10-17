@@ -148,6 +148,16 @@ struct SecurityState: Equatable, Sendable {
 
   var hasPasskey: Bool { !passkeys.isEmpty }
   var hasPassword: Bool { passwordChanged != nil }
+
+  /// Whether `passkey` may be offered for removal: never the passkey this iPhone signs in
+  /// with, and never the account's last way to sign in (a passkey-only account keeps at
+  /// least one passkey; the server refuses it too, `last_authenticator`).
+  func canRemove(_ passkey: PasskeyRow) -> Bool {
+    !passkey.isThisCredential && passkeys.contains { $0.id == passkey.id } && (passkeys.count > 1 || hasPassword)
+  }
+
+  /// The password may be removed only while a passkey remains.
+  var canRemovePassword: Bool { hasPassword && hasPasskey }
 }
 
 /// Server-side changes on Sign-in & security. Each runs a step-up (spec 04 §6.3) inside
@@ -241,6 +251,8 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   static let resetPassword = AccountCapabilities(rawValue: 1 << 9)
   /// Get back in with the 12 words plus an email code, setting a new sign-in method.
   static let recoverAccess = AccountCapabilities(rawValue: 1 << 10)
+  /// Recovery's "Use a password" (`recoverAccess` alone sets a new passkey).
+  static let recoverWithPassword = AccountCapabilities(rawValue: 1 << 19)
 
   // MARK: Sign-in & security
 
@@ -268,23 +280,26 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .unlockWithPhrase,
     .signOut, .signOutEverywhere,
     .deleteAccount, .removeThisIPhone,
-    .resetPassword, .recoverAccess,
+    .resetPassword, .recoverAccess, .recoverWithPassword,
     .rotatePhrase, .addPasskey, .changeEmail,
     .freeze, .viewPhrase,
     .removePasskey, .changePassword, .removeDevice,
   ]
 
-  /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, leaving
-  /// (sign out, sign out everywhere, delete) and viewing the words. Password reset, access
-  /// recovery, phrase rotation, adding or removing a passkey, setting or changing the
-  /// password, removing this or another device, changing the email and freezing stay
-  /// hidden. (The service can remove this iPhone, but Sign-in & security has no row for it.)
+  /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, access
+  /// recovery to a new passkey (so someone who lost theirs can get back in, and delete the
+  /// account), leaving (sign out, sign out everywhere, delete) and viewing the words.
+  /// Password reset, recovery to a new password, phrase rotation, adding or removing a
+  /// passkey, setting or changing the password, removing this or another device, changing
+  /// the email and freezing stay hidden. (The service can remove this iPhone, but Sign-in
+  /// & security has no row for it.)
   static let beta: AccountCapabilities = [
     .signupPasskey, .signupPassword,
     .signInPasskey, .signInPassword,
     .unlockWithPhrase,
     .signOut, .signOutEverywhere,
     .deleteAccount,
+    .recoverAccess,
     .viewPhrase,
   ]
 }

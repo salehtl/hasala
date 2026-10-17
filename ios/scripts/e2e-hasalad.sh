@@ -48,11 +48,13 @@ HASALA_MIGRATE_DSN="host=$TMP user=hasala_migrate dbname=hasala" "$HASALAD" migr
 
 umask 077
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$TMP/auth.key"
+# Both keys, so the signup, password and recovery routes are mounted.
+head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$TMP/salt.key"
 echo 1 >"$TMP/log-generation"
 HASALA_PG_DSN="host=$TMP user=hasala_runtime dbname=hasala" \
 	HASALA_HTTP_LISTEN="127.0.0.1:$PORT" \
 	HASALA_RP_ID=hasala.app HASALA_RP_ORIGINS=https://hasala.app \
-	HASALA_AUTH_KEY_FILE="$TMP/auth.key" \
+	HASALA_AUTH_KEY_FILE="$TMP/auth.key" HASALA_SALT_KEY_FILE="$TMP/salt.key" \
 	HASALA_LOG_GENERATION_FILE="$TMP/log-generation" \
 	HASALA_HEADROOM_PATH="$TMP" HASALA_HEADROOM_FLOOR_BYTES=1 \
 	"$HASALAD" serve >"$TMP/serve.log" 2>&1 &
@@ -68,8 +70,8 @@ curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null || {
 
 status=0
 HASALA_E2E_URL="http://127.0.0.1:$PORT" HASALA_E2E_PSQL="$(command -v psql)" \
-	HASALA_E2E_DSN="host=$TMP user=postgres dbname=hasala" \
-	PATH="/usr/bin:$PATH" swift test --package-path "$IOS/HasalaCore" --filter 'LiveHasaladTests|LiveSampleSeedTests|LiveGmailToReplayTests|LiveOutlookToReplayTests' || status=$?
+	HASALA_E2E_DSN="host=$TMP user=postgres dbname=hasala" HASALA_E2E_AUTH_KEY_FILE="$TMP/auth.key" \
+	PATH="/usr/bin:$PATH" swift test --package-path "$IOS/HasalaCore" --filter 'LiveHasaladTests|LiveRecoveryTests|LiveSampleSeedTests|LiveGmailToReplayTests|LiveOutlookToReplayTests' || status=$?
 if [[ "$status" != 0 ]]; then
 	echo "--- hasalad log ---" >&2
 	tail -40 "$TMP/serve.log" >&2
