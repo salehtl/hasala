@@ -373,7 +373,9 @@ struct SearchResults {
   var isEmpty: Bool { rows.isEmpty && categories.isEmpty && rules.isEmpty }
 }
 
-/// Recent searches, for this process only (nothing about what was searched is kept on disk).
+/// Recent searches, for this process only (nothing about what was searched is kept on disk),
+/// and for the open account only: they are cleared when its runtime closes and when its data
+/// leaves this iPhone (`BootController.closeRuntime`, `LocalAccountData.forget`).
 @MainActor
 @Observable
 final class SearchHistory {

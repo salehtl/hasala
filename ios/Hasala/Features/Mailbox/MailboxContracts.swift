@@ -95,12 +95,17 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// rows are (live: remembered on this iPhone, read before the lane's status is). Nil
   /// with no link.
   var linkedProvider: MailProviderKind? { get }
+  /// The provider of the account's link while another iPhone holds it and this one reads
+  /// nothing (live: a new install or a recovered account). A connect here then takes the
+  /// link over, once the person confirmed it. Nil otherwise.
+  var heldElsewhere: MailProviderKind? { get }
   /// The lane's state, as setup's facts name it.
   func linkState() async -> OnboardingStep.Facts.Mailbox
   /// Runs `provider`'s sign-in (read-only), the `mailbox.link` step-up and the first
   /// listing. Returns the new mailbox's id. With `.replace`, a link to another provider is
   /// replaced only when `replacing` says the person confirmed it; otherwise that connect
-  /// fails and the link stays.
+  /// fails and the link stays. While the link is `heldElsewhere`, `replacing` says the
+  /// person confirmed taking it over.
   @discardableResult
   func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
@@ -118,6 +123,9 @@ protocol MailboxConnecting: AnyObject, Observable {
 extension MailboxConnecting {
   /// Known at once where the mailboxes are held in memory (the mock).
   var mailboxesKnown: Bool { true }
+
+  /// No other iPhone where the mailboxes are held in memory (the mock).
+  var heldElsewhere: MailProviderKind? { nil }
 
   /// A connect that replaces nothing: a first link, another mailbox beside one that works,
   /// or the same provider again.

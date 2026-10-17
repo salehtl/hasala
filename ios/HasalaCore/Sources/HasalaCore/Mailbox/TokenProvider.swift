@@ -152,15 +152,28 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     try? store.delete()
   }
 
-  /// Revokes the refresh token at the provider (best effort; a no-op where it has no revoke
-  /// endpoint) and deletes the Keychain item. Used on Disconnect (spec 04 §7.4), where ending the
-  /// grant is the point.
-  public func revokeAndForget() async {
+  /// Revokes the refresh token at the provider (a no-op where it has no revoke endpoint), then
+  /// deletes the Keychain item. Used on Disconnect (spec 04 §7.4), where ending the grant is the
+  /// point. False, with the item kept, when the revoke did not go through (offline, a 5xx) or the
+  /// item can't be read now: a retry still holds the token to revoke. A token the provider no
+  /// longer knows counts as revoked (the client's own rule, Google's 400).
+  ///
+  /// `keepOnFailure: false` deletes the item whatever the revoke answered (best effort), for a
+  /// grant this iPhone stops using anyway.
+  @discardableResult
+  public func revokeAndForget(keepOnFailure: Bool = true) async -> Bool {
     cached = nil
-    if let token = try? store.read() {
-      try? await oauth.revoke(token: token)
+    let token: String?
+    do { token = try store.read() } catch { return false }
+    if let token, !token.isEmpty {
+      do throws(MailOAuthError) {
+        try await oauth.revoke(token: token)
+      } catch {
+        if keepOnFailure { return false }
+      }
     }
     try? store.delete()
+    return true
   }
 
   /// Drops the in-memory access token (a 401 from the mail API).

@@ -31,9 +31,10 @@ struct LiveMailboxTests {
     for phase in MailboxPhase.allCases {
       #expect(offer(phase, sample: true) == nil)
     }
-    // No link here: offered only once the server says no other iPhone reads Gmail.
+    // No link here: offered once the server answered, also while it names another iPhone
+    // (which may be gone; the connect asks before it takes the link over).
     #expect(offer(.unlinked, link: nil) == nil)
-    #expect(offer(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)) == nil)
+    #expect(offer(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)) == .connect)
     #expect(offer(.unlinked, link: .holder(isThisDevice: true, watchExpiresAtMs: nil)) == .connect)
     #expect(offer(.reconnectRequired, link: nil) == Self.signInAgain)
     // Only a halt a new Google sign-in fixes is offered a new sign-in.
@@ -119,21 +120,35 @@ struct LiveMailboxTests {
     #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect your email")
   }
 
-  @Test func aLinkTakenElsewhereRefusesTheConnect() throws {
+  /// Another iPhone holds the account's link (a new install or a recovered account, while
+  /// the server still names the earlier iPhone, which may be gone): "Connect" is offered,
+  /// and the connect takes the link over only once the person confirmed it. An unconfirmed
+  /// connect (the link moved after the screen asked) and no answer are refused.
+  @Test func aLinkHeldElsewhereIsTakenOverOnlyOnceConfirmed() throws {
     let other = MailboxLinkStatus.holder(isThisDevice: false, watchExpiresAtMs: nil)
     #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: .noLink) == .connect)
     try LiveMailboxConnecting.checkTakeover(.noLink)
-    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: other) == nil)
+    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: other) == .connect)
+    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: nil) == nil)
     #expect(throws: MailConnectFailure.takenByOtherIPhone) {
       try LiveMailboxConnecting.checkTakeover(other)
     }
+    try LiveMailboxConnecting.checkTakeover(other, confirmed: true)
     // That iPhone may read the other provider: the copy names none.
     #expect(MailConnectFailure.takenByOtherIPhone.message(for: .gmail) == "Your email is read on your other iPhone.")
     #expect(MailConnectFailure.takenByOtherIPhone.message(for: .outlook) == "Your email is read on your other iPhone.")
-    #expect(throws: MailConnectFailure.offline) {
-      try LiveMailboxConnecting.checkTakeover(nil)
+    for confirmed in [false, true] {
+      #expect(throws: MailConnectFailure.offline) {
+        try LiveMailboxConnecting.checkTakeover(nil, confirmed: confirmed)
+      }
     }
     #expect(MailConnectFailure.offline.message(for: .gmail) == LiveMailboxConnecting.message(.offline))
+    // The confirmation names the link's provider and says the other iPhone may be gone.
+    #expect(MailCopy.takeoverTitle == "Read your email on this iPhone?")
+    #expect(MailCopy.takeoverMessage(from: .gmail, to: .gmail)
+      == "Your Gmail is read on another iPhone, or was on one you no longer have. Hasala reads it on this iPhone instead, and the other iPhone stops. Past transactions stay.")
+    #expect(MailCopy.takeoverMessage(from: .outlook, to: .gmail)
+      == "Your Outlook is read on another iPhone, or was on one you no longer have. Hasala reads your bank alerts from Gmail on this iPhone instead, and the other iPhone stops. Past transactions stay.")
   }
 
   /// A connect after setup reads the banks from the bank step's sender trust.
@@ -249,30 +264,23 @@ struct LiveMailboxTests {
     #expect(row(.active)?.accountKind == nil)
   }
 
-  /// This iPhone has never read the mailbox (a new install, a recovered account) but the
-  /// server says another iPhone holds the account's link: the mailbox is still listed, as
-  /// read there, with no Disconnect, switch or "Add a mailbox" (a connect would be refused).
-  /// With no link, this iPhone's own link, or no answer, nothing is listed.
-  @Test func aLinkHeldByAnotherIPhoneIsListed() {
-    func rows(_ link: MailboxLinkStatus?, provider: MailProviderKind = .gmail) -> [MailboxSnapshot] {
-      LiveMailboxConnecting.mailboxes(
-        phase: .unlinked, halt: nil, address: nil, lastSuccessAtMs: nil, bankDomains: [], provider: provider,
-        serverLink: link, nowMs: 10_000_000_000)
-    }
-    let elsewhere = rows(.holder(isThisDevice: false, watchExpiresAtMs: nil))
-    #expect(elsewhere.count == 1)
-    #expect(elsewhere.first?.id == "gmail" && elsewhere.first?.address == "Gmail")
-    #expect(elsewhere.first?.readElsewhere == true && elsewhere.first?.state == .connected)
-    #expect(elsewhere.first?.meta == "Read on your other iPhone" && elsewhere.first?.note == "Read on your other iPhone")
-    #expect(rows(.holder(isThisDevice: false, watchExpiresAtMs: nil), provider: .outlook).first?.id == "outlook")
-    #expect(rows(.noLink).isEmpty)
-    #expect(rows(.holder(isThisDevice: true, watchExpiresAtMs: nil)).isEmpty)
-    #expect(rows(nil).isEmpty)
-    // The Profile card and Bank alerts don't call it "not connected", and ask nothing.
+  /// This iPhone has never read the mailbox (a new install, a recovered account) while the
+  /// server names another iPhone as the link's holder, which may be one the person no
+  /// longer has: nothing is listed as read here, and the screens say the email isn't
+  /// connected and offer the connect, never "Bank alerts are working".
+  @Test func aLinkHeldByAnotherIPhoneIsNotShownAsWorkingHere() {
+    let rows = LiveMailboxConnecting.mailboxes(
+      phase: .unlinked, halt: nil, address: nil, lastSuccessAtMs: nil, bankDomains: [], nowMs: 10_000_000_000)
+    #expect(rows.isEmpty)
+    let offer = LiveMailboxConnecting.offer(
+      phase: .unlinked, sampleLoaded: false, serverLink: .holder(isThisDevice: false, watchExpiresAtMs: nil))
     let summary = MailboxesSummary(
-      elsewhere, health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: nil)
-    #expect(summary.title == "Bank alerts are working" && summary.detail == "Read on your other iPhone")
-    #expect(!summary.needsYou)
+      rows, health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: offer)
+    #expect(summary.title == "Your email isn't connected" && summary.needsYou)
+    #expect(summary.detail == "Connect it so Hasala can read your bank alerts.")
+    #expect(ProfileSheet.mailboxesValue(rows, known: true) == ("Not connected", nil))
+    // No runtime: nothing is held elsewhere as far as this iPhone knows.
+    #expect(LiveMailboxConnecting(runtime: { nil }).heldElsewhere == nil)
   }
 
   /// Before an account opens there is no lane status: the mailboxes aren't known, so the
@@ -353,5 +361,25 @@ struct MailGrantEndsTests {
     while release.withLock({ $0 == nil }) { await Task.yield() }
     release.withLock { $0?.resume(); $0 = nil }
     #expect(await ends.settled(within: .seconds(10)))
+  }
+
+  /// A connect never signs in while an earlier ending may still reach the provider: past
+  /// the wait it is refused, and once the ending is done it goes ahead.
+  @Test func aConnectIsRefusedWhileAnEndingStillRuns() async {
+    let ends = MailGrantEnds()
+    let release = Mutex<CheckedContinuation<Void, Never>?>(nil)
+    ends.enqueue { await withCheckedContinuation { c in release.withLock { $0 = c } } }
+    #expect(await ends.connectGate(within: .milliseconds(50)) == .failed(.google))
+    while release.withLock({ $0 == nil }) { await Task.yield() }
+    release.withLock { $0?.resume(); $0 = nil }
+    #expect(await ends.connectGate(within: .seconds(10)) == nil)
+    #expect(await MailGrantEnds().connectGate(within: .milliseconds(1)) == nil)
+  }
+
+  /// One ending's worst case (every request at its limit, one after another) is inside a
+  /// connect's wait, so in practice the connect waits for it rather than being refused.
+  @Test func anEndingIsBoundedInsideTheConnectWait() {
+    let worst = Duration.seconds(MailGrantEnds.requestLimit * Double(MailGrantEnds.requestsPerEnding))
+    #expect(worst < MailGrantEnds.connectWait)
   }
 }

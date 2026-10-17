@@ -43,9 +43,11 @@ enum LocalAccountData {
   }
 
   /// The account's data left this iPhone (deleted here or elsewhere, removed, wiped from
-  /// a wall): forget the setup flag, the mailbox provider, the skipped review cards, the push registration and,
-  /// in Debug simulator runs, the simulator's approval keys.
+  /// a wall): forget the setup flag, the mailbox provider, the skipped review cards, the push registration,
+  /// the recent searches (held in memory only) and, in Debug simulator runs, the simulator's
+  /// approval keys.
   static func forget(defaults: UserDefaults = .standard) {
+    SearchHistory.shared.clear()
     defaults.removeObject(forKey: setupFinishedKey)
     defaults.removeObject(forKey: legacySetupFinishedKey)
     defaults.removeObject(forKey: mailboxProviderKey)

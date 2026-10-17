@@ -43,6 +43,7 @@ final class SetupMailLink: MailboxConnecting {
   var mailboxes: [MailboxSnapshot] { base.mailboxes }
   var offer: MailOffer? { base.offer }
   var linkedProvider: MailProviderKind? { base.linkedProvider }
+  var heldElsewhere: MailProviderKind? { base.heldElsewhere }
   var offersSampleData: Bool { base.offersSampleData }
 
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }

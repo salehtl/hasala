@@ -493,6 +493,42 @@ let day: Int64 = 86_400_000
     #expect(await rig.accountedCount() == 0)
   }
 
+  /// The Disconnect alert says Hasala ends its access at Google: a revoke that didn't go
+  /// through (a Google 5xx, offline) stops the disconnect with the token kept, the link and
+  /// the tables untouched, and the retry revokes it.
+  @Test func aFailedRevokeKeepsTheTokenAndTheLink() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let token = try rig.keychain.read()
+    #expect(token != nil)
+    rig.gmail.fail("/revoke", with: [503])
+    #expect(await rig.engine.disconnect() == false)
+    #expect(try rig.keychain.read() == token)
+    #expect(await rig.server.deletes == 0)
+    #expect(await rig.state().phase == .active)
+    rig.gmail.offline = true
+    #expect(await rig.engine.disconnect() == false)
+    #expect(try rig.keychain.read() == token)
+    #expect(await rig.server.deletes == 0)
+    rig.gmail.offline = false
+    rig.gmail.clearRequests()
+    #expect(await rig.engine.disconnect())
+    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/revoke") && $0.form.contains { $0 == ("token", token!) } })
+    #expect(try rig.keychain.read() == nil)
+    #expect(await rig.server.deletes == 1)
+    #expect(await rig.state().phase == .unlinked)
+  }
+
+  /// A token Google no longer knows (400) is gone either way: the disconnect goes on.
+  @Test func aRevokeOfAnUnknownTokenStillDisconnects() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.gmail.fail("/revoke", with: [400])
+    #expect(await rig.engine.disconnect())
+    #expect(try rig.keychain.read() == nil)
+    #expect(await rig.server.deletes == 1)
+  }
+
   @Test func concurrentTriggersAreSingleFlight() async {
     let rig = Rig()
     await rig.connectAndActivate()

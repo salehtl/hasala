@@ -417,6 +417,8 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored var cancelGmail = false
   /// The link a relaunch remembers before the lane's rows are read.
   @ObservationIgnored var linkedOverride: MailProviderKind?
+  /// The account's link held by another iPhone (live: a new install or a recovered account).
+  @ObservationIgnored var heldElsewhere: MailProviderKind?
 
   init(_ base: MockMailbox) { self.base = base }
 

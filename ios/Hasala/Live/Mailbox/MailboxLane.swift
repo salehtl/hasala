@@ -72,8 +72,11 @@ nonisolated final class MailboxLane: Sendable {
   /// grant at the provider (`MailGrantEnds`). That ending acts on the provider account and
   /// this app's client id, not on one Hasala account, so this connect waits for it first:
   /// its revoke and `users.stop` must reach Google before this link's grant and watch exist.
+  /// The wait is bounded, and every ending is bounded inside it (`MailGrantEnds.http`), so it
+  /// ends first in practice. If it hasn't, the connect is refused ("Try again"): signing in
+  /// regardless could let that ending reach Google after this link and end its grant.
   func connect(backfillDays: Int, replacing: Bool = false) async -> ConnectResult {
-    await MailGrantEnds.shared.settled(within: MailGrantEnds.connectWait)
+    if let refused = await MailGrantEnds.shared.connectGate() { return refused }
     let r = await engine.connect(presenter: presenter, backfillDays: backfillDays, replacing: replacing)
     if case .connected = r {
       // The scan itself runs from `firstScan()` (foreground) or the processing task.
@@ -182,8 +185,29 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
   static let shared = MailGrantEnds()
   /// How long a departure waits for its grant ending before it carries on regardless.
   static let departureWait: Duration = .seconds(10)
-  /// How long a connect waits for an earlier ending before it signs in regardless.
-  static let connectWait: Duration = .seconds(15)
+  /// How long a connect waits for earlier endings; past it the connect is refused.
+  static let connectWait: Duration = .seconds(20)
+  /// The longest one request of an ending may take, start to end. `endGrant` sends at most
+  /// five, one after another (Gmail's refresh, `users.stop` and revoke; Outlook's refresh
+  /// and subscription delete), so one ending is over inside `connectWait`.
+  static let requestLimit: TimeInterval = 3
+  /// The most requests one ending sends.
+  static let requestsPerEnding = 5
+
+  /// The HTTP every ending uses: the shared ephemeral configuration, with each request
+  /// limited from start to end (`timeoutIntervalForResource`), not only between bytes.
+  nonisolated static func http() -> URLSessionHTTPExchange {
+    let c = URLSessionConfiguration.ephemeral
+    c.httpCookieStorage = nil
+    c.httpShouldSetCookies = false
+    c.urlCache = nil
+    c.urlCredentialStorage = nil
+    c.requestCachePolicy = .reloadIgnoringLocalCacheData
+    c.timeoutIntervalForRequest = requestLimit
+    c.timeoutIntervalForResource = requestLimit
+    c.waitsForConnectivity = false
+    return URLSessionHTTPExchange(configuration: c)
+  }
 
   private let lock = NSLock()
   private var last: Task<Void, Never>?
@@ -197,6 +221,13 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
         await end()
       }
     }
+  }
+
+  /// Before a connect signs in: nil once every earlier ending is done (waiting at most
+  /// `limit`), else the refusal ("Couldn't connect … Try again."). An ending still running
+  /// could reach the provider after the new link and end its grant and watch.
+  func connectGate(within limit: Duration = MailGrantEnds.connectWait) async -> ConnectResult? {
+    await settled(within: limit) ? nil : .failed(.google)
   }
 
   /// Waits until every ending handed in so far is done, at most `limit`. False when the
@@ -238,7 +269,7 @@ extension MailboxLane {
   ///   when the account is going, and the tokens are simply forgotten (consent is ended at
   ///   account.live.com/consent/Manage).
   nonisolated static func endGrant(_ held: HeldMailGrants, build: BuildInfo, stopWatch: Bool) async {
-    let http = URLSessionHTTPExchange.ephemeral()
+    let http = MailGrantEnds.http()
     for g in held.grants {
       switch g.provider {
       case .gmail:
