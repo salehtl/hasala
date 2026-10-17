@@ -9,8 +9,8 @@ import SwiftUI
 /// with or without `.tabBarMinimizeBehavior(.never)`, and moving `.searchable` onto the
 /// TabView puts a search field in every tab. Not yet checked on an iOS 26 runtime.
 ///
-/// A Release build has no Search tab until the search engine exists (`BuildSurface`);
-/// Activity's own search field finds transactions meanwhile.
+/// Search is in every build: it finds transactions, categories and rules in this iPhone's
+/// own ledger, with no server call. Its direct answers (spec 04 §13.1) are not built.
 ///
 /// Routing is `app.router`'s: the tab bar, the sheet and the cover bind to it, and each
 /// sheet's view model lives in a small holder view with `@State`, so a body pass here can't
@@ -56,11 +56,9 @@ struct MainView: View {
       Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
       }
-      // TODO(spec 04 §13.1): Search with direct answers; Debug keeps the placeholder tab.
-      if BuildSurface.showsUnfinished {
-        Tab(value: AppTab.search, role: .search) {
-          SearchView(app: app)
-        }
+      // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
+      Tab(value: AppTab.search, role: .search) {
+        SearchView(app: app)
       }
     }
     .tabBarMinimizeBehavior(.never)
