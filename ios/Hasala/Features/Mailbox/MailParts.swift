@@ -284,18 +284,26 @@ struct ReadsNeverCard: View {
 }
 
 /// A sentence and its link in one wrapping row (Paper "TextLinkRow"): "Not your email?
-/// Choose a different one." One button; VoiceOver reads both parts.
+/// Choose a different one." One button; VoiceOver reads both parts. While what it started
+/// runs (`busy`), a spinner holds its place and further taps do nothing.
 struct TextLinkRow: View {
   var lead: String?
   var link: String
   var identifier: String
+  var busy = false
   var action: () -> Void
 
   var body: some View {
-    Button(action: action) { TextLinkLabel(lead: lead, link: link) }
-      .buttonStyle(.plain)
-      .accessibilityLabel([lead, link].compactMap { $0 }.joined(separator: " "))
-      .accessibilityIdentifier(identifier)
+    Button(action: action) {
+      TextLinkLabel(lead: lead, link: link)
+        .opacity(busy ? 0 : 1)
+        .overlay { if busy { Spinner(size: 20) } }
+    }
+    .buttonStyle(.plain)
+    .disabled(busy)
+    .accessibilityLabel([lead, link].compactMap { $0 }.joined(separator: " "))
+    .accessibilityValue(busy ? "In progress" : "")
+    .accessibilityIdentifier(identifier)
   }
 }
 

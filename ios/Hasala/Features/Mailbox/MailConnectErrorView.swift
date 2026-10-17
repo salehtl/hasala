@@ -12,20 +12,25 @@ import SwiftUI
 /// - A sign-in that didn't finish: "Continue with Microsoft" leads; "Wrong account? Choose a
 ///   different email" follows.
 ///
-/// `steps` is setup's indicator ("2 of 4"); the profile shows none.
+/// `steps` is setup's indicator ("2 of 4"); the profile shows none. `busy` is a retry that
+/// runs on this screen (setup keeps it on top while the sign-in runs): the button or the
+/// link shows it, so a second failure that leaves the screen as it was doesn't read as a
+/// dead tap. The profile goes back to the read-only screen to retry instead.
 struct MailConnectErrorView: View {
   let failure: MailConnectFailure
   let provider: MailProviderKind
   var steps: (current: Int, of: Int)?
+  var busy: Bool
   var onRetry: () -> Void
   var onChooseDifferent: () -> Void
 
   init(
-    failure: MailConnectFailure, provider: MailProviderKind, onRetry: @escaping () -> Void,
+    failure: MailConnectFailure, provider: MailProviderKind, busy: Bool = false, onRetry: @escaping () -> Void,
     onChooseDifferent: @escaping () -> Void, steps: (current: Int, of: Int)? = nil
   ) {
     self.failure = failure
     self.provider = provider
+    self.busy = busy
     self.onRetry = onRetry
     self.onChooseDifferent = onChooseDifferent
     self.steps = steps
@@ -43,9 +48,9 @@ struct MailConnectErrorView: View {
                    action: onChooseDifferent)
           .dockPill()
         TextLinkRow(lead: "Approved since?", link: "Try \(provider.company) again", identifier: "mail.error.retry",
-                    action: onRetry)
+                    busy: busy, action: onRetry)
       } else {
-        ProviderButton(provider: provider, action: onRetry)
+        ProviderButton(provider: provider, loading: busy, action: onRetry)
           .dockPill()
           .accessibilityIdentifier("mail.error.retry")
         TextLinkRow(lead: "Wrong account?", link: "Choose a different email", identifier: "mail.error.chooseDifferent",

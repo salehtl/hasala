@@ -117,6 +117,15 @@
       guard !alreadyConnected, let address = nextAddress(provider) else {
         throw .alreadyConnected(address: provider == .gmail ? Self.gmailAddress : Self.outlookAddress)
       }
+      // The same mailbox connected again after a disconnect: its grey row comes back to
+      // life (one row per address, as Bank alerts lists them), checking from now.
+      if let i = mailboxes.firstIndex(where: { $0.provider == provider && $0.address == address && $0.state == .disconnected }) {
+        mailboxes[i].state = .syncing
+        mailboxes[i].meta = "Checking now"
+        mailboxes[i].banks = banks.map(\.name)
+        mailboxes[i].connectedOn = "10 Oct"
+        return mailboxes[i].id
+      }
       let n = mailboxes.filter { $0.provider == provider }.count + 1
       let id = "\(provider.rawValue)-\(n)"
       mailboxes.append(MailboxSnapshot(

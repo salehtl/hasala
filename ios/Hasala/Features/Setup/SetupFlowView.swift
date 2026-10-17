@@ -74,20 +74,29 @@ private struct EmailStep: View {
 
 /// The connect didn't happen (Paper "Connect email · Work or school account needs an
 /// admin", "Microsoft sign-in didn't finish"): the mailbox screens' error view. Trying
-/// again replaces it with the first scan once it works.
+/// again runs on this screen, its button or link turning while the sign-in runs, and
+/// replaces it with the first scan once it works; a second failure leaves it as it was.
 private struct EmailErrorStep: View {
   var model: SetupModel
   let provider: MailProviderKind
+  /// The failure this screen shows. A retry clears the attempt's outcome while it runs, so
+  /// the screen keeps its words until the retry says otherwise.
+  @State private var shown: MailConnectFailure?
   @Environment(\.openURL) private var openURL
 
   var body: some View {
+    let coordinator = model.coordinator(provider)
     MailConnectErrorView(
-      failure: model.connectFailure(provider) ?? .cancelled, provider: provider,
+      failure: model.connectFailure(provider) ?? shown ?? .cancelled, provider: provider,
+      busy: coordinator.busy,
       onRetry: { Task { await model.retryConnect(provider) } },
       onChooseDifferent: {
         if model.canChooseEmail { model.chooseEmail() } else { openURL(BuildSurface.supportMail) }
       },
       // Paper draws setup's error screens as step 2 of 4 (1MUP-0, 1NQF-0; requests/p3.md 1).
       steps: model.steps(2))
+      .onChange(of: model.connectFailure(provider), initial: true) { _, failure in
+        if let failure { shown = failure }
+      }
   }
 }

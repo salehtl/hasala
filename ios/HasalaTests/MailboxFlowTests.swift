@@ -74,6 +74,19 @@ struct MailboxFlowTests: AccountSuite {
     #expect(lane.mailboxes.count == 2 && lane.offer == nil)
   }
 
+  /// The same mailbox added again after a disconnect brings its grey row back, syncing:
+  /// Bank alerts never lists one address twice.
+  @Test func reconnectingADisconnectedMailboxRevivesItsRow() async throws {
+    let lane = mailbox([MockMailbox.gmail])
+    try await lane.disconnect("gmail-1")
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.gmail)
+    #expect(c.outcome == .connected(mailboxID: "gmail-1"))
+    #expect(lane.mailboxes.map(\.id) == ["gmail-1"])
+    #expect(lane.mailboxes.first?.state == .syncing && lane.mailboxes.first?.meta == "Checking now")
+    #expect(lane.mailboxes.first?.address == MockMailbox.gmailAddress)
+  }
+
   /// Which failures get a screen of their own and which show on the screen that tried:
   /// a closed Google sheet says nothing; a closed or declined Microsoft sign-in and an
   /// admin's approval have their screens; the rest are a line.
