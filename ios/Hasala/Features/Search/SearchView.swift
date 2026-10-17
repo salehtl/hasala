@@ -38,10 +38,12 @@ struct SearchView: View {
       .scrollDismissesKeyboard(.interactively)
       .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
       .background(HColor.surfaceSecondary)
-      .navigationTitle("Search")
-      .searchable(text: $query, isPresented: $searching, prompt: "Ask about your money")
       // Ready keeps its large title over the field (Paper "Search · Ready", spec 13 S1);
-      // results take the room from the first letter (S3, no large title).
+      // results take the room from the first letter (S3, no large title). The results also
+      // drop the title's words: on a CI simulator the hidden bar left its large title drawn
+      // over the top result, where an empty title leaves nothing to see.
+      .navigationTitle(query.trimmedSpaces.isEmpty ? "Search" : "")
+      .searchable(text: $query, isPresented: $searching, prompt: "Ask about your money")
       .searchPresentationToolbarBehavior(query.trimmedSpaces.isEmpty ? .avoidHidingContent : .automatic)
       // Merchant names and words as typed ("carre", "talabat"): no capital, no correction,
       // so no QuickType bar over the keys either (Paper's keyboard has none).
