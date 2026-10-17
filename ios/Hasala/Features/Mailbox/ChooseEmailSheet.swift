@@ -2,29 +2,44 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Which heading "Choose your email" carries: setup's, or the profile's Add a mailbox.
+/// Which heading "Choose your email" carries: setup's, the profile's Add a mailbox, or,
+/// where the build holds one mailbox (`holdsOneLink`) and the account has it, the profile's
+/// "Use another email", whose pick replaces it after a confirmation.
 enum ChooseEmailTitle: Sendable {
   case setup
   case addMailbox
+  case change
 
   var title: String {
     switch self {
     case .setup: "Choose your email"
     case .addMailbox: "Add a mailbox"
+    case .change: "Use another email"
     }
   }
 
-  var subtitle: String {
+  /// With `oneLink` no line promises a second mailbox.
+  func subtitle(oneLink: Bool) -> String {
+    let setup = "Pick where your bank sends its alerts. Access is read-only, and this iPhone does the reading."
     switch self {
-    case .setup: "Pick where your bank sends its alerts. Access is read-only, and this iPhone does the reading."
-    case .addMailbox: "Pick the one your bank also sends alerts to. Access is read-only, and this iPhone does the reading."
+    case .setup: return setup
+    case .addMailbox:
+      return oneLink
+        ? setup : "Pick the one your bank also sends alerts to. Access is read-only, and this iPhone does the reading."
+    case .change:
+      return "Hasala reads one mailbox at a time. Pick the one your bank sends its alerts to. Access is read-only, and this iPhone does the reading."
     }
   }
 
-  var footnote: String {
+  func footnote(oneLink: Bool) -> String {
     switch self {
-    case .setup: "You can add another mailbox later in Profile › Bank alerts. Disconnect any of them at any time."
-    case .addMailbox: "Each mailbox can be disconnected on its own, at any time."
+    case .setup:
+      oneLink
+        ? "You can change it later in Profile › Bank alerts."
+        : "You can add another mailbox later in Profile › Bank alerts. Disconnect any of them at any time."
+    case .addMailbox:
+      oneLink ? "You can disconnect it at any time." : "Each mailbox can be disconnected on its own, at any time."
+    case .change: "The one you pick replaces the mailbox Hasala reads now. Past transactions stay."
     }
   }
 }
@@ -57,7 +72,7 @@ struct ChooseEmailSheet: View {
   var body: some View {
     switch title {
     case .setup: sheet
-    case .addMailbox: page
+    case .addMailbox, .change: page
     }
   }
 
@@ -103,7 +118,7 @@ struct ChooseEmailSheet: View {
           .hType(HType(size: 28, leading: 34, weight: .bold, tracking: -0.5, textStyle: .title))
           .foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
-        Text(title.subtitle).hType(.callout).foregroundStyle(HColor.textSecondary)
+        Text(title.subtitle(oneLink: mailbox.holdsOneLink)).hType(.callout).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
       .padding(.top, headingTop)
@@ -112,14 +127,15 @@ struct ChooseEmailSheet: View {
           if i > 0 { HDivider(inset: .disc68) }
           // Setup's pick is always a new connect; the profile's follows the offer.
           ProviderRow(provider: provider, subtitle: Self.subtitle(
-            provider, mailboxes: mailbox.mailboxes, offer: title == .addMailbox ? mailbox.offer : nil)) {
+            provider, mailboxes: mailbox.mailboxes, offer: title == .setup ? nil : mailbox.offer,
+            oneLink: mailbox.holdsOneLink)) {
             pick(provider)
           }
             .accessibilityIdentifier("mail.choose.\(provider.rawValue)")
         }
       }
       VStack(alignment: .leading, spacing: 6) {
-        Text(title.footnote).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        Text(title.footnote(oneLink: mailbox.holdsOneLink)).hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
         TellUsWhichLink(small: true, leading: true)
       }
@@ -133,15 +149,19 @@ struct ChooseEmailSheet: View {
   /// tappable, to add a second mailbox"). A mailbox that needs a new sign-in is not
   /// connected: while the profile's connect of that provider signs it in again
   /// (`ConnectMailPage.context`, the offer the bell and the Profile card make), the row
-  /// says so, as the screen it opens does ("Sign in to Outlook again.").
-  static func subtitle(_ provider: MailProviderKind, mailboxes: [MailboxSnapshot], offer: MailOffer? = nil) -> String? {
+  /// says so, as the screen it opens does ("Sign in to Outlook again."). With `oneLink` a
+  /// connected provider offers no second account of its own.
+  static func subtitle(
+    _ provider: MailProviderKind, mailboxes: [MailboxSnapshot], offer: MailOffer? = nil, oneLink: Bool = false
+  ) -> String? {
     let own = mailboxes.filter { $0.provider == provider }
     if case .signInAgain(let id) = ConnectMailPage.context(provider, offer: offer),
        let broken = own.first(where: { $0.id == id }) {
       return "\(broken.address) needs a new sign-in. Sign in to \(provider.appName) again."
     }
     if let connected = own.first(where: { $0.state == .connected || $0.state == .syncing }) {
-      return "\(connected.address) is connected. Add another \(provider.company) account."
+      return oneLink
+        ? "\(connected.address) is connected." : "\(connected.address) is connected. Add another \(provider.company) account."
     }
     if let broken = own.first(where: { $0.state == .needsSignIn }) {
       return "\(broken.address) needs a new sign-in."

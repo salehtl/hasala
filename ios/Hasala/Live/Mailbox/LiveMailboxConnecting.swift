@@ -4,21 +4,42 @@ import Foundation
 import HasalaModels
 import Observation
 
-/// The mailbox contract over the open account's Gmail lane (spec 04 §7.4, §7.7; plan B4.4):
-/// "Continue with Google" runs the lane's connect (Google sign-in, token custody, the
-/// `mailbox.link` step-up), and the first scan streams its progress while it files what it
-/// reads (no cards step). On a review account with an empty ledger setup offers "Use sample
-/// data" instead (§6.13), which loads the bundled seed through the outbox.
+/// The mailbox contract over the open account's mail lanes (spec 04 §7.4, §7.7; plan
+/// B4.4), a thin adapter over main's `AccountRuntime.lanes` / `MailboxLane`: "Continue with
+/// Google" or "Continue with Microsoft" runs that lane's connect (the provider's sign-in,
+/// token custody, the `mailbox.link` step-up), and the first scan streams its progress
+/// while it files what it reads (no cards step). On a review account with an empty ledger
+/// setup offers "Use sample data" instead (§6.13), which loads the bundled seed through the
+/// outbox.
 ///
-/// This build reads Gmail only: `connectable` lists nothing else, and the server holds one
-/// link per account, so there is no second mailbox. The lane's status gives the one row.
+/// The build connects the providers it has a client id for (Gmail, and Outlook for
+/// personal Microsoft accounts). The server holds one link per account, so there is no
+/// second mailbox: connecting the other provider replaces the link, and only once the
+/// person confirmed it (`connect(_:replacing:)`). The lane's status gives the one row.
 @MainActor
 @Observable
 final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   @ObservationIgnored private let runtime: @MainActor () -> AccountRuntime?
+  /// The providers this build has a client for, listed before an account opens ("Who can
+  /// see what" and the stories run before any runtime exists).
+  @ObservationIgnored private let buildProviders: [MailProviderKind]
 
-  init(runtime: @escaping @MainActor () -> AccountRuntime?) {
+  init(runtime: @escaping @MainActor () -> AccountRuntime?, buildProviders: [MailProviderKind] = []) {
     self.runtime = runtime
+    self.buildProviders = buildProviders
+  }
+
+  /// The providers `build` has a client for, Gmail first: the same test as
+  /// `MailboxLane.init?`, so it lists what an opened runtime's lanes will.
+  static func providers(build: BuildInfo) -> [MailProviderKind] {
+    MailProviderKind.allCases.filter { provider in
+      switch provider {
+      case .gmail:
+        GmailOAuthConfig(clientID: build.googleClientID, redirectScheme: build.googleRedirectScheme).isConfigured
+      case .outlook:
+        MicrosoftOAuthConfig(clientID: build.outlookClientID, redirectScheme: build.outlookRedirectScheme).isConfigured
+      }
+    }
   }
 
   /// The live mailbox's id: the provider of the one link ("gmail" or "outlook").
@@ -26,15 +47,23 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
 
   /// The providers this build has a client for (the runtime built their lanes), Gmail
   /// first: the Release gate is the build's client ids (`HASALA_OUTLOOK_CLIENT_ID`).
-  var connectable: [MailProviderKind] { runtime()?.providers ?? [] }
+  var connectable: [MailProviderKind] { runtime()?.providers ?? buildProviders }
 
-  /// No `.addSecond`: linking one mailbox replaces the account's link on the server.
+  /// No `.addSecond`: the server holds one link per account. `.replace`: linking the other
+  /// provider replaces it, after the screens' confirmation ("Change your email?").
   ///
   /// `.disconnect` is the one live mailbox action no test reaches (the step-up, Google's
   /// revoke and the server's link delete; plan D.1 risk 8). It ships only after one run on
   /// QA with the owner, with a passkey account and with a password-only one; if either
   /// fails, take `.disconnect` out of this set and the button goes from every surface.
-  var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect] }
+  var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect, .replace] }
+
+  /// The provider of the account's link, known from this iPhone's memory (or the grant it
+  /// holds) before the lane's status is read; nil once the status says unlinked.
+  var linkedProvider: MailProviderKind? {
+    guard let rt = runtime(), rt.store.mailboxPhase != .unlinked else { return nil }
+    return rt.activeProvider
+  }
 
   /// Observed through the runtime: the lane's status is read when the account opens and
   /// after every run and connect.
@@ -107,6 +136,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     let checked = lastSuccessAtMs.map { "Checked \(LedgerStateMapper.ago(nowMs - $0))" } ?? "Not checked yet"
     var row = MailboxSnapshot(
       id: mailboxID(provider), provider: provider, address: address ?? provider.appName, state: .connected, meta: checked,
+      accountKind: provider == .outlook ? "Personal Microsoft" : nil,
       banks: Set(bankDomains.compactMap { LedgerStateMapper.bankName(domain: $0) }).sorted(),
       lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) })
     switch phase {
@@ -122,6 +152,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     case .halted:
       if offer(phase: .halted, halt: halt, sampleLoaded: false, serverLink: .noLink, provider: provider) != nil {
         row.state = .needsSignIn
+        // Not the provider ending access: the account has no mailbox to read.
+        if halt == .noMailbox { row.note = message(.noMailbox) }
       } else {
         row.note = "Reading your bank alerts stopped."
       }
@@ -148,8 +180,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// What the bell, Profile and Bank alerts offer for a lane `phase` (spec 04 §6.6 row 4,
   /// §7.4). Nothing once the account holds the App Review sample: loading it completed the
   /// email step. An iPhone without a link offers it only once the server says no other
-  /// iPhone holds one (`serverLink`): connecting there would take Gmail over from that
-  /// iPhone. A halt is offered a new sign-in only when signing in to Google again fixes it.
+  /// iPhone holds one (`serverLink`): connecting there would take the link over from that
+  /// iPhone. A halt is offered a new sign-in only when signing in to the provider again
+  /// fixes it (a Microsoft account with no mailbox: another account's sign-in).
   static func offer(
     phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?,
     provider: MailProviderKind = .gmail
@@ -175,7 +208,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   }
 
   /// Before a connect from an iPhone without a link, the server's answer asked just now:
-  /// another iPhone holding the link refuses it (connecting would take Gmail over from
+  /// another iPhone holding the link refuses it (connecting would take the link over from
   /// that iPhone), and so does no answer (`nil`, offline), as no offer shows then.
   static func checkTakeover(_ link: MailboxLinkStatus?) throws(MailConnectFailure) {
     switch link {
@@ -200,21 +233,49 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     return lane
   }
 
-  /// Main's `connectMailbox(_:banks:)`: one link per account, so connecting one provider
-  /// replaces the other's link on the server; the new lane clears the shared tables only
-  /// once its link is made, then the old lane ends its grant.
+  /// Whether `requested` may connect now, and whether that connect replaces the account's
+  /// link (the server keeps one link per account). A working link, or a broken one of the
+  /// other provider, is replaced only when the person confirmed it (`replacing`); the same
+  /// provider again is a new sign-in when its link is broken and "already connected" when
+  /// it works. The switch has no `default`, so a new `MailboxPhase` breaks the build.
+  static func admit(
+    _ requested: MailProviderKind, current: MailProviderKind?, phase: MailboxPhase, address: String?,
+    replacing: Bool
+  ) throws(MailConnectFailure) -> Bool {
+    switch phase {
+    case .unlinked:
+      return false  // a first link, or after a disconnect
+    case .otherDevice:
+      throw .takenByOtherIPhone  // v2 has no "Read them here instead"
+    case .reconnectRequired, .halted:
+      if requested == current { return false }  // sign in again
+    case .scanning, .awaitingCards, .authoringBackfill, .active:
+      if requested == current { throw .alreadyConnected(address: address ?? requested.appName) }
+    }
+    guard replacing else {
+      throw .failed("Disconnect \(current?.appName ?? "your email") first, then connect \(requested.appName).")
+    }
+    return true
+  }
+
+  /// Main's `connectMailbox(_:banks:)` behind `admit`: before a first link the server is
+  /// asked whether another iPhone holds one; a confirmed switch replaces the other
+  /// provider's link, and the new lane clears the shared tables only once its link is made;
+  /// then the old lane ends its grant.
   @discardableResult
-  func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
+  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
     let current = rt.lane
-    let phase = await (current ?? lane).status().phase
-    if phase == .unlinked {
+    let status = await (current ?? lane).status()
+    let replaces = try Self.admit(
+      provider, current: current?.provider, phase: status.phase, address: status.address, replacing: replacing)
+    if status.phase == .unlinked {
       let link = await rt.askServerLink()
       try Self.checkTakeover(link)
     }
     let switching = current.map { $0.provider != provider } ?? false
-    try Self.linked(await lane.connect(backfillDays: 90, replacing: switching && phase != .unlinked), provider: provider)
+    try Self.linked(await lane.connect(backfillDays: 90, replacing: replaces), provider: provider)
     rt.activate(provider)
     if switching, let old = current { await old.endGrant() }
     await rt.refreshMailbox()

@@ -124,6 +124,8 @@ struct BankAlertsPage: View {
     /// that still works.
     static func signInDetail(_ broken: MailboxSnapshot?, live: [MailboxSnapshot]) -> String? {
       guard let broken else { return nil }
+      // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
+      if let note = broken.note { return note }
       var detail = "\(broken.provider.company) ended access to \(broken.address)"
       // The date stays on one line ("Wed 7 Oct").
       if let day = broken.lastChecked?.split(separator: ",").first {
@@ -224,7 +226,7 @@ struct BankAlertsPage: View {
   private var mailboxesSection: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Mailboxes")
-      if !mailboxes.isEmpty || offersAdd {
+      if !mailboxes.isEmpty || offersAdd || offersChange {
         HListCard {
           ForEach(Array(mailboxes.enumerated()), id: \.element.id) { i, m in
             if i > 0 { HDivider(inset: .disc68) }
@@ -235,6 +237,11 @@ struct BankAlertsPage: View {
           if offersAdd {
             if !mailboxes.isEmpty { HDivider(inset: .disc68) }
             MailActionRow(title: "Add a mailbox", identifier: "bankAlerts.addMailbox") {
+              app.router.profile.append(.addMailbox)
+            }
+          } else if offersChange {
+            HDivider(inset: .disc68)
+            MailActionRow(title: "Use another email", identifier: "bankAlerts.changeMailbox", glyph: PaperGlyph.envelope) {
               app.router.profile.append(.addMailbox)
             }
           }
@@ -264,6 +271,14 @@ struct BankAlertsPage: View {
   private var offersAdd: Bool {
     guard let lane, lane.capabilities.contains(.connect), !lane.connectable.isEmpty else { return false }
     return lane.capabilities.contains(.addSecond) || !mailboxes.contains { $0.state != .disconnected }
+  }
+
+  /// "Use another email" shows where the build holds one mailbox, the account has it, and
+  /// another provider can replace it (the provider's screen confirms the switch).
+  private var offersChange: Bool {
+    guard let lane, !offersAdd, lane.holdsOneLink, lane.capabilities.contains(.connect) else { return false }
+    let linked = Set(mailboxes.filter { $0.state != .disconnected }.map(\.provider))
+    return !linked.isEmpty && lane.connectable.contains { !linked.contains($0) }
   }
 
   /// Notes the rows on screen; one that wasn't here last time lands, once this page shows

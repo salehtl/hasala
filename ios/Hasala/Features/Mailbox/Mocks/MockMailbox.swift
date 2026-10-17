@@ -100,6 +100,9 @@
       return mailboxes.contains { $0.state != .disconnected } ? nil : .connect
     }
 
+    /// The provider of the first mailbox still read (any state but disconnected).
+    var linkedProvider: MailProviderKind? { mailboxes.first { $0.state != .disconnected }?.provider }
+
     func chosenBanks() -> [SupportedBank] { banks }
 
     func linkState() async -> OnboardingStep.Facts.Mailbox {
@@ -108,12 +111,33 @@
     }
 
     @discardableResult
-    func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
+    func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
       connectCalls += 1
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
       if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
       if provider == .outlook, outlookCancelled { throw .cancelled }
+      if holdsOneLink {
+        // One link, as live holds it: the same provider working is already connected; the
+        // other provider's link goes only on a confirmed switch, and its row with it (the
+        // live lane reports the one link).
+        let live = mailboxes.filter { $0.state != .disconnected }
+        if let i = mailboxes.firstIndex(where: { $0.provider == provider && $0.state == .needsSignIn }) {
+          // The same provider's broken link: a new sign-in, as live's connect is then.
+          mailboxes[i].state = .connected
+          mailboxes[i].meta = "Checked just now"
+          return mailboxes[i].id
+        }
+        if let same = live.first(where: { $0.provider == provider }) {
+          throw .alreadyConnected(address: same.address)
+        }
+        if let other = live.first(where: { $0.provider != provider }) {
+          guard replacing else {
+            throw .failed("Disconnect \(other.provider.appName) first, then connect \(provider.appName).")
+          }
+          mailboxes.removeAll { $0.id == other.id }
+        }
+      }
       guard !alreadyConnected, let address = nextAddress(provider) else {
         throw .alreadyConnected(address: provider == .gmail ? Self.gmailAddress : Self.outlookAddress)
       }

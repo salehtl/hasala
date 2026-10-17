@@ -143,13 +143,15 @@ final class SetupModel {
     set { draft.showDetails = newValue }
   }
 
-  /// The provider setup connects: the one remembered or connected, else the first this
-  /// build can.
+  /// The provider setup connects: the one remembered or connected, else the one the
+  /// account's link is to (a relaunch before the lane's status is read), else the first
+  /// this build can.
   var provider: MailProviderKind {
-    draft.provider ?? readingMailbox?.provider ?? services.mailbox.connectable.first ?? .gmail
+    draft.provider ?? readingMailbox?.provider ?? services.mailbox.linkedProvider ?? services.mailbox.connectable.first
+      ?? .gmail
   }
 
-  /// The providers this build connects (live: Gmail only, plan B4.6).
+  /// The providers this build connects (live: those it has a client id for).
   var connectable: [MailProviderKind] { services.mailbox.connectable }
 
   /// The mailbox the account reads, the one setup connected first.

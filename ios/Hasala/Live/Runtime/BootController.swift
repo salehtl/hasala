@@ -88,7 +88,8 @@ final class BootController {
     self.account = account
     let holder = RuntimeHolder()
     services = AccountServices(
-      account: account, mailbox: LiveMailboxConnecting(runtime: { holder.boot?.runtime }),
+      account: account, mailbox: LiveMailboxConnecting(
+        runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode)
     let first = AccountSession(services: services, phase: .signedOut)

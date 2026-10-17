@@ -50,7 +50,9 @@ final class MailConnectCoordinator {
   }
 
   /// Runs the sign-in (or the sign-in again). A second tap while one runs does nothing.
-  func connect(_ provider: MailProviderKind) async {
+  /// `replacing`: the person confirmed that this connect replaces the account's link to
+  /// another provider ("Change your email?"; one link held, `.replace`).
+  func connect(_ provider: MailProviderKind, replacing: Bool = false) async {
     guard !busy else { return }
     busy = true
     defer { busy = false }
@@ -61,7 +63,7 @@ final class MailConnectCoordinator {
         try await mailbox.signInAgain(id)
         outcome = .connected(mailboxID: id)
       } else {
-        outcome = .connected(mailboxID: try await mailbox.connect(provider))
+        outcome = .connected(mailboxID: try await mailbox.connect(provider, replacing: replacing))
       }
     } catch .cancelled where provider == .gmail {
       // The person closed Google's sheet: nothing to say (today's behaviour).
@@ -69,6 +71,13 @@ final class MailConnectCoordinator {
     } catch {
       outcome = .failed(error)
     }
+  }
+
+  /// The mailbox a connect of `provider` here would replace, which the screen confirms
+  /// first; nil for a new sign-in, which replaces nothing.
+  func replaced(by provider: MailProviderKind) -> MailboxSnapshot? {
+    if case .signInAgain = context { return nil }
+    return mailbox.replaced(by: provider)
   }
 
   /// Back to before the attempt ("Try again", "Choose a different email").

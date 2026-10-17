@@ -31,8 +31,10 @@ final class SetupMailLink: MailboxConnecting {
     if let id = made[provider] { return id }
     let reading = base.mailboxes.filter { $0.state != .disconnected }
     if let mailbox = reading.first(where: { $0.provider == provider }) { return mailbox.id }
-    // Linked, but the lane's status isn't read yet: the one provider this build reads.
-    if isLinked(), reading.isEmpty, provider == (base.connectable.first ?? .gmail) { return provider.rawValue }
+    // Linked, but the lane's status isn't read yet: the provider the link is to.
+    if isLinked(), reading.isEmpty, provider == (base.linkedProvider ?? base.connectable.first ?? .gmail) {
+      return provider.rawValue
+    }
     return nil
   }
 
@@ -40,15 +42,16 @@ final class SetupMailLink: MailboxConnecting {
   var capabilities: MailboxCapabilities { base.capabilities }
   var mailboxes: [MailboxSnapshot] { base.mailboxes }
   var offer: MailOffer? { base.offer }
+  var linkedProvider: MailProviderKind? { base.linkedProvider }
   var offersSampleData: Bool { base.offersSampleData }
 
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }
 
   @discardableResult
-  func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
+  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
     if let id = existing(provider) { return id }
-    let id = try await base.connect(provider)
+    let id = try await base.connect(provider, replacing: replacing)
     made[provider] = id
     return id
   }

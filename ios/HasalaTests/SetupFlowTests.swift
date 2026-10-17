@@ -403,12 +403,13 @@ final class CountingMailbox: MailboxConnecting {
   var capabilities: MailboxCapabilities { base.capabilities }
   var mailboxes: [MailboxSnapshot] { base.mailboxes }
   var offer: MailOffer? { base.offer }
+  var linkedProvider: MailProviderKind? { base.linkedProvider }
   var offersSampleData: Bool { base.offersSampleData }
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }
-  func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
+  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
     if cancelGmail, provider == .gmail { throw .cancelled }
-    return try await base.connect(provider)
+    return try await base.connect(provider, replacing: replacing)
   }
   func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) { try await base.signInAgain(mailboxID) }
   func disconnect(_ mailboxID: String) async throws(MailConnectFailure) { try await base.disconnect(mailboxID) }

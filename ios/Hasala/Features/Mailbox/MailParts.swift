@@ -53,6 +53,16 @@ enum MailCopy {
     }
   }
 
+  /// The system alert before a connect replaces the account's one link (main's "Change
+  /// your email?"; Paper has no board for it, so it is the disconnect alert's kind).
+  static let switchTitle = "Change your email?"
+
+  /// Its message: "This replaces your Gmail connection. Hasala reads your bank alerts from
+  /// Outlook instead."
+  static func switchMessage(from old: MailProviderKind, to new: MailProviderKind) -> String {
+    "This replaces your \(old.appName) connection. Hasala reads your bank alerts from \(new.appName) instead. Past transactions stay."
+  }
+
   /// The system alert's message before a disconnect (Paper "Mailbox · Disconnect (alert)").
   static func disconnectMessage(_ provider: MailProviderKind) -> String {
     "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
@@ -447,6 +457,8 @@ struct MailReasonsCard: View {
 struct MailActionRow: View {
   let title: String
   let identifier: String
+  /// Add a mailbox's plus, or the envelope for "Use another email".
+  var glyph = PaperGlyph.plus
   let action: () -> Void
 
   var body: some View {
@@ -455,7 +467,7 @@ struct MailActionRow: View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
           .fill(HColor.actionAccentSubtle)
           .frame(width: 40, height: 40)
-          .overlay { PaperGlyph(PaperGlyph.plus, size: 18, color: HColor.textLink, lineWidth: 2.4) }
+          .overlay { PaperGlyph(glyph, size: 18, color: HColor.textLink, lineWidth: 2.4) }
         Text(title).hType(.rowTitle).foregroundStyle(HColor.textLink)
           .frame(maxWidth: .infinity, alignment: .leading)
       }

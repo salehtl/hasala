@@ -12,6 +12,10 @@ import SwiftUI
 /// sign-in: setup's Back from the first scan lands here (plan B3.2 rule 2). In setup it
 /// carries the step indicator; in the profile it doesn't. A failure that has its own screen
 /// (`MailConnectCoordinator.errorScreen`) is the host's to show; the rest show here.
+///
+/// When the build holds one link and the account's is to the other provider, the sign-in
+/// asks first, in the system alert the disconnect uses: "Change your email?" ("This
+/// replaces your Gmail connection. …", "Use Outlook").
 struct ConnectProviderView: View {
   let provider: MailProviderKind
   @Bindable var coordinator: MailConnectCoordinator
@@ -24,6 +28,8 @@ struct ConnectProviderView: View {
   /// the system Back is how to pick another, so the dock doesn't offer it again, and the
   /// screen fits above its dock inside the profile sheet.
   var choiceIsBack: Bool
+  /// The mailbox a confirmed sign-in replaces, while "Change your email?" asks.
+  @State private var switching: MailboxSnapshot?
 
   init(
     provider: MailProviderKind, coordinator: MailConnectCoordinator, banks: [SupportedBank],
@@ -116,6 +122,14 @@ struct ConnectProviderView: View {
     }
     // At large text sizes the screen scrolls under its dock: say so once.
     .scrollIndicatorsFlash(onAppear: true)
+    .alert(MailCopy.switchTitle, isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
+           presenting: switching) { _ in
+      Button("Cancel", role: .cancel) {}
+      Button("Use \(provider.appName)") { run(replacing: true) }
+        .accessibilityIdentifier("mail.confirmSwitch")
+    } message: { old in
+      Text(MailCopy.switchMessage(from: old.provider, to: provider))
+    }
     // Setup moves on to the first scan; the profile's moment is Bank alerts' new row.
     .hHaptic(.success, trigger: connectedOutcome) { _, new in isSetup && new != nil }
   }
@@ -143,7 +157,11 @@ struct ConnectProviderView: View {
   /// account may need its admin (1MRM). With one provider to offer there is nothing else to
   /// choose, so it asks which email the person uses instead (plan B4.6 rule 2). A new
   /// sign-in to one mailbox has nothing to choose, and with the providers behind this
-  /// screen Back chooses (Outlook keeps its line about work accounts).
+  /// screen Back chooses (Outlook keeps its line about accounts).
+  ///
+  /// The live Microsoft app takes personal accounts only, in every build, so the Release
+  /// surface says so (main's footnote) where Paper draws the work account's line; Debug
+  /// keeps Paper's, which the `outlookAdmin` mock's admin board follows.
   @ViewBuilder private var footerLink: some View {
     if signInAgainID != nil {
       EmptyView()
@@ -151,16 +169,16 @@ struct ConnectProviderView: View {
       TellUsWhichLink()
     } else if choiceIsBack {
       if provider == .outlook {
-        Text("Work or school account? Your organisation may need to approve Hasala first.")
+        Text(Self.outlookAccountLine)
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
           .padding(.top, 4)
-          .accessibilityIdentifier("mail.workAccount")
+          .accessibilityIdentifier(BuildSurface.showsUnfinished ? "mail.workAccount" : "mail.personalOnly")
       }
     } else if provider == .outlook {
-      TextLinkRow(lead: "Work or school account? Your organisation may need to approve Hasala first.",
+      TextLinkRow(lead: Self.outlookAccountLine,
                   link: "Choose a different email", identifier: "mail.notYours", action: onChooseDifferent)
     } else {
       TextLinkRow(lead: "Not your email?", link: "Choose a different one.", identifier: "mail.notYours",
@@ -168,10 +186,26 @@ struct ConnectProviderView: View {
     }
   }
 
-  /// The provider's sign-in; once connected, on to the next screen.
+  /// Outlook's line about which Microsoft accounts work.
+  static var outlookAccountLine: String {
+    BuildSurface.showsUnfinished
+      ? "Work or school account? Your organisation may need to approve Hasala first."
+      : "Outlook: personal Microsoft accounts only."
+  }
+
+  /// The provider's sign-in; once connected, on to the next screen. A sign-in that would
+  /// replace the account's link to another provider asks first.
   private func connect() {
+    if let old = coordinator.replaced(by: provider) {
+      switching = old
+    } else {
+      run(replacing: false)
+    }
+  }
+
+  private func run(replacing: Bool) {
     Task {
-      await coordinator.connect(provider)
+      await coordinator.connect(provider, replacing: replacing)
       if case .connected(let id)? = coordinator.outcome { onConnected(id) }
     }
   }
