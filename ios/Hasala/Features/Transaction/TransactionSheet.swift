@@ -230,11 +230,13 @@ struct TransactionSheet: View {
             .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
+          // A 44 pt target on a 20 pt header (Paper 4AV-0, 8 pt above the card): the
+          // height is taken back outside the button, so the card does not move down.
+          .padding(.vertical, -12)
           .accessibilityIdentifier("txn.viewEmail")
         }
       }
       .padding(.horizontal, 4)
-      .frame(minHeight: HSpacing.targetMinimum)
 
       VStack(alignment: .leading, spacing: 0) {
         HStack(alignment: .top, spacing: 14) {
@@ -246,6 +248,8 @@ struct TransactionSheet: View {
               .font(.system(.footnote, design: .monospaced))
               .foregroundStyle(HColor.textPrimary)
               .padding(.horizontal, 12).padding(.vertical, 8)
+              // Paper 4I0-0 spans the text column, not the text.
+              .frame(maxWidth: .infinity, alignment: .leading)
               .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
               .padding(.top, 8)
               .accessibilityLabel("Bank text: \(p.rawMerchant)")
