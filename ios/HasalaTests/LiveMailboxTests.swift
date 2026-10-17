@@ -249,6 +249,39 @@ struct LiveMailboxTests {
     #expect(row(.active)?.accountKind == nil)
   }
 
+  /// This iPhone has never read the mailbox (a new install, a recovered account) but the
+  /// server says another iPhone holds the account's link: the mailbox is still listed, as
+  /// read there, with no Disconnect, switch or "Add a mailbox" (a connect would be refused).
+  /// With no link, this iPhone's own link, or no answer, nothing is listed.
+  @Test func aLinkHeldByAnotherIPhoneIsListed() {
+    func rows(_ link: MailboxLinkStatus?, provider: MailProviderKind = .gmail) -> [MailboxSnapshot] {
+      LiveMailboxConnecting.mailboxes(
+        phase: .unlinked, halt: nil, address: nil, lastSuccessAtMs: nil, bankDomains: [], provider: provider,
+        serverLink: link, nowMs: 10_000_000_000)
+    }
+    let elsewhere = rows(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    #expect(elsewhere.count == 1)
+    #expect(elsewhere.first?.id == "gmail" && elsewhere.first?.address == "Gmail")
+    #expect(elsewhere.first?.readElsewhere == true && elsewhere.first?.state == .connected)
+    #expect(elsewhere.first?.meta == "Read on your other iPhone" && elsewhere.first?.note == "Read on your other iPhone")
+    #expect(rows(.holder(isThisDevice: false, watchExpiresAtMs: nil), provider: .outlook).first?.id == "outlook")
+    #expect(rows(.noLink).isEmpty)
+    #expect(rows(.holder(isThisDevice: true, watchExpiresAtMs: nil)).isEmpty)
+    #expect(rows(nil).isEmpty)
+    // The Profile card and Bank alerts don't call it "not connected", and ask nothing.
+    let summary = MailboxesSummary(
+      elsewhere, health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: nil)
+    #expect(summary.title == "Bank alerts are working" && summary.detail == "Read on your other iPhone")
+    #expect(!summary.needsYou)
+  }
+
+  /// Before an account opens there is no lane status: the mailboxes aren't known, so the
+  /// screens say they are checking rather than "not connected".
+  @Test func noRuntimeMeansNotKnownYet() {
+    let lane = LiveMailboxConnecting(runtime: { nil })
+    #expect(!lane.mailboxesKnown && lane.mailboxes.isEmpty)
+  }
+
   /// A lane halted for a reason a new sign-in doesn't fix: its row reads connected and
   /// nothing is offered, but the Profile card and Bank alerts must not say it works.
   /// (`LedgerStateMapper.health` gives every halted phase `.reconnect`: the lane's hero is

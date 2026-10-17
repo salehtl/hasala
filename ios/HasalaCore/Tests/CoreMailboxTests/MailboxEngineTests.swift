@@ -485,6 +485,8 @@ let day: Int64 = 86_400_000
     await rig.connectAndActivate()
     #expect(await rig.engine.disconnect())
     #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
+    // Google's grant is revoked (`POST /revoke token=<refresh>`), not only forgotten here.
+    #expect(rig.gmail.requests.contains { $0.form.contains { $0.0 == "token" } })
     #expect(try rig.keychain.read() == nil)
     #expect(await rig.server.deletes == 1)
     #expect(await rig.state().phase == .unlinked)

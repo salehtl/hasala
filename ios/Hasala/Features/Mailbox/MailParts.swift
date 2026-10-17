@@ -64,8 +64,15 @@ enum MailCopy {
   }
 
   /// The system alert's message before a disconnect (Paper "Mailbox · Disconnect (alert)").
+  /// Google's: the disconnect revokes Hasala's access at Google itself, so it says so
+  /// (and where to check). Microsoft has no revoke, so its permission is removed there.
   static func disconnectMessage(_ provider: MailProviderKind) -> String {
-    "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
+    switch provider {
+    case .gmail:
+      "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone. Past transactions stay. To check on Google's side, visit \(consentPage(provider))."
+    case .outlook:
+      "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
+    }
   }
 }
 

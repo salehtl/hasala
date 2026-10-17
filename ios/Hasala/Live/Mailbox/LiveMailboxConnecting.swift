@@ -69,7 +69,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// after every run and connect.
   var mailboxes: [MailboxSnapshot] {
     guard let rt = runtime(), let status = rt.store.mailboxStatus else { return [] }
-    return Self.mailboxes(status, provider: rt.lane?.provider ?? .gmail, nowMs: rt.context.clock.nowMs())
+    return Self.mailboxes(
+      status, provider: rt.lane?.provider ?? .gmail, serverLink: rt.serverLink, nowMs: rt.context.clock.nowMs())
+  }
+
+  /// Known once the account is open and its lane's status was read (a build with no lane
+  /// has none to read).
+  var mailboxesKnown: Bool {
+    guard let rt = runtime() else { return false }
+    return rt.lane == nil || rt.store.mailboxStatus != nil
   }
 
   /// Observed through the runtime: the review flag arrives with `GET /account`.
@@ -121,9 +129,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   // MARK: The row (plan B4.4's table)
 
   /// The lane's one mailbox as a row, or none while it is unlinked.
-  static func mailboxes(_ s: MailboxStatus, provider: MailProviderKind = .gmail, nowMs: Int64) -> [MailboxSnapshot] {
+  static func mailboxes(
+    _ s: MailboxStatus, provider: MailProviderKind = .gmail, serverLink: MailboxLinkStatus? = nil, nowMs: Int64
+  ) -> [MailboxSnapshot] {
     mailboxes(phase: s.phase, halt: s.haltedOn, address: s.address, lastSuccessAtMs: s.lastSuccessAtMs,
-              bankDomains: s.health.map(\.domain), provider: provider, nowMs: nowMs)
+              bankDomains: s.health.map(\.domain), provider: provider, serverLink: serverLink, nowMs: nowMs)
   }
 
   /// The row from the status's parts (the table in plan B4.4). The mailbox page's "Last
@@ -131,7 +141,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// (`LocalClock`, as every transaction time is).
   static func mailboxes(
     phase: MailboxPhase, halt: MailboxHaltCode?, address: String?, lastSuccessAtMs: Int64?, bankDomains: [String],
-    provider: MailProviderKind = .gmail, nowMs: Int64, timeZone: TimeZone = localTimeZone
+    provider: MailProviderKind = .gmail, serverLink: MailboxLinkStatus? = nil, nowMs: Int64,
+    timeZone: TimeZone = localTimeZone
   ) -> [MailboxSnapshot] {
     let checked = lastSuccessAtMs.map { "Checked \(LedgerStateMapper.ago(nowMs - $0))" } ?? "Not checked yet"
     var row = MailboxSnapshot(
@@ -141,7 +152,14 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) })
     switch phase {
     case .unlinked:
-      return []
+      // This iPhone holds no link, but the server says another iPhone does (a new install,
+      // or a recovered account, before this lane ever read the mailbox): the account's
+      // mailbox is still listed, as read there, rather than no mailbox at all.
+      guard case .holder(false, _)? = serverLink else { return [] }
+      row.address = address ?? provider.appName
+      row.meta = otherIPhone
+      row.note = otherIPhone
+      row.readElsewhere = true
     case .scanning, .awaitingCards:
       row.state = .syncing
       row.meta = "Checking now"
@@ -158,13 +176,16 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
         row.note = "Reading your bank alerts stopped."
       }
     case .otherDevice:
-      row.note = "Read on your other iPhone"
+      row.note = otherIPhone
       // The server deletes the account's link whichever iPhone holds it, so this iPhone
       // offers no Disconnect and no switch.
       row.readElsewhere = true
     }
     return [row]
   }
+
+  /// A mailbox row read on another iPhone.
+  static let otherIPhone = "Read on your other iPhone"
 
   /// The ledger's local time (+04:00, `LocalClock`), in which every date the app shows is
   /// written.
