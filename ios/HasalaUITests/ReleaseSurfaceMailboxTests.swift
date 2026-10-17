@@ -54,8 +54,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Connect your email")
     try audit(app)
     connect.tap()
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: uiWait), "Bank alerts did not come back")
-    assertText(app, "Gmail connected. Checking for alerts.", "Bank alerts")
+    assertMailboxAdded(app, "gmail-1")
     // Live reads one mailbox: no "Add a mailbox" beside it.
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
     assertPersonalAccountsOnly(app, "Bank alerts")
@@ -86,8 +85,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertNoText(app, ["Alerts from ,"], "Connect your email")
     attach(app, "Release · Connect your email · After the banks")
     connect.tap()
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: 10), "Bank alerts did not open")
-    assertText(app, "Gmail connected. Checking for alerts.", "Bank alerts")
+    assertMailboxAdded(app, "gmail-1")
   }
 
   /// Google ended Hasala's access: the hero says "Sign in again" with "Continue with
@@ -148,8 +146,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Connect Outlook")
     try audit(app)
     connect.tap()
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForExistence(timeout: uiWait), "Bank alerts did not come back")
-    assertText(app, "Outlook connected. Checking for alerts.", "Bank alerts")
+    assertMailboxAdded(app, "outlook-1")
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
   }
 
@@ -185,8 +182,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     connect.tap()
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     alert.buttons["Use Outlook"].firstMatch.tap()
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForExistence(timeout: uiWait), "Bank alerts did not come back")
-    assertText(app, "Outlook connected. Checking for alerts.", "Bank alerts")
+    assertMailboxAdded(app, "outlook-1")
     XCTAssertFalse(el(app, "bankAlerts.mailbox.gmail-1").exists, "Gmail is still read beside Outlook")
     assertPersonalAccountsOnly(app, "Bank alerts")
     try audit(app)

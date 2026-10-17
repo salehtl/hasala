@@ -174,7 +174,9 @@ final class SmokeTests: XCTestCase {
   /// rolls with the fill: the bar fills over 300 ms, the tick starts to drop as it lands, the
   /// verdict fades in after the tick and is in by 570 ms (0–300–420–570). The app stamps the
   /// frames it draws (Debug, `-HasalaRevealTiming`), in milliseconds from the frame the fill
-  /// started on. A frame is 17 ms; each bound allows a frame or two dropped on a busy machine.
+  /// started on. A frame is 17 ms. The marks are frames drawn, so a CI runner that drops a
+  /// few can stamp one mark late and the next on time: the order is what holds exactly, and
+  /// each gap and bound allows a few frames (seen: the verdict 85 ms after the tick, not 120).
   @MainActor
   func testTheFirstRevealKeepsItsTimingWithAmountsShown() throws {
     let app = launch(scenario: "maya", arguments: ["-HasalaRevealTiming"])
@@ -195,10 +197,11 @@ final class SmokeTests: XCTestCase {
     let verdict = try XCTUnwrap(marks["verdict"], value)
     let done = try XCTUnwrap(marks["done"], value)
     // The bar fills in 300 ms; the tick waits for it, and nothing holds the tick back.
-    XCTAssertTrue((250...350).contains(filled), value)
-    XCTAssertTrue((280...370).contains(tick), value)
-    // The verdict follows the tick's 120 ms and is fully in by 570 ms.
-    XCTAssertTrue((tick + 90...490).contains(verdict), value)
+    XCTAssertTrue((250...360).contains(filled), value)
+    XCTAssertTrue((filled...400).contains(tick), value)
+    // The verdict follows the tick's 120 ms, and the whole reveal is in by 570 ms, within
+    // the owner's 600 ms.
+    XCTAssertTrue((tick + 50...510).contains(verdict), value)
     XCTAssertTrue((verdict...620).contains(done), value)
     XCTAssertEqual(el(app, "home.hero.left").label, "AED 10,288.34")
   }

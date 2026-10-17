@@ -459,7 +459,9 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     runs-on: macos-26
-    timeout-minutes: 60
+    # The build, the unit tests and every UI class but two, serially: over an hour on a
+    # slow macos-26 runner (one run was stopped at 60 minutes mid-way through the UI tests).
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

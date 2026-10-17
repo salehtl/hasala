@@ -49,7 +49,7 @@ final class MailboxUITests: XCTestCase {
   }
 
   /// Profile › Bank alerts › Add a mailbox › Outlook connects a second mailbox: back on Bank
-  /// alerts, it is listed and the toast says it is checking.
+  /// alerts, it is listed and checking for alerts.
   @MainActor
   func testAddOutlookFromBankAlerts() throws {
     let app = launch(scenario: "passkeyUser")
@@ -74,8 +74,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Connect Outlook")
     try audit(app)
     connect.tap()
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.outlook-1").waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Outlook connected. Checking for alerts."].waitForExistence(timeout: uiWait))
+    assertMailboxAdded(app, "outlook-1")
     attach(app, "Bank alerts · two mailboxes")
   }
 
@@ -106,8 +105,7 @@ final class MailboxUITests: XCTestCase {
     tap(app, "mail.error.chooseDifferent")
     tap(app, "mail.choose.gmail", timeout: uiWait)
     tap(app, "mail.connect.gmail", timeout: uiWait)
-    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-2").waitForExistence(timeout: 10), "the second Gmail is missing")
-    XCTAssertTrue(app.staticTexts["Gmail connected. Checking for alerts."].waitForExistence(timeout: uiWait))
+    assertMailboxAdded(app, "gmail-2")
   }
 
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue

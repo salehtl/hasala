@@ -50,6 +50,22 @@ extension XCTestCase {
     e.tap()
   }
 
+  /// Taps `id` and waits for `next`, the element the tap brings up. A tap that a slow CI
+  /// runner swallows (one that lands as the keyboard goes or the page settles) gets one
+  /// more try, while `id` is still on screen; fails at the caller's line when `next`
+  /// never appears.
+  @MainActor
+  func tap(
+    _ app: XCUIApplication, _ id: String, opening next: String, file: StaticString = #filePath, line: UInt = #line
+  ) {
+    tap(app, id, file: file, line: line)
+    let shown = el(app, next)
+    if shown.waitForExistence(timeout: uiWait) { return }
+    let again = el(app, id)
+    if again.exists, again.isHittable { again.tap() }
+    XCTAssertTrue(shown.waitForExistence(timeout: uiWait), "\(id) did not open \(next)", file: file, line: line)
+  }
+
   /// Taps the field `id`, then types `text` into it.
   @MainActor
   func type(
@@ -123,18 +139,24 @@ extension XCTestCase {
   /// before the finger lifts, so the page stops where it was dragged, and starts
   /// mid-screen, above where a keyboard sits. Fails the test, at the caller's line, when
   /// the element never becomes hittable, so the tap that follows isn't blamed for it.
-  /// Returns whether the element is hittable.
+  /// Returns whether the element is hittable. After a drag it waits for the page to come
+  /// to rest: a drag past the end springs back once the finger lifts, and a tap during
+  /// that bounce only stops it (seen: "about.continue" at large text, on a CI runner).
   @MainActor
   @discardableResult
   func dragUntilHittable(
     _ app: XCUIApplication, _ element: XCUIElement, limit: Int = 8, file: StaticString = #filePath, line: UInt = #line
   ) -> Bool {
-    for _ in 0..<limit {
-      if element.isHittable { return true }
+    for i in 0..<limit {
+      if element.isHittable {
+        if i > 0 { waitForStill(app) }
+        return true
+      }
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
       from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
     }
+    waitForStill(app)
     let hittable = element.isHittable
     XCTAssertTrue(hittable, "\(element) is not hittable after \(limit) drags", file: file, line: line)
     return hittable
@@ -296,6 +318,20 @@ extension XCTestCase {
       stack.append(contentsOf: node.children)
     }
     return false
+  }
+
+  /// A mailbox a connect just added, on Bank alerts: its row is listed and reads Syncing
+  /// (checking for alerts) or, once checked, Connected. The row, not the toast that says
+  /// "… connected. Checking for alerts.": the toast leaves after 4 s, which a slow CI
+  /// runner's waits can outlast (AppModelTests checks its words).
+  @MainActor
+  func assertMailboxAdded(_ app: XCUIApplication, _ id: String, file: StaticString = #filePath, line: UInt = #line) {
+    let row = el(app, "bankAlerts.mailbox.\(id)")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait), "\(id) is not listed", file: file, line: line)
+    let checking = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value IN %@", ["Syncing", "Connected"]), object: row)
+    XCTAssertEqual(XCTWaiter().wait(for: [checking], timeout: uiWait), .completed,
+                   "\(id) reads \(row.value ?? "nothing"), not Syncing or Connected", file: file, line: line)
   }
 
   @MainActor
