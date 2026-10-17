@@ -14,7 +14,7 @@ Key facts:
 
 - What it is for: knowing where your money goes, privately. Hasala shows what you spent, on what, and what's left this month, and starts you on a simple plan.
 - Platform: iPhone only, iOS 26 or later. No Android app, no web app.
-- Where transactions come from: your bank's alert emails in your own email account (${MAIL} today), read-only. Your iPhone asks your email account only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; if the search also returns an email that only looks like it is from your bank, the iPhone reads just its sender details and sets it aside. There is no email forwarding and no bank login, and Hasala can't move money.
+- Where transactions come from: your bank's alert emails in your own email account (${MAIL} today), read-only. Your iPhone asks your email account only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; the iPhone checks that each email really came from your bank, and sets aside any that only looks like it did. Outlook means personal Microsoft accounts (outlook.com, hotmail.com, live.com); work and school accounts are not supported. One mailbox at a time. There is no email forwarding and no bank login, and Hasala can't move money.
 - Banks today: ${BANKS.map((b) => b.name).join(' and ')}. Other banks: people tell us which bank they use when they request an invite, and we use that to decide which bank to add next.
 - Categorization happens on the iPhone: your own rules first, then a built-in list of UAE merchants, then Apple's on-device model (English merchant names). You confirm the rest. Nothing is sent to an AI service.
 - Privacy: your transactions, budget and plan are encrypted on the iPhone before they sync. Hasala's server stores them but cannot read them. The app contains no ads, analytics or tracking tools. The website, hasala.app, counts visits with Cloudflare Web Analytics (never on invite, freeze or waitlist links), which sets no cookies, doesn't fingerprint or follow visitors across sites, and reports only totals, never linked to a person or a Hasala account.
@@ -62,7 +62,7 @@ Budgeting: the main figure is what you've spent on needs and wants this month, o
 
 ${who}
 
-Cloudflare is the network provider in front of Hasala's server: it ends transport encryption, so it sees requests and the still-encrypted data, but it cannot read the encrypted data. Hasala's server also keeps a keyed hash of the email address you connect and the timing of new mail, only to wake your phone.
+Cloudflare is the network provider in front of Hasala's server: it ends transport encryption, so it sees requests and the still-encrypted data, but it cannot read the encrypted data. Hasala's server also keeps a keyed hash of the email address you connect and the timing of new mail, only to wake your phone. For Outlook, Microsoft's new-mail notices carry a random code instead of the address; the server keeps only a hash of that code and discards the rest of each notice unread.
 
 ## FAQ
 

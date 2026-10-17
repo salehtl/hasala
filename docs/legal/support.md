@@ -1,16 +1,16 @@
 ---
 title: "Help and Support"
-description: "Answers for Hasala beta testers: missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-12
+description: "Answers for Hasala beta testers: connecting Gmail or Outlook, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
+lastUpdated: 2026-10-16
 status: "final"
-plainWords: "Most problems are fixed by checking that Gmail is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. A forgotten password needs your 12 words or an iPhone that's still signed in. You can delete your account in the app at any time."
+plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. A forgotten password needs your 12 words or an iPhone that's still signed in. You can delete your account in the app at any time."
 ---
 
 ## Common questions
 
 ### What is Hasala?
 
-Hasala (حصّالة, "piggy bank") is a private budgeting app for iPhone in the UAE. It reads your bank alert emails from Gmail on your iPhone and turns them into transactions. It then helps you plan your month, track bills and see where your money goes. Its App Store name is "Hasala Budgeting", but it isn't on the App Store yet: the beta runs on TestFlight. On your home screen it's just "Hasala".
+Hasala (حصّالة, "piggy bank") is a private budgeting app for iPhone in the UAE. It reads your bank alert emails from your Gmail or Outlook on your iPhone and turns them into transactions. It then helps you plan your month, track bills and see where your money goes. Its App Store name is "Hasala Budgeting", but it isn't on the App Store yet: the beta runs on TestFlight. On your home screen it's just "Hasala".
 
 ### How do I join the beta?
 
@@ -24,11 +24,11 @@ At launch, Hasala reads alerts from Dubai Islamic Bank (DIB) and Emirates NBD. I
 
 ### Does Hasala need my bank password?
 
-No. Hasala never connects to your bank and never asks for your bank details. It reads the alert emails your bank already sends to your Gmail, with read-only access.
+No. Hasala never connects to your bank and never asks for your bank details. It reads the alert emails your bank already sends to your Gmail or Outlook, with read-only access.
 
 ### Can Hasala read my other emails?
 
-Your iPhone asks Gmail only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like it's from your bank, Hasala reads just its sender details on your iPhone and then sets it aside. No email is ever sent to our server. Hasala can't send, delete or change your email. See [Gmail and Google user data](/privacy#gmail-and-google-user-data) for the details.
+Your iPhone asks your mailbox only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. Before it uses a message, your iPhone checks that it really came from your bank; one that only looks like it did is set aside. No email is ever sent to our server. Hasala can't send, delete or change your email. See [Gmail and Google user data](/privacy#gmail-and-google-user-data) and [Outlook and Microsoft account data](/privacy#outlook-and-microsoft-account-data) for the details.
 
 ### Can you see my transactions?
 
@@ -38,13 +38,25 @@ No. Your transactions, amounts, merchants, categories, budgets, bills and rules 
 
 On your iPhone, in this order: your own rules, then a built-in list of UAE merchants, then Apple's on-device model for merchant names in English. Anything it's still unsure about waits for your review. Nothing is sent to an AI service. When you sort a transaction yourself, you can tell Hasala to always do the same for that merchant.
 
+### Which email accounts work?
+
+Gmail, and personal Microsoft accounts: outlook.com, hotmail.com and live.com addresses. Work and school Microsoft accounts (Microsoft 365 through an employer or a university) aren't supported. Hasala reads one mailbox at a time, so use the one your bank sends its alerts to.
+
+### How do I connect Outlook?
+
+During setup, at **Connect your email**, choose **Outlook**. Sign in with your Microsoft account and accept the permissions Microsoft shows you. Hasala asks only to read your mail, and keeps access without making you sign in each time. If you've already finished setup, go to **Profile › Bank alerts**.
+
+Connecting Outlook replaces a Gmail connection, and connecting Gmail replaces an Outlook one. Hasala asks you to confirm first. Transactions it has already brought in stay.
+
+If Hasala says your Microsoft account has no Outlook mailbox, the account uses an address from another provider and Microsoft doesn't hold mail for it. Connect the mailbox your bank sends alerts to instead.
+
 ### Why does Google say it hasn't verified Hasala?
 
 During the beta, Google shows a warning when you connect Gmail, because its review of Hasala's Gmail access isn't complete. To continue, tap **Advanced** on that screen, then the link to go to Hasala. You can remove Hasala's access at any time.
 
 ### Does Hasala work with SMS alerts or email forwarding?
 
-No. Hasala reads alerts from Gmail only, and email forwarding isn't offered. If your bank sends only SMS alerts, check its app or online banking for an option to also send alerts by email.
+No. Hasala reads alerts from Gmail or Outlook only, and email forwarding isn't offered. If your bank sends only SMS alerts, check its app or online banking for an option to also send alerts by email.
 
 ### Is Hasala available in Arabic, or on Android?
 
@@ -66,12 +78,13 @@ At [github.com/salehtl/hasala](https://github.com/salehtl/hasala). It's source-a
 
 If transactions aren't showing up, work through these checks in order.
 
-### 1. Check that Gmail is still connected
+### 1. Check that your email is still connected
 
 Open **Profile › Bank alerts**.
 
 - If it says **Reconnect Gmail**, tap it and sign in again. Google access can end if you change your Google password, remove Hasala in your Google Account, or untick the Gmail permission on Google's screen.
-- If it says **Read on your other iPhone**, a different iPhone is reading your alerts. Only one iPhone reads Gmail at a time. Tap **Read them here instead** to switch.
+- If it says **Reconnect Outlook**, tap it and sign in with your Microsoft account again. Microsoft access can end if you remove Hasala at [account.live.com/consent/Manage](https://account.live.com/consent/Manage), and sometimes after you change your Microsoft password or don't use Hasala for a long time.
+- If it says **Read on your other iPhone**, a different iPhone is reading your alerts. Only one iPhone reads your email at a time. Tap **Read them here instead** to switch.
 - If it shows an error, tap **Try again**. If the error keeps coming back, contact us and include the diagnostics (see step 6).
 
 ### 2. Check that your bank sends email alerts
@@ -79,9 +92,9 @@ Open **Profile › Bank alerts**.
 Hasala can only see alerts your bank emails to you. In your bank's app or online banking:
 
 - turn on **email** alerts for card purchases, transfers and account activity, not only SMS; and
-- make sure the alerts go to the **same Gmail address** you connected to Hasala.
+- make sure the alerts go to the **same email address** you connected to Hasala.
 
-Open Gmail and confirm the alerts are arriving there, directly from your bank. Hasala finds them in any label, archived mail and Spam included, but not in Trash. Alerts forwarded from another email address may not be found, and any that are go to **Review** for you to check.
+Open Gmail or Outlook and confirm the alerts are arriving there, directly from your bank. In Gmail, Hasala finds them in any label, archived mail and Spam included, but not in Trash. In Outlook, it finds them in any folder, Junk Email and archived mail included. Alerts forwarded from another email address may not be found, and any that are go to **Review** for you to check.
 
 ### 3. Check your bank is supported
 
@@ -114,7 +127,7 @@ Your sealed data is kept on our server, so you can move to a new iPhone without 
 1. Sign in to the same Apple Account on your new iPhone, with iCloud Keychain (Passwords) turned on.
 2. Install Hasala from TestFlight and open it.
 3. Sign in with Face ID. Your passkey unlocks your data.
-4. Reconnect Gmail. Go to **Profile › Bank alerts** and tap **Read them here instead**, so the new iPhone reads your alerts.
+4. Reconnect your email. Go to **Profile › Bank alerts** and tap **Read them here instead**, so the new iPhone reads your alerts.
 5. Remove your old iPhone in **Profile › Sign-in & security › Devices** if you no longer use it.
 
 Some passkey managers other than iCloud Keychain can't unlock Hasala on a new device. If yours can't, Hasala asks for your 12-word recovery phrase instead.
@@ -158,7 +171,7 @@ Deleting your account is permanent and can't be undone. If you want to keep your
 
 1. Open Hasala and go to **Profile › Delete your account**.
 2. Read the summary and confirm it's you.
-3. Hasala disconnects Gmail, then our server erases your account, sealed data, keys, sign-in methods and devices straight away.
+3. Hasala disconnects your email, then our server erases your account, sealed data, keys, sign-in methods and devices straight away.
 4. Hasala erases its data on this iPhone. Your other iPhones erase theirs the next time they connect.
 
 Afterwards:
@@ -166,6 +179,7 @@ Afterwards:
 - Encrypted backups that still contain your data expire within 30 days.
 - Your passkey stays in your passkey manager. To remove it, open the **Passwords** app, find Hasala and delete it.
 - You can check that Hasala no longer has Gmail access in your Google Account under **Security › Your connections to third-party apps and services**.
+- If you connected Outlook, remove Hasala's permission at [account.live.com/consent/Manage](https://account.live.com/consent/Manage). Microsoft doesn't let an app remove its own permission, so Hasala can't do this for you.
 - Delete the Hasala app.
 
 If you can't open the app any more and want your account deleted, email privacy@hasala.app from your account's email address. We'll reply to that address and ask you to confirm before we delete anything.
