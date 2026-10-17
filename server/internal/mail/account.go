@@ -237,8 +237,11 @@ func Deleted(to string, at time.Time) Message {
 		notMe   = "Didn't do this? Tell us at hasala.app/support. We can't bring deleted data back, but we'll find out what happened."
 	)
 	p := page{Heading: "Your account is deleted.", Why: whyDeleted,
-		Lead:  []string{"Your Hasala account and its data were deleted from our server on " + When(at) + "."},
-		Rows:  []Row{{"Account and data", "Deleted"}, {"Encrypted backups", "Expire within 30 days"}},
+		Lead: []string{"Your Hasala account and its data were deleted from our server on " + When(at) + "."},
+		// Paper's summary rows. The backups expire within 30 days, so the
+		// sealed backup is gone by the day 30 days on (UAE time).
+		Rows: []Row{{"Budget, plan, rules", "Erased"},
+			{"Sealed backup", "Gone from backups by " + at.Add(30*24*time.Hour).In(uae).Format("2 Jan")}},
 		Paras: []string{passkey}, Small: notMe}
 	return compose(to, "Your Hasala account was deleted", "", p,
 		"Your Hasala account and its data were deleted from our server on "+When(at)+

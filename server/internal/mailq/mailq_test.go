@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -107,6 +108,29 @@ func TestTemplatesAreContentFree(t *testing.T) {
 			!strings.Contains(r.HTML, `<img src="`+mail.LogoURL+`" width="40" height="24" alt="">`)) {
 			t.Errorf("%s: the HTML part has no logo, or another image", kind)
 		}
+	}
+}
+
+// The goodbye a purge queues goes out styled: the renderer the server
+// registers for `deleted` gives an HTML part in the shared layout, with the
+// logo, Paper's summary table and the time from the row's params. It used to
+// be plain text only.
+func TestDeletedRendererSendsTheStyledLayout(t *testing.T) {
+	m, err := DeletedRenderer(context.Background(), nil, Row{Kind: "deleted", Recipient: "gone@example.com",
+		Params:    map[string]any{"deleted_at": "2026-10-11T09:40:00Z"},
+		CreatedAt: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<!doctype html>", `<img src="` + mail.LogoURL + `" width="40" height="24" alt="">`,
+		"<h1>Your account is deleted.</h1>", `<table class="summary">`, "Sun 11 Oct 2026, 13:40 UAE time",
+		"Gone from backups by 10 Nov"} {
+		if !strings.Contains(m.HTML, want) {
+			t.Errorf("the deleted email's HTML lacks %q", want)
+		}
+	}
+	if m.To != "gone@example.com" || m.Text == "" || strings.Contains(m.HTML, "gone@example.com") {
+		t.Errorf("recipient, text part or address in the HTML: %+v", m)
 	}
 }
 
