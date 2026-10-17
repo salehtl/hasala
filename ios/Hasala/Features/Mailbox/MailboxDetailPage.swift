@@ -202,7 +202,15 @@ struct MailboxDetailPage: View {
 
   @ViewBuilder private func disconnect(_ m: MailboxSnapshot, footnote: String?) -> some View {
     // Not for a mailbox read on another iPhone: the server's delete would end its reading there.
-    if m.state != .disconnected, !m.readElsewhere, app.mailbox?.capabilities.contains(.disconnect) == true {
+    if m.readElsewhere {
+      // Where Disconnect is for this one: the iPhone that holds its sign-in, or the
+      // provider's own settings.
+      Text(Self.readElsewhereFootnote(m.provider))
+        .hType(.footnote).foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+        .accessibilityIdentifier("mailbox.readElsewhere")
+    } else if m.state != .disconnected, app.mailbox?.capabilities.contains(.disconnect) == true {
       VStack(alignment: .leading, spacing: 10) {
         Button("Disconnect this mailbox") { confirming = true }
           .buttonStyle(.pill(.destructiveQuiet, size: .large, fill: true, loading: busy))
@@ -219,6 +227,12 @@ struct MailboxDetailPage: View {
   /// Paper 1NEG's footnote, naming the provider's own settings.
   static func disconnectFootnote(_ provider: MailProviderKind) -> String {
     "New alerts from this mailbox stop, and its sign-in is deleted from this iPhone. Transactions already read stay. You can also remove Hasala in your \(provider.company) account settings."
+  }
+
+  /// A mailbox read on another iPhone: this iPhone holds no sign-in to end, so it says
+  /// where to disconnect it.
+  static func readElsewhereFootnote(_ provider: MailProviderKind) -> String {
+    "Your other iPhone reads this mailbox and holds its sign-in. Disconnect it there, or remove Hasala at \(MailCopy.consentPage(provider))."
   }
 
   private func signInAgain(_ provider: MailProviderKind) {

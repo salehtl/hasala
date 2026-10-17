@@ -99,7 +99,8 @@ struct ProfileSheet: View {
   /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
   /// row also draw from.
   private var summary: MailboxesSummary {
-    MailboxesSummary(app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer)
+    MailboxesSummary(
+      app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true)
   }
 
   // MARK: Your money
@@ -153,6 +154,15 @@ struct ProfileSheet: View {
                          ?? .none)
           }
         }
+        // The mailbox, its sign-in and Disconnect, under Settings as well as behind the
+        // card above: where a person looks to stop Hasala reading their email.
+        if let lane = app.mailbox {
+          let value = Self.mailboxesValue(lane.mailboxes, known: lane.mailboxesKnown)
+          row(.bankAlerts, id: "profile.mailboxes") {
+            SettingRow(icon: .envelope, title: "Mailboxes",
+                       trailing: value.tone.map { .status(value.text, $0) } ?? .value(value.text))
+          }
+        }
         // TODO(spec 04 §16.2 X1): Currency and exchange rates (PENDING PO-17). One currency
         // for now: the row states it and opens nothing.
         SettingRow(icon: .globe, title: "Currency", trailing: .value("AED"), chevron: false)
@@ -187,6 +197,17 @@ struct ProfileSheet: View {
         }
       }
     }
+  }
+
+  /// The Mailboxes row's value: "Checking" while the mailbox state is read, "Not
+  /// connected" with none, "Sign in again" when one needs it, else the providers read
+  /// ("Gmail").
+  static func mailboxesValue(_ mailboxes: [MailboxSnapshot], known: Bool) -> (text: String, tone: StatusTone?) {
+    guard known else { return ("Checking", nil) }
+    let live = mailboxes.filter { $0.state != .disconnected }
+    if live.isEmpty { return ("Not connected", nil) }
+    if live.contains(where: { $0.state == .needsSignIn }) { return ("Sign in again", .warning) }
+    return (live.map(\.provider.appName).formatted(.list(type: .and)), nil)
   }
 
   /// Sign-in & security's own status (its hero): frozen, a passkey, or a password only.

@@ -259,6 +259,30 @@ struct MailboxFlowTests: AccountSuite {
     #expect(none.kind == .notConnected && none.detail == "Add a mailbox so Hasala can read your bank alerts.")
   }
 
+  /// Before the mailbox state is read, the hero, the Profile card and the Settings row say
+  /// they are checking: never "Not connected" with "Add a mailbox" over a mailbox that is.
+  @Test func beforeTheStateIsReadItSaysChecking() {
+    let health = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
+    let summary = MailboxesSummary([], health: health, offer: .connect, known: false)
+    #expect(summary.title == "Checking your email" && !summary.needsYou)
+    let hero = BankAlertsPage.Hero(summary: summary, health: health, mailboxes: [], offer: .connect, known: false)
+    #expect(hero.kind == .checking && hero.title == "Checking" && hero.detail == summary.detail)
+    #expect(ProfileSheet.mailboxesValue([], known: false) == ("Checking", nil))
+  }
+
+  /// Profile › Settings › Mailboxes says what the mailbox is doing: none, the provider
+  /// read, or a sign-in needed.
+  @Test func theSettingsRowNamesTheMailbox() {
+    #expect(ProfileSheet.mailboxesValue([], known: true) == ("Not connected", nil))
+    var gone = MockMailbox.gmail
+    gone.state = .disconnected
+    #expect(ProfileSheet.mailboxesValue([gone], known: true) == ("Not connected", nil))
+    #expect(ProfileSheet.mailboxesValue([MockMailbox.gmail], known: true) == ("Gmail", nil))
+    #expect(ProfileSheet.mailboxesValue([MockMailbox.gmail, MockMailbox.outlook], known: true) == ("Gmail and Outlook", nil))
+    #expect(ProfileSheet.mailboxesValue([MockMailbox.needingSignIn(MockMailbox.gmail)], known: true)
+      == ("Sign in again", .warning))
+  }
+
   /// A bank says where its alerts are read; a mailbox page explains a lost sign-in.
   @Test func banksAndMailboxesSayWhereAndWhy() {
     #expect(BankAlertsPage.bankDetail(.enbd, lastEmail: "4 min ago", checking: false) == "Last email 4 min ago")
@@ -285,7 +309,12 @@ struct MailboxFlowTests: AccountSuite {
       == "Microsoft ended Hasala's access")
     #expect(MailCopy.disconnectMessage(.outlook)
       == "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on Microsoft's side too, visit account.live.com/consent/Manage.")
-    #expect(MailCopy.disconnectMessage(.gmail).hasSuffix("on Google's side too, visit myaccount.google.com/permissions."))
+    // Disconnect revokes Hasala's access at Google, and the alert says so (Microsoft has no
+    // revoke, so its alert sends the person to Microsoft's page).
+    #expect(MailCopy.disconnectMessage(.gmail)
+      == "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone. Past transactions stay. To check on Google's side, visit myaccount.google.com/permissions.")
+    #expect(MailboxDetailPage.readElsewhereFootnote(.gmail)
+      == "Your other iPhone reads this mailbox and holds its sign-in. Disconnect it there, or remove Hasala at myaccount.google.com/permissions.")
     #expect(MailCopy.banks([.enbd, .dib]) == "Emirates NBD and DIB")
   }
 
