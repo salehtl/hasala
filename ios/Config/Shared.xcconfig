@@ -64,11 +64,13 @@ HASALA_API_BASE_URL = https:$(SLASH)$(SLASH)api.hasala.app
 HASALA_GOOGLE_IOS_CLIENT_ID = 987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9.apps.googleusercontent.com
 HASALA_GOOGLE_REDIRECT_SCHEME = com.googleusercontent.apps.987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9
 HASALA_GMAIL_PUBSUB_TOPIC = unset
-// The Entra app (personal Microsoft accounts only) is public by design too. It stays
-// `unset` until the owner registers it: Outlook is then not offered. The redirect is
-// `msauth.app.hasala.ios://auth`, captured by ASWebAuthenticationSession; the scheme
-// is not registered in CFBundleURLTypes either (inspect-ipa.sh I4).
-HASALA_OUTLOOK_CLIENT_ID = unset
+// The Entra app (personal Microsoft accounts only) is public by design too: its client
+// id ships in every binary and has no secret (`unset` would stop Outlook being
+// offered). The server must have the same id in its [outlook] group, or linking fails.
+// The redirect is `msauth.app.hasala.ios://auth`, captured by
+// ASWebAuthenticationSession; the scheme is not registered in CFBundleURLTypes either
+// (inspect-ipa.sh I4).
+HASALA_OUTLOOK_CLIENT_ID = 0cbe5805-2e22-4f55-9785-9d3bdaf7009d
 HASALA_OUTLOOK_REDIRECT_SCHEME = msauth.app.hasala.ios
 // archive.sh passes the first 12 hex of HEAD.
 HASALA_GIT_COMMIT = unset
