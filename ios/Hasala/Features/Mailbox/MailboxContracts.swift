@@ -82,6 +82,10 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// Every mailbox the account reads, observed (live: from the lane's status). Nothing
   /// here is sent to the server.
   var mailboxes: [MailboxSnapshot] { get }
+  /// Whether `mailboxes` is known yet: false while the account's mailbox state is still
+  /// being read (live: before the lane's first status), so screens show that they are
+  /// checking rather than "not connected".
+  var mailboxesKnown: Bool { get }
   /// What the bell, the Profile card and Bank alerts offer; nil when nothing needs doing,
   /// the lane's state isn't known yet, or the account loaded the App Review sample.
   var offer: MailOffer? { get }
@@ -91,12 +95,17 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// rows are (live: remembered on this iPhone, read before the lane's status is). Nil
   /// with no link.
   var linkedProvider: MailProviderKind? { get }
+  /// The provider of the account's link while another iPhone holds it and this one reads
+  /// nothing (live: a new install or a recovered account). A connect here then takes the
+  /// link over, once the person confirmed it. Nil otherwise.
+  var heldElsewhere: MailProviderKind? { get }
   /// The lane's state, as setup's facts name it.
   func linkState() async -> OnboardingStep.Facts.Mailbox
   /// Runs `provider`'s sign-in (read-only), the `mailbox.link` step-up and the first
   /// listing. Returns the new mailbox's id. With `.replace`, a link to another provider is
   /// replaced only when `replacing` says the person confirmed it; otherwise that connect
-  /// fails and the link stays.
+  /// fails and the link stays. While the link is `heldElsewhere`, `replacing` says the
+  /// person confirmed taking it over.
   @discardableResult
   func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
@@ -112,6 +121,12 @@ protocol MailboxConnecting: AnyObject, Observable {
 }
 
 extension MailboxConnecting {
+  /// Known at once where the mailboxes are held in memory (the mock).
+  var mailboxesKnown: Bool { true }
+
+  /// No other iPhone where the mailboxes are held in memory (the mock).
+  var heldElsewhere: MailProviderKind? { nil }
+
   /// A connect that replaces nothing: a first link, another mailbox beside one that works,
   /// or the same provider again.
   @discardableResult
@@ -142,10 +157,14 @@ struct MailboxesSummary: Equatable {
   /// Something the person has to do (the bell counts it).
   var needsYou: Bool
 
-  init(_ mailboxes: [MailboxSnapshot], health: MailboxHealth, offer: MailOffer?) {
+  /// `known`: false while the mailbox state is still being read, which says so rather
+  /// than "not connected".
+  init(_ mailboxes: [MailboxSnapshot], health: MailboxHealth, offer: MailOffer?, known: Bool = true) {
     let live = mailboxes.filter { $0.state != .disconnected }
     let broken = live.first { $0.state == .needsSignIn }
-    if broken != nil || offer?.isSignInAgain == true {
+    if !known {
+      self.init(title: "Checking your email", detail: "Reading your mailbox's state.", hue: .sky, needsYou: false)
+    } else if broken != nil || offer?.isSignInAgain == true {
       // "Microsoft ended access to maya@example.net on Wed. Your Gmail still works."
       let working = live.filter { $0.state == .connected || $0.state == .syncing }
       // A note says what a new sign-in fixes when it isn't the provider ending access (live:

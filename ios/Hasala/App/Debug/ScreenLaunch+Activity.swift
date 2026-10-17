@@ -2,7 +2,7 @@
   import Foundation
   import HasalaModels
 
-  // Activity, the transaction sheet, Review and the Debug Search (P6). Each screen is reached
+  // Activity, the transaction sheet, Review and Search (P6). Each screen is reached
   // the way a person reaches it: a tab, a row, a sheet; the review screens run the deck's own
   // session model through the steps a person takes (start at a row, Use, a pill).
   extension ScreenLaunch {
@@ -56,7 +56,7 @@
       }),
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
-      // Search · Ready (Debug only).
+      // Search · Ready.
       Screen("search", scenario: "maya", prepare: shell(.search)),
       // Search · Results as you type ("carre").
       Screen("search.results", scenario: "maya", prepare: { graph in

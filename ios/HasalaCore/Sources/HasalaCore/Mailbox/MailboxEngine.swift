@@ -12,9 +12,10 @@
 //     same transaction as its op's enqueue, so a cut cycle never re-downloads;
 //   - the checkpoint (watermark) moves only after every group's listing is exhausted, every id
 //     accounted AND the outbox flushed; a cut run keeps the old watermark and re-lists;
-//   - 404/410 is `gone` (accounted, the cycle moves past it); 429/5xx/transport retry
-//     400 ms then 1200 ms and a 429 narrows the download width to 1 (a 403 whose reason is a
-//     rate or quota limit counts as a 429, the provider's MailSource); a 429 or 503 that names
+//   - 404/410 is `gone` (accounted, the cycle moves past it); 5xx/transport retry 400 ms then
+//     1200 ms, a 429 retries after 1, 2, 4 and 8 s, and a 429 narrows the download width to 1
+//     (a 403 whose reason is a rate or quota limit counts as a 429, the provider's MailSource);
+//     a 429 or 503 that names
 //     its `Retry-After` stops the run at once and no cycle starts before it has passed; 401/403
 //     is fatal; any other 4xx halts;
 //   - 413 on flush halts `account_full` with the watermark intact;
@@ -45,8 +46,16 @@ public struct MailboxEngineConfig: Sendable {
   /// Authoring stops this long before the deadline (§3).
   public var authoringMarginMs: Int64 = 5_000
   public var backfillBatch = 200
-  public var downloadWidth = 6
+  /// Downloads in flight at once. Each message is two `messages.get` calls (5 quota units each)
+  /// against Gmail's 250 units per user per second; 6 at once on a fast link went over it.
+  public var downloadWidth = 4
   public var retryBackoffMs: [Int64] = [400, 1_200]
+  /// The waits before each retry of a rate-limited (429) download: Google's limit is a moving
+  /// average, so the 400 ms / 1.2 s blip retries above only meet it again (exponential, 15 s).
+  public var rateLimitBackoffMs: [Int64] = [1_000, 2_000, 4_000, 8_000]
+  /// The first scan's waits after a cycle that stopped on a passing condition without reading
+  /// anything (`runFirstScan`); it gives up after the last one.
+  public var firstScanStallWaitsMs: [Int64] = [2_000, 5_000, 15_000, 30_000]
   /// Renew the watch when it expires within this window (§7.5 step 5).
   public var watchRenewWindowMs: Int64 = 3 * 86_400_000
   public var maxListPages = 100
@@ -186,6 +195,8 @@ public actor MailboxEngine {
   public private(set) var topicMismatch = false
   /// No cycle starts before this (engine clock): the provider's last `Retry-After`. Process-local.
   private var notBeforeMs: Int64 = 0
+  /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
+  private var firstScanRunning = false
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
@@ -376,13 +387,15 @@ public actor MailboxEngine {
       if let token = try? await tokens.accessToken(forceRefresh: false) {
         try? await source(token).stop()
       }
-      await tokens.revokeAndForget()
+      await tokens.revokeAndForget(keepOnFailure: false)
       provider.forgetLink()
     }
   }
 
   /// Disconnect (Bank alerts › Disconnect): step-up `mailbox.unlink` → stop push (users.stop) →
-  /// revoke → `DELETE /mailbox/link` → delete the Keychain item → clear the mailbox tables.
+  /// revoke and delete the Keychain item → `DELETE /mailbox/link` → clear the mailbox tables.
+  /// A revoke that did not go through stops the disconnect there (false): the token is kept, so
+  /// the retry can still end the grant, and nothing says it ended when it didn't.
   public func disconnect() async -> Bool {
     await exclusive {
       let proof: JSONValue
@@ -390,7 +403,7 @@ public actor MailboxEngine {
       if let token = try? await tokens.accessToken(forceRefresh: false) {
         try? await source(token).stop()
       }
-      await tokens.revokeAndForget()
+      guard await tokens.revokeAndForget() else { return false }
       provider.forgetLink()
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)
@@ -705,6 +718,59 @@ public actor MailboxEngine {
     return await finish(&state, report)
   }
 
+  // MARK: - The first scan's foreground run (Setup 2 of 4)
+
+  /// Runs cycles until the connect window is listed and authored (`.active`), a stop the user
+  /// must act on, or `maxCycles`. Returns every cycle's report, in order.
+  ///
+  /// A 90-day backfill is a thousand or more mail API calls. A cycle stops at the first one that
+  /// outlives its retries (Gmail's per-user rate limit, a dropped connection, an access token
+  /// that expired mid-run), with its work so far committed, and the next cycle carries on. So a
+  /// passing stop (`gmail`, `offline`, `quota`) does not end the first scan: the next cycle runs
+  /// at once when the last one read something, and after `firstScanStallWaitsMs` (or the
+  /// provider's `Retry-After`) when it read nothing, giving up after the last wait. While this
+  /// runs, a passing stop is not reported as `.failed` progress, since the scan goes on.
+  public func runFirstScan(maxCycles: Int = 50) async -> [CycleReport] {
+    firstScanRunning = true
+    defer { firstScanRunning = false }
+    var reports: [CycleReport] = []
+    var stalls = 0
+    for _ in 0..<maxCycles {
+      if Task.isCancelled { break }
+      let r = await runCycle(trigger: .refresh)
+      reports.append(r)
+      guard r.phase == .scanning || r.phase == .authoringBackfill else { break }
+      let read = r.fetched + r.ops + r.staged + r.setAside + r.unreadable + r.dup > 0
+      switch r.haltedOn {
+      case nil, .stagingFull?:
+        // Nothing listed and not finished: no trusted sender yet. Stop rather than spin; the
+        // next trigger resumes it.
+        if r.listed == 0 && r.ops == 0 && !r.completed { return reports }
+        stalls = 0
+      case let code? where Self.passing(code):
+        if read {
+          stalls = 0
+          continue
+        }
+        guard stalls < config.firstScanStallWaitsMs.count else { return reports }
+        let wait = max(config.firstScanStallWaitsMs[stalls], notBeforeMs - clock.nowMs())
+        stalls += 1
+        // A pause longer than the longest stall wait (a long Retry-After) is left to the later
+        // triggers: the setup board says the import goes on in the background.
+        guard wait <= config.firstScanStallWaitsMs.last ?? 0 else { return reports }
+        await sleep(wait)
+      default:
+        return reports
+      }
+    }
+    return reports
+  }
+
+  /// A stop that passes by itself: the next cycle may read on.
+  static func passing(_ code: MailboxHaltCode) -> Bool {
+    code == .gmail || code == .offline || code == .quota
+  }
+
   // MARK: - Add a sender (§7.8)
 
   /// Trusts a typed sender domain (`sender_trust_set`) and imports its mail in the connect
@@ -963,12 +1029,17 @@ public actor MailboxEngine {
   /// stays strictly sequential (fetch.ts: only the network is overlapped).
   func fetchChunk(_ source: any MailSource, _ ids: [String], bank: [String]) async -> [FetchResult] {
     let backoff = config.retryBackoffMs
+    let rateBackoff = config.rateLimitBackoffMs
     let sleep = self.sleep
     let provider = self.provider
     return await withTaskGroup(of: (Int, FetchResult).self) { group in
       for (n, id) in ids.enumerated() {
         group.addTask {
-          (n, await Self.fetchOne(source, provider, id, bank: bank, backoff: backoff, sleep: sleep))
+          (
+            n,
+            await Self.fetchOne(
+              source, provider, id, bank: bank, backoff: backoff, rateBackoff: rateBackoff, sleep: sleep)
+          )
         }
       }
       var out: [(Int, FetchResult)] = []
@@ -977,10 +1048,10 @@ public actor MailboxEngine {
     }
   }
 
-  /// 7a-7c for one id, with the retry classes of fetch.ts.
+  /// 7a-7c for one id, with the retry classes of fetch.ts; a 429 waits `rateBackoff` instead.
   static func fetchOne(
     _ source: any MailSource, _ provider: any MailProvider, _ id: String, bank: [String], backoff: [Int64],
-    sleep: @Sendable (Int64) async -> Void
+    rateBackoff: [Int64], sleep: @Sendable (Int64) async -> Void
   ) async -> FetchResult {
     var rateLimited = false
     func attempt<T: Sendable>(_ op: () async throws(MailAPIError) -> T) async -> Result<T, MailAPIError> {
@@ -992,8 +1063,9 @@ public actor MailboxEngine {
           // The provider named its pause: a quick retry would only count against it again.
           if case .throttled = e { return .failure(e) }
           let transient = e == .offline || s == 429 || (s ?? 0) >= 500
-          if !transient || n >= backoff.count { return .failure(e) }
-          await sleep(backoff[n])
+          let waits = s == 429 ? rateBackoff : backoff
+          if !transient || n >= waits.count { return .failure(e) }
+          await sleep(waits[n])
           n += 1
         }
       }
@@ -1189,7 +1261,7 @@ public actor MailboxEngine {
 
   func finish(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
-    if let h = report.haltedOn, h != .stagingFull { emit(.failed(h), 0, 0) }
+    if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && Self.passing(h)) { emit(.failed(h), 0, 0) }
     try? await store.commit(commitState(state))
     report.phase = state.phase
     return report

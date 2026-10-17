@@ -67,6 +67,10 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   public var watchExpirationMs: Int64 = 0
   /// When true every transport call fails (`HTTPExchangeError.offline`).
   public var offline = false
+  /// Asked before every Gmail API request with its path: a status answers it with Google's
+  /// rate-limit body (reason `rateLimitExceeded`), nil serves it. A test's model of the
+  /// per-user quota (250 units a second, a moving average).
+  public var limiter: (@Sendable (_ path: String) -> Int?)?
 
   public static let tokenURL = "https://oauth2.googleapis.com/token"
   public static let revokeURL = "https://oauth2.googleapis.com/revoke"
@@ -123,6 +127,17 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
         Recorded(
           method: request.method.rawValue, path: path, query: query, form: form,
           authorization: request.header("Authorization")))
+    }
+    if path.hasPrefix("/gmail/"), let status = lock.withLock({ limiter })?(path) {
+      return json(
+        status,
+        [
+          "error": .object(
+            JSONObject([
+              ("code", .number(JSONNumber(Int64(status)))),
+              ("errors", .array([.object(JSONObject([("domain", .string("usageLimits")), ("reason", .string("rateLimitExceeded"))]))])),
+            ]))
+        ])
     }
     if let failure = lock.withLock({ () -> (status: Int, reason: String?)? in
       for (k, v) in failures where !v.isEmpty && path.contains(k) {

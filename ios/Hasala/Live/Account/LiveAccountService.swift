@@ -12,9 +12,10 @@ import Foundation
 /// everywhere (#16), freeze (#65), unfreeze (#66) and view your words (#67). The screens
 /// are the ones the mocks drive.
 ///
-/// `capabilities` is `.beta`: what this TestFlight build carries out end to end. Not in
-/// this build (they throw `.notInThisBuild`, and the screens hide them): forgot password
-/// (C9), access recovery (C4), the approving iPhone, phrase rotation, adding a passkey,
+/// `capabilities` is `.beta`: what this TestFlight build carries out end to end, access
+/// recovery (C4) to a new passkey included. Not in this build (they throw
+/// `.notInThisBuild`, and the screens hide them): forgot password (C9), recovery to a
+/// new password, the approving iPhone, phrase rotation, adding a passkey,
 /// email change, and the other passkey, password and device changes. Removing this
 /// iPhone works but isn't offered: Sign-in & security has no row for it yet.
 ///
@@ -27,6 +28,11 @@ final class LiveAccountService: AccountService {
   let env: AccountEnvironment
   /// Ends the Google grant when the account leaves this iPhone (nil in tests).
   let build: BuildInfo?
+  /// Ends a grant this iPhone held as the account leaves it (`MailboxLane.endGrant`; nil
+  /// without a build, and tests replace it). Run through `grantEnds`.
+  var endGrant: (@Sendable (_ held: HeldMailGrants, _ stopWatch: Bool) async -> Void)?
+  /// Where the endings run, one after another; a later connect waits for them.
+  var grantEnds = MailGrantEnds.shared
   /// What the account runtime and the gate lend the service. Set by `BootController`.
   var hooks = LiveAccountHooks()
 
@@ -42,12 +48,19 @@ final class LiveAccountService: AccountService {
   private var keys: NewAccountKeys?
   private var registered: RegisteredPasskey?
   private var signIn: SignInResult?
+  /// Access recovery between `recover/begin` and `recover/finish` (the words' entropy).
+  private var recovery: Recovery?
 
   /// Reads nothing: the Keychain may be read only once the fresh-install purge is done
   /// (spec 04 §4.4, R-03). The gate calls `loadProfile()` then.
   init(env: AccountEnvironment, build: BuildInfo? = nil) {
     self.env = env
     self.build = build
+    if let build {
+      endGrant = { @Sendable held, stopWatch in
+        await MailboxLane.endGrant(held, build: build, stopWatch: stopWatch)
+      }
+    }
   }
 
   /// The profile from the binding, after the fresh-install purge (a relaunch).
@@ -388,15 +401,76 @@ final class LiveAccountService: AccountService {
     throw .notInThisBuild
   }
   func pollResetApproval(_ ticket: ResetTicket) async throws(AuthFailure) -> Bool { throw .notInThisBuild }
-  func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket { throw .notInThisBuild }
-  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
-    throw .notInThisBuild
-  }
-  func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
-    throw .notInThisBuild
-  }
   func pendingResetRequest() async -> PendingReset? { nil }
   func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure) { throw .notInThisBuild }
+
+  // MARK: Access recovery (C4, to a new passkey)
+
+  /// `recover/begin` with the words' recovery key. Signed out; while this iPhone holds
+  /// another account's data the gate's wall is asked for once the account is known
+  /// (`verifyRecovery`), since nothing here says whose words these are.
+  func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
+    await Self.retryPendingLogout(env)
+    recovery?.wipe()
+    recovery = nil
+    do {
+      let r = try await AccountRecovery.begin(env, typed: words.joined(separator: " "))
+      recovery = r
+      codeTries = 5
+      return RecoveryTicket(id: r.ceremonyID, emailHint: r.emailHint)
+    } catch {
+      if error.failure?.status == 404 { throw .noAccountForPhrase }
+      throw Self.map(error)
+    }
+  }
+
+  /// `recover/verify` for a passkey. A new password isn't in this build
+  /// (`.recoverWithPassword`): its stretch needs the address, which the server doesn't
+  /// answer here. Refused before the call, so the code isn't spent.
+  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
+    guard let r = recovery, r.ceremonyID == ticket.id else { throw .refused }
+    guard kind == .passkey else { throw .notInThisBuild }
+    do {
+      try await AccountRecovery.verifyForPasskey(env, r, code: code)
+      codeTries = 5
+    } catch {
+      if error.failureClass == .codeRejected {
+        codeTries -= 1
+        if codeTries <= 0 { throw .codeExpired }
+        throw .codeWrong(triesLeft: codeTries)
+      }
+      throw Self.map(error)
+    }
+    // One account per iPhone (spec 04 §4.4): another account's data here asks for the
+    // wall before the passkey sheet.
+    if let b = binding, let user = r.userID, b.user_id != user.string {
+      r.wipe()
+      recovery = nil
+      throw otherAccountHere(b)
+    }
+  }
+
+  /// `recover/finish` with a new passkey (one Face ID prompt), then this iPhone enrols
+  /// as a new writer with the keys the words opened: signed in and unlocked.
+  func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
+    guard let r = recovery, r.ceremonyID == ticket.id, r.userID != nil else { throw .refused }
+    guard credential == .passkey else { throw .notInThisBuild }
+    do {
+      enrolled = try await AccountRecovery.finishWithPasskey(env, r)
+    } catch {
+      // A closed sheet keeps the verified ceremony for another try; anything else spent it.
+      if error.failureClass != .cancelled {
+        r.wipe()
+        recovery = nil
+      }
+      throw Self.map(error)
+    }
+    recovery = nil
+    signIn = nil
+    let b = binding
+    profile = AccountProfile(displayName: b?.display_name ?? "", email: b?.email_norm ?? "", method: .passkey)
+    methodConfirmed = true
+  }
 
   // MARK: Signed in
 
@@ -478,7 +552,7 @@ final class LiveAccountService: AccountService {
         }
         // The server dropped the push token with the account.
         PushRegistrar.shared.forget()
-        leftThisIPhone(grant: grant, stopWatch: true)
+        await leftThisIPhone(grant: grant, stopWatch: true)
         await hooks.left()
       case .removeDevice(let id) where id == b.writer_id:
         // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
@@ -495,7 +569,7 @@ final class LiveAccountService: AccountService {
           await hooks.resume()
           throw error
         }
-        leftThisIPhone(grant: grant, stopWatch: false)
+        await leftThisIPhone(grant: grant, stopWatch: false)
         await hooks.left()
       case .signOutEverywhere:
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
@@ -608,13 +682,17 @@ final class LiveAccountService: AccountService {
   }
 
   /// The account's data left this iPhone (deleted, removed): the session item, what the
-  /// iPhone noted about the account, and this iPhone's Google grant (ended at Google
-  /// in the background; `users.stop` only when the account itself is gone).
-  private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) {
+  /// iPhone noted about the account, and this iPhone's Google grant (`users.stop` only when
+  /// the account itself is gone). The grant's ending acts on the Google account, which the
+  /// next account here may link again, so it is waited for (bounded) before this iPhone
+  /// shows Welcome: it reaches Google before any new link can be made.
+  private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) async {
     try? env.secrets.deleteSession()
     LocalAccountData.forget()
     clearSignedIn()
-    if let grant, let build { Task { await MailboxLane.endGrant(grant, build: build, stopWatch: stopWatch) } }
+    guard let grant, let endGrant else { return }
+    grantEnds.enqueue { await endGrant(grant, stopWatch) }
+    await grantEnds.settled(within: MailGrantEnds.departureWait)
   }
 
   /// Forgets everything held in memory for the account (the gate erased this iPhone's data).
@@ -625,6 +703,8 @@ final class LiveAccountService: AccountService {
     keys = nil
     registered = nil
     inviteCode = nil
+    recovery?.wipe()
+    recovery = nil
   }
 
   func signOut() async {

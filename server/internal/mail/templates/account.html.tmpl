@@ -1,0 +1,13 @@
+{{define "content"}}<h1>{{.Heading}}</h1>
+{{range .Lead}}<p>{{.}}</p>
+{{end}}{{if .Code}}<p class="otp"><strong>{{.Code}}</strong>Works for 10 minutes</p>
+{{end}}{{if .Rows}}<table class="summary">{{range .Rows}}<tr><td>{{.Label}}</td><td>{{.Value}}</td></tr>{{end}}</table>
+{{end}}{{range .Paras}}<p>{{.}}</p>
+{{end}}{{if .Freeze}}<div class="alarm">
+<p class="title">This wasn't me</p>
+<p>Freeze your account now. Everyone will be signed out until you confirm it's you.</p>
+<p><a class="button" href="{{.Freeze}}">Freeze my account</a></p>
+<p class="small">This link works for 7 days and can only freeze your account.</p>
+</div>
+{{end}}{{if .Small}}<p class="small">{{.Small}}</p>
+{{end}}{{end}}

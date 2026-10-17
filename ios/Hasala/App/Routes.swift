@@ -7,7 +7,7 @@ import HasalaModels
 // asks for it (plan 0.1 rule 15); the cases are shared by every package.
 
 /// The tabs, in the bar's order (Paper "Four tabs, one search, nothing else."): Home, Plan,
-/// Review and Activity, and Search beside them (Debug only until its engine exists).
+/// Review and Activity, and Search beside them.
 enum AppTab: Hashable {
   case home, plan, review, activity, search
 }

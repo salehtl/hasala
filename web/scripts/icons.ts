@@ -10,6 +10,9 @@
  *   icon-maskable-512.png  mark scaled to 0.86 inside the safe zone
  *   mask-icon.svg          one colour, slot navy
  *   brand/hasala-wordmark.svg  the lockup with coordinates rounded (smaller)
+ *   brand/hasala-mark-email.png  the mark in the transactional emails' header
+ *                          (Paper P2 row 14.7), 120 x 72 for 40 x 24 at 3x;
+ *                          a PNG because Gmail and Outlook do not show SVG
  *   og-image.png           re-encoded smaller, same pixels
  */
 import sharp from 'sharp';
@@ -47,6 +50,20 @@ const svg16 = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" vi
 const maskableSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1024 1024"><defs><linearGradient id="t" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"/><stop offset="1" stop-color="#2B4AD2"/></linearGradient>${COIN}<clipPath id="k"><rect x="-200" y="-200" width="1424" height="832"/></clipPath></defs><rect width="1024" height="1024" fill="url(#t)"/><g transform="translate(512 512) scale(0.86) translate(-512 -512)">${MARK('#FFFFFF24')}</g></svg>`;
 
 const maskIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="204 328 616 368"><defs><clipPath id="k"><rect x="-200" y="-200" width="1424" height="784"/></clipPath><mask id="m"><rect x="204" y="328" width="616" height="368" fill="#fff"/><line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#000" stroke-width="25.8" stroke-linecap="round"/><line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#000" stroke-width="25.8" stroke-linecap="round"/></mask></defs><g fill="#142659" mask="url(#m)"><rect x="244" y="600" width="536" height="64" rx="32"/><circle cx="512" cy="519.8" r="184" clip-path="url(#k)"/></g></svg>`;
+
+// The email header's mark, as drawn on the P2 row 14.7 email boards: the
+// plate, the slot with its highlight, and the coin with its inner ring.
+const emailMarkSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="72" viewBox="204 328 616 368"><defs>${COIN}<clipPath id="k"><rect x="-200" y="-200" width="1424" height="832"/></clipPath></defs>
+  <rect x="212" y="576" width="600" height="112" rx="56" fill="#1426591F"/>
+  <rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"/>
+  <rect x="268" y="648" width="488" height="10" rx="5" fill="#FFFFFF" opacity="0.22"/>
+  <g clip-path="url(#k)">
+    <circle cx="512" cy="538.2" r="184" fill="#C98A1E"/>
+    <circle cx="512" cy="519.8" r="184" fill="url(#c)"/>
+    <circle cx="512" cy="519.8" r="139.8" fill="none" stroke="#C98A1E80" stroke-width="10.1"/>
+    <line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
+    <line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
+  </g></svg>`;
 
 const png = (svg: string, size: number) => sharp(Buffer.from(svg), { density: 72 * (size / 32) * 4 }).resize(size, size).png().toBuffer();
 
@@ -96,6 +113,8 @@ await writeFile(
 
 const wordmark = await readFile(new URL('hasala-wordmark.svg', brand), 'utf8');
 await writeFile(out('brand/hasala-wordmark.svg'), roundSvg(wordmark.replace(/<!--[\s\S]*?-->\s*/g, '')));
+
+await writeFile(out('brand/hasala-mark-email.png'), await sharp(Buffer.from(emailMarkSvg), { density: 72 * 4 }).resize(120, 72).png({ compressionLevel: 9 }).toBuffer());
 
 const og = new URL('og-image.png', pub);
 const ogBuf = await readFile(og);

@@ -2,10 +2,12 @@ package mailq
 
 // templates.go renders spec 07 §6.4's templates (and spec 02's `test`): a
 // plain-text part whose first line is the subject, and for 07's kinds an HTML
-// part in one shared layout, styled by the layout's one <style> block (Paper's
+// part in the layout every transactional email shares (internal/mail's
+// templates/layout.html.tmpl), styled by its one <style> block (Paper's
 // colours and radii, system fonts). No template carries a script, an inline
-// style, a remote image or stylesheet (no url() or @import), an http:// link
-// or a query string (spec 07 F7-6, enforced by TestTemplatesAreContentFree).
+// style, a remote stylesheet (no url() or @import), an http:// link or a
+// query string, and the only image is the layout's logo, mail.LogoURL (spec 07
+// F7-6, enforced by TestTemplatesAreContentFree here and in internal/mail).
 
 import (
 	"bytes"
@@ -73,10 +75,13 @@ func loadTemplates() {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasSuffix(name, ".html.tmpl") || name == "layout.html.tmpl" {
+		if !strings.HasSuffix(name, ".html.tmpl") {
 			continue
 		}
-		t, err := htmltemplate.ParseFS(templateFS, "templates/layout.html.tmpl", "templates/"+name)
+		t, err := mail.Layout()
+		if err == nil {
+			t, err = t.ParseFS(templateFS, "templates/"+name)
+		}
 		if err != nil {
 			tmplErr = err
 			return

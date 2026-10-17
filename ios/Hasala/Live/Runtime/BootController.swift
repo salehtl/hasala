@@ -294,6 +294,9 @@ final class BootController {
 
   /// Closes the open account's runtime (sign-out, removal, deletion, a wipe).
   func closeRuntime() async {
+    // What was searched belongs to the account that is closing (merchant names): the next
+    // account opened in this process starts with none.
+    SearchHistory.shared.clear()
     openingID += 1
     opening?.cancel()
     opening = nil
@@ -360,8 +363,9 @@ final class BootController {
       LocalAccountData.forget()
       account.forgetAll()
       if let grant {
+        // Through the queue a later connect waits for (`MailGrantEnds`).
         let build = env.build
-        Task { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
+        MailGrantEnds.shared.enqueue { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
       }
       session.signedOut()
     case .needsSignIn, .needsRebind:

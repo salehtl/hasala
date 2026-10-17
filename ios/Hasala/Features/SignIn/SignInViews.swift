@@ -477,16 +477,20 @@ struct RecoverMethodView: View {
     } else {
       AccountScreen(
         title: "Set a new way to sign in",
-        subtitle: "Your old passkeys and password stop working, and other devices are signed out.",
+        // Paper says the old passkeys and password stop working; `recover/finish` adds the
+        // new one and signs other devices out, and leaves the old ones on the account.
+        subtitle: "It's added to your account, and your other devices are signed out.",
         steps: (3, 3), back: .system
       ) {
         VStack(alignment: .leading, spacing: 12) {
           SelectionCard(icon: .faceID, hue: .sky, chip: "Recommended", title: "Use Face ID (passkey)",
                         detail: "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone.",
                         selected: choice == .passkey, identifier: "recover.choosePasskey") { choice = .passkey }
-          SelectionCard(icon: .password, hue: .other, title: "Use a password",
-                        detail: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.",
-                        selected: choice == .password, identifier: "recover.choosePassword") { choice = .password }
+          if model.capabilities.contains(.recoverWithPassword) {
+            SelectionCard(icon: .password, hue: .other, title: "Use a password",
+                          detail: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.",
+                          selected: choice == .password, identifier: "recover.choosePassword") { choice = .password }
+          }
           FailureBanner(failure: model.failure(on: .recoverMethod))
         }
       } footer: {
@@ -528,7 +532,8 @@ struct RecoverPasswordView: View {
   }
 }
 
-/// "You're back in" (Paper H5V): what changed, a word on the old phrase, then Home.
+/// "You're back in" (Paper H5V): what changed, a word on the old phrase, then Home. No
+/// "Old passkeys, password · Removed" row: recovery doesn't remove them.
 private struct BackInView: View {
   let model: SignInModel
   let method: SignInMethod
@@ -545,7 +550,6 @@ private struct BackInView: View {
         method == .passkey
           ? StatusListRow(title: "New passkey", value: "In iCloud Keychain", state: .done)
           : StatusListRow(title: "New password", value: "Set", state: .done),
-        StatusListRow(title: "Old passkeys, password", value: "Removed", state: .done),
         StatusListRow(title: "Other devices", value: "Signed out", state: .done),
       ])
     } footer: {

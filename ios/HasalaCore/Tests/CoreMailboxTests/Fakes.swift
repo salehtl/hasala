@@ -159,7 +159,7 @@ enum Backend { case sqlite, memory }
 /// in-memory SQLite database) unless a test asks for the in-memory reference.
 struct Rig {
   static let t0: Int64 = 1_780_000_000_000  // 2026-05-28, synthetic
-  let gmail = FakeGmail()
+  let gmail: FakeGmail
   let memory = InMemoryMailboxPersistence()
   let tables = try! MailboxTableStore.inMemory()
   let authored = AuthoredDrafts()
@@ -174,8 +174,9 @@ struct Rig {
 
   init(
     backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
-    config: ((inout MailboxEngineConfig) -> Void)? = nil
+    gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil
   ) {
+    self.gmail = gmail
     self.backend = backend
     let authored = self.authored
     let clockForStore = clock

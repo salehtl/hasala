@@ -1,4 +1,5 @@
 import CoreAuth
+import CoreMailbox
 import CoreStore
 import CoreSync
 import CoreTime
@@ -46,10 +47,28 @@ struct LiveAccountServiceTests {
   @Test func theBetaOffersWhatItCarriesOut() {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     #expect(a.capabilities == .beta)
-    #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverAccess))
+    #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverWithPassword))
+    // Recovery to a new passkey: someone who lost theirs gets back in and can delete.
+    #expect(a.capabilities.contains(.recoverAccess))
     #expect(a.capabilities.contains(.deleteAccount))
     // Sign-in & security has no "Remove this iPhone" row, so the beta doesn't claim it.
     #expect(!a.capabilities.contains(.removeThisIPhone))
+  }
+
+  /// Recovery's refusals land on their copy: words no account has (`recover/begin` 404),
+  /// a ceremony this service didn't start, and a new password (not in this build) refused
+  /// before anything is sent, so the emailed code isn't spent.
+  @Test func recoveryRefusalsSayWhy() async throws {
+    let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
+    await #expect(throws: AuthFailure.noAccountForPhrase) {
+      _ = try await a.beginRecovery(words: MockAccountService.phraseWords)
+    }
+    await #expect(throws: AuthFailure.badPhrase("Every word is real, but together they aren't a Hasala phrase. Two words may be swapped.")) {
+      _ = try await a.beginRecovery(words: Array(repeating: "abandon", count: 12))
+    }
+    let ticket = RecoveryTicket(id: "not-mine", emailHint: "")
+    await #expect(throws: AuthFailure.refused) { try await a.verifyRecovery(ticket, code: "123456", kind: .passkey) }
+    await #expect(throws: AuthFailure.refused) { try await a.finishRecovery(ticket, credential: .passkey) }
   }
 
   @Test func aPasswordAccountOnTwoIPhonesThenDeleted() async throws {
@@ -96,6 +115,33 @@ struct LiveAccountServiceTests {
     #expect(try envA.secrets.binding() == nil)
     #expect(try envA.secrets.session() == nil)
     #expect(left == 1)
+  }
+
+  /// gmail-sync: the deleted account's Gmail grant is ended at Google (users.stop, then the
+  /// revoke) BEFORE this iPhone leaves the account for Welcome, from the token read before
+  /// the wipe. That ending acts on the Google account and the app's client id, so a new
+  /// account linking the same Gmail here next must not get there first.
+  @Test func aDeletionEndsItsGmailGrantBeforeItLeaves() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let user = try #require(try env.secrets.binding()?.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+
+    let log = MailGrantEndsTests.Log()
+    a.grantEnds = MailGrantEnds()
+    a.endGrant = { held, stopWatch in
+      try? await Task.sleep(for: .milliseconds(50))
+      let what = held.grants.map { "\($0.provider.rawValue):\($0.refreshToken)" }.joined(separator: ",")
+      log.add("end \(what) stopWatch=\(stopWatch)")
+    }
+    a.hooks = LiveAccountHooks(left: { log.add("left") })
+    try await a.perform(.deleteAccount, password: Self.password)
+
+    #expect(log.all == ["end gmail:synthetic-refresh-a stopWatch=true", "left"])
+    // Nothing of the account's mailbox stays here for the next account.
+    #expect(try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).read() == nil)
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
   }
 
   @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {

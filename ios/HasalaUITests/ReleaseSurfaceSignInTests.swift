@@ -4,10 +4,11 @@ import XCTest
 /// actions only (`AccountCapabilities.beta`), support in place of the rest, and alerts
 /// that say only what the beta does.
 final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
-  /// Sign in offers the passkey and the password; "Forgot password?" and recovery become
-  /// a support email link, and a wrong password doesn't point to a reset it can't do.
+  /// Sign in offers the passkey, the password and recovery with the 12 words; "Forgot
+  /// password?" becomes a support email link, and a wrong password doesn't point to a
+  /// reset it can't do.
   @MainActor
-  func testSignInOffersSupportInsteadOfRecovery() throws {
+  func testSignInOffersRecoveryAndSupportInsteadOfAReset() throws {
     let app = launchRelease("signInPassword", waitForHome: false)
     let signIn = el(app, "stories.signIn")
     XCTAssertTrue(signIn.waitForExistence(timeout: 15))
@@ -16,9 +17,9 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Sign in")
     assertNoPlaceholders(app, "Sign in")
     assertPersonalAccountsOnly(app, "Sign in")
-    assertAbsent(app, ["signIn.forgot", "signIn.recover"], "Sign in")
-    assertPresent(app, ["signIn.email", "signIn.password", "signIn.withPassword", "signIn.support", "signIn.support.web"],
-                  "Sign in")
+    assertAbsent(app, ["signIn.forgot"], "Sign in")
+    assertPresent(app, ["signIn.email", "signIn.password", "signIn.withPassword", "signIn.recover", "signIn.support",
+                        "signIn.support.web"], "Sign in")
     try audit(app)
 
     type(app, "signIn.email", "maya@example.com")
@@ -27,6 +28,44 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(app.staticTexts["That email and password don't match. Try again."].waitForExistence(timeout: 10))
     assertNoText(app, ["reset your password"], "Sign in · wrong password")
   }
+
+  /// A lost passkey: Recover your account with the 12 words and the emailed code, to a
+  /// new passkey (a new password isn't in the beta), then "You're back in" says only what
+  /// happened, and Home opens.
+  @MainActor
+  func testRecoveryToANewPasskey() throws {
+    let app = launchRelease("signInPassword", waitForHome: false)
+    let signIn = el(app, "stories.signIn")
+    XCTAssertTrue(signIn.waitForExistence(timeout: 15))
+    signIn.tap()
+    tap(app, "signIn.recover")
+    XCTAssertTrue(el(app, "recover.start").waitForExistence(timeout: uiWait))
+    attach(app, "Release · Recover your account")
+    assertNoPlaceholders(app, "Recover your account")
+    try audit(app)
+    tap(app, "recover.start")
+    type(app, "phraseEntry.field", Self.phrase.joined(separator: " ") + "\n")
+    XCTAssertTrue(el(app, "code.field").waitForExistence(timeout: 10))
+    assertNoPlaceholders(app, "Recover · code")
+    type(app, "code.field", "123456")
+    XCTAssertTrue(el(app, "recover.passkey").waitForExistence(timeout: 10))
+    attach(app, "Release · Set a new way to sign in")
+    assertNoPlaceholders(app, "Set a new way to sign in")
+    assertAbsent(app, ["recover.choosePassword", "recover.password"], "Set a new way to sign in")
+    assertNoText(app, ["stop working"], "Set a new way to sign in")
+    try audit(app)
+    tap(app, "recover.passkey")
+    XCTAssertTrue(app.staticTexts["You're back in, Maya."].waitForExistence(timeout: 10))
+    attach(app, "Release · You're back in")
+    assertNoPlaceholders(app, "You're back in")
+    assertNoText(app, ["Old passkeys"], "You're back in")
+    try audit(app)
+    tap(app, "recover.home")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+  }
+
+  static let phrase = ["absurd", "avoid", "scissors", "anxiety", "gather", "lottery", "category", "door", "army",
+                       "half", "long", "camera"]
 
   /// Unlocking on a new iPhone: the words only (no passkey without its capability), and
   /// the honest end points to a person, not a start-fresh the beta can't do. A

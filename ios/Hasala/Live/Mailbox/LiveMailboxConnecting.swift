@@ -72,6 +72,24 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     return Self.mailboxes(status, provider: rt.lane?.provider ?? .gmail, nowMs: rt.context.clock.nowMs())
   }
 
+  /// The provider of the account's link while another iPhone holds it and this one has
+  /// never read it (a new install, a recovered account): a connect here takes the link
+  /// over, after the provider screen's confirmation. The holder may be an iPhone the person
+  /// no longer has (the server can't tell), so this iPhone isn't left with no way to read.
+  var heldElsewhere: MailProviderKind? {
+    guard let rt = runtime(), let lane = rt.lane, rt.store.mailboxStatus?.phase == .unlinked,
+      case .holder(false, _)? = rt.serverLink
+    else { return nil }
+    return lane.provider
+  }
+
+  /// Known once the account is open and its lane's status was read (a build with no lane
+  /// has none to read).
+  var mailboxesKnown: Bool {
+    guard let rt = runtime() else { return false }
+    return rt.lane == nil || rt.store.mailboxStatus != nil
+  }
+
   /// Observed through the runtime: the review flag arrives with `GET /account`.
   var offersSampleData: Bool { runtime()?.offersSampleData ?? false }
 
@@ -141,6 +159,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) })
     switch phase {
     case .unlinked:
+      // None read here, even while the server names another iPhone as the link's holder (a
+      // new install, a recovered account): that iPhone may be gone, so this one says it
+      // reads nothing and offers the connect (`heldElsewhere`), never that alerts work.
       return []
     case .scanning, .awaitingCards:
       row.state = .syncing
@@ -158,13 +179,16 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
         row.note = "Reading your bank alerts stopped."
       }
     case .otherDevice:
-      row.note = "Read on your other iPhone"
+      row.note = otherIPhone
       // The server deletes the account's link whichever iPhone holds it, so this iPhone
       // offers no Disconnect and no switch.
       row.readElsewhere = true
     }
     return [row]
   }
+
+  /// A mailbox row read on another iPhone.
+  static let otherIPhone = "Read on your other iPhone"
 
   /// The ledger's local time (+04:00, `LocalClock`), in which every date the app shows is
   /// written.
@@ -182,9 +206,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
 
   /// What the bell, Profile and Bank alerts offer for a lane `phase` (spec 04 §6.6 row 4,
   /// §7.4). Nothing once the account holds the App Review sample: loading it completed the
-  /// email step. An iPhone without a link offers it only once the server says no other
-  /// iPhone holds one (`serverLink`): connecting there would take the link over from that
-  /// iPhone. A halt is offered a new sign-in only when signing in to the provider again
+  /// email step. An iPhone without a link offers it once the server answered
+  /// (`serverLink`), also while another iPhone holds the link: it may be one the person no
+  /// longer has, and the connect asks before it takes the link over. A halt is offered a new sign-in only when signing in to the provider again
   /// fixes it (a Microsoft account with no mailbox: another account's sign-in).
   static func offer(
     phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?,
@@ -195,8 +219,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     switch phase {
     case .unlinked:
       switch serverLink {
-      case .noLink?, .holder(true, _)?: return .connect
-      case .holder(false, _)?, nil: return nil
+      case .noLink?, .holder?: return .connect
+      case nil: return nil
       }
     case .reconnectRequired: return signInAgain
     case .halted:
@@ -211,12 +235,13 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   }
 
   /// Before a connect from an iPhone without a link, the server's answer asked just now:
-  /// another iPhone holding the link refuses it (connecting would take the link over from
-  /// that iPhone), and so does no answer (`nil`, offline), as no offer shows then.
-  static func checkTakeover(_ link: MailboxLinkStatus?) throws(MailConnectFailure) {
+  /// another iPhone holding the link refuses it unless the person confirmed taking it over
+  /// (`confirmed`; the server moves the link and that iPhone stops reading), and no answer
+  /// (`nil`, offline) refuses it, as no offer shows then.
+  static func checkTakeover(_ link: MailboxLinkStatus?, confirmed: Bool = false) throws(MailConnectFailure) {
     switch link {
     case .noLink?, .holder(true, _)?: return
-    case .holder(false, _)?: throw .takenByOtherIPhone
+    case .holder(false, _)?: if !confirmed { throw .takenByOtherIPhone }
     case nil: throw .offline
     }
   }
@@ -275,7 +300,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       provider, current: current?.provider, phase: status.phase, address: status.address, replacing: replacing)
     if status.phase == .unlinked {
       let link = await rt.askServerLink()
-      try Self.checkTakeover(link)
+      try Self.checkTakeover(link, confirmed: replacing)
     }
     let switching = current.map { $0.provider != provider } ?? false
     try Self.linked(await lane.connect(backfillDays: 90, replacing: replaces), provider: provider)

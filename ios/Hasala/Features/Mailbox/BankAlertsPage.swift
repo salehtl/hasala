@@ -38,12 +38,15 @@ struct BankAlertsPage: View {
   private var lane: (any MailboxConnecting)? { app.mailbox }
   private var mailboxes: [MailboxSnapshot] { lane?.mailboxes ?? [] }
   private var reporting: BankAlertsReporting? { lane as? BankAlertsReporting }
+  /// Whether the mailboxes are known yet (live: the lane's first status was read).
+  private var stateKnown: Bool { lane?.mailboxesKnown ?? true }
 
   var body: some View {
     let health = app.store.state.mailbox
-    let summary = MailboxesSummary(mailboxes, health: health, offer: app.mailOffer)
+    let summary = MailboxesSummary(mailboxes, health: health, offer: app.mailOffer, known: stateKnown)
     let hero = Hero(
-      summary: summary, health: health, mailboxes: mailboxes, offer: app.mailOffer, read: reporting?.readThisMonth)
+      summary: summary, health: health, mailboxes: mailboxes, offer: app.mailOffer, read: reporting?.readThisMonth,
+      known: stateKnown)
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         heroCard(hero)
@@ -78,6 +81,8 @@ struct BankAlertsPage: View {
   struct Hero: Equatable {
     enum Kind: Equatable {
       case working, importing, needsYou, notConnected
+      /// The mailbox state is still being read.
+      case checking
       case signInAgain(mailboxID: String, provider: MailProviderKind)
     }
 
@@ -86,10 +91,12 @@ struct BankAlertsPage: View {
 
     init(
       summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?,
-      read: MonthRead? = nil
+      read: MonthRead? = nil, known: Bool = true
     ) {
       let live = mailboxes.filter { $0.state != .disconnected }
-      if case .signInAgain(let id, let provider)? = offer {
+      if !known {
+        kind = .checking
+      } else if case .signInAgain(let id, let provider)? = offer {
         kind = .signInAgain(mailboxID: id, provider: provider)
       } else if let broken = live.first(where: { $0.state == .needsSignIn }) {
         kind = .signInAgain(mailboxID: broken.id, provider: broken.provider)
@@ -107,6 +114,8 @@ struct BankAlertsPage: View {
       switch kind {
       case .notConnected:
         detail = "Add a mailbox so Hasala can read your bank alerts."
+      case .checking:
+        detail = summary.detail
       case .signInAgain(let id, _):
         detail = Self.signInDetail(live.first { $0.id == id }, live: live) ?? summary.detail
       case .working where !health.lastEmail.isEmpty:
@@ -143,6 +152,7 @@ struct BankAlertsPage: View {
       case .importing: "Importing"
       case .needsYou: "Needs you"
       case .notConnected: "Not connected"
+      case .checking: "Checking"
       case .signInAgain: "Sign in again"
       }
     }
@@ -151,7 +161,7 @@ struct BankAlertsPage: View {
       switch kind {
       case .working, .importing: .mint
       case .needsYou, .signInAgain: .sand
-      case .notConnected: .sky
+      case .notConnected, .checking: .sky
       }
     }
 
@@ -159,7 +169,7 @@ struct BankAlertsPage: View {
       switch kind {
       case .working, .importing: PaperGlyph.check
       case .needsYou, .signInAgain: PaperGlyph.alert
-      case .notConnected: PaperGlyph.envelope
+      case .notConnected, .checking: PaperGlyph.envelope
       }
     }
   }
@@ -226,7 +236,23 @@ struct BankAlertsPage: View {
   private var mailboxesSection: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Mailboxes")
-      if !mailboxes.isEmpty || offersAdd || offersChange {
+      if !stateKnown {
+        // Not "no mailbox" before the lane's state is read: a row that says it is checking.
+        HListCard {
+          HStack(spacing: HSpacing.listRowGap) {
+            ProgressView()
+              .frame(width: 40, height: 40)
+            Text("Checking your mailbox")
+              .hType(.rowTitle).foregroundStyle(HColor.textSecondary)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .padding(.horizontal, HSpacing.listRowInsetInline)
+          .padding(.vertical, HSpacing.listRowInsetBlock)
+          .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+          .accessibilityElement(children: .combine)
+          .accessibilityIdentifier("bankAlerts.mailboxes.checking")
+        }
+      } else if !mailboxes.isEmpty || offersAdd || offersChange {
         HListCard {
           ForEach(Array(mailboxes.enumerated()), id: \.element.id) { i, m in
             if i > 0 { HDivider(inset: .disc68) }
@@ -269,7 +295,7 @@ struct BankAlertsPage: View {
 
   /// "Add a mailbox" shows with a second mailbox allowed, or when none is read (B4.6 rule 3).
   private var offersAdd: Bool {
-    guard let lane, lane.capabilities.contains(.connect), !lane.connectable.isEmpty else { return false }
+    guard let lane, stateKnown, lane.capabilities.contains(.connect), !lane.connectable.isEmpty else { return false }
     return lane.capabilities.contains(.addSecond) || !mailboxes.contains { $0.state != .disconnected }
   }
 

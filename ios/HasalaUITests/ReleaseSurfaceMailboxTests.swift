@@ -129,6 +129,34 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Bank alerts")
   }
 
+  /// Profile › Settings › Mailboxes reaches the same Disconnect: the row names the
+  /// mailbox, opens Bank alerts, and the Gmail mailbox's Disconnect says that Google's
+  /// access ends; disconnected, the row says so.
+  @MainActor
+  func testSettingsMailboxesRowReachesDisconnect() throws {
+    let app = launchRelease("passkeyUser")
+    app.buttons["header.profile"].firstMatch.tap()
+    let row = el(app, "profile.mailboxes")
+    XCTAssertTrue(row.waitForExistence(timeout: 10), "Settings has no Mailboxes row")
+    XCTAssertTrue(reveal(app, row))
+    XCTAssertEqual(row.value as? String, "Gmail")
+    row.tap()
+    XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 15), "Mailboxes did not open Bank alerts")
+    tap(app, "bankAlerts.mailbox.gmail-1")
+    XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: uiWait))
+    tap(app, "mailbox.disconnect")
+    let alert = app.alerts["Disconnect maya@example.com?"]
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "ends its access at Google")).firstMatch.exists)
+    attach(app, "Release · Disconnect from Settings")
+    alert.buttons["Disconnect"].tap()
+    assertText(app, "Gmail disconnected. Past transactions stay.", "Bank alerts")
+    back(app)
+    XCTAssertTrue(reveal(app, row))
+    XCTAssertTrue(row.waitForValue("Not connected"), "the row says \(String(describing: row.value))")
+  }
+
   /// Setup's email step was skipped: Add a mailbox › Outlook says only personal Microsoft
   /// accounts work, and connects the one mailbox.
   @MainActor

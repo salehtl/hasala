@@ -85,7 +85,10 @@ struct LiveGateTests {
     d.set(Data([1]), forKey: "debug.simulatorApprovalKey.u:w")
     LocalAccountData.setMailboxProvider(.outlook, d)
     #expect(LocalAccountData.mailboxProvider(d) == .outlook)
+    SearchHistory.shared.add("Carrefour")
     LocalAccountData.forget(defaults: d)
+    // What was searched (merchant names) never shows to the next account in this process.
+    #expect(SearchHistory.shared.recent.isEmpty)
     // The provider this iPhone read the account's mail through goes with the account.
     #expect(d.object(forKey: "app.hasala.prefs.mailbox.provider") == nil)
     #expect(!LocalAccountData.setupFinished(d))

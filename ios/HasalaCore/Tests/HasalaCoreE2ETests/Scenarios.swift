@@ -209,6 +209,41 @@ enum Scenarios {
     return String(format: "%02d-%02d-%04d", d.day, d.month, d.year)
   }
 
+  /// A 90-day first scan of `count` synthetic alerts (DIB cards, ENBD debits and
+  /// statement notices), connected and read the way the setup's first scan reads it:
+  /// `runFirstScan` until the window is in. Every alert lands as an op, through the real
+  /// persistence, op author, outbox and sync, and uploads.
+  static func gmailBackfill(_ a: Runtime, clock: any CoreTime.Clock, count: Int = 500) async throws {
+    let day: Int64 = 86_400_000
+    let now = clock.nowMs()
+    try await a.bootstrap()
+    #expect(await a.run(.authored).stop == nil)
+    let gmail = FakeGmail()
+    for i in 0..<count {
+      let t = now - Int64(i) * (89 * day / Int64(count)) - 60_000
+      switch i % 5 {
+      case 0, 1:
+        gmail.add(
+          SyntheticMail.dibCard(
+            id: "d\(i)", amount: "\(10 + i).50", day: dibDay(t), merchant: "SYNTHETIC SHOP \(i % 37)",
+            last4: i % 2 == 0 ? "1234" : "5678", dateMs: t))
+      case 2, 3: gmail.add(SyntheticMail.enbdAlert(id: "e\(i)", amount: "\(i).25", dateMs: t))
+      default: gmail.add(SyntheticMail.bankNotice(id: "n\(i)", dateMs: t))
+      }
+    }
+    let (engine, ledger) = mailbox(a, gmail: gmail, clock: clock)
+    try await ledger.authorSenderTrust(domain: "dib.ae", trusted: true)
+    try await ledger.authorSenderTrust(domain: "alerts@emiratesnbd.com", trusted: true)
+    guard case .connected = await engine.connect(presenter: ConsentPresenter(gmail: gmail), backfillDays: 90) else {
+      Issue.record("connect")
+      return
+    }
+    let last = await engine.runFirstScan().last ?? CycleReport()
+    #expect(last.phase == .active && last.haltedOn == nil, "\(last)")
+    #expect(try a.context.store.pendingCount() == 0)
+    #expect(try a.reader.activity(limit: 1_000).count + (try a.reader.review(lanes: ReviewLane.allCases).filter(\.unparsed).count) == count)
+  }
+
   static func gmailToReplay(_ a: Runtime, _ b: Runtime, clock: any CoreTime.Clock) async throws {
     let day: Int64 = 86_400_000
     let now = clock.nowMs()
