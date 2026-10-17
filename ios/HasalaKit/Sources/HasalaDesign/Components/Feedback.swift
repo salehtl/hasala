@@ -66,11 +66,15 @@ public struct GlassToast: View {
     .padding(.trailing, 18)
     .padding(.vertical, 6)
     .frame(minHeight: HSpacing.toastHeight)
-    // Paper's frost-strong layer under the words (white 76%), so what scrolls behind the
-    // toast stays out of them; native glass alone lets a dark widget's title show through
+    // Paper's frost-strong layer under the words (white 76% over a 12 pt blur), so what
+    // scrolls behind the toast stays out of them: the system material does the blur, the
+    // frost goes over it. The frost alone let the dark Net worth widget's title read through
     // "Show". Reduce Transparency draws the solid fill instead.
     .background {
-      if !reduceTransparency { Capsule().fill(HColor.materialGlassFrostStrong) }
+      if !reduceTransparency {
+        Capsule().fill(.regularMaterial)
+          .overlay { Capsule().fill(HColor.materialGlassFrostStrong) }
+      }
     }
     .hGlass(in: Capsule(), interactive: false)
     .shadow(color: HColor.materialGlassShadowFar, radius: 12, x: 0, y: 8)
