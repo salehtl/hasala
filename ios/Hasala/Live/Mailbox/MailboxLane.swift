@@ -110,7 +110,8 @@ nonisolated final class MailboxLane: Sendable {
   }
 
   /// The first scan (Setup 2 of 4, Paper FR2-0): runs cycles until the window is listed and
-  /// authored, yielding their progress, then the totals. There is no cards step: the scan
+  /// authored (`MailboxEngine.runFirstScan`, which rides out Gmail's rate limit and a dropped
+  /// connection), yielding their progress, then the totals. There is no cards step: the scan
   /// authors what it finds. Ending the stream (setup finished, the sheet closed) does not stop
   /// the import: it runs to the end here, and whatever is left after 50 cycles runs in
   /// `app.hasala.ios.processing` and the next foreground runs (§7.7 step 3).
@@ -121,15 +122,7 @@ nonisolated final class MailboxLane: Sendable {
       Task {
         await engine.setProgressHandler { continuation.yield(.progress($0)) }
         var totals = FirstScanTotals()
-        for _ in 0..<50 {
-          let r = await engine.runCycle(trigger: .refresh)
-          totals.add(r)
-          if r.phase != .scanning && r.phase != .authoringBackfill { break }
-          if r.haltedOn != nil && r.haltedOn != .stagingFull { break }
-          // Nothing listed and not finished: no trusted sender yet (or offline). Stop rather
-          // than spin; the next trigger resumes it.
-          if r.listed == 0 && r.ops == 0 && !r.completed { break }
-        }
+        for r in await engine.runFirstScan(maxCycles: 50) { totals.add(r) }
         await engine.setProgressHandler(nil)
         continuation.yield(.ended(totals))
         continuation.finish()

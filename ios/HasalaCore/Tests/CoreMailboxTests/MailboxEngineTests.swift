@@ -607,7 +607,7 @@ let day: Int64 = 86_400_000
 
     // Persisting past the retries is a transient halt, never "Reconnect Gmail".
     rig.gmail.add(SyntheticMail.dibCard(id: "busier", amount: "3.00", dateMs: rig.clock.nowMs() - 500))
-    rig.gmail.fail("/messages/busier", with: [403, 403, 403], reason: "rateLimitExceeded")
+    rig.gmail.fail("/messages/busier", with: [403, 403, 403, 403, 403], reason: "rateLimitExceeded")
     let r2 = await rig.engine.runCycle(trigger: .refresh)
     #expect(r2.haltedOn == .gmail && r2.phase == .active)
   }

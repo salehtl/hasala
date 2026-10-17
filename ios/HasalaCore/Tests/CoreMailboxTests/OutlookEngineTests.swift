@@ -188,7 +188,7 @@ import Testing
     rig.graph.fail("/$value", with: [429])
     let r = await rig.engine.runCycle(trigger: .launch)
     #expect(r.phase == .active && r.completed)
-    #expect(rig.clock.nowMs() == t0 + 400)
+    #expect(rig.clock.nowMs() == t0 + 1_000)  // a 429's first wait (`rateLimitBackoffMs`)
   }
 
   @Test func downloadsNeverExceedThreeAtOnce() async {
