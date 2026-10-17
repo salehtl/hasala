@@ -24,6 +24,18 @@ struct AppModelTests {
     #expect(!Scenario.maya.startsWithAmountsHidden)
   }
 
+  /// The wash stays at the top of the screen while the content is at rest, pulled down, or
+  /// held down by a refresh, and scrolls away with the content (Paper: absolute, 420 tall).
+  @Test func theWashMovesOnlyUpWithTheContent() {
+    let inset = 116.0
+    #expect(WashPin.offset(contentOffset: -inset, insetTop: inset) == 0)  // at rest
+    #expect(WashPin.offset(contentOffset: -inset - 140, insetTop: inset) == 0)  // pulled
+    // The spinner's hold: the inset grows by the spinner and the content is held below it.
+    #expect(WashPin.offset(contentOffset: -inset - 60, insetTop: inset + 60) == 0)
+    #expect(WashPin.offset(contentOffset: -inset + 120, insetTop: inset) == -120)  // scrolled
+    #expect(WashPin.offset(contentOffset: -inset + 0.5, insetTop: inset) == -0.5)
+  }
+
   @Test func interIsRegisteredInTheApp() {
     #expect(HasalaFonts.register())
     #expect(HasalaFonts.allFacesAvailable)
