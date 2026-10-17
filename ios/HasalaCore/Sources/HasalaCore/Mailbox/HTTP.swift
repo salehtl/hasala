@@ -12,7 +12,9 @@
 import Foundation
 
 public struct HTTPRequest: Sendable, Equatable {
-  public enum Method: String, Sendable { case get = "GET", post = "POST", put = "PUT", delete = "DELETE" }
+  public enum Method: String, Sendable {
+    case get = "GET", post = "POST", put = "PUT", patch = "PATCH", delete = "DELETE"
+  }
   public var method: Method
   public var url: URL
   public var headers: [(String, String)]
@@ -39,11 +41,23 @@ public struct HTTPRequest: Sendable, Equatable {
 public struct HTTPResponse: Sendable, Equatable {
   public var status: Int
   public var body: Data
-  public init(status: Int, body: Data = Data()) {
+  /// The response headers a caller reads (`Retry-After`); empty where the transport keeps none.
+  public var headers: [(String, String)]
+  public init(status: Int, body: Data = Data(), headers: [(String, String)] = []) {
     self.status = status
     self.body = body
+    self.headers = headers
   }
   public var ok: Bool { (200..<300).contains(status) }
+
+  public func header(_ name: String) -> String? {
+    let want = Array(name.utf8).map(asciiLower)
+    return headers.first { Array($0.0.utf8).map(asciiLower) == want }?.1
+  }
+
+  public static func == (a: HTTPResponse, b: HTTPResponse) -> Bool {
+    a.status == b.status && a.body == b.body && a.headers.elementsEqual(b.headers) { $0.0 == $1.0 && $0.1 == $1.1 }
+  }
 }
 
 /// Transport failures only: a non-2xx answer is a response, never a throw.
@@ -87,7 +101,9 @@ public final class URLSessionHTTPExchange: HTTPExchange {
     do {
       let (data, response) = try await session.data(for: r)
       guard let http = response as? HTTPURLResponse else { throw HTTPExchangeError.offline }
-      return HTTPResponse(status: http.statusCode, body: data)
+      var headers: [(String, String)] = []
+      if let retry = http.value(forHTTPHeaderField: "Retry-After") { headers.append(("Retry-After", retry)) }
+      return HTTPResponse(status: http.statusCode, body: data, headers: headers)
     } catch let e as HTTPExchangeError {
       throw e
     } catch is CancellationError {

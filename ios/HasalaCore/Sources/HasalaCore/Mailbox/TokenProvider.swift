@@ -114,6 +114,9 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     }
     do {
       let grant = try await oauth.refresh(refreshToken: refresh)
+      // Microsoft rotates the refresh token on every refresh; keep the newest (Google sends
+      // none). A failed write keeps the old one, which still works until it expires.
+      if let next = grant.refreshToken, !next.isEmpty, next != refresh { try? store.write(next) }
       let t = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
       cached = t
       return t

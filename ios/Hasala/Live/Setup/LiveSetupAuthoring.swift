@@ -32,7 +32,7 @@ final class LiveSetupAuthoring: SetupAuthoring {
     var trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])
     var domains: [String] = []
     for bank in banks {
-      for d in GmailLane.senderDomains(bank: bank.rawValue) where !domains.contains(d) { domains.append(d) }
+      for d in MailboxLane.senderDomains(bank: bank.rawValue) where !domains.contains(d) { domains.append(d) }
     }
     try await author(rt) { a throws(AuthorError) in
       for bank in banks { a.declareBank(bank.rawValue, active: true) }

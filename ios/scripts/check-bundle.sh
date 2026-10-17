@@ -10,12 +10,15 @@
 #     manifest.synthetic* file (test and private data);
 #   - a file larger than 5 MB (5,000,000 bytes) that is not code (a Mach-O), a font or
 #     the merchant dictionary;
+#   - anywhere in its files, a string shaped like an Outlook message id: Graph's default
+#     REST id (`A[AQ]MkAD` + 40 or more base64url characters) or its immutable id
+#     (`AAkALgAA` + 40 or more), real mail's ids leaking into a resource;
 #   - a sample seed that is not the committed one: HasalaCore's CoreResources bundle
 #     must hold sample/maya-v1.json, whose SHA-256 must be golden/maya-v1.sha256's,
 #     which must be SampleManifest.sha256 (the digest the generator wrote and the app
 #     checks before it loads the seed), and the seed must be synthetic: no email
 #     address but review@hasala.app, and no message id but the generator's placeholders
-#     (@message:<name>, rewritten to sample-<n> at load), so no Gmail message id.
+#     (@message:<name>, rewritten to sample-<n> at load), so no Gmail or Outlook message id.
 #
 # Exit 0 when the bundle passes, 1 when a check fails (each failure is named on stderr),
 # 2 on bad arguments. Fails closed: a file that is missing or a tool that fails is a
@@ -88,6 +91,17 @@ else
 	done <"$work/large.bin"
 fi
 
+# --- Outlook message ids -----------------------------------------------------------------
+outlook_id='A[AQ]MkAD[A-Za-z0-9_=-]{40,}|AAkALgAA[A-Za-z0-9_=-]{40,}'
+rc=0
+grep -rlaE -- "$outlook_id" "$app" >"$work/outlook.txt" 2>"$work/outlook.err" || rc=$?
+if ((rc == 0)); then
+	fail "a string shaped like an Outlook message id in:"
+	sed "s|^$app/|    |" "$work/outlook.txt" >&2
+elif ((rc != 1)); then
+	fail "cannot search $app for Outlook message ids"
+fi
+
 # --- the sample seed (I6b) ---------------------------------------------------------------
 seed="$app/$seed_path"
 want=""
@@ -118,6 +132,7 @@ import json, re, sys
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 GMAIL_ID = re.compile(r"[0-9a-f]{16}")
+OUTLOOK_ID = re.compile(r"A[AQ]MkAD[A-Za-z0-9_=-]{40,}|AAkALgAA[A-Za-z0-9_=-]{40,}")
 bad = []
 
 def walk(v, key=None):
@@ -135,6 +150,8 @@ def walk(v, key=None):
             bad.append(f"message_id {v!r} is not a placeholder")
         if GMAIL_ID.fullmatch(v):
             bad.append(f"{key} looks like a Gmail message id")
+        if OUTLOOK_ID.search(v):
+            bad.append(f"{key} looks like an Outlook message id")
 
 try:
     with open(sys.argv[1], "rb") as f:
@@ -156,4 +173,4 @@ fi
 if ((failed)); then
 	exit 1
 fi
-echo "check-bundle: ok (no test data, no oversized resources, the sample seed is golden/maya-v1.sha256)"
+echo "check-bundle: ok (no test data, no oversized resources, no Outlook message ids, the sample seed is golden/maya-v1.sha256)"

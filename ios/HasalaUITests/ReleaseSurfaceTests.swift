@@ -16,9 +16,11 @@ final class ReleaseSurfaceTests: XCTestCase {
   }
 
   @MainActor
-  private func launch(_ scenario: String = "maya", waitForHome: Bool = true) -> XCUIApplication {
+  private func launch(_ scenario: String = "maya", waitForHome: Bool = true, outlook: Bool = false) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["-HasalaScenario", scenario, "-HasalaReleaseSurface"]
+    // A build with an Outlook client (the mock plays one; this build's is `unset`).
+    if outlook { app.launchArguments.append("-HasalaOutlookConfigured") }
     app.launch()
     if waitForHome {
       XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "Home did not appear")
@@ -157,7 +159,9 @@ final class ReleaseSurfaceTests: XCTestCase {
     tap(app, "bank.continue")
 
     // Gmail: new alerts are fetched when the app opens and in the background, not pushed.
+    // This build has no Outlook client, so Outlook is not offered.
     XCTAssertTrue(el(app, "gmail.connect").waitForExistence(timeout: 10))
+    assertAbsent(app, ["outlook.connect"], "Gmail")
     attach(app, "Release · Gmail")
     assertNoPlaceholders(app, "Gmail")
     assertNoText(app, ["our server is told"], "Gmail")
@@ -401,21 +405,22 @@ final class ReleaseSurfaceTests: XCTestCase {
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15), "Welcome did not appear")
   }
 
-  // MARK: - Gmail after setup
+  // MARK: - The mailbox after setup
 
-  /// Gmail skipped at setup: Home offers "Connect Gmail", which runs the Gmail step and the
-  /// cards in a sheet; once the cards are confirmed, Home no longer offers it. (The Profile
-  /// card's button is the reconnect test's; one launch each keeps the ios job's time down.)
+  /// The mailbox skipped at setup: Home offers "Connect your email", which runs the mailbox
+  /// step in a sheet; once connected, Home no longer offers it. (The Profile card's button is
+  /// the reconnect test's; one launch each keeps the ios job's time down.)
   @MainActor
   func testConnectGmailAfterSkippingIt() throws {
     let app = launch("gmailSkipped")
-    let card = el(app, "needsYou.gmail.connect")
+    let card = el(app, "needsYou.mailbox.connect")
     XCTAssertTrue(card.waitForExistence(timeout: 10))
-    attach(app, "Release · Home · Connect Gmail")
+    attach(app, "Release · Home · Connect your email")
     card.buttons["Connect"].tap()
     let connect = el(app, "gmail.connect")
     XCTAssertTrue(connect.waitForExistence(timeout: 5))
     XCTAssertEqual(connect.label, "Connect Gmail")
+    assertAbsent(app, ["outlook.connect"], "Connect Gmail")
     assertNoPlaceholders(app, "Connect Gmail")
     // Not setup: no step indicator, and Close instead of Skip.
     assertNoText(app, ["Step 2 of 4"], "Connect Gmail")
@@ -426,7 +431,7 @@ final class ReleaseSurfaceTests: XCTestCase {
     XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 15), "the result did not appear")
     attach(app, "Release · Connect Gmail · Result")
     tap(app, "result.continue")
-    XCTAssertTrue(card.waitForNonExistence(timeout: 10), "Home still offers Connect Gmail")
+    XCTAssertTrue(card.waitForNonExistence(timeout: 10), "Home still offers Connect your email")
   }
 
   /// Google wants a new sign-in: the Profile card offers "Reconnect Gmail", which is done
@@ -434,11 +439,11 @@ final class ReleaseSurfaceTests: XCTestCase {
   @MainActor
   func testReconnectGmailFromTheProfile() throws {
     let app = launch("gmailReconnect")
-    XCTAssertTrue(el(app, "needsYou.gmail.reconnect").waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "needsYou.mailbox.reconnect.gmail").waitForExistence(timeout: 10))
     app.buttons["header.profile"].firstMatch.tap()
     XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
     XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Gmail needs reconnecting"))
-    tap(app, "profile.connectGmail")
+    tap(app, "profile.connectMailbox")
     let reconnect = el(app, "gmail.connect")
     XCTAssertTrue(reconnect.waitForExistence(timeout: 5))
     XCTAssertEqual(reconnect.label, "Reconnect Gmail")
@@ -447,8 +452,77 @@ final class ReleaseSurfaceTests: XCTestCase {
     try audit(app)
     reconnect.tap()
     assertText(app, "Gmail reconnected", "Profile")
-    XCTAssertTrue(el(app, "profile.connectGmail").waitForNonExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.connectMailbox").waitForNonExistence(timeout: 5))
     XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Bank alerts are working"))
+  }
+
+  /// A build with an Outlook client: the mailbox skipped at setup, then Outlook connected
+  /// from Home. Outlook says it takes personal Microsoft accounts only.
+  @MainActor
+  func testConnectOutlookAfterSkipping() throws {
+    let app = launch("gmailSkipped", outlook: true)
+    let card = el(app, "needsYou.mailbox.connect")
+    XCTAssertTrue(card.waitForExistence(timeout: 10))
+    card.buttons["Connect"].tap()
+    let outlook = el(app, "outlook.connect")
+    XCTAssertTrue(outlook.waitForExistence(timeout: 5))
+    XCTAssertEqual(outlook.label, "Connect Outlook")
+    XCTAssertEqual(el(app, "gmail.connect").label, "Connect Gmail")
+    assertText(app, "personal Microsoft accounts only", "Connect your email")
+    assertNoPlaceholders(app, "Connect your email")
+    assertNoText(app, ["our server is told"], "Connect your email")
+    attach(app, "Release · Connect your email · Outlook")
+    try audit(app)
+    outlook.tap()
+    XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 15), "the result did not appear")
+    tap(app, "result.continue")
+    XCTAssertTrue(card.waitForNonExistence(timeout: 10), "Home still offers Connect your email")
+  }
+
+  /// Gmail works; Profile offers another email. Outlook replaces Gmail only after the
+  /// confirmation, then the new mailbox is read from the start.
+  @MainActor
+  func testSwitchFromGmailToOutlook() throws {
+    let app = launch("gmailLinked", outlook: true)
+    app.buttons["header.profile"].firstMatch.tap()
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("From Gmail"))
+    tap(app, "profile.changeMailbox")
+    let outlook = el(app, "outlook.connect")
+    XCTAssertTrue(outlook.waitForExistence(timeout: 5))
+    XCTAssertEqual(outlook.label, "Use Outlook instead")
+    assertAbsent(app, ["gmail.connect"], "Use another email")
+    assertNoPlaceholders(app, "Use another email")
+    try audit(app)
+    outlook.tap()
+    let confirm = app.buttons["Use Outlook"].firstMatch
+    XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no confirmation before the switch")
+    assertText(app, "This replaces your Gmail connection.", "Switch")
+    attach(app, "Release · Switch to Outlook")
+    confirm.tap()
+    XCTAssertTrue(el(app, "result.continue").waitForExistence(timeout: 15), "the new mailbox was not read")
+    tap(app, "result.continue")
+    XCTAssertTrue(el(app, "profile.bankAlerts").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("From Outlook"))
+  }
+
+  /// Microsoft wants a new sign-in: Home and Profile offer "Reconnect Outlook".
+  @MainActor
+  func testReconnectOutlook() throws {
+    let app = launch("outlookReconnect", outlook: true)
+    XCTAssertTrue(el(app, "needsYou.mailbox.reconnect.outlook").waitForExistence(timeout: 10))
+    app.buttons["header.profile"].firstMatch.tap()
+    XCTAssertTrue(el(app, "profile.bankAlerts").waitForExistence(timeout: 5))
+    XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Outlook needs reconnecting"))
+    tap(app, "profile.connectMailbox")
+    let reconnect = el(app, "outlook.connect")
+    XCTAssertTrue(reconnect.waitForExistence(timeout: 5))
+    XCTAssertEqual(reconnect.label, "Reconnect Outlook")
+    XCTAssertEqual(el(app, "gmail.connect").label, "Use Gmail instead")
+    assertNoPlaceholders(app, "Reconnect Outlook")
+    try audit(app)
+    reconnect.tap()
+    assertText(app, "Outlook reconnected", "Profile")
   }
 
   // MARK: - Sample data and sign-in

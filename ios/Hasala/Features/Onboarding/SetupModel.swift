@@ -3,7 +3,7 @@ import Observation
 
 /// The setup screens after the account (spec 04 §6.6, Paper row 10).
 enum SetupRoute: Hashable {
-  case gmail
+  case mailbox
   case scan
   case income
   case plan
@@ -15,9 +15,9 @@ enum SetupRoute: Hashable {
 /// Setup state. The steps' facts are what `OnboardingStep.derive` reads; this model keeps
 /// them for the process (the live build reads them back from the projection and prefs).
 ///
-/// The same model runs "Connect Gmail" after setup (`connecting`, from Home or Profile):
-/// the bank step only when the account reads no bank yet, then Gmail, then the scan's
-/// result, in a sheet that closes at the end.
+/// The same model runs "Connect your email" after setup (`connecting`, from Home or
+/// Profile): the bank step only when the account reads no bank yet, then the mailbox step,
+/// then the scan's result, in a sheet that closes at the end.
 ///
 /// The first scan never holds setup up: "Set up your plan" leaves it running, the result
 /// step continues whether or not it has finished, and it carries on after setup ends.
@@ -31,7 +31,7 @@ final class SetupModel {
   var path: [SetupRoute] = []
   private(set) var facts: OnboardingStep.Facts
   /// Set when this is a connect after setup rather than setup.
-  let connecting: GmailOffer?
+  let connecting: MailboxOffer?
   /// A connect after setup starts at the bank step (the account reads no bank yet).
   private(set) var startsAtBank = false
 
@@ -40,8 +40,11 @@ final class SetupModel {
   var bankRequest = ""
   private(set) var bankRequestSent = false
 
-  // Gmail and the scan
+  // The mailbox and the scan
   private(set) var scan: ScanProgress?
+  /// A connect that would replace the account's link to another provider, waiting for "Use
+  /// Outlook" (or Gmail) on the confirmation.
+  var confirmingSwitch: MailboxProvider?
   private var scanTask: Task<Void, Never>?
 
   // Income and plan
@@ -60,7 +63,7 @@ final class SetupModel {
   var displayName: String
 
   init(
-    services: AccountServices, displayName: String, facts: OnboardingStep.Facts, connecting: GmailOffer? = nil,
+    services: AccountServices, displayName: String, facts: OnboardingStep.Facts, connecting: MailboxOffer? = nil,
     onFinished: @escaping () -> Void
   ) {
     self.services = services
@@ -70,10 +73,10 @@ final class SetupModel {
     self.onFinished = onFinished
   }
 
-  /// "Connect Gmail" or "Reconnect Gmail" after setup. `onFinished` runs when it is done,
-  /// `onClose` when the user closes it first.
-  static func connectingGmail(
-    _ offer: GmailOffer, services: AccountServices, onClose: @escaping () -> Void, onFinished: @escaping () -> Void
+  /// "Connect your email", "Reconnect Gmail" or a change of provider after setup.
+  /// `onFinished` runs when it is done, `onClose` when the user closes it first.
+  static func connectingMailbox(
+    _ offer: MailboxOffer, services: AccountServices, onClose: @escaping () -> Void, onFinished: @escaping () -> Void
   ) -> SetupModel {
     let m = SetupModel(
       services: services, displayName: "", facts: OnboardingStep.Facts(hasSession: true, keysReady: true),
@@ -96,9 +99,9 @@ final class SetupModel {
   func resume() {
     switch step {
     case .bank, .passcode, .account, .keys: path = []
-    case .gmail: path = [.gmail]
+    case .mailbox: path = [.mailbox]
     case .scan:
-      path = [.gmail, .scan]
+      path = [.mailbox, .scan]
       startScan()
     case .income: path = [.income]
     case .plan:
@@ -124,17 +127,44 @@ final class SetupModel {
   /// Setup's step numbers ("2 of 4"); a connect after setup shows none.
   func steps(_ n: Int) -> (current: Int, of: Int)? { connecting == nil ? (n, 4) : nil }
 
-  /// The Gmail step's button.
-  var connectTitle: String { (connecting ?? .connect).action }
+  /// The providers the mailbox step offers, the linked one (when reconnecting) first. A change
+  /// of provider offers only the others.
+  var providers: [MailboxProvider] {
+    let all = services.mailbox.providers
+    switch connecting {
+    case .reconnect(let p)?: return [p] + all.filter { $0 != p }
+    case .change(let p)?: return all.filter { $0 != p }
+    case .connect?, nil: return all
+    }
+  }
 
-  /// The Gmail step is the first screen of a connect after setup: nothing to go back to.
-  var gmailIsFirst: Bool { connecting != nil && !path.contains(.gmail) }
+  /// The mailbox step's button for `provider`.
+  func connectTitle(_ provider: MailboxProvider) -> String {
+    if case .reconnect(let p)? = connecting, p == provider { return "Reconnect \(p.name)" }
+    if replaces(provider) != nil { return "Use \(provider.name) instead" }
+    return "Connect \(provider.name)"
+  }
 
-  /// The top bar's back button on the Gmail step: none where a connect after setup has
+  /// The provider whose link connecting `provider` would replace, if any.
+  func replaces(_ provider: MailboxProvider) -> MailboxProvider? {
+    guard let current = connecting?.current ?? services.mailbox.linkedProvider, current != provider else { return nil }
+    return current
+  }
+
+  /// The confirmation before a switch: "This replaces your Gmail connection."
+  var switchMessage: String? {
+    guard let p = confirmingSwitch, let old = replaces(p) else { return nil }
+    return "This replaces your \(old.name) connection. Hasala reads your bank alerts from \(p.name) instead."
+  }
+
+  /// The mailbox step is the first screen of a connect after setup: nothing to go back to.
+  var mailboxIsFirst: Bool { connecting != nil && !path.contains(.mailbox) }
+
+  /// The top bar's back button on the mailbox step: none where a connect after setup has
   /// nothing to go back to (its first screen).
   func backButton(on route: SetupRoute) -> (() -> Void)? {
     switch route {
-    case .gmail where gmailIsFirst: nil
+    case .mailbox where mailboxIsFirst: nil
     default: { [weak self] in self?.back() }
     }
   }
@@ -180,13 +210,13 @@ final class SetupModel {
     do {
       try await services.setup.chooseBanks(orderedBanks)
       facts.banksChosen = true
-      go(.gmail)
+      go(.mailbox)
     } catch {
       failure = error
     }
   }
 
-  /// "Skip": manual-entry mode; Gmail and the scan are skipped too.
+  /// "Skip": manual-entry mode; the mailbox and the scan are skipped too.
   func skipBanks() {
     facts.bankSkipped = true
     go(.income)
@@ -204,15 +234,32 @@ final class SetupModel {
     }
   }
 
-  // MARK: Gmail (step 4) and the scan (step 5)
+  // MARK: The mailbox (step 4) and the scan (step 5)
 
   var offersSampleData: Bool { services.mailbox.offersSampleData }
 
-  func connectGmail() async {
+  /// A provider's button: a switch from the linked provider asks first.
+  func choose(_ provider: MailboxProvider) async {
+    failure = nil
+    if replaces(provider) != nil {
+      confirmingSwitch = provider
+      return
+    }
+    await connectMailbox(provider)
+  }
+
+  /// "Use Outlook" on the switch confirmation. The dialog hands back the provider it
+  /// presented: dismissing it has already cleared `confirmingSwitch`.
+  func confirmSwitch(_ provider: MailboxProvider) async {
+    confirmingSwitch = nil
+    await connectMailbox(provider)
+  }
+
+  func connectMailbox(_ provider: MailboxProvider) async {
     busy = true
     defer { busy = false }
     do {
-      try await services.mailbox.connectGmail(banks: orderedBanks)
+      try await services.mailbox.connectMailbox(provider, banks: orderedBanks)
     } catch {
       failure = error
       return
@@ -234,8 +281,8 @@ final class SetupModel {
     }
   }
 
-  func skipGmail() {
-    facts.gmailSkipped = true
+  func skipMailbox() {
+    facts.mailboxSkipped = true
     go(.income)
   }
 
@@ -317,7 +364,7 @@ final class SetupModel {
     }
   }
 
-  /// After the plan: the scan's result when Gmail was connected here (finished or not; it
+  /// After the plan: the scan's result when a mailbox was connected here (finished or not; it
   /// never waits), else notifications.
   private func afterPlan() {
     if scanTask != nil {

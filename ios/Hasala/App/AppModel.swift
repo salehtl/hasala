@@ -13,8 +13,8 @@ enum SheetRoute: Hashable, Identifiable {
   case budget(CategoryID)
   case moveMoney(to: CategoryID?)
   case profile
-  /// Connect Gmail after setup, from Home's Needs-you card.
-  case connectGmail(GmailOffer)
+  /// Connect a mailbox after setup, from Home's Needs-you card.
+  case connectMailbox(MailboxOffer)
 
   var id: String {
     switch self {
@@ -22,7 +22,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .budget(let id): "budget.\(id)"
     case .moveMoney(let id): "move.\(id ?? "assign")"
     case .profile: "profile"
-    case .connectGmail(let offer): "gmail.\(offer.rawValue)"
+    case .connectMailbox(let offer): offer.id
     }
   }
 }
@@ -52,7 +52,7 @@ final class AppModel {
   }
 
   let store: any LedgerStore
-  /// The Gmail lane as setup uses it: what Home and Profile offer for Gmail.
+  /// The mailbox lanes as setup uses them: what Home and Profile offer for the mailbox.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
@@ -64,7 +64,7 @@ final class AppModel {
   // kept in DevicePrefs so it survives a relaunch.
   private(set) var snoozed: Set<String> = []
 
-  /// Pull to refresh on Home and Activity: a sync and a Gmail check now, set by the live
+  /// Pull to refresh on Home and Activity: a sync and a mailbox check now, set by the live
   /// graph once the account is open. Nil (the Maya mock) ends the pull at once.
   @ObservationIgnored var refreshWork: (@MainActor () async -> Void)?
 
@@ -77,8 +77,8 @@ final class AppModel {
     self.mailbox = mailbox
   }
 
-  /// "Connect Gmail" or "Reconnect Gmail" on Home and Profile, when Gmail needs it.
-  var gmailOffer: GmailOffer? { mailbox?.gmailOffer }
+  /// "Connect your email" or "Reconnect Gmail" on Home and Profile, when the mailbox needs it.
+  var mailboxOffer: MailboxOffer? { mailbox?.mailboxOffer }
 
   /// What Home draws, recomputed once per ledger change.
   var snapshot: HomeSnapshot {

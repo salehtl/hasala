@@ -33,6 +33,23 @@ hasala_build_root() {
 	printf '%s\n' "$HASALA_BUILD_DIR"
 }
 
+# hasala_now: the current UTC time as YYYY-MM-DDTHH:MM:SSZ, which archive.sh turns into
+# the build number. The offline script tests pin it with HASALA_TEST_NOW, which counts
+# only together with HASALA_TEST_MODE=1, so two test archives always fall in one minute.
+# A HASALA_TEST_NOW without HASALA_TEST_MODE=1 is refused: this fails, saying so, and
+# archive.sh exits 2, so a stray variable in a release shell never fakes a build number.
+hasala_now() {
+	if [[ -z "${HASALA_TEST_NOW:-}" ]]; then
+		/bin/date -u +%Y-%m-%dT%H:%M:%SZ
+		return 0
+	fi
+	if [[ "${HASALA_TEST_MODE:-}" != 1 ]]; then
+		echo "HASALA_TEST_NOW is set ('$HASALA_TEST_NOW') but HASALA_TEST_MODE is not 1: HASALA_TEST_NOW is for the offline script tests only" >&2
+		return 1
+	fi
+	printf '%s\n' "$HASALA_TEST_NOW"
+}
+
 # hasala_build_newer NEW LAST: true when build NEW is strictly newer than LAST
 # under version-string comparison, component-wise integer (spec 06 §8). Both are
 # YYMMDD.1HHMM; anything else is refused (false).
