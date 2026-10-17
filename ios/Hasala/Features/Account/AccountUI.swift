@@ -28,6 +28,11 @@ enum AccountBack {
 ///
 /// The bar is the system's (decision 7), so back has the interactive swipe and its glass;
 /// screens with no way back hide the button, which also turns the swipe off.
+/// The id of an account screen's question and content together (not the dock), so a screen
+/// can scroll the least that shows all of it, which never takes the title under the header
+/// (`revealsPhraseEntry`).
+let accountScreenBodyID = "account.screenBody"
+
 struct AccountScreen<Content: View, Footer: View>: View {
   var title: String
   var subtitle: String?
@@ -64,6 +69,7 @@ struct AccountScreen<Content: View, Footer: View>: View {
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 24)
       }
+      .id(accountScreenBodyID)
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.bottom, 16)
     }

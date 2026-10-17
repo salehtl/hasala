@@ -104,13 +104,11 @@ struct PhraseEntryState: Equatable {
 /// Paper draws no button under the grid: Return moves to the next cell and sends the
 /// twelfth, and the word-list suggestions sit on the keyboard. The screen owns `focused`,
 /// so while the keyboard is up its dock holds `PhraseSuggestions` (it rides on the
-/// keyboard), and its button once the keyboard goes. The screen also marks its entry block
-/// with `revealID` and applies `revealsPhraseEntry(_:)`, so the grid, the helper and Paste
-/// scroll clear of that bar.
+/// keyboard), and its button once the keyboard goes. The screen also applies
+/// `revealsPhraseEntry(_:)`, so the title, the grid, the helper and Paste stay in sight
+/// above that bar.
 struct PhraseEntryGrid: View {
-  /// The screen's entry block (the grid and what follows it) and each cell, for
-  /// `revealsPhraseEntry(_:)`.
-  static let revealID = "phraseEntry.block"
+  /// Each cell, for `revealsPhraseEntry(_:)` at the accessibility sizes.
   static func cellID(_ index: Int) -> String { "phraseEntry.cell.\(index)" }
 
   @Binding var text: String
@@ -122,6 +120,7 @@ struct PhraseEntryGrid: View {
   var onSubmit: () -> Void = {}
 
   @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.phraseEntryCompact) private var compact
 
   private var state: PhraseEntryState { PhraseEntryState(text) }
 
@@ -183,7 +182,7 @@ struct PhraseEntryGrid: View {
     let words = state.words
     return HStack(alignment: .top, spacing: 8) {
       ForEach(0..<columns, id: \.self) { c in
-        VStack(spacing: 6) {
+        VStack(spacing: compact ? 4 : 6) {
           ForEach(0..<perColumn, id: \.self) { r in
             let i = c * perColumn + r
             cell(i, word: i < words.count ? words[i] : "")
@@ -193,7 +192,7 @@ struct PhraseEntryGrid: View {
         .frame(maxWidth: .infinity)
       }
     }
-    .padding(12)
+    .padding(compact ? 8 : 12)
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
@@ -221,7 +220,7 @@ struct PhraseEntryGrid: View {
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 10)
-    .frame(minHeight: 38)
+    .frame(minHeight: compact ? 32 : 38)
     .background(active ? HColor.surfacePrimary : HColor.surfaceSecondary,
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     .overlay {
@@ -258,15 +257,23 @@ struct PhraseEntryGrid: View {
   }
 }
 
+extension EnvironmentValues {
+  /// The keyboard is up at a standard text size (`revealsPhraseEntry`): the grid sets its
+  /// cells 32 tall, 4 apart, in an 8 pt card, so with the system keyboard (taller than
+  /// Paper's, with the suggestion bar above it) the title still fits over the entry.
+  @Entry var phraseEntryCompact = false
+}
+
 extension View {
-  /// Keeps the 12-word entry in sight above its screen's dock (Paper GDD, GZT draw the grid,
-  /// the helper and Paste clear of the keyboard). The suggestion bar sits over the keyboard,
-  /// and the system keyboard is taller than Paper's, so the entry can't all fit under the
-  /// title: when the keyboard comes up the page scrolls until the bottom of the screen's
-  /// entry block (`PhraseEntryGrid.revealID`: the grid, the helper with Paste, and a failure
-  /// under them) sits just above the bar; the title goes under the header. At the
-  /// accessibility sizes the grid is one long column, so the active cell is kept in the
-  /// middle instead, as the words go in.
+  /// Keeps the 12-word entry in sight above its screen's dock, under its title (Paper GDD,
+  /// GZT draw the title, the grid, the helper and Paste clear of the keyboard). The
+  /// suggestion bar sits over the keyboard, and the system keyboard is taller than Paper's,
+  /// so while it is up the grid tightens (`phraseEntryCompact`), and the page scrolls the
+  /// least that shows the whole screen body (`accountScreenBodyID`: the question, the grid,
+  /// the helper with Paste, and a failure under them) above the bar. Where all of it can't
+  /// fit (a smaller iPhone, a failure line), the body's top stays at the top: the title is
+  /// never scrolled under the header. At the accessibility sizes the grid is one long
+  /// column, so the active cell is kept in the middle instead, as the words go in.
   func revealsPhraseEntry(_ text: String) -> some View {
     let state = PhraseEntryState(text)
     return modifier(PhraseEntryReveal(activeIndex: state.activeIndex, unknownIndex: state.unknownIndex))
@@ -284,9 +291,11 @@ private struct PhraseEntryReveal: ViewModifier {
   func body(content: Content) -> some View {
     ScrollViewReader { proxy in
       content
+        .environment(\.phraseEntryCompact, keyboardUp && !typeSize.isAccessibilitySize)
         .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.bottom > 120 } action: { up in
-          keyboardUp = up
-          if up { reveal(proxy) }
+          withAnimation(motion.animation(.fade)) { keyboardUp = up }
+          // After the tighter grid is laid out.
+          if up { Task { reveal(proxy) } }
         }
         .onChange(of: activeIndex) {
           if keyboardUp, typeSize.isAccessibilitySize { reveal(proxy) }
@@ -303,8 +312,9 @@ private struct PhraseEntryReveal: ViewModifier {
       if typeSize.isAccessibilitySize {
         proxy.scrollTo(PhraseEntryGrid.cellID(activeIndex), anchor: .center)
       } else {
-        // The bottom anchor lines the block's foot up with the top of the dock.
-        proxy.scrollTo(PhraseEntryGrid.revealID, anchor: .bottom)
+        // No anchor: the least scroll that shows the body, its top first when it can't all
+        // show, so the title stays below the header.
+        proxy.scrollTo(accountScreenBodyID)
       }
     }
   }

@@ -271,7 +271,6 @@ struct UnlockView: View {
         }
         if model.failedOnWords { FailureBanner(failure: model.failure) }
       }
-      .id(PhraseEntryGrid.revealID)
       .accountContentTop(16)
     } footer: {
       // Return opens with the twelfth word (Paper draws no button); the button shows once

@@ -437,7 +437,6 @@ struct RecoverWordsView: View {
         }
         FailureBanner(failure: model.failure(on: .recoverWords))
       }
-      .id(PhraseEntryGrid.revealID)
       .accountContentTop(16)
     } footer: {
       // Return sends the twelfth word (Paper draws no button); the button shows once the
