@@ -67,7 +67,13 @@ nonisolated final class MailboxLane: Sendable {
   /// Bank alerts › Connect (after the window choice sheet, spec 04 §7.7 step 1).
   /// `replacing`: the mailbox tables hold the other provider's lane, cleared only once this
   /// link is made.
+  ///
+  /// An account that left this iPhone (deleted, removed, erased) may still be ending its
+  /// grant at the provider (`MailGrantEnds`). That ending acts on the provider account and
+  /// this app's client id, not on one Hasala account, so this connect waits for it first:
+  /// its revoke and `users.stop` must reach Google before this link's grant and watch exist.
   func connect(backfillDays: Int, replacing: Bool = false) async -> ConnectResult {
+    await MailGrantEnds.shared.settled(within: MailGrantEnds.connectWait)
     let r = await engine.connect(presenter: presenter, backfillDays: backfillDays, replacing: replacing)
     if case .connected = r {
       // The scan itself runs from `firstScan()` (foreground) or the processing task.
@@ -104,7 +110,8 @@ nonisolated final class MailboxLane: Sendable {
   }
 
   /// The first scan (Setup 2 of 4, Paper FR2-0): runs cycles until the window is listed and
-  /// authored, yielding their progress, then the totals. There is no cards step: the scan
+  /// authored (`MailboxEngine.runFirstScan`, which rides out Gmail's rate limit and a dropped
+  /// connection), yielding their progress, then the totals. There is no cards step: the scan
   /// authors what it finds. Ending the stream (setup finished, the sheet closed) does not stop
   /// the import: it runs to the end here, and whatever is left after 50 cycles runs in
   /// `app.hasala.ios.processing` and the next foreground runs (§7.7 step 3).
@@ -115,15 +122,7 @@ nonisolated final class MailboxLane: Sendable {
       Task {
         await engine.setProgressHandler { continuation.yield(.progress($0)) }
         var totals = FirstScanTotals()
-        for _ in 0..<50 {
-          let r = await engine.runCycle(trigger: .refresh)
-          totals.add(r)
-          if r.phase != .scanning && r.phase != .authoringBackfill { break }
-          if r.haltedOn != nil && r.haltedOn != .stagingFull { break }
-          // Nothing listed and not finished: no trusted sender yet (or offline). Stop rather
-          // than spin; the next trigger resumes it.
-          if r.listed == 0 && r.ops == 0 && !r.completed { break }
-        }
+        for r in await engine.runFirstScan(maxCycles: 50) { totals.add(r) }
         await engine.setProgressHandler(nil)
         continuation.yield(.ended(totals))
         continuation.finish()
@@ -167,6 +166,51 @@ nonisolated struct HeldMailGrants: Sendable, Equatable {
     var subscriptionID: String?
   }
   var grants: [Grant]
+}
+
+/// The grant endings of the accounts that left this iPhone (deleted, removed, erased, wiped),
+/// run one after another, and what a new connect waits for.
+///
+/// An ending is not scoped to the Hasala account that left: Google's revoke ends this app's
+/// whole grant for the Google account (every Hasala account shares the iOS client id), and
+/// `users.stop` ends the mailbox's watch for the whole project. Run as a detached task, it
+/// could reach Google after the next account on this iPhone linked the same mailbox, and end
+/// that account's grant and watch too: its first scan then stops on `reconnect_required` and
+/// nothing is imported. So the departure waits for its ending (bounded), and
+/// `MailboxLane.connect` waits for any still running.
+nonisolated final class MailGrantEnds: @unchecked Sendable {
+  static let shared = MailGrantEnds()
+  /// How long a departure waits for its grant ending before it carries on regardless.
+  static let departureWait: Duration = .seconds(10)
+  /// How long a connect waits for an earlier ending before it signs in regardless.
+  static let connectWait: Duration = .seconds(15)
+
+  private let lock = NSLock()
+  private var last: Task<Void, Never>?
+
+  /// Runs `end` once every ending handed in before it is done.
+  func enqueue(_ end: @escaping @Sendable () async -> Void) {
+    lock.withLock {
+      let before = last
+      last = Task {
+        await before?.value
+        await end()
+      }
+    }
+  }
+
+  /// Waits until every ending handed in so far is done, at most `limit`. False when the
+  /// limit came first (the ending carries on).
+  @discardableResult
+  func settled(within limit: Duration) async -> Bool {
+    guard let pending = lock.withLock({ last }) else { return true }
+    let done = Task { () -> Bool in
+      await pending.value
+      return true
+    }
+    return await WorkCoordinator.wait(
+      for: done, until: ContinuousClock.now + limit, timedOut: false, cancelled: false)
+  }
 }
 
 extension MailboxLane {

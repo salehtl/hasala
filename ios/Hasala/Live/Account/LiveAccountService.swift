@@ -27,6 +27,11 @@ final class LiveAccountService: AccountService {
   let env: AccountEnvironment
   /// Ends the Google grant when the account leaves this iPhone (nil in tests).
   let build: BuildInfo?
+  /// Ends a grant this iPhone held as the account leaves it (`MailboxLane.endGrant`; nil
+  /// without a build, and tests replace it). Run through `grantEnds`.
+  var endGrant: (@Sendable (_ held: HeldMailGrants, _ stopWatch: Bool) async -> Void)?
+  /// Where the endings run, one after another; a later connect waits for them.
+  var grantEnds = MailGrantEnds.shared
   /// What the account runtime and the gate lend the service. Set by `BootController`.
   var hooks = LiveAccountHooks()
 
@@ -48,6 +53,11 @@ final class LiveAccountService: AccountService {
   init(env: AccountEnvironment, build: BuildInfo? = nil) {
     self.env = env
     self.build = build
+    if let build {
+      endGrant = { @Sendable held, stopWatch in
+        await MailboxLane.endGrant(held, build: build, stopWatch: stopWatch)
+      }
+    }
   }
 
   /// The profile from the binding, after the fresh-install purge (a relaunch).
@@ -478,7 +488,7 @@ final class LiveAccountService: AccountService {
         }
         // The server dropped the push token with the account.
         PushRegistrar.shared.forget()
-        leftThisIPhone(grant: grant, stopWatch: true)
+        await leftThisIPhone(grant: grant, stopWatch: true)
         await hooks.left()
       case .removeDevice(let id) where id == b.writer_id:
         // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
@@ -495,7 +505,7 @@ final class LiveAccountService: AccountService {
           await hooks.resume()
           throw error
         }
-        leftThisIPhone(grant: grant, stopWatch: false)
+        await leftThisIPhone(grant: grant, stopWatch: false)
         await hooks.left()
       case .signOutEverywhere:
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
@@ -608,13 +618,17 @@ final class LiveAccountService: AccountService {
   }
 
   /// The account's data left this iPhone (deleted, removed): the session item, what the
-  /// iPhone noted about the account, and this iPhone's Google grant (ended at Google
-  /// in the background; `users.stop` only when the account itself is gone).
-  private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) {
+  /// iPhone noted about the account, and this iPhone's Google grant (`users.stop` only when
+  /// the account itself is gone). The grant's ending acts on the Google account, which the
+  /// next account here may link again, so it is waited for (bounded) before this iPhone
+  /// shows Welcome: it reaches Google before any new link can be made.
+  private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) async {
     try? env.secrets.deleteSession()
     LocalAccountData.forget()
     clearSignedIn()
-    if let grant, let build { Task { await MailboxLane.endGrant(grant, build: build, stopWatch: stopWatch) } }
+    guard let grant, let endGrant else { return }
+    grantEnds.enqueue { await endGrant(grant, stopWatch) }
+    await grantEnds.settled(within: MailGrantEnds.departureWait)
   }
 
   /// Forgets everything held in memory for the account (the gate erased this iPhone's data).

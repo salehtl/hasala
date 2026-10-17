@@ -46,6 +46,12 @@ struct ScenarioTests {
     try await Scenarios.gmailToReplay(a, b, clock: w.clock)
   }
 
+  @Test("a 500-alert, 90-day first scan reads, authors and uploads every alert")
+  func gmailBackfill() async throws {
+    let (w, a, _) = try await twoRuntimes()
+    try await Scenarios.gmailBackfill(a, clock: w.clock)
+  }
+
   @Test("Outlook alerts read on A (real MailboxEngine, OutlookProvider) upload, and B folds them")
   func outlookToReplay() async throws {
     let (w, a, b) = try await twoRuntimes()
