@@ -8,7 +8,7 @@ import CoreSync
 import Foundation
 import UIKit
 
-/// The Gmail lane's step-up (spec 04 §6.3; `02` §8) for `mailbox.link` and
+/// The mail lanes' step-up (spec 04 §6.3; `02` §8) for `mailbox.link` and
 /// `mailbox.unlink`: a passkey assertion for a passkey account, or for a password
 /// account the password (asked for here) and this iPhone's approval key.
 ///
@@ -30,7 +30,8 @@ nonisolated struct LiveStepUp: MailboxStepUp {
     let tuple = payloadHash.map { [$0] } ?? []
     let paramsHash = StepUp.paramsHash(action: kind, tuple: tuple)
     let passkey = await usesPasskey()
-    let reason = kind == "mailbox.link" ? "Confirm it's you to connect Gmail" : "Confirm it's you to disconnect Gmail"
+    // Both lanes share this step-up, so the reason names no provider.
+    let reason = Self.reason(kind)
     let begin: StepUpBeginResponse
     do {
       begin = try await env.client.stepUpBegin(
@@ -81,6 +82,12 @@ nonisolated struct LiveStepUp: MailboxStepUp {
       throw .failed
     }
     return value
+  }
+
+  /// The password alert's title and the approval key's reason: Gmail and Outlook share
+  /// this step-up, so it names neither.
+  static func reason(_ kind: String) -> String {
+    kind == "mailbox.link" ? "Confirm it's you to connect your email" : "Confirm it's you to disconnect your email"
   }
 }
 

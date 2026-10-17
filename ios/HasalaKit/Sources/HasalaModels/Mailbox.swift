@@ -77,11 +77,15 @@ public struct MailboxSnapshot: Identifiable, Hashable, Sendable {
   public var connectedOn: String?
   /// A line under the row, e.g. "Read on your other iPhone".
   public var note: String?
+  /// Read on another iPhone, which holds the link and its sign-in: this iPhone holds
+  /// neither, so it can't disconnect or replace the mailbox (that would end the reading
+  /// on the other iPhone).
+  public var readElsewhere: Bool
 
   public init(
     id: String, provider: MailProviderKind, address: String, state: MailboxState, meta: String,
     accountKind: String? = nil, banks: [String] = [], lastChecked: String? = nil, connectedOn: String? = nil,
-    note: String? = nil
+    note: String? = nil, readElsewhere: Bool = false
   ) {
     self.id = id
     self.provider = provider
@@ -93,5 +97,6 @@ public struct MailboxSnapshot: Identifiable, Hashable, Sendable {
     self.lastChecked = lastChecked
     self.connectedOn = connectedOn
     self.note = note
+    self.readElsewhere = readElsewhere
   }
 }

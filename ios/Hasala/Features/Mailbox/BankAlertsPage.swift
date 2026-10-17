@@ -277,6 +277,8 @@ struct BankAlertsPage: View {
   /// another provider can replace it (the provider's screen confirms the switch).
   private var offersChange: Bool {
     guard let lane, !offersAdd, lane.holdsOneLink, lane.capabilities.contains(.connect) else { return false }
+    // Not while another iPhone reads it: this iPhone can't switch it.
+    guard !mailboxes.contains(where: \.readElsewhere) else { return false }
     let linked = Set(mailboxes.filter { $0.state != .disconnected }.map(\.provider))
     return !linked.isEmpty && lane.connectable.contains { !linked.contains($0) }
   }

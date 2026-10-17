@@ -111,7 +111,7 @@ struct MailboxDetailPage: View {
     .accessibilityElement(children: .combine)
     VStack(alignment: .leading, spacing: 14) {
       VStack(alignment: .leading, spacing: 4) {
-        Text("\(m.provider.company) ended Hasala's access")
+        Text(Self.signInHeading(m))
           .hType(.headline).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
         Text(Self.signInBody(m))
@@ -144,12 +144,20 @@ struct MailboxDetailPage: View {
   /// Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else
   /// changes."
   static func signInBody(_ m: MailboxSnapshot) -> String {
+    // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
+    if let note = m.note { return note }
     var lines = ["This happens after a password change, a long time signed out, or a work policy."]
     if let day = m.lastChecked?.split(separator: ",").first {
       lines.append("No new \(m.provider.appName) alerts since \(day).")
     }
     lines.append("Sign in again and the iPhone catches up. Nothing else changes.")
     return lines.joined(separator: " ")
+  }
+
+  /// "Microsoft ended Hasala's access", or, when a note says the provider didn't end it
+  /// (no Outlook mailbox on that account), just what to do.
+  static func signInHeading(_ m: MailboxSnapshot) -> String {
+    m.note == nil ? "\(m.provider.company) ended Hasala's access" : "Sign in with another account"
   }
 
   // MARK: Parts
@@ -193,7 +201,8 @@ struct MailboxDetailPage: View {
   }
 
   @ViewBuilder private func disconnect(_ m: MailboxSnapshot, footnote: String?) -> some View {
-    if m.state != .disconnected, app.mailbox?.capabilities.contains(.disconnect) == true {
+    // Not for a mailbox read on another iPhone: the server's delete would end its reading there.
+    if m.state != .disconnected, !m.readElsewhere, app.mailbox?.capabilities.contains(.disconnect) == true {
       VStack(alignment: .leading, spacing: 10) {
         Button("Disconnect this mailbox") { confirming = true }
           .buttonStyle(.pill(.destructiveQuiet, size: .large, fill: true, loading: busy))

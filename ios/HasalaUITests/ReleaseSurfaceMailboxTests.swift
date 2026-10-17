@@ -157,7 +157,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
   /// ("Change your email?", main's "This replaces your Gmail connection."). Cancel keeps
   /// Gmail; "Use Outlook" leaves one mailbox, Outlook's.
   @MainActor
-  func testSwitchFromGmailToOutlookIsConfirmed() throws {
+  func testSwitchFromGmailToOutlook() throws {
     let app = bankAlerts("gmailLinked")
     XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: uiWait))
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")

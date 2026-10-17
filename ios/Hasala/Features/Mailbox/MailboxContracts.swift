@@ -127,7 +127,8 @@ extension MailboxConnecting {
   /// held, the account's linked mailbox when it is another provider's.
   func replaced(by provider: MailProviderKind) -> MailboxSnapshot? {
     guard holdsOneLink else { return nil }
-    return mailboxes.first { $0.state != .disconnected && $0.provider != provider }
+    // A mailbox read on another iPhone can't be replaced from here (the connect is refused).
+    return mailboxes.first { $0.state != .disconnected && !$0.readElsewhere && $0.provider != provider }
   }
 }
 

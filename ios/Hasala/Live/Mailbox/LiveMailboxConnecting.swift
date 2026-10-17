@@ -159,6 +159,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       }
     case .otherDevice:
       row.note = "Read on your other iPhone"
+      // The server deletes the account's link whichever iPhone holds it, so this iPhone
+      // offers no Disconnect and no switch.
+      row.readElsewhere = true
     }
     return [row]
   }
@@ -294,8 +297,17 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// stopped, the grant ended, the server's link deleted.
   func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
     let lane = try lane()
+    // The server's delete has no holder check: from here it would end the other
+    // iPhone's reading, and this iPhone holds no sign-in to delete.
+    try Self.checkDisconnect(await lane.status().phase)
     guard await lane.disconnect() else { throw .failed("Couldn't disconnect \(lane.provider.appName). Try again.") }
     await runtime()?.refreshMailbox()
+  }
+
+  /// A disconnect from an iPhone that doesn't hold the link is refused, as `admit`
+  /// refuses a connect there.
+  static func checkDisconnect(_ phase: MailboxPhase) throws(MailConnectFailure) {
+    if phase == .otherDevice { throw .takenByOtherIPhone }
   }
 
   private static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) {

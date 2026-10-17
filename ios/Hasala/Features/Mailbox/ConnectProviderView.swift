@@ -147,7 +147,10 @@ struct ConnectProviderView: View {
 
   private var subtitle: String {
     if let id = signInAgainID, coordinator.connectedMailbox(provider) == nil {
-      let address = coordinator.mailbox.mailboxes.first { $0.id == id }?.address ?? "this mailbox"
+      let row = coordinator.mailbox.mailboxes.first { $0.id == id }
+      // A sign-in that the provider didn't end (live: no Outlook mailbox on that account).
+      if let note = row?.note { return note }
+      let address = row?.address ?? "this mailbox"
       return "\(provider.company) ended Hasala's access to \(address). Sign in again and this iPhone catches up. Nothing else changes."
     }
     return "Your bank alerts are fetched from \(provider.appName) by this iPhone. Our server never receives your emails."

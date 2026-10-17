@@ -276,6 +276,13 @@ struct MailboxFlowTests: AccountSuite {
     #expect(fresh.lastEmail(.dib) == nil && fresh.readThisMonth == nil)
     #expect(MailboxDetailPage.signInBody(MockMailbox.needingSignIn(MockMailbox.outlook))
       == "This happens after a password change, a long time signed out, or a work policy. No new Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else changes.")
+    // Live's no-mailbox halt: a sign-in the provider didn't end, said in the row's words.
+    var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
+    noMailbox.note = "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    #expect(MailboxDetailPage.signInBody(noMailbox) == noMailbox.note)
+    #expect(MailboxDetailPage.signInHeading(noMailbox) == "Sign in with another account")
+    #expect(MailboxDetailPage.signInHeading(MockMailbox.needingSignIn(MockMailbox.outlook))
+      == "Microsoft ended Hasala's access")
     #expect(MailCopy.disconnectMessage(.outlook)
       == "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on Microsoft's side too, visit account.live.com/consent/Manage.")
     #expect(MailCopy.disconnectMessage(.gmail).hasSuffix("on Google's side too, visit myaccount.google.com/permissions."))
@@ -326,6 +333,18 @@ struct MailboxFlowTests: AccountSuite {
   /// is linked, so Outlook's connect replaces it, which the screen confirms first. Without
   /// the confirmation the connect is refused and Gmail stays; confirmed, the account reads
   /// one mailbox, Outlook's. Disconnect then connect replaces nothing.
+  /// A mailbox read on the account's other iPhone is not this iPhone's to switch: with one
+  /// link held, no connect of the other provider offers to replace it.
+  @Test func aMailboxReadElsewhereIsNotReplaced() {
+    var elsewhere = MockMailbox.gmail
+    elsewhere.readElsewhere = true
+    let lane = mailbox([elsewhere])
+    lane.holdOneLink()
+    #expect(lane.holdsOneLink && lane.replaced(by: .outlook) == nil)
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    #expect(c.replaced(by: .outlook) == nil)
+  }
+
   @Test func switchingFromGmailToOutlookIsConfirmed() async throws {
     let lane = try #require(AuthScenario.session(for: .gmailLinked, releaseSurface: true).services.mailbox as? MockMailbox)
     lane.connectDelay = .zero
@@ -350,9 +369,9 @@ struct MailboxFlowTests: AccountSuite {
     #expect(lane.mailboxes.filter { $0.state != .disconnected }.map(\.provider) == [.gmail])
   }
 
-  /// Main's `reconnectingOutlookOffersItFirst`: Microsoft ended access to the account's one
+  /// Ported from main under its name: Microsoft ended access to the account's one
   /// mailbox, so the offer is Outlook's sign-in again, and it reads Outlook again.
-  @Test func reconnectingOutlookSignsOutlookInAgain() async throws {
+  @Test func reconnectingOutlookOffersItFirst() async throws {
     let lane = try #require(
       AuthScenario.session(for: .outlookReconnect, releaseSurface: true).services.mailbox as? MockMailbox)
     lane.connectDelay = .zero

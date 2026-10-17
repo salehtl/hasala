@@ -14,7 +14,7 @@ struct LiveMailboxTests {
 
   /// The bell, Profile and Bank alerts offer Gmail from the lane's phase (spec 04 §6.6 row 4,
   /// §7.4), and never on an account that loaded the App Review sample (§6.13).
-  @Test func theGmailOfferFollowsTheLane() {
+  @Test func theMailboxOfferFollowsTheLane() {
     func offer(
       _ phase: MailboxPhase, halt: MailboxHaltCode? = nil, sample: Bool = false, link: MailboxLinkStatus? = .noLink
     ) -> MailOffer? {
@@ -102,6 +102,22 @@ struct LiveMailboxTests {
   /// Another iPhone takes the link after this one was offered "Connect Gmail": the offer
   /// goes with the next answer, and a connect asks again first and is refused, as it is
   /// when the server can't be asked.
+  /// The server deletes the account's link whichever iPhone holds it, so an iPhone the
+  /// link moved away from refuses a disconnect, which would end the other iPhone's reading.
+  @Test func aLinkTakenElsewhereRefusesTheDisconnect() throws {
+    #expect(throws: MailConnectFailure.takenByOtherIPhone) { try LiveMailboxConnecting.checkDisconnect(.otherDevice) }
+    for phase in [MailboxPhase.unlinked, .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired,
+                  .halted] {
+      try LiveMailboxConnecting.checkDisconnect(phase)
+    }
+  }
+
+  /// One step-up for both lanes: its reason names neither Gmail nor Outlook.
+  @Test func theStepUpNamesNoProvider() {
+    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect your email")
+    #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect your email")
+  }
+
   @Test func aLinkTakenElsewhereRefusesTheConnect() throws {
     let other = MailboxLinkStatus.holder(isThisDevice: false, watchExpiresAtMs: nil)
     #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: .noLink) == .connect)
@@ -216,6 +232,9 @@ struct LiveMailboxTests {
     #expect(row(.halted, halt: .gmail)?.state == .needsSignIn)
     #expect(row(.halted, halt: .accountFull)?.state == .connected && row(.halted, halt: .accountFull)?.note != nil)
     #expect(row(.otherDevice)?.note == "Read on your other iPhone")
+    // Read on the other iPhone: no Disconnect and no switch from here.
+    #expect(row(.otherDevice)?.readElsewhere == true && row(.otherDevice)?.state == .connected)
+    #expect(row(.active)?.readElsewhere == false && row(.halted, halt: .noMailbox)?.readElsewhere == false)
     // No Outlook mailbox on the Microsoft account: a sign-in, in words that say why.
     #expect(row(.halted, halt: .noMailbox)?.state == .needsSignIn)
     #expect(row(.halted, halt: .noMailbox)?.note == LiveMailboxConnecting.message(.noMailbox))

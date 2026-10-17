@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # test-release-surface.sh: walks what a Release build shows (HasalaUITests'
 # ReleaseSurface* classes, one per area: every tab and the profile, no placeholder text,
-# no control without a screen behind it, the beta's account actions, no provider but
-# Gmail) on a Release-configuration build in the simulator.
+# no control without a screen behind it, the beta's account actions, Gmail and Outlook
+# (personal Microsoft accounts only), one mailbox, and a switch of provider only after
+# its confirmation) on a Release-configuration build in the simulator.
 #
 #   ios/scripts/test-release-surface.sh <simulator udid> [derived data directory]
 #
