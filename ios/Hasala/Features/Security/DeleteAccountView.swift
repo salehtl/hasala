@@ -68,6 +68,7 @@ struct DeleteAccountView: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaBar(edge: .bottom) {
       VStack(spacing: 6) {
         Button("Delete my account") { asking = true }

@@ -45,6 +45,7 @@ struct SetupScreen<Content: View, Dock: View>: View {
         }
       }
       .scrollBounceBehavior(.basedOnSize)
+      .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
     .safeAreaBar(edge: .bottom) { dock() }
     .background(alignment: .top) {

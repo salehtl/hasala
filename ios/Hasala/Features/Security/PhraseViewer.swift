@@ -47,6 +47,7 @@ struct PhraseViewer: View {
         .padding(.bottom, 16)
       }
       .scrollBounceBehavior(.basedOnSize)
+      .scrollEdgeEffectStyle(.soft, for: .bottom)
       .safeAreaBar(edge: .bottom) {
         AccountDock {
           Button("Done") { close() }

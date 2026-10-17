@@ -91,6 +91,7 @@ struct PillButtonBody: View {
   let loading: Bool
   let leadingIcon: HIcon?
   @Environment(\.isEnabled) private var isEnabled
+  @Environment(\.pillDisabledBase) private var disabledBase
   @ResolvedMotion private var motion: MotionPolicy
   /// The spinner shows only once loading has lasted about 300 ms (page 17 · ButtonLoading).
   @State private var showsSpinner = false
@@ -115,6 +116,13 @@ struct PillButtonBody: View {
     .padding(.vertical, 4)
     .frame(maxWidth: fill ? .infinity : nil, minHeight: size.height)
     .background(background(pressed: pressed), in: Capsule())
+    .background {
+      // The disabled grey is translucent; in a dock, content scrolling behind would read
+      // through it.
+      if !isEnabled, let disabledBase, disabledFillIsTranslucent {
+        Capsule().fill(disabledBase)
+      }
+    }
     .contentShape(Capsule())
     .scaleEffect(pressed && !motion.isStill ? HMotion.pressScale : 1)
     // Down at once, back over 120 ms.
@@ -144,6 +152,14 @@ struct PillButtonBody: View {
     switch kind {
     case .primary, .destructive: HColor.white.opacity(0.35)
     default: HColor.actionAccentSubtlePressed
+    }
+  }
+
+  /// The disabled fill is `appleFillsSecondary` (see `background(pressed:)`).
+  private var disabledFillIsTranslucent: Bool {
+    switch kind {
+    case .onGrouped, .destructiveQuiet, .tertiary, .destructiveText: false
+    case .primary, .secondary, .destructive: true
     }
   }
 
@@ -244,4 +260,11 @@ public struct ProviderButton: View {
     }
     .buttonStyle(.pill(.primary, size: .large, fill: true, loading: loading))
   }
+}
+
+public extension EnvironmentValues {
+  /// The opaque surface a disabled pill's translucent grey is laid on, where content can
+  /// scroll behind the pill (a screen's dock, which sets the canvas, `surfaceSecondary`, as
+  /// Paper's plain dock draws it, LRH-0). Nil draws the grey alone.
+  @Entry var pillDisabledBase: Color? = nil
 }

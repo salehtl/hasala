@@ -74,6 +74,7 @@ struct AccountScreen<Content: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .scrollDismissesKeyboard(.interactively)
     .safeAreaBar(edge: .bottom) {
       ActionDock(keyboardUp: keyboardUp, content: footer)
@@ -212,6 +213,7 @@ private struct ActionDock<Content: View>: View {
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 8)
       .padding(.bottom, keyboardUp ? 12 : 0)
+      .environment(\.pillDisabledBase, HColor.surfaceSecondary)
   }
 }
 
@@ -338,6 +340,7 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaBar(edge: .bottom) {
       ActionDock(keyboardUp: keyboardUp, content: footer)
     }

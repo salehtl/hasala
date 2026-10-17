@@ -69,6 +69,7 @@ struct HeroAccountScreen<Content: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaBar(edge: .bottom) {
       AccountDock(content: footer)
     }
@@ -95,6 +96,7 @@ struct AccountDock<Content: View>: View {
       .frame(maxWidth: .infinity)
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 8)
+      .environment(\.pillDisabledBase, HColor.surfaceSecondary)
   }
 }
 
@@ -480,6 +482,7 @@ struct ProgressCelebrationScreen<Cards: View, Foot: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaBar(edge: .bottom) {
       // Paper: the card's foot sits 40 from the screen's bottom edge.
       foot()
