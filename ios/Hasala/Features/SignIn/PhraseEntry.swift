@@ -271,9 +271,11 @@ extension View {
   /// so while it is up the grid tightens (`phraseEntryCompact`), and the page scrolls the
   /// least that shows the whole screen body (`accountScreenBodyID`: the question, the grid,
   /// the helper with Paste, and a failure under them) above the bar. Where all of it can't
-  /// fit (a smaller iPhone, a failure line), the body's top stays at the top: the title is
-  /// never scrolled under the header. At the accessibility sizes the grid is one long
-  /// column, so the active cell is kept in the middle instead, as the words go in.
+  /// fit (larger text, a smaller iPhone, a failure line), the body's top goes to the top of
+  /// the room instead: the title is never scrolled under the header, and the rest scrolls
+  /// (as the words go in, the page moves only as far as the cell being typed needs). At the
+  /// accessibility sizes the grid is one long column, so the active cell is kept in the
+  /// middle instead, as the words go in.
   func revealsPhraseEntry(_ text: String) -> some View {
     let state = PhraseEntryState(text)
     return modifier(PhraseEntryReveal(activeIndex: state.activeIndex, unknownIndex: state.unknownIndex))
@@ -287,18 +289,30 @@ private struct PhraseEntryReveal: ViewModifier {
   @Environment(\.hMotion) private var motion
   @Environment(\.dynamicTypeSize) private var typeSize
   @State private var keyboardUp = false
+  /// The screen body fits between the header and the dock (its 16 pt foot aside).
+  @State private var bodyFits = true
 
   func body(content: Content) -> some View {
     ScrollViewReader { proxy in
       content
         .environment(\.phraseEntryCompact, keyboardUp && !typeSize.isAccessibilitySize)
+        .onScrollGeometryChange(for: Bool.self) { g in
+          g.contentSize.height - 16 <= g.containerSize.height - g.contentInsets.top - g.contentInsets.bottom + 0.5
+        } action: { _, fits in
+          bodyFits = fits
+          if keyboardUp { reveal(proxy) }
+        }
         .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.bottom > 120 } action: { up in
           withAnimation(motion.animation(.fade)) { keyboardUp = up }
           // After the tighter grid is laid out.
           if up { Task { reveal(proxy) } }
         }
         .onChange(of: activeIndex) {
-          if keyboardUp, typeSize.isAccessibilitySize { reveal(proxy) }
+          // Where the body doesn't all fit, the cell being typed is kept in sight too.
+          guard keyboardUp, typeSize.isAccessibilitySize || !bodyFits else { return }
+          withAnimation(motion.animation(.fade)) {
+            proxy.scrollTo(PhraseEntryGrid.cellID(activeIndex), anchor: typeSize.isAccessibilitySize ? .center : nil)
+          }
         }
         .onChange(of: unknownIndex) {
           // After the line is laid out.
@@ -311,10 +325,12 @@ private struct PhraseEntryReveal: ViewModifier {
     withAnimation(motion.animation(.fade)) {
       if typeSize.isAccessibilitySize {
         proxy.scrollTo(PhraseEntryGrid.cellID(activeIndex), anchor: .center)
-      } else {
-        // No anchor: the least scroll that shows the body, its top first when it can't all
-        // show, so the title stays below the header.
+      } else if bodyFits {
+        // No anchor: the least scroll that shows the whole body.
         proxy.scrollTo(accountScreenBodyID)
+      } else {
+        // Its top at the top of the room, so the title stays below the header.
+        proxy.scrollTo(accountScreenBodyID, anchor: .top)
       }
     }
   }
