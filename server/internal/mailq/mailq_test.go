@@ -101,6 +101,12 @@ func TestTemplatesAreContentFree(t *testing.T) {
 		if strings.Contains(r.Subject, "\n") || strings.HasPrefix(r.Text, "\n") {
 			t.Errorf("%s: subject/body split", kind)
 		}
+		// Every kind with an HTML part is in the shared layout, whose one image
+		// is the PNG logo on hasala.app.
+		if kind != "test" && (strings.Count(r.HTML, "<img") != 1 ||
+			!strings.Contains(r.HTML, `<img src="`+mail.LogoURL+`" width="40" height="24" alt="">`)) {
+			t.Errorf("%s: the HTML part has no logo, or another image", kind)
+		}
 	}
 }
 
