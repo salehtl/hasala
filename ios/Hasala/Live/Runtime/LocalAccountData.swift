@@ -15,6 +15,16 @@ enum LocalAccountData {
   static let setupFinishedKey = "app.hasala.prefs.setup.finished"
   /// The earlier form: an array of user ids. Read once at launch, then removed.
   static let legacySetupFinishedKey = "setup.finished.v1"
+  /// Which mailbox provider the account's lane on this iPhone reads ("gmail" or "outlook").
+  static let mailboxProviderKey = "app.hasala.prefs.mailbox.provider"
+
+  static func mailboxProvider(_ defaults: UserDefaults = .standard) -> MailboxProvider? {
+    defaults.string(forKey: mailboxProviderKey).flatMap(MailboxProvider.init(rawValue:))
+  }
+
+  static func setMailboxProvider(_ p: MailboxProvider, _ defaults: UserDefaults = .standard) {
+    defaults.set(p.rawValue, forKey: mailboxProviderKey)
+  }
 
   static func setupFinished(_ defaults: UserDefaults = .standard) -> Bool {
     defaults.bool(forKey: setupFinishedKey)
@@ -33,11 +43,12 @@ enum LocalAccountData {
   }
 
   /// The account's data left this iPhone (deleted here or elsewhere, removed, wiped from
-  /// a wall): forget the setup flag, the skipped review cards, the push registration and,
+  /// a wall): forget the setup flag, the mailbox provider, the skipped review cards, the push registration and,
   /// in Debug simulator runs, the simulator's approval keys.
   static func forget(defaults: UserDefaults = .standard) {
     defaults.removeObject(forKey: setupFinishedKey)
     defaults.removeObject(forKey: legacySetupFinishedKey)
+    defaults.removeObject(forKey: mailboxProviderKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     PushRegistrar.forgetRegistration(defaults)
     #if DEBUG && targetEnvironment(simulator)

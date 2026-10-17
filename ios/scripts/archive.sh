@@ -127,7 +127,11 @@ if ! MARKETING_VERSION="$(hasala_marketing_version "$ios/Config")"; then
 	exit 2
 fi
 
-BUILD="$("$here/build_number.sh" "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)")"
+if ! now="$(hasala_now)"; then
+	echo "archive: refusing to run with HASALA_TEST_NOW set outside test mode" >&2
+	exit 2
+fi
+BUILD="$("$here/build_number.sh" "$now")"
 SHA="$(git -C "$repo" rev-parse --short=12 HEAD)"
 last_file="$build_root/last-build-number"
 if [[ -f "$last_file" ]]; then

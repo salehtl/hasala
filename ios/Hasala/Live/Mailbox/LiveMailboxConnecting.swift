@@ -21,15 +21,12 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     self.runtime = runtime
   }
 
-  /// The live mailbox's id: there is one lane.
-  static let gmailID = "gmail"
+  /// The live mailbox's id: the provider of the one link ("gmail" or "outlook").
+  static func mailboxID(_ provider: MailProviderKind) -> String { provider.rawValue }
 
-  /// Gmail when this build has a Google client (the runtime built a lane), else nothing.
-  /// Outlook is never listed until a live Outlook lane exists.
-  var connectable: [MailProviderKind] { Self.connectable(hasLane: runtime()?.lane != nil) }
-
-  /// The providers for a runtime with or without a Gmail lane (the Release gate, plan B4.6).
-  static func connectable(hasLane: Bool) -> [MailProviderKind] { hasLane ? [.gmail] : [] }
+  /// The providers this build has a client for (the runtime built their lanes), Gmail
+  /// first: the Release gate is the build's client ids (`HASALA_OUTLOOK_CLIENT_ID`).
+  var connectable: [MailProviderKind] { runtime()?.providers ?? [] }
 
   /// No `.addSecond`: linking one mailbox replaces the account's link on the server.
   ///
@@ -43,7 +40,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// after every run and connect.
   var mailboxes: [MailboxSnapshot] {
     guard let rt = runtime(), let status = rt.store.mailboxStatus else { return [] }
-    return Self.mailboxes(status, nowMs: rt.context.clock.nowMs())
+    return Self.mailboxes(status, provider: rt.lane?.provider ?? .gmail, nowMs: rt.context.clock.nowMs())
   }
 
   /// Observed through the runtime: the review flag arrives with `GET /account`.
@@ -78,7 +75,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
 
   /// The newest `lastEmailAtMs` among the rows of `bank`'s sender domains, as "4 min ago".
   static func lastEmail(_ bank: SupportedBank, health: [BankHealthRow], nowMs: Int64) -> String? {
-    let domains = GmailLane.senderDomains(bank: bank.rawValue)
+    let domains = MailboxLane.senderDomains(bank: bank.rawValue)
     let newest = health.filter { BankDomains.isMember($0.domain, of: domains) }.compactMap(\.lastEmailAtMs).max()
     return newest.map { LedgerStateMapper.ago(nowMs - $0) }
   }
@@ -95,9 +92,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   // MARK: The row (plan B4.4's table)
 
   /// The lane's one mailbox as a row, or none while it is unlinked.
-  static func mailboxes(_ s: MailboxStatus, nowMs: Int64) -> [MailboxSnapshot] {
+  static func mailboxes(_ s: MailboxStatus, provider: MailProviderKind = .gmail, nowMs: Int64) -> [MailboxSnapshot] {
     mailboxes(phase: s.phase, halt: s.haltedOn, address: s.address, lastSuccessAtMs: s.lastSuccessAtMs,
-              bankDomains: s.health.map(\.domain), nowMs: nowMs)
+              bankDomains: s.health.map(\.domain), provider: provider, nowMs: nowMs)
   }
 
   /// The row from the status's parts (the table in plan B4.4). The mailbox page's "Last
@@ -105,11 +102,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// (`LocalClock`, as every transaction time is).
   static func mailboxes(
     phase: MailboxPhase, halt: MailboxHaltCode?, address: String?, lastSuccessAtMs: Int64?, bankDomains: [String],
-    nowMs: Int64, timeZone: TimeZone = localTimeZone
+    provider: MailProviderKind = .gmail, nowMs: Int64, timeZone: TimeZone = localTimeZone
   ) -> [MailboxSnapshot] {
     let checked = lastSuccessAtMs.map { "Checked \(LedgerStateMapper.ago(nowMs - $0))" } ?? "Not checked yet"
     var row = MailboxSnapshot(
-      id: gmailID, provider: .gmail, address: address ?? "Gmail", state: .connected, meta: checked,
+      id: mailboxID(provider), provider: provider, address: address ?? provider.appName, state: .connected, meta: checked,
       banks: Set(bankDomains.compactMap { LedgerStateMapper.bankName(domain: $0) }).sorted(),
       lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) })
     switch phase {
@@ -123,7 +120,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     case .reconnectRequired:
       row.state = .needsSignIn
     case .halted:
-      if offer(phase: .halted, halt: halt, sampleLoaded: false, serverLink: .noLink) != nil {
+      if offer(phase: .halted, halt: halt, sampleLoaded: false, serverLink: .noLink, provider: provider) != nil {
         row.state = .needsSignIn
       } else {
         row.note = "Reading your bank alerts stopped."
@@ -154,10 +151,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// iPhone holds one (`serverLink`): connecting there would take Gmail over from that
   /// iPhone. A halt is offered a new sign-in only when signing in to Google again fixes it.
   static func offer(
-    phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?
+    phase: MailboxPhase, halt: MailboxHaltCode? = nil, sampleLoaded: Bool, serverLink: MailboxLinkStatus?,
+    provider: MailProviderKind = .gmail
   ) -> MailOffer? {
     guard !sampleLoaded else { return nil }
-    let signInAgain = MailOffer.signInAgain(mailboxID: gmailID, provider: .gmail)
+    let signInAgain = MailOffer.signInAgain(mailboxID: mailboxID(provider), provider: provider)
     switch phase {
     case .unlinked:
       switch serverLink {
@@ -168,7 +166,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     case .halted:
       // A full account or missing templates aren't fixed by a new Google sign-in.
       switch halt {
-      case nil, .gmail?, .reconnectRequired?: return signInAgain
+      case nil, .gmail?, .reconnectRequired?, .noMailbox?: return signInAgain
       default: return nil
       }
     // The first import runs on its own (Profile says "Importing").
@@ -190,56 +188,61 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// The banks whose alert senders are among the `trusted` domains (the bank step's ops).
   static func banks(trusted: [String]) -> [SupportedBank] {
     SupportedBank.allCases.filter { bank in
-      GmailLane.senderDomains(bank: bank.rawValue).contains { trusted.contains($0) }
+      MailboxLane.senderDomains(bank: bank.rawValue).contains { trusted.contains($0) }
     }
   }
 
   // MARK: Connect, sign in again, disconnect
 
-  private func lane() throws(MailConnectFailure) -> GmailLane {
+  private func lane() throws(MailConnectFailure) -> MailboxLane {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
-    guard let lane = rt.lane else { throw .failed("Gmail isn't available in this build.") }
+    guard let lane = rt.lane else { throw .failed("Email isn't available in this build.") }
     return lane
   }
 
+  /// Main's `connectMailbox(_:banks:)`: one link per account, so connecting one provider
+  /// replaces the other's link on the server; the new lane clears the shared tables only
+  /// once its link is made, then the old lane ends its grant.
   @discardableResult
   func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
-    // Unreachable: only Gmail is in `connectable`, and no copy here names another provider.
-    guard provider == .gmail else { throw .failed("Hasala reads Gmail only.") }
-    let lane = try lane()
-    // The offer may be older than another iPhone's link: ask the server again first.
-    if await lane.status().phase == .unlinked, let rt = runtime() {
+    guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
+    guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
+    let current = rt.lane
+    let phase = await (current ?? lane).status().phase
+    if phase == .unlinked {
       let link = await rt.askServerLink()
       try Self.checkTakeover(link)
     }
-    try await Self.linked(lane.connect(backfillDays: 90))
-    // The bell, Profile and Bank alerts follow the lane's new phase.
-    await runtime()?.refreshMailbox()
-    return Self.gmailID
+    let switching = current.map { $0.provider != provider } ?? false
+    try Self.linked(await lane.connect(backfillDays: 90, replacing: switching && phase != .unlinked), provider: provider)
+    rt.activate(provider)
+    if switching, let old = current { await old.endGrant() }
+    await rt.refreshMailbox()
+    return Self.mailboxID(provider)
   }
 
-  /// The same lane connect: Google's sign-in and the step-up again, then the lane picks up
-  /// where it stopped.
+  /// The same lane connect: the provider's sign-in and the step-up again, then the lane
+  /// picks up where it stopped.
   func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
-    let lane = try lane()
-    try await Self.linked(lane.connect(backfillDays: 90))
-    await runtime()?.refreshMailbox()
+    let fallback = try lane().provider
+    let provider = MailProviderKind(rawValue: mailboxID) ?? fallback
+    try await connect(provider)
   }
 
-  /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch stopped, the grant
-  /// revoked at Google, the server's link deleted. Live keeps no row for it afterwards.
+  /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch or subscription
+  /// stopped, the grant ended, the server's link deleted.
   func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
     let lane = try lane()
-    guard await lane.disconnect() else { throw .failed("Couldn't disconnect Gmail. Try again.") }
+    guard await lane.disconnect() else { throw .failed("Couldn't disconnect \(lane.provider.appName). Try again.") }
     await runtime()?.refreshMailbox()
   }
 
-  private static func linked(_ result: ConnectResult) throws(MailConnectFailure) {
+  private static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) {
     switch result {
     case .connected: return
     case .cancelled: throw .cancelled
     case .failed(.offline): throw .offline
-    case .failed(let f): throw .failed(message(f))
+    case .failed(let f): throw .failed(message(f, provider: provider))
     }
   }
 
@@ -248,7 +251,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   func firstScan() -> AsyncStream<ScanProgress> {
     guard let lane = try? lane() else {
       return AsyncStream { c in
-        c.yield(ScanProgress(phase: .failed("Gmail isn't connected."), read: 0, total: 0))
+        c.yield(ScanProgress(phase: .failed("Your email isn't connected."), read: 0, total: 0))
         c.finish()
       }
     }
@@ -274,7 +277,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   }
 
   /// Where the first scan's foreground runs left it, with what they filed.
-  static func ended(_ t: GmailLane.FirstScanTotals, last: ScanProgress) -> ScanProgress {
+  static func ended(_ t: MailboxLane.FirstScanTotals, last: ScanProgress) -> ScanProgress {
     let summary = SortSummary(
       total: t.ops, byRules: t.byRules, byDictionary: t.byDictionary, byModel: t.byModel, toReview: t.toReview)
     switch t.phase {
@@ -282,8 +285,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       return ScanProgress(phase: .finished, read: last.total, total: last.total, summary: summary)
     case .halted, .reconnectRequired, .otherDevice:
       return ScanProgress(
-        phase: .failed("Reading your bank alerts stopped. Try again."), read: last.read, total: last.total,
-        summary: summary)
+        phase: .failed(stopped(t.haltedOn)), read: last.read, total: last.total, summary: summary)
     case .unlinked, .scanning, .awaitingCards, .authoringBackfill:
       return ScanProgress(phase: .background, read: last.read, total: last.total, summary: summary)
     }
@@ -299,19 +301,27 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     case .listing, .downloading: ScanProgress(phase: .downloading, read: p.done, total: p.total)
     case .authoring: ScanProgress(phase: .sorting, read: p.done, total: p.total)
     case .done: ScanProgress(phase: .finished, read: p.total, total: p.total)
-    case .failed: ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: p.done, total: p.total)
+    case .failed(let code): ScanProgress(phase: .failed(stopped(code)), read: p.done, total: p.total)
     }
   }
 
+  /// Why the first scan stopped, in words.
+  static func stopped(_ code: MailboxHaltCode?) -> String {
+    code == .noMailbox ? message(.noMailbox) : "Reading your bank alerts stopped. Try again."
+  }
+
   /// Plain-language copy for a failed connect (spec 04 §7.11; content-free).
-  static func message(_ f: ConnectFailure) -> String {
+  static func message(_ f: ConnectFailure, provider: MailProviderKind = .gmail) -> String {
     switch f {
-    case .offline: "You're offline. Connect Gmail when you're back online."
+    case .offline: "You're offline. Connect \(provider.appName) when you're back online."
     case .permissionMissing: "Hasala needs permission to read your bank alerts. Try again and allow it."
+    case .noMailbox: "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
-    case .notConfigured: "Gmail isn't available in this build."
+    case .notConfigured: "\(provider.appName) isn't available in this build."
     case .stateMismatch, .nonceMismatch, .serverRefused, .keychain, .google:
-      "Couldn't connect Gmail. Try again."
+      provider == .outlook
+        ? "Couldn't connect Outlook. Only personal Microsoft accounts work. Try again."
+        : "Couldn't connect Gmail. Try again."
     }
   }
 }

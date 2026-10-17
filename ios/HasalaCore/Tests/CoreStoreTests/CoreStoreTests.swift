@@ -177,7 +177,16 @@ struct SecretTests {
     #expect(SecretItem.writerKey(userID: user, writerID: writer).account == "\(user.string):\(writer.string)")
     #expect(SecretItem.approvalKey(userID: user, writerID: writer).accessibility == .whenPasscodeSetThisDeviceOnly)
     #expect(SecretItem.writerKey(userID: user, writerID: writer).accessibility == .afterFirstUnlockThisDeviceOnly)
-    #expect(SecretItem.allServices.count == 6)
+    #expect(SecretItem.allServices.count == 8)
+    // The Gmail item keeps its pre-provider service, so existing links need no migration.
+    #expect(SecretItem.gmailRefresh(userID: user) == .mailRefresh(provider: .gmail, userID: user))
+    #expect(SecretItem.mailRefresh(provider: .gmail, userID: user).service == "app.hasala.gmail.refresh")
+    #expect(SecretItem.mailRefresh(provider: .outlook, userID: user).service == "app.hasala.outlook.refresh")
+    #expect(SecretItem.outlookClientState(userID: user).service == "app.hasala.outlook.clientstate")
+    #expect(SecretItem.outlookClientState(userID: user).account == user.string)
+    let items: [SecretItem] =
+      MailSecretProvider.allCases.map { .mailRefresh(provider: $0, userID: user) } + [.outlookClientState(userID: user)]
+    for item in items { #expect(SecretItem.allServices.contains(item.service)) }
   }
 
   @Test("session and binding round-trip with §4.4's JSON keys")
@@ -219,6 +228,8 @@ struct SecretTests {
     #expect(throws: SecretStoreError.self) { _ = try s.epochKey(userID: user, epoch: 1) }
     m.locked = false
     try s.writeWriterSeed(Data(count: 32), userID: user, writerID: writer)
+    for p in MailSecretProvider.allCases { try m.write(.mailRefresh(provider: p, userID: user), Data("t".utf8)) }
+    try m.write(.outlookClientState(userID: user), Data("c".utf8))
     try s.wipeAccount(userID: user, writerID: writer)
     #expect(m.count == 0)
   }

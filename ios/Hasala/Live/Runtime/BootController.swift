@@ -352,7 +352,7 @@ final class BootController {
       // iPhone removed, on another device (§4.7 row 3). The Google grant is read before
       // the wipe and revoked after it.
       let binding = try? env.account.secrets.binding()
-      let grant = binding?.userID.flatMap { GmailLane.heldGrant(secrets: env.account.secrets, userID: $0) }
+      let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: env.account.secrets, userID: $0) }
       await closeRuntime()
       if let b = binding, let u = b.userID { AccountWipe.wipe(env.account, userID: u, writerID: b.writerID) }
       try? env.account.secrets.deleteSession()
@@ -360,7 +360,7 @@ final class BootController {
       account.forgetAll()
       if let grant {
         let build = env.build
-        Task { await GmailLane.endGrant(grant, build: build, stopWatch: false) }
+        Task { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
       }
       session.signedOut()
     case .needsSignIn, .needsRebind:
@@ -402,8 +402,8 @@ final class BootController {
     return f
   }
 
-  /// The Gmail step's fact from the lane's own state: a relaunch mid-scan resumes at the
-  /// scan or the cards, and a linked mailbox skips the Gmail step.
+  /// The mailbox step's fact from the lane's own state: a relaunch mid-scan resumes at the
+  /// scan or the cards, and a linked mailbox skips the mailbox step.
   static func mailboxFact(_ phase: MailboxPhase) -> OnboardingStep.Facts.Mailbox {
     switch phase {
     case .unlinked: .unlinked

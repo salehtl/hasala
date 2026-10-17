@@ -1,11 +1,22 @@
 package api
 
-// routes_hooks.go: POST /hooks/gmail/pubsub (spec 02 §7 #39, §13.4), Gmail's
-// change notices pushed by Pub/Sub with Google's OIDC token. A notice that
-// routes to a link wakes exactly that account's holder device; everything
-// else ends in a 204 and a counter, because Pub/Sub retries anything else.
+// routes_hooks.go: the mail providers' change hooks.
+//
+// POST /hooks/gmail/pubsub (spec 02 §7 #39, §13.4) is Gmail's change notices
+// pushed by Pub/Sub with Google's OIDC token. A notice that routes to a link
+// wakes exactly that account's holder device; everything else ends in a 204
+// and a counter, because Pub/Sub retries anything else.
+//
+// POST /hooks/outlook/graph and /hooks/outlook/graph/lifecycle are Microsoft
+// Graph's change and lifecycle notifications for an Outlook link's
+// subscription. Graph signs nothing a public client can check; what proves a
+// notification is the clientState the link minted, which Graph echoes and the
+// server routes by its SHA-256. The resource and resourceData Graph sends name
+// the message, so they are never decoded (internal/outlookpush), and the
+// clientState itself is never logged, stored or echoed.
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -16,6 +27,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/gmailpush"
 	"github.com/salehtl/hasala/server/internal/googlejwt"
+	"github.com/salehtl/hasala/server/internal/outlookpush"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -36,23 +48,57 @@ const (
 	hookMaxRows      = 10
 )
 
-// mountHooks mounts the hook only with the Pub/Sub push; a mailbox link alone
-// leaves it to the catch-all 404.
+// The Outlook hooks' paths: they equal config.OutlookNotificationPath and
+// config.OutlookLifecyclePath, and the tunnel's ingress admits exactly these.
+const (
+	outlookHookPath      = "/hooks/outlook/graph"
+	outlookLifecyclePath = "/hooks/outlook/graph/lifecycle"
+)
+
+// mountHooks mounts each provider's hook only with that provider's push; a
+// mailbox link alone leaves it to the catch-all 404. The per-IP budget is one
+// across both providers' hooks; each provider has its own global budget, so
+// cheap unauthenticated Graph handshakes cannot spend the Gmail hook's.
 func (s *Server) mountHooks(mux *http.ServeMux) {
-	g := s.gmailPush()
-	if g == nil {
+	g, o := s.gmailPush(), s.outlookPush()
+	if g == nil && o == nil {
 		return
 	}
-	if g.HookPerIP == nil {
-		g.HookPerIP = NewLimiter(hookIPRate, hookIPBurst, hookIPMaxKeys, s.now)
+	var perIP *Limiter
+	if g != nil {
+		perIP = g.HookPerIP
 	}
-	if g.HookGlobal == nil {
-		g.HookGlobal = NewLimiter(hookGlobalRate, hookGlobalBurst, 1, s.now)
+	if o != nil {
+		perIP = cmp.Or(perIP, o.HookPerIP)
 	}
-	if g.HookLink == nil {
-		g.HookLink = NewLimiter(hookLinkRate, hookLinkBurst, hookLinkMaxKeys, s.now)
+	if perIP == nil {
+		perIP = NewLimiter(hookIPRate, hookIPBurst, hookIPMaxKeys, s.now)
 	}
-	mux.HandleFunc("POST /hooks/gmail/pubsub", s.handleGmailHook)
+	if g != nil {
+		g.HookPerIP = perIP
+		if g.HookGlobal == nil {
+			g.HookGlobal = NewLimiter(hookGlobalRate, hookGlobalBurst, 1, s.now)
+		}
+		if g.HookLink == nil {
+			g.HookLink = NewLimiter(hookLinkRate, hookLinkBurst, hookLinkMaxKeys, s.now)
+		}
+		mux.HandleFunc("POST /hooks/gmail/pubsub", s.handleGmailHook)
+	}
+	if o != nil {
+		o.HookPerIP = perIP
+		if o.HookGlobal == nil || (g != nil && o.HookGlobal == g.HookGlobal) {
+			o.HookGlobal = NewLimiter(hookGlobalRate, hookGlobalBurst, 1, s.now)
+		}
+		if o.HookLink == nil {
+			o.HookLink = NewLimiter(hookLinkRate, hookLinkBurst, hookLinkMaxKeys, s.now)
+		}
+		mux.HandleFunc("POST "+outlookHookPath, func(w http.ResponseWriter, r *http.Request) {
+			s.handleOutlookHook(w, r, false)
+		})
+		mux.HandleFunc("POST "+outlookLifecyclePath, func(w http.ResponseWriter, r *http.Request) {
+			s.handleOutlookHook(w, r, true)
+		})
+	}
 }
 
 func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +165,8 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	}
 	// 9: route.
 	rows, err := s.Pool.Query(ctx,
-		`SELECT user_id, holder_writer_id FROM mailbox_links WHERE address_hmac = $1 AND route_key_id = $2 LIMIT $3`,
+		`SELECT user_id, holder_writer_id FROM mailbox_links
+		  WHERE address_hmac = $1 AND route_key_id = $2 AND provider = 'gmail' LIMIT $3`,
 		addrHMAC, s.Gmail.RouteKey.KeyID(), hookMaxRows)
 	if err != nil {
 		s.logf("api: gmail hook: route: %v", err)
@@ -153,7 +200,7 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	hour := s.now().UTC().Truncate(time.Hour)
 	tripped := s.Headroom != nil && s.Headroom.Tripped()
 	for _, h := range holders {
-		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, pushv2.ReasonGmail)
+		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, pushv2.ReasonMail)
 		g.Counters.Woken.Add(1)
 		if !tripped {
 			if _, err := s.Pool.Exec(ctx,
@@ -165,4 +212,134 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleOutlookHook is both Graph hooks; lifecycle says which. The order:
+//
+//  1. hook-ip, then hook-global, for every request, the handshake included.
+//  2. The 64 KiB body cap.
+//  3. The validation handshake: a validationToken and an empty body is
+//     answered 200 with the token as text/plain, after no database work. A
+//     token with a body is no handshake: 204 and a counter.
+//  4. The notification collection; a malformed one is 204 and a counter.
+//  5. One route query by the unique client_state_hash for the distinct
+//     hashes, then per link that matched: hook-link, then the wake (an
+//     unmatched hash never touches hook-link): ReasonMail on the main path,
+//     ReasonNudge for a lifecycle event (reauthorizationRequired,
+//     subscriptionRemoved, missed). An unknown clientState is a counter.
+//  6. 202, or 503 if the route could not be read (Graph retries).
+func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifecycle bool) {
+	o := s.Outlook.Push
+	if !o.HookPerIP.Allow(clientKey(r)) || !o.HookGlobal.Allow("") {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, hookMaxBody))
+	if err != nil {
+		writeErr(w, http.StatusRequestEntityTooLarge, "too_large", "")
+		return
+	}
+	if q := r.URL.Query(); q.Has("validationToken") {
+		if len(body) != 0 {
+			o.Counters.ValidationWithBody.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		toks := q["validationToken"]
+		if len(toks) != 1 || !outlookpush.ValidToken(toks[0]) {
+			o.Counters.BadValidation.Add(1)
+			writeErr(w, http.StatusBadRequest, "bad_request", "")
+			return
+		}
+		o.Counters.Validations.Add(1)
+		h := w.Header()
+		h.Set("Content-Type", "text/plain; charset=utf-8")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, toks[0])
+		return
+	}
+
+	o.Counters.Notifications.Add(1)
+	p, err := outlookpush.Parse(body, lifecycle)
+	if err != nil {
+		o.Counters.Malformed.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	o.Counters.BadClientState.Add(int64(p.BadClientState))
+	o.Counters.Ignored.Add(int64(p.Ignored))
+	if len(p.Hashes) == 0 {
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	hashes := make([][]byte, len(p.Hashes))
+	for i := range p.Hashes {
+		hashes[i] = p.Hashes[i][:]
+	}
+
+	// The route comes before hook-link: only a clientState that names a link
+	// spends (or creates) a hook-link bucket, so made-up clientStates cannot
+	// fill the limiter and push real links into its shared fallback. The
+	// lookup itself is bounded by hook-ip, hook-global and the 100 entries.
+	ctx, cancel := context.WithTimeout(r.Context(), hookDeadline)
+	defer cancel()
+	rows, err := s.Pool.Query(ctx,
+		`SELECT client_state_hash, user_id, holder_writer_id FROM mailbox_links
+		  WHERE provider = 'outlook' AND client_state_hash = ANY($1::bytea[])`, hashes)
+	if err != nil {
+		s.logf("api: outlook hook: route: %v", err)
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
+	}
+	var holders []gmailpush.Holder
+	known := 0
+	for rows.Next() {
+		var hash []byte
+		var h gmailpush.Holder
+		if err := rows.Scan(&hash, &h.UserID, &h.WriterID); err != nil {
+			rows.Close()
+			s.logf("api: outlook hook: route: %v", err)
+			writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+			return
+		}
+		known++
+		// Per link, so one link's flood cannot spend another's budget.
+		if !o.HookLink.Allow(hex.EncodeToString(hash)) {
+			o.Counters.LinkLimited.Add(1)
+			continue
+		}
+		holders = append(holders, h)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		// A read that failed part-way is not "no such link".
+		s.logf("api: outlook hook: route: %v", err)
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
+	}
+	o.Counters.Unknown.Add(int64(len(hashes) - known))
+
+	reason := pushv2.ReasonMail
+	if lifecycle {
+		reason = pushv2.ReasonNudge
+	}
+	hour := s.now().UTC().Truncate(time.Hour)
+	tripped := s.Headroom != nil && s.Headroom.Tripped()
+	for _, h := range holders {
+		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, reason)
+		o.Counters.Woken.Add(1)
+		// Like Gmail's: the hour of the last mail wake, at most one write per
+		// link per hour, none while the disk fuse is tripped.
+		if !lifecycle && !tripped {
+			if _, err := s.Pool.Exec(ctx,
+				`UPDATE mailbox_links SET last_wake_hour = $3
+				  WHERE user_id = $1 AND holder_writer_id = $2 AND provider = 'outlook'
+				    AND last_wake_hour IS DISTINCT FROM $3`, h.UserID, h.WriterID, hour); err != nil {
+				s.logf("api: outlook hook: wake hour: %v", err)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusAccepted)
 }

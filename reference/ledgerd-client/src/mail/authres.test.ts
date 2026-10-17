@@ -17,7 +17,7 @@
 
 import { expect, test } from "bun:test";
 
-import { gmailVerdict, verifiedDomain } from "./authres.ts";
+import { analyzeFor, gmailVerdict, outlookVerdict, verifiedDomain } from "./authres.ts";
 
 /** Joins header lines with CRLF and terminates the block, the wire shape. */
 const block = (...lines: string[]): string => lines.join("\r\n") + "\r\n\r\n";
@@ -214,4 +214,89 @@ test("header block ends at the blank line — body A-R is ignored", () => {
     "\r\n" +
     "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n";
   expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "no_ar" });
+});
+
+// --- Outlook.com (outlookVerdict) ---------------------------------------------
+//
+// The rule (WP1 decision §3): exactly one Microsoft-form A-R (no authserv-id),
+// topmost among A-Rs, EOP's AuthAs: Anonymous and AuthSource under
+// .prod.outlook.com exactly once each, compauth=pass and dmarc=pass exactly once
+// each, and exactly one From whose domain is the DMARC header.from.
+
+const MS_AR =
+  "Authentication-Results: spf=pass (sender IP is 192.0.2.1) smtp.mailfrom=bank.example; dkim=pass (signature was verified) header.d=bank.example; dmarc=pass action=none header.from=bank.example;compauth=pass reason=100";
+const AUTH_AS = "X-MS-Exchange-Organization-AuthAs: Anonymous";
+const AUTH_SOURCE = "X-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com";
+const OUTLOOK_FROM = "From: Bank <alerts@bank.example>";
+
+test("outlook: EOP's A-R with compauth=pass and dmarc=pass ⇒ trusted", () => {
+  const raw = block(MS_AR, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM);
+  expect(outlookVerdict(raw)).toEqual({ trusted: true, reason: "pass" });
+  expect(verifiedDomain(raw, "outlook")).toBe("bank.example");
+  expect(analyzeFor(raw, "outlook")).toEqual({ verdict: { trusted: true, reason: "pass" }, domain: "bank.example" });
+});
+
+test("outlook: spf=pass is never read as an authserv-id", () => {
+  // Under the Gmail rule the Microsoft-form A-R is a foreign A-R; it never
+  // becomes Gmail's, and gmailVerdict is unchanged.
+  const raw = block(MS_AR, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM);
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "no_ar" });
+  expect(verifiedDomain(raw)).toBeNull();
+  // spf=pass alone in Microsoft form is a method, not an id, and not trust.
+  const spfOnly = block("Authentication-Results: spf=pass smtp.mailfrom=bank.example", AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM);
+  expect(outlookVerdict(spfOnly)).toEqual({ trusted: false, reason: "fail" });
+});
+
+test("outlook: dmarc or compauth short of an exact pass ⇒ fail", () => {
+  for (const ar of [
+    MS_AR.replace("dmarc=pass", "dmarc=fail"),
+    MS_AR.replace("dmarc=pass", "dmarc=bestguesspass"),
+    MS_AR.replace("compauth=pass reason=100", "compauth=fail reason=001"),
+    MS_AR.replace("compauth=pass", "compauth=softpass"),
+    MS_AR.replace(";compauth=pass reason=100", ""),
+    MS_AR + "; dmarc=pass header.from=bank.example",
+  ]) {
+    expect(outlookVerdict(block(ar, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM))).toEqual({ trusted: false, reason: "fail" });
+  }
+});
+
+test("outlook: a forged Microsoft-form A-R above or below EOP's ⇒ multiple_ar", () => {
+  const forged = "Authentication-Results: spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example; compauth=pass reason=100";
+  const failing = MS_AR.replace("dmarc=pass", "dmarc=fail").replace("compauth=pass", "compauth=fail");
+  expect(outlookVerdict(block(forged, failing, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("multiple_ar");
+  expect(outlookVerdict(block(failing, forged, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("multiple_ar");
+});
+
+test("outlook: an authserv-id A-R above EOP's ⇒ not_topmost; below is ignored", () => {
+  const google = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example";
+  expect(outlookVerdict(block(google, MS_AR, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("not_topmost");
+  expect(outlookVerdict(block(MS_AR, google, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("pass");
+});
+
+test("outlook: missing, wrong or repeated EOP fields ⇒ no_eop", () => {
+  expect(outlookVerdict(block(MS_AR, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("no_eop");
+  expect(outlookVerdict(block(MS_AR, AUTH_AS, OUTLOOK_FROM)).reason).toBe("no_eop");
+  expect(outlookVerdict(block(MS_AR, AUTH_AS.replace("Anonymous", "Internal"), AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("no_eop");
+  expect(outlookVerdict(block(MS_AR, AUTH_AS, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("no_eop");
+  expect(
+    outlookVerdict(block(MS_AR, AUTH_AS, "X-MS-Exchange-Organization-AuthSource: relay.evil.example", OUTLOOK_FROM)).reason,
+  ).toBe("no_eop");
+  expect(
+    outlookVerdict(block(MS_AR, AUTH_AS, "X-MS-Exchange-Organization-AuthSource: prod.outlook.com.evil.example", OUTLOOK_FROM)).reason,
+  ).toBe("no_eop");
+});
+
+test("outlook: From must be single and match the DMARC header.from", () => {
+  expect(outlookVerdict(block(MS_AR, AUTH_AS, AUTH_SOURCE, "From: Bank <alerts@evil.example>")).reason).toBe("fail");
+  expect(outlookVerdict(block(MS_AR, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM, OUTLOOK_FROM)).reason).toBe("fail");
+  expect(outlookVerdict(block(MS_AR, AUTH_AS, AUTH_SOURCE)).reason).toBe("fail");
+  expect(outlookVerdict(block(MS_AR, AUTH_AS, AUTH_SOURCE, "From: ALERTS@BANK.EXAMPLE.")).reason).toBe("pass");
+});
+
+test("outlook: no A-R, or only authserv-id and ARC A-Rs ⇒ no_ar; bounds ⇒ parse_error", () => {
+  expect(outlookVerdict(block(AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("no_ar");
+  expect(outlookVerdict(block("Authentication-Results: mx.google.com; dmarc=pass header.from=bank.example", AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("no_ar");
+  expect(outlookVerdict(block("ARC-" + MS_AR, AUTH_AS, AUTH_SOURCE, OUTLOOK_FROM)).reason).toBe("no_ar");
+  expect(outlookVerdict("")).toEqual({ trusted: false, reason: "no_ar" });
+  expect(outlookVerdict("X-Pad: " + "a".repeat(300_000) + "\r\n\r\n").reason).toBe("parse_error");
 });

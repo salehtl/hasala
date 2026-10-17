@@ -34,6 +34,10 @@
 	<string>$(HASALA_GOOGLE_REDIRECT_SCHEME)</string>
 	<key>HasalaGmailPubSubTopic</key>
 	<string>$(HASALA_GMAIL_PUBSUB_TOPIC)</string>
+	<key>HasalaOutlookClientID</key>
+	<string>$(HASALA_OUTLOOK_CLIENT_ID)</string>
+	<key>HasalaOutlookRedirectScheme</key>
+	<string>$(HASALA_OUTLOOK_REDIRECT_SCHEME)</string>
 	<key>HasalaGitCommit</key>
 	<string>$(HASALA_GIT_COMMIT)</string>
 </dict>

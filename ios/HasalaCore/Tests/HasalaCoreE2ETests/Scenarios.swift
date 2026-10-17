@@ -8,6 +8,9 @@
 //   gmail    FakeGmail's synthetic alerts → the real MailboxEngine (stub link
 //            server, stub step-up) on A → RuntimeMailboxLedger → the real Outbox
 //            and SyncEngine → the server → B pulls, folds and projects
+//   outlook  the same, with FakeGraph's alerts through an OutlookProvider: the
+//            rows carry provenance "outlook" and, while the Outlook trust gate is
+//            closed, all wait in Review
 import CoreAuth
 import CoreCategorize
 import CoreDomain
@@ -93,13 +96,15 @@ enum Scenarios {
       linked ? .holder(isThisDevice: true, watchExpiresAtMs: nil) : .noLink
     }
     func linkChallenge() async throws(MailboxServerError) -> String { "bm9uY2Utc3ludGhldGljLTAwMDAwMDAwMDAwMDAwMDA" }
-    func putLink(idToken: String, stepUp: JSONValue) async throws(MailboxServerError) -> MailboxLinkStatus {
+    func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
+      -> MailboxLinkResult
+    {
       linked = true
-      return .holder(isThisDevice: true, watchExpiresAtMs: nil)
+      return MailboxLinkResult(status: .holder(isThisDevice: true, watchExpiresAtMs: nil))
     }
     func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {}
     func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) { linked = false }
-    func watchTopic() async throws(MailboxServerError) -> String? { nil }
+    func pushConfig(provider: MailProviderID) async throws(MailboxServerError) -> MailboxPushConfig { .none }
   }
 
   struct ApprovedStepUp: MailboxStepUp {
@@ -125,6 +130,77 @@ enum Scenarios {
       categorizer: PipelineCategorizer(projection: a.projection, dictionary: bundledDictionary),
       templates: BundledTemplates.load().templates, clock: clock, random: a.context.random, sleep: { _ in })
     return (engine, ledger)
+  }
+
+  // MARK: Outlook
+
+  struct GraphConsentPresenter: MailAuthSessionPresenter {
+    let graph: FakeGraph
+    func authorize(url: URL, callbackScheme: String) async throws(MailOAuthError) -> URL { graph.consent(authorizeURL: url) }
+  }
+
+  /// The Outlook lane of `a`, composed as the app composes it (its Keychain items in A's secrets).
+  static func outlookMailbox(_ a: Runtime, graph: FakeGraph, clock: any CoreTime.Clock)
+    -> (MailboxEngine, RuntimeMailboxLedger)
+  {
+    let oauth = MicrosoftOAuthClient(
+      config: MicrosoftOAuthConfig(clientID: "00000000-0000-4000-8000-00000000c11e", redirectScheme: "msauth.app.hasala.ios"),
+      http: graph)
+    let provider = OutlookProvider(
+      oauth: oauth, http: graph, link: SecretsOutlookLinkStore(secrets: a.context.secrets, userID: a.context.userID),
+      clock: clock)
+    let tokens = RefreshingMailTokenProvider(
+      oauth: oauth,
+      store: SecretsMailRefreshTokenStore(secrets: a.context.secrets, userID: a.context.userID, provider: .outlook),
+      clock: clock)
+    let authoring = MailboxAuthoring(observer: a.observer)
+    let persistence = LedgerMailboxPersistence(store: a.context.store, authoring: authoring, nowMs: { clock.nowMs() })
+    let ledger = RuntimeMailboxLedger(engine: a.engine, observer: a.observer, outbox: a.outbox, authoring: authoring)
+    let engine = MailboxEngine(
+      config: MailboxEngineConfig(grantID: a.context.userID.string), provider: provider, tokens: tokens,
+      store: persistence, ledger: ledger, server: LinkServer(), stepUp: ApprovedStepUp(),
+      categorizer: PipelineCategorizer(projection: a.projection, dictionary: bundledDictionary),
+      templates: BundledTemplates.load().templates, clock: clock, random: a.context.random, sleep: { _ in })
+    return (engine, ledger)
+  }
+
+  static func outlookToReplay(_ a: Runtime, _ b: Runtime, clock: any CoreTime.Clock) async throws {
+    let day: Int64 = 86_400_000
+    let now = clock.nowMs()
+    try await a.bootstrap()
+    #expect(await a.run(.authored).stop == nil)
+    let graph = FakeGraph()
+    let d1 = SyntheticOutlookMail.dibCard(
+      id: "AAkALgAA-e2e-d1", amount: "64.50", day: dibDay(now - 2 * day), merchant: "STARBUCKS DIFC", last4: "1234",
+      dateMs: now - 2 * day)
+    graph.add(d1)
+    graph.add(SyntheticOutlookMail.enbdAlert(id: "AAkALgAA-e2e-e1", amount: "12.34", dateMs: now - day / 2))
+    graph.add(SyntheticOutlookMail.bankNotice(id: "AAkALgAA-e2e-n1", dateMs: now - day / 4))
+    let (engine, ledger) = outlookMailbox(a, graph: graph, clock: clock)
+    try await ledger.authorSenderTrust(domain: "dib.ae", trusted: true)
+    try await ledger.authorSenderTrust(domain: "emiratesnbd.com", trusted: true)
+
+    let connected = await engine.connect(presenter: GraphConsentPresenter(graph: graph), backfillDays: 30)
+    guard case .connected = connected else {
+      Issue.record("connect: \(connected)")
+      return
+    }
+    #expect(try a.context.secrets.store.read(.mailRefresh(provider: .outlook, userID: a.context.userID)) != nil)
+    let done = await engine.runCycle(trigger: .launch)
+    #expect(done.phase == .active && done.ops == 3 && done.haltedOn == nil, "\(done)")
+    #expect(try a.context.store.pendingCount() == 0)
+    #expect(await ledger.isIngested(MessageDisposer.ingestID(d1.raw)))
+
+    // B pulls and folds what A read: the trust gate is closed, so every row is in Review, and
+    // each carries the immutable Graph id as its mailbox message id.
+    #expect(await b.run(.launch).stop == nil)
+    let review = try b.reader.review(lanes: ReviewLane.allCases)
+    #expect(Set(review.compactMap(\.mailboxMessageID)) == ["AAkALgAA-e2e-d1", "AAkALgAA-e2e-e1", "AAkALgAA-e2e-n1"])
+    let starbucks = try #require(review.first { $0.mailboxMessageID == "AAkALgAA-e2e-d1" })
+    #expect(starbucks.amountMinor == 6_450 && !starbucks.unparsed)
+    #expect(try await a.state().serialized() == b.state().serialized())
+    let again = await engine.runCycle(trigger: .refresh)
+    #expect(again.ops == 0 && again.haltedOn == nil, "\(again)")
   }
 
   /// "DD-MM-YYYY" of the local day of `ms` (DIB's body date).

@@ -10,9 +10,10 @@ Both come from **review invites**. A review invite is an ordinary printed
 invite with one difference: the account it creates is a *review account*.
 `GET /api/v1/account` reports `review_account: true` for it, and only then
 (and only while the account has no transactions) does the app offer
-**"Use sample data"** on setup's email step (the "Read-only Gmail, on your
-iPhone." screen). Nothing else about a review account differs, and the flag
-has no other effect on the server.
+**"Use sample data"** at setup's email step (the "Choose your email" sheet,
+then the provider's "Read-only Gmail, on your iPhone." screen). Nothing else
+about a review account differs, and the flag has no other effect on the
+server.
 
 Every command below runs on the QA host as the operator, through
 `sudo hasala-admin` (it runs `hasalad` in a sandbox as the runtime role and
@@ -27,6 +28,7 @@ placeholders; nothing real belongs in this file.
 | `<OLD_ACCOUNT_ID>` | the previous demo account's id, if one exists |
 | `<ACCOUNT_ID>` | an account id (36 lowercase characters) |
 | `<INVITE_ID>` | the first 8 hex characters `invite list` prints for an invite |
+| `<MS_TEST_ACCOUNT>` | the test Microsoft account's address: a personal outlook.com mailbox made for review, holding no real mail |
 
 ## 0. Before you start
 
@@ -91,9 +93,10 @@ step 3 uses it.
    **I've written them down** (there is no word check) and **Continue** on
    "Your account is ready."
 5. "Which bank do you use?": pick a supported bank → **Continue with 1 bank**.
-6. "Read-only Gmail, on your iPhone.": **Use sample data** (it appears because
-   the account is a review account and has no transactions). Do not tap
-   **Continue with Google** under it.
+6. "Choose your email": **Gmail**. Then, on "Read-only Gmail, on your
+   iPhone.", **Use sample data** (it appears because the account is a review
+   account and has no transactions). Do not connect Gmail or Outlook: do not
+   tap **Continue with Google** under it.
 7. "A nudge when money moves.": **Not now**. Then **Go to Home** on "You're
    set".
 8. Check Home shows the sample month and the **Sample data** label, and the
@@ -131,16 +134,41 @@ sudo hasala-admin invite mint --review --note app-review --ttl 336h
   - Path B, a new account: Join with one of the two invite codes (listed
     here) → any address you can read → the emailed code → "Use a password"
     → keep the 12 words and tap "I've written them down" → pick a bank →
-    on the Gmail screen choose "Use sample data". Gmail is optional; Google
-    shows an "unverified app" screen, so please skip it.
+    at the email step (Choose your email) pick Gmail, then choose "Use sample
+    data". Connecting email is optional; Google shows an "unverified app"
+    screen for Gmail, so please skip Gmail.
   - The Review tab holds the transactions Hasala could not sort on its own:
     "Start" opens them as cards; swipe or tap a pill to sort each one.
+  - Outlook (optional): at the email step choose Outlook and sign in with
+    the test Microsoft account (address and password listed here). Only personal Microsoft accounts
+    (outlook.com, hotmail.com, live.com) work; work and school accounts are
+    refused by design. The test mailbox holds only synthetic mail, so it may
+    show no transactions. Connecting Outlook replaces any Gmail connection.
   - "Use sample data" appears only for review accounts: it fills the app with
     a sample month so the screens have something to show. There is no email
     behind those transactions.
   - To try account deletion, delete an account you created with Path B
     (Profile › Delete your account). Please do not delete the demo account:
     other reviewers sign in to it.
+
+### The test Microsoft account (Outlook)
+
+Give reviewers a test Microsoft account only when the build ships Outlook.
+
+1. Create a personal Microsoft account `<MS_TEST_ACCOUNT>` (outlook.com) for
+   review only. Never use the owner's account or the WP0 corpus mailbox, and
+   never put real bank mail in it.
+2. Turn off two-step verification on it, or Apple's reviewer cannot sign in.
+   Use a generated password of at least 20 characters, saved in the password
+   manager.
+3. Sign in with it once on the spare iPhone (Path B account, Outlook) to check
+   that Microsoft's consent screen lists only the read-mail permissions and
+   that the account has a mailbox.
+4. App Store Connect has one sign-in field, which holds the demo account.
+   Put `<MS_TEST_ACCOUNT>` and its password in the review notes, after the
+   Outlook line above. Never in this file or the repository.
+5. After the verdict, change its password and, at
+   account.live.com/consent/Manage, remove Hasala's permission.
 
 ## 6. While the build is in review
 
@@ -193,3 +221,4 @@ in Test Information:
 
 4. Remove the recovery words and the password from the review notes when the
    account is purged, and rotate the password-manager entry.
+5. Rotate the test Microsoft account (see "The test Microsoft account").

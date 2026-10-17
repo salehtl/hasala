@@ -63,7 +63,7 @@ struct LiveMailboxTests {
   @Test func theBanksComeFromTheTrustedSenders() {
     #expect(LiveMailboxConnecting.banks(trusted: []) == [])
     #expect(LiveMailboxConnecting.banks(trusted: ["dib.ae"]) == [.dib])
-    #expect(LiveMailboxConnecting.banks(trusted: GmailLane.senderDomains(bank: "enbd") + ["dib.ae"]) == [.enbd, .dib])
+    #expect(LiveMailboxConnecting.banks(trusted: MailboxLane.senderDomains(bank: "enbd") + ["dib.ae"]) == [.enbd, .dib])
   }
 
   /// Bank alerts names each bank by its templates' sender domains (Emirates NBD's is
@@ -77,8 +77,6 @@ struct LiveMailboxTests {
 
   /// Live reads Gmail only, and one mailbox: no Outlook, no second mailbox (plan B4.6).
   @Test func liveConnectsGmailOnly() {
-    #expect(LiveMailboxConnecting.connectable(hasLane: true) == [.gmail])
-    #expect(LiveMailboxConnecting.connectable(hasLane: false).isEmpty)  // no Google client, no provider
     let lane = LiveMailboxConnecting(runtime: { nil })
     #expect(lane.connectable.isEmpty)  // no runtime open yet
     #expect(lane.capabilities == [.connect, .signInAgain, .disconnect])
@@ -87,7 +85,7 @@ struct LiveMailboxTests {
   }
 
   /// The mailbox page's "Last checked", on the iPhone's clock in its time zone; and a
-  /// connect for anything but Gmail is refused without naming another provider.
+  /// connect before the account has opened is refused, and says so.
   @Test func theLiveMailboxSaysWhenItLastChecked() async {
     let dubai = TimeZone(identifier: "Asia/Dubai")!
     // Wed 7 Oct 2026, 09:14 in Dubai (05:14 UTC).
@@ -99,7 +97,7 @@ struct LiveMailboxTests {
     ).first
     #expect(row?.lastChecked == "Wed 7 Oct, 09:14" && row?.meta == "Checked 1 min ago")
     let lane = LiveMailboxConnecting(runtime: { nil })
-    await #expect(throws: MailConnectFailure.failed("Hasala reads Gmail only.")) {
+    await #expect(throws: MailConnectFailure.failed("Hasala is still opening your account. Try again in a moment.")) {
       try await lane.connect(.outlook)
     }
   }

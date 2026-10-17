@@ -50,6 +50,7 @@ struct ProfileModelTests {
       "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",
       "HasalaEnvironment": "qa", "HasalaAPIBaseURL": "https://api.example.com", "HasalaGoogleClientID": "unset",
       "HasalaGoogleRedirectScheme": "unset", "HasalaGmailPubSubTopic": "unset",
+      "HasalaOutlookClientID": "unset", "HasalaOutlookRedirectScheme": "msauth.app.hasala.ios",
     ])
     let footer = ProfileSheet.footer(build)
     #expect(footer.hasPrefix("Hasala QA · 0.2.0 ("))

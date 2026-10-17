@@ -10,7 +10,7 @@ import HasalaModels
 import Observation
 
 /// One bound account, open (spec 04 §3, §2.1 step 6): its ledger store and projection,
-/// the fold observer, the sync engine, the outbox, the Gmail lane, the screens' ledger,
+/// the fold observer, the sync engine, the outbox, the mailbox lanes, the screens' ledger,
 /// and the coordinator that runs them. Built by `BootController` once the account has
 /// keys on this iPhone (after signup, after unlock, or at launch from the binding), and
 /// closed on sign-out or a wipe.
@@ -25,14 +25,20 @@ final class AccountRuntime {
   @ObservationIgnored let engine: SyncEngine
   @ObservationIgnored let outbox: Outbox
   @ObservationIgnored let coordinator: WorkCoordinator
-  @ObservationIgnored let lane: GmailLane?
+  /// A lane per provider this build has a client for. They share the mailbox tables; one
+  /// runs at a time (`lane`), the provider of the account's link on this iPhone.
+  @ObservationIgnored let lanes: [MailboxProvider: MailboxLane]
+  @ObservationIgnored private let active: ActiveLane
   @ObservationIgnored let mailboxLedger: RuntimeMailboxLedger
-  /// The server's mailbox routes (the Gmail lane's, and the link check below).
-  @ObservationIgnored let mailboxServer: any MailboxServer
+  /// The server's mailbox routes (the lanes', and the link check below).
+  @ObservationIgnored let mailboxServer: HTTPMailboxServer
   let store: LiveLedgerStore
 
-  /// The account's Gmail link on the server (#37), asked while this iPhone has none: a
-  /// link held by another iPhone means Gmail is read there (spec 04 §6.6's second iPhone,
+  /// The provider the running lane reads (observed: Profile names it).
+  private(set) var activeProvider: MailboxProvider?
+
+  /// The account's mailbox link on the server (#37), asked while this iPhone has none: a
+  /// link held by another iPhone means the mail is read there (spec 04 §6.6's second iPhone,
   /// §7.4 `other_device`). nil until the server answers; the last answer while offline.
   private(set) var serverLink: MailboxLinkStatus?
 
@@ -50,8 +56,9 @@ final class AccountRuntime {
 
   private init(
     env: AccountEnvironment, binding: AccountBinding, context: SyncContext, projection: ProjectionStore,
-    observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator, lane: GmailLane?,
-    mailboxLedger: RuntimeMailboxLedger, mailboxServer: any MailboxServer, store: LiveLedgerStore
+    observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator,
+    lanes: [MailboxProvider: MailboxLane], active: ActiveLane, mailboxLedger: RuntimeMailboxLedger,
+    mailboxServer: HTTPMailboxServer, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -61,7 +68,9 @@ final class AccountRuntime {
     self.engine = engine
     self.outbox = outbox
     self.coordinator = coordinator
-    self.lane = lane
+    self.lanes = lanes
+    self.active = active
+    activeProvider = active.lane?.provider
     self.mailboxLedger = mailboxLedger
     self.mailboxServer = mailboxServer
     self.store = store
@@ -69,20 +78,60 @@ final class AccountRuntime {
 
   var userID: UserID { context.userID }
 
+  /// The running lane: the provider of the account's link on this iPhone; nil in a build that
+  /// connects no mailbox.
+  var lane: MailboxLane? { active.lane }
+
+  /// The providers this build connects, Gmail first.
+  var providers: [MailboxProvider] { MailboxProvider.allCases.filter { lanes[$0] != nil } }
+
+  /// The provider of the account's link on this iPhone; nil while there is none.
+  var linkedProvider: MailboxProvider? {
+    guard let p = activeProvider, let phase = store.mailboxPhase, phase != .unlinked else { return nil }
+    return p
+  }
+
+  /// Runs `provider`'s lane from now on (after its link was made here, or to follow the
+  /// server's link), and remembers it for the next launch.
+  func activate(_ provider: MailboxProvider) {
+    guard let lane = lanes[provider] else { return }
+    active.set(lane)
+    if activeProvider != provider { activeProvider = provider }
+    LocalAccountData.setMailboxProvider(provider)
+  }
+
+  /// The lane to run when the account opens: the provider this iPhone ran last, else the one
+  /// it keeps a grant for, else Gmail (else Outlook, in a build with only that client).
+  nonisolated static func initialLane(_ lanes: [MailboxProvider: MailboxLane], remembered: MailboxProvider?) async
+    -> MailboxLane?
+  {
+    if let r = remembered, let lane = lanes[r] { return lane }
+    for p in [MailboxProvider.outlook, .gmail] {
+      if let lane = lanes[p], await lane.hasGrant() == true { return lane }
+    }
+    return lanes[.gmail] ?? lanes[.outlook]
+  }
+
+  /// Plain-language words for a halt a reconnect alone doesn't fix.
+  var haltMessage: String? {
+    store.mailboxHalt == .noMailbox ? LiveMailboxConnecting.message(.noMailbox) : nil
+  }
+
   /// "Use sample data" is offered on a review account whose ledger holds no
   /// transaction (spec 04 §6.13; plan §2.5). The loader checks both again, live.
   var offersSampleData: Bool { reviewAccount && store.loaded && store.state.txns.isEmpty }
 
   /// What the bell, the Profile card and Bank alerts offer for mail (spec 04 §6.6 row 4,
   /// §7.4): nothing until the lane's phase and the ledger have been read, and nothing in a
-  /// build without a Google client.
+  /// build that connects no mailbox.
   var mailOffer: MailOffer? {
-    guard lane != nil, store.loaded, let phase = store.mailboxPhase else { return nil }
+    guard let lane, store.loaded, let phase = store.mailboxPhase else { return nil }
     return LiveMailboxConnecting.offer(
-      phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink)
+      phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink,
+      provider: lane.provider)
   }
 
-  /// Reads the Gmail lane's state again (after a connect, the first scan or the cards
+  /// Reads the mailbox lane's state again (after a connect, the first scan or the cards
   /// step), so Home and Profile follow it before the next run.
   func refreshMailbox() async {
     guard let lane else { return }
@@ -91,7 +140,7 @@ final class AccountRuntime {
     await checkServerLink()
   }
 
-  /// Asks the server for the account's Gmail link after every run while this iPhone has
+  /// Asks the server for the account's mailbox link after every run while this iPhone has
   /// none (the lane's cycle never asks then): another iPhone can take the link at any
   /// time. Offline, the last answer stays until the next run.
   func checkServerLink() async {
@@ -102,8 +151,15 @@ final class AccountRuntime {
   /// `GET /mailbox/link` now: the answer (kept in `serverLink`), or nil when the server
   /// couldn't be asked.
   func askServerLink() async -> MailboxLinkStatus? {
-    guard let link = try? await mailboxServer.linkStatus() else { return nil }
+    guard let (link, provider) = try? await mailboxServer.linkStatusAndProvider() else { return nil }
     if serverLink != link { serverLink = link }
+    // Another iPhone's link names the provider this one reads it through, if it reads it
+    // here instead ("Read them here instead").
+    if case .holder(false, _) = link, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
+      let p = provider.flatMap({ MailboxProvider(rawValue: $0.rawValue) }), p != activeProvider
+    {
+      activate(p)
+    }
     return link
   }
 
@@ -137,16 +193,29 @@ final class AccountRuntime {
     let mailboxLedger = RuntimeMailboxLedger(engine: engine, observer: observer, outbox: outbox, authoring: authoring)
     let mailboxServer = HTTPMailboxServer(
       http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase)
-    let lane = GmailLane(
-      build: build, secrets: env.secrets, userID: context.userID,
-      persistence: LedgerMailboxPersistence(store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() }),
-      ledger: mailboxLedger, server: mailboxServer,
-      stepUp: LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await PasswordPrompt.ask($0) }),
-      categorizer: PipelineCategorizer(projection: projection, dictionary: dictionary),
-      presenter: WebAuthenticationPresenter())
+    let persistence = LedgerMailboxPersistence(
+      store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() })
+    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await PasswordPrompt.ask($0) })
+    let categorizer = PipelineCategorizer(projection: projection, dictionary: dictionary)
+    var lanes: [MailboxProvider: MailboxLane] = [:]
+    for p in MailboxProvider.allCases {
+      lanes[p] = MailboxLane(
+        provider: p, build: build, secrets: env.secrets, userID: context.userID, persistence: persistence,
+        ledger: mailboxLedger, server: mailboxServer, stepUp: stepUp, categorizer: categorizer,
+        presenter: WebAuthenticationPresenter())
+    }
+    let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
     let store = LiveLedgerStore(
       reader: projection.reader, author: LedgerEditAuthor(observer: observer, outbox: outbox), profile: profile,
       prefs: DevicePrefsStore())
+    // The running lane's cycle (nil in a build that connects no mailbox). Typed apart: the
+    // coordinator's initializer is too much for the type checker with it inline.
+    var mailboxStage: WorkCoordinator.MailboxStage?
+    if !lanes.isEmpty {
+      mailboxStage = { @Sendable (trigger: MailboxTrigger, deadlineMs: Int64?) async -> CycleReport in
+        await active.cycle(trigger, deadlineMs)
+      }
+    }
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
@@ -154,11 +223,9 @@ final class AccountRuntime {
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
           return (out.newData, out.stop)
         },
-        mailbox: lane.map { lane -> @Sendable (MailboxTrigger, Int64?) async -> CycleReport in
-          { @Sendable trigger, deadlineMs in await lane.cycle(trigger: trigger, deadlineMs: deadlineMs) }
-        },
+        mailbox: mailboxStage,
         committed: {
-          if let lane {
+          if let lane = active.lane {
             let status = await lane.status()
             await MainActor.run { store.noteMailbox(status, nowMs: context.clock.nowMs()) }
           }
@@ -168,12 +235,12 @@ final class AccountRuntime {
         stopped: stopped))
     box.set(coordinator)
     try await observer.open()
-    if let lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
+    if let lane = active.lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
     await store.reload()
     let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
-      outbox: outbox, coordinator: coordinator, lane: lane, mailboxLedger: mailboxLedger, mailboxServer: mailboxServer,
-      store: store)
+      outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
+      mailboxServer: mailboxServer, store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
@@ -316,4 +383,22 @@ nonisolated final class CoordinatorBox: @unchecked Sendable {
 
   func set(_ c: WorkCoordinator) { lock.withLock { coordinator = c } }
   func get() -> WorkCoordinator? { lock.withLock { coordinator } }
+}
+
+/// The lane the coordinator's mailbox stage runs, swapped when the account's link changes
+/// provider. Read from any task.
+nonisolated final class ActiveLane: @unchecked Sendable {
+  private let lock = NSLock()
+  private var current: MailboxLane?
+
+  init(_ lane: MailboxLane?) { current = lane }
+
+  var lane: MailboxLane? { lock.withLock { current } }
+  func set(_ lane: MailboxLane) { lock.withLock { current = lane } }
+
+  /// One cycle of the running lane; an empty report when there is none.
+  func cycle(_ trigger: MailboxTrigger, _ deadlineMs: Int64?) async -> CycleReport {
+    guard let lane else { return CycleReport() }
+    return await lane.cycle(trigger: trigger, deadlineMs: deadlineMs)
+  }
 }

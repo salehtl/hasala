@@ -209,3 +209,44 @@ struct MailHeaderTests {
     }
   }
 }
+
+// The Outlook.com rule (docs/decisions/outlook-mailbox.md §3); conformance/authres pins the rest.
+private let msAR =
+  "Authentication-Results: spf=pass (sender IP is 192.0.2.1) smtp.mailfrom=bank.example; dkim=pass header.d=bank.example; dmarc=pass action=none header.from=bank.example;compauth=pass reason=100"
+private let authAs = "X-MS-Exchange-Organization-AuthAs: Anonymous"
+private let authSource = "X-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com"
+private let from = "From: Bank <alerts@bank.example>"
+
+@Suite("Authentication-Results, Outlook.com")
+struct OutlookAuthResultsTests {
+  @Test("EOP's A-R with compauth=pass and dmarc=pass is trusted; Gmail's rule does not read it")
+  func pass() {
+    let raw = block(msAR, authAs, authSource, from)
+    #expect(AuthResults.outlookVerdict(raw) == AuthResults.Verdict(trusted: true, reason: .pass))
+    #expect(AuthResults.verifiedDomain(raw, provider: .outlook) == "bank.example")
+    #expect(AuthResults.verdict(raw, provider: .gmail).reason == .noAR)
+    #expect(AuthResults.verifiedDomain(raw) == nil)
+  }
+
+  @Test("spf=pass is a method in Microsoft form, never an authserv-id")
+  func microsoftForm() {
+    let ar = AuthResults.parseARValue(Array("spf=pass smtp.mailfrom=bank.example; dmarc=pass".unicodeScalars))
+    #expect(ar.microsoftForm)
+    #expect(ar.methods.map(\.method) == ["spf", "dmarc"])
+    let gmail = AuthResults.parseARValue(Array("mx.google.com; dkim=pass".unicodeScalars))
+    #expect(!gmail.microsoftForm)
+    #expect(gmail.methods.map(\.method) == ["dkim"])
+  }
+
+  @Test("position, EOP proof and From binding each fail closed")
+  func failClosed() {
+    let forged = "Authentication-Results: spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example; compauth=pass"
+    #expect(AuthResults.outlookVerdict(block(forged, msAR, authAs, authSource, from)).reason == .multipleAR)
+    #expect(AuthResults.outlookVerdict(block(msAR, forged, authAs, authSource, from)).reason == .multipleAR)
+    #expect(AuthResults.outlookVerdict(block("Authentication-Results: mx.google.com; dkim=pass", msAR, authAs, authSource, from)).reason == .notTopmost)
+    #expect(AuthResults.outlookVerdict(block(msAR, authSource, from)).reason == .noEOP)
+    #expect(AuthResults.outlookVerdict(block(msAR, authAs, from)).reason == .noEOP)
+    #expect(AuthResults.outlookVerdict(block(msAR, authAs, authSource, "From: x@evil.example")).reason == .fail)
+    #expect(AuthResults.outlookVerdict(block(authAs, authSource, from)).reason == .noAR)
+  }
+}

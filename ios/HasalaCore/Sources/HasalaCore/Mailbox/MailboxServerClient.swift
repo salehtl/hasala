@@ -53,15 +53,34 @@ public struct HTTPMailboxServer: MailboxServer {
     }
   }
 
+  /// Route 37 with the link's provider (`provider`; absent from a server before the Outlook
+  /// link, which links only Gmail). The provider is nil with no link.
+  public func linkStatusAndProvider() async throws(MailboxServerError) -> (MailboxLinkStatus, MailProviderID?) {
+    do {
+      let o = try await call(.get, "/api/v1/mailbox/link", body: nil)
+      return (Self.status(o), MailProviderID(rawValue: o["provider"]?.stringValue ?? "gmail"))
+    } catch .noLink {
+      return (.noLink, nil)
+    }
+  }
+
   public func linkChallenge() async throws(MailboxServerError) -> String {
     let o = try await call(.post, "/api/v1/mailbox/link/challenge", body: .object(JSONObject()))
     guard let n = o["nonce"]?.stringValue, !n.isEmpty else { throw .refused(200, "bad_response") }
     return n
   }
 
-  public func putLink(idToken: String, stepUp: JSONValue) async throws(MailboxServerError) -> MailboxLinkStatus {
-    let body = JSONValue.object(JSONObject([("id_token", .string(idToken)), ("step_up", stepUp)]))
-    return Self.status(try await call(.put, "/api/v1/mailbox/link", body: body))
+  /// `provider` is omitted for Gmail (the route's default), so a server from before the Outlook
+  /// link, which refuses unknown fields, still accepts a Gmail link.
+  public func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
+    -> MailboxLinkResult
+  {
+    var fields: [(String, JSONValue)] = []
+    if provider != .gmail { fields.append(("provider", .string(provider.rawValue))) }
+    fields += [("id_token", .string(idToken)), ("step_up", stepUp)]
+    let o = try await call(.put, "/api/v1/mailbox/link", body: .object(JSONObject(fields)))
+    let cs = o["client_state"]?.stringValue
+    return MailboxLinkResult(status: Self.status(o), clientState: (cs?.isEmpty ?? true) ? nil : cs)
   }
 
   public func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
@@ -73,9 +92,19 @@ public struct HTTPMailboxServer: MailboxServer {
     _ = try await call(.delete, "/api/v1/mailbox/link", body: .object(JSONObject([("step_up", stepUp)])))
   }
 
-  public func watchTopic() async throws(MailboxServerError) -> String? {
+  public func pushConfig(provider: MailProviderID) async throws(MailboxServerError) -> MailboxPushConfig {
     let o = try await call(.get, "/api/v1/meta", body: nil)
-    guard let t = o["gmail_watch_topic"]?.stringValue, !t.isEmpty else { return nil }
-    return t
+    func field(_ k: String) -> String? {
+      guard let v = o[k]?.stringValue, !v.isEmpty else { return nil }
+      return v
+    }
+    switch provider {
+    case .gmail:
+      guard let t = field("gmail_watch_topic") else { return .none }
+      return .gmail(topic: t)
+    case .outlook:
+      guard let n = field("outlook_notification_url"), let l = field("outlook_lifecycle_url") else { return .none }
+      return .outlook(notificationURL: n, lifecycleURL: l)
+    }
   }
 }

@@ -1,0 +1,424 @@
+// The Microsoft Graph mail surface the Outlook lane uses (docs/decisions/outlook-mailbox.md;
+// the Outlook plan's shared contract), narrowed by PO G like the Gmail client:
+//
+//   GET    /me/messages              ALWAYS with a sender `$filter` (`endswith` on the From
+//                                    address, two clauses per trusted domain) and a received-time
+//                                    bound; ids, received time and From only (§1)
+//   GET    /me/messages/{id}         id, received time and From, for a listed id the run has not
+//                                    seen in its listing
+//   GET    /me/messages/{id}/$value  the MIME, for a listed id (§4)
+//   GET    /me/mailFolders/inbox     `$select=id` only: does this account have a mailbox?
+//   POST   /subscriptions            `me/messages`, `created`, the server's two hook URLs, the
+//   PATCH  /subscriptions/{id}       link's clientState, now + 6 d 23 h (§6)
+//   DELETE /subscriptions/{id}
+//
+// There is no delta query and no unfiltered listing: the rest of the mailbox, its ids included,
+// never reaches the phone. Graph may ignore a filter silently, so every listed From address is
+// checked against the requested senders and a page with a stranger is dropped unread
+// (`filterNotApplied`, §1b). Every request asks for immutable ids (`Prefer: IdType=
+// "ImmutableId"`, §4b), so a message moved between folders keeps the id the lane deduplicates on.
+//
+// Like GmailClient, this never retries and never interprets: a non-2xx answer is a typed
+// `MailAPIError` and the engine decides. Graph's "slow down" (429, or 503 with `Retry-After`) is
+// `throttled`, and `MailboxNotEnabledForRESTAPI` (a Microsoft account with no Outlook mailbox) is
+// `noMailbox`, read from `error.code` and never from the status.
+import CoreJSON
+import CorePrimitives
+import CoreStore
+import CoreTime
+import Foundation
+
+// MARK: - What the link keeps
+
+/// What the Outlook link keeps on this iPhone beside the refresh token: the subscription's
+/// `clientState` (from `PUT /mailbox/link`) and the id of the subscription this iPhone created,
+/// so renewing and stopping touch that subscription only.
+public struct OutlookLinkState: Sendable, Equatable {
+  public var clientState: String
+  public var subscriptionID: String?
+
+  public init(clientState: String, subscriptionID: String? = nil) {
+    self.clientState = clientState
+    self.subscriptionID = subscriptionID
+  }
+
+  var bytes: [UInt8] {
+    var o = JSONObject([("client_state", .string(clientState))])
+    if let subscriptionID { o["subscription_id"] = .string(subscriptionID) }
+    return JSONWriter().bytes(.object(o))
+  }
+
+  init?(bytes: [UInt8]) {
+    guard let o = (try? JSONParser.parse(bytes))?.objectValue, let cs = o["client_state"]?.stringValue, !cs.isEmpty
+    else { return nil }
+    clientState = cs
+    subscriptionID = o["subscription_id"]?.stringValue
+  }
+}
+
+/// The Keychain item `app.hasala.outlook.clientstate`, behind a protocol so the core never imports
+/// Security. Same null-vs-throw contract as `MailRefreshTokenStore`.
+public protocol OutlookLinkStore: Sendable {
+  /// nil = absent; throws = present but unreadable now.
+  func read() throws(SecretUnavailable) -> OutlookLinkState?
+  func write(_ state: OutlookLinkState) throws(SecretUnavailable)
+  func delete() throws(SecretUnavailable)
+}
+
+/// `SecretItem.outlookClientState(userID:)` in the account's `Secrets`, so `Secrets.wipeAccount`
+/// always takes it. An item that reads but cannot be decoded is deleted and read as absent.
+public struct SecretsOutlookLinkStore: OutlookLinkStore {
+  let store: any SecretStore
+  let item: SecretItem
+
+  public init(secrets: Secrets, userID: UserID) {
+    store = secrets.store
+    item = .outlookClientState(userID: userID)
+  }
+
+  public func read() throws(SecretUnavailable) -> OutlookLinkState? {
+    let d: Data?
+    do { d = try store.read(item) } catch { throw SecretUnavailable() }
+    guard let d else { return nil }
+    guard let s = OutlookLinkState(bytes: [UInt8](d)) else {
+      do { try store.delete(item) } catch { throw SecretUnavailable() }
+      return nil
+    }
+    return s
+  }
+
+  /// Writes, then reads back: a mismatch throws.
+  public func write(_ state: OutlookLinkState) throws(SecretUnavailable) {
+    let bytes = Data(state.bytes)
+    do {
+      try store.write(item, bytes)
+      guard try store.read(item) == bytes else { throw SecretUnavailable() }
+    } catch {
+      throw SecretUnavailable()
+    }
+  }
+
+  public func delete() throws(SecretUnavailable) {
+    do { try store.delete(item) } catch { throw SecretUnavailable() }
+  }
+}
+
+/// An in-memory `OutlookLinkStore` (tests, previews). `locked` simulates before-first-unlock.
+public final class MemoryOutlookLinkStore: OutlookLinkStore, @unchecked Sendable {
+  private let lock = NSLock()
+  private var state: OutlookLinkState?
+  public var locked = false
+
+  public init(_ state: OutlookLinkState? = nil) { self.state = state }
+
+  public func read() throws(SecretUnavailable) -> OutlookLinkState? {
+    lock.lock()
+    defer { lock.unlock() }
+    if locked { throw SecretUnavailable() }
+    return state
+  }
+  public func write(_ s: OutlookLinkState) throws(SecretUnavailable) {
+    lock.lock()
+    defer { lock.unlock() }
+    if locked { throw SecretUnavailable() }
+    state = s
+  }
+  public func delete() throws(SecretUnavailable) {
+    lock.lock()
+    defer { lock.unlock() }
+    if locked { throw SecretUnavailable() }
+    state = nil
+  }
+}
+
+// MARK: - The client
+
+/// What a listing page said about each id (its From address and received time), so the download
+/// that follows needs no metadata request (§4: "Do not fetch metadata first").
+final class GraphListingCache: @unchecked Sendable {
+  private let lock = NSLock()
+  private var entries: [String: (address: String, receivedMs: Int64)] = [:]
+
+  func put(_ id: String, address: String, receivedMs: Int64) { lock.withLock { entries[id] = (address, receivedMs) } }
+  func get(_ id: String) -> (address: String, receivedMs: Int64)? { lock.withLock { entries[id] } }
+}
+
+public struct GraphClient: Sendable {
+  public static let defaultBase = "https://graph.microsoft.com/v1.0"
+  /// At most this many domains (two `endswith` clauses each) per listing (§1, check L4).
+  public static let maxDomainsPerList = 20
+  /// now + 6 d 23 h: inside Graph's 10,080-minute cap for messages, with an hour of slack for
+  /// clocks (the contract).
+  public static let subscriptionLifetimeMs: Int64 = (6 * 24 + 23) * 3_600_000
+  public static let pageSize = 100
+  public static let immutableIDs = ("Prefer", "IdType=\"ImmutableId\"")
+  /// `error.code` of a Microsoft account that has no Outlook mailbox.
+  public static let noMailboxCode = "MailboxNotEnabledForRESTAPI"
+
+  let http: any HTTPExchange
+  let accessToken: String
+  let base: String
+  let link: any OutlookLinkStore
+  let nowMs: @Sendable () -> Int64
+  let cache = GraphListingCache()
+
+  public init(
+    http: any HTTPExchange, accessToken: String, link: any OutlookLinkStore, base: String = GraphClient.defaultBase,
+    nowMs: @escaping @Sendable () -> Int64
+  ) {
+    self.http = http
+    self.accessToken = accessToken
+    self.link = link
+    self.base = base
+    self.nowMs = nowMs
+  }
+
+  // MARK: Wire
+
+  /// `base` + path + query. Query names (`$filter`, `$select`, `$top`) are fixed ASCII and sent
+  /// as written; values are percent-encoded.
+  func url(_ path: String, _ query: [(String, String)] = []) -> URL {
+    let q = query.map { "\($0.0)=\(FormEncoding.escape($0.1))" }.joined(separator: "&")
+    return URL(string: base + path + (q.isEmpty ? "" : "?" + q))!
+  }
+
+  /// One request. Throws `offline` for a transport failure and the mapped error for a non-2xx.
+  func call(_ method: HTTPRequest.Method, _ url: URL, body: JSONValue? = nil, json: Bool = true, op: String)
+    async throws(MailAPIError) -> HTTPResponse
+  {
+    var headers = [("Authorization", "Bearer \(accessToken)"), Self.immutableIDs]
+    if json { headers.append(("Accept", "application/json")) }
+    if body != nil { headers.append(("Content-Type", "application/json")) }
+    let req = HTTPRequest(method: method, url: url, headers: headers, body: body.map { Data(JSONWriter().bytes($0)) })
+    let res: HTTPResponse
+    do { res = try await http.send(req) } catch { throw .offline }
+    guard res.ok else { throw Self.failure(res, op: op) }
+    return res
+  }
+
+  /// A 2xx JSON object; a 2xx that is not one is reported as its status.
+  func object(_ method: HTTPRequest.Method, _ url: URL, body: JSONValue? = nil, op: String)
+    async throws(MailAPIError) -> JSONObject
+  {
+    let res = try await call(method, url, body: body, op: op)
+    if res.body.isEmpty { return JSONObject() }
+    guard let o = (try? JSONParser.parse([UInt8](res.body)))?.objectValue else { throw .status(res.status, op: op) }
+    return o
+  }
+
+  /// A non-2xx answer as the engine's error. Reads only `error.code` and `Retry-After`.
+  public static func failure(_ res: HTTPResponse, op: String) -> MailAPIError {
+    let code = (try? JSONParser.parse([UInt8](res.body)))?["error"]?["code"]?.stringValue
+    if code == noMailboxCode { return .noMailbox }
+    if res.status == 429 || res.status == 503,
+      let ra = res.header("Retry-After").flatMap({ Int64($0.trimmingCharacters(in: .whitespaces)) }), ra >= 0
+    {
+      return .throttled(retryAfterSec: ra, op: op)
+    }
+    if code == "ErrorItemNotFound" { return .status(404, op: op) }
+    return .status(res.status, op: op)
+  }
+
+  // MARK: Listing (§1)
+
+  /// `$filter`: `receivedDateTime ge <since> and (endswith(…,'@d') or endswith(…,'.d') …)`, with
+  /// the two clauses per domain matching exactly `BankDomains.isMember`. No `$orderby` (so no
+  /// `InefficientFilter`): the engine pages to the end before its watermark moves.
+  public static func listQuery(_ group: [String], sinceSec: Int64, top: Int = pageSize) -> [(String, String)] {
+    let clauses = group.flatMap { d in
+      ["@\(d)", ".\(d)"].map { "endswith(from/emailAddress/address,'\($0)')" }
+    }
+    let filter = "receivedDateTime ge \(isoSeconds(sinceSec)) and (\(clauses.joined(separator: " or ")))"
+    return [("$filter", filter), ("$select", "id,receivedDateTime,from"), ("$top", String(top))]
+  }
+
+  /// `2026-10-13T00:00:00Z`.
+  static func isoSeconds(_ sec: Int64) -> String {
+    let s = Instant.iso(max(0, sec) * 1000) ?? "1970-01-01T00:00:00.000Z"
+    return s.hasSuffix(".000Z") ? String(s.dropLast(5)) + "Z" : s
+  }
+
+  /// One page of ids from `senders` (domains). `pageToken` is Graph's `@odata.nextLink`, used as
+  /// returned and sent only to this client's own API origin. A 504 on a first page is retried once
+  /// with a smaller page (§5).
+  public func listMessages(senders: [String], sinceSec: Int64, pageToken: String?) async throws(MailAPIError)
+    -> MailListPage
+  {
+    guard !senders.isEmpty, senders.count <= Self.maxDomainsPerList, senders.allSatisfy(BankDomains.isQuerySafe)
+    else { throw .unfilteredListing }
+    let o: JSONObject
+    if let pageToken {
+      guard pageToken.hasPrefix(base + "/me/messages?"), let u = URL(string: pageToken) else {
+        throw .status(200, op: "list")
+      }
+      o = try await object(.get, u, op: "list")
+    } else {
+      do {
+        o = try await object(.get, url("/me/messages", Self.listQuery(senders, sinceSec: sinceSec)), op: "list")
+      } catch .status(504, _) {
+        o = try await object(.get, url("/me/messages", Self.listQuery(senders, sinceSec: sinceSec, top: 50)), op: "list")
+      }
+    }
+    var ids: [String] = []
+    var seen: [(String, String, Int64)] = []
+    for m in o["value"]?.arrayValue ?? [] {
+      guard let id = m["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "list") }
+      let address = m["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
+      let received = m["receivedDateTime"]?.stringValue.flatMap { try? parseInstantMs($0) }
+      // §1b: Graph applied the filter, or the whole page is dropped unread.
+      guard BankDomains.isMember(BankDomains.domainOf(address), of: senders), let received,
+        received >= sinceSec * 1000
+      else { throw .filterNotApplied }
+      ids.append(id)
+      seen.append((id, address, received))
+    }
+    for (id, address, received) in seen { cache.put(id, address: address, receivedMs: received) }
+    let next = o["@odata.nextLink"]?.stringValue
+    return MailListPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
+  }
+
+  // MARK: Fetching (§4)
+
+  func path(_ id: String) -> String { "/me/messages/\(FormEncoding.escape(id))" }
+
+  /// From and received time: from this run's listing when it named the id, else one request.
+  public func messageMetadata(id: String) async throws(MailAPIError) -> MailMessageMetadata {
+    if let c = cache.get(id) { return Self.metadata(id, c.address, c.receivedMs) }
+    let o = try await object(.get, url(path(id), [("$select", "id,receivedDateTime,from")]), op: "metadata")
+    let address = o["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
+    guard let received = o["receivedDateTime"]?.stringValue.flatMap({ try? parseInstantMs($0) }) else {
+      throw .status(200, op: "metadata")
+    }
+    cache.put(id, address: address, receivedMs: received)
+    return Self.metadata(id, address, received)
+  }
+
+  static func metadata(_ id: String, _ address: String, _ receivedMs: Int64) -> MailMessageMetadata {
+    MailMessageMetadata(id: id, internalDate: String(receivedMs), sizeEstimate: nil, headers: [("From", address)])
+  }
+
+  /// The MIME (`$value`), served as bytes and handed on as base64url. An empty 2xx is reported as
+  /// that status (the engine treats it as `gone`).
+  public func messageRaw(id: String) async throws(MailAPIError) -> MailRawMessage {
+    let received = try await messageMetadata(id: id).internalDate
+    let res = try await call(.get, url(path(id) + "/$value"), json: false, op: "raw")
+    guard !res.body.isEmpty else { throw .status(res.status, op: "raw") }
+    return MailRawMessage(id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received)
+  }
+
+  // MARK: Subscriptions (§6)
+
+  func subscriptionBody(_ notificationURL: String, _ lifecycleURL: String, clientState: String, expiresAtMs: Int64)
+    -> JSONValue
+  {
+    .object(
+      JSONObject([
+        ("changeType", .string("created")), ("notificationUrl", .string(notificationURL)),
+        ("lifecycleNotificationUrl", .string(lifecycleURL)), ("resource", .string("me/messages")),
+        ("expirationDateTime", .string(Instant.iso(expiresAtMs) ?? "")), ("clientState", .string(clientState)),
+      ]))
+  }
+
+  /// The expiry Graph answered, else the one asked for.
+  static func expiry(_ o: JSONObject, asked: Int64) -> Int64 {
+    o["expirationDateTime"]?.stringValue.flatMap { try? parseInstantMs($0) } ?? asked
+  }
+
+  /// Creates the subscription. A `409 Conflict` means the app already has one for `me/messages`
+  /// in this mailbox (another iPhone's, or one this iPhone lost track of): it is deleted and the
+  /// subscription created again, once.
+  func createSubscription(_ n: String, _ l: String, state: OutlookLinkState) async throws(MailAPIError)
+    -> MailSubscription
+  {
+    let asked = nowMs() + Self.subscriptionLifetimeMs
+    let body = subscriptionBody(n, l, clientState: state.clientState, expiresAtMs: asked)
+    let o: JSONObject
+    do {
+      o = try await object(.post, url("/subscriptions"), body: body, op: "subscribe")
+    } catch .status(409, _) {
+      try await deleteMailboxSubscriptions()
+      o = try await object(.post, url("/subscriptions"), body: body, op: "subscribe")
+    }
+    guard let id = o["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "subscribe") }
+    var kept = state
+    kept.subscriptionID = id
+    try? link.write(kept)
+    return MailSubscription(expiresAtMs: Self.expiry(o, asked: asked))
+  }
+
+  /// Deletes every subscription the app holds on this mailbox's messages (the 409 case).
+  func deleteMailboxSubscriptions() async throws(MailAPIError) {
+    let o = try await object(.get, url("/subscriptions"), op: "subscriptions")
+    for s in o["value"]?.arrayValue ?? [] {
+      guard let id = s["id"]?.stringValue, !id.isEmpty else { continue }
+      var resource = (s["resource"]?.stringValue ?? "").lowercased()
+      if resource.hasPrefix("/") { resource.removeFirst() }
+      guard resource == "me/messages" else { continue }
+      try await deleteSubscription(id: id)
+    }
+  }
+
+  /// `DELETE /subscriptions/{id}`; one that is already gone is success. Also used, with only a
+  /// refresh token left, when the account leaves this iPhone.
+  public func deleteSubscription(id: String) async throws(MailAPIError) {
+    do {
+      _ = try await call(.delete, url("/subscriptions/\(FormEncoding.escape(id))"), op: "unsubscribe")
+    } catch .status(404, _) {}
+  }
+}
+
+// MARK: - MailSource
+
+extension GraphClient: MailSource {
+  public var maxSendersPerList: Int { Self.maxDomainsPerList }
+
+  /// None (§2): every cycle runs the filtered listing.
+  public func changeToken() async throws(MailAPIError) -> String? { nil }
+
+  public func list(senders: [String], since: Int64, pageToken: String?) async throws(MailAPIError) -> MailListPage {
+    try await listMessages(senders: senders, sinceSec: since, pageToken: pageToken)
+  }
+
+  public func metadata(id: String) async throws(MailAPIError) -> MailMessageMetadata { try await messageMetadata(id: id) }
+
+  public func raw(id: String) async throws(MailAPIError) -> MailRawMessage { try await messageRaw(id: id) }
+
+  /// A subscription for the server's two hook URLs and the link's clientState; nil when the
+  /// server relays no Outlook wakes, or this iPhone keeps no clientState.
+  public func subscribe(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
+    guard case .outlook(let n, let l) = push, let state = try? link.read() else { return nil }
+    return try await createSubscription(n, l, state: state)
+  }
+
+  /// `PATCH` this iPhone's subscription to now + 6 d 23 h (and the server's current notification
+  /// URL); a subscription Graph no longer has is created again.
+  public func renew(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
+    guard case .outlook(let n, let l) = push, var state = try? link.read() else { return nil }
+    guard let id = state.subscriptionID else { return try await createSubscription(n, l, state: state) }
+    let asked = nowMs() + Self.subscriptionLifetimeMs
+    let body = JSONValue.object(
+      JSONObject([("expirationDateTime", .string(Instant.iso(asked) ?? "")), ("notificationUrl", .string(n))]))
+    do {
+      let o = try await object(.patch, url("/subscriptions/\(FormEncoding.escape(id))"), body: body, op: "renew")
+      return MailSubscription(expiresAtMs: Self.expiry(o, asked: asked))
+    } catch .status(404, _) {
+      state.subscriptionID = nil
+      try? link.write(state)
+      return try await createSubscription(n, l, state: state)
+    }
+  }
+
+  /// Deletes this iPhone's subscription only (never another iPhone's).
+  public func stop() async throws(MailAPIError) {
+    guard var state = try? link.read(), let id = state.subscriptionID else { return }
+    try await deleteSubscription(id: id)
+    state.subscriptionID = nil
+    try? link.write(state)
+  }
+
+  /// `GET /me/mailFolders/inbox?$select=id`: reads no message; `noMailbox` when the account has
+  /// no Outlook mailbox.
+  public func checkMailbox() async throws(MailAPIError) {
+    _ = try await object(.get, url("/me/mailFolders/inbox", [("$select", "id")]), op: "mailbox")
+  }
+}

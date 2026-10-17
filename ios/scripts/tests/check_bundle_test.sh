@@ -79,6 +79,23 @@ for f in "conformance/ops.json" "Resources/conformance" "a.EML" "corpus-2026.jso
 	check "test data: $f" 1 "$a"
 done
 
+# Outlook message ids, default and immutable, anywhere in the bundle. Built here (44
+# synthetic characters) so the shapes are never written out whole in this repository.
+tail44="$(printf 'x%.0s' {1..44})"
+for prefix in AAMkAD AQMkAD AAkALgAA; do
+	a="$(app "outlook-$prefix")"
+	printf '{"id":"%s%s"}\n' "$prefix" "$tail44" >"$a/HasalaCore_CoreResources.bundle/cached.json"
+	check "an Outlook message id (${prefix}...) in a resource" 1 "$a"
+	said "shaped like an Outlook message id"
+done
+a="$(app outlook-short)"
+printf 'AAkALgAA-synthetic-1 AAMkAD-short\n' >"$a/notes.txt"
+check "short id-like test strings are not ids" 0 "$a"
+a="$(app seed-outlook)"
+printf '{"format":"hasala.sample","ops":[{"payload":{"message_id":"sample-1","ref":"AAkALgAA%s"}}]}\n' "$tail44" >"$a/$seed"
+check "a seed holding an Outlook message id" 1 "$a"
+said "ref looks like an Outlook message id"
+
 # The seed.
 a="$(app seed-missing)"
 rm "$a/$seed"

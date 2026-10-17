@@ -11,58 +11,17 @@
 // and no unfiltered `messages.list`: the rest of the inbox, its ids and its headers included,
 // never reaches the phone. `messagesList` refuses an empty query rather than send one.
 //
-// This client never retries and never interprets: a non-2xx answer is a typed `GmailAPIError`
-// carrying the status, and the engine decides what it means (`gone`, `retry`, `fatal`).
+// This client never retries and never interprets: a non-2xx answer is a typed `MailAPIError`
+// carrying the status, and the engine decides what it means (`gone`, `retry`, `fatal`). It is the
+// Gmail provider's `MailSource` (the extension at the end).
 import CoreJSON
 import Foundation
 
-public enum GmailAPIError: Error, Sendable, Equatable {
-  /// A non-2xx answer, or a 2xx without the field the call needs (status kept).
-  case status(Int, op: String)
-  case offline
-  /// The caller asked for an unfiltered listing (a programming error, refused locally).
-  case unfilteredListing
-
-  public var status: Int? {
-    if case .status(let s, _) = self { return s }
-    return nil
-  }
-}
-
-public struct GmailMessagesPage: Sendable, Equatable {
-  public let ids: [String]
-  public let nextPageToken: String?
-}
-
+public typealias GmailAPIError = MailAPIError
+public typealias GmailMessagesPage = MailListPage
 /// `messages.get?format=metadata` with `From` and `Authentication-Results` only.
-public struct GmailMessageMetadata: Sendable, Equatable {
-  public let id: String
-  /// ms since the epoch as Gmail's decimal string, or "" when absent.
-  public let internalDate: String
-  public let sizeEstimate: Int64?
-  /// The returned headers, in Gmail's order (which preserves the message's order).
-  public let headers: [(name: String, value: String)]
-
-  public static func == (a: Self, b: Self) -> Bool {
-    a.id == b.id && a.internalDate == b.internalDate && a.sizeEstimate == b.sizeEstimate
-      && a.headers.elementsEqual(b.headers) { $0.name == $1.name && $0.value == $1.value }
-  }
-
-  /// The headers re-serialized as a header block (`Name: value\r\n`...), for CoreMail's
-  /// Authentication-Results analysis. Only the two requested headers are present.
-  public var headerBlock: String {
-    headers.map { "\($0.name): \($0.value)" }.joined(separator: "\r\n")
-  }
-
-  public var from: String { headers.first { $0.name.caseInsensitiveCompare("From") == .orderedSame }?.value ?? "" }
-}
-
-public struct GmailRawMessage: Sendable, Equatable {
-  public let id: String
-  /// base64url (unpadded), undecoded: the engine decodes strictly and hashes the bytes.
-  public let rawBase64URL: String
-  public let internalDate: String
-}
+public typealias GmailMessageMetadata = MailMessageMetadata
+public typealias GmailRawMessage = MailRawMessage
 
 public struct GmailWatchResponse: Sendable, Equatable {
   public let historyID: String
@@ -181,6 +140,12 @@ public struct GmailClient: Sendable {
     _ = try await call(.post, "/stop", [], body: nil, op: "stop")
   }
 
+  /// `{from:a from:b} after:<sinceSec> -in:trash` (spec 04 §7.5). The domains are query-safe
+  /// (`BankDomains.isQuerySafe`, enforced by `BankDomains.effectiveTrusted`).
+  public static func senderQuery(_ group: [String], sinceSec: Int64) -> String {
+    "{" + group.map { "from:" + $0 }.joined(separator: " ") + "} after:\(sinceSec) -in:trash"
+  }
+
   /// The Google API error reasons that mean "slow down" (`error.errors[].reason`, the legacy
   /// shape Gmail still sends, or `error.details[].reason` / `error.status` in the AIP-193 shape).
   static let rateLimitReasons: Set<String> = [
@@ -203,5 +168,35 @@ public struct GmailClient: Sendable {
     if let s = v?.stringValue { return s }
     if let n = v?.numberValue, n.isIntegerLiteral { return n.literal }
     return ""
+  }
+}
+
+// MARK: - MailSource
+
+extension GmailClient: MailSource {
+  /// At most this many `from:` terms per query (spec 04 §7.5).
+  public var maxSendersPerList: Int { BankDomains.maxTermsPerQuery }
+
+  public func changeToken() async throws(MailAPIError) -> String? { try await profileHistoryID() }
+
+  /// `messages.list` with the sender query; no senders is refused (`unfilteredListing`).
+  public func list(senders: [String], since: Int64, pageToken: String?) async throws(MailAPIError) -> MailListPage {
+    guard !senders.isEmpty else { throw .unfilteredListing }
+    return try await messagesList(query: Self.senderQuery(senders, sinceSec: since), pageToken: pageToken)
+  }
+
+  public func metadata(id: String) async throws(MailAPIError) -> MailMessageMetadata { try await messageMetadata(id: id) }
+
+  public func raw(id: String) async throws(MailAPIError) -> MailRawMessage { try await messageRaw(id: id) }
+
+  /// `users.watch` on the server's Pub/Sub topic; nil without one.
+  public func subscribe(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
+    guard case .gmail(let topic) = push else { return nil }
+    return MailSubscription(expiresAtMs: try await watch(topicName: topic).expirationMs)
+  }
+
+  /// A Gmail watch is renewed by watching again.
+  public func renew(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
+    try await subscribe(push)
   }
 }

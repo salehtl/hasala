@@ -1,7 +1,7 @@
 ---
 title: "Beta Terms of Use"
 description: "The terms for using the invite-only Hasala beta: what to expect, what we ask of you, and the limits of what we can promise."
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-16
 status: "final"
 plainWords: "Hasala is an early, invite-only beta. It's free while the beta runs, it may have bugs or change, and it isn't financial advice. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
 ---
@@ -30,7 +30,7 @@ Hasala is unfinished. During the beta:
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
 - we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll tell you in the app or by email at least 7 days before, so that you can export your data first.
 
-Hasala is English only. It runs on iPhone, and reads bank alerts only from a Gmail account. At launch it supports alerts from Dubai Islamic Bank (DIB) and Emirates NBD.
+Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). At launch it supports alerts from Dubai Islamic Bank (DIB) and Emirates NBD.
 
 ### Price
 
@@ -71,9 +71,9 @@ You are responsible for keeping your sign-in methods and your iPhone secure. In 
 
 Tell us straight away at security@hasala.app if you think someone else has access to your account.
 
-### Gmail
+### Your email account
 
-To bring in transactions, you can connect a Gmail account that you own or are allowed to use. Hasala reads it with read-only access on your iPhone. Connect only a mailbox you're entitled to give Hasala access to. You can disconnect it at any time.
+To bring in transactions, you can connect a Gmail or Outlook account that you own or are allowed to use, one at a time. Hasala reads it with read-only access on your iPhone. Connect only a mailbox you're entitled to give Hasala access to. You can disconnect it at any time.
 
 ## Acceptable use
 
@@ -97,7 +97,7 @@ While your account is suspended you can still:
 - sign in and sign out; and
 - delete your account.
 
-You can't sync new changes, connect Gmail, or change your sign-in methods or devices. If you think we've made a mistake, email us and we'll review it.
+You can't sync new changes, connect your email, or change your sign-in methods or devices. If you think we've made a mistake, email us and we'll review it.
 
 Suspension is something we do. It is different from freezing, which you can do yourself from a security email or in the app if a sign-in wasn't you; see our [Security](/security) page.
 
@@ -133,7 +133,7 @@ To the extent the law allows:
 
 - we aren't responsible for losses caused by relying on Hasala's figures, categories or reminders, such as missed bill payments or bank charges;
 - we aren't responsible for losing access to your data if you lose your recovery phrase and every passkey and signed-in device;
-- we aren't responsible for problems caused by Google, Apple, Cloudflare, your bank, or your device; and
+- we aren't responsible for problems caused by Google, Microsoft, Apple, Cloudflare, your bank, or your device; and
 - our total liability to you for any claim about the beta is limited to AED 100.
 
 Nothing in these terms limits liability that cannot be limited under UAE law, including liability for fraud, wilful misconduct or gross negligence.

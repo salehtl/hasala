@@ -250,7 +250,9 @@ public final class FakeServer: Transport, @unchecked Sendable {
     case "GET /api/v1/meta":
       let (g, m) = state.withLock { ($0.logGeneration, $0.minIOSBuild) }
       return Self.ok(
-        MetaResponse(rp_id: Self.rpID, min_ios_build: m, gmail_watch_topic: nil, log_generation: g, server_time: nil))
+        MetaResponse(
+          rp_id: Self.rpID, min_ios_build: m, gmail_watch_topic: nil, outlook_notification_url: nil,
+          outlook_lifecycle_url: nil, log_generation: g, server_time: nil))
     case "POST /api/v1/auth/signup/begin": return signupBegin(r)
     case "POST /api/v1/auth/signup/verify": return signupVerify(r)
     case "POST /api/v1/auth/passkey/register/begin": return registerBegin(r)

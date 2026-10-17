@@ -2,6 +2,7 @@
 // (the private normalizer fixtures, the same raw messages the conformance suite reads). Disabled
 // by name without it. Never prints or records content: only counts and fixture names.
 import CoreJSON
+import CoreMail
 import CoreMailbox
 import CorePrimitives
 import CoreTemplate
@@ -33,7 +34,7 @@ struct PrivateCorpusDispositionTests {
       let from = MailHeadersForTest.from(raw)
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: ms, topLevelFrom: from, templates: templates, bankDomains: banks,
-        trusted: banks)
+        trusted: banks, analyze: AuthResults.analyze)
       let fromBank = BankDomains.isMember(BankDomains.domainOf(from), of: banks)
       switch r {
       case .setAside:
@@ -71,16 +72,62 @@ struct PrivateGmailDeliveredTests {
       let raw = [UInt8](try Data(contentsOf: root.appendingPathComponent(f)))
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
-        templates: templates, bankDomains: banks, trusted: banks)
+        templates: templates, bankDomains: banks, trusted: banks, analyze: AuthResults.analyze)
       guard case .mail(let m) = r else {
         Issue.record("\(f): set aside")
         continue
       }
-      let d = MessageDisposer.finalize(m, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      let d = MessageDisposer.finalize(m, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
       // Filing needs a passing verdict for a trusted domain; anything else is review.
       if !(m.gates.ar == "pass" && m.gates.senderTrusted) || m.gates.forwarded { #expect(d.needsReview, "\(f)") }
     }
   }
+}
+
+/// Real alerts as Outlook.com delivered them (`outlook-*.eml`, exported with Graph `$value`, WP0
+/// check C6), when the private repository has them. Skipped by name until it does.
+private let outlookDelivered: [URL] = {
+  guard let root = privateRoot?.deletingLastPathComponent().deletingLastPathComponent()
+    .appendingPathComponent("conformance/outlook", isDirectory: true),
+    let names = try? FileManager.default.contentsOfDirectory(atPath: root.path)
+  else { return [] }
+  return names.filter { $0.hasPrefix("outlook-") && $0.hasSuffix(".eml") }.sorted().map {
+    root.appendingPathComponent($0)
+  }
+}()
+
+@Suite(.enabled(if: !outlookDelivered.isEmpty, "needs HASALA_PRIVATE_FIXTURES with conformance/outlook/outlook-*.eml"))
+struct PrivateOutlookDeliveredTests {
+  /// Bank mail is never set aside under the Outlook rule, and while the trust gate is closed
+  /// nothing files without review, whatever the rule says.
+  @Test func outlookDeliveredBankMailIsReadAndWaitsForReview() throws {
+    let templates = BundledTemplates.load().templates
+    let banks = ["dib.ae", "emiratesnbd.com"]
+    let gate = OutlookProvider(
+      oauth: MicrosoftOAuthClient(config: MicrosoftOAuthConfig(clientID: "unset", redirectScheme: "unset"), http: NoHTTP()),
+      http: NoHTTP(), link: MemoryOutlookLinkStore(), clock: FixedClockForTest())
+    for url in outlookDelivered {
+      let f = url.lastPathComponent
+      let raw = [UInt8](try Data(contentsOf: url))
+      let r = MessageDisposer.parse(
+        raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
+        templates: templates, bankDomains: banks, trusted: banks, analyze: gate.analyzeAuthResults)
+      guard case .mail(let m) = r else {
+        Issue.record("\(f): set aside")
+        continue
+      }
+      let d = MessageDisposer.finalize(m, provider: .outlook, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      #expect(d.needsReview, "\(f)")
+    }
+  }
+}
+
+private struct NoHTTP: HTTPExchange {
+  func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse { throw .offline }
+}
+
+private struct FixedClockForTest: Clock {
+  func nowMs() -> Int64 { 1_750_000_000_000 }
 }
 
 private func parseInstantMsForTest(_ s: String) throws -> Int64 { try parseInstantMs(s) }

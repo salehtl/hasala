@@ -2,11 +2,11 @@
 // authorize URL, the callback check, and the token endpoint (exchange, refresh, revoke) over an
 // injected `HTTPExchange`. The browser half (ASWebAuthenticationSession) is the app's
 // Platform/GmailAuth; it only turns an authorize URL into a callback URL, behind
-// `GmailAuthSessionPresenter`.
+// `MailAuthSessionPresenter`. `GoogleOAuthClient` is the Gmail provider's `MailOAuthClient`.
 //
 // The iOS client is a PUBLIC client: there is no client secret anywhere, and the client id
 // reaches this code only from BuildInfo (never hard-coded here). The refresh token goes to the
-// Keychain (`GmailRefreshTokenStore`); the access token lives in memory only (§7.3).
+// Keychain (`MailRefreshTokenStore`); the access token lives in memory only (§7.3).
 import CoreJSON
 import CorePrimitives
 import Foundation
@@ -63,46 +63,9 @@ public enum PKCE {
   }
 }
 
-/// One authorization attempt: what was sent, and what the callback must echo.
-public struct GmailAuthorization: Sendable, Equatable {
-  public let url: URL
-  public let state: String
-  public let codeVerifier: String
-  public let nonce: String
-}
-
-public enum GmailOAuthError: Error, Sendable, Equatable {
-  /// The user closed the sheet.
-  case cancelled
-  /// The callback's `state` differs from the one sent (forged or stale redirect).
-  case stateMismatch
-  /// Google answered `error=...` on the redirect (e.g. `access_denied`).
-  case denied(String)
-  /// The callback carried no code, or was not our redirect.
-  case malformedCallback
-  /// The token response lacked a refresh token, an id_token or the gmail.readonly scope
-  /// ("Hasala needs permission to read your bank emails": a granular-consent untick).
-  case missingGrant
-  /// `invalid_grant` on refresh: the token was revoked or expired (`reconnect_required`).
-  case invalidGrant
-  /// Any other non-2xx from the token endpoint (status only, never a body).
-  case http(Int)
-  case offline
-  /// A 2xx whose body this code cannot read.
-  case malformedResponse
-  /// The build has no Google client configured.
-  case notConfigured
-}
-
-public struct GmailTokenGrant: Sendable, Equatable {
-  public let accessToken: String
-  /// Seconds from the response.
-  public let expiresIn: Int64
-  /// Present on the code exchange (required there), absent on a refresh.
-  public let refreshToken: String?
-  public let idToken: String?
-  public let scope: String?
-}
+public typealias GmailAuthorization = MailAuthorization
+public typealias GmailOAuthError = MailOAuthError
+public typealias GmailTokenGrant = MailTokenGrant
 
 /// The claims of a Google id_token the app reads. The app does NOT verify the signature: the
 /// server does (spec 02 §13.2, googlejwt); the app only reads the address it shows on Bank
@@ -160,18 +123,7 @@ public struct GoogleOAuthClient: Sendable {
   /// time before anything else is read. An `error=` redirect is `denied`, except
   /// `access_denied` (the user pressed Cancel on Google's page), which is `cancelled`.
   public func code(fromCallback callback: URL, for auth: GmailAuthorization) throws(GmailOAuthError) -> String {
-    guard callback.scheme == config.redirectScheme,
-      let comps = URLComponents(url: callback, resolvingAgainstBaseURL: false)
-    else { throw .malformedCallback }
-    let items = comps.queryItems ?? []
-    func item(_ n: String) -> String? { items.first { $0.name == n }?.value }
-    let state = item("state") ?? ""
-    guard constantTimeEquals(Data(state.utf8), Data(auth.state.utf8)) else { throw .stateMismatch }
-    if let err = item("error") {
-      throw err == "access_denied" ? .cancelled : .denied(String(err.prefix(64)))
-    }
-    guard let code = item("code"), !code.isEmpty else { throw .malformedCallback }
-    return code
+    try OAuthWire.code(fromCallback: callback, scheme: config.redirectScheme, state: auth.state)
   }
 
   /// `grant_type=authorization_code` (no secret). The response must carry a refresh token, an
@@ -210,8 +162,38 @@ public struct GoogleOAuthClient: Sendable {
   }
 
   func token(_ form: [(String, String)]) async throws(GmailOAuthError) -> GmailTokenGrant {
+    try await OAuthWire.token(http: http, endpoint: config.tokenEndpoint, form: form)
+  }
+}
+
+/// The OAuth 2.0 wire both providers share (RFC 6749 §4.1 with PKCE, a public client): the
+/// redirect check and the token endpoint's request and answer.
+enum OAuthWire {
+  /// Checks the redirect and returns the authorization code. `state` is compared in constant
+  /// time before anything else is read. An `error=` redirect is `denied`, except
+  /// `access_denied` (the user pressed Cancel on the provider's page), which is `cancelled`.
+  static func code(fromCallback callback: URL, scheme: String, state want: String) throws(MailOAuthError) -> String {
+    guard callback.scheme == scheme, let comps = URLComponents(url: callback, resolvingAgainstBaseURL: false) else {
+      throw .malformedCallback
+    }
+    let items = comps.queryItems ?? []
+    func item(_ n: String) -> String? { items.first { $0.name == n }?.value }
+    let state = item("state") ?? ""
+    guard constantTimeEquals(Data(state.utf8), Data(want.utf8)) else { throw .stateMismatch }
+    if let err = item("error") {
+      throw err == "access_denied" ? .cancelled : .denied(String(err.prefix(64)))
+    }
+    guard let code = item("code"), !code.isEmpty else { throw .malformedCallback }
+    return code
+  }
+
+  /// One form POST to the token endpoint. `invalid_grant` is `invalidGrant`; any other non-2xx
+  /// is its status only (the body is never kept).
+  static func token(http: any HTTPExchange, endpoint: String, form: [(String, String)]) async throws(MailOAuthError)
+    -> MailTokenGrant
+  {
     let req = HTTPRequest(
-      method: .post, url: URL(string: config.tokenEndpoint)!,
+      method: .post, url: URL(string: endpoint)!,
       headers: [("Content-Type", "application/x-www-form-urlencoded"), ("Accept", "application/json")],
       body: Data(FormEncoding.encode(form).utf8))
     let res: HTTPResponse
@@ -225,16 +207,28 @@ public struct GoogleOAuthClient: Sendable {
       throw .malformedResponse
     }
     let expires = b["expires_in"]?.numberValue?.int64Value ?? 3600
-    return GmailTokenGrant(
+    return MailTokenGrant(
       accessToken: access, expiresIn: max(0, expires), refreshToken: b["refresh_token"]?.stringValue,
       idToken: b["id_token"]?.stringValue, scope: b["scope"]?.stringValue)
   }
+
+  /// The payload of a JWT, unverified (the server verifies; the app only reads it).
+  static func claims(_ jwt: String) -> JSONObject? {
+    let parts = jwt.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 3, let payload = try? Base64.decodeURL(String(parts[1])),
+      let v = try? JSONParser.parse([UInt8](payload))
+    else { return nil }
+    return v.objectValue
+  }
 }
 
-/// The browser half, implemented by the app (Platform/GmailAuth, ASWebAuthenticationSession with
-/// `prefersEphemeralWebBrowserSession = false` and `callback: .customScheme(redirectScheme)`).
-public protocol GmailAuthSessionPresenter: Sendable {
-  /// Shows Google's consent page for `url` and returns the callback URL; throws
-  /// `GmailOAuthError.cancelled` when the user closes the sheet.
-  func authorize(url: URL, callbackScheme: String) async throws(GmailOAuthError) -> URL
+public typealias GmailAuthSessionPresenter = MailAuthSessionPresenter
+
+extension GoogleOAuthClient: MailOAuthClient {
+  public var isConfigured: Bool { config.isConfigured }
+  public var redirectScheme: String { config.redirectScheme }
+
+  public func identity(idToken: String) -> MailIdentity? {
+    GoogleIDTokenClaims(idToken: idToken).map { MailIdentity(email: $0.email, nonce: $0.nonce) }
+  }
 }

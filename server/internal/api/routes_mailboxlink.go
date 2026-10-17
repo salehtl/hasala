@@ -28,6 +28,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/googlejwt"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/msjwt"
+	"github.com/salehtl/hasala/server/internal/outlookpush"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -93,10 +94,16 @@ type OutlookOptions struct {
 }
 
 // OutlookPush is the Graph push: the public URLs of the hooks the holder's
-// subscription names.
+// subscription names (/meta reports them), and the hooks' counters and
+// limiters (routes_hooks.go). HookPerIP and HookGlobal are shared with
+// GmailPush's when both pushes are on.
 type OutlookPush struct {
 	NotificationURL string
 	LifecycleURL    string
+	Counters        outlookpush.Counters
+	HookPerIP       *Limiter
+	HookGlobal      *Limiter
+	HookLink        *Limiter
 }
 
 // GmailPush configures POST /hooks/gmail/pubsub (#39) and the watch topic.
@@ -371,8 +378,9 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
-	// The step-up is checked before the ID token is: a request without one
-	// costs no JWKS work.
+	// A request without a step-up is refused before the ID token is
+	// verified, so it costs no JWKS work. The step-up assertion itself is
+	// verified later, inside StepUp.Run, before anything is written.
 	if su == nil {
 		writeErr(w, http.StatusForbidden, "step_up_required", "")
 		return

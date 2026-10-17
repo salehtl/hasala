@@ -1,13 +1,13 @@
 // Token custody (spec 04 §7.3, port of the PWA's mailboxToken.ts contract).
 //
-// The refresh token lives in the Keychain item `.gmailRefresh(user)` (§4.4), reached through
-// `GmailRefreshTokenStore` so the core never imports Security (R1). The access token lives in
-// memory only, inside `RefreshingGmailTokenProvider` (an actor), with its expiry; it is refreshed
-// when fewer than 60 s remain, and never written to disk or logged.
+// The refresh token lives in the Keychain item `.mailRefresh(provider, user)` (§4.4), reached
+// through `MailRefreshTokenStore` so the core never imports Security (R1). The access token lives
+// in memory only, inside `RefreshingMailTokenProvider` (an actor), with its expiry; it is
+// refreshed when fewer than 60 s remain, and never written to disk or logged.
 //
 // The null-vs-throw contract: `read()` returning nil means "no token" (not connected), and a
 // throw means "present but unreadable right now" (before first unlock). A throw maps to
-// `GmailAuthError.notNow`, never to "absent": treating it as absent would make a locked phone
+// `MailAuthError.notNow`, never to "absent": treating it as absent would make a locked phone
 // look disconnected.
 import CoreTime
 import Foundation
@@ -22,8 +22,8 @@ public struct AccessToken: Sendable, Equatable {
   }
 }
 
-public enum GmailAuthError: Error, Sendable, Equatable {
-  /// No refresh token, or Google refused it (`invalid_grant`): the user must reconnect.
+public enum MailAuthError: Error, Sendable, Equatable {
+  /// No refresh token, or the provider refused it (`invalid_grant`): the user must reconnect.
   case reconnectRequired
   /// The Keychain is unreadable (before first unlock): try again later, change nothing.
   case notNow
@@ -32,18 +32,22 @@ public enum GmailAuthError: Error, Sendable, Equatable {
   case revoked
 }
 
+public typealias GmailAuthError = MailAuthError
+
 /// spec 04 §2.7.
-public protocol GmailTokenProvider: Sendable {
-  func accessToken(forceRefresh: Bool) async throws(GmailAuthError) -> AccessToken
+public protocol MailTokenProvider: Sendable {
+  func accessToken(forceRefresh: Bool) async throws(MailAuthError) -> AccessToken
 }
+
+public typealias GmailTokenProvider = MailTokenProvider
 
 public struct SecretUnavailable: Error, Sendable, Equatable {
   public init() {}
 }
 
-/// The Keychain item `.gmailRefresh(user)`; implemented by the app's Keychain adapter and by an
-/// in-memory store in tests.
-public protocol GmailRefreshTokenStore: Sendable {
+/// The Keychain item `.mailRefresh(provider, user)`; implemented over `Secrets`
+/// (`SecretsMailRefreshTokenStore`) and by an in-memory store in tests.
+public protocol MailRefreshTokenStore: Sendable {
   /// nil = absent; throws = present but unreadable now.
   func read() throws(SecretUnavailable) -> String?
   /// Writes and reads back (a mismatch throws).
@@ -51,8 +55,10 @@ public protocol GmailRefreshTokenStore: Sendable {
   func delete() throws(SecretUnavailable)
 }
 
-/// An in-memory `GmailRefreshTokenStore` (tests, previews). `locked` simulates before-first-unlock.
-public final class MemoryGmailRefreshTokenStore: GmailRefreshTokenStore, @unchecked Sendable {
+public typealias GmailRefreshTokenStore = MailRefreshTokenStore
+
+/// An in-memory `MailRefreshTokenStore` (tests, previews). `locked` simulates before-first-unlock.
+public final class MemoryMailRefreshTokenStore: MailRefreshTokenStore, @unchecked Sendable {
   private let lock = NSLock()
   private var token: String?
   public var locked = false
@@ -79,24 +85,26 @@ public final class MemoryGmailRefreshTokenStore: GmailRefreshTokenStore, @unchec
   }
 }
 
-/// `KeychainGmailTokenProvider` of spec 04 §7.1, with the Keychain behind
-/// `GmailRefreshTokenStore`.
-public actor RefreshingGmailTokenProvider: GmailTokenProvider {
-  let oauth: GoogleOAuthClient
-  let store: any GmailRefreshTokenStore
+public typealias MemoryGmailRefreshTokenStore = MemoryMailRefreshTokenStore
+
+/// `KeychainGmailTokenProvider` of spec 04 §7.1, for any provider's OAuth client, with the
+/// Keychain behind `MailRefreshTokenStore`.
+public actor RefreshingMailTokenProvider: MailTokenProvider {
+  let oauth: any MailOAuthClient
+  let store: any MailRefreshTokenStore
   let clock: any Clock
   private var cached: AccessToken?
 
   /// Refresh when fewer than this many ms remain.
   public static let refreshMarginMs: Int64 = 60_000
 
-  public init(oauth: GoogleOAuthClient, store: any GmailRefreshTokenStore, clock: any Clock) {
+  public init(oauth: any MailOAuthClient, store: any MailRefreshTokenStore, clock: any Clock) {
     self.oauth = oauth
     self.store = store
     self.clock = clock
   }
 
-  public func accessToken(forceRefresh: Bool) async throws(GmailAuthError) -> AccessToken {
+  public func accessToken(forceRefresh: Bool) async throws(MailAuthError) -> AccessToken {
     if !forceRefresh, let c = cached, c.expiresAtMs - clock.nowMs() > Self.refreshMarginMs { return c }
     let refresh: String?
     do { refresh = try store.read() } catch { throw .notNow }
@@ -106,6 +114,9 @@ public actor RefreshingGmailTokenProvider: GmailTokenProvider {
     }
     do {
       let grant = try await oauth.refresh(refreshToken: refresh)
+      // Microsoft rotates the refresh token on every refresh; keep the newest (Google sends
+      // none). A failed write keeps the old one, which still works until it expires.
+      if let next = grant.refreshToken, !next.isEmpty, next != refresh { try? store.write(next) }
       let t = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
       cached = t
       return t
@@ -122,7 +133,7 @@ public actor RefreshingGmailTokenProvider: GmailTokenProvider {
   }
 
   /// Stores the refresh token of a fresh grant and primes the access token.
-  public func install(grant: GmailTokenGrant) throws(GmailAuthError) {
+  public func install(grant: MailTokenGrant) throws(MailAuthError) {
     guard let r = grant.refreshToken else { throw .reconnectRequired }
     do { try store.write(r) } catch { throw .notNow }
     cached = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
@@ -133,16 +144,17 @@ public actor RefreshingGmailTokenProvider: GmailTokenProvider {
     do { return try store.read() != nil } catch { return nil }
   }
 
-  /// Deletes the Keychain item without revoking at Google: another iPhone became the holder
-  /// (spec 04 §7.4). Both iPhones use the same iOS client id, and a revoke ends the app's whole
-  /// grant for that Google account, the new holder's tokens included.
+  /// Deletes the Keychain item without revoking at the provider: another iPhone became the
+  /// holder (spec 04 §7.4). Both iPhones use the same iOS client id, and a revoke ends the app's
+  /// whole grant for that account, the new holder's tokens included.
   public func forget() {
     cached = nil
     try? store.delete()
   }
 
-  /// Revokes the refresh token at Google (best effort) and deletes the Keychain item. Used on
-  /// Disconnect (spec 04 §7.4), where ending the grant is the point.
+  /// Revokes the refresh token at the provider (best effort; a no-op where it has no revoke
+  /// endpoint) and deletes the Keychain item. Used on Disconnect (spec 04 §7.4), where ending the
+  /// grant is the point.
   public func revokeAndForget() async {
     cached = nil
     if let token = try? store.read() {
@@ -151,6 +163,8 @@ public actor RefreshingGmailTokenProvider: GmailTokenProvider {
     try? store.delete()
   }
 
-  /// Drops the in-memory access token (a 401 from Gmail).
+  /// Drops the in-memory access token (a 401 from the mail API).
   public func invalidate() { cached = nil }
 }
+
+public typealias RefreshingGmailTokenProvider = RefreshingMailTokenProvider

@@ -20,7 +20,14 @@ public enum SecretItem: Sendable, Hashable {
   case writerKey(userID: UserID, writerID: WriterID)
   /// The DAK's Secure-Enclave-wrapped handle (01 §4.9, §11.1).
   case approvalKey(userID: UserID, writerID: WriterID)
-  case gmailRefresh(userID: UserID)
+  /// A mail provider's OAuth refresh token (spec 04 §7.3).
+  case mailRefresh(provider: MailSecretProvider, userID: UserID)
+  /// The Outlook link's Graph subscription `clientState` (the `PUT /mailbox/link` answer).
+  case outlookClientState(userID: UserID)
+
+  /// The Gmail refresh token: service `app.hasala.gmail.refresh`, unchanged from before the
+  /// provider seam, so existing links need no migration.
+  public static func gmailRefresh(userID: UserID) -> SecretItem { .mailRefresh(provider: .gmail, userID: userID) }
 
   /// `kSecAttrService` (§4.4).
   public var service: String {
@@ -30,7 +37,9 @@ public enum SecretItem: Sendable, Hashable {
     case .epochKey: "app.hasala.epoch-key"
     case .writerKey: "app.hasala.writer-key"
     case .approvalKey: "app.hasala.approval-key"
-    case .gmailRefresh: "app.hasala.gmail.refresh"
+    case .mailRefresh(.gmail, _): "app.hasala.gmail.refresh"
+    case .mailRefresh(.outlook, _): "app.hasala.outlook.refresh"
+    case .outlookClientState: "app.hasala.outlook.clientstate"
     }
   }
 
@@ -41,7 +50,7 @@ public enum SecretItem: Sendable, Hashable {
     case .accountBinding: "binding"
     case .epochKey(let u, let e): "\(u.string):\(e)"
     case .writerKey(let u, let w), .approvalKey(let u, let w): "\(u.string):\(w.string)"
-    case .gmailRefresh(let u): u.string
+    case .mailRefresh(_, let u), .outlookClientState(let u): u.string
     }
   }
 
@@ -56,8 +65,15 @@ public enum SecretItem: Sendable, Hashable {
   /// Every service the fresh-install purge deletes (§4.4 `installCheck`).
   public static let allServices = [
     "app.hasala.session", "app.hasala.account", "app.hasala.epoch-key", "app.hasala.writer-key",
-    "app.hasala.approval-key", "app.hasala.gmail.refresh",
+    "app.hasala.approval-key", "app.hasala.gmail.refresh", "app.hasala.outlook.refresh",
+    "app.hasala.outlook.clientstate",
   ]
+}
+
+/// The mail providers that keep Keychain items (CoreMailbox's `MailProviderID`, by raw value).
+public enum MailSecretProvider: String, Sendable, Hashable, CaseIterable {
+  case gmail
+  case outlook
 }
 
 /// The two classes the items use. Every item is also non-synchronizable, in the

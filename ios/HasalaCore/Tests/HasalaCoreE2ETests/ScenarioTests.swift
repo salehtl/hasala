@@ -45,4 +45,10 @@ struct ScenarioTests {
     let (w, a, b) = try await twoRuntimes()
     try await Scenarios.gmailToReplay(a, b, clock: w.clock)
   }
+
+  @Test("Outlook alerts read on A (real MailboxEngine, OutlookProvider) upload, and B folds them")
+  func outlookToReplay() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await Scenarios.outlookToReplay(a, b, clock: w.clock)
+  }
 }
