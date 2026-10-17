@@ -572,10 +572,15 @@ struct PhraseGrid: View {
   }
 
   private var header: some View {
-    HStack {
+    // At the accessibility sizes Hide goes under the heading, so the heading has the width
+    // to wrap as words fit rather than one word a line beside it.
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+      : AnyLayout(HStackLayout(spacing: 8))
+    return layout {
       Text("Your recovery phrase").hType(.overline).foregroundStyle(HColor.textSecondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityAddTraits(.isHeader)
-      Spacer(minLength: 8)
       Button {
         revealed = false
       } label: {
@@ -583,6 +588,7 @@ struct PhraseGrid: View {
           HIconView(.eyeSlash, size: 16, color: HColor.textLink, strokeWidth: 2)
           Text("Hide").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textLink)
         }
+        .fixedSize()
         .padding(.horizontal, 14)
         .frame(minHeight: 36)
         .background(HColor.surfacePrimary, in: Capsule())
