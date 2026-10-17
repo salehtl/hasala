@@ -129,7 +129,8 @@ struct SecurityView: View {
           title: "Password only",
           body: can(.addPasskey)
             ? "Your 12 words are set. A passkey\nwould make sign-in one glance."
-            : "Your password and 12 words are set.\nLast sign-in \(s.lastSignIn).",
+            // The passkey hero's two lines in the same words, so neither wraps (HNJ-0).
+            : "Password and 12 words are set.\nLast sign-in \(s.lastSignIn).",
           hue: .sand, icon: .faceID)
       }
     }

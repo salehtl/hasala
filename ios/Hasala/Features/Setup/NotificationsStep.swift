@@ -16,7 +16,8 @@ struct NotificationsStep: View {
   private var subtitle: String {
     BuildSurface.showsUnfinished
       ? "A short note when a transaction lands, a bill is due or a budget reaches 80%."
-      : "For a short note when a transaction lands, a bill is due or a budget reaches 80%. This beta doesn't send them yet. Allow them now, or later in Settings."
+      // Paper's sentence (GP4-0) verbatim, then what this build does (Release copy exception).
+      : "A short note when a transaction lands, a bill is due or a budget reaches 80%. This beta doesn't send them yet. Allow them now, or later in Settings."
   }
 
   var body: some View {
