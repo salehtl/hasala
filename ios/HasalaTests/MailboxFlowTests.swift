@@ -275,6 +275,20 @@ struct MailboxFlowTests: AccountSuite {
 
   /// Profile › Settings › Mailboxes says what the mailbox is doing: none, the provider
   /// read, or a sign-in needed.
+  /// A connect while another iPhone holds the account's link asks first ("Read your email
+  /// on this iPhone?"), with the link's provider; a new sign-in, which takes nothing over,
+  /// never does, and neither does a connect with no link held elsewhere.
+  @Test func aConnectAsksBeforeItTakesTheLinkOver() {
+    let lane = CountingMailbox(MockMailbox(mailboxes: []))
+    #expect(MailConnectCoordinator(mailbox: lane, context: .addMailbox).takesOver == nil)
+    lane.heldElsewhere = .outlook
+    #expect(MailConnectCoordinator(mailbox: lane, context: .addMailbox).takesOver == .outlook)
+    #expect(MailConnectCoordinator(mailbox: lane, context: .setup(stepOf: nil)).takesOver == .outlook)
+    #expect(MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook")).takesOver == nil)
+    // Setup's link passes it through.
+    #expect(SetupMailLink(base: lane).heldElsewhere == .outlook)
+  }
+
   @Test func theSettingsRowNamesTheMailbox() {
     #expect(ProfileSheet.mailboxesValue([], known: true) == ("Not connected", nil))
     var gone = MockMailbox.gmail

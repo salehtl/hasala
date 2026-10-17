@@ -319,7 +319,7 @@ final class CoreScreensTests: XCTestCase {
     element(app, "review.close").tap()
   }
 
-  /// The Debug Search: Ready under its large title with the field focused (Paper "Search ·
+  /// Search: Ready under its large title with the field focused (Paper "Search ·
   /// Ready"); the first letters swap "Try asking" for results and the title makes room
   /// (S3 has none); a transaction result opens its sheet.
   @MainActor

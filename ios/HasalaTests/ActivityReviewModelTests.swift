@@ -174,7 +174,7 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 5)
   }
 
-  /// The Debug Search: the transactions it finds (merchant matches first), the categories by
+  /// Search: the transactions it finds (merchant matches first), the categories by
   /// name, and the rules whose words hold the query.
   @Test func searchFindsTransactionsCategoriesAndRules() {
     let s = MayaLedger.state

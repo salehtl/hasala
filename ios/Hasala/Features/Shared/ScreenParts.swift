@@ -228,15 +228,42 @@ extension Bucket {
   }
 }
 
+/// Where a screen's wash sits while its scroll view moves (Paper: the wash is absolute at the
+/// top of the screen, 420 tall, and scrolls away with the content). Scrolling up carries it
+/// away; a pull past the top, and the spinner's hold while a refresh runs, leave it put.
+nonisolated enum WashPin {
+  /// The wash's offset from the top of the screen: up by as far as the content has scrolled
+  /// up past its top, 0 while it is at rest, pulled down, or held down by the refresh spinner
+  /// (which grows `insetTop` by its own height and holds `contentOffset` at minus that).
+  static func offset(contentOffset: CGFloat, insetTop: CGFloat) -> CGFloat {
+    -max(0, contentOffset + insetTop)
+  }
+}
+
 extension View {
-  /// Keeps `pulled` at how far a pull has dragged a scroll view's content below its top
-  /// (0 when it isn't overscrolled). A screen's wash is offset by it, so pulling down,
-  /// to refresh or not, moves the content and leaves the wash where it is.
-  func trackingOverscroll(_ pulled: Binding<CGFloat>) -> some View {
-    onScrollGeometryChange(for: CGFloat.self) { geo in
-      max(0, -(geo.contentOffset.y + geo.contentInsets.top))
-    } action: { _, value in
-      pulled.wrappedValue = value
-    }
+  /// Draws `wash` behind a scroll view, from the top of the screen (`WashPin`). It sits
+  /// outside the scrolled content, so a pull, the refresh spinner's hold and the bounce back
+  /// don't carry it down (drawn in the content, it went down with them wherever the offset
+  /// that undid the pull lagged: the spinner's hold, the animated settle): it moves only by
+  /// its offset, and only up.
+  func washBehind(_ wash: HWash) -> some View {
+    modifier(WashBehind(wash: wash))
+  }
+}
+
+private struct WashBehind: ViewModifier {
+  let wash: HWash
+  @State private var offset: CGFloat = 0
+
+  func body(content: Content) -> some View {
+    content
+      .onScrollGeometryChange(for: CGFloat.self) { geo in
+        WashPin.offset(contentOffset: geo.contentOffset.y, insetTop: geo.contentInsets.top)
+      } action: { _, value in
+        offset = value
+      }
+      .background(alignment: .top) {
+        AmbientWash(wash).offset(y: offset).ignoresSafeArea(edges: .top)
+      }
   }
 }

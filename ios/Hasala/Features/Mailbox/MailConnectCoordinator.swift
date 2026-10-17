@@ -80,6 +80,13 @@ final class MailConnectCoordinator {
     return mailbox.replaced(by: provider)
   }
 
+  /// The provider of the account's link that a connect here takes over from another
+  /// iPhone, which the screen confirms first; nil for a new sign-in.
+  var takesOver: MailProviderKind? {
+    if case .signInAgain = context { return nil }
+    return mailbox.heldElsewhere
+  }
+
   /// Back to before the attempt ("Try again", "Choose a different email").
   func reset() {
     outcome = nil

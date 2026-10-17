@@ -124,10 +124,12 @@ func TestTheTemplatesAreContentFree(t *testing.T) {
 	}
 	all = append(all, AddressInUse("maya@example.com"), Deleted("maya@example.com", at))
 	for _, m := range all {
-		if m.HTML != "" || !strings.HasSuffix(m.Text, Footer+"\n") {
-			t.Errorf("%q: HTML or no footer", m.Subject)
+		if !strings.HasSuffix(m.Text, Footer+"\n") {
+			t.Errorf("%q: no footer", m.Subject)
 		}
-		if strings.Contains(m.Subject, "Maya") || strings.Contains(m.Text, "maya@example.com") {
+		checkHTML(t, m)
+		if strings.Contains(m.Subject, "Maya") || strings.Contains(m.Text, "maya@example.com") ||
+			strings.Contains(m.HTML, "maya@example.com") {
 			t.Errorf("%q names the address or puts the name in the subject", m.Subject)
 		}
 		for _, l := range url.FindAllString(m.Text, -1) {

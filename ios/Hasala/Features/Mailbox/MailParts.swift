@@ -63,6 +63,20 @@ enum MailCopy {
     "This replaces your \(old.appName) connection. Hasala reads your bank alerts from \(new.appName) instead. Past transactions stay."
   }
 
+  /// The system alert before a connect takes the account's link over from another iPhone
+  /// (a new install or a recovered account, while the server still names the earlier
+  /// iPhone; Paper has no board for it, so it is the switch alert's kind).
+  static let takeoverTitle = "Read your email on this iPhone?"
+
+  /// Its message. The other iPhone may be one the person no longer has: the server can't
+  /// tell, so the copy says both.
+  static func takeoverMessage(from held: MailProviderKind, to new: MailProviderKind) -> String {
+    let reads = held == new
+      ? "Hasala reads it on this iPhone instead"
+      : "Hasala reads your bank alerts from \(new.appName) on this iPhone instead"
+    return "Your \(held.appName) is read on another iPhone, or was on one you no longer have. \(reads), and the other iPhone stops. Past transactions stay."
+  }
+
   /// The system alert's message before a disconnect (Paper "Mailbox · Disconnect (alert)").
   /// Google's: the disconnect revokes Hasala's access at Google itself, so it says so
   /// (and where to check). Microsoft has no revoke, so its permission is removed there.

@@ -12,9 +12,10 @@ import Foundation
 /// everywhere (#16), freeze (#65), unfreeze (#66) and view your words (#67). The screens
 /// are the ones the mocks drive.
 ///
-/// `capabilities` is `.beta`: what this TestFlight build carries out end to end. Not in
-/// this build (they throw `.notInThisBuild`, and the screens hide them): forgot password
-/// (C9), access recovery (C4), the approving iPhone, phrase rotation, adding a passkey,
+/// `capabilities` is `.beta`: what this TestFlight build carries out end to end, access
+/// recovery (C4) to a new passkey included. Not in this build (they throw
+/// `.notInThisBuild`, and the screens hide them): forgot password (C9), recovery to a
+/// new password, the approving iPhone, phrase rotation, adding a passkey,
 /// email change, and the other passkey, password and device changes. Removing this
 /// iPhone works but isn't offered: Sign-in & security has no row for it yet.
 ///
@@ -47,6 +48,8 @@ final class LiveAccountService: AccountService {
   private var keys: NewAccountKeys?
   private var registered: RegisteredPasskey?
   private var signIn: SignInResult?
+  /// Access recovery between `recover/begin` and `recover/finish` (the words' entropy).
+  private var recovery: Recovery?
 
   /// Reads nothing: the Keychain may be read only once the fresh-install purge is done
   /// (spec 04 §4.4, R-03). The gate calls `loadProfile()` then.
@@ -398,15 +401,76 @@ final class LiveAccountService: AccountService {
     throw .notInThisBuild
   }
   func pollResetApproval(_ ticket: ResetTicket) async throws(AuthFailure) -> Bool { throw .notInThisBuild }
-  func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket { throw .notInThisBuild }
-  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
-    throw .notInThisBuild
-  }
-  func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
-    throw .notInThisBuild
-  }
   func pendingResetRequest() async -> PendingReset? { nil }
   func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure) { throw .notInThisBuild }
+
+  // MARK: Access recovery (C4, to a new passkey)
+
+  /// `recover/begin` with the words' recovery key. Signed out; while this iPhone holds
+  /// another account's data the gate's wall is asked for once the account is known
+  /// (`verifyRecovery`), since nothing here says whose words these are.
+  func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
+    await Self.retryPendingLogout(env)
+    recovery?.wipe()
+    recovery = nil
+    do {
+      let r = try await AccountRecovery.begin(env, typed: words.joined(separator: " "))
+      recovery = r
+      codeTries = 5
+      return RecoveryTicket(id: r.ceremonyID, emailHint: r.emailHint)
+    } catch {
+      if error.failure?.status == 404 { throw .noAccountForPhrase }
+      throw Self.map(error)
+    }
+  }
+
+  /// `recover/verify` for a passkey. A new password isn't in this build
+  /// (`.recoverWithPassword`): its stretch needs the address, which the server doesn't
+  /// answer here. Refused before the call, so the code isn't spent.
+  func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
+    guard let r = recovery, r.ceremonyID == ticket.id else { throw .refused }
+    guard kind == .passkey else { throw .notInThisBuild }
+    do {
+      try await AccountRecovery.verifyForPasskey(env, r, code: code)
+      codeTries = 5
+    } catch {
+      if error.failureClass == .codeRejected {
+        codeTries -= 1
+        if codeTries <= 0 { throw .codeExpired }
+        throw .codeWrong(triesLeft: codeTries)
+      }
+      throw Self.map(error)
+    }
+    // One account per iPhone (spec 04 §4.4): another account's data here asks for the
+    // wall before the passkey sheet.
+    if let b = binding, let user = r.userID, b.user_id != user.string {
+      r.wipe()
+      recovery = nil
+      throw otherAccountHere(b)
+    }
+  }
+
+  /// `recover/finish` with a new passkey (one Face ID prompt), then this iPhone enrols
+  /// as a new writer with the keys the words opened: signed in and unlocked.
+  func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
+    guard let r = recovery, r.ceremonyID == ticket.id, r.userID != nil else { throw .refused }
+    guard credential == .passkey else { throw .notInThisBuild }
+    do {
+      enrolled = try await AccountRecovery.finishWithPasskey(env, r)
+    } catch {
+      // A closed sheet keeps the verified ceremony for another try; anything else spent it.
+      if error.failureClass != .cancelled {
+        r.wipe()
+        recovery = nil
+      }
+      throw Self.map(error)
+    }
+    recovery = nil
+    signIn = nil
+    let b = binding
+    profile = AccountProfile(displayName: b?.display_name ?? "", email: b?.email_norm ?? "", method: .passkey)
+    methodConfirmed = true
+  }
 
   // MARK: Signed in
 
@@ -639,6 +703,8 @@ final class LiveAccountService: AccountService {
     keys = nil
     registered = nil
     inviteCode = nil
+    recovery?.wipe()
+    recovery = nil
   }
 
   func signOut() async {

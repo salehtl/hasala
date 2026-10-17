@@ -47,10 +47,28 @@ struct LiveAccountServiceTests {
   @Test func theBetaOffersWhatItCarriesOut() {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     #expect(a.capabilities == .beta)
-    #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverAccess))
+    #expect(!a.capabilities.contains(.resetPassword) && !a.capabilities.contains(.recoverWithPassword))
+    // Recovery to a new passkey: someone who lost theirs gets back in and can delete.
+    #expect(a.capabilities.contains(.recoverAccess))
     #expect(a.capabilities.contains(.deleteAccount))
     // Sign-in & security has no "Remove this iPhone" row, so the beta doesn't claim it.
     #expect(!a.capabilities.contains(.removeThisIPhone))
+  }
+
+  /// Recovery's refusals land on their copy: words no account has (`recover/begin` 404),
+  /// a ceremony this service didn't start, and a new password (not in this build) refused
+  /// before anything is sent, so the emailed code isn't spent.
+  @Test func recoveryRefusalsSayWhy() async throws {
+    let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
+    await #expect(throws: AuthFailure.noAccountForPhrase) {
+      _ = try await a.beginRecovery(words: MockAccountService.phraseWords)
+    }
+    await #expect(throws: AuthFailure.badPhrase("Every word is real, but together they aren't a Hasala phrase. Two words may be swapped.")) {
+      _ = try await a.beginRecovery(words: Array(repeating: "abandon", count: 12))
+    }
+    let ticket = RecoveryTicket(id: "not-mine", emailHint: "")
+    await #expect(throws: AuthFailure.refused) { try await a.verifyRecovery(ticket, code: "123456", kind: .passkey) }
+    await #expect(throws: AuthFailure.refused) { try await a.finishRecovery(ticket, credential: .passkey) }
   }
 
   @Test func aPasswordAccountOnTwoIPhonesThenDeleted() async throws {

@@ -29,9 +29,6 @@ struct PlanDetailScreen<Content: View>: View {
   var hostsToast = true
   @ViewBuilder let content: () -> Content
 
-  @State private var topInset: CGFloat = 0
-  @State private var overscroll: CGFloat = 0
-
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
@@ -40,14 +37,10 @@ struct PlanDetailScreen<Content: View>: View {
       .padding(.top, 20)
       .padding(.bottom, HSpacing.scrollContentBottom)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(alignment: .top) {
-        // From the top of the screen, behind the bar, as on the tab screens; a pull past the
-        // top leaves it where it is.
-        AmbientWash(wash).padding(.top, -topInset).offset(y: -overscroll)
-      }
     }
-    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
-    .trackingOverscroll($overscroll)
+    // The wash starts at the top of the screen, behind the bar, and scrolls away with the
+    // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
+    .washBehind(wash)
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
     .navigationTitle(title)

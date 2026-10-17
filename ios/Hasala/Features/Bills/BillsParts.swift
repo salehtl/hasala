@@ -19,8 +19,6 @@ struct PushedPage<Content: View>: View {
   var top: CGFloat = 20
   @ViewBuilder let content: () -> Content
   @Environment(\.inProfileSheet) private var inProfileSheet
-  @State private var topInset: CGFloat = 0
-  @State private var overscroll: CGFloat = 0
 
   var body: some View {
     ScrollView {
@@ -28,13 +26,10 @@ struct PushedPage<Content: View>: View {
         .padding(.top, top)
         .padding(.bottom, HSpacing.scrollContentBottom)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(alignment: .top) {
-          // From the top of the screen, behind the bar; a pull past the top leaves it put.
-          AmbientWash(wash).padding(.top, -topInset).offset(y: -overscroll)
-        }
     }
-    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
-    .trackingOverscroll($overscroll)
+    // The wash starts at the top of the screen, behind the bar, and scrolls away with the
+    // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
+    .washBehind(wash)
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(inProfileSheet ? HColor.sheetSurfaceLarge : HColor.surfaceSecondary)
     .navigationTitle(title)

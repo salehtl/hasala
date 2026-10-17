@@ -392,13 +392,15 @@ public actor MailboxEngine {
       if let token = try? await tokens.accessToken(forceRefresh: false) {
         try? await source(token).stop()
       }
-      await tokens.revokeAndForget()
+      await tokens.revokeAndForget(keepOnFailure: false)
       provider.forgetLink()
     }
   }
 
   /// Disconnect (Bank alerts › Disconnect): step-up `mailbox.unlink` → stop push (users.stop) →
-  /// revoke → `DELETE /mailbox/link` → delete the Keychain item → clear the mailbox tables.
+  /// revoke and delete the Keychain item → `DELETE /mailbox/link` → clear the mailbox tables.
+  /// A revoke that did not go through stops the disconnect there (false): the token is kept, so
+  /// the retry can still end the grant, and nothing says it ended when it didn't.
   public func disconnect() async -> Bool {
     await exclusive {
       let proof: JSONValue
@@ -406,7 +408,7 @@ public actor MailboxEngine {
       if let token = try? await tokens.accessToken(forceRefresh: false) {
         try? await source(token).stop()
       }
-      await tokens.revokeAndForget()
+      guard await tokens.revokeAndForget() else { return false }
       provider.forgetLink()
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)

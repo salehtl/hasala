@@ -30,6 +30,9 @@ struct ConnectProviderView: View {
   var choiceIsBack: Bool
   /// The mailbox a confirmed sign-in replaces, while "Change your email?" asks.
   @State private var switching: MailboxSnapshot?
+  /// The provider of the link a confirmed sign-in takes over from another iPhone, while
+  /// "Read your email on this iPhone?" asks.
+  @State private var takingOver: MailProviderKind?
 
   init(
     provider: MailProviderKind, coordinator: MailConnectCoordinator, banks: [SupportedBank],
@@ -130,6 +133,14 @@ struct ConnectProviderView: View {
     } message: { old in
       Text(MailCopy.switchMessage(from: old.provider, to: provider))
     }
+    .alert(MailCopy.takeoverTitle, isPresented: Binding(get: { takingOver != nil }, set: { if !$0 { takingOver = nil } }),
+           presenting: takingOver) { _ in
+      Button("Cancel", role: .cancel) {}
+      Button("Read it here") { run(replacing: true) }
+        .accessibilityIdentifier("mail.confirmTakeover")
+    } message: { held in
+      Text(MailCopy.takeoverMessage(from: held, to: provider))
+    }
     // Setup moves on to the first scan; the profile's moment is Bank alerts' new row.
     .hHaptic(.success, trigger: connectedOutcome) { _, new in isSetup && new != nil }
   }
@@ -199,7 +210,9 @@ struct ConnectProviderView: View {
   /// The provider's sign-in; once connected, on to the next screen. A sign-in that would
   /// replace the account's link to another provider asks first.
   private func connect() {
-    if let old = coordinator.replaced(by: provider) {
+    if let held = coordinator.takesOver {
+      takingOver = held
+    } else if let old = coordinator.replaced(by: provider) {
       switching = old
     } else {
       run(replacing: false)
