@@ -66,6 +66,10 @@ public struct MailboxStatusChip: View {
 /// line, the provider and when it was last checked, then the status chip. A disconnected
 /// mailbox fades its tile and greys its address. The address is the mailbox's, never the
 /// Hasala account email. Tap opens the mailbox.
+///
+/// The address is the row's identity, so it is never cut: when it and a wider chip ("Sign in
+/// again", "Disconnected") can't share the line, the chip moves down beside the provider
+/// line; an address too long for the row on its own wraps, with the chip under it.
 public struct MailboxRow: View {
   let mailbox: MailboxSnapshot
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -77,25 +81,58 @@ public struct MailboxRow: View {
   private var off: Bool { mailbox.state == .disconnected }
 
   public var body: some View {
-    let layout = typeSize.isAccessibilitySize
-      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-      : AnyLayout(HStackLayout(spacing: HSpacing.listRowGap))
-    layout {
-      ProviderMark(mailbox.provider, size: .tile40, faded: off)
-      VStack(alignment: .leading, spacing: 2) {
-        // One line at the default size (Paper clamps it); above it the address wraps.
-        Text(mailbox.address)
-          .hType(.rowTitle)
-          .foregroundStyle(off ? HColor.textSecondary : HColor.textPrimary)
-          .singleLineAtDefaultTextSize()
-        Text(meta).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
-          .fixedSize(horizontal: false, vertical: true)
-        if let note = mailbox.note {
-          Text(note).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+    Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 8) {
+          mark
+          VStack(alignment: .leading, spacing: 2) {
+            address.fixedSize(horizontal: false, vertical: true)
+            metaLine
+            noteLine
+          }
+          MailboxStatusChip(mailbox.state)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        ViewThatFits(in: .horizontal) {
+          // Paper: the address and the chip on one line.
+          HStack(spacing: HSpacing.listRowGap) {
+            mark
+            VStack(alignment: .leading, spacing: 2) {
+              address.singleLineAtDefaultTextSize()
+              metaLine
+              noteLine
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            MailboxStatusChip(mailbox.state)
+          }
+          // The address on its own line; the chip beside the provider line.
+          HStack(spacing: HSpacing.listRowGap) {
+            mark
+            VStack(alignment: .leading, spacing: 2) {
+              address.singleLineAtDefaultTextSize()
+              HStack(spacing: 8) {
+                metaLine
+                Spacer(minLength: 0)
+                MailboxStatusChip(mailbox.state)
+              }
+              noteLine
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          // A very long address wraps; the chip goes under it all.
+          HStack(alignment: .top, spacing: HSpacing.listRowGap) {
+            mark
+            VStack(alignment: .leading, spacing: 2) {
+              address.fixedSize(horizontal: false, vertical: true)
+              metaLine
+              noteLine
+              MailboxStatusChip(mailbox.state).padding(.top, 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
         }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      MailboxStatusChip(mailbox.state)
     }
     .padding(.horizontal, HSpacing.listRowInsetInline)
     .padding(.vertical, HSpacing.listRowInsetBlock)
@@ -108,6 +145,25 @@ public struct MailboxRow: View {
 
   /// "Gmail · Checked 4 min ago".
   private var meta: String { "\(mailbox.provider.appName) · \(mailbox.meta)" }
+
+  private var mark: some View { ProviderMark(mailbox.provider, size: .tile40, faded: off) }
+
+  private var address: some View {
+    Text(mailbox.address)
+      .hType(.rowTitle)
+      .foregroundStyle(off ? HColor.textSecondary : HColor.textPrimary)
+  }
+
+  private var metaLine: some View {
+    Text(meta).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  @ViewBuilder private var noteLine: some View {
+    if let note = mailbox.note {
+      Text(note).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+    }
+  }
 }
 
 /// A provider row in "Choose your email" (page 15 §15.3): the provider tile, the mail app's
