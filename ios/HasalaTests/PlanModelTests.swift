@@ -192,5 +192,17 @@ struct PlanModelTests {
     #expect(c.budget?.minY == 34)
     let peakFrame = try #require(c.peak), budgetFrame = try #require(c.budget)
     #expect(!peakFrame.intersects(budgetFrame))
+    // A bar through the label's place above its line and a free place under it: under.
+    let barAbove = DayByDayPlotLabels(hasPeak: false, peakCentre: 0, peakTop: 0, lineY: 100,
+                                      bars: [CGRect(x: 76.5, y: 60, width: 12, height: 20)])
+    #expect(barAbove.frames(peak: nil, budget: CGSize(width: 110, height: 16), width: 330).budget?.minY == 104)
+    // Groceries (1–10 Oct, 33 a day): days 3, 6 and 9 rise through the line from the
+    // baseline (131), so no place by the line is free; the label keeps Paper's, on its halo.
+    let groceries = DayByDayPlotLabels(
+      hasPeak: true, peakCentre: 280.5, peakTop: 23, lineY: 117,
+      bars: [CGRect(x: 76.5, y: 66, width: 12, height: 65), CGRect(x: 175.5, y: 54, width: 12, height: 77),
+             CGRect(x: 274.5, y: 23, width: 12, height: 108)])
+    let g = groceries.frames(peak: CGSize(width: 110, height: 16), budget: CGSize(width: 110, height: 16), width: 330)
+    #expect(g.budget == CGRect(x: 0, y: 97, width: 110, height: 16))
   }
 }

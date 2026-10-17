@@ -99,7 +99,8 @@ struct DayByDayChart: View {
           hasPeak: peak != nil,
           peakCentre: peak.map { slot * (CGFloat($0.1) + 0.5) } ?? 0,
           peakTop: peak.map { plotHeight - CGFloat($0.0.total.minor) / top * tallest } ?? 0,
-          lineY: chart.dailyBudget.minor > 0 ? lineY : nil
+          lineY: chart.dailyBudget.minor > 0 ? lineY : nil,
+          bars: barFrames(slot: slot, bar: bar, top: top)
         ) {
           if let peak { PeakLabel(peak: peak.0, hidden: hidden, wraps: false) }
           if chart.dailyBudget.minor > 0 { DailyBudgetLabel(amount: chart.dailyBudget, hidden: hidden, wraps: false) }
@@ -108,6 +109,15 @@ struct DayByDayChart: View {
       }
     }
     .frame(width: width, height: plotHeight + 1, alignment: .topLeading)
+  }
+
+  /// Each spend day's bar in the plot, for the labels to keep clear of.
+  private func barFrames(slot: CGFloat, bar: CGFloat, top: CGFloat) -> [CGRect] {
+    chart.days.enumerated().compactMap { i, day in
+      guard day.spent.minor > 0 else { return nil }
+      let height = max(4, CGFloat(day.spent.minor) / top * tallest)
+      return CGRect(x: slot * (CGFloat(i) + 0.5) - bar / 2, y: plotHeight - height, width: bar, height: height)
+    }
   }
 
   @ViewBuilder private func dayBar(_ day: DaySpend, width: CGFloat, height: CGFloat) -> some View {
@@ -249,7 +259,9 @@ nonisolated private struct BarShape: Shape {
 /// Places the plot's labels at their measured sizes: the tallest day's name (the first
 /// subview, when `hasPeak`) centred over its bar, 5 above it, inside the plot; the daily
 /// budget's (the next) at the leading edge 4 above its line, or 4 under it when there is no
-/// room above or the name is in the way.
+/// room above, or the name or a bar is in the way there and not under it. Where a bar rises
+/// through both (Groceries' day 3), it stays above the line, on its halo
+/// (`DailyBudgetLabel`), so its figure reads over the bar.
 struct DayByDayPlotLabels: Layout {
   let hasPeak: Bool
   let peakCentre: CGFloat
@@ -257,6 +269,8 @@ struct DayByDayPlotLabels: Layout {
   let peakTop: CGFloat
   /// The daily budget line, or nil when it is not drawn.
   let lineY: CGFloat?
+  /// The spend days' bars, in the plot.
+  var bars: [CGRect] = []
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     proposal.replacingUnspecifiedDimensions()
@@ -285,12 +299,18 @@ struct DayByDayPlotLabels: Layout {
     }
     let budgetFrame = budget.flatMap { size in
       lineY.map { lineY in
-        var frame = CGRect(x: 0, y: lineY - size.height - 4, width: size.width, height: size.height)
-        if frame.minY < 0 || peakFrame?.intersects(frame) == true { frame.origin.y = lineY + 4 }
-        return frame
+        let above = CGRect(x: 0, y: lineY - size.height - 4, width: size.width, height: size.height)
+        let under = CGRect(x: 0, y: lineY + 4, width: size.width, height: size.height)
+        if above.minY < 0 || peakFrame?.intersects(above) == true { return under }
+        return crossesABar(above) && !crossesABar(under) ? under : above
       }
     }
     return (peakFrame, budgetFrame)
+  }
+
+  /// A bar runs through `frame` (2 pt of air around the words).
+  private func crossesABar(_ frame: CGRect) -> Bool {
+    bars.contains { $0.intersects(frame.insetBy(dx: -2, dy: -2)) }
   }
 }
 
@@ -324,6 +344,8 @@ private struct PeakLabel: View {
 }
 
 /// "Daily budget 51.61" by its line: the words 400, the figure rounded 600, both secondary.
+/// In the plot it sits on a halo of the card's white, 3 past its edges, which shows only
+/// where a bar runs behind it (`DayByDayPlotLabels`).
 private struct DailyBudgetLabel: View {
   let amount: Money
   let hidden: Bool
@@ -339,6 +361,9 @@ private struct DailyBudgetLabel: View {
           figure
         }
         .fixedSize()
+        .background {
+          RoundedRectangle(cornerRadius: 4, style: .continuous).fill(HColor.surfacePrimary).padding(-3)
+        }
       }
     }
     .foregroundStyle(HColor.textSecondary)
