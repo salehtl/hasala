@@ -83,7 +83,8 @@ struct PaydayStrip: View {
       .gesture(drag)
     }
     .frame(height: 64 * scale)
-    .hHaptic(.keyTick, trigger: choice)
+    // A picker step: the selection tick (motion policy, Haptics), not the keypad's tap.
+    .hHaptic(.selection, trigger: choice)
   }
 
   /// One day: its place from the centre, its size (the chosen one 56 × 64, the rest

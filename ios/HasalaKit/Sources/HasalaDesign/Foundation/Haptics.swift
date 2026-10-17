@@ -5,13 +5,13 @@ import SwiftUI
 /// timers and a scan finishing get none. Reduce Motion removes travel, never haptics. Every
 /// kind goes through `.sensoryFeedback`, so the system haptics setting is respected.
 public enum HHaptic: Sendable, Hashable, CaseIterable {
-  /// A swipe or tap settles on a new Welcome story; a picker step.
+  /// A swipe or tap settles on a new Welcome story; a picker step (the payday day strip).
   case selection
   /// A review card crosses the commit point (or a pill files it); Welcome key moments.
   case impactLight
   /// The Welcome lock snaps shut (story 3), once.
   case impactRigid
-  /// A keypad key, a day-strip day, a split-handle step: light and low.
+  /// A keypad key, a split-handle step: light and low.
   case keyTick
   /// A mailbox connects; "You're set".
   case success
