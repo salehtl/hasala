@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// The four bundled Inter weights.
+/// The four Inter weights the type scale uses.
 public enum HWeight: Sendable, Hashable, CaseIterable {
   case regular, medium, semibold, bold
 
-  /// PostScript name of the bundled face.
+  /// PostScript name of the bundled variable font's named instance at this weight
+  /// (`HasalaFonts`); its optical size follows the point size it is set at.
   public var interFace: String {
     switch self {
-    case .regular: "Inter-Regular"
-    case .medium: "Inter-Medium"
-    case .semibold: "Inter-SemiBold"
-    case .bold: "Inter-Bold"
+    case .regular: "InterVariable"
+    case .medium: "InterVariable-Medium"
+    case .semibold: "InterVariable-SemiBold"
+    case .bold: "InterVariable-Bold"
     }
   }
 
@@ -21,6 +22,15 @@ public enum HWeight: Sendable, Hashable, CaseIterable {
     case .medium: HFontWeight.medium
     case .semibold: HFontWeight.semibold
     case .bold: HFontWeight.bold
+    }
+  }
+
+  /// One step heavier, for Bold Text (spec 01 §2.4: "Inter steps up one weight").
+  public var bolder: HWeight {
+    switch self {
+    case .regular: .medium
+    case .medium: .semibold
+    case .semibold, .bold: .bold
     }
   }
 
@@ -101,10 +111,15 @@ public struct HType: Sendable, Hashable {
                                      tracking: HTracking.caption2, textStyle: .caption2)
   public static let button = HType(size: HFontSize.button, leading: HLeading.button, weight: .semibold,
                                    tracking: HTracking.button, textStyle: .body)
-  public static let buttonSmall = HType(size: HFontSize.subheadline, leading: HLeading.subheadline,
+  /// Small button (36-tall pills, chips): 15/20, 600, no tracking.
+  public static let smallButton = HType(size: HFontSize.subheadline, leading: HLeading.subheadline,
                                         weight: .semibold, textStyle: .subheadline)
-  /// "OCTOBER · DAY 10 OF 31": 13/16, 600, 0.06 em, uppercase.
-  public static let overline = HType(size: HFontSize.footnote, leading: HLeading.caption1, weight: .semibold,
+  /// Text button (header links "See all", "Edit"): 17/24, 500, −0.15, in `--color-text-link`.
+  public static let textButton = HType(size: HFontSize.body, leading: HLeading.body, weight: .medium,
+                                       tracking: HTracking.body, textStyle: .body)
+  /// "DAY 10 OF 31": 13/16, 600, 0.06 em, uppercase in styling only (the source stays
+  /// sentence case, so VoiceOver reads words).
+  public static let overline = HType(size: HFontSize.footnote, leading: HLeading.overline, weight: .semibold,
                                      trackingEm: HTracking.overlineEm, uppercase: true, textStyle: .footnote)
 }
 
@@ -121,10 +136,13 @@ public struct HFigure: Sendable, Hashable {
   /// The largest Dynamic Type size this figure grows to. `.display` and `.hero` stop
   /// at `.accessibility3`; larger sizes reflow the layout instead (spec 04 §14.4).
   public var maxDynamicTypeSize: DynamicTypeSize
+  /// How far a long figure may shrink to stay on one line (spec 01 §6.10): never cut, never
+  /// wrapped. 1 means it never scales; rows and lists reflow instead.
+  public var minimumScale: CGFloat
 
   public init(
     size: CGFloat, leading: CGFloat, weight: HWeight, tracking: CGFloat = 0, textStyle: Font.TextStyle,
-    tabular: Bool = false, maxDynamicTypeSize: DynamicTypeSize = .accessibility5
+    tabular: Bool = false, maxDynamicTypeSize: DynamicTypeSize = .accessibility5, minimumScale: CGFloat = 1
   ) {
     self.size = size
     self.leading = leading
@@ -133,7 +151,11 @@ public struct HFigure: Sendable, Hashable {
     self.textStyle = textStyle
     self.tabular = tabular
     self.maxDynamicTypeSize = maxDynamicTypeSize
+    self.minimumScale = minimumScale
   }
+
+  /// The smallest size the figure may scale to (its floor, page 06).
+  public var floor: CGFloat { (size * minimumScale).rounded() }
 
   public func weight(_ w: HWeight) -> HFigure {
     var f = self
@@ -141,39 +163,46 @@ public struct HFigure: Sendable, Hashable {
     return f
   }
 
-  /// Home hero, recap: 56/58 bold, −1.2.
+  /// Home hero, recap: 56/58 bold, −1.2. Capped at AX3; scales down to 34.
   public static let display = HFigure(size: HFontSize.numericDisplay, leading: HLeading.numericDisplay,
                                       weight: .bold, tracking: HTracking.numericDisplay, textStyle: .largeTitle,
-                                      maxDynamicTypeSize: .accessibility3)
-  /// Kit hero: 44/46 bold, −0.8.
+                                      maxDynamicTypeSize: .accessibility3, minimumScale: 0.6)
+  /// Detail heroes, the review card, Bills "to pay": 44/46 bold, −0.8. Capped at AX3; floor 26.
   public static let hero = HFigure(size: HFontSize.numericHero, leading: HLeading.numericHero, weight: .bold,
                                    tracking: HTracking.numericHero, textStyle: .largeTitle,
-                                   maxDynamicTypeSize: .accessibility3)
-  /// Sheet heroes, posters, widgets: 34/40 bold, −0.5.
+                                   maxDynamicTypeSize: .accessibility3, minimumScale: 0.6)
+  /// Home Screen widget figure: 40/44 bold, −0.8 (no token yet). Floor 22.
+  public static let widget = HFigure(size: 40, leading: 44, weight: .bold, tracking: HTracking.numericHero,
+                                     textStyle: .largeTitle, minimumScale: 0.55)
+  /// Sheet heroes, posters, widgets: 34/40 bold, −0.5. Floor 20.
   public static let large = HFigure(size: HFontSize.numericLarge, leading: HLeading.numericLarge, weight: .bold,
-                                    tracking: HTracking.numericLarge, textStyle: .title)
-  /// Keypad digits: 28/32 medium.
+                                    tracking: HTracking.numericLarge, textStyle: .title, minimumScale: 0.6)
+  /// Keypad digits, the project card figure: 28/32 medium, −0.4.
   public static let medium = HFigure(size: HFontSize.numericMedium, leading: HLeading.numericMedium,
-                                     weight: .medium, textStyle: .title2)
-  /// Stat values: 22/28.
+                                     weight: .medium, tracking: HTracking.numericMedium, textStyle: .title2,
+                                     minimumScale: 0.75)
+  /// Counts and percentages on stat tiles: 22/28 bold. Floor 17.
   public static let small = HFigure(size: HFontSize.numericSmall, leading: HLeading.numericSmall, weight: .bold,
-                                    textStyle: .title3)
-  /// The "AED" unit beside a display figure: 20/24 semibold.
-  /// Capped with the display figure it sits beside.
-  public static let displayUnit = HFigure(size: 20, leading: 24, weight: .semibold, textStyle: .title3,
-                                          maxDynamicTypeSize: .accessibility3)
-  /// The "AED" unit beside a large figure, and stat values: 17/22.
+                                    textStyle: .title3, minimumScale: 0.75)
+  /// Home and Insights amount tiles (Needs, Wants, Savings): 17/22 bold. Floor 13.
+  public static let stat = HFigure(size: HFontSize.numericUnit, leading: HLeading.numericUnit, weight: .bold,
+                                   textStyle: .body, minimumScale: 0.75)
+  /// The "AED" unit beside a display figure: 20/24 semibold. It scales with its figure and is
+  /// capped with it.
+  public static let displayUnit = HFigure(size: HFontSize.numericDisplayUnit, leading: HLeading.numericDisplayUnit,
+                                          weight: .semibold, textStyle: .title3, maxDynamicTypeSize: .accessibility3)
+  /// The "AED" unit beside a hero or large figure: 17/22 semibold.
   public static let unit = HFigure(size: HFontSize.numericUnit, leading: HLeading.numericUnit, weight: .semibold,
                                    textStyle: .body)
-  /// Row amounts: 16/22 bold.
-  public static let row = HFigure(size: HFontSize.callout, leading: HLeading.callout, weight: .bold,
+  /// Row amounts: 16/22 bold, tabular. Never scales: the row reflows.
+  public static let row = HFigure(size: HFontSize.numericRow, leading: HLeading.numericRow, weight: .bold,
                                   textStyle: .callout, tabular: true)
-  /// Widget rows and units: 15/20.
-  public static let compact = HFigure(size: HFontSize.subheadline, leading: HLeading.subheadline, weight: .bold,
-                                      textStyle: .subheadline, tabular: true)
-  /// Badges: 13/16 bold.
-  public static let badge = HFigure(size: HFontSize.footnote, leading: HLeading.caption1, weight: .bold,
-                                    textStyle: .footnote)
+  /// Widget rows and pace-row figures: 15/20 bold, tabular. Never scales.
+  public static let compact = HFigure(size: HFontSize.numericCompact, leading: HLeading.numericCompact,
+                                      weight: .bold, textStyle: .subheadline, tabular: true)
+  /// Counts in pills and badges: 13/16 bold, tabular.
+  public static let badge = HFigure(size: HFontSize.numericBadge, leading: HLeading.numericBadge, weight: .bold,
+                                    textStyle: .footnote, tabular: true)
 }
 
 /// Inter's ascent + descent is 1.21 em, so CSS line height adds (leading − 1.21 × size).
@@ -184,6 +213,7 @@ let roundedLineRatio: CGFloat = 1.19
 struct HTypeModifier: ViewModifier {
   let type: HType
   @ScaledMetric private var scale: CGFloat
+  @Environment(\.legibilityWeight) private var legibilityWeight
 
   init(type: HType) {
     self.type = type
@@ -192,9 +222,12 @@ struct HTypeModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     let extra = max(0, (type.leading - type.size * interLineRatio) * scale)
+    // Bundled faces ignore Bold Text on their own, so the style steps up a weight itself.
+    let weight = legibilityWeight == .bold ? type.weight.bolder : type.weight
     content
-      .font(type.font)
-      .tracking(type.resolvedTracking)
+      .font(.custom(weight.interFace, size: type.size, relativeTo: type.textStyle))
+      // Size, leading and tracking scale together (spec 01 §2.4).
+      .tracking(type.resolvedTracking * scale)
       .textCase(type.uppercase ? .uppercase : nil)
       .lineSpacing(extra)
       .padding(.vertical, extra / 2)
@@ -216,7 +249,7 @@ struct HFigureModifier: ViewModifier {
     let font = Font.system(size: size, weight: figure.weight.systemWeight, design: .rounded)
     content
       .font(figure.tabular ? font.monospacedDigit() : font)
-      .tracking(figure.tracking)
+      .tracking(figure.tracking * scale)
       .padding(.vertical, extra / 2)
   }
 }

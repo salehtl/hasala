@@ -38,6 +38,10 @@ compile() {
 	shift 2
 	/usr/bin/xcrun -sdk iphoneos clang -target arm64-apple-ios26.0 -o "$out" "$src" "$@"
 }
+# compile_swift OUT SWIFT-FILE: the same, from Swift, optimised as a Release build is.
+compile_swift() {
+	/usr/bin/xcrun -sdk iphoneos swiftc -O -target arm64-apple-ios26.0 -module-name Hasala -o "$1" "$2"
+}
 
 # --- the template: an app that passes every check ------------------------------------
 tpl="$work/template/Payload/Hasala.app"
@@ -251,6 +255,40 @@ app="$(variant mocks-resource)"
 printf '{"persona": "%s"}\n' "Maya Rahman" >"$app/persona.json"
 seal mocks-resource
 inspect mocks-resource 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
+# The Debug launch hook's arguments (-HasalaScreen, -HasalaMotion) are mock code too.
+app="$(variant screen-hook)"
+printf 'const char *const hook = "%s";\nint main(void) { return hook[0] == 0; }\n' "-HasalaScreen" >"$work/hook.c"
+compile "$app/Hasala" "$work/hook.c"
+seal screen-hook
+inspect screen-hook 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
+app="$(variant motion-hook)"
+printf '{"launch": "%s"}\n' "-HasalaMotion off" >"$app/motion.json"
+seal motion-hook
+inspect motion-hook 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
+# The hook as the app writes it, in Swift: "-HasalaScreen" inline is 13 bytes, which the
+# optimiser keeps inside instructions, so no byte search sees it. The mock-only type it
+# sits in is what AT-REV-4 finds.
+app="$(variant swift-hook)"
+cat >"$work/hook.swift" <<'SWIFT'
+enum ScreenLaunch {
+  static func isMockLaunch(_ arguments: [String]) -> Bool { arguments.contains("-HasalaScreen") }
+}
+if ScreenLaunch.isMockLaunch(CommandLine.arguments) { print("mock") }
+SWIFT
+compile_swift "$app/Hasala" "$work/hook.swift"
+if hasala_absent 'HasalaScreen' "$app/Hasala"; then
+	echo "ok   (swiftc keeps the inline -HasalaScreen out of the binary's bytes)"
+else
+	echo "note swiftc stored the inline -HasalaScreen as bytes this time"
+fi
+seal swift-hook
+inspect swift-hook 40
 only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
 
 # --- I3, I4: Info.plist against archive.sh's expectations ----------------------------------

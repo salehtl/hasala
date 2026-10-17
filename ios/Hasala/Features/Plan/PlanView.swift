@@ -6,28 +6,24 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Routes pushed from Plan (spec 04 §13.2).
-enum PlanRoute: Hashable {
-  /// TODO(spec 04 §16.1 "Category detail"): CategoryDetailView (day-by-day chart, rules). For now a
-  /// budget row opens Activity filtered to its category ("Activity · Filtered") with the budget actions.
-  case category(CategoryID)
-}
-
-/// Plan · October (Paper board): one plan for the month. Ready to assign, the split,
-/// the buckets with their budget rows, goals and projects.
+/// Plan · October (Paper board 104-0): one plan for the month. Ready to assign, the split,
+/// the buckets with their budget rows, and the projects. Rows push the category's month and
+/// the project; Assign opens Move money.
 struct PlanView: View {
   @Bindable var app: AppModel
   let model: any PlanModel
-  @State private var path: [PlanRoute] = []
 
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Bindable(app.router).plan) {
       TabScreen(app: app, title: "Plan", extra: .none) {
-        PlanContent(model: model) { path.append(.category($0)) }
+        MonthPill(month: model.snapshot.month)
+      } content: {
+        PlanContent(model: model)
       }
       .navigationDestination(for: PlanRoute.self) { route in
         switch route {
-        case .category(let id): CategoryActivityView(app: app, category: id, plan: model)
+        case .category(let id): CategoryDetailView(app: app, category: id)
+        case .project(let id): ProjectDetailView(app: app, project: id)
         }
       }
     }
@@ -36,147 +32,216 @@ struct PlanView: View {
 
 private struct PlanContent: View {
   let model: any PlanModel
-  let open: (CategoryID) -> Void
-  @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.hMotion) private var policy
+  /// The slim bars fill from empty the first time Plan appears in the process (owner rule:
+  /// not on every appearance); after that they show where they are, and a changed budget
+  /// moves its bar on `.fillUpdate`. `fill` scales every bar at once.
+  @State private var reveal = PaceFillPhase()
 
   private var snap: PlanSnapshot { model.snapshot }
 
   var body: some View {
     VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
-      MonthPill(month: snap.month)
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.bottom, -16)
-      readyToAssign
-      split
+      ReadyToAssignCard(model: model)
+      SplitSection(snap: snap)
       ForEach(snap.sections) { section in
-        bucket(section)
+        BucketSection(section: section, month: snap.month, hidden: model.hidden, reveal: reveal.fill) {
+          model.open($0)
+        }
       }
-      if !snap.projects.isEmpty { projects }
+      if !snap.projects.isEmpty {
+        ProjectsSection(model: model, reveal: reveal.fill)
+      }
     }
+    .paceFillSequence($reveal, target: 1, policy: policy, once: .perProcess("plan.bars"))
+  }
+}
+
+// MARK: - Ready to assign
+
+/// "Brief card · Ready to assign": the mint poster with the wallet plate, the overline, the
+/// figure and "Income 25,000 · planned 24,000"; under it Assign (and, in Debug, Auto-assign
+/// with its helper). Assign opens Move money with no category chosen yet.
+private struct ReadyToAssignCard: View {
+  let model: any PlanModel
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var snap: PlanSnapshot { model.snapshot }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      poster
+      actions
+    }
+    .background(HColor.surfacePrimary)
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+    .hElevation(.nearFar)
+    .padding(.horizontal, HSpacing.insetPage)
   }
 
-  // MARK: Ready to assign
-
-  private var readyToAssign: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      VStack(alignment: .leading, spacing: 8) {
-        // The overline wraps on its own at the accessibility sizes, without the glyph.
-        if typeSize.isAccessibilitySize {
-          Text("Ready to assign").hType(.overline).foregroundStyle(Hue.mint.ink)
-        } else {
-          HStack(spacing: 8) {
-            Image(systemName: "wallet.bifold").font(.system(size: 15, weight: .semibold))
-              .foregroundStyle(Hue.mint.ink).accessibilityHidden(true)
-            Text("Ready to assign").hType(.overline).foregroundStyle(Hue.mint.ink)
-          }
-        }
-        MoneyText(snap.readyToAssign, figure: .large, unit: .unit, hidden: model.hidden, hiddenGlyphs: 6,
-                  color: snap.readyToAssign.isNegative ? HColor.statusErrorForeground : HColor.textPrimary,
-                  unitGap: 5, sign: snap.readyToAssign.isNegative ? .debt : .none)
+  private var poster: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      // The plate beside the overline; at the accessibility sizes above it, so the overline
+      // has the card's width to wrap in. One layout either way, so the views keep their
+      // identity while the text size changes.
+      let header = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+        : AnyLayout(HStackLayout(spacing: 8))
+      header {
+        Circle().fill(HColor.posterGlyph).frame(width: 32, height: 32)
+          .overlay { PlanGlyph(kind: .wallet, size: 18, color: Hue.mint.ink, stroke: 2) }
+        Text("Ready to assign").hType(.overline).foregroundStyle(Hue.mint.ink)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
+      }
+      VStack(alignment: .leading, spacing: 2) {
+        let rta = snap.readyToAssign
+        MoneyText(rta, figure: .large, unit: .unit, hidden: model.hidden, hiddenGlyphs: 4,
+                  color: rta.isNegative ? HColor.statusErrorForeground : HColor.textPrimary,
+                  unitGap: 6, sign: rta.isNegative ? .debt : .none)
           .accessibilityIdentifier("plan.readyToAssign")
         PhraseText(snap.incomeLine, hidden: model.hidden).hType(.subheadline)
           .foregroundStyle(HColor.textOnHueSecondary)
       }
-      .padding(16)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Hue.mint.gradient)
-      VStack(alignment: .leading, spacing: 12) {
-        // Side by side; stacked at the accessibility text sizes (spec 04 §17).
-        // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
-        let buttons = Group {
-          Button("Assign") { model.moveMoney(to: nil) }
-            .buttonStyle(.pill(.primary, size: .medium, fill: true))
-            .disabled(snap.readyToAssign.minor <= 0)
-            .accessibilityIdentifier("plan.assign")
-          if BuildSurface.showsUnfinished {
-            Button("Auto-assign") { model.autoAssign() }
-              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
-          }
-        }
-        if typeSize.isAccessibilitySize {
-          VStack(spacing: 8) { buttons }
-        } else {
-          HStack(spacing: 8) { buttons }
-        }
-        if BuildSurface.showsUnfinished {
-          Text("Auto-assign funds targets first, then follows your \(snap.splitName) split.")
-            .hType(.footnote).foregroundStyle(HColor.textSecondary)
-        }
-      }
-      .padding(16)
     }
-    .background(HColor.surfacePrimary)
-    .clipShape(RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-    .elevation()
-    .padding(.horizontal, HSpacing.insetPage)
+    .padding(EdgeInsets(top: 14, leading: 16, bottom: 16, trailing: 16))
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Hue.mint.perceptualGradient)
   }
 
-  // MARK: Split
+  private var actions: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      // Side by side; stacked at the accessibility text sizes (spec 04 §17).
+      let layout = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+      layout {
+        // Each pill takes the height its label needs (two lines at the largest sizes).
+        Button("Assign") { model.moveMoney(to: nil) }
+          .buttonStyle(.pill(.primary, size: .medium, fill: true))
+          .fixedSize(horizontal: false, vertical: true)
+          .disabled(snap.readyToAssign.minor <= 0)
+          .accessibilityIdentifier("plan.assign")
+        // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
+        if BuildSurface.showsUnfinished {
+          Button("Auto-assign") { model.autoAssign() }
+            .buttonStyle(.pill(.secondary, size: .medium, fill: typeSize.isAccessibilitySize))
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      if BuildSurface.showsUnfinished {
+        Text("Auto-assign funds targets first, then follows your \(snap.splitName) split.")
+          .hType(.footnote).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(16)
+  }
+}
 
-  private var split: some View {
+// MARK: - Your split
+
+/// "Your split": the three buckets' share of the plan as one 12 tall bar in their dot
+/// colours (2 apart, outer corners 6, inner 2), with the bucket and its percent under each
+/// part. "Started from 50 / 30 / 20" on the right of the overline.
+private struct SplitSection: View {
+  let snap: PlanSnapshot
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Text("Your split").hType(.overline).foregroundStyle(HColor.textSecondary)
-        Spacer()
+      ReflowingRow(alignment: .firstTextBaseline) {
+        Text("Your split").hType(.overline).foregroundStyle(HColor.textSecondary).accessibilityAddTraits(.isHeader)
+      } trailing: {
         Text(snap.startedFrom).hType(.footnote).foregroundStyle(HColor.textSecondary)
       }
+      .padding(.horizontal, 4)
       GeometryReader { geo in
-        HStack(spacing: 3) {
-          ForEach(snap.split) { share in
-            Capsule().fill(share.bucket.hue.end)
-              .frame(width: max(4, (geo.size.width - 6) * share.share.fraction))
+        let widths = partWidths(geo.size.width, gap: 2)
+        HStack(spacing: 2) {
+          ForEach(Array(snap.split.enumerated()), id: \.element.id) { i, share in
+            UnevenRoundedRectangle(
+              topLeadingRadius: i == 0 ? 6 : 2, bottomLeadingRadius: i == 0 ? 6 : 2,
+              bottomTrailingRadius: i == snap.split.count - 1 ? 6 : 2,
+              topTrailingRadius: i == snap.split.count - 1 ? 6 : 2, style: .continuous)
+              .fill(share.bucket.splitColor)
+              .frame(width: widths[i])
           }
         }
       }
-      .frame(height: 8)
+      .frame(height: 12)
       .accessibilityHidden(true)
-      HStack(alignment: .top) {
-        ForEach(snap.split) { share in
-          VStack(alignment: .leading, spacing: 0) {
-            Text(share.bucket.title).hType(.footnote).foregroundStyle(HColor.textSecondary)
-            Text(share.label).hType(.headline).foregroundStyle(HColor.textPrimary)
-          }
-          .accessibilityElement(children: .combine)
-          if share.id != snap.split.last?.id { Spacer() }
-        }
-      }
+      labels
     }
     .padding(.horizontal, HSpacing.insetPage)
   }
 
-  // MARK: Buckets
+  /// Each part's width: its share of the bar after the gaps, at least 12 so a small bucket
+  /// still shows (geometry only).
+  private func partWidths(_ total: CGFloat, gap: CGFloat) -> [CGFloat] {
+    let room = max(0, total - gap * CGFloat(max(0, snap.split.count - 1)))
+    return snap.split.map { max(12, room * $0.share.fraction) }
+  }
 
-  private func bucket(_ section: PlanSection) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      // The bucket's title and its figures stack at the accessibility sizes (spec 04 §17).
-      let layout = typeSize.isAccessibilitySize
-        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-        : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
-      layout {
-        HStack(spacing: 8) {
-          Circle().fill(section.bucket.hue.end).frame(width: 10, height: 10)
-          Text(section.bucket.title).hType(.title2).foregroundStyle(HColor.textPrimary)
-        }
-        .accessibilityAddTraits(.isHeader)
-        if !typeSize.isAccessibilitySize { Spacer() }
-        if section.done {
-          Label("Done for \(snap.month.name)", systemImage: "checkmark")
-            .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusSuccessForeground)
-        } else {
-          HStack(alignment: .firstTextBaseline, spacing: 4) {
-            MoneyText(section.left, figure: .compact, hidden: model.hidden, color: HColor.textPrimary)
-            PhraseText(MoneyPhrase([.text(section.left.isNegative ? "over " : "left of "),
-                                    .amount(section.budget, .compact)]), hidden: model.hidden)
-              .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+  @ViewBuilder private var labels: some View {
+    if typeSize.isAccessibilitySize {
+      VStack(alignment: .leading, spacing: 6) {
+        ForEach(snap.split) { share in label(share) }
+      }
+    } else {
+      // Under their parts, as Paper lines them up; a part too narrow for its label still
+      // shows it whole.
+      GeometryReader { geo in
+        let widths = partWidths(geo.size.width, gap: 2)
+        HStack(alignment: .top, spacing: 2) {
+          ForEach(Array(snap.split.enumerated()), id: \.element.id) { i, share in
+            label(share).frame(width: widths[i], alignment: .leading)
           }
-          .accessibilityElement(children: .combine)
-          .accessibilityAddTraits(.isStaticText)
         }
       }
-      ListCard {
+      .frame(height: 40)
+    }
+  }
+
+  private func label(_ share: SplitShare) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Text(share.bucket.title).hType(.footnote).foregroundStyle(HColor.textSecondary)
+      Text(share.label).hFigure(.stat).foregroundStyle(HColor.textPrimary)
+    }
+    .fixedSize()
+    // Read as text: an element with no trait reads to the audit as a control too small to tap.
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(share.bucket.title), \(share.label)")
+    .accessibilityAddTraits(.isStaticText)
+  }
+}
+
+// MARK: - Buckets
+
+/// One bucket: the dot, its name in Title 2, "3,309.20 left of 12,350" (Savings: "✓ Done for
+/// October") on the same baseline, then its rows in a white card with dividers inset 68.
+private struct BucketSection: View {
+  let section: PlanSection
+  let month: YearMonth
+  let hidden: Bool
+  let reveal: Double
+  let open: (CategoryID) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      ReflowingRow(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Circle().fill(section.bucket.splitColor).frame(width: 10, height: 10)
+          Text(section.bucket.title).hType(.section).foregroundStyle(HColor.textPrimary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+      } trailing: {
+        summary
+      }
+      PlanListCard {
         ForEach(section.rows) { row in
-          Button { open(row.id) } label: { BudgetRow(row: row, hidden: model.hidden) }
-            .buttonStyle(.plain)
+          Button { open(row.id) } label: { BudgetRowView(row: row, hidden: hidden, reveal: reveal) }
+            .buttonStyle(HRowPressStyle())
             .accessibilityIdentifier("plan.row.\(row.id)")
         }
       }
@@ -184,37 +249,141 @@ private struct PlanContent: View {
     .padding(.horizontal, HSpacing.insetPage)
   }
 
-  // MARK: Projects
+  @ViewBuilder private var summary: some View {
+    if section.done {
+      DoneMark("Done for \(month.name)")
+    } else {
+      // "3,309.20 left of 12,350": what is left first, then the bucket's plan, whole.
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        MoneyText(section.left, figure: .compact, hidden: hidden, hiddenGlyphs: 3,
+                  color: section.left.isNegative ? HColor.statusErrorForeground : HColor.textPrimary)
+        Text(section.left.isNegative ? "over" : "left of").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        if !section.left.isNegative {
+          MoneyText(section.budget, figure: HFigure.compact.weight(.medium), style: .compact, hidden: hidden,
+                    hiddenGlyphs: 3, color: HColor.textSecondary)
+        }
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityAddTraits(.isStaticText)
+    }
+  }
+}
 
-  private var projects: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      // TODO(spec 04 §16.2 P3): "New project" (ProjectEditSheet) and ProjectDetailView ("Project detail").
-      SectionTitle(title: "Projects")
-      ForEach(snap.projects) { p in
-        VStack(alignment: .leading, spacing: 10) {
-          HStack(spacing: 12) {
-            Circle().fill(HColor.posterGlyph).frame(width: 40, height: 40)
-              .overlay { Image(systemName: Glyph.flag.symbolName).foregroundStyle(Hue.peach.ink) }
-              .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 0) {
-              Text(p.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-              Text(p.dates).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-            }
-          }
-          HStack(alignment: .firstTextBaseline, spacing: 6) {
-            MoneyText(p.left, figure: .large, hidden: model.hidden, color: HColor.textPrimary)
-            PhraseText(MoneyPhrase([.text("left of "), .amount(p.budget, .compact)]), hidden: model.hidden)
-              .hType(.subheadline).foregroundStyle(HColor.textOnHueSecondary)
-          }
-          ProgressLine(p.progress, fill: HColor.actionAccent, track: HColor.progressTrackOnHue)
-          if !p.countInPlan {
-            Label("Not counted in your monthly plan", systemImage: "info.circle")
-              .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+/// A budget row (Paper "BudgetRow", page 16 §05): the 40 disc, the name with what is left on
+/// the right ("1,387.60 left", "✓ Done", "77%"), a line of facts, and the slim 6 bar in the
+/// verdict's colour, with no today tick. At least 72 tall; one button that reads as one
+/// sentence ("Groceries, AED 1,387.60 left. 812.40 of 2,200, Over pace."). At the
+/// accessibility sizes the figure moves under the name and the facts wrap.
+struct BudgetRowView: View {
+  let row: PlanRowModel
+  let hidden: Bool
+  /// How much of its fill the bar shows (Plan's first reveal); 1 at rest.
+  var reveal: Double = 1
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+      : AnyLayout(HStackLayout(alignment: .center, spacing: HSpacing.listRowGap))
+    layout {
+      CategoryDisc(hue: row.hue, glyph: row.glyph)
+      VStack(alignment: .leading, spacing: 2) {
+        if typeSize.isAccessibilitySize {
+          name
+          trailing
+        } else {
+          HStack(alignment: row.trailing == .done ? .center : .firstTextBaseline, spacing: 8) {
+            name
+            Spacer(minLength: 0)
+            trailing
           }
         }
-        .padding(16)
-        .background(Hue.peach.gradient, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-        .accessibilityElement(children: .combine)
+        PlanFactsLine(parts: row.detail, hidden: hidden)
+        SlimProgressBar(Permille(Int(Double(min(1000, row.progress.value)) * reveal)), fill: row.verdict.fill)
+          .padding(.top, 6)
+          .hAnimation(.fillUpdate, value: row.progress)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, 9)
+    .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(spoken)
+  }
+
+  private var name: some View {
+    Text(row.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle).singleLineAtDefaultTextSize()
+  }
+
+  @ViewBuilder private var trailing: some View {
+    switch row.trailing {
+    case .left(let m):
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        MoneyText(.aed(abs(m.minor)), figure: .row, hidden: hidden, hiddenGlyphs: 3,
+                  color: m.isNegative ? HColor.statusErrorForeground : HColor.textPrimary)
+        Text(m.isNegative ? "over" : "left").hType(.footnote).foregroundStyle(HColor.textSecondary)
+      }
+      .fixedSize()
+    case .done:
+      DoneMark("Done")
+    case .percent(let p):
+      Text("\(p)%").hFigure(.row).foregroundStyle(HColor.textPrimary)
+    }
+  }
+
+  private var spoken: String {
+    let figure: String
+    switch row.trailing {
+    case .left(let m):
+      let amount = hidden ? "Amount hidden" : "\(m.currency) \(MoneyFormat.string(m.minor))"
+      figure = "\(amount) \(m.isNegative ? "over" : "left")"
+    case .done: figure = "Done"
+    case .percent(let p): figure = "\(p) percent"
+    }
+    let facts = row.detail.map { part in
+      switch part {
+      case .text(let p): p.spoken(hidden: hidden)
+      case .status(let words, _): words
+      }
+    }.joined(separator: ", ")
+    return "\(row.name), \(figure). \(facts)."
+  }
+}
+
+// MARK: - Projects
+
+/// "Projects" with the peach project cards: the whole card is one button to the project
+/// (page 16 §13). "New project" is Debug only until a project can be made.
+private struct ProjectsSection: View {
+  let model: any PlanModel
+  let reveal: Double
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      ReflowingRow(alignment: .firstTextBaseline) {
+        Text("Projects").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
+      } trailing: {
+        if BuildSurface.showsUnfinished {
+          // A 20 pt line with a 44 pt target: the padding is inside the button (so the target
+          // is the button's own frame) and taken back outside it, so the header keeps its line.
+          Button { model.newProject() } label: {
+            Text("New project")
+              .hType(.subheadline.weight(.medium))
+              .foregroundStyle(HColor.textLink)
+              .padding(.vertical, 12)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .padding(.vertical, -12)
+        }
+      }
+      ForEach(model.snapshot.projects) { p in
+        Button { model.open(project: p.id) } label: {
+          ProjectCard(project: p, hidden: model.hidden, reveal: reveal)
+        }
+        .buttonStyle(HPressStyle(in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous)))
         .accessibilityIdentifier("plan.project.\(p.id)")
       }
     }
@@ -222,90 +391,57 @@ private struct PlanContent: View {
   }
 }
 
-/// A budget row: disc, name, the second line, "N left" (or ✓ Done / 77%), and a slim bar.
-/// Bills and goals get no tick.
-struct BudgetRow: View {
-  let row: PlanRowModel
+/// The peach project card (Paper "Project card · Japan trip"): the flag plate, the name over
+/// the dates, a chevron; the figure and "left of 12,000"; an 8 bar with no tick; and "Not
+/// counted in your monthly plan" while it sits outside the plan.
+private struct ProjectCard: View {
+  let project: PlanProjectModel
   let hidden: Bool
-  @Environment(\.dynamicTypeSize) private var typeSize
+  let reveal: Double
 
   var body: some View {
-    HStack(alignment: .top, spacing: HSpacing.listRowGap) {
-      HueDisc(hue: row.hue, glyph: row.glyph)
-      VStack(alignment: .leading, spacing: 6) {
-        // The figure moves under the name at the accessibility sizes (spec 04 §17).
-        if typeSize.isAccessibilitySize {
-          Text(row.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-          trailing
-        } else {
-          HStack(alignment: .firstTextBaseline) {
-            Text(row.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-            Spacer(minLength: 8)
-            trailing
-          }
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(spacing: 12) {
+        GlyphPlate(icon: .project, hue: .peach, size: 40)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(project.name).hType(.headline).foregroundStyle(HColor.textPrimary)
+          Text(project.dates).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
         }
-        DetailLine(parts: row.detail, hidden: hidden)
-        ProgressLine(row.progress, fill: row.verdict.fill)
-          .frame(height: 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        HIconView(.chevronRight, size: HSpacing.iconSmall, color: Hue.peach.ink)
+      }
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        MoneyText(project.left, figure: HFigure.medium.weight(.bold), hidden: hidden, hiddenGlyphs: 4,
+                  color: HColor.textPrimary)
+        PhraseText(MoneyPhrase([.text("left of "), .amount(project.budget, .compact, hidden: 3)]), hidden: hidden)
+          .hType(.subheadline).foregroundStyle(HColor.textOnHueSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      SlimProgressBar(Permille(Int(Double(min(1000, project.progress.value)) * reveal)), fill: HColor.paceFill,
+                      track: HColor.progressTrackOnHue, height: 8)
+      if !project.countInPlan {
+        HStack(alignment: .top, spacing: 6) {
+          HIconView(.info, size: 14, color: HColor.textOnHueSecondary)
+            .padding(.top, 2)
+          Text("Not counted in your monthly plan").hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+        }
       }
     }
-    .padding(.horizontal, HSpacing.listRowInsetInline)
-    .padding(.vertical, 12)
-    .contentShape(Rectangle())
-    .accessibilityElement(children: .combine)
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Hue.peach.perceptualGradient, in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+    .contentShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(spoken)
   }
 
-  @ViewBuilder private var trailing: some View {
-    switch row.trailing {
-    case .left(let m):
-      HStack(alignment: .firstTextBaseline, spacing: 3) {
-        MoneyText(m, figure: .row, hidden: hidden, hiddenGlyphs: 3,
-                  color: m.isNegative ? HColor.statusErrorForeground : HColor.textPrimary)
-        Text(m.isNegative ? "over" : "left").hType(.footnote).foregroundStyle(HColor.textSecondary)
-      }
-    case .done:
-      Label("Done", systemImage: "checkmark").hType(.subheadline.weight(.semibold))
-        .foregroundStyle(HColor.statusSuccessForeground)
-    case .percent(let p):
-      Text("\(p)%").hFigure(.row).foregroundStyle(HColor.textPrimary)
-    }
-  }
-}
-
-/// A category's month (in place of "Category detail" until it is built): the filtered list with its
-/// pace summary, and the budget actions.
-struct CategoryActivityView: View {
-  @Bindable var app: AppModel
-  let category: CategoryID
-  let plan: any PlanModel
-  @State private var model: ActivityViewModel?
-
-  var body: some View {
-    ScrollView {
-      if let model {
-        VStack(spacing: 20) {
-          ActivityContent(model: model, showsChips: false)
-          HStack(spacing: 8) {
-            Button("Change budget") { plan.editBudget(category) }
-              .buttonStyle(.pill(.primary, size: .medium, fill: true))
-              .accessibilityIdentifier("category.changeBudget")
-            Button("Move money in") { plan.moveMoney(to: category) }
-              .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
-              .accessibilityIdentifier("category.moveMoney")
-          }
-          .padding(.horizontal, HSpacing.insetPage)
-        }
-        .padding(.vertical, 16)
-      }
-    }
-    .background(alignment: .top) { AmbientWash(app.store.state.category(category)?.hue ?? .sky).ignoresSafeArea() }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle(app.store.state.category(category)?.name ?? "Category")
-    .navigationBarTitleDisplayMode(.inline)
-    .overlay(alignment: .bottom) { ToastHost(app: app) }
-    .onAppear {
-      if model == nil { model = ActivityViewModel(app: app, filter: TxnFilter(category: category)) }
-    }
+  /// "Japan trip, 14–28 Dec, 65 days to go. AED 7,140.00 left of 12,000. Not counted in your
+  /// monthly plan."
+  private var spoken: String {
+    let left = hidden ? "Amount hidden" : "AED \(MoneyFormat.string(project.left.minor))"
+    let of = MoneyPhrase([.amount(project.budget, .compact)]).spoken(hidden: hidden)
+    return "\(project.name), \(project.range), \(project.when). \(left) left of \(of)."
+      + (project.countInPlan ? "" : " Not counted in your monthly plan.")
   }
 }
 

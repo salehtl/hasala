@@ -1,69 +1,120 @@
 import HasalaModels
 import Observation
 
-/// Pushed destinations from Home (spec 04 §13.2).
-enum HomeRoute: Hashable {
-  case insights, needsYou, notifications, widget(String), editWidgets, bills
+#if HASALA_MOCKS
+  import HasalaMocks
+#endif
+
+/// The bell (Paper "Home · Notifications" 11Y9-0): what needs a look, then what came before.
+/// Its count is the bell's badge; the Review tab's badge counts only transactions to sort.
+struct Bell: Equatable {
+  /// Newest first: the ledger's items, then mail's ("Connect your email", "Sign in again").
+  var needsALook: [NotificationItem]
+  /// Notifications sent before. Only a Debug feed has any (plan B7.6, decision 12).
+  var earlier: [NotificationItem]
+
+  var count: Int { needsALook.count }
 }
 
-/// Home · Default (spec 04 §15.1 `HomeModel`, §16.1 "Home · Default").
+/// Home · Default (spec 10 §2) and its bell (§4).
 @MainActor
 protocol HomeModel: AnyObject, Observable {
   var snapshot: HomeSnapshot { get }
   var hidden: Bool { get }
-  /// A Needs-you card's primary ("Start", "I paid it") or secondary ("Later", "Details")
-  /// action; returns a screen to push, if any.
-  func needsYou(_ card: String, primary: Bool) -> HomeRoute?
+  var bell: Bell { get }
   /// A widget tap; returns a screen to push, if any.
   func openWidget(_ id: String) -> HomeRoute?
   /// Whether tapping the widget leads anywhere in this build (`BuildSurface`): a Release
   /// build doesn't make a widget tappable when its detail screen isn't built yet.
   func widgetOpens(_ id: String) -> Bool
+  /// A bell row (spec 10 §4.4, "Tapping an item opens its screen"): closes the sheet and opens
+  /// the row's screen. What can open under a closing sheet opens now (a tab, a push, the next
+  /// sheet); what needs the sheet gone first (the review cover) comes back to run once it is.
+  func openNotification(_ destination: NotificationDestination) -> (@MainActor () -> Void)?
 }
 
 @MainActor
 @Observable
 final class HomeViewModel: HomeModel {
   private let app: AppModel
+  @ObservationIgnored private let feed: (any NotificationFeed)?
 
-  init(app: AppModel) { self.app = app }
-
-  var snapshot: HomeSnapshot {
-    var snap = app.snapshot
-    // A card put off with "Later" leaves the rail's count and subtitle as they were.
-    if let offer = app.mailboxOffer, offer.onHome, !app.snoozed.contains(offer.cardID) {
-      snap.needsYou = offer.adding(to: snap.needsYou)
-    }
-    snap.needsYou.cards.removeAll { app.snoozed.contains($0.id) }
-    // The first import runs in the background after setup; the rail says so until it's in.
-    if app.store.state.mailbox.status == .importing, snap.needsYou.cards.isEmpty {
-      snap.needsYou.subtitle = "Importing your bank alerts"
-    }
-    return snap
+  init(app: AppModel) {
+    self.app = app
+    #if HASALA_MOCKS
+      // The Debug "Earlier" list belongs to the Maya mock only: a Debug build signed in to a
+      // real account shows what is real, and the Release surface shows no history.
+      feed = BuildSurface.showsUnfinished && app.store is InMemoryLedger ? MockNotificationFeed() : nil
+    #else
+      feed = nil
+    #endif
   }
+
+  /// One engine pass per ledger change (`AppModel.snapshot` is memoised by revision).
+  var snapshot: HomeSnapshot { app.snapshot }
 
   var hidden: Bool { app.amountsHidden }
 
-  func needsYou(_ card: String, primary: Bool) -> HomeRoute? {
-    if let offer = app.mailboxOffer, offer.cardID == card {
-      if primary { app.sheet = .connectMailbox(offer) } else { app.snooze(card) }
+  var bell: Bell {
+    let mail = Self.mailItem(app.mailOffer, mailboxes: app.mailbox?.mailboxes ?? [])
+    return Bell(
+      needsALook: app.snapshot.notifications.needsALook + [mail].compactMap { $0 },
+      earlier: feed?.earlier(now: app.store.now) ?? [])
+  }
+
+  /// Mail's row (plan B4.3: the offer is the bell's mail row and the Profile card). It has no
+  /// moment of its own, so it comes after the ledger's dated items. Both open Bank alerts,
+  /// which offers the connect or the sign-in.
+  static func mailItem(_ offer: MailOffer?, mailboxes: [MailboxSnapshot]) -> NotificationItem? {
+    switch offer {
+    case nil:
+      return nil
+    case .connect:
+      return NotificationItem(
+        id: "mail.connect", disc: .neutral(.envelope), title: "Connect your email",
+        line: "Then Hasala can read your bank alerts.", when: nil, destination: .bankAlerts)
+    case .signInAgain(let id, let provider):
+      // Page 18 §14 "Mailbox needs sign-in": the title names the mailbox, never the account.
+      let address = mailboxes.first { $0.id == id }?.address ?? provider.appName
+      return NotificationItem(
+        id: "mail.signIn.\(id)", disc: .neutral(.envelope), title: "Sign in again to \(address)",
+        line: "Hasala can't read this mailbox right now.", when: nil, destination: .bankAlerts)
+    }
+  }
+
+  func openNotification(_ destination: NotificationDestination) -> (@MainActor () -> Void)? {
+    let router = app.router
+    switch destination {
+    case .bankAlerts:
+      // A sheet never opens a second sheet: the bell's closes, then Profile comes up with Bank
+      // alerts pushed inside it (`AppRouter.open` queues it).
+      router.open(.profile, profile: [.bankAlerts])
+      return nil
+    case .review:
+      close()
+      router.tab = .review
+      return { [app] in app.startReview() }
+    case .bill(let id):
+      close()
+      router.tab = .home
+      router.home = [.bill(id)]
+      return nil
+    case .bills:
+      close()
+      router.tab = .home
+      router.home = [.bills]
+      return nil
+    case .category(let id):
+      close()
+      router.tab = .plan
+      router.plan = [.category(id)]
       return nil
     }
-    if card == "review" {
-      if primary { app.startReview() } else { app.snooze(card) }
-      return nil
-    }
-    if card.hasPrefix("bill.") {
-      let bill = String(card.dropFirst("bill.".count))
-      if primary {
-        // TODO(spec 04 §16.2 B1): FindPaymentSheet links the payment that arrived.
-        app.perform(.markBillPaid(bill))
-        return nil
-      }
-      // TODO(spec 04 §16.1 "Bill detail"): BillDetailView; Bills shows the bill meanwhile.
-      return .bills
-    }
-    return .needsYou
+  }
+
+  /// Closes the bell's sheet (and only it).
+  private func close() {
+    if app.router.sheet == .notifications { app.router.sheet = nil }
   }
 
   func openWidget(_ id: String) -> HomeRoute? {
@@ -76,9 +127,13 @@ final class HomeViewModel: HomeModel {
       return nil
     case "nextBill":
       return .bills
+    case "netWorth":
+      return .accounts
     default:
-      // TODO(spec 04 §16.1 "Accounts", "Project detail", §16.2 P4): Accounts, Project and Goal detail.
-      return .widget(id)
+      // TODO(spec 04 §16.1 "Project detail", §16.2 P4): a project or goal opens its detail;
+      // until then Debug opens Plan, where both live.
+      app.tab = .plan
+      return nil
     }
   }
 
@@ -90,39 +145,9 @@ final class HomeViewModel: HomeModel {
   }
 }
 
-/// Home's mailbox card (spec 04 §6.6 row 4: the mailbox step was skipped; §7.4: the provider
-/// wants a new sign-in), first in Needs you. A change of provider is Profile's only.
-extension MailboxOffer {
-  var cardID: String { id }
-
-  var onHome: Bool {
-    if case .change = self { return false }
-    return true
-  }
-
-  var card: NeedsYouCard {
-    switch self {
-    case .connect:
-      NeedsYouCard(
-        id: cardID, hue: .sky, glyph: .envelope, label: "Bank alerts",
-        status: StatusPill("Not connected", tone: .warning), figure: .word("Email"),
-        title: "Connect your email", subtitle: "Your bank alerts aren't read yet",
-        primaryAction: "Connect", secondaryAction: "Later")
-    case .reconnect(let p), .change(let p):
-      NeedsYouCard(
-        id: cardID, hue: .rose, glyph: .envelope, label: "Bank alerts",
-        status: StatusPill("Stopped", tone: .error), figure: .word(p.name),
-        title: "Reconnect \(p.name)", subtitle: "New bank alerts aren't read",
-        primaryAction: "Reconnect", secondaryAction: "Later")
-    }
-  }
-
-  /// `rail` with this card first; "All caught up" no longer holds.
-  func adding(to rail: NeedsYouRail) -> NeedsYouRail {
-    var r = rail
-    r.cards.insert(card, at: 0)
-    r.count += 1
-    if rail.cards.isEmpty { r.subtitle = status }
-    return r
-  }
+/// Notifications Hasala sent before (Paper "Earlier"). The app keeps no notification history
+/// yet, so live has no feed; Debug's Maya mock has one (`MockNotificationFeed`).
+@MainActor
+protocol NotificationFeed {
+  func earlier(now: LocalDateTime) -> [NotificationItem]
 }

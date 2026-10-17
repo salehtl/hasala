@@ -28,6 +28,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   private(set) var mailboxHalt: MailboxHaltCode?
   /// The ledger holds the App Review sample (`sample-` message ids, §6.13).
   private(set) var holdsSample = false
+  /// The lane's last status, as read with its phase: the mailbox row comes from it
+  /// (`LiveMailboxConnecting.mailboxes`). Read-only plumbing; nothing is authored from it.
+  private(set) var mailboxStatus: MailboxStatus?
 
   @ObservationIgnored let reader: LedgerReader
   @ObservationIgnored private let author: LedgerEditAuthor?
@@ -68,6 +71,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   /// The Gmail lane's status: its health shows from the next reload, its phase at once.
   func noteMailbox(_ status: MailboxStatus, nowMs: Int64) {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
+    if mailboxStatus != status { mailboxStatus = status }
     if mailboxPhase != status.phase { mailboxPhase = status.phase }
     if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
   }

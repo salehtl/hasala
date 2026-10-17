@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # test-release-surface.sh: walks what a Release build shows (HasalaUITests'
-# ReleaseSurfaceTests: every tab and the profile, no placeholder text, no control
-# without a screen behind it, the beta's account actions) on a Release-configuration
-# build in the simulator.
+# ReleaseSurface* classes, one per area: every tab and the profile, no placeholder text,
+# no control without a screen behind it, the beta's account actions, Gmail and Outlook
+# (personal Microsoft accounts only), one mailbox, and a switch of provider only after
+# its confirmation) on a Release-configuration build in the simulator.
 #
 #   ios/scripts/test-release-surface.sh <simulator udid> [derived data directory]
 #
@@ -29,11 +30,20 @@ else
 	trap 'rm -rf "$dd"' EXIT
 fi
 
+# Every Release-surface class: the shell's, then each area's (plan B7.4).
+classes=(
+	ReleaseSurfaceTests ReleaseSurfaceJoinTests ReleaseSurfaceSetupTests ReleaseSurfaceMailboxTests
+	ReleaseSurfaceSignInTests ReleaseSurfaceHomeTests ReleaseSurfaceActivityTests ReleaseSurfacePlanTests
+	ReleaseSurfaceProfileTests
+)
+only=()
+for c in "${classes[@]}"; do only+=("-only-testing:HasalaUITests/$c"); done
+
 # Xcode's tools by path: the Nix devShell's PATH and SDKROOT can shadow them.
 /usr/bin/xcodebuild test \
 	-project "$ios/Hasala.xcodeproj" -scheme Hasala -configuration Release \
 	-destination "id=$udid" -derivedDataPath "$dd" \
-	-only-testing:HasalaUITests/ReleaseSurfaceTests \
+	"${only[@]}" \
 	CODE_SIGNING_ALLOWED=NO \
 	SWIFT_ACTIVE_COMPILATION_CONDITIONS=HASALA_MOCKS \
 	EXCLUDED_SOURCE_FILE_NAMES= \

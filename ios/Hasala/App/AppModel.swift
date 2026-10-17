@@ -1,41 +1,13 @@
+import HasalaDesign
 import HasalaModels
 import Observation
 import SwiftUI
-
-/// The tabs (spec 04 §13.1).
-enum AppTab: Hashable {
-  case home, plan, activity, search
-}
-
-/// Large sheets over the tabs (spec 04 §13.3).
-enum SheetRoute: Hashable, Identifiable {
-  case transaction(TxnID)
-  case budget(CategoryID)
-  case moveMoney(to: CategoryID?)
-  case profile
-  /// Connect a mailbox after setup, from Home's Needs-you card.
-  case connectMailbox(MailboxOffer)
-
-  var id: String {
-    switch self {
-    case .transaction(let id): "txn.\(id)"
-    case .budget(let id): "budget.\(id)"
-    case .moveMoney(let id): "move.\(id ?? "assign")"
-    case .profile: "profile"
-    case .connectMailbox(let offer): offer.id
-    }
-  }
-}
-
-/// Full-screen covers (spec 04 §13.3).
-enum CoverRoute: Hashable, Identifiable {
-  case review
-  var id: Self { self }
-}
+import UIKit
 
 /// App-wide UI state: the ledger the screens read and write, Hide amounts (which applies
 /// to every screen, spec 04 §12), the transient toast with its Undo, and routing
-/// (spec 04 §13.4: the selected tab, the presented sheet and cover).
+/// (`router`: the selected tab, every push path, the presented sheet and cover; `tab`,
+/// `sheet` and `cover` forward to it so callers read as before).
 ///
 /// The store is the Maya mock in Debug builds; the live store over HasalaCore's
 /// projection replaces it (spec 04 §15.2) without changing anything here.
@@ -43,7 +15,14 @@ enum CoverRoute: Hashable, Identifiable {
 @Observable
 final class AppModel {
   struct Toast: Equatable {
-    var systemImage: String
+    /// The leading disc (Paper page 14 §03): the accent check when something was done, an
+    /// ink disc with a glyph for a note (amounts hidden, a refusal).
+    enum Disc: Equatable {
+      case done
+      case note(HIcon)
+    }
+
+    var disc: Disc
     var title: String
     var subtitle: String?
     var actionTitle: String?
@@ -52,24 +31,37 @@ final class AppModel {
   }
 
   let store: any LedgerStore
-  /// The mailbox lanes as setup uses them: what Home and Profile offer for the mailbox.
+  /// The mail lane as setup uses it: the mailboxes, and what the bell, Profile and Bank
+  /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
-  var tab: AppTab = .home
-  var sheet: SheetRoute?
-  var cover: CoverRoute?
+  /// Where the app is: the selected tab, every push path, the sheet and the cover.
+  let router = AppRouter()
+  var tab: AppTab {
+    get { router.tab }
+    set { router.tab = newValue }
+  }
+  var sheet: SheetRoute? {
+    get { router.sheet }
+    set { router.sheet = newValue }
+  }
+  var cover: CoverRoute? {
+    get { router.cover }
+    set { router.cover = newValue }
+  }
   /// Needs-you cards put off with "Later".
   // TODO(spec 04 §16.1 "Home · Default", 03a §6.15): device-local until the next local midnight,
   // kept in DevicePrefs so it survives a relaunch.
   private(set) var snoozed: Set<String> = []
 
-  /// Pull to refresh on Home and Activity: a sync and a mailbox check now, set by the live
+  /// Pull to refresh on Home and Activity: a sync and a Gmail check now, set by the live
   /// graph once the account is open. Nil (the Maya mock) ends the pull at once.
   @ObservationIgnored var refreshWork: (@MainActor () async -> Void)?
 
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<Int, HomeSnapshot>()
+  @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
 
   init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
     self.store = store
@@ -77,8 +69,9 @@ final class AppModel {
     self.mailbox = mailbox
   }
 
-  /// "Connect your email" or "Reconnect Gmail" on Home and Profile, when the mailbox needs it.
-  var mailboxOffer: MailboxOffer? { mailbox?.mailboxOffer }
+  /// "Connect your email" or "Sign in again" on the bell, Profile and Bank alerts, when
+  /// mail needs it.
+  var mailOffer: MailOffer? { mailbox?.offer }
 
   /// What Home draws, recomputed once per ledger change.
   var snapshot: HomeSnapshot {
@@ -87,6 +80,12 @@ final class AppModel {
 
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
+
+  /// Transactions waiting to be sorted: the Review tab's badge (it never follows the
+  /// period, Paper "13 · Navigation"), once per ledger change.
+  var reviewCount: Int {
+    reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
+  }
 
   var showingProfile: Bool {
     get { sheet == .profile }
@@ -103,7 +102,7 @@ final class AppModel {
   func toggleAmountsHidden() {
     amountsHidden.toggle()
     if amountsHidden {
-      show(Toast(systemImage: "eye.slash", title: "Amounts hidden", subtitle: "Until you tap the eye again",
+      show(Toast(disc: .note(.eyeSlash), title: "Amounts hidden", subtitle: "Until you tap the eye again",
                  actionTitle: "Show"))
     } else {
       dismissToast()
@@ -116,18 +115,19 @@ final class AppModel {
   func perform(_ edit: LedgerEdit) -> Bool {
     do {
       if let token = try store.apply(edit) {
-        show(Toast(systemImage: "checkmark", title: token.title, actionTitle: "Undo", undo: token))
+        show(Toast(disc: .done, title: token.title, actionTitle: "Undo", undo: token))
       }
       return true
     } catch {
-      show(Toast(systemImage: "exclamationmark", title: Self.message(for: error)))
+      show(Toast(disc: .note(.info), title: Self.message(for: error)))
       return false
     }
   }
 
-  /// Shows a one-line confirmation without an action.
-  func say(_ title: String, systemImage: String = "checkmark") {
-    show(Toast(systemImage: systemImage, title: title))
+  /// Shows a one-line confirmation without an action: the accent check, or `icon` on the
+  /// ink disc for a note.
+  func say(_ title: String, icon: HIcon? = nil) {
+    show(Toast(disc: icon.map { .note($0) } ?? .done, title: title))
   }
 
   func toastAction() {
@@ -146,7 +146,14 @@ final class AppModel {
     toast = nil
   }
 
-  func open(_ txn: TxnID) { sheet = .transaction(txn) }
+  /// The toast is touched: it stays while the finger is down, then for a full dwell after.
+  func holdToast(_ held: Bool) {
+    guard toast != nil else { return }
+    toastTask?.cancel()
+    if !held { scheduleToastEnd() }
+  }
+
+  func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
   func snooze(_ card: String) { snoozed.insert(card) }
 
@@ -161,15 +168,32 @@ final class AppModel {
     }
   }
 
-  /// The undo window is 5 s (spec 04 §14.6).
+  /// One toast at a time: a new one replaces the old (plan decision 4). It stays about 4 s,
+  /// 8 s while VoiceOver runs, longer while touched; that is also the window for its Undo.
+  /// VoiceOver hears it without losing its place ("Sorted into Groceries. Undo available.").
+  /// The motion is `ToastHost`'s.
   // TODO(spec 04 §14.6): pause the window while the app is in the background (pwa `pausableTimeout`).
   private func show(_ t: Toast) {
+    toast = t
+    AccessibilityNotification.Announcement(Self.announcement(for: t)).post()
+    scheduleToastEnd()
+  }
+
+  private func scheduleToastEnd() {
     toastTask?.cancel()
-    withAnimation(.snappy) { toast = t }
+    let dwell = UIAccessibility.isVoiceOverRunning ? HMotion.toastDwellVoiceOver : HMotion.toastDwell
     toastTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(5))
+      try? await Task.sleep(for: .seconds(dwell))
       guard !Task.isCancelled else { return }
-      withAnimation(.snappy) { self?.toast = nil }
+      self?.toast = nil
     }
+  }
+
+  /// What VoiceOver says when a toast appears: the message, then the action it offers.
+  static func announcement(for t: Toast) -> String {
+    // Toasts carry no closing full stop ("Sorted into Groceries"); some lines already end in one.
+    func sentence(_ s: String) -> String { s.hasSuffix(".") ? s : s + "." }
+    let parts = [t.title, t.subtitle].compactMap { $0 } + [t.actionTitle.map { "\($0) available" }].compactMap { $0 }
+    return parts.map(sentence).joined(separator: " ")
   }
 }

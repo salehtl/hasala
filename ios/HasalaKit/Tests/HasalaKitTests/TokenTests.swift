@@ -1,3 +1,4 @@
+import CoreText
 import Foundation
 import HasalaModels
 import SwiftUI
@@ -10,8 +11,16 @@ import Testing
 @Suite("Design tokens")
 struct TokenTests {
   @Test func tokenSetIdentity() {
-    #expect(HTokens.paperHash == "360d497c")
-    #expect(HTokens.count == 447)
+    #expect(HTokens.paperHash == "8c572fea")
+    #expect(HTokens.count == 477)
+  }
+
+  /// The four values the owner settled on 14 Oct (spec 01 §0.06, §8.1).
+  @Test func settledValues() {
+    #expect(HPalette.controlSwitchTrackOff == HRGBA(120, 120, 120, 0.2))
+    #expect(HFontWeight.listRowTitle == 600)
+    #expect(HSpacing.insetCard == 16)
+    #expect(HRadius.card == 24)
   }
 
   @Test(arguments: [
@@ -39,6 +48,18 @@ struct TokenTests {
     (HPalette.washOnTrack, "#D3E6FF"),
     (HPalette.textOnWashSecondary, "#47474D"),
     (HPalette.textOnWashLink, "#294ACD"),
+    // Added in 8c572fea (spec 01 §8.2).
+    (HPalette.amber600, "#C77700"),
+    (HPalette.amber950, "#382A12"),
+    (HPalette.badgeCount, "#AD3029"),
+    (HPalette.badgeCountText, "#FFFFFF"),
+    (HPalette.iconGlass, "#1A1A1A"),
+    (HPalette.controlCheckUnselected, "#73737A"),
+    (HPalette.sheetSurfaceLarge, "#EFEFF1"),
+    (HPalette.keypadTray, "#E4E4E7"),
+    (HPalette.keypadKey, "#FFFFFF"),
+    (HPalette.surfacePosterPill, "#FFFFFF"),
+    (HPalette.widgetSurfaceWaiting, "#EFEFF1"),
   ])
   func semanticColours(token: HRGBA, hex: String) {
     #expect(token.description == hex)
@@ -51,6 +72,15 @@ struct TokenTests {
     #expect(HPalette.scrim == HRGBA(0, 0, 0, 0.28))
     #expect(HPalette.overlayWhite == HRGBA(255, 255, 255, 0.922))
     #expect(HPalette.materialGlassFrost == HRGBA(255, 255, 255, 0.58))
+    #expect(HPalette.fieldSurfaceReadonly == HRGBA(116, 116, 128, 0.08))
+    #expect(HPalette.keypadTrayInline == HRGBA(118, 118, 128, 0.12))
+    #expect(HPalette.progressRingTrack == HRGBA(0, 0, 0, 0.08))
+    #expect(HPalette.reviewSuggestionSurface == HRGBA(247, 247, 248, 0.72))
+  }
+
+  /// The over-pace fill now aliases the amber ramp (same colour, spec 01 §8.2).
+  @Test func overPaceFillIsAmber600() {
+    #expect(HPalette.paceFillOverPace == HPalette.amber600)
   }
 
   @Test(arguments: [
@@ -110,6 +140,30 @@ struct TokenTests {
     #expect(HContainer.briefCard == 272)
     #expect(HContainer.widgetUnit == 175)
     #expect(HContainer.widgetWide == 362)
+    // Added in 8c572fea.
+    #expect(HSpacing.iconInline == 18)
+    #expect(HSpacing.iconGlass == 22)
+    #expect(HSpacing.sheetGap == 18)
+    #expect(HSpacing.tabBarBottom == 29)
+    #expect(HSpacing.keypadKeyHeight == 52)
+    #expect(HSpacing.keypadKeyHeightInline == 44)
+    #expect(HSpacing.listRowMinHeightKeyValue == 48)
+    #expect(HSpacing.codeCellWidth == 52)
+    #expect(HSpacing.codeCellHeight == 64)
+    #expect(HSpacing.scrollContentBottom == 160)
+    #expect(HSpacing.paceMarkerHeightWidget == 12)
+    #expect(HRadius.statTile == 18)
+    #expect(HRadius.reviewCard == 28)
+    #expect(HRadius.sheetLarge == 34)
+  }
+
+  @Test func figureTokens() {
+    #expect((HFontSize.numericBadge, HLeading.numericBadge) == (13, 16))
+    #expect((HFontSize.numericCompact, HLeading.numericCompact) == (15, 20))
+    #expect((HFontSize.numericRow, HLeading.numericRow) == (16, 22))
+    #expect((HFontSize.numericDisplayUnit, HLeading.numericDisplayUnit) == (20, 24))
+    #expect(HTracking.numericMedium == -0.4)
+    #expect(HLeading.overline == 16)
   }
 
   @Test func typeScale() {
@@ -132,5 +186,32 @@ struct TokenTests {
   @Test func interFacesRegister() {
     #expect(HasalaFonts.register())
     #expect(HasalaFonts.allFacesAvailable)
+  }
+
+  /// Paper sets Inter with automatic optical sizing, so a title takes the display cut.
+  /// Story 4's headline fits its 354 pt column at the large title (3PC-0, about 353 pt);
+  /// Inter's text cut (optical size 14) sets it at about 376 pt and wraps it. Body text
+  /// stays within a percent and a half of the text cut.
+  @Test func titlesTakeTheDisplayCut() {
+    #expect(HasalaFonts.register())
+    func width(_ text: String, _ type: HType, opticalSize: Double? = nil) -> Double {
+      var font = CTFontCreateWithName(type.weight.interFace as CFString, type.size, nil)
+      if let opticalSize {
+        let opsz = 0x6F70_737A  // the 'opsz' axis tag
+        font = CTFontCreateCopyWithAttributes(font, type.size, nil, CTFontDescriptorCreateWithAttributes(
+          [kCTFontVariationAttribute: [opsz: opticalSize]] as CFDictionary))
+      }
+      let attributes = [kCTFontAttributeName as NSAttributedString.Key: font,
+                        kCTKernAttributeName as NSAttributedString.Key: type.resolvedTracking] as [NSAttributedString.Key: Any]
+      let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
+      return CTLineGetTypographicBounds(line, nil, nil, nil)
+    }
+    let story = "Sort a week in a minute."
+    #expect(width(story, .largeTitle) < 354)
+    #expect(width(story, .largeTitle, opticalSize: 14) > 370)
+    #expect(width("How do you want to sign in?", .title1) < 354)
+    let body = "Swipe new transactions into Needs, Wants or Savings."
+    let ratio = width(body, .body) / width(body, .body, opticalSize: 14)
+    #expect(ratio > 0.985 && ratio < 1)
   }
 }

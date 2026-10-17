@@ -41,10 +41,9 @@ Inter
   @fontsource-variable/inter 5.3.0. The website (web/) serves it as its only
   font.
 
-  ios/HasalaKit/Sources/HasalaDesign/Fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf
-  are the four static faces of Inter 4.1 (font version 4.001), each written out
-  of the release's Inter.ttc as a single-face file with fontTools; glyphs, names
-  and metadata are unchanged. They are bundled into the iOS app together with the
+  ios/HasalaKit/Sources/HasalaDesign/Fonts/InterVariable.ttf is the Inter
+  variable font (opsz and wght axes) of Inter 4.1 (font version 4.001), copied
+  unchanged from the release. It is bundled into the iOS app together with the
   release's licence file (Fonts/OFL.txt). "Inter" is not a Reserved Font Name.
 
 Dependencies that are not copied into this repository

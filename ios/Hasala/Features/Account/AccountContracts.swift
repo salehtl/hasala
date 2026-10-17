@@ -43,11 +43,10 @@ struct SignupTicket: Equatable, Sendable {
   func codeExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 10 * 60 }
 }
 
-/// The 12 words, held in memory for the phrase screens only (spec 04 §6.7).
+/// The 12 words, held in memory for the phrase screens only (spec 04 §6.7). There is no
+/// word check (`docs/decisions/recovery-phrase-no-quiz.md`), so no positions to confirm.
 struct RecoveryPhrase: Equatable, Sendable {
   var words: [String]
-  /// Four distinct positions (0-based, ascending) the user confirms (PO F).
-  var confirmPositions: [Int]
 }
 
 /// What a sign-in leaves to do (spec 04 §6.5).
@@ -95,6 +94,11 @@ struct FreezeInfo: Equatable, Sendable {
   var by: By
   /// Already formatted for display ("on Sun 11 Oct at 21:20"), or nil when unknown.
   var when: String?
+  /// The holder froze it here, from Sign-in & security, not with the "Freeze my account"
+  /// link in our email (Paper MTO says "from our email"). Only this app's own Freeze sets
+  /// it: `GET /account` doesn't say where a freeze came from, and the beta's only way to
+  /// freeze is the email's link.
+  var inApp = false
 }
 
 /// One row of Sign-in & security › Passkeys.
@@ -103,6 +107,8 @@ struct PasskeyRow: Identifiable, Equatable, Sendable {
   /// From the bundled AAGUID table; unknown → "Passkey".
   var provider: String
   var detail: String
+  /// The passkey this iPhone signs in with: Paper draws it with Face ID, and it has no
+  /// Remove (removing the key in hand is done from another device).
   var isThisCredential: Bool
 }
 
@@ -112,6 +118,19 @@ struct DeviceRow: Identifiable, Equatable, Sendable {
   var title: String
   var detail: String
   var isThisDevice: Bool
+  /// Drawn as an iPad (Paper "Maya's iPad"); every other device is drawn as an iPhone.
+  var isTablet = false
+}
+
+/// A change of the account's email address (Paper P2.5 "Change email", LPY/LRC): confirmed
+/// first, then a code to the current address and one to the new one, both checked together.
+struct EmailChangeTicket: Identifiable, Equatable, Sendable {
+  var id: String
+  var currentEmail: String
+  /// Set once both codes are sent.
+  var newEmail: String?
+  /// When the two codes were sent (the resend countdowns run from it).
+  var sentAt: Date?
 }
 
 /// Everything Sign-in & security shows (spec 04 §6.9).
@@ -344,6 +363,17 @@ protocol AccountService: AnyObject {
   /// Sign out of this iPhone; local data stays (S-26).
   func signOut() async
 
+  // MARK: Change the email address (C6; Paper P2.5 LPY, LRC)
+
+  /// The step-up before a new address is typed ("You've confirmed it's you."): a passkey
+  /// assertion, or `password` with this iPhone's key for a password-only account.
+  func beginEmailChange(password: String?) async throws(AuthFailure) -> EmailChangeTicket
+  /// Sends a code to the current address and one to `newEmail`.
+  func sendEmailChangeCodes(_ ticket: EmailChangeTicket, to newEmail: String) async throws(AuthFailure)
+    -> EmailChangeTicket
+  /// Checks both codes together; nothing changes until both match.
+  func finishEmailChange(_ ticket: EmailChangeTicket, currentCode: String, newCode: String) async throws(AuthFailure)
+
   // MARK: The approving iPhone (C9 side A)
 
   /// `GET password/reset/pending`: a request waiting for this iPhone, if any.
@@ -358,4 +388,14 @@ extension AccountService {
   /// Everything, so the Debug mocks and test doubles offer every screen unchanged. A
   /// live service overrides this with only the actions it has wired.
   var capabilities: AccountCapabilities { .all }
+
+  // No ceremony binds the email change yet (C6): a service that doesn't carry it out says
+  // so, and the screens offer it only with `.changeEmail` on the unfinished surface.
+  func beginEmailChange(password: String?) async throws(AuthFailure) -> EmailChangeTicket { throw .notInThisBuild }
+  func sendEmailChangeCodes(_ ticket: EmailChangeTicket, to newEmail: String) async throws(AuthFailure)
+    -> EmailChangeTicket
+  { throw .notInThisBuild }
+  func finishEmailChange(_ ticket: EmailChangeTicket, currentCode: String, newCode: String) async throws(AuthFailure) {
+    throw .notInThisBuild
+  }
 }

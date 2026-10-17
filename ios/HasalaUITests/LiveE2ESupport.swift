@@ -128,36 +128,12 @@ class LiveE2ECase: XCTestCase {
     return app
   }
 
-  @MainActor
-  func el(_ app: XCUIApplication, _ id: String) -> XCUIElement {
-    app.descendants(matching: .any)[id].firstMatch
-  }
+  // `el`, `tap` and `type` are UITestSupport's, shared with every UI test.
 
   /// Any element whose label contains `text` (static texts, buttons, combined cells).
   @MainActor
   func labelled(_ app: XCUIApplication, containing text: String) -> XCUIElement {
     app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-  }
-
-  @MainActor
-  func tap(_ app: XCUIApplication, _ id: String, timeout: TimeInterval = 15,
-           file: StaticString = #filePath, line: UInt = #line) {
-    let e = el(app, id)
-    XCTAssertTrue(e.waitForExistence(timeout: timeout), "\(id) is missing", file: file, line: line)
-    var tries = 0
-    while !e.isHittable && tries < 4 {
-      app.swipeUp()
-      tries += 1
-    }
-    e.tap()
-  }
-
-  @MainActor
-  func type(_ app: XCUIApplication, _ id: String, _ text: String, file: StaticString = #filePath, line: UInt = #line) {
-    let e = el(app, id)
-    XCTAssertTrue(e.waitForExistence(timeout: 15), "\(id) is missing", file: file, line: line)
-    e.tap()
-    e.typeText(text)
   }
 
   /// Types into a password field: the strong-password offer is declined first, and

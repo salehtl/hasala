@@ -1,13 +1,20 @@
 import CoreText
 import Foundation
 
-/// The bundled faces (spec 04 §14.3): Inter 4.1 static Regular, Medium, SemiBold and
-/// Bold, under the SIL Open Font License 1.1 (see LICENSES/OFL-1.1.txt and NOTICE).
-/// Figures use the system's SF Pro Rounded and are not bundled.
+/// The bundled face (spec 04 §14.3): Inter 4.1's variable font (InterVariable.ttf, weight
+/// and optical-size axes), under the SIL Open Font License 1.1 (see LICENSES/OFL-1.1.txt
+/// and NOTICE). Its named Regular, Medium, SemiBold and Bold instances are the four
+/// weights. Paper sets Inter with automatic optical sizing, and Core Text does the same for
+/// a font with an `opsz` axis: each size gets its own cut (the display cut from 32 pt), so
+/// a title is as narrow as on the boards and keeps their line breaks. Figures use the
+/// system's SF Pro Rounded and are not bundled.
 public enum HasalaFonts {
-  public static let faces = ["Inter-Regular", "Inter-Medium", "Inter-SemiBold", "Inter-Bold"]
+  /// The font files in `Fonts/`.
+  public static let files = ["InterVariable"]
+  /// The PostScript names of the instances the type scale uses (`HWeight.interFace`).
+  public static let faces = ["InterVariable", "InterVariable-Medium", "InterVariable-SemiBold", "InterVariable-Bold"]
 
-  /// Registers the bundled faces for this process. Call once at launch (the app and,
+  /// Registers the bundled font for this process. Call once at launch (the app and,
   /// later, the widget extension); repeated calls are harmless.
   @discardableResult
   public static func register() -> Bool {
@@ -16,8 +23,8 @@ public enum HasalaFonts {
 
   private static let registration: Bool = {
     var ok = true
-    for face in faces {
-      guard let url = Bundle.module.url(forResource: face, withExtension: "ttf", subdirectory: "Fonts") else {
+    for file in files {
+      guard let url = Bundle.module.url(forResource: file, withExtension: "ttf", subdirectory: "Fonts") else {
         ok = false
         continue
       }
@@ -31,7 +38,7 @@ public enum HasalaFonts {
     return ok
   }()
 
-  /// True when every bundled face resolves by its PostScript name.
+  /// True when every instance the type scale uses resolves by its PostScript name.
   public static var allFacesAvailable: Bool {
     faces.allSatisfy { name in
       let font = CTFontCreateWithName(name as CFString, 12, nil)

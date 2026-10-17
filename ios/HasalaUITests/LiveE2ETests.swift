@@ -22,9 +22,9 @@ final class LiveE2ETests: LiveE2ECase {
   }
 
   /// E1 on A, path B (spec §2.5): a review invite, about you, the emailed code, a
-  /// password, the 12 words read off the screen and four of them checked, ENBD, "Use
-  /// sample data", notifications allowed, then Maya's month on Home, Activity, Bills and
-  /// Plan, and Home's "Sample data" label.
+  /// password, the 12 words read off the screen (no word check), ENBD, "Use sample data"
+  /// on Gmail's read-only screen, notifications allowed, then Maya's month on Home,
+  /// Activity, Bills and Plan, and Home's "Sample data" label.
   @MainActor
   func test01_pathB() throws {
     let invite = try XCTUnwrap(e2e.invite, "the harness passes a review invite (HASALA_E2E_INVITE)")
@@ -63,29 +63,22 @@ final class LiveE2ETests: LiveE2ECase {
     account.words = try readPhrase(app)
     try saveAccount(account)
     attach(app, "Recovery phrase")
+    // "I've written them down" publishes: there is no word check.
     tap(app, "phrase.written")
-
-    // Check 4: each slot asks for a word by position.
-    for i in 0..<4 {
-      let slot = el(app, "phrase.slot.\(i)")
-      XCTAssertTrue(slot.waitForExistence(timeout: 10))
-      let position = try XCTUnwrap(Int(slot.label.replacingOccurrences(of: "Word ", with: "")),
-                                   "slot \(i) reads '\(slot.label)'")
-      tap(app, "chip.\(account.words[position - 1])")
-    }
-    attach(app, "Check 4 words")
-    tap(app, "phrase.confirm")
 
     // Publishing the keys (password register #45, then GET /keys and /account).
     tap(app, "ready.continue", timeout: 90)
 
-    // Setup: ENBD, then the review account's sample instead of Gmail.
+    // Setup: ENBD, then the review account's sample instead of Gmail. A live build offers
+    // Gmail only, so Continue goes straight to its read-only screen (no Choose your email),
+    // where the sample is the dock's one pill and Google's sign-in the text button under it.
     tap(app, "bank.enbd", timeout: 30)
     tap(app, "bank.continue")
-    let sample = el(app, "gmail.sample")
+    let sample = el(app, "mail.sample")
     XCTAssertTrue(sample.waitForExistence(timeout: 60),
                   "no 'Use sample data': the review flag (#40 review_account) did not reach setup")
-    attach(app, "Gmail · sample offered")
+    XCTAssertFalse(el(app, "mail.choose.outlook").exists, "a live build offered Outlook")
+    attach(app, "Your email · sample offered")
     sample.tap()
 
     // Notifications: Allow (the reviewer taps "Not now"; either finishes setup). Allowing
@@ -102,7 +95,8 @@ final class LiveE2ETests: LiveE2ECase {
   }
 
   /// E2 on B: a new iPhone signs in with the password (C2-P), unlocks with the 12 words
-  /// pasted into one field (C3), pulls and replays Maya's month, then sorts one review row.
+  /// typed into one field (C3), pulls and replays Maya's month, then sorts one card from
+  /// the Review tab.
   @MainActor
   func test02_pathA_secondDevice() throws {
     let account = try loadAccount()
@@ -113,9 +107,10 @@ final class LiveE2ETests: LiveE2ECase {
     let next = waitForAny(app, ["unlock.words", "phraseEntry.field"], timeout: 60)
     XCTAssertNotNil(next, "the unlock screen did not open after the password sign-in")
     if next == "unlock.words" { tap(app, "unlock.words") }
-    type(app, "phraseEntry.field", account.words.joined(separator: " "))
+    // The entry draws no button while its keyboard is up (Paper GDD: the dock holds the
+    // word list then); Return on the twelfth word unlocks.
     attach(app, "Unlock · 12 words")
-    tap(app, "unlock.submit")
+    type(app, "phraseEntry.field", account.words.joined(separator: " ") + "\n")
     tap(app, "unlock.open", timeout: 120)
     driveToHome(app)
     try markSignedIn(true)
@@ -123,9 +118,10 @@ final class LiveE2ETests: LiveE2ECase {
     assertMayaFigures(app)
     continueAfterFailure = false
 
-    // Sort the first review card as a transfer (no rule: "Always use" is off for it).
-    app.tabBars.firstMatch.buttons["Activity"].tap()
-    tap(app, "activity.startReview")
+    // Sort the first review card as a transfer (no rule: "Always use" is off for it), from
+    // the Review tab.
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    tap(app, "review.tab.start")
     let position = el(app, "review.position")
     XCTAssertTrue(waitForLabel(position, containing: "1 of 6", timeout: 15),
                   "the deck reads '\(position.exists ? position.label : "nothing")'")
@@ -134,7 +130,8 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(waitForLabel(position, containing: "2 of 6", timeout: 15), "the card was not sorted")
     attach(app, "Review · one sorted")
     tap(app, "review.close")
-    XCTAssertTrue(app.staticTexts[MayaSample.afterOneSorted].waitForExistence(timeout: 15))
+    XCTAssertTrue(waitForLabel(el(app, "review.tab.count"), containing: MayaSample.afterOneSorted, timeout: 15),
+                  "the Review tab does not say '\(MayaSample.afterOneSorted)'")
 
     // Leave time for the coordinator's authored run to seal and upload the edit (#30)
     // before the next test relaunches anything.

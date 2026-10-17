@@ -9,10 +9,8 @@ final class CoreScreensTests: XCTestCase {
   }
 
   @MainActor
-  private func launch(_ scenario: String = "maya") -> XCUIApplication {
-    let app = XCUIApplication()
-    app.launchArguments = ["-HasalaScenario", scenario]
-    app.launch()
+  private func launchHome(_ scenario: String = "maya", motion: String? = nil) -> XCUIApplication {
+    let app = launch(scenario: scenario, motion: motion)
     XCTAssertTrue(app.descendants(matching: .any)["home.hero.left"].waitForExistence(timeout: 15))
     return app
   }
@@ -22,10 +20,18 @@ final class CoreScreensTests: XCTestCase {
     app.descendants(matching: .any)[id].firstMatch
   }
 
-  /// Activity: the overview's figures, a filter chip, search, then the Carrefour sheet.
+  /// Drags the top review card from its middle to a point on the screen (normalized).
+  @MainActor
+  private func drag(_ app: XCUIApplication, to point: CGVector) {
+    element(app, "review.card").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: point))
+  }
+
+  /// Activity: the overview's figures, a filter chip, search, then the Carrefour sheet with
+  /// its editors pushed inside it (one sheet at a time).
   @MainActor
   func testActivityFiltersSearchAndTransactionSheet() throws {
-    let app = launch()
+    let app = launchHome()
     app.tabBars.firstMatch.buttons["Activity"].tap()
     let count = element(app, "activity.count")
     XCTAssertTrue(count.waitForExistence(timeout: uiWait))
@@ -42,9 +48,16 @@ final class CoreScreensTests: XCTestCase {
     attach(app, "Activity · To review")
     element(app, "activity.chip.all").tap()
 
-    // The Carrefour sheet: amount, embedded pace, provenance.
+    // Search across months: three Carrefour rows, nothing else.
+    let search = app.searchFields["Search transactions"]
+    XCTAssertTrue(search.waitForExistence(timeout: uiWait))
+    type("carrefour", into: search)
     let carrefour = element(app, "txn.carrefour")
-    XCTAssertTrue(reveal(app, carrefour))
+    XCTAssertTrue(carrefour.waitForExistence(timeout: uiWait))
+    XCTAssertFalse(element(app, "txn.talabat").exists)
+    attach(app, "Activity · Search")
+
+    // The Carrefour sheet: amount, embedded pace, provenance.
     carrefour.tap()
     let merchant = element(app, "txn.merchant")
     XCTAssertTrue(merchant.waitForExistence(timeout: uiWait))
@@ -55,6 +68,16 @@ final class CoreScreensTests: XCTestCase {
     attach(app, "Transaction · Carrefour")
     try audit(app)
 
+    // Choose a category pushes inside the sheet, with its rule switch; Back returns.
+    element(app, "txn.category").tap()
+    XCTAssertTrue(element(app, "picker.save").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(element(app, "picker.alwaysUse").exists)
+    XCTAssertTrue(element(app, "picker.groceries").isSelected)
+    attach(app, "Transaction · Category")
+    try audit(app)
+    app.navigationBars["Category"].buttons.firstMatch.tap()
+    XCTAssertTrue(merchant.waitForExistence(timeout: uiWait))
+
     // A note is saved and shown on the sheet.
     element(app, "txn.note").tap()
     let field = element(app, "note.field")
@@ -63,7 +86,7 @@ final class CoreScreensTests: XCTestCase {
     element(app, "note.save").tap()
     XCTAssertTrue(element(app, "txn.note").waitForLabel(containing: "Weekly shop"))
 
-    // Split: put 45.15 into Shopping, the rest stays in Groceries.
+    // Split: 45.15 into the second line on the keypad, the rest stays in Groceries.
     let split = element(app, "txn.split")
     XCTAssertTrue(reveal(app, split))
     split.tap()
@@ -71,44 +94,58 @@ final class CoreScreensTests: XCTestCase {
     // The seed puts everything on line 1 and leaves line 2 empty: not savable yet.
     XCTAssertTrue(element(app, "split.verdict").waitForLabel("Every line needs an amount"))
     XCTAssertFalse(element(app, "split.save").isEnabled)
-    type("45.15", into: element(app, "split.amount.2"))
+    let second = element(app, "split.amount.2")
+    second.tap()
+    for key in ["4", "5", "decimal", "1", "5"] { element(app, "keypad.\(key)").tap() }
+    XCTAssertEqual(second.value as? String, "45.15")
+    XCTAssertTrue(element(app, "split.verdict").waitForLabel("45 dirhams 15 too much"))
+    // Tapping the field again puts the keypad away.
+    second.tap()
+    XCTAssertTrue(element(app, "keypad.4").waitForNonExistence(timeout: uiWait))
     app.buttons["Put the rest in Groceries"].tap()
     XCTAssertTrue(element(app, "split.verdict").waitForLabel("Adds up exactly"))
     attach(app, "Transaction · Split")
+    try audit(app)
     element(app, "split.save").tap()
     XCTAssertTrue(element(app, "txn.category").waitForLabel(containing: "Split · 2"))
     element(app, "txn.close").tap()
   }
 
-  /// Review: sort with a direction pill and the pick sheet, use a suggestion, undo, skip,
-  /// and finish on All caught up.
+  /// Review from the Review tab: Transfer by a drag up and the pick sheet, Undo, the pill,
+  /// skip, Use for the rest, then All caught up and "See activity".
   @MainActor
   func testReviewDeckSortsUndoesAndCatchesUp() throws {
-    let app = launch()
-    element(app, "needsYou.review").buttons["Start"].tap()
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(element(app, "review.tab.count").label, "6 to sort · about a minute")
+    attach(app, "Review · Tab")
+    try audit(app)
+    start.tap()
     let position = element(app, "review.position")
     XCTAssertTrue(position.waitForExistence(timeout: uiWait))
     XCTAssertEqual(position.label, "1 of 6")
     attach(app, "Review · Deck")
     try audit(app)
 
-    // Swipe the first card (the ATM withdrawal) up: Transfer.
-    let card = element(app, "review.card")
-    card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-      .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)))
+    // Drag the first card (the ATM withdrawal) up: Transfer.
+    drag(app, to: CGVector(dx: 0.5, dy: 0.05))
     let sort = element(app, "pick.sort")
     XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.staticTexts["Transfer · which one?"].exists)
     attach(app, "Review · Pick transfer")
+    try audit(app)
     element(app, "pick.transfer").tap()
     sort.tap()
     XCTAssertTrue(app.staticTexts["Sorted into Transfer"].waitForExistence(timeout: uiWait))
-    XCTAssertTrue(position.waitForLabel("2 of 6"))
+    XCTAssertEqual(position.label, "2 of 6")
 
     // Undo puts it back.
     element(app, "toast").buttons["Undo"].tap()
     XCTAssertTrue(position.waitForLabel("1 of 6"))
 
-    // Sort it again from the pill, then the next with the "Need" pill.
+    // Sort it again from the pill.
     element(app, "review.pill.transfer").tap()
     XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
     element(app, "pick.transfer").tap()
@@ -130,137 +167,119 @@ final class CoreScreensTests: XCTestCase {
       use.tap()
     }
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
-    XCTAssertTrue(app.staticTexts["5 sorted"].exists)
+    XCTAssertEqual(element(app, "review.done.tally").label, "5 sorted")
     attach(app, "Review · All caught up")
     try audit(app)
-    element(app, "review.backToActivity").tap()
+    element(app, "review.seeActivity").tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     // The skipped card is still waiting; the others left the queue.
     XCTAssertTrue(app.staticTexts["1 to sort"].waitForExistence(timeout: uiWait))
   }
 
-  /// Plan: Ready to assign, a category's month, Move money from Ready to assign, Undo.
+  /// A To sort row opens the deck at its own card; a pick sheet closed without a choice sends
+  /// the card back; Close leaves the rest for later.
   @MainActor
-  func testPlanMoveMoneyAndBudget() throws {
-    let app = launch()
-    app.tabBars.firstMatch.buttons["Plan"].tap()
-    let rta = element(app, "plan.readyToAssign")
-    XCTAssertTrue(rta.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(rta.label, "AED 1,000.00")
-    attach(app, "Plan · October")
-    try audit(app)
+  func testAToSortRowOpensTheDeckAtItsCard() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let row = element(app, "review.tab.row.lulu")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, row))
+    row.tap()
+    let merchant = element(app, "review.merchant")
+    XCTAssertTrue(merchant.waitForLabel(containing: "Lulu Hypermarket"), merchant.debugDescription)
+    XCTAssertEqual(element(app, "review.position").label, "1 of 6")
 
-    let groceries = element(app, "plan.row.groceries")
-    XCTAssertTrue(reveal(app, groceries))
-    attach(app, "Plan · Needs")
-    groceries.tap()
-    let total = element(app, "activity.summary.total")
-    XCTAssertTrue(total.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(total.label, "AED 812.40")
-    attach(app, "Plan · Groceries")
-    try audit(app)
+    // Drag left: Want asks which one; closing the sheet sorts nothing.
+    drag(app, to: CGVector(dx: 0.02, dy: 0.5))
+    XCTAssertTrue(app.staticTexts["Want · which one?"].waitForExistence(timeout: uiWait))
+    element(app, "pick.close").tap()
+    XCTAssertTrue(element(app, "pick.sort").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(merchant.waitForLabel(containing: "Lulu Hypermarket"))
+    XCTAssertEqual(element(app, "review.position").label, "1 of 6")
 
-    let move = element(app, "category.moveMoney")
-    XCTAssertTrue(reveal(app, move))
-    move.tap()
-    let save = element(app, "move.save")
-    XCTAssertTrue(save.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(save.label, "Move AED 318.00")
-    XCTAssertTrue(element(app, "move.preview").exists)
-    // Paper's sources: Ready to assign, Travel, Shopping, Entertainment; Dining is over pace.
-    for id in ["rta", "travel", "shopping", "entertainment"] {
-      XCTAssertTrue(element(app, "move.from.\(id)").exists, "\(id) is not offered")
+    // Use files the suggestion; the deck reads on down the list.
+    element(app, "review.use").tap()
+    XCTAssertTrue(merchant.waitForLabel(containing: "Dubai Taxi"), merchant.debugDescription)
+    XCTAssertEqual(element(app, "review.position").label, "2 of 6")
+    element(app, "review.close").tap()
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("5 to sort · about a minute"))
+  }
+
+  /// Let go before the commit point and the card springs back: no pick sheet, nothing
+  /// filed, the same card in front. Slow drags each way, short of the 100 pt point.
+  @MainActor
+  func testAShortDragSpringsBack() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
+    start.tap()
+    let merchant = element(app, "review.merchant")
+    XCTAssertTrue(merchant.waitForLabel(containing: "ADCB ATM withdrawal"), merchant.debugDescription)
+    let middle = element(app, "review.card").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    for offset in [CGVector(dx: 60, dy: 0), CGVector(dx: -60, dy: 0), CGVector(dx: 0, dy: -50), CGVector(dx: 0, dy: 50)] {
+      middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(offset), withVelocity: 120,
+                   thenHoldForDuration: 0.3)
+      XCTAssertFalse(element(app, "pick.sort").waitForExistence(timeout: 1), "a short drag committed")
     }
-    XCTAssertFalse(element(app, "move.from.dining").exists)
-    XCTAssertFalse(element(app, "move.from.transport").exists)
-    attach(app, "Plan · Move money")
-    try audit(app)
-    save.tap()
-    XCTAssertTrue(app.staticTexts["Moved to Groceries"].waitForExistence(timeout: uiWait))
-    app.navigationBars.buttons.firstMatch.tap()
-    XCTAssertTrue(rta.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(scroll(app, toShow: rta))
-    XCTAssertEqual(rta.label, "AED 682.00")
-
-    // Change Dining's budget to 1,800: Ready to assign follows.
-    let dining = element(app, "plan.row.dining")
-    XCTAssertTrue(reveal(app, dining))
-    dining.tap()
-    let change = element(app, "category.changeBudget")
-    XCTAssertTrue(reveal(app, change))
-    change.tap()
-    let field = element(app, "budget.amount")
-    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
-    app.buttons["+ 200"].tap()
-    XCTAssertEqual(element(app, "budget.save").label, "Set Dining to AED 1,800")
-    XCTAssertEqual(element(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
-    attach(app, "Plan · Dining budget")
-    // Over-assigning shows the shortfall with its minus sign.
-    for _ in 0..<4 { app.buttons["+ 200"].tap() }
-    XCTAssertEqual(element(app, "budget.consequence").label, "Ready to assign becomes \u{2212}AED 318.00")
-    for _ in 0..<8 { app.buttons["Less"].tap() }
-    XCTAssertEqual(element(app, "budget.save").label, "Set Dining to AED 1,800")
-    element(app, "budget.save").tap()
-    XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(merchant.label.contains("ADCB ATM withdrawal"))
+    XCTAssertEqual(element(app, "review.position").label, "1 of 6")
   }
 
-  /// Profile: the sheet, Bills (track a found bill), rules, notifications, Hide amounts.
+  /// The deck with Reduce Motion (`-HasalaMotion reduce`): nothing travels, but every sort
+  /// still works, by drag, pill and Use, through to All caught up.
   @MainActor
-  func testProfileBillsAndSettings() throws {
-    let app = launch()
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(element(app, "profile.name").waitForExistence(timeout: uiWait))
-    XCTAssertTrue(element(app, "profile.bankAlerts").label.contains("Bank alerts are working"))
-    attach(app, "Profile")
+  func testReviewDeckWithReduceMotion() throws {
+    let app = launchHome(motion: "reduce")
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
+    start.tap()
+    let position = element(app, "review.position")
+    XCTAssertTrue(position.waitForLabel("1 of 6"))
+
+    // Need by a drag right, for the ATM withdrawal: Rent. Let go, the card goes back to
+    // rest and waits there under the sheet (a static card, spec 12), not leaning.
+    let card = element(app, "review.card")
+    let rest = card.frame
+    drag(app, to: CGVector(dx: 0.98, dy: 0.5))
+    let sort = element(app, "pick.sort")
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(card.frame.midX, rest.midX, accuracy: 1, "the card leans with Reduce Motion")
+    XCTAssertEqual(card.frame.midY, rest.midY, accuracy: 1, "the card leans with Reduce Motion")
+    attach(app, "Reduce Motion · Pick a need")
+    element(app, "pick.rent").tap()
+    sort.tap()
+    XCTAssertTrue(position.waitForLabel("2 of 6"))
+    attach(app, "Reduce Motion · Deck")
     try audit(app)
 
-    element(app, "profile.bills").tap()
-    let next14 = element(app, "bills.next14")
-    XCTAssertTrue(next14.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(next14.label, "AED 1,039.15")
-    attach(app, "Bills")
-    try audit(app)
-    let track = element(app, "bills.track.apple-bill")
-    XCTAssertTrue(reveal(app, track))
-    track.tap()
-    XCTAssertTrue(app.staticTexts["Tracking Apple.com/bill"].waitForExistence(timeout: uiWait))
-    XCTAssertTrue(app.staticTexts["10 tracked"].waitForExistence(timeout: uiWait))
-    app.navigationBars.buttons.firstMatch.tap()
-
-    element(app, "profile.rules").tap()
-    XCTAssertTrue(element(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
-    attach(app, "Categories and rules")
-    try audit(app)
-    app.navigationBars.buttons.firstMatch.tap()
-
-    let notifications = element(app, "profile.notifications")
-    XCTAssertTrue(reveal(app, notifications))
-    notifications.tap()
-    element(app, "notifications.everything").tap()
-    app.navigationBars.buttons.firstMatch.tap()
-    XCTAssertTrue(element(app, "profile.notifications").waitForLabel(containing: "Everything"))
-    element(app, "profile.close").tap()
-
-    // Hide amounts reaches Activity and the transaction sheet.
-    app.buttons["header.hideAmounts"].firstMatch.tap()
-    app.tabBars.firstMatch.buttons["Activity"].tap()
-    let talabat = element(app, "txn.talabat")
-    XCTAssertTrue(talabat.waitForExistence(timeout: uiWait))
-    talabat.tap()
-    XCTAssertTrue(element(app, "txn.amount").waitForLabel("Amount hidden"))
-    attach(app, "Transaction · Amounts hidden")
+    // Money in: the Transfer pill (the card stays put); then Use for the four suggestions.
+    let second = card.frame
+    element(app, "review.pill.transfer").tap()
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(card.frame.midY, second.midY, accuracy: 1, "the card rises with Reduce Motion")
+    element(app, "pick.salary").tap()
+    sort.tap()
+    for _ in 0..<4 {
+      let use = element(app, "review.use")
+      XCTAssertTrue(use.waitForExistence(timeout: uiWait))
+      use.tap()
+    }
+    XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
+    // Need asks to remember the merchant by default: one rule.
+    XCTAssertEqual(element(app, "review.done.tally").label, "6 sorted · 1 new rule")
+    attach(app, "Reduce Motion · All caught up")
+    element(app, "review.close").tap()
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("All caught up"))
   }
 
-  /// The core screens at `.accessibility3`: layouts reflow instead of clipping, and the
-  /// audit passes on each screenful (spec 04 §17).
+  /// Activity, its transaction sheet and the review deck at `.accessibility3`: layouts
+  /// reflow instead of clipping, and the audit passes on each screenful (spec 04 §17).
   @MainActor
   func testCoreScreensAtLargeTextSizes() throws {
-    let app = XCUIApplication()
-    app.launchArguments = [
-      "-HasalaScenario", "maya",
-      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL",
-    ]
-    app.launch()
+    let app = launch(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
     XCTAssertTrue(element(app, "home.hero.left").waitForExistence(timeout: 15))
 
     // Activity, down the page, then the Carrefour sheet.
@@ -282,90 +301,71 @@ final class CoreScreensTests: XCTestCase {
     }
     element(app, "txn.close").tap()
 
-    // Plan, down to the projects.
-    app.tabBars.firstMatch.buttons["Plan"].tap()
-    XCTAssertTrue(element(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
+    // The Review tab, then the deck, which scrolls and doesn't drag at these sizes.
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let start = element(app, "review.tab.start")
+    XCTAssertTrue(start.waitForExistence(timeout: uiWait))
+    attach(app, "AX3 · Review tab")
     try audit(app, atLargeText: true)
-    for id in ["plan.row.rent", "plan.row.insurance", "plan.row.dining", "plan.row.subscriptions",
-               "plan.row.emergency-fund", "plan.project.japan"] {
-      XCTAssertTrue(reveal(app, element(app, id)), "could not reach \(id)")
-      attach(app, "AX3 · Plan · \(id)")
-      try audit(app, atLargeText: true)
-    }
-
-    // The review deck.
-    app.tabBars.firstMatch.buttons["Home"].tap()
-    let start = element(app, "needsYou.review").buttons["Start"]
     XCTAssertTrue(reveal(app, start))
     start.tap()
     XCTAssertTrue(element(app, "review.card").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Review")
     try audit(app, atLargeText: true)
-    element(app, "review.close").tap()
-
-    // Profile and Bills.
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(element(app, "profile.name").waitForExistence(timeout: uiWait))
-    try audit(app, atLargeText: true)
-    for id in ["profile.rules", "profile.faceID", "profile.signOut"] {
+    for id in ["review.use", "review.pill.save", "review.skip"] {
       XCTAssertTrue(reveal(app, element(app, id)), "could not reach \(id)")
-      attach(app, "AX3 · Profile · \(id)")
       try audit(app, atLargeText: true)
     }
+    element(app, "review.close").tap()
   }
 
-  /// The caught-up scenario has nothing to review: no To review card, no deck.
+  /// The Debug Search: Ready under its large title with the field focused (Paper "Search ·
+  /// Ready"); the first letters swap "Try asking" for results and the title makes room
+  /// (S3 has none); a transaction result opens its sheet.
+  @MainActor
+  func testDebugSearchReadyThenResults() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Search"].tap()
+    XCTAssertTrue(element(app, "search.placeholder").waitForExistence(timeout: uiWait))
+    let title = app.navigationBars.staticTexts["Search"]
+    XCTAssertTrue(title.waitForExistence(timeout: uiWait) && title.isHittable, "Ready has no large title")
+    attach(app, "Search · Ready")
+    // Search's own parts are audited with the keyboard put away: with it up, the audit
+    // flags the keyboard's empty prediction cells, system UI the shared filter does not
+    // skip yet (requests/p6.md 4).
+    // (A drag from the content down through the keys: Search dismisses it interactively.)
+    element(app, "search.placeholder").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait), "the keyboard stayed up")
+    try audit(app)
+
+    let field = app.searchFields["Ask about your money"]
+    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
+    type("carre", into: field)
+    let result = element(app, "search.txn.carrefour")
+    XCTAssertTrue(result.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(element(app, "search.top").exists)
+    XCTAssertFalse(element(app, "search.placeholder").exists)
+    let titleGone = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == false OR hittable == false"), object: title)
+    XCTAssertEqual(XCTWaiter().wait(for: [titleGone], timeout: uiWait), .completed, "results kept the large title")
+    attach(app, "Search · Results as you type")
+
+    result.tap()
+    XCTAssertTrue(element(app, "txn.merchant").waitForLabel("Carrefour"))
+    element(app, "txn.close").tap()
+  }
+
+  /// The caught-up scenario has nothing to review: no To review card, no Start, no deck.
   @MainActor
   func testCaughtUpScenarioHasNothingToReview() throws {
-    let app = launch("mayaCaughtUp")
-    XCTAssertFalse(element(app, "needsYou.review").exists)
+    let app = launchHome("mayaCaughtUp")
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("All caught up"))
+    XCTAssertTrue(element(app, "review.tab.empty").exists)
+    XCTAssertFalse(element(app, "review.tab.start").exists)
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.staticTexts["To review"].exists)
-  }
-}
-
-extension XCTestCase {
-  /// Drags the page until `element` can be tapped, for rows near the end of a page that
-  /// can never reach the upper half. Each drag rests before the finger lifts, so the page
-  /// stops where it was dragged instead of coasting past the element (a fling at a large
-  /// text size could carry it under the header, where only dragging back finds it); an
-  /// element that ends near the top of the screen or above it is dragged back down. Returns whether
-  /// it got there.
-  @MainActor
-  func reveal(_ app: XCUIApplication, _ element: XCUIElement) -> Bool {
-    let height = app.frame.height
-    for _ in 0..<16 {
-      if element.exists, element.isHittable, element.frame.maxY < height - 120 { return true }
-      let down = element.exists && element.frame.maxY < 160
-      let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.4 : 0.7))
-      let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.65 : 0.45))
-      from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
-    }
-    waitForStill(app)
-    return element.exists && element.isHittable
-  }
-}
-
-extension XCUIElement {
-  /// Waits until the element has the keyboard focus.
-  func waitForKeyboardFocus(timeout: TimeInterval = 5) -> Bool {
-    let predicate = NSPredicate(format: "hasKeyboardFocus == true")
-    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
-      == .completed
-  }
-
-  /// Waits until the element's label reads `label`.
-  func waitForLabel(_ label: String, timeout: TimeInterval = uiWait) -> Bool {
-    let predicate = NSPredicate(format: "label == %@", label)
-    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
-      == .completed
-  }
-
-  /// Waits until the element's label contains `text`.
-  func waitForLabel(containing text: String, timeout: TimeInterval = uiWait) -> Bool {
-    let predicate = NSPredicate(format: "label CONTAINS %@", text)
-    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
-      == .completed
   }
 }

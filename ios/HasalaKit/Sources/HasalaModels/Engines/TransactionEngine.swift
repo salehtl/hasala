@@ -49,6 +49,10 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var project: String?
   /// A row of the App Review sample: no bank email is behind it.
   public var isSample: Bool = false
+  /// The pipeline's guess for a row still in review ("Suggested: Groceries").
+  public var suggestion: CategoryOption?
+  /// One of the person's rules sorted it, so the provenance row opens the rules.
+  public var sortedByRule: Bool = false
 }
 
 public struct SplitLineModel: Sendable, Hashable, Identifiable {
@@ -105,7 +109,9 @@ public enum TransactionEngine {
       amount: t.amount, isIncome: t.direction == .in, meta: meta, category: c.map(CategoryOption.init),
       pace: pace, account: s.account(t.accountID)?.label, note: t.note, provenance: t.provenance,
       sortedBy: sortedBy, splits: splits, isRefund: t.isRefund, isTransfer: t.isTransfer, archived: t.archived,
-      needsReview: t.needsReview, project: s.project(t.projectID)?.name, isSample: t.isSample
+      needsReview: t.needsReview, project: s.project(t.projectID)?.name, isSample: t.isSample,
+      suggestion: t.needsReview ? s.category(t.suggestion).map(CategoryOption.init) : nil,
+      sortedByRule: { if case .rule = t.categorySource { true } else { false } }()
     )
   }
 

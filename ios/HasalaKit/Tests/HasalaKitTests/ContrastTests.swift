@@ -96,6 +96,77 @@ struct ContrastTests {
     add("inverse secondary", HPalette.widgetOnInverseSecondary.over(HPalette.widgetSurfaceInverse),
         HPalette.widgetSurfaceInverse)
     add("green on inverse", HPalette.green300, HPalette.widgetSurfaceInverse)
+
+    // The v2 parts (F1). Every wash stop as the recipe draws it over the canvas.
+    let canvas = HPalette.surfaceSecondary
+    let allWashes: [(String, HWash)] = [
+      ("on track", .onTrack), ("over pace", .overPace), ("over budget", .overBudget), ("setup", .setup),
+      ("it works", .itWorks), ("ready", .ready), ("welcome", .welcome), ("notifications", .notifications),
+      ("lilac", .hue(.lilac)), ("mint", .hue(.mint)), ("peach", .hue(.peach)),
+    ]
+    for (name, wash) in allWashes {
+      for stop in wash.stops {
+        let bg = stop.color.over(canvas)
+        let at = "\(name) wash at \(Int(stop.location * 100))%"
+        add("primary on \(at)", HPalette.textPrimary, bg)
+        add("wash secondary on \(at)", HPalette.textOnWashSecondary, bg)
+        add("wash link on \(at)", HPalette.textOnWashLink, bg)
+        add("on track on \(at)", HPalette.paceOnTrack, bg)
+        add("over pace on \(at)", HPalette.paceOverPace, bg)
+        add("over budget on \(at)", HPalette.paceOverBudget, bg)
+      }
+    }
+    // Status chips on their own surfaces: mailbox states, inline status, result cards.
+    add("connected chip", HPalette.statusSuccessForeground, HPalette.statusSuccessSurface)
+    add("syncing chip", HPalette.statusInfoForeground, HPalette.statusInfoSurface)
+    add("sign in again chip", HPalette.statusWarningForeground, HPalette.statusWarningSurface)
+    add("disconnected chip", HPalette.textSecondary, HPalette.surfaceGrouped)
+    add("error result line", HPalette.statusErrorForeground, HPalette.statusErrorSurface)
+    add("primary on a warning result", HPalette.textPrimary, HPalette.statusWarningSurface)
+    add("primary on a success result", HPalette.textPrimary, HPalette.statusSuccessSurface)
+    add("primary on an error result", HPalette.textPrimary, HPalette.statusErrorSurface)
+    // Chips: evidence, raw bank text, plain counts, the count on a selected chip.
+    add("chip-info text", HPalette.chipInfoText, HPalette.chipInfoSurface)
+    add("raw bank text", HPalette.textSecondary, HPalette.surfaceSecondary)
+    add("chip count on white", HPalette.chipCount, HPalette.chipSurface)
+    add("chip count on a card", HPalette.chipCount, HPalette.chipSurfaceOnCard)
+    add("chip on a card", HPalette.chipText, HPalette.chipSurfaceOnCard)
+    add("count on a selected chip", HPalette.widgetOnInverseSecondary.over(HPalette.chipSurfaceSelected),
+        HPalette.chipSurfaceSelected)
+    add("on accent count badge", HPalette.textOnAccent, HPalette.actionAccent)
+    // Badges: the tab and glass badge, the row badge, the title badge.
+    add("badge text on badge-count", HPalette.badgeCountText, HPalette.badgeCount)
+    add("row badge", HPalette.listRowBadgeText, HPalette.listRowBadge)
+    // The widget's inverse secondary (net worth labels and units).
+    add("widget inverse secondary", HPalette.widgetOnInverseSecondary.over(HPalette.widgetSurfaceInverse),
+        HPalette.widgetSurfaceInverse)
+    // The keep-safe card (You're set): amber-950 on the cream gradient's two ends.
+    add("amber-950 on keep-safe cream", HPalette.amber950, HRGBA(255, 246, 226, 1))
+    add("amber-950 on keep-safe cream end", HPalette.amber950, HRGBA(251, 233, 196, 1))
+    // Buttons: disabled labels stay readable; quiet destructive on white.
+    add("disabled label", HPalette.textDisabled, HPalette.actionDisabled)
+    add("destructive quiet on white", HPalette.actionDestructive, HPalette.surfacePrimary)
+    // Keypad digits on the key, and the key's tray-coloured press.
+    add("keypad digit", HPalette.textPrimary, HPalette.keypadKey)
+    add("keypad digit pressed", HPalette.textPrimary, HPalette.keypadTray)
+    // The segmented control's labels on the track over the canvas and a white card.
+    add("segment on the track", HPalette.textPrimary, HPalette.appleFillsTertiary.over(canvas))
+    add("segment on a card track", HPalette.textPrimary, HPalette.appleFillsTertiary.over(HPalette.surfacePrimary))
+    // The toast on its strong frost (over the canvas, the busiest light ground).
+    add("toast message", HPalette.textPrimary, HPalette.materialGlassFrostStrong.over(canvas))
+    add("toast secondary", HPalette.textSecondary, HPalette.materialGlassFrostStrong.over(canvas))
+    add("toast action", HPalette.textLink, HPalette.materialGlassFrostStrong.over(canvas))
+    // Hue posters and heroes: ink on the glyph plate, status hero body on its hue.
+    for (hueName, start, ink) in [("sky", HPalette.hueSkyStart, HPalette.hueSkyInk),
+                                  ("sand", HPalette.hueSandStart, HPalette.hueSandInk),
+                                  ("rose", HPalette.hueRoseStart, HPalette.hueRoseInk),
+                                  ("mint", HPalette.hueMintStart, HPalette.hueMintInk),
+                                  ("peach", HPalette.huePeachStart, HPalette.huePeachInk)] {
+      add("\(hueName) ink on its plate", ink, HPalette.posterGlyph.over(start))
+      add("\(hueName) ink on its start", ink, start)
+    }
+    add("status hero body on mint end", HPalette.textOnHueSecondary, HPalette.hueMintEnd)
+    add("mint ink on mint end", HPalette.hueMintInk, HPalette.hueMintEnd)
     return p
   }()
 

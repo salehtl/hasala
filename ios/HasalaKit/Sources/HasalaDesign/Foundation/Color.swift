@@ -59,9 +59,38 @@ public extension Hue {
   var end: Color { Color(tokens.end) }
   var ink: Color { Color(tokens.ink) }
 
-  /// The 160° poster/disc gradient Paper draws for this hue.
-  var gradient: LinearGradient {
-    LinearGradient(colors: [start, end], startPoint: UnitPoint(x: 0.33, y: 0), endPoint: UnitPoint(x: 0.67, y: 1))
+  /// The 160° gradient as Paper draws it: `linear-gradient(in oklab 160deg, start, end)`.
+  var perceptualGradient: some ShapeStyle {
+    Self.perceptual(start, end)
+  }
+
+  /// The darker end of a legend or choice-chip dot: the hue's end into a deeper step
+  /// (Paper draws `hue-end → oklab(…)`, 160°; spec 02 §03, 03 16.2).
+  var dotDeep: HRGBA {
+    switch self {
+    case .sand: HRGBA(233, 184, 119, 1)  // oklab(81.3% 0.028 0.096)
+    case .lilac: HRGBA(187, 166, 230, 1)  // oklab(76.6% 0.045 -0.081)
+    case .mint: HRGBA(147, 211, 181, 1)  // oklab(81.5% -0.075 0.022)
+    case .peach: HRGBA(242, 161, 117, 1)  // oklab(78% 0.075 0.085)
+    case .other: HRGBA(164, 164, 170, 1)  // oklab(72% 0.002 -0.008)
+    // Not drawn on any board; the same step down from the end as the others.
+    case .sky: HRGBA(168, 191, 244, 1)
+    case .rose: HRGBA(232, 160, 152, 1)
+    }
+  }
+
+  /// A small bucket dot: the hue's end into its deeper step, 160°.
+  var dotGradient: some ShapeStyle {
+    Self.perceptual(end, Color(dotDeep))
+  }
+
+  /// CSS 160° on a square: from just left of top-centre to just right of bottom-centre.
+  static let gradientStart = UnitPoint(x: 0.33, y: 0)
+  static let gradientEnd = UnitPoint(x: 0.67, y: 1)
+
+  static func perceptual(_ a: Color, _ b: Color) -> some ShapeStyle {
+    .linearGradient(Gradient(colors: [a, b]).colorSpace(.perceptual), startPoint: gradientStart,
+                    endPoint: gradientEnd)
   }
 }
 
@@ -88,7 +117,7 @@ public extension Bucket {
     case .savings: "Savings"
     case .income: "Income"
     case .project: "Projects"
-    case .other: "Other"
+    case .other: "Not spending"
     }
   }
 }

@@ -53,6 +53,9 @@ final class BootController {
   @ObservationIgnored let env: AppEnvironment
   /// The account gate's state. Replaced once, when the first phase is decided.
   private(set) var session: AccountSession
+  /// Everything onboarding remembers, for the life of the process (plan B3): it outlives
+  /// the gate's rebuild for a new session, the launch view and the walls.
+  @ObservationIgnored let onboarding: OnboardingStore
   private(set) var state: State = .waiting
   /// The open account, while the gate is at setup or the app.
   private(set) var runtime: AccountRuntime?
@@ -85,10 +88,13 @@ final class BootController {
     self.account = account
     let holder = RuntimeHolder()
     services = AccountServices(
-      account: account, mailbox: LiveMailboxConnecting(runtime: { holder.boot?.runtime }),
+      account: account, mailbox: LiveMailboxConnecting(
+        runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode)
-    session = AccountSession(services: services, phase: .signedOut)
+    let first = AccountSession(services: services, phase: .signedOut)
+    session = first
+    onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
     holder.boot = self
     account.hooks = LiveAccountHooks(
       engine: { [weak self] in self?.runtime?.engine },

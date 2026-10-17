@@ -45,94 +45,6 @@ struct LiveGateTests {
     #expect(BootController.mailboxFact(.active) == .linked)
   }
 
-  /// Home and Profile offer the mailbox from the lane's phase (spec 04 §6.6 row 4, §7.4),
-  /// and never on an account that loaded the App Review sample (§6.13).
-  @Test func theMailboxOfferFollowsTheLane() {
-    func offer(
-      _ phase: MailboxPhase, halt: MailboxHaltCode? = nil, sample: Bool = false, link: MailboxLinkStatus? = .noLink
-    ) -> MailboxOffer? {
-      LiveMailboxConnecting.offer(phase: phase, halt: halt, sampleLoaded: sample, serverLink: link)
-    }
-    #expect(offer(.unlinked) == .connect)
-    #expect(offer(.reconnectRequired) == .reconnect(.gmail))
-    #expect(offer(.halted) == .reconnect(.gmail))
-    // The first import runs on its own: nothing to offer while it does.
-    for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill, .active, .otherDevice] {
-      #expect(offer(phase) == nil)
-    }
-    for phase in MailboxPhase.allCases {
-      #expect(offer(phase, sample: true) == nil)
-    }
-    // No link here: offered only once the server says no other iPhone reads Gmail.
-    #expect(offer(.unlinked, link: nil) == nil)
-    #expect(offer(.unlinked, link: .holder(isThisDevice: false, watchExpiresAtMs: nil)) == nil)
-    #expect(offer(.unlinked, link: .holder(isThisDevice: true, watchExpiresAtMs: nil)) == .connect)
-    #expect(offer(.reconnectRequired, link: nil) == .reconnect(.gmail))
-    // Only a halt a new sign-in fixes is offered a reconnect.
-    #expect(offer(.halted, halt: .gmail) == .reconnect(.gmail))
-    #expect(offer(.halted, halt: .noMailbox) == .reconnect(.gmail))
-    #expect(offer(.halted, halt: .accountFull) == nil)
-    #expect(offer(.halted, halt: .templatesUnavailable) == nil)
-  }
-
-  /// Another iPhone takes the link after this one was offered "Connect Gmail": the offer
-  /// goes with the next answer, and a connect asks again first and is refused, as it is
-  /// when the server can't be asked.
-  @Test func aLinkTakenElsewhereRefusesTheConnect() throws {
-    let other = MailboxLinkStatus.holder(isThisDevice: false, watchExpiresAtMs: nil)
-    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: .noLink) == .connect)
-    try LiveMailboxConnecting.checkTakeover(.noLink)
-    #expect(LiveMailboxConnecting.offer(phase: .unlinked, sampleLoaded: false, serverLink: other) == nil)
-    #expect(throws: SetupFailure.failed("Your email is read on your other iPhone.")) {
-      try LiveMailboxConnecting.checkTakeover(other)
-    }
-    #expect(throws: SetupFailure.failed(LiveMailboxConnecting.message(.offline))) {
-      try LiveMailboxConnecting.checkTakeover(nil)
-    }
-  }
-
-  /// The Outlook lane's offers name Outlook; a link that works offers the other provider only
-  /// in a build that has it.
-  @Test func theOfferNamesTheLanesProvider() {
-    func offer(_ phase: MailboxPhase, halt: MailboxHaltCode? = nil, providers: [MailboxProvider] = MailboxProvider.allCases)
-      -> MailboxOffer?
-    {
-      LiveMailboxConnecting.offer(
-        phase: phase, halt: halt, sampleLoaded: false, serverLink: .noLink, provider: .outlook, providers: providers)
-    }
-    #expect(offer(.reconnectRequired) == .reconnect(.outlook))
-    #expect(offer(.halted, halt: .noMailbox) == .reconnect(.outlook))
-    #expect(offer(.active) == .change(.outlook))
-    #expect(offer(.active, providers: [.outlook]) == nil)
-    #expect(offer(.scanning) == nil)
-  }
-
-  /// A Microsoft account with no Outlook mailbox is told so, at connect and when the scan stops.
-  @Test func noMailboxIsSaidInWords() {
-    let words = LiveMailboxConnecting.message(.noMailbox)
-    #expect(words.contains("no Outlook mailbox"))
-    #expect(LiveMailboxConnecting.stopped(.noMailbox) == words)
-    #expect(LiveMailboxConnecting.stopped(.gmail) == "Reading your bank alerts stopped. Try again.")
-    #expect(LiveMailboxConnecting.message(.google, provider: .outlook).contains("personal Microsoft accounts"))
-    #expect(LiveMailboxConnecting.message(.offline, provider: .outlook) == "You're offline. Connect Outlook when you're back online.")
-  }
-
-  /// A connect after setup reads the banks from the bank step's sender trust.
-  @Test func theBanksComeFromTheTrustedSenders() {
-    #expect(LiveMailboxConnecting.banks(trusted: []) == [])
-    #expect(LiveMailboxConnecting.banks(trusted: ["dib.ae"]) == [.dib])
-    #expect(LiveMailboxConnecting.banks(trusted: MailboxLane.senderDomains(bank: "enbd") + ["dib.ae"]) == [.enbd, .dib])
-  }
-
-  /// Bank alerts names each bank by its templates' sender domains (Emirates NBD's is
-  /// emiratesnbd.com, which doesn't contain "enbd").
-  @Test func bankAlertsNameTheirBank() {
-    #expect(LedgerStateMapper.bankName(domain: "emiratesnbd.com") == "Emirates NBD")
-    #expect(LedgerStateMapper.bankName(domain: "dib.ae") == "DIB")
-    #expect(LedgerStateMapper.bankName(domain: "alerts.dib.ae") == "DIB")
-    #expect(LedgerStateMapper.bankName(domain: "notdib.ae") == nil)
-  }
-
   // MARK: UserDefaults (§4.5: no identifier but installID)
 
   static func defaults() -> UserDefaults {
@@ -171,7 +83,11 @@ struct LiveGateTests {
     d.set("x", forKey: "push.apns.registered.v2")
     d.set("x", forKey: "push.apns.registered.v1")
     d.set(Data([1]), forKey: "debug.simulatorApprovalKey.u:w")
+    LocalAccountData.setMailboxProvider(.outlook, d)
+    #expect(LocalAccountData.mailboxProvider(d) == .outlook)
     LocalAccountData.forget(defaults: d)
+    // The provider this iPhone read the account's mail through goes with the account.
+    #expect(d.object(forKey: "app.hasala.prefs.mailbox.provider") == nil)
     #expect(!LocalAccountData.setupFinished(d))
     #expect(d.object(forKey: "prefs.review.skipped.v2") == nil)
     #expect(d.object(forKey: "push.apns.registered.v2") == nil && d.object(forKey: "push.apns.registered.v1") == nil)

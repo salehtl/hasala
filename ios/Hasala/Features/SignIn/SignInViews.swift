@@ -1,105 +1,188 @@
-import CoreImage.CIFilterBuiltins
 import HasalaDesign
+import HasalaModels
 import SwiftUI
 import UIKit
 
-// Paper page 14, sections 14.3-14.4: sign in (passkey first, then email and password),
-// forgot password on a new iPhone, access recovery and the honest end.
+// Paper P2.3–P2.4 (spec 08): sign in (Face ID first, then the email and password), forgot
+// password on a new iPhone, access recovery and the honest end. Each screen shows only the
+// failure that happened on it (`SignInModel.failure(on:)`).
 
+/// "Welcome back" (Paper FPI; wrong password FWD): the passkey first, then "or use your
+/// email" with the address and password, then recovery at the foot. A wrong password rings
+/// the password box with one line under it; the email is not marked, since the answer
+/// doesn't say which was wrong. What this build can't do becomes a support link.
 struct SignInView: View {
   @Bindable var model: SignInModel
   /// What this build can do (`AccountSession.capabilities`): a missing sign-in method is
   /// not offered, and a missing reset or recovery becomes a support email link.
   var capabilities: AccountCapabilities = .all
-  var onBack: () -> Void
   var onForgot: () -> Void
   var onRecover: () -> Void
   var onJoin: () -> Void
 
+  @State private var passwordVisible = false
+  @FocusState private var focus: Field?
+
+  enum Field: Hashable { case email, password }
+
   private var passkey: Bool { capabilities.contains(.signInPasskey) }
   private var password: Bool { capabilities.contains(.signInPassword) }
+  private var failure: AuthFailure? { model.failure(on: .signIn) }
+  private var passwordFailure: AuthFailure? { model.lastTried == .password ? failure : nil }
+  private var passkeyFailure: AuthFailure? { model.lastTried == .passkey ? failure : nil }
 
   var body: some View {
-    AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", onBack: onBack) {
-      VStack(alignment: .leading, spacing: 14) {
-        if passkey {
-          BusyButton(title: "Sign in with Face ID", busy: model.busy && model.password.isEmpty,
-                     identifier: "signIn.passkey") {
-            Task { await model.signInWithPasskey() }
-          }
-          Text("Uses the passkey in your iCloud Keychain.")
-            .hType(.footnote)
-            .foregroundStyle(HColor.textSecondary)
-            .frame(maxWidth: .infinity)
-        }
-        if passkey && password {
-          HStack(spacing: 10) {
-            Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
-            Text("or use your email").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
-              .fixedSize()
-            Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
-          }
-        }
+    AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", back: .system) {
+      VStack(alignment: .leading, spacing: 12) {
+        if passkey { passkeyGroup }
+        if passkey && password { OrDivider(label: "or use your email") }
         if password { passwordFields }
-        if model.failure == .orphanedPasskey {
-          FailureBanner(failure: model.failure)
-          HStack {
-            Button("I have an invite", action: onJoin).buttonStyle(.pill(.secondary, size: .medium))
-            Button("Try again") { Task { await model.signInWithPasskey() } }
-              .buttonStyle(.pill(.tertiary, size: .medium))
-          }
-        } else if model.failure == .noCredential {
-          FailureBanner(failure: model.failure)
-          if password {
-            Text("Use your email instead.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
-          }
-        } else {
-          FailureBanner(failure: model.failure)
-        }
-        if capabilities.contains(.recoverAccess) {
-          LinkButton(title: "Can't get in at all? Recover your account", identifier: "signIn.recover", action: onRecover)
-            .padding(.top, 24)
-        }
-        if !capabilities.isSuperset(of: [.resetPassword, .recoverAccess]) {
-          SupportLink(lead: "Trouble signing in?", identifier: "signIn.support")
-            .padding(.top, capabilities.contains(.recoverAccess) ? 0 : 24)
-        }
       }
     } footer: {
-      EmptyView()
+      if capabilities.contains(.recoverAccess) {
+        SecondaryLink(title: "Can't get in at all? Recover your account", identifier: "signIn.recover", action: onRecover)
+      }
+      if !capabilities.isSuperset(of: [.resetPassword, .recoverAccess]) {
+        SupportLink(lead: "Trouble signing in?", identifier: "signIn.support")
+      }
+    }
+  }
+
+  private var passkeyGroup: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Button("Sign in with Face ID") {
+        focus = nil
+        Task { await model.signInWithPasskey() }
+      }
+      .buttonStyle(.pill(.primary, fill: true, loading: model.signingIn == .passkey, leadingIcon: .faceID))
+      .disabled(model.busy && model.signingIn != .passkey)
+      .accessibilityIdentifier("signIn.passkey")
+      Text("Uses the passkey in your iCloud Keychain.")
+        .hType(.footnote)
+        .foregroundStyle(HColor.textOnWashSecondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+      if passkeyFailure == .orphanedPasskey {
+        FailureBanner(failure: passkeyFailure)
+        HStack {
+          Button("I have an invite", action: onJoin).buttonStyle(.pill(.secondary, size: .medium))
+          Button("Try again") { Task { await model.signInWithPasskey() } }
+            .buttonStyle(.pill(.tertiary, size: .medium))
+        }
+      } else if passkeyFailure == .noCredential {
+        FailureBanner(failure: passkeyFailure)
+        if password {
+          Text("Use your email instead.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        }
+      } else {
+        FailureBanner(failure: passkeyFailure)
+      }
     }
   }
 
   @ViewBuilder private var passwordFields: some View {
-    LabeledField(label: "Email") {
+    AccountField("Email", focused: focus == .email) {
       EmailInput(text: $model.email, identifier: "signIn.email")
+        .focused($focus, equals: .email)
+        .submitLabel(.next)
+        .onSubmit { focus = .password }
     }
+    passwordBox
+    Button {
+      focus = nil
+      Task { await model.signInWithPassword() }
+    } label: {
+      // Paper draws this label in text-primary on the white pill (spec 08 §2.3).
+      Text("Sign in with password")
+        .foregroundStyle(model.passwordSignInReady ? HColor.textPrimary : HColor.textDisabled)
+    }
+    .buttonStyle(.pill(.onGrouped, fill: true, loading: model.signingIn == .password))
+    .disabled(!model.passwordSignInReady || (model.busy && model.signingIn != .password))
+    .accessibilityIdentifier("signIn.withPassword")
+    if let other = passwordFailure, other != .wrongCredentials {
+      FailureBanner(failure: other)
+    }
+  }
+
+  /// The password box with "Forgot password?" in its label row (Paper FPI) and, after a
+  /// wrong password, the error ring and line (FWD). The password itself is cleared after a
+  /// failure (c2 §12 rule 7), so the box shows its placeholder under the ring.
+  private var passwordBox: some View {
     VStack(alignment: .leading, spacing: HSpacing.fieldLabelGap) {
       HStack {
-        Text("Password").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
-        Spacer()
+        Text("Password")
+          .hType(.footnote.weight(.semibold))
+          .foregroundStyle(HColor.textSecondary)
+        Spacer(minLength: 8)
         if capabilities.contains(.resetPassword) {
+          // A 44 target that keeps the label row at Paper's 20.
           InlineTextButton(title: "Forgot password?", identifier: "signIn.forgot", action: onForgot)
+            .padding(.vertical, -12)
         }
       }
-      PasswordInput(placeholder: "Your password", text: $model.password, isNew: false,
-                    identifier: "signIn.password")
-        .hType(.body)
-        .padding(.leading, HSpacing.fieldInsetInline)
-        .padding(.trailing, 8)
-        .frame(minHeight: HSpacing.fieldMinHeight)
-        .background(HColor.fieldSurfaceOnGrouped,
-                    in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      HStack(spacing: 8) {
+        Group {
+          if passwordVisible {
+            TextField("Your password", text: $model.password)
+          } else {
+            SecureField("Your password", text: $model.password)
+          }
+        }
+        .textContentType(.password)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .hType(HType(size: 17, leading: 22, weight: .regular, textStyle: .body))
+        .foregroundStyle(HColor.fieldText)
+        .tint(HColor.actionAccent)
+        .focused($focus, equals: .password)
+        .submitLabel(.go)
+        .onSubmit {
+          // Return signs in, as the keyboard says.
+          guard model.passwordSignInReady, !model.busy else { return }
+          focus = nil
+          Task { await model.signInWithPassword() }
+        }
+        .onChange(of: model.password) { _, _ in model.passwordEdited() }
+        .accessibilityIdentifier("signIn.password")
+        .accessibilityHint(wrongPassword.map { "Error: \($0)" } ?? "")
+        // The label above is read as text (it shares its row with "Forgot password?", so
+        // it can't be the field's name, and hidden it would be drawn text with no
+        // element); the field reads its placeholder. It fills the box's height.
+        .frame(maxWidth: .infinity, minHeight: HSpacing.fieldMinHeight, alignment: .leading)
+        ShowHidePill(visible: $passwordVisible)
+      }
+      .padding(.leading, HSpacing.fieldInsetInline)
+      .padding(.trailing, 8)
+      .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .overlay {
+        FieldRing(color: wrongPassword != nil ? HColor.fieldError : focus == .password ? HColor.fieldFocus : .clear)
+      }
+      // A tap anywhere in the box focuses the field, alongside the field's own tap.
+      .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .simultaneousGesture(TapGesture().onEnded { focus = .password })
+      if let wrongPassword {
+        FieldErrorLine(text: wrongPassword)
+          .padding(.top, 2)
+          .accessibilityIdentifier("signIn.wrongPassword")
+      }
     }
-    BusyButton(title: "Sign in with password", busy: model.busy && !model.password.isEmpty, kind: .tertiary,
-               enabled: model.passwordSignInReady, identifier: "signIn.withPassword") {
-      Task { await model.signInWithPassword() }
-    }
+    .hAnimation(.fade, value: wrongPassword == nil)
+  }
+
+  /// FWD's line. Without an in-app reset (the beta), "or reset your password" would promise
+  /// something this build doesn't do; the support link below says where to turn instead.
+  private var wrongPassword: String? {
+    guard passwordFailure == .wrongCredentials else { return nil }
+    return capabilities.contains(.resetPassword)
+      ? AuthFailure.wrongCredentials.message
+      : "That email and password don't match. Try again."
   }
 }
 
 // MARK: - Forgot password (C9 side N)
 
+/// Forgot password · 1 of 4 · "Reset your password" (Paper GQL). The same answer whether
+/// or not an account has the address.
 struct ForgotEmailView: View {
   @Bindable var model: SignInModel
   var onBack: () -> Void
@@ -107,28 +190,32 @@ struct ForgotEmailView: View {
 
   var body: some View {
     AccountScreen(
-      title: "Forgot your password?",
-      subtitle: "To reset your password, use your recovery phrase or approve it on an iPhone where you're signed in. A code from your email alone can't reset it.",
-      steps: (1, 4), onBack: onBack
+      title: "Reset your password", subtitle: "We'll email a 6-digit code to your account's address.",
+      steps: (1, 4), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        LabeledField(label: "Your account's email", footer: "We'll send a code to this address first.") {
+        AccountField("Email", help: "If there's an account for this email, the code arrives within a minute.",
+                     error: model.failure(on: .forgotEmail)?.message) {
           EmailInput(text: $model.resetEmail, identifier: "forgot.email")
         }
-        FailureBanner(failure: model.failure)
+        .padding(.bottom, 8)
+        CardNote(icon: .shieldCheck,
+                 text: "A code alone can't reset it. Next we'll ask for your 12 words, or a yes from an iPhone where you're still signed in.")
       }
     } footer: {
-      BusyButton(title: "Send a code", busy: model.busy, enabled: AccountFields.email(model.resetEmail) != nil,
+      BusyButton(title: "Send code", busy: model.busy, enabled: AccountFields.email(model.resetEmail) != nil,
                  identifier: "forgot.send") {
         Task { if await model.submitResetEmail() { onNext() } }
       }
+      SecondaryLink(title: "Back to sign in", identifier: "forgot.back", action: onBack)
     }
   }
 }
 
+/// Forgot password · 3 of 4 · "One more check" (Paper KH7): the other iPhone's yes, or the
+/// 12 words. The first card shows only when another signed-in iPhone can answer.
 struct ForgotCheckView: View {
   var model: SignInModel
-  var onBack: () -> Void
   var onApprove: () -> Void
   var onWords: () -> Void
   var onNeither: () -> Void
@@ -137,312 +224,416 @@ struct ForgotCheckView: View {
     AccountScreen(
       title: "One more check",
       subtitle: "The code worked. To change your password we also need one of these.",
-      steps: (3, 4), onBack: onBack
+      steps: (3, 4), back: .system
     ) {
-      VStack(spacing: 12) {
+      VStack(alignment: .leading, spacing: 12) {
         if model.canApproveOnOtherPhone {
-          card(symbol: "iphone", title: "Approve on your other iPhone",
-               text: "Your other iPhone is still signed in. Say yes there with Face ID.",
-               button: "Send a request", primary: true, id: "forgot.approve", action: onApprove)
+          OptionCard(icon: .phone, hue: .sky, title: "Approve on your other iPhone",
+                     detail: "Your other iPhone is still signed in. Say yes there with Face ID.",
+                     buttonTitle: "Send a request", buttonKind: .primary, identifier: "forgot.approve",
+                     action: onApprove)
         }
-        card(symbol: "doc.text", title: "Enter your 12 words",
-             text: "From your paper. They unlock your data on this iPhone too.",
-             button: "Enter words", primary: !model.canApproveOnOtherPhone, id: "forgot.words", action: onWords)
-        LockNote(text: "Why not just the code? The company that delivers our email also carries our web traffic, so a code alone can't be the proof.",
-                 systemImage: "checkmark.shield")
+        OptionCard(icon: .paper, hue: .sand, title: "Enter your recovery phrase",
+                   detail: "From your paper. They unlock your data on this iPhone too.", buttonTitle: "Enter words",
+                   buttonKind: model.canApproveOnOtherPhone ? .secondary : .primary, identifier: "forgot.words",
+                   action: onWords)
+        NoteRow(icon: .shield,
+                text: "Why not just the code? The company that delivers our email also carries our web traffic, so a code alone can't be the proof.")
       }
+      .accountContentTop(20)
     } footer: {
-      LinkButton(title: "I have neither", identifier: "forgot.neither", action: onNeither)
+      SecondaryLink(title: "I have neither", identifier: "forgot.neither", action: onNeither)
     }
-  }
-
-  private func card(symbol: String, title: String, text: String, button: String, primary: Bool, id: String,
-                    action: @escaping () -> Void) -> some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .top, spacing: 14) {
-        IconDisc(systemImage: symbol)
-        VStack(alignment: .leading, spacing: 2) {
-          Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
-          Text(text).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-      Button(button, action: action)
-        .buttonStyle(.pill(primary ? .primary : .secondary, fill: true))
-        .accessibilityIdentifier(id)
-    }
-    .padding(18)
-    .listCard()
   }
 }
 
+/// Forgot password · 4 of 4 · "Choose a new password" (Paper GS6). The service binds the
+/// new password to the request (spec 04 §16.4), so it comes before the other iPhone's yes;
+/// it takes effect once that yes arrives.
 struct ForgotNewPasswordView: View {
   @Bindable var model: SignInModel
-  var onBack: () -> Void
+  var onCancel: () -> Void
   var onNext: () -> Void
 
   var body: some View {
-    AccountScreen(title: "Choose a new password", subtitle: "12 characters or more.", steps: (4, 4), onBack: onBack) {
+    AccountScreen(
+      title: "Choose a new password", subtitle: "12 characters or more, and different from your old one.",
+      steps: (4, 4), back: .system
+    ) {
       VStack(alignment: .leading, spacing: 12) {
-        NewPasswordBlock(password: $model.newPassword, confirm: $model.confirmPassword,
-                         assessment: model.newPasswordAssessment,
-                         matches: !model.confirmPassword.isEmpty && model.confirmPassword == model.newPassword)
-        FailureBanner(failure: model.failure)
+        NewPasswordFields(password: $model.newPassword, confirm: $model.confirmPassword,
+                          assessment: model.newPasswordAssessment)
+        NoteRow(icon: .lock,
+                text: "Saving signs out other sessions that used the old password, and we email you that it changed.")
+        FailureBanner(failure: model.failure(on: .forgotNewPassword))
       }
     } footer: {
-      BusyButton(title: "Ask my other iPhone", busy: model.busy, enabled: model.newPasswordReady,
+      BusyButton(title: "Save new password", busy: model.busy, enabled: model.newPasswordReady,
                  identifier: "forgot.request") {
         Task { if await model.requestApproval() { onNext() } }
       }
+      SecondaryLink(title: "Cancel", identifier: "forgot.cancel", action: onCancel)
     }
   }
 }
 
-/// Waiting for the other iPhone, with the reset code as a QR and 16 characters
-/// (spec 04 §6.1.4; S-33).
+/// A new password, its strength and the repeat (Paper GS6, H43's password): the account
+/// template's strength card and match line, without the signup block's intro.
+struct NewPasswordFields: View {
+  @Binding var password: String
+  @Binding var confirm: String
+  var assessment: PasswordAssessment
+
+  private var matches: Bool { !confirm.isEmpty && confirm == password }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      LabeledField(label: "Password") {
+        PasswordInput(placeholder: "12 characters or more", text: $password, isNew: true, identifier: "password.new")
+      }
+      if !password.isEmpty {
+        PasswordStrengthCard(assessment: assessment)
+          .hTransition(.rise)
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        LabeledField(label: "Type it again",
+                     error: !confirm.isEmpty && !matches && confirm.count >= password.count ? "Passwords don't match." : nil) {
+          PasswordInput(placeholder: "Same password", text: $confirm, isNew: true, identifier: "password.confirm")
+        }
+        if matches {
+          StatusLine(text: "Passwords match.", tone: .success)
+        }
+      }
+      .padding(.top, 4)
+    }
+    .hAnimation(.rise, value: password.isEmpty)
+  }
+}
+
+/// Forgot password · "Check your other iPhone" (Paper KIL): the code the other iPhone asks
+/// for, a countdown while the request waits, and the words as the way out. Paper matches a
+/// two-digit number; the service's reset code is 16 characters that the other iPhone types
+/// (spec 04 §6.1.4), so the card shows those.
 struct ForgotWaitingView: View {
   var model: SignInModel
-  var onBack: () -> Void
   var onWords: () -> Void
 
   var body: some View {
     AccountScreen(
-      title: "Approve on your other iPhone",
-      subtitle: "On your other iPhone, open Hasala and scan this code. Never show it to anyone else.",
-      onBack: onBack
+      title: "Check your other iPhone",
+      subtitle: "Open Hasala on your other iPhone, type this code there, then confirm with Face ID.",
+      steps: (4, 4), back: .system
     ) {
-      VStack(spacing: 16) {
-        if let code = model.reset?.resetCode, let image = QRCode.image(for: "hasala-reset:1:\(code)") {
-          Image(uiImage: image)
-            .interpolation(.none)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 200, height: 200)
-            .padding(16)
-            .background(HColor.white, in: RoundedRectangle(cornerRadius: HRadius.card))
-            .accessibilityLabel("Reset code as a QR code")
+      VStack(alignment: .leading, spacing: 12) {
+        matchCard
+        HStack(alignment: .top, spacing: 12) {
+          HIconView(.phone, size: 20, color: HColor.iconSecondary)
+          Text("Nothing showing there? Open Hasala on that iPhone; the request waits at the top. It only says yes, and never sends your password or your data.")
+            .hType(HType(size: 14, leading: 20, weight: .regular, textStyle: .subheadline))
+            .foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        Text(model.resetCodeGroups)
-          .font(.system(.title3, design: .monospaced).weight(.semibold))
-          .foregroundStyle(HColor.textPrimary)
-          .environment(\.layoutDirection, .leftToRight)
-          .accessibilityIdentifier("forgot.resetCode")
-        HStack(spacing: 10) {
-          ProgressView()
-          Text("Waiting for your other iPhone…").hType(.subheadline).foregroundStyle(HColor.textSecondary)
-        }
-        FailureBanner(failure: model.failure)
+        .padding(16)
+        .background(HColor.surfaceOnWash, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        FailureBanner(failure: model.failure(on: .forgotWaiting))
       }
-      .frame(maxWidth: .infinity)
+      .accountContentTop(20)
     } footer: {
-      LinkButton(title: "Use my 12 words instead", identifier: "forgot.useWords", action: onWords)
+      SecondaryLink(title: "Use my 12 words instead", identifier: "forgot.useWords", action: onWords)
     }
     .task { await model.waitForApproval() }
   }
-}
 
-enum QRCode {
-  /// A QR image of `text`, correction level M (spec 04 §6.1.4).
-  static func image(for text: String) -> UIImage? {
-    let filter = CIFilter.qrCodeGenerator()
-    filter.message = Data(text.utf8)
-    filter.correctionLevel = "M"
-    guard let out = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
-      let cg = CIContext().createCGImage(out, from: out.extent)
-    else { return nil }
-    return UIImage(cgImage: cg)
+  /// Paper "MatchNumberCard": the overline, the code large, and the waiting pill with the
+  /// time left.
+  private var matchCard: some View {
+    VStack(spacing: 6) {
+      Text("Type this on your other iPhone")
+        .hType(.overline)
+        .foregroundStyle(HColor.textSecondary)
+      Text(model.resetCodeGroups)
+        .font(.system(.title, design: .monospaced).weight(.bold))
+        .foregroundStyle(HColor.textPrimary)
+        .minimumScaleFactor(0.6)
+        .lineLimit(1)
+        .environment(\.layoutDirection, .leftToRight)
+        .accessibilityLabel(model.resetCodeGroups.map { String($0) }.joined(separator: " "))
+        .accessibilityIdentifier("forgot.resetCode")
+        .padding(.vertical, 6)
+      TimelineView(.periodic(from: .now, by: 1)) { context in
+        let left = model.approvalDeadline.map { max(0, $0.timeIntervalSince(context.date)) } ?? 0
+        HStack(spacing: 8) {
+          Circle().fill(HColor.statusInfoForeground).frame(width: 8, height: 8)
+          Text(left > 0 ? "Waiting for a yes · \(ResendRow.clock(left)) left" : "Waiting for a yes")
+            .hType(HType(size: 14, leading: 18, weight: .semibold, textStyle: .subheadline))
+            .foregroundStyle(HColor.statusInfoForeground)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 32)
+        .background(HColor.statusInfoSurface, in: Capsule())
+        .accessibilityElement(children: .combine)
+      }
+    }
+    .padding(.top, 28)
+    .padding(.bottom, 24)
+    .padding(.horizontal, 20)
+    .frame(maxWidth: .infinity)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 }
 
-// MARK: - Access recovery (C4): words first, then the code
+// MARK: - Access recovery (C4): the words first, then the code
 
+/// "Recover your account" (Paper GYP): the two things it takes. The service asks for the
+/// words first and sends the code to the account their key belongs to, so there is no email
+/// field here (Paper's order is the email first).
 struct RecoverIntroView: View {
-  var onBack: () -> Void
   var onStart: () -> Void
   var onNoWords: () -> Void
 
   var body: some View {
     AccountScreen(
       title: "Recover your account",
-      subtitle: "Lost your passkey or password? Use your recovery phrase and a code we email you.",
-      onBack: onBack
+      subtitle: "For when you can't sign in and your passkey is gone. You'll need both of these.",
+      back: .system
     ) {
-      VStack(spacing: 12) {
-        NoteCard(systemImage: "doc.text", title: "Your 12 words", text: "From the paper you wrote at signup.")
-        NoteCard(systemImage: "envelope", title: "Your email", text: "We'll send a code to your account's address.")
-        NoteCard(systemImage: "iphone", title: "Then a new way to sign in",
-                 text: "Hasala will make a new passkey or password on this iPhone and let your other devices know.")
+      VStack(alignment: .leading, spacing: 12) {
+        NeedsCard {
+          NeedRow(icon: .envelope, hue: .sky, title: "Your email inbox",
+                  detail: "For a 6-digit code. On its own, it's not enough.")
+          NeedRow(icon: .paper, hue: .sand, title: "Your 12-word recovery phrase",
+                  detail: "It proves the account is yours and unlocks your data.")
+        }
+        WarningNote(text: "No one at Hasala can reset your words or open your data for you. That's what keeps it private.")
       }
     } footer: {
-      Button("Start", action: onStart).buttonStyle(.pill(.primary, fill: true))
+      Button("Enter my 12 words", action: onStart)
+        .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("recover.start")
-      LinkButton(title: "I don't have my words", identifier: "recover.noWords", action: onNoWords)
+      SecondaryLink(title: "I don't have my 12 words", identifier: "recover.noWords", action: onNoWords)
     }
   }
 }
 
-/// Twelve words typed into one field, with word-list suggestions (Paper "Enter 12 words").
-struct PhraseEntryField: View {
-  @Binding var text: String
-  /// The pasteboard's `changeCount` when a paste landed here (nil until one does).
-  @Binding var pastedChangeCount: Int?
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      TextField("orbit canvas lemon …", text: $text, axis: .vertical)
-        .lineLimit(4...6)
-        .textContentType(nil)
-        .autocorrectionDisabled()
-        .textInputAutocapitalization(.never)
-        .keyboardType(.asciiCapable)
-        .hType(.body)
-        .padding(16)
-        .frame(minHeight: 120, alignment: .topLeading)
-        .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-        .environment(\.layoutDirection, .leftToRight)
-        .accessibilityIdentifier("phraseEntry.field")
-        .accessibilityLabel("Your 12 words")
-        .onChange(of: text) { old, new in
-          // A jump of many characters at once is a paste (a suggestion adds one word).
-          // Only `changeCount` is read: reading the contents would show iOS's paste prompt.
-          if new.count - old.count >= 12 { pastedChangeCount = UIPasteboard.general.changeCount }
-        }
-      let count = text.split(whereSeparator: \.isWhitespace).count
-      HStack {
-        Text("\(count) of 12 words").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        Spacer()
-      }
-      let suggestions = PhraseRules.suggestions(for: lastWord)
-      if !suggestions.isEmpty, !PhraseRules.isWord(lastWord) {
-        HStack(spacing: 8) {
-          ForEach(suggestions, id: \.self) { w in
-            Button(w) { complete(w) }
-              .hType(.rowTitle)
-              .foregroundStyle(HColor.textPrimary)
-              .padding(.horizontal, 14)
-              .frame(minHeight: 40)
-              .background(HColor.surfacePrimary, in: Capsule())
-          }
-        }
-      }
-    }
-  }
-
-  private var lastWord: String {
-    guard let last = text.last, !last.isWhitespace else { return "" }
-    return text.split(whereSeparator: \.isWhitespace).last.map { String($0).lowercased() } ?? ""
-  }
-
-  private func complete(_ w: String) {
-    var words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-    if !words.isEmpty { words.removeLast() }
-    words.append(w)
-    text = words.joined(separator: " ") + " "
-  }
-}
-
+/// Recover account · "Enter your recovery phrase" (Paper GZT): the entry grid; the code
+/// goes out once the 12 are in.
 struct RecoverWordsView: View {
   @Bindable var model: SignInModel
-  var onBack: () -> Void
   var onNext: () -> Void
+  @FocusState private var typing: Bool
 
   var body: some View {
-    AccountScreen(title: "Enter your 12 words", subtitle: "In order, from your paper.", steps: (1, 3), onBack: onBack) {
+    let state = PhraseEntryState(model.phraseText)
+    AccountScreen(
+      title: "Enter your recovery phrase",
+      subtitle: "They prove the account is yours and unlock your data. \(state.finished) of 12 so far.",
+      steps: (1, 3), back: .system
+    ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryField(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount)
-        FailureBanner(failure: model.failure)
+        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount, focused: $typing) {
+          submit()
+        }
+        FailureBanner(failure: model.failure(on: .recoverWords))
       }
+      .accountContentTop(16)
     } footer: {
-      BusyButton(title: "Continue", busy: model.busy, enabled: !model.phraseText.isEmpty, identifier: "recover.words") {
-        Task {
-          if await model.submitRecoveryWords() {
-            clearPastedPhrase(changeCount: model.pastedPhraseChangeCount)
-            model.pastedPhraseChangeCount = nil
-            onNext()
+      // Return sends the twelfth word (Paper draws no button); the button shows once the
+      // keyboard is down, or while the code goes out.
+      if typing, !model.busy {
+        PhraseSuggestions(text: $model.phraseText)
+      } else {
+        BusyButton(title: "Send code", busy: model.busy, enabled: state.isComplete, identifier: "recover.words") {
+          submit()
+        }
+      }
+    }
+    .revealsPhraseEntry(model.phraseText)
+  }
+
+  private func submit() {
+    Task {
+      if await model.submitRecoveryWords() {
+        clearPastedPhrase(changeCount: model.pastedPhraseChangeCount)
+        model.pastedPhraseChangeCount = nil
+        onNext()
+      }
+    }
+  }
+}
+
+/// Recover account · "Set a new way to sign in" (Paper H43): a passkey (recommended) or a
+/// password. Then "You're back in" (H5V) in its place.
+struct RecoverMethodView: View {
+  @Bindable var model: SignInModel
+  var onPassword: () -> Void
+  var onResult: (SignInModel.RecoveryResult) -> Void
+  @State private var choice: SignInMethod = .passkey
+
+  var body: some View {
+    if let method = model.recovered {
+      BackInView(model: model, method: method)
+    } else {
+      AccountScreen(
+        title: "Set a new way to sign in",
+        subtitle: "Your old passkeys and password stop working, and other devices are signed out.",
+        steps: (3, 3), back: .system
+      ) {
+        VStack(alignment: .leading, spacing: 12) {
+          SelectionCard(icon: .faceID, hue: .sky, chip: "Recommended", title: "Use Face ID (passkey)",
+                        detail: "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone.",
+                        selected: choice == .passkey, identifier: "recover.choosePasskey") { choice = .passkey }
+          SelectionCard(icon: .password, hue: .other, title: "Use a password",
+                        detail: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.",
+                        selected: choice == .password, identifier: "recover.choosePassword") { choice = .password }
+          FailureBanner(failure: model.failure(on: .recoverMethod))
+        }
+      } footer: {
+        if choice == .passkey {
+          BusyButton(title: "Continue with Face ID", busy: model.busy, identifier: "recover.passkey") {
+            Task { onResult(await model.finishRecovery(.passkey)) }
           }
+        } else {
+          BusyButton(title: "Continue", busy: false, identifier: "recover.password", action: onPassword)
+        }
+        // As on join's "How do you want to sign in?" (Paper H43 "What's a passkey?").
+        WebLink(title: "What's a passkey?", url: "https://support.apple.com/102195", identifier: "recover.whatsAPasskey")
+      }
+    }
+  }
+}
+
+/// Recover account · a new password (H43 with "Use a password"), then "You're back in".
+struct RecoverPasswordView: View {
+  @Bindable var model: SignInModel
+  var onResult: (SignInModel.RecoveryResult) -> Void
+
+  var body: some View {
+    if let method = model.recovered {
+      BackInView(model: model, method: method)
+    } else {
+      AccountScreen(title: "Choose a password", subtitle: "12 characters or more.", steps: (3, 3), back: .system) {
+        VStack(alignment: .leading, spacing: 12) {
+          NewPasswordFields(password: $model.newPassword, confirm: $model.confirmPassword,
+                            assessment: model.newPasswordAssessment)
+          FailureBanner(failure: model.failure(on: .recoverPassword))
+        }
+      } footer: {
+        BusyButton(title: "Finish", busy: model.busy, enabled: model.newPasswordReady, identifier: "recover.finish") {
+          Task { onResult(await model.finishRecovery(.password(model.newPassword))) }
         }
       }
     }
   }
 }
 
-/// After a pasted phrase is accepted, clear the pasteboard if it still holds that paste
-/// (spec 04 §6.7). Nothing is read from it: an unchanged `changeCount` means the same
-/// contents, and writing never shows iOS's paste prompt. A typed phrase leaves the
-/// pasteboard alone.
-@MainActor
-func clearPastedPhrase(changeCount: Int?) {
-  guard let changeCount else { return }
-  let pb = UIPasteboard.general
-  if pb.changeCount == changeCount { pb.items = [] }
-}
-
-struct RecoverMethodView: View {
-  @Bindable var model: SignInModel
-  var onBack: () -> Void
-  var onPassword: () -> Void
-  var onResult: (SignInModel.RecoveryResult) -> Void
+/// "You're back in" (Paper H5V): what changed, a word on the old phrase, then Home.
+private struct BackInView: View {
+  let model: SignInModel
+  let method: SignInMethod
 
   var body: some View {
-    AccountScreen(
-      title: "A new way to sign in",
-      subtitle: "Hasala will make a new passkey or password on this iPhone and let your other devices know.",
-      steps: (3, 3), onBack: onBack
+    let name = model.firstName
+    let email = model.accountEmail
+    CelebrationScreen(
+      badge: .check,
+      title: name.isEmpty ? "You're back in." : "You're back in, \(name).",
+      subtitle: "Your data is unlocked on this iPhone. We've emailed \(email.isEmpty ? "you" : email) that your words were used."
     ) {
-      VStack(spacing: 12) {
-        NoteCard(systemImage: "faceid", title: "Use Face ID (passkey)", text: "Recommended. Nothing to remember or type.")
-        NoteCard(systemImage: "ellipsis.rectangle", title: "Use a password", text: "12 characters or more.")
-        FailureBanner(failure: model.failure)
-      }
+      StatusListCard(rows: [
+        method == .passkey
+          ? StatusListRow(title: "New passkey", value: "In iCloud Keychain", state: .done)
+          : StatusListRow(title: "New password", value: "Set", state: .done),
+        StatusListRow(title: "Old passkeys, password", value: "Removed", state: .done),
+        StatusListRow(title: "Other devices", value: "Signed out", state: .done),
+      ])
     } footer: {
-      BusyButton(title: "Continue with Face ID", busy: model.busy, identifier: "recover.passkey") {
-        Task { onResult(await model.finishRecovery(.passkey)) }
-      }
-      LinkButton(title: "Use a password instead", identifier: "recover.password", action: onPassword)
-    }
-  }
-}
-
-struct RecoverPasswordView: View {
-  @Bindable var model: SignInModel
-  var onBack: () -> Void
-  var onResult: (SignInModel.RecoveryResult) -> Void
-
-  var body: some View {
-    AccountScreen(title: "Create a password", subtitle: "12 characters or more.", steps: (3, 3), onBack: onBack) {
-      VStack(alignment: .leading, spacing: 12) {
-        NewPasswordBlock(password: $model.newPassword, confirm: $model.confirmPassword,
-                         assessment: model.newPasswordAssessment,
-                         matches: !model.confirmPassword.isEmpty && model.confirmPassword == model.newPassword)
-        FailureBanner(failure: model.failure)
-      }
-    } footer: {
-      BusyButton(title: "Finish", busy: model.busy, enabled: model.newPasswordReady, identifier: "recover.finish") {
-        Task { onResult(await model.finishRecovery(.password(model.newPassword))) }
-      }
-    }
-  }
-}
-
-/// No words and no passkey (Paper "Recover account · No words, no passkey").
-struct HonestEndView: View {
-  var onBack: () -> Void
-
-  var body: some View {
-    AccountScreen(
-      title: "We can't unlock it without them",
-      subtitle: "If you lose these words and every passkey, your data can't be unlocked on a new iPhone. Not even by us.",
-      onBack: onBack
-    ) {
-      VStack(spacing: 12) {
-        NoteCard(systemImage: "iphone", title: "Still have an iPhone with Hasala open?",
-                 text: "Your data is still there. Open Hasala on it, then go to Profile › Sign-in & security to make new words or add a passkey.")
-        NoteCard(systemImage: "person.2", title: "Talk to a person",
-                 text: "We can't recover your data, but we can help you start a new account.")
-      }
-    } footer: {
-      Link("Get help", destination: URL(string: "https://hasala.app/support")!)
+      InfoCard(icon: .paper, hue: .sand, title: "Your 12 words still work",
+               detail: "If someone else may have seen them, make new ones in Sign-in & security.")
+        .padding(.bottom, 12)
+      Button("Go to Home") { model.recoveryDone() }
         .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("recover.home")
+    }
+  }
+}
+
+// MARK: - Honest end
+
+/// No words and no passkey (Paper H9F): say plainly that no one can open the data, then the
+/// two real ways forward. Starting fresh has no ceremony yet, so it is offered only on the
+/// unfinished surface; a Release build points to a person instead.
+struct HonestEndScreen: View {
+  enum Context {
+    /// Signed out: from recovery or a forgotten password.
+    case signedOut
+    /// Signed in, data sealed: from "Unlock your data".
+    case unlock
+  }
+
+  var context: Context
+  var onFoundWords: () -> Void
+  /// Unlock only: leave this iPhone signed out.
+  var onSignOut: (() -> Void)?
+
+  @Environment(AccountSession.self) private var session: AccountSession?
+  @State private var failure: AuthFailure?
+
+  private var startsFresh: Bool { BuildSurface.showsUnfinished }
+  private var addsPasskeys: Bool { session?.capabilities.contains(.addPasskey) ?? false }
+
+  var body: some View {
+    AccountScreen(
+      title: "Without your recovery phrase, we can't open your data",
+      subtitle: "It was sealed with a key we never had. Without your words or a passkey, no one can open it, us included.",
+      back: .system
+    ) {
+      VStack(alignment: .leading, spacing: 12) {
+        NeedsCard {
+          NeedRow(icon: .iPad, hue: .sky, title: "Another device still signed in?",
+                  detail: Self.otherDevice(addsPasskeys: addsPasskeys, method: session?.account.profile?.method))
+          NeedRow(icon: .paper, hue: .sand, title: "Look again",
+                  detail: "Check where you keep important papers. Any copy works, as long as the order is right.")
+        }
+        if startsFresh {
+          WarningNote(text: "Starting fresh deletes the sealed copy of your old data after 7 days. Plans, rules and edits can't come back.")
+        }
+        FailureBanner(failure: failure)
+      }
+    } footer: {
+      Button("I found my words", action: onFoundWords)
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("honest.foundWords")
+      if startsFresh {
+        // No start-fresh ceremony exists yet (spec 08 §8): the unfinished surface only.
+        SecondaryLink(title: "Start fresh with this email", identifier: "honest.startFresh", role: .destructive) {
+          failure = .notInThisBuild
+        }
+      } else {
+        WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "honest.talk")
+      }
+      if let onSignOut {
+        SecondaryLink(title: "Sign out", identifier: "unlock.signOut", action: onSignOut)
+      }
+    }
+  }
+
+  /// What another signed-in device can do, only as far as it's true. Paper's line needs a
+  /// build that adds passkeys; without one, only a passkey account's device shows the words
+  /// (S-41), and a password-only account's can't show them at all (Sign-in & security says
+  /// so). Signed out, the method may not be known: the line holds for either.
+  static func otherDevice(addsPasskeys: Bool, method: SignInMethod?) -> String {
+    if addsPasskeys {
+      return "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
+    }
+    switch method {
+    case .passkey:
+      return "An iPhone with Hasala open can show your words in Sign-in & security, after Face ID."
+    case .password:
+      return "It can't show your words: on an account without a passkey they can't be shown again."
+    case nil:
+      return "An iPhone where your passkey works can show your words in Sign-in & security, after Face ID."
     }
   }
 }

@@ -2,8 +2,8 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-// Parts the core screens share (Paper "kit Lists and cards", "Template · Tab screen",
-// "Template · Sheet (large)"). They read amounts only through MoneyText and
+// Parts the core screens share (Paper "kit Lists and cards", "Template · Sheet (large)";
+// the tab screen template is `TabScreen`). They read amounts only through MoneyText and
 // MoneyPhrase, so Hide amounts reaches every figure (spec 04 §12).
 
 /// A line of copy that may carry amounts; hidden figures become bullets and read
@@ -107,26 +107,6 @@ struct SectionTitle: View {
   }
 }
 
-/// "TODAY ……… 91.50": a day's overline with its total.
-struct DayOverline: View {
-  let title: String
-  let total: Money
-  let hidden: Bool
-
-  var body: some View {
-    HStack {
-      Text(title).hType(.overline).foregroundStyle(HColor.textSecondary).accessibilityAddTraits(.isHeader)
-      Spacer()
-      MoneyText(total, figure: .badge, hidden: hidden, hiddenGlyphs: 3, color: HColor.textSecondary,
-                sign: total.isNegative ? .income : .none)
-    }
-    .padding(.horizontal, 4)
-    // One heading per day, not a small static figure on its own.
-    .accessibilityElement(children: .combine)
-    .accessibilityAddTraits(.isHeader)
-  }
-}
-
 /// A two-line navigation row: disc, title over detail, trailing value and chevron. A row
 /// that opens nothing (yet) leaves the chevron out, so it doesn't look tappable.
 struct NavRow<Leading: View, Trailing: View>: View {
@@ -188,57 +168,11 @@ struct SheetCloseButton: ToolbarContent {
   var body: some ToolbarContent {
     ToolbarItem(placement: .topBarLeading) {
       Button(role: .close, action: action)
+        // Paper draws a sheet's close × in the glass ink (`--color-icon-glass`); the system
+        // button would take the app's accent (requests p5 3, p6 3, p8 3).
+        .tint(HColor.iconGlass)
         .accessibilityIdentifier(identifier)
     }
-  }
-}
-
-/// A tab's root screen (Paper "Template · Tab screen"): the main header, the
-/// sky wash that scrolls away, a large title, the toast host.
-struct TabScreen<Content: View>: View {
-  @Bindable var app: AppModel
-  let title: String
-  let extra: MainHeader.Extra
-  var onExtra: () -> Void = {}
-  var wash: Hue = .sky
-  @ViewBuilder let content: Content
-
-  @State private var topInset: CGFloat = 0
-  @State private var overscroll: CGFloat = 0
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        Text(title).hType(.largeTitle).foregroundStyle(HColor.textPrimary)
-          .accessibilityAddTraits(.isHeader)
-          .padding(.horizontal, HSpacing.insetPage)
-          .padding(.bottom, 10)
-        content
-      }
-      .padding(.top, 8)
-      .padding(.bottom, 32)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(alignment: .top) {
-        AmbientWash(wash).padding(.top, -topInset).offset(y: -overscroll)
-      }
-    }
-    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
-    .trackingOverscroll($overscroll)
-    .refreshable { [app] in await app.refresh() }
-    .scrollEdgeEffectStyle(.soft, for: .bottom)
-    .background(HColor.surfaceSecondary)
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      MainHeader(
-        amountsHidden: app.amountsHidden,
-        extra: extra,
-        avatarInitial: app.avatarInitial,
-        onToggleAmounts: { app.toggleAmountsHidden() },
-        onExtra: onExtra,
-        onProfile: { app.showingProfile = true }
-      )
-    }
-    .overlay(alignment: .bottom) { ToastHost(app: app) }
   }
 }
 

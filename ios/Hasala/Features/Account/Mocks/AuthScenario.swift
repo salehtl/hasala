@@ -1,5 +1,6 @@
 #if HASALA_MOCKS
   import Foundation
+  import HasalaModels
 
   /// The page-14 and setup scenarios of spec 04 §15.3, read from the same
   /// `-HasalaScenario <name>` argument as the Maya scenarios. Unknown names (including
@@ -37,14 +38,32 @@
     /// Signed in on the App Review demo account (`review_account`), over HasalaMocks'
     /// `mayaSample` ledger: Home says "Sample data".
     case mayaSample
-    /// Signed in after skipping the mailbox step: Home and Profile offer "Connect your email".
+    /// Signed in after skipping the email step: no mailbox, and Profile offers to connect
+    /// one (the same as `noMailbox`).
     case gmailSkipped
-    /// Signed in; Google wants a new sign-in: Home and Profile offer "Reconnect Gmail".
+    /// Signed in; Google ended Hasala's access: Gmail needs a new sign-in.
     case gmailReconnect
-    /// Signed in; Microsoft wants a new sign-in: Home and Profile offer "Reconnect Outlook".
+    /// Setup at the email step (step 2): the account exists and its banks are chosen.
+    case setupEmail
+    /// Signed in, reading Gmail and Outlook.
+    case mailboxes2
+    /// Signed in; Microsoft ended Hasala's access to Outlook, Gmail still works.
+    case outlookSignIn
+    /// Setup at the email step; an Outlook connect is a work account its admin hasn't
+    /// approved.
+    case outlookAdmin
+    /// Setup at the email step; the Microsoft sign-in is closed or its permissions declined.
+    case outlookCancelled
+    /// Signed in with no mailbox.
+    case noMailbox
+    /// Signed in; Microsoft ended Hasala's access to Outlook, the account's one mailbox.
     case outlookReconnect
-    /// Signed in with Gmail working: Profile offers another provider (when the build has one).
+    /// Signed in, reading Gmail only (the same as `passkeyUser`): a switch to Outlook
+    /// replaces it.
     case gmailLinked
+    /// Signed in after skipping setup's bank step (manual entry): no bank and no mailbox,
+    /// so a connect from the profile asks for the banks first.
+    case noBanks
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -55,37 +74,66 @@
     ///
     /// The mock offers every account action, except on the Release surface
     /// (`BuildSurface`), where it offers the beta's, as the live service does (and its
-    /// first scan, like the live lane's, sorts nothing with the on-device model).
+    /// first scan, like the live lane's, sorts nothing with the on-device model). There the
+    /// mailbox mock is narrowed to the live lane too: Gmail and Outlook (personal Microsoft
+    /// accounts), as the build's client ids offer them, and one mailbox, which a connect of
+    /// the other provider replaces after a confirmation. `releaseSurface` is the build's
+    /// (tests pass it, so they check the narrowing the app runs).
     @MainActor
-    static func session(for scenario: AuthScenario?) -> AccountSession {
-      let session = makeSession(for: scenario)
-      if let mock = session.account as? MockAccountService, !BuildSurface.showsUnfinished {
-        mock.capabilities = .beta
+    static func session(
+      for scenario: AuthScenario?, releaseSurface: Bool = !BuildSurface.showsUnfinished
+    ) -> AccountSession {
+      let session = makeSession(for: scenario, releaseSurface: releaseSurface)
+      if releaseSurface {
+        if let mock = session.account as? MockAccountService { mock.capabilities = .beta }
+        if let mailbox = session.services.mailbox as? MockMailbox { mailbox.holdOneLink() }
       }
       return session
     }
 
-    @MainActor
-    private static func makeSession(for scenario: AuthScenario?) -> AccountSession {
-      let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount)
-      mailbox.sortsWithModel = BuildSurface.showsUnfinished
+    /// Where setup resumes: the email-step scenarios have chosen their banks.
+    static func setupFacts(for scenario: AuthScenario?) -> OnboardingStep.Facts {
+      var facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
       switch scenario {
-      case .gmailSkipped: mailbox.mailboxOffer = .connect
-      case .gmailReconnect:
-        mailbox.linkTo(.gmail)
-        mailbox.mailboxOffer = .reconnect(.gmail)
-      case .outlookReconnect:
-        mailbox.linkTo(.outlook)
-        mailbox.mailboxOffer = .reconnect(.outlook)
-      case .gmailLinked: mailbox.linkTo(.gmail)
+      case .setupEmail, .outlookAdmin, .outlookCancelled: facts.banksChosen = true
       default: break
       }
+      return facts
+    }
+
+    /// The mailboxes a signed-in scenario starts with (setup's start with none).
+    static func mailboxes(for scenario: AuthScenario?) -> [MailboxSnapshot] {
+      switch scenario {
+      case nil, .passkeyUser, .passwordOnly, .mayaSample, .resetApproval, .frozen, .frozenOperator,
+        .unlockPasswordOnly, .unlockWithPasskey, .relaunchSignedIn, .gmailLinked:
+        [MockMailbox.gmail]
+      case .outlookReconnect: [MockMailbox.needingSignIn(MockMailbox.outlook)]
+      case .gmailReconnect: [MockMailbox.needingSignIn(MockMailbox.gmail)]
+      case .mailboxes2: [MockMailbox.gmail, MockMailbox.outlook]
+      case .outlookSignIn: [MockMailbox.gmail, MockMailbox.needingSignIn(MockMailbox.outlook)]
+      case .gmailSkipped, .noMailbox, .noBanks, .newUser, .noPasscode, .signInPassword, .setupBank, .reviewAccount,
+        .setupEmail, .outlookAdmin, .outlookCancelled, .relaunchInterrupted:
+        []
+      }
+    }
+
+    @MainActor
+    private static func makeSession(for scenario: AuthScenario?, releaseSurface: Bool) -> AccountSession {
+      let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount, mailboxes: mailboxes(for: scenario))
+      mailbox.sortsWithModel = !releaseSurface
+      mailbox.outlookAdmin = scenario == .outlookAdmin
+      mailbox.outlookCancelled = scenario == .outlookCancelled
+      if scenario == .noBanks { mailbox.banks = [] }
+      let setup = MockSetupAuthoring()
+      // The bank ops are what the lane reads, as live's sender trust is.
+      setup.choseBanks = { [weak mailbox] in mailbox?.banks = $0 }
       func services(_ account: MockAccountService) -> AccountServices {
-        AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
+        AccountServices(account: account, mailbox: mailbox, setup: setup,
                         notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })
       }
       switch scenario {
-      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .outlookReconnect, .gmailLinked:
+      case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,
+        .outlookReconnect, .gmailLinked:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
@@ -122,6 +170,9 @@
       case .setupBank, .reviewAccount:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
                               phase: .onboarding(.bank))
+      case .setupEmail, .outlookAdmin, .outlookCancelled:
+        return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
+                              phase: .onboarding(.mail))
       }
     }
   }

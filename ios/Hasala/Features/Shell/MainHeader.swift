@@ -2,13 +2,19 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// The main-screen header (Paper "kit Screen chrome", spec 04 §13.1): leading glass eye (Hide
-/// amounts), the Hasala mark centred, and on the trailing side the bell with its
-/// unread badge (Home only), "+" (Activity only) and the avatar. iOS 26 toolbar
-/// items get the system Liquid Glass; nothing custom is drawn for them.
+/// The main header on every tab root (Paper "Header · Main", page 13 "The same top on every
+/// screen."): Hide amounts on the left (the eye, eye-off while hidden), the Hasala mark
+/// centred and not a button, and on the right at most two 48 glass buttons, 10 apart, the
+/// profile avatar last. The second right button belongs to the tab: the bell on Home only,
+/// "+" on Activity, none on Plan or Review.
+///
+/// The buttons are the design system's `GlassIconButton` and `GlassAvatarButton`: native
+/// Liquid Glass at Paper's 48 (decision 2), so the bar's own shared glass is turned off for
+/// each item. The bell's badge counts what needs a look and is in the button's label.
 struct MainHeader: ToolbarContent {
-  /// Header icons are ink, not the accent (Paper `--color-apple-labels-vibrant-primary`).
-  static let iconColor = HColor.appleLabelsVibrantPrimary
+  /// Glass glyphs are ink, not the accent (`--color-icon-glass`); for the bar items other
+  /// screens draw themselves.
+  static let iconColor = HColor.iconGlass
 
   enum Extra { case bell(unread: Int), add, none }
 
@@ -21,13 +27,11 @@ struct MainHeader: ToolbarContent {
 
   var body: some ToolbarContent {
     ToolbarItem(placement: .topBarLeading) {
-      Button(action: onToggleAmounts) {
-        Image(systemName: amountsHidden ? "eye.slash" : "eye")
-          .foregroundStyle(Self.iconColor)
-      }
-      .accessibilityLabel(amountsHidden ? "Show amounts" : "Hide amounts")
-      .accessibilityIdentifier("header.hideAmounts")
+      GlassIconButton(amountsHidden ? .eyeSlash : .eye, label: amountsHidden ? "Show amounts" : "Hide amounts",
+                      selected: amountsHidden, action: onToggleAmounts)
+        .accessibilityIdentifier("header.hideAmounts")
     }
+    .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .principal) {
       Image("HasalaMark")
         .resizable()
@@ -35,55 +39,27 @@ struct MainHeader: ToolbarContent {
         .frame(width: 54, height: 32)
         .accessibilityLabel("Hasala")
     }
+    .sharedBackgroundVisibility(.hidden)
     switch extra {
     case .bell(let unread):
       ToolbarItem(placement: .topBarTrailing) {
-        Button(action: onExtra) {
-          Image(systemName: "bell")
-            .foregroundStyle(Self.iconColor)
-            .overlay(alignment: .topTrailing) {
-              if unread > 0 {
-                // Drawn here rather than with .badge(): the bar's own badge grows with
-                // Dynamic Type until it covers the bell, and is the system red. Paper
-                // ("Home · Default"): 20 pt, action-destructive, a 2 pt white ring, its
-                // centre 15 pt right of and 17 pt above the button's. The button's label
-                // carries the count for VoiceOver.
-                CountBadge(unread, tone: .alert)
-                  .background(Capsule().fill(HColor.white).padding(-2))
-                  .dynamicTypeSize(...DynamicTypeSize.large)
-                  .offset(x: 15, y: -16)
-                  .accessibilityHidden(true)
-              }
-            }
-        }
-        .accessibilityLabel(unread > 0 ? "Notifications, \(unread) unread" : "Notifications")
-        .accessibilityIdentifier("header.notifications")
+        GlassIconButton(.bell, label: unread > 0 ? "Notifications, \(unread) new" : "Notifications",
+                        badge: unread, action: onExtra)
+          .accessibilityIdentifier("header.notifications")
       }
-      ToolbarSpacer(.fixed, placement: .topBarTrailing)
+      .sharedBackgroundVisibility(.hidden)
     case .add:
       ToolbarItem(placement: .topBarTrailing) {
-        Button(action: onExtra) {
-          Image(systemName: "plus")
-            .foregroundStyle(Self.iconColor)
-        }
-        .accessibilityLabel("Add a transaction")
-        .accessibilityIdentifier("header.add")
+        GlassIconButton(.add, label: "Add a transaction", action: onExtra)
+          .accessibilityIdentifier("header.add")
       }
-      ToolbarSpacer(.fixed, placement: .topBarTrailing)
+      .sharedBackgroundVisibility(.hidden)
     case .none:
       ToolbarItem(placement: .topBarTrailing) { EmptyView() }
     }
-    // The avatar is its own round button: without the bar's shared glass, which wraps
-    // the 36 pt disc in a capsule wider than it is tall. The tap target stays 44 pt.
     ToolbarItem(placement: .topBarTrailing) {
-      Button(action: onProfile) {
-        AvatarDisc(initial: avatarInitial)
-          .frame(width: 44, height: 44)
-          .contentShape(Circle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Your profile")
-      .accessibilityIdentifier("header.profile")
+      GlassAvatarButton(initial: avatarInitial, label: "Your profile", action: onProfile)
+        .accessibilityIdentifier("header.profile")
     }
     .sharedBackgroundVisibility(.hidden)
   }

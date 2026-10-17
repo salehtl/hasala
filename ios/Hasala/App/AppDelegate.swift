@@ -10,7 +10,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     #if HASALA_MOCKS
-      if ProcessInfo.processInfo.arguments.contains("-HasalaScenario") { return true }
+      // A mock scenario or a launched screen: the live graph never starts (no Keychain
+      // purge, no network).
+      if ScreenLaunch.isMockLaunch(ProcessInfo.processInfo.arguments) { return true }
     #endif
     AppGraph.live().start()
     return true

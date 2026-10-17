@@ -1,64 +1,70 @@
 import HasalaDesign
+import HasalaModels
 import SwiftUI
 import UIKit
 
-// Paper page 14, section 14.2: the recovery phrase (spec 04 §6.7; copy S-08-S-13).
+// Paper P2.2 "Recovery phrase" (spec 07 §5): why it matters, then the 12 words hidden
+// until tapped and written on paper, then "Your account is ready". There is no word check
+// (`docs/decisions/recovery-phrase-no-quiz.md`): "I've written them down" publishes the
+// account once the words were drawn for the person.
 
+/// Recovery phrase · 3 of 3 · Why it matters (Paper F46-0; spec 07 S11). No way back: the
+/// account exists.
 struct PhraseIntroView: View {
   var model: SignupModel
 
-  /// Getting back in with the words and an emailed code (C4) is only promised when this
-  /// build can do it (`recoverAccess`).
-  private var subtitle: String {
-    let made = "These 12 words were made on this iPhone."
-    let rest = "A password only signs you in. Our server keeps the words only in a locked form it can't open."
-    return model.capabilities.contains(.recoverAccess)
-      ? "\(made) They unlock your data on a new iPhone, even if you lose every device and passkey, once you sign in there with your password or with a code we email you. \(rest)"
-      : "\(made) They unlock your data on a new iPhone once you sign in there. \(rest)"
-  }
-
   var body: some View {
     AccountScreen(
-      title: "12 words, your spare key",
-      subtitle: subtitle,
+      title: "Your recovery phrase is your spare key",
+      subtitle: "Hasala seals your data with a key only your devices hold. These words can rebuild that key on a new iPhone.",
       steps: (3, 3)
     ) {
       VStack(alignment: .leading, spacing: 18) {
-        point("doc.text", HColor.huePeachStart, HColor.huePeachInk, "Write them on paper",
-              "Write them on paper, or save them in your password manager. If you leave Hasala to do that, come straight back: closing it before you finish makes a new phrase.")
-        point("iphone", HColor.hueSkyStart, HColor.hueSkyInk, "No way back without them",
-              "If you lose these words and every passkey, your data can't be unlocked on a new iPhone. Not even by us.")
-        point("lock", HColor.hueRoseStart, HColor.hueRoseInk, "Keep them private",
-              "These words are the key to your account. Anyone who has them and can sign in, or can get a code from your email, can read your transactions and add devices. Keep them private.")
+        point(.paper, .sand, "Write them on paper", "Keep it somewhere safe at home. Not in your photos, notes or email.")
+        point(.phone, .sky, "For a new iPhone", newIPhone)
+        point(.lock, .rose, "Only you have them",
+              "We never see them, so we can't reset or resend them. Lose them and every device that unlocks Hasala, and your data is gone for good.")
       }
-      .padding(18)
-      .listCard()
-    } footer: {
+      .padding(20)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    } actions: {
       Button("Show my 12 words") { model.go(.phraseShow) }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("phrase.start")
-      Text("Takes about two minutes. It can't be skipped.")
-        .hType(.footnote)
-        .foregroundStyle(HColor.textSecondary)
-        .frame(minHeight: 32)
+      ActionNote(text: "Takes about two minutes. It can't be skipped.")
     }
   }
 
-  private func point(_ symbol: String, _ tint: Color, _ ink: Color, _ title: String, _ text: String) -> some View {
-    HStack(alignment: .top, spacing: 14) {
-      IconDisc(systemImage: symbol, tint: tint, ink: ink)
+  /// Paper's line, where this build can get someone back in with the words alone
+  /// (`recoverAccess`). The beta can't yet: there the words unlock a new iPhone only after
+  /// signing in there (a Release copy exception, plan P1).
+  private var newIPhone: String {
+    model.capabilities.contains(.recoverAccess)
+      ? "If your passkey isn't there, these words unlock your data. A password can't."
+      : "They unlock your data on a new iPhone once you sign in there. A password can't."
+  }
+
+  private func point(_ icon: HIcon, _ hue: Hue, _ title: String, _ text: String) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      IconTile(icon: icon, hue: hue)
       VStack(alignment: .leading, spacing: 2) {
-        Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
+        Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
         Text(text).hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
     .accessibilityElement(children: .combine)
   }
 }
 
 /// The words, hidden until tapped; hidden again when the app leaves the foreground or the
-/// screen is captured (spec 04 §6.7).
+/// screen is captured (spec 04 §6.7), and not shown at all while it is captured. In create
+/// mode "I've written them down" stays off until the words were shown (Paper F6Q), then
+/// publishes them: there is no word check after this screen
+/// (`docs/decisions/recovery-phrase-no-quiz.md`), so a reveal that drew only dots must not
+/// count (`onCapture` tells the model).
 struct PhraseShowView: View {
   @Binding var revealed: Bool
   var words: [String]
@@ -66,6 +72,14 @@ struct PhraseShowView: View {
   var onBack: (() -> Void)?
   /// "I've written them down" (create) or "Done" (view).
   var onContinue: () -> Void
+  /// Create mode: the words were shown at least once, so "I've written them down" can go.
+  var seen = true
+  /// Create mode: publishing is under way.
+  var busy = false
+  /// Create mode: why the last publish didn't go through.
+  var failure: AuthFailure?
+  /// Whether the screen is being recorded or mirrored, on appear and on every change.
+  var onCapture: (Bool) -> Void = { _ in }
 
   enum Mode { case create, view }
 
@@ -73,68 +87,39 @@ struct PhraseShowView: View {
   @State private var captured = PhraseShowView.screenCaptured()
   @State private var screenshotWarning = false
 
+  /// The words are drawn (revealed and not masked by a capture).
+  private var shown: Bool { revealed && !captured }
+
   var body: some View {
     AccountScreen(
       title: "Write these down, in order",
-      subtitle: "On paper, numbered, in this order. Check each word twice.",
+      subtitle: shown
+        ? "On paper, numbered, in this order. Check each word twice."
+        : "Check that no one can see your screen, then tap to show them.",
       steps: mode == .create ? (3, 3) : nil,
-      onBack: onBack
+      // Creating, there is no way back (Paper S12); viewing, back closes the words.
+      back: mode == .view ? onBack.map { AccountBack.action($0) } ?? AccountBack.none : AccountBack.none
     ) {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          Text("Your recovery phrase").hType(.overline).foregroundStyle(HColor.textSecondary)
-          Spacer()
-          if revealed {
-            Button {
-              revealed = false
-            } label: {
-              Label("Hide", systemImage: "eye.slash").hType(.buttonSmall)
-            }
-            .foregroundStyle(HColor.textLink)
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .background(HColor.surfacePrimary, in: Capsule())
-            .accessibilityIdentifier("phrase.hide")
-          }
-        }
-        ZStack {
-          PhraseGrid(words: captured ? Array(repeating: "•••••", count: words.count) : words,
-                     hidden: !revealed)
-          if !revealed {
-            Button {
-              revealed = true
-            } label: {
-              Label("Tap to show your words", systemImage: "eye")
-                .hType(.rowTitle)
-                .foregroundStyle(HColor.textPrimary)
-                .padding(.horizontal, 18)
-                .frame(height: 44)
-                .background(HColor.surfacePrimary, in: Capsule())
-                .elevation()
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("phrase.reveal")
-          }
-        }
+      VStack(alignment: .leading, spacing: shown ? 10 : 12) {
+        PhraseGrid(words: words, revealed: $revealed, masked: captured)
+        FailureBanner(failure: failure)
         if screenshotWarning {
           FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
         }
-        NoteCard(systemImage: "camera.badge.ellipsis",
-                 text: "No screenshots or copying. Photos sync to the cloud, and other apps can read your clipboard.",
-                 tint: HColor.statusWarningSurface)
+        WarningCallout(icon: .cameraSlash,
+                       text: "No screenshots or copying. Photos sync to the cloud, and other apps can read your clipboard.")
       }
-    } footer: {
+      // Revealed, the phrase header joins the card and the content moves up to make room
+      // (Paper F9O-0: 12 under the question block, 10 apart; hidden, 24 and 12).
+      .padding(.top, shown ? -12 : 0)
+      .hAnimation(.stateSwap, value: shown)
+    } actions: {
       if mode == .create {
-        Button("I've written them down") {
+        BusyButton(title: "I've written them down", busy: busy, enabled: seen, identifier: "phrase.written") {
           revealed = false
           onContinue()
         }
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("phrase.written")
-        Text("They hide again when you leave this screen.")
-          .hType(.footnote)
-          .foregroundStyle(HColor.textSecondary)
-          .frame(minHeight: 32)
+        ActionNote(text: "They hide again when you leave this screen.")
       } else {
         Button("Done", action: onContinue)
           .buttonStyle(.pill(.primary, fill: true))
@@ -144,13 +129,21 @@ struct PhraseShowView: View {
     .onChange(of: scenePhase) { _, phase in
       if phase != .active { revealed = false }
     }
+    .onAppear { noteCapture() }
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
-      captured = Self.screenCaptured()
+      noteCapture()
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
       screenshotWarning = revealed
     }
     .onDisappear { revealed = false }
+  }
+
+  /// Captured, the words hide and stay hidden until capture stops.
+  private func noteCapture() {
+    captured = Self.screenCaptured()
+    if captured { revealed = false }
+    onCapture(captured)
   }
 
   /// Whether any screen showing Hasala is being recorded or mirrored.
@@ -159,189 +152,107 @@ struct PhraseShowView: View {
   }
 }
 
-/// "Check 4 of your words": tap the right word for each slot (Paper "Check 4 random
-/// words" / "wrong word"). Unlimited retries; a wrong word is taken back by tapping it.
-struct PhraseConfirmView: View {
-  @Bindable var model: SignupModel
-
-  var body: some View {
-    AccountScreen(
-      title: "Check 4 of your words",
-      subtitle: "Picked at random. Use your paper, not your memory. \(model.confirmedCount) of 4 done.",
-      steps: (3, 3),
-      onBack: model.back
-    ) {
-      VStack(alignment: .leading, spacing: 14) {
-        VStack(spacing: 8) {
-          ForEach(0..<4, id: \.self) { i in slot(i) }
-        }
-        .padding(12)
-        .listCard()
-        if let w = model.wrongSlot {
-          StatusLine(text: "That isn't word \(model.askedPositions[w] + 1). Check your paper, then tap the word to take it back.",
-                     tone: .error)
-        }
-        FlowChips(words: model.choices, isUsed: model.isChipUsed) { model.placeChip($0) }
-        FailureBanner(failure: model.failure)
-      }
-    } footer: {
-      BusyButton(title: "Confirm", busy: model.busy, enabled: model.phraseConfirmed, identifier: "phrase.confirm") {
-        Task { await model.finish() }
-      }
-      LinkButton(title: "Show my words again", identifier: "phrase.again") { model.showWordsAgain() }
-    }
-  }
-
-  private func slot(_ i: Int) -> some View {
-    let state = model.slotState(i)
-    let word = model.placed[i]
-    return Button {
-      model.takeBack(i)
-    } label: {
-      HStack(spacing: 16) {
-        Text("Word \(model.askedPositions.indices.contains(i) ? model.askedPositions[i] + 1 : 0)")
-          .hType(.footnote.weight(.semibold))
-          .foregroundStyle(state == .wrong ? HColor.statusErrorForeground : HColor.textSecondary)
-          .frame(width: 64, alignment: .leading)
-        Text(word ?? "")
-          .hType(.headline)
-          .foregroundStyle(state == .wrong ? HColor.statusErrorForeground : HColor.textPrimary)
-        Spacer()
-        if state == .right {
-          Image(systemName: "checkmark").foregroundStyle(HColor.actionAccent).accessibilityHidden(true)
-        }
-      }
-      .padding(.horizontal, 14)
-      .frame(minHeight: 46)
-      .background(background(state), in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: HRadius.control, style: .continuous)
-          .strokeBorder(state == .wrong ? HColor.statusErrorForeground : .clear, lineWidth: 1.5)
-      }
-    }
-    .buttonStyle(.plain)
-    .disabled(word == nil)
-    .accessibilityLabel("Word \(model.askedPositions.indices.contains(i) ? model.askedPositions[i] + 1 : 0)")
-    .accessibilityValue(word.map { "\($0), \(state == .wrong ? "wrong" : "right")" } ?? "empty")
-    .accessibilityIdentifier("phrase.slot.\(i)")
-  }
-
-  private func background(_ s: SignupModel.SlotState) -> Color {
-    switch s {
-    case .empty: HColor.surfaceSecondary
-    case .right: HColor.actionAccentSubtle
-    case .wrong: HColor.statusErrorSurface
-    }
-  }
-}
-
-/// Word chips that wrap onto lines, by position: a word can appear twice.
-struct FlowChips: View {
-  var words: [String]
-  var isUsed: (Int) -> Bool
-  var onTap: (Int) -> Void
-
-  var body: some View {
-    WrapLayout(spacing: 8) {
-      ForEach(Array(words.enumerated()), id: \.offset) { i, w in
-        let used = isUsed(i)
-        // The first chip of a word is `chip.<word>`; a repeat adds its position.
-        let repeated = words[..<i].contains(w)
-        Button(w) { onTap(i) }
-          .hType(.rowTitle)
-          .foregroundStyle(used ? HColor.textDisabled : HColor.textPrimary)
-          .padding(.horizontal, 16)
-          .frame(minHeight: 44)
-          .background(used ? HColor.appleFillsTertiary : HColor.surfacePrimary, in: Capsule())
-          .disabled(used)
-          .accessibilityIdentifier(repeated ? "chip.\(w).\(i)" : "chip.\(w)")
-      }
-    }
-    .frame(maxWidth: .infinity)
-  }
-}
-
-/// A simple wrapping layout (left to right, then down).
-struct WrapLayout: Layout {
-  var spacing: CGFloat = 8
-
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let width = proposal.width ?? .infinity
-    var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, maxX: CGFloat = 0
-    for s in subviews {
-      let size = s.sizeThatFits(.unspecified)
-      if x > 0, x + size.width > width {
-        x = 0
-        y += row + spacing
-        row = 0
-      }
-      x += size.width + spacing
-      maxX = max(maxX, x - spacing)
-      row = max(row, size.height)
-    }
-    return CGSize(width: width.isFinite ? width : maxX, height: y + row)
-  }
-
-  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
-    for s in subviews {
-      let size = s.sizeThatFits(.unspecified)
-      if x > bounds.minX, x + size.width > bounds.maxX {
-        x = bounds.minX
-        y += row + spacing
-        row = 0
-      }
-      s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-      x += size.width + spacing
-      row = max(row, size.height)
-    }
-  }
-}
-
-/// "Your account is ready." (Paper "Saved → hands off to Connect Gmail").
+/// Recovery phrase · Saved → "Your account is ready." (Paper FJI-0; spec 07 S13): what the
+/// account has (the address, how it signs in, the words on paper), then the hand-off to
+/// setup, where the person connects their email. "What Hasala reads, and what it doesn't"
+/// opens "Who can see what". No way back: the account exists.
 struct AccountReadyView: View {
   var profile: AccountProfile?
+  /// Outlook can be connected in this build ("Who can see what" names Microsoft only then).
+  var outlook: Bool
+  /// What this build can do for the account (`AccountService.capabilities`): whether the
+  /// words can be shown again, and how.
+  var capabilities: AccountCapabilities
   var onContinue: () -> Void
 
+  @State private var whoSeesOpen = false
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var passkey: Bool { profile?.method != .password }
+
+  /// Where the words can be seen again, said only as far as this build can do it: Sign-in &
+  /// security shows them after Face ID, so a password account first adds a passkey (Debug's
+  /// `.all`); without that it can't (the beta). No line is longer than Paper's, so the
+  /// screen still fits above the dock.
+  private var subtitle: String {
+    let keep = "Keep the paper safe, away from this iPhone."
+    guard capabilities.contains(.viewPhrase) else { return "\(keep) It's the only copy of your words." }
+    if passkey { return "\(keep) You can see the words again in Profile after Face ID." }
+    return capabilities.contains(.addPasskey)
+      ? "\(keep) Add Face ID in Profile to see the words again."
+      : "\(keep) Your words can't be shown again on this account."
+  }
+
   var body: some View {
-    AccountScreen(
+    CelebrationScreen(
+      badge: .check,
       title: "Your account is ready.",
-      subtitle: profile?.method == .passkey
-        ? "Keep the paper safe, away from this iPhone. You can see the words again in Profile after Face ID."
-        : "Keep the paper safe, away from this iPhone. It's the only copy: your words can't be shown again on this account.",
-      wash: HColor.hueMintStart,
-      centered: true
+      subtitle: subtitle
     ) {
       VStack(spacing: 16) {
-        SuccessBadge().frame(maxWidth: .infinity)
-        VStack(spacing: 0) {
-          row(profile?.email ?? "", "Verified")
-          Divider().padding(.leading, 34)
-          row(profile?.method == .password ? "Password" : "Face ID passkey",
-              profile?.method == .password ? "Saved on this iPhone" : "In iCloud Keychain")
-          Divider().padding(.leading, 34)
-          row("Recovery phrase", "On paper")
+        summary
+        // At the largest sizes the hand-off and the actions scroll with the rest rather
+        // than fill the dock.
+        if typeSize.isAccessibilitySize {
+          handOff
+          VStack(spacing: 4) { actions }.padding(.top, 16)
         }
-        .padding(.vertical, 4)
-        .listCard()
-        NoteCard(systemImage: "envelope", title: "Next: your bank",
-                 text: "Pick your bank, then connect Gmail. Hasala reads your bank's alert emails on this iPhone. Read-only, and only from your banks.")
       }
     } footer: {
-      Button("Continue", action: onContinue)
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("ready.continue")
+      if !typeSize.isAccessibilitySize {
+        handOff.padding(.bottom, 12)
+        actions
+      }
     }
+    .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
+  }
+
+  /// Continue to setup, and what Hasala reads (the "Who can see what" sheet).
+  @ViewBuilder private var actions: some View {
+    Button("Continue", action: onContinue)
+      .buttonStyle(.pill(.primary, fill: true))
+      .accessibilityIdentifier("ready.continue")
+    DockTextButton(title: "What Hasala reads, and what it doesn't", identifier: "ready.whoSees") {
+      whoSeesOpen = true
+    }
+  }
+
+  /// Paper "ListCard · Account summary": a green dot, what, and where it is.
+  private var summary: some View {
+    VStack(spacing: 0) {
+      row(profile?.email ?? "", "Verified")
+      divider
+      row(passkey ? "Face ID passkey" : "Password", passkey ? "In iCloud Keychain" : "Set")
+      divider
+      row("Recovery phrase", "On paper")
+    }
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+  }
+
+  private var divider: some View {
+    Rectangle().fill(HColor.borderSubtle).frame(height: 1).padding(.leading, 35)
+  }
+
+  /// Paper's hand-off card ("Next: connect your email").
+  private var handOff: some View {
+    InfoCard(icon: .envelope, hue: .sky, title: "Next: connect your email",
+             detail: "Hasala reads your bank's alert emails on this iPhone. Read-only, and only from your banks.")
   }
 
   private func row(_ title: String, _ value: String) -> some View {
-    HStack(spacing: 12) {
-      Circle().fill(HColor.statusSuccessForeground).frame(width: 6, height: 6).accessibilityHidden(true)
-      Text(title).hType(.callout).foregroundStyle(HColor.textPrimary).lineLimit(1).truncationMode(.middle)
-      Spacer()
+    ReflowingRow(spacing: 12) {
+      HStack(spacing: 12) {
+        Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7).accessibilityHidden(true)
+        // One line as Paper draws it; at the larger sizes a long address wraps rather than
+        // losing its middle.
+        Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          .lineLimitAtDefaultTextSize(1).truncationMode(.middle)
+      }
+    } trailing: {
       Text(value).hType(.subheadline).foregroundStyle(HColor.textSecondary)
     }
     .padding(.horizontal, 16)
+    .padding(.vertical, 8)
     .frame(minHeight: 52)
     .accessibilityElement(children: .combine)
   }

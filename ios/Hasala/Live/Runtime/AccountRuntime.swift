@@ -121,14 +121,14 @@ final class AccountRuntime {
   /// transaction (spec 04 §6.13; plan §2.5). The loader checks both again, live.
   var offersSampleData: Bool { reviewAccount && store.loaded && store.state.txns.isEmpty }
 
-  /// Home's "Connect your email" card and the Profile card's action (spec 04 §6.6 row 4,
+  /// What the bell, the Profile card and Bank alerts offer for mail (spec 04 §6.6 row 4,
   /// §7.4): nothing until the lane's phase and the ledger have been read, and nothing in a
   /// build that connects no mailbox.
-  var mailboxOffer: MailboxOffer? {
+  var mailOffer: MailOffer? {
     guard let lane, store.loaded, let phase = store.mailboxPhase else { return nil }
     return LiveMailboxConnecting.offer(
       phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink,
-      provider: lane.provider, providers: providers)
+      provider: lane.provider)
   }
 
   /// Reads the mailbox lane's state again (after a connect, the first scan or the cards
