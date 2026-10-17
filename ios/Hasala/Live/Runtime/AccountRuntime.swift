@@ -50,8 +50,7 @@ final class AccountRuntime {
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
   @ObservationIgnored var onAccount: (@MainActor (AccountInfo) async -> Void)?
-  @ObservationIgnored private var importFollower: Task<Void, Never>?
-  @ObservationIgnored private var importListeners: [(MailboxLane, UUID)] = []
+  @ObservationIgnored private var importFollower: ImportFollower?
 
   /// The bundled merchant dictionary (`.empty` when its tier is off).
   nonisolated static let dictionary = (try? MerchantDictionary.bundled().get()) ?? .empty
@@ -369,27 +368,52 @@ final class AccountRuntime {
   }
 
   func followImports() async {
-    let (stream, continuation) = AsyncStream<LaneEvents.Event>.makeStream(bufferingPolicy: .bufferingNewest(64))
-    for lane in lanes.values {
-      importListeners.append((lane, lane.events.add { continuation.yield($0) }))
-      await lane.relayEvents()
+    let follower = ImportFollower(store: store) { [weak self] in
+      guard let self, let lane = self.lane else { return }
+      self.store.noteMailbox(await lane.status(), nowMs: self.context.clock.nowMs())
     }
-    importFollower = Task { [weak self] in
+    follower.follow(lanes.values.map(\.events))
+    for lane in lanes.values { await lane.relayEvents() }
+    importFollower = follower
+  }
+
+  private func stopFollowingImports() {
+    importFollower?.stop()
+    importFollower = nil
+  }
+}
+
+@MainActor
+final class ImportFollower {
+  private let store: LiveLedgerStore
+  private let refreshStatus: @MainActor () async -> Void
+  private var task: Task<Void, Never>?
+  private var listeners: [(LaneEvents, UUID)] = []
+
+  init(store: LiveLedgerStore, refreshStatus: @escaping @MainActor () async -> Void) {
+    self.store = store
+    self.refreshStatus = refreshStatus
+  }
+
+  func follow(_ sources: [LaneEvents]) {
+    let (stream, continuation) = AsyncStream<LaneEvents.Event>.makeStream(bufferingPolicy: .bufferingNewest(64))
+    for events in sources { listeners.append((events, events.add { continuation.yield($0) })) }
+    task = Task { [weak self] in
       for await event in stream {
         guard let self else { return }
-        await self.follow(event)
+        await self.handle(event)
       }
     }
   }
 
-  private func stopFollowingImports() {
-    for (lane, id) in importListeners { lane.events.remove(id) }
-    importListeners = []
-    importFollower?.cancel()
-    importFollower = nil
+  func stop() {
+    for (events, id) in listeners { events.remove(id) }
+    listeners = []
+    task?.cancel()
+    task = nil
   }
 
-  func follow(_ event: LaneEvents.Event) async {
+  func handle(_ event: LaneEvents.Event) async {
     switch event {
     case .committed:
       await store.reload()
@@ -397,7 +421,7 @@ final class AccountRuntime {
       store.noteImport(p)
       switch p.stage {
       case .done, .failed:
-        if let lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
+        await refreshStatus()
         await store.reload()
       case .listing, .downloading, .authoring:
         break

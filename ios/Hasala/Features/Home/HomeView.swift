@@ -51,7 +51,7 @@ struct HomeView: View {
                      edit: { app.say("Editing widgets isn't in this build yet", icon: .info) })
       }
       .overlay(alignment: .bottom) {
-        HomeImportPill(work: app.mailbox?.importing)
+        HomeImportPill(work: app.mailbox?.importing) { app.router.open(.profile, profile: [.bankAlerts]) }
           .padding(.bottom, 12)
       }
       .navigationDestination(for: HomeRoute.self) { route in
@@ -68,6 +68,7 @@ struct HomeView: View {
 
 struct HomeImportPill: View {
   var work: MailImport?
+  var open: () -> Void = {}
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -76,10 +77,23 @@ struct HomeImportPill: View {
     let motion = MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
     ZStack {
       if let work {
-        BackgroundWorkPill(label: work.label, count: work.count, busy: work.busy)
-          .accessibilityAddTraits(.updatesFrequently)
+        if work.opensBankAlerts {
+          Button(action: open) {
+            BackgroundWorkPill(label: work.label, count: work.count, busy: work.busy)
+              .frame(minHeight: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel(work.label)
+          .accessibilityHint("Opens Bank alerts")
           .accessibilityIdentifier("home.importPill")
           .transition(motion.transition(.fade))
+        } else {
+          BackgroundWorkPill(label: work.label, count: work.count, busy: work.busy)
+            .accessibilityAddTraits(.updatesFrequently)
+            .accessibilityIdentifier("home.importPill")
+            .transition(motion.transition(.fade))
+        }
       }
     }
     .frame(maxWidth: .infinity)

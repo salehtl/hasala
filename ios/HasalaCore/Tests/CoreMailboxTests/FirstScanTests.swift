@@ -219,4 +219,103 @@ final class CommitLog: @unchecked Sendable {
     #expect(rest.phase == .active)
     #expect(Set(await rig.enqueued().map(\.messageID)).count == 120)
   }
+
+  @Test func batchedCommitsAuthorTheSamePayloadsAsOnePass() async {
+    let batched = Rig()
+    let onePass = Rig { $0.firstScanCommitEvery = Int.max }
+    for rig in [batched, onePass] {
+      FirstScanTests.backfill(rig, count: 120)
+      _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+      #expect(await rig.engine.runFirstScan().last?.phase == .active)
+    }
+    #expect(batched.authored.batches.count > onePass.authored.batches.count)
+    func payloads(_ rig: Rig) async -> [String: String] {
+      Dictionary(uniqueKeysWithValues: await rig.enqueued().map { ($0.messageID, $0.payload.canonical) })
+    }
+    let a = await payloads(batched)
+    let b = await payloads(onePass)
+    #expect(a.count == 120)
+    #expect(a == b)
+  }
+
+  @Test func aDeadlineMidScanCommitsWhatWasReadBeforeItStops() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 120)
+    let clock = rig.clock
+    rig.gmail.limiter = { path in
+      if path.contains("/messages/") { clock.advance(200) }
+      return nil
+    }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    let deadline = rig.clock.nowMs() + 5_000 + 20_000
+    let cut = await rig.engine.runCycle(trigger: .processing, deadlineMs: deadline)
+    #expect(cut.phase == .scanning, "\(cut)")
+    let early = await rig.enqueued().count
+    #expect(early > 0 && early < 120, "\(early)")
+    let downloaded = Set(rig.rawRequests.map(\.path))
+    #expect(downloaded.count == early, "\(rig.authored.batches)")
+    #expect(await rig.stagedCount() == 0)
+    rig.gmail.limiter = nil
+    let rest = await rig.engine.runCycle(trigger: .refresh)
+    #expect(rest.phase == .active)
+    let ids = await rig.enqueued().map(\.messageID)
+    #expect(ids.count == 120 && Set(ids).count == 120)
+  }
+
+  @Test func anAccountFullFlushMidScanHaltsAndARetryFinishes() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 120)
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    await rig.ledger.setAccountFull(after: 2)
+    let reports = await rig.engine.runFirstScan()
+    #expect(reports.count == 1)
+    let full = reports.last
+    #expect(full?.haltedOn == .accountFull && full?.phase == .halted, "\(reports)")
+    #expect(seen.all.contains { $0.stage == .failed(.accountFull) })
+    let early = await rig.enqueued().count
+    #expect(early >= 50 && early < 120, "\(early)")
+    #expect(await rig.ledger.flushes == 3)
+    #expect(await rig.state().watermarkMs != Rig.t0)
+    await rig.ledger.setAccountFull(after: nil)
+    let retry = await rig.engine.runCycle(trigger: .retry)
+    #expect(retry.phase == .active, "\(retry)")
+    let ids = await rig.enqueued().map(\.messageID)
+    #expect(Set(ids).count == 120 && ids.count == 120)
+  }
+
+  @Test func aPagedRunCountsAcrossItsPages() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 250)
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    let r = await rig.engine.runCycle(trigger: .processing)
+    #expect(r.phase == .active, "\(r)")
+    #expect(rig.listRequests.count > 2)
+    let reading = seen.all.filter { $0.stage == .downloading }
+    #expect(reading.map(\.done) == reading.map(\.done).sorted())
+    #expect(reading.map(\.total) == reading.map(\.total).sorted())
+    #expect(reading.allSatisfy { $0.done <= $0.total })
+    #expect(reading.last == MailboxProgress(stage: .downloading, done: 250, total: 250))
+    #expect(seen.all.last == MailboxProgress(stage: .done, done: 250, total: 250))
+  }
+
+  @Test func aPagedRunAfterAForegroundOneKeepsTheWholeWindowsTotal() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 250)
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    rig.gmail.fail("/messages/d150", with: [500, 500, 500])
+    let cut = await rig.engine.runCycle(trigger: .refresh)
+    #expect(cut.phase == .scanning && cut.haltedOn != nil, "\(cut)")
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    let r = await rig.engine.runCycle(trigger: .processing)
+    #expect(r.phase == .active, "\(r)")
+    let reading = seen.all.filter { $0.stage == .downloading }
+    #expect(!reading.isEmpty && reading.allSatisfy { $0.total == 250 }, "\(reading)")
+    #expect(reading.map(\.done) == reading.map(\.done).sorted())
+    #expect(reading.last?.done == 250)
+  }
 }

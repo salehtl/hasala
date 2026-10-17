@@ -119,6 +119,7 @@ protocol MailboxConnecting: AnyObject, Observable {
 struct MailImport: Equatable, Sendable {
   enum State: Equatable, Sendable {
     case reading
+    case paused
     case offline
     case stopped(String)
   }
@@ -130,6 +131,7 @@ struct MailImport: Equatable, Sendable {
   var label: String {
     switch state {
     case .reading: "Reading your alerts"
+    case .paused: "Reading paused"
     case .offline: "Offline"
     case .stopped(let message): message
     }
@@ -142,6 +144,11 @@ struct MailImport: Equatable, Sendable {
   }
 
   var busy: Bool { state == .reading }
+
+  var opensBankAlerts: Bool {
+    if case .stopped = state { return true }
+    return false
+  }
 }
 
 extension MailboxConnecting {

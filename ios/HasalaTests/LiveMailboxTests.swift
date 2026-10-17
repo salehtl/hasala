@@ -311,10 +311,8 @@ struct LiveMailboxTests {
   }
 
   @Test func homesImportPillFollowsTheFirstScan() {
-    func work(
-      _ phase: MailboxPhase?, halt: MailboxHaltCode? = nil, seen: Bool = true, _ progress: MailboxProgress? = nil
-    ) -> MailImport? {
-      LiveMailboxConnecting.importing(phase: phase, halt: halt, seen: seen, progress: progress)
+    func work(_ phase: MailboxPhase?, seen: Bool = true, _ progress: MailboxProgress? = nil) -> MailImport? {
+      LiveMailboxConnecting.importing(phase: phase, seen: seen, progress: progress)
     }
     let reading = MailboxProgress(stage: .downloading, done: 214, total: 268)
     for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill] {
@@ -322,19 +320,45 @@ struct LiveMailboxTests {
     }
     let pill = work(.scanning, reading)
     #expect(pill?.label == "Reading your alerts" && pill?.count == "214 of 268" && pill?.busy == true)
+    #expect(pill?.opensBankAlerts == false)
     #expect(work(.scanning)?.count == nil && work(.scanning)?.busy == true)
     let offline = work(.scanning, MailboxProgress(stage: .failed(.offline), done: 214, total: 268))
     #expect(offline?.state == .offline && offline?.label == "Offline" && offline?.count == nil && offline?.busy == false)
+    for code in [MailboxHaltCode.gmail, .quota] {
+      let paused = work(.scanning, MailboxProgress(stage: .failed(code), done: 214, total: 268))
+      #expect(paused?.state == .paused && paused?.label == "Reading paused" && paused?.busy == false)
+      #expect(paused?.count == "214 of 268" && paused?.opensBankAlerts == false)
+    }
+    #expect(work(.scanning, MailboxProgress(stage: .done, done: 268, total: 268)) == nil)
     for phase in [MailboxPhase.active, .unlinked, .otherDevice] {
       #expect(work(phase, reading) == nil)
     }
     #expect(work(nil) == nil)
-    let stopped = work(.halted, halt: .accountFull, reading)
-    #expect(stopped?.label == LiveMailboxConnecting.stopped(.accountFull) && stopped?.busy == false)
-    #expect(stopped?.count == nil)
-    #expect(work(.reconnectRequired, halt: .reconnectRequired)?.label == "Sign in again")
-    #expect(work(.halted, halt: .gmail, seen: false) == nil)
+    let stopped = work(.halted, reading)
+    #expect(stopped?.label == "Reading stopped" && stopped?.busy == false && stopped?.count == nil)
+    #expect(stopped?.opensBankAlerts == true)
+    let signIn = work(.reconnectRequired)
+    #expect(signIn?.label == "Sign in again" && signIn?.opensBankAlerts == true)
+    #expect(work(.halted, seen: false) == nil)
     #expect(work(.reconnectRequired, seen: false) == nil)
+  }
+
+  @Test func aFirstScanThatGivesUpOnAPassingStopPausesThePill() {
+    func totals(_ phase: MailboxPhase, _ halt: MailboxHaltCode?) -> MailboxLane.FirstScanTotals {
+      var t = MailboxLane.FirstScanTotals()
+      t.phase = phase
+      t.haltedOn = halt
+      return t
+    }
+    for code in [MailboxHaltCode.offline, .gmail, .quota] {
+      #expect(totals(.scanning, code).pause == MailboxProgress(stage: .failed(code), done: 0, total: 0))
+      #expect(totals(.authoringBackfill, code).pause?.stage == .failed(code))
+    }
+    #expect(totals(.scanning, nil).pause == nil)
+    #expect(totals(.scanning, .stagingFull).pause == nil)
+    #expect(totals(.active, nil).pause == nil)
+    #expect(totals(.halted, .accountFull).pause == nil)
+    #expect(totals(.reconnectRequired, .reconnectRequired).pause == nil)
   }
 }
 

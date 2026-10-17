@@ -609,7 +609,10 @@ public actor MailboxEngine {
     // nothing and stay scanning, rather than finish an empty scan (03c §7.2: T empty lists nothing).
     if trusted.isEmpty { return await finish(&state, report) }
     let started = state.scanStartedMs ?? clock.nowMs()
-    if state.scanStartedMs == nil { state.scanStartedMs = started }
+    if state.scanStartedMs == nil {
+      state.scanStartedMs = started
+      scanTotal = 0
+    }
     if state.profileHistoryID == nil {
       do { state.profileHistoryID = try await source.changeToken() } catch let e {
         return await mailFailure(e, &state, report)
@@ -660,7 +663,11 @@ public actor MailboxEngine {
     let cards = await ledger.knownCards()
     let total = (try? await store.stagedCount()) ?? 0
     var authored = 0
-    if total > 0 { emit(.authoring, 0, total) }
+    if total > 0 {
+      emit(.authoring, 0, total)
+    } else if scanTotal > 0 {
+      emit(.authoring, scanTotal, scanTotal)
+    }
     while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
       guard let n = await authorStagedBatch(cards: cards, report: &report) else {
@@ -954,6 +961,7 @@ public actor MailboxEngine {
     var firstPass: Set<String> = []
     var sinceCommit = 0
     var stop: MailboxHaltCode?
+    var pagedBase: Int?
   }
 
   enum Mode { case author, stage }
@@ -1002,6 +1010,7 @@ public actor MailboxEngine {
     }
     var seen = Set<String>()
     var cut = false
+    run.pagedBase = 0
     for (pass, since) in passes.enumerated() {
       for group in BankDomains.groups(domains, size: source.maxSendersPerList) {
         var token: String?
@@ -1061,9 +1070,15 @@ public actor MailboxEngine {
     let split = run.firstPass.isEmpty ? todo.count : (todo.firstIndex { !run.firstPass.contains($0) } ?? todo.count)
     run.width = max(1, min(config.downloadWidth, provider.maxDownloadWidth))
     let skipped = all.count - todo.count
+    let base = run.pagedBase ?? 0
+    defer { if run.pagedBase != nil { run.pagedBase = base + all.count } }
     if todo.isEmpty && mode == .author { return false }
-    if mode == .stage { scanTotal = all.count }
-    emit(.downloading, skipped, all.count)
+    var shown = base + all.count
+    if mode == .stage {
+      if run.pagedBase != nil { shown = max(shown, scanTotal) }
+      scanTotal = shown
+    }
+    emit(.downloading, base + skipped, shown)
     while i < todo.count {
       // A BGTask expiration cancels the task: stop at this boundary, everything so far committed.
       if shouldStop(deadlineMs) {
@@ -1096,7 +1111,7 @@ public actor MailboxEngine {
           if !(await commitStaged(&run, &report)) { return true }
         }
       }
-      emit(.downloading, skipped + i, all.count)
+      emit(.downloading, base + skipped + i, shown)
     }
     return false
   }

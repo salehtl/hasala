@@ -109,6 +109,13 @@ nonisolated final class MailboxLane: Sendable {
       phase = r.phase
       haltedOn = r.haltedOn
     }
+
+    var pause: MailboxProgress? {
+      guard phase == .scanning || phase == .authoringBackfill, let code = haltedOn, code != .stagingFull else {
+        return nil
+      }
+      return MailboxProgress(stage: .failed(code), done: 0, total: 0)
+    }
   }
 
   enum FirstScanEvent: Sendable {
@@ -133,6 +140,7 @@ nonisolated final class MailboxLane: Sendable {
         var totals = FirstScanTotals()
         for r in await engine.runFirstScan(maxCycles: 50) { totals.add(r) }
         events.remove(id)
+        if let pause = totals.pause { events.send(.progress(pause)) }
         continuation.yield(.ended(totals))
         continuation.finish()
       }

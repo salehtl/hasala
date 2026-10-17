@@ -88,23 +88,23 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
 
   var importing: MailImport? {
     guard let rt = runtime(), !rt.store.holdsSample else { return nil }
-    return Self.importing(
-      phase: rt.store.mailboxPhase, halt: rt.store.mailboxHalt, seen: rt.store.importSeen,
-      progress: rt.store.importProgress)
+    return Self.importing(phase: rt.store.mailboxPhase, seen: rt.store.importSeen, progress: rt.store.importProgress)
   }
 
-  static func importing(
-    phase: MailboxPhase?, halt: MailboxHaltCode?, seen: Bool, progress: MailboxProgress?
-  ) -> MailImport? {
+  static func importing(phase: MailboxPhase?, seen: Bool, progress: MailboxProgress?) -> MailImport? {
     let read = progress?.done ?? 0
     let total = progress?.total ?? 0
     switch phase {
     case .scanning?, .awaitingCards?, .authoringBackfill?:
-      if case .failed(.offline)? = progress?.stage { return MailImport(state: .offline, read: read, total: total) }
-      return MailImport(state: .reading, read: read, total: total)
+      switch progress?.stage {
+      case .done?: return nil
+      case .failed(.offline)?: return MailImport(state: .offline, read: read, total: total)
+      case .failed?: return MailImport(state: .paused, read: read, total: total)
+      case .listing?, .downloading?, .authoring?, nil: return MailImport(state: .reading, read: read, total: total)
+      }
     case .halted?:
       guard seen else { return nil }
-      return MailImport(state: .stopped(stopped(halt)), read: read, total: total)
+      return MailImport(state: .stopped("Reading stopped"), read: read, total: total)
     case .reconnectRequired?:
       guard seen else { return nil }
       return MailImport(state: .stopped("Sign in again"), read: read, total: total)

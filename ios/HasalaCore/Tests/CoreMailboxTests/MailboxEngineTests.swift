@@ -144,8 +144,10 @@ let day: Int64 = 86_400_000
     await rig.connectAndActivate()
     let log = seen.all
     #expect(log.contains(MailboxProgress(stage: .downloading, done: 3, total: 3)))
-    #expect(!log.contains { $0.stage == .authoring })
-    #expect(log.last == MailboxProgress(stage: .done, done: 3, total: 3))
+    #expect(log.filter { $0.stage == .authoring } == [MailboxProgress(stage: .authoring, done: 3, total: 3)])
+    #expect(log.suffix(2) == [
+      MailboxProgress(stage: .authoring, done: 3, total: 3), MailboxProgress(stage: .done, done: 3, total: 3),
+    ])
   }
 
   @Test func stagingCapEndsTheListing() async {

@@ -40,6 +40,7 @@ actor FakeLedger: MailboxLedger {
   var syncFails = false
   var flushes = 0
   var flushResult: FlushOutcome = .flushed
+  var accountFullAfter: Int?
   var authoredCards: [CardDecision] = []
   var authoredTrust: [(String, Bool)] = []
 
@@ -48,6 +49,7 @@ actor FakeLedger: MailboxLedger {
   func setProjected(_ p: Set<String>) { projected = p }
   func setIngested(_ i: Set<String>) { ingested = i }
   func setFlush(_ r: FlushOutcome) { flushResult = r }
+  func setAccountFull(after flushes: Int?) { accountFullAfter = flushes }
   func setSyncFails(_ v: Bool) { syncFails = v }
 
   func syncToHead() async throws(MailboxLedgerError) {
@@ -68,6 +70,7 @@ actor FakeLedger: MailboxLedger {
   }
   func flush() async -> FlushOutcome {
     flushes += 1
+    if let n = accountFullAfter, flushes > n { return .accountFull }
     return flushResult
   }
 }

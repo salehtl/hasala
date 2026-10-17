@@ -271,6 +271,48 @@ struct LiveLedgerMapperTests {
     #expect(store.importProgress == MailboxProgress(stage: .downloading, done: 50, total: 500))
   }
 
+  @MainActor final class Count {
+    var n = 0
+  }
+
+  @Test func theImportFollowerReloadsOnACommitAndEndsThePillOnDone() async throws {
+    let a = try Self.account()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: nil, profile: Self.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "laneb.tests")!), clock: { MayaLedger.now })
+    await store.reload()
+    #expect(store.state.txns.isEmpty)
+    let events = LaneEvents()
+    let refreshed = Count()
+    let follower = ImportFollower(store: store) { refreshed.n += 1 }
+    follower.follow([events])
+
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    events.send(.committed)
+    try await Self.eventually { !store.state.txns.isEmpty }
+    #expect(refreshed.n == 0)
+
+    events.send(.progress(MailboxProgress(stage: .downloading, done: 25, total: 500)))
+    try await Self.eventually { store.importProgress?.done == 25 }
+    #expect(LiveMailboxConnecting.importing(phase: .scanning, seen: true, progress: store.importProgress)?.count
+      == "25 of 500")
+
+    events.send(.progress(MailboxProgress(stage: .done, done: 500, total: 500)))
+    try await Self.eventually { refreshed.n == 1 }
+    #expect(store.importProgress?.stage == .done)
+    #expect(LiveMailboxConnecting.importing(phase: .scanning, seen: true, progress: store.importProgress) == nil)
+
+    events.send(.progress(MailboxProgress(stage: .failed(.gmail), done: 0, total: 0)))
+    try await Self.eventually { refreshed.n == 2 }
+    #expect(store.importProgress == MailboxProgress(stage: .failed(.gmail), done: 500, total: 500))
+
+    follower.stop()
+    events.send(.progress(MailboxProgress(stage: .downloading, done: 1, total: 2)))
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(store.importProgress?.stage == .failed(.gmail))
+  }
+
   /// Polls `condition` for up to 3 s (a write is queued, then re-projected).
   static func eventually(_ condition: () throws -> Bool) async throws {
     for _ in 0..<150 where try !condition() { try await Task.sleep(for: .milliseconds(20)) }
