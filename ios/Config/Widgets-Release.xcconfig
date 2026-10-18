@@ -1,0 +1,3 @@
+#include "Widgets.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS =

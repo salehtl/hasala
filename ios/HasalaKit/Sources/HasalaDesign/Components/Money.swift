@@ -86,6 +86,7 @@ public struct MoneyText: View {
       digits: digits, figure: hidden ? figure.forHiddenGlyphs(hiddenDots) : figure, color: color, gap: unitGap,
       hiddenTracking: hidden ? hiddenTracking : nil, numericValue: hidden ? nil : Double(money.minor)
     )
+    .privacySensitive()
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
       hidden ? "Amount hidden" : "\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))")

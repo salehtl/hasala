@@ -8,7 +8,9 @@
 # It greps the Swift sources linked into the app (ios/Hasala, and the HasalaCore and
 # HasalaKit products the app links; not the Debug-only HasalaMocks, CoreTestSupport or
 # CoreSoftAuth) for each category's trigger symbols, and reads the categories that
-# ios/Hasala/PrivacyInfo.xcprivacy declares:
+# ios/Hasala/PrivacyInfo.xcprivacy declares. When ios/HasalaWidgets exists, it does the
+# same for the widget extension: its own sources and the HasalaKit products it links,
+# against ios/HasalaWidgets/PrivacyInfo.xcprivacy:
 #
 #   - a hit in a category the manifest doesn't declare fails the lint;
 #   - a declared category with no hit is a warning (use through a wrapper can be indirect);
@@ -21,8 +23,6 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios="$(cd "$here/.." && pwd)"
-manifest="$ios/Hasala/PrivacyInfo.xcprivacy"
-roots=("$ios/Hasala" "$ios/HasalaCore/Sources" "$ios/HasalaKit/Sources")
 # Built into test or Debug products only, never into the Release app.
 excluded=(HasalaMocks TestSupport SoftAuth)
 
@@ -30,36 +30,9 @@ excluded=(HasalaMocks TestSupport SoftAuth)
 	echo "usage: privacy-lint.sh" >&2
 	exit 2
 }
-[[ -f "$manifest" ]] || {
-	echo "privacy-lint: $manifest is missing" >&2
-	exit 2
-}
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/hasala-privacy-lint.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
-
-# The declared categories, from the manifest as XML (it may be stored binary).
-if ! /usr/bin/plutil -convert xml1 -o "$work/manifest.xml" "$manifest" >/dev/null 2>&1; then
-	echo "privacy-lint: $manifest is not a property list" >&2
-	exit 2
-fi
-grep -oE 'NSPrivacyAccessedAPICategory[A-Za-z]+' "$work/manifest.xml" >"$work/declared.txt" || true
-
-# The sources: every .swift file under the roots, outside the excluded directories.
-for root in "${roots[@]}"; do
-	[[ -d "$root" ]] || {
-		echo "privacy-lint: $root is missing" >&2
-		exit 2
-	}
-done
-names=()
-for d in "${excluded[@]}"; do names+=(-o -name "$d"); done
-find "${roots[@]}" \( -type d \( -false "${names[@]}" \) -prune \) -o \( -type f -name '*.swift' -print \) \
-	>"$work/files.txt"
-[[ -s "$work/files.txt" ]] || {
-	echo "privacy-lint: no Swift sources found" >&2
-	exit 2
-}
 
 # Spec 06 §5.4's trigger symbols plus the rest of Apple's list for each category, as one
 # extended regular expression per category. A bare call such as `stat(` must not be the
@@ -79,38 +52,77 @@ triggers=(
 )
 
 failed=0
-for i in "${!categories[@]}"; do
-	c="${categories[$i]}"
-	hits="$work/$c.txt"
-	: >"$hits"
-	while IFS= read -r f; do
-		# file:line:text for each hit, then drop lines that are only a comment.
-		grep -nE "${triggers[$i]}" "$f" | sed "s|^|${f#"$ios/"}:|" >>"$hits" || true
-	done <"$work/files.txt"
-	grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*)' "$hits" >"$hits.code" || true
-	declared=0
-	grep -qx "NSPrivacyAccessedAPICategory$c" "$work/declared.txt" && declared=1
-	n="$(wc -l <"$hits.code" | tr -d ' ')"
-	if [[ "$c" == ActiveKeyboards ]]; then
-		if ((n > 0)); then
-			echo "  FAIL  $c: must not be used ($n hits)"
+
+# lint_bundle NAME MANIFEST ROOT...: the checks above for one bundle's manifest and the
+# sources linked into that bundle. Exits 2 when it cannot run.
+lint_bundle() {
+	local name="$1" manifest="$2"
+	shift 2
+	local roots=("$@") root d i c hits declared n
+	local names=()
+	[[ -f "$manifest" ]] || {
+		echo "privacy-lint: $manifest is missing" >&2
+		exit 2
+	}
+	# The declared categories, from the manifest as XML (it may be stored binary).
+	if ! /usr/bin/plutil -convert xml1 -o "$work/$name.manifest.xml" "$manifest" >/dev/null 2>&1; then
+		echo "privacy-lint: $manifest is not a property list" >&2
+		exit 2
+	fi
+	grep -oE 'NSPrivacyAccessedAPICategory[A-Za-z]+' "$work/$name.manifest.xml" >"$work/$name.declared.txt" || true
+	# The sources: every .swift file under the roots, outside the excluded directories.
+	for root in "${roots[@]}"; do
+		[[ -d "$root" ]] || {
+			echo "privacy-lint: $root is missing" >&2
+			exit 2
+		}
+	done
+	for d in "${excluded[@]}"; do names+=(-o -name "$d"); done
+	find "${roots[@]}" \( -type d \( -false "${names[@]}" \) -prune \) -o \( -type f -name '*.swift' -print \) \
+		>"$work/$name.files.txt"
+	[[ -s "$work/$name.files.txt" ]] || {
+		echo "privacy-lint: no Swift sources found for $name" >&2
+		exit 2
+	}
+	for i in "${!categories[@]}"; do
+		c="${categories[$i]}"
+		hits="$work/$name.$c.txt"
+		: >"$hits"
+		while IFS= read -r f; do
+			# file:line:text for each hit, then drop lines that are only a comment.
+			grep -nE "${triggers[$i]}" "$f" | sed "s|^|${f#"$ios/"}:|" >>"$hits" || true
+		done <"$work/$name.files.txt"
+		grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*)' "$hits" >"$hits.code" || true
+		declared=0
+		grep -qx "NSPrivacyAccessedAPICategory$c" "$work/$name.declared.txt" && declared=1
+		n="$(wc -l <"$hits.code" | tr -d ' ')"
+		if [[ "$c" == ActiveKeyboards ]]; then
+			if ((n > 0)); then
+				echo "  FAIL  $c: must not be used ($n hits)"
+				sed 's/^/        /' "$hits.code" | head -20
+				failed=1
+			else
+				echo "  ok    $c: not used"
+			fi
+		elif ((n > 0 && declared == 0)); then
+			echo "  FAIL  $c: used but not declared in ${manifest#"$ios/"} ($n hits)"
 			sed 's/^/        /' "$hits.code" | head -20
 			failed=1
+		elif ((n > 0)); then
+			echo "  ok    $c: declared, $n hits"
+		elif ((declared == 1)); then
+			echo "  warn  $c: declared, no direct hit (use may be through a wrapper)"
 		else
-			echo "  ok    $c: not used"
+			echo "  ok    $c: not used, not declared"
 		fi
-	elif ((n > 0 && declared == 0)); then
-		echo "  FAIL  $c: used but not declared in PrivacyInfo.xcprivacy ($n hits)"
-		sed 's/^/        /' "$hits.code" | head -20
-		failed=1
-	elif ((n > 0)); then
-		echo "  ok    $c: declared, $n hits"
-	elif ((declared == 1)); then
-		echo "  warn  $c: declared, no direct hit (use may be through a wrapper)"
-	else
-		echo "  ok    $c: not used, not declared"
-	fi
-done
+	done
+}
+
+lint_bundle app "$ios/Hasala/PrivacyInfo.xcprivacy" "$ios/Hasala" "$ios/HasalaCore/Sources" "$ios/HasalaKit/Sources"
+if [[ -d "$ios/HasalaWidgets" ]]; then
+	echo "widget extension (HasalaWidgets/PrivacyInfo.xcprivacy):"
+	lint_bundle widgets "$ios/HasalaWidgets/PrivacyInfo.xcprivacy" "$ios/HasalaWidgets" "$ios/HasalaKit/Sources"
+fi
 
 if ((failed)); then
 	echo "FAIL"

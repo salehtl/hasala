@@ -44,6 +44,7 @@ public enum HIcon: String, CaseIterable, Sendable, Hashable {
   case envelope, mailX, phone, iPad, cloud, paper, info, calendar, clock, history
   case download, trash, linkOff, wand, rule, split, pencil, refund, swap, archive
   case globe, appearance, help, tag, receipt, bank, cash, trendUp, monitor, chat, mic, cameraSlash, swipe
+  case gauge, reviewSheet
   // Other companies' marks, in their own colours (page 15 · Mailboxes).
   case google, microsoft
 
@@ -355,6 +356,10 @@ public extension HIcon {
        line("M6 9.5v.01M18 14.5v.01", 2.4, joins: false)]
     case .trendUp:  // Net worth widget.
       [line("M5 15.5l5-5 3.5 3.5L20 7.5M15.5 7.5H20V12", 2)]
+    case .gauge:
+      [line("M4 15a8 8 0 0 1 16 0", 2), line("M12 15l3.5-4.5", 2), fill(circlePath(12, 15, 1.6))]
+    case .reviewSheet:
+      [line(rectPath(5, 4, 14, 16, r: 3), 2, caps: false, joins: false), line("M9 9h6M9 13h4", 2, joins: false)]
     case .monitor:  // Notifications, "6 transactions to sort" (the To review glyph).
       [line(rectPath(4, 5, 16, 11, r: 2.5), caps: false, joins: false), line("M7 19.5h10", joins: false)]
     case .chat:  // Search, Try asking.

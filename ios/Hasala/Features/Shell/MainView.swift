@@ -1,5 +1,6 @@
 import HasalaDesign
 import HasalaModels
+import HasalaWidgetData
 import SwiftUI
 
 /// The tab shell (Paper "13 · Navigation · Tab bar and search"): Home, Plan, Review with
@@ -67,7 +68,9 @@ struct MainView: View {
     .onAppear {
       app.router.clearPresentation()
       applyPendingLaunch()
+      openPendingWidgetLink()
     }
+    .onChange(of: WidgetLinkInbox.shared.pending) { _, _ in openPendingWidgetLink() }
     .sheet(item: Bindable(app.router).sheet, onDismiss: { app.router.sheetDismissed() }) { route in
       switch route {
       case .transaction(let id):
@@ -90,6 +93,12 @@ struct MainView: View {
       case .review: ReviewCover(app: app)
       }
     }
+  }
+
+  private func openPendingWidgetLink() {
+    guard let link = WidgetLinkInbox.shared.pending else { return }
+    WidgetLinkInbox.shared.pending = nil
+    app.open(link)
   }
 
   private func applyPendingLaunch() {

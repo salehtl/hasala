@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# inspect-ipa.sh: the spec 06 §10.3 inspection of an exported Hasala .ipa, the checks
-# that apply to the A0 app (the widget and the NSE join at A1). archive.sh runs it on
+# inspect-ipa.sh: the spec 06 §10.3 inspection of an exported Hasala .ipa: the app and
+# its widget extension (PlugIns/HasalaWidgets.appex). The NSE joins at A1. archive.sh runs it on
 # every export and keeps its output as ios/build/<BUILD>/summary.txt; upload.sh only
 # uploads an .ipa whose summary ends in the PASS line for that very file.
 #
@@ -65,11 +65,18 @@ info="$app/Info.plist"
 ents="$work/entitlements.plist"
 plists="$work/plists"
 golden="$here/golden/app.release.entitlements.plist"
+appex="$app/PlugIns/HasalaWidgets.appex"
+appex_info="$appex/Info.plist"
+appex_ents="$work/widgets.entitlements.plist"
+appex_golden="$here/golden/widgets.release.entitlements.plist"
 
 # --- what the checks read ----------------------------------------------------------
 # Each is made once; a failure here leaves the file or directory missing or empty, and
 # every check that reads it then fails.
 if ! /usr/bin/codesign -d --entitlements - --xml "$app" >"$ents" 2>/dev/null; then rm -f "$ents"; fi
+if [[ ! -d "$appex" ]] || ! /usr/bin/codesign -d --entitlements - --xml "$appex" >"$appex_ents" 2>/dev/null; then
+	rm -f "$appex_ents"
+fi
 
 # $plists: every file in the Payload that plutil reads as a property list (Info.plist,
 # the privacy manifest, .strings, nibs, CodeResources, ...), converted to XML. A binary
@@ -151,8 +158,12 @@ valid_plist() { [[ -s "$1" ]] && /usr/bin/plutil -lint -s "$1" >/dev/null; }
 # I1: the entitlements equal the golden file exactly, except beta-reports-active
 # (Apple adds it) and the order inside arrays.
 ents_match_golden() {
-	valid_plist "$ents" || return 1
-	/usr/bin/python3 -I - "$golden" "$ents" <<'PY'
+	ents_match "$golden" "$ents"
+}
+# ents_match GOLDEN ENTITLEMENTS: as I1, for any bundle.
+ents_match() {
+	valid_plist "$2" || return 1
+	/usr/bin/python3 -I - "$1" "$2" <<'PY'
 import plistlib, sys
 def norm(path):
     with open(path, "rb") as f:
@@ -194,6 +205,37 @@ for b in bad:
     print("        " + b, file=sys.stderr)
 sys.exit(1 if bad else 0)
 PY
+}
+
+# I5w: the widget extension's privacy manifest is valid, tracks nothing and collects
+# nothing (it reads the app's snapshot on the device; the app's manifest declares what
+# Hasala collects).
+widget_privacy_manifest_ok() {
+	valid_plist "$appex/PrivacyInfo.xcprivacy" || return 1
+	/usr/bin/python3 -I - "$appex/PrivacyInfo.xcprivacy" <<'PY'
+import plistlib, sys
+with open(sys.argv[1], "rb") as f:
+    d = plistlib.load(f)
+bad = []
+if d.get("NSPrivacyTracking") is not False:
+    bad.append("NSPrivacyTracking is not false")
+if d.get("NSPrivacyTrackingDomains", []) != []:
+    bad.append("NSPrivacyTrackingDomains is not empty")
+if d.get("NSPrivacyCollectedDataTypes", []) != []:
+    bad.append("NSPrivacyCollectedDataTypes is not empty")
+for b in bad:
+    print("        " + b, file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+}
+
+# I3w: the widget extension carries the app's two versions (App Store Connect refuses an
+# extension whose versions differ from its app's).
+widget_versions_match() {
+	local v s
+	v="$(plist_get "$info" CFBundleVersion)" && s="$(plist_get "$info" CFBundleShortVersionString)" &&
+		is "$appex_info" CFBundleVersion "$v" && is "$appex_info" CFBundleShortVersionString "$s" &&
+		is "$appex_info" CFBundleIdentifier app.hasala.ios.widgets
 }
 
 # I6: no mail, fixtures, databases or keys anywhere in the payload.
@@ -280,7 +322,10 @@ check "I1 aps-environment is production" is "$ents" aps-environment production
 check "I1 get-task-allow is false" is "$ents" get-task-allow false
 check "I1 no ?mode=developer domain" eval 'valid_plist "$ents" && hasala_absent "mode=developer" "$ents"'
 check "I1 entitlements equal golden/app.release.entitlements.plist" ents_match_golden
+check "I1w widget extension entitlements equal golden/widgets.release.entitlements.plist" ents_match "$appex_golden" "$appex_ents"
+check "I3w widget extension is app.hasala.ios.widgets with the app's two versions" widget_versions_match
 check "I5 PrivacyInfo.xcprivacy valid; collects exactly UserID, DeviceID, EmailAddress, Name, OtherFinancialInfo" privacy_manifest_ok
+check "I5w widget extension PrivacyInfo.xcprivacy valid; tracks and collects nothing" widget_privacy_manifest_ok
 check "I6 no mail, fixtures, databases or keys" no_forbidden_files
 # I6b: the sample seed is the committed one and synthetic, and nothing else in the app is
 # test data or an oversized resource (check-bundle.sh, which names what failed on stderr).

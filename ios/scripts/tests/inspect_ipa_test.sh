@@ -63,6 +63,17 @@ for kv in "CFBundleExecutable string Hasala" "CFBundleIdentifier string app.hasa
 	/usr/libexec/PlistBuddy -c "Add :$kv" "$tpl/Info.plist" >/dev/null
 done
 /usr/bin/plutil -convert binary1 "$tpl/Info.plist"
+# The widget extension, signed ad hoc with its golden entitlements (I1w, I3w, I5w).
+appex_golden="$here/golden/widgets.release.entitlements.plist"
+tpl_appex="$tpl/PlugIns/HasalaWidgets.appex"
+mkdir -p "$tpl_appex"
+compile "$tpl_appex/HasalaWidgets" "$work/main.c"
+cp "$ios/HasalaWidgets/PrivacyInfo.xcprivacy" "$tpl_appex/"
+for kv in "CFBundleExecutable string HasalaWidgets" "CFBundleIdentifier string app.hasala.ios.widgets" \
+	"CFBundlePackageType string XPC!" "CFBundleVersion string $build" "CFBundleShortVersionString string $marketing"; do
+	/usr/libexec/PlistBuddy -c "Add :$kv" "$tpl_appex/Info.plist" >/dev/null
+done
+/usr/bin/codesign -s - -f --entitlements "$appex_golden" "$tpl_appex" 2>/dev/null
 
 # variant NAME: a fresh copy of the template; prints its Hasala.app.
 variant() {
@@ -319,6 +330,36 @@ rm "$app/PrivacyInfo.xcprivacy"
 seal privacy-missing
 inspect privacy-missing 40
 only_failed "I5 PrivacyInfo.xcprivacy valid"
+
+# --- I1w, I3w, I5w: the widget extension ------------------------------------------------
+app="$(variant widget-ents)"
+cp "$appex_golden" "$work/widget-ents-golden.plist"
+/usr/libexec/PlistBuddy -c "Add :keychain-access-groups array" -c "Add :keychain-access-groups:0 string 8CFG28JHP3.app.hasala.shared" \
+	"$work/widget-ents-golden.plist" >/dev/null
+/usr/bin/codesign -s - -f --entitlements "$work/widget-ents-golden.plist" "$app/PlugIns/HasalaWidgets.appex" 2>/dev/null
+seal widget-ents
+inspect widget-ents 40
+only_failed "I1w widget extension entitlements equal golden/widgets.release.entitlements.plist"
+
+app="$(variant widget-version)"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1" "$app/PlugIns/HasalaWidgets.appex/Info.plist"
+/usr/bin/codesign -s - -f --entitlements "$appex_golden" "$app/PlugIns/HasalaWidgets.appex" 2>/dev/null
+seal widget-version
+inspect widget-version 40
+only_failed "I3w widget extension is app.hasala.ios.widgets"
+
+app="$(variant widget-tracking)"
+/usr/libexec/PlistBuddy -c "Set :NSPrivacyTracking true" "$app/PlugIns/HasalaWidgets.appex/PrivacyInfo.xcprivacy"
+/usr/bin/codesign -s - -f --entitlements "$appex_golden" "$app/PlugIns/HasalaWidgets.appex" 2>/dev/null
+seal widget-tracking
+inspect widget-tracking 40
+only_failed "I5w widget extension PrivacyInfo.xcprivacy valid"
+
+app="$(variant widget-missing)"
+rm -rf "$app/PlugIns"
+seal widget-missing
+inspect widget-missing 40
+only_failed "I1w widget extension entitlements" "I3w widget extension" "I5w widget extension"
 
 # --- I6 ----------------------------------------------------------------------------------
 app="$(variant mail)"

@@ -54,7 +54,7 @@ public enum StatusTone: String, Sendable, Hashable, Codable {
   case accent, error, warning, success
 }
 
-public struct StatusPill: Sendable, Hashable {
+public struct StatusPill: Sendable, Hashable, Codable {
   public var text: String
   public var tone: StatusTone
   /// Paper draws a 7 pt dot before the text on poster pills, not on widget chips.
@@ -196,7 +196,7 @@ public enum PosterFigure: Sendable, Hashable {
 
 // MARK: - Widgets (Paper "Widgets · launch set", the Home canvas)
 
-public struct BucketPaceRow: Sendable, Hashable, Identifiable {
+public struct BucketPaceRow: Sendable, Hashable, Codable, Identifiable {
   public var id: Bucket { bucket }
   public var bucket: Bucket
   public var spent: Money
@@ -214,7 +214,7 @@ public struct BucketPaceRow: Sendable, Hashable, Identifiable {
   public var progress: Permille { Permille.ratio(spent.minor, of: budget.minor) }
 }
 
-public struct BudgetPaceWidget: Sendable, Hashable {
+public struct BudgetPaceWidget: Sendable, Hashable, Codable {
   /// "32% of October gone".
   public var monthGone: String
   public var rows: [BucketPaceRow]
@@ -225,7 +225,7 @@ public struct BudgetPaceWidget: Sendable, Hashable {
   }
 }
 
-public struct NextBillWidget: Sendable, Hashable {
+public struct NextBillWidget: Sendable, Hashable, Codable {
   public var glyph: Glyph
   public var hue: Hue
   public var due: StatusPill
@@ -242,7 +242,7 @@ public struct NextBillWidget: Sendable, Hashable {
   }
 }
 
-public struct NetWorthWidget: Sendable, Hashable {
+public struct NetWorthWidget: Sendable, Hashable, Codable {
   public var total: Money
   public var change: MoneyPhrase
   /// Twelve points for the sparkline, as permille of the drawn range (geometry only).
@@ -255,7 +255,7 @@ public struct NetWorthWidget: Sendable, Hashable {
   }
 }
 
-public struct ProjectWidget: Sendable, Hashable {
+public struct ProjectWidget: Sendable, Hashable, Codable {
   public var name: String
   public var glyph: Glyph
   public var left: Money
@@ -272,7 +272,7 @@ public struct ProjectWidget: Sendable, Hashable {
   }
 }
 
-public struct GoalWidget: Sendable, Hashable {
+public struct GoalWidget: Sendable, Hashable, Codable {
   public var name: String
   public var glyph: Glyph
   public var progress: Permille
@@ -290,7 +290,7 @@ public struct GoalWidget: Sendable, Hashable {
   public var percentLabel: String { "\(progress.value / 10)%" }
 }
 
-public struct MiniTxnRow: Sendable, Hashable, Identifiable {
+public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   public var id: String
   public var merchant: String
   public var glyph: Glyph
@@ -320,7 +320,7 @@ public struct MiniTxnRow: Sendable, Hashable, Identifiable {
   }
 }
 
-public struct TodayWidget: Sendable, Hashable {
+public struct TodayWidget: Sendable, Hashable, Codable {
   /// "2 transactions · 91.50".
   public var summary: MoneyPhrase
   public var rows: [MiniTxnRow]

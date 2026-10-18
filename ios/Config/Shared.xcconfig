@@ -33,9 +33,7 @@ ENABLE_PREVIEWS = YES
 // matching.
 EXCLUDED_SOURCE_FILE_NAMES = HasalaMocks.o
 
-// The version testers see; spec 06 §8: 0.2.0 is the first external build.
-// archive.sh reads it from here for inspection I3.
-MARKETING_VERSION = 0.2.0
+#include "Version.xcconfig"
 // Overridden on the archive command line by ios/scripts/archive.sh (spec 06 §8).
 CURRENT_PROJECT_VERSION = 1
 
