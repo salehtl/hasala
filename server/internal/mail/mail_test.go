@@ -68,6 +68,16 @@ func TestCloudflareClassifiesAnswers(t *testing.T) {
 			t.Errorf("the request carries %q (only to, from, subject, text, and html when set)", k)
 		}
 	}
+
+	// With a display name, from is the API's named-address object.
+	status, answer = 200, `{"success":true,"errors":[],"result":{"delivered":["a@example.com"],"permanent_bounces":[],"queued":[]}}`
+	c.FromName = "Hasala"
+	if _, err := c.Send(ctx, Message{To: "a@example.com", Subject: "s", Text: "t"}); err != nil {
+		t.Fatalf("named sender: %v", err)
+	}
+	if f, ok := gotBody["from"].(map[string]any); !ok || len(f) != 2 || f["address"] != "no-reply@hasala.app" || f["name"] != "Hasala" {
+		t.Fatalf("named from %#v", gotBody["from"])
+	}
 	status, answer = 429, `{"success":false,"errors":[{"code":10004,"message":"x"}],"result":null}`
 	if _, err := c.Send(ctx, Message{To: "a@example.com"}); err == nil || errors.Is(err, ErrPermanent) ||
 		errors.Is(err, ErrAuth) || strings.Contains(err.Error(), "a@example") {

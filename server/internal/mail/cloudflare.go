@@ -24,13 +24,15 @@ const sendTimeout = 10 * time.Second
 // Cloudflare sends through Email Service. Build it with NewCloudflare.
 type Cloudflare struct {
 	accountID, token, from string
-	BaseURL                string
-	HTTP                   *http.Client
+	// FromName is the sender's display name ("Hasala"); empty sends the bare
+	// address. config refuses a name with <, >, ", @ or a line break.
+	FromName string
+	BaseURL  string
+	HTTP     *http.Client
 }
 
 // NewCloudflare validates its inputs. from is the sender address
-// (no-reply@hasala.app); the display-name object form waits on the API
-// reference (spec 02 Q15), so only the bare address is sent.
+// (no-reply@hasala.app); set FromName for a display name.
 func NewCloudflare(accountID, token, from string) (*Cloudflare, error) {
 	if accountID == "" || token == "" || from == "" {
 		return nil, errors.New("mail: Cloudflare needs an account id, a token and a sender")
@@ -45,10 +47,16 @@ func NewCloudflare(accountID, token, from string) (*Cloudflare, error) {
 
 type cfRequest struct {
 	To      string `json:"to"`
-	From    string `json:"from"`
+	From    any    `json:"from"` // the address, or cfAddress with a name
 	Subject string `json:"subject"`
 	Text    string `json:"text"`
 	HTML    string `json:"html,omitempty"`
+}
+
+// cfAddress is the API's named address: {"address": ..., "name": ...}.
+type cfAddress struct {
+	Address string `json:"address"`
+	Name    string `json:"name"`
 }
 
 type cfResponse struct {
@@ -72,7 +80,11 @@ func (c *Cloudflare) Send(ctx context.Context, m Message) (string, error) {
 	if m.To == "" || strings.ContainsAny(m.To, "\r\n,; ") || strings.ContainsAny(m.Subject, "\r\n") {
 		return "", fmt.Errorf("%w: a message has one plain recipient and a one-line subject", ErrPermanent)
 	}
-	body, err := json.Marshal(cfRequest{To: m.To, From: c.from, Subject: m.Subject, Text: m.Text, HTML: m.HTML})
+	var from any = c.from
+	if c.FromName != "" {
+		from = cfAddress{Address: c.from, Name: c.FromName}
+	}
+	body, err := json.Marshal(cfRequest{To: m.To, From: from, Subject: m.Subject, Text: m.Text, HTML: m.HTML})
 	if err != nil {
 		return "", fmt.Errorf("%w: encode", ErrPermanent)
 	}
