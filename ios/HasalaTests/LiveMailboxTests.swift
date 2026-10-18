@@ -69,6 +69,14 @@ struct LiveMailboxTests {
     #expect(LiveMailboxConnecting.message(.offline, provider: .outlook).contains("Connect Outlook when"))
   }
 
+  @Test func aMailboxOnAnotherAccountIsSaidInWords() {
+    let gmail = LiveMailboxConnecting.message(.mailboxInUse)
+    #expect(gmail.contains("This Gmail address is connected to another Hasala account"))
+    #expect(gmail.contains("connect a different address"))
+    #expect(LiveMailboxConnecting.message(.mailboxInUse, provider: .outlook).hasPrefix("This Outlook address"))
+    #expect(gmail != LiveMailboxConnecting.message(.serverRefused))
+  }
+
   /// One link per account (main's `switchingFromGmailToOutlookIsConfirmed`, at the seam): a
   /// working link, or the other provider's broken one, is replaced only on a confirmed
   /// switch; the same provider is a sign-in again when broken and already connected when

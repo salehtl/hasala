@@ -48,6 +48,12 @@ extension State {
       return .goal(try State.decodeGoal(p))
     case .billSet:
       return .bill(try State.decodeBill(p))
+    case .txnCopyResolved:
+      let d = p["decision"]
+      guard let d, d.isNull || d.stringValue == "merge" || d.stringValue == "keep_both" else {
+        throw PayloadError("decision must be merge, keep_both, or null")
+      }
+      return .copyResolution(other: try P.ulid(p["other_txn_id"], "other_txn_id"), decision: d.stringValue)
     default:
       throw PayloadError("no payload decoder for \(op.type.rawValue)")
     }
@@ -99,7 +105,14 @@ extension State {
       out.direction = try P.direction(p["direction"])
       out.needsReview = try P.bool(p["needs_review"], category == nil)
     }
-    if v >= 4 { try decodeTxnV4Deltas(p, into: &out) }
+    if v >= 4 {
+      try decodeTxnV4Deltas(p, into: &out)
+      if let source = mailboxSourceOf(p) {
+        out.sourceProvider = source.provider
+        out.sourceMailbox = source.grant
+      }
+      if let v = P.present(p["dedupe"]) { out.dedupe = try decodeDedupe(v) }
+    }
     return out
   }
 
@@ -130,6 +143,26 @@ extension State {
     guard let grant = prov["grant_id"]?.stringValue, !grant.isEmpty else { return nil }
     guard let message = prov["message_id"]?.stringValue, !message.isEmpty else { return nil }
     return message
+  }
+
+  static func decodeDedupe(_ v: JSONValue) throws(PayloadError) -> TxnDedupe? {
+    let o = try P.object(v, "dedupe")
+    var d = TxnDedupe()
+    for (key, path) in [("message_id", \TxnDedupe.messageID), ("bank_ref", \TxnDedupe.bankRef)] {
+      guard let raw = P.present(o[key]) else { continue }
+      guard let s = raw.stringValue, DuplicateRules.isEvidenceHash(s) else {
+        throw PayloadError("dedupe.\(key) must be 32 lower-case hex digits, got \(showValue(raw))")
+      }
+      d[keyPath: path] = s
+    }
+    return d.keys.isEmpty ? nil : d
+  }
+
+  static func mailboxSourceOf(_ p: JSONObject) -> (provider: String, grant: String)? {
+    guard mailboxMessageIDOf(p) != nil, let prov = p["provenance"]?.objectValue,
+      let provider = prov["provider"]?.stringValue, let grant = prov["grant_id"]?.stringValue
+    else { return nil }
+    return (provider, grant)
   }
 
   /// replay.ts `decodeEditPayload` (v4: the same fields; `category` is refused

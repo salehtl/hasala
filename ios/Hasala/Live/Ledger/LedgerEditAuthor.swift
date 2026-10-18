@@ -82,6 +82,12 @@ nonisolated struct LedgerEditAuthor: Sendable {
           txnID: id, parentVersion: row.version,
           parts: lines.map { (category: $0.categoryID, amountMinor: $0.amount.minor, note: $0.note.isEmpty ? nil : $0.note) })
       }
+    case .resolveCopy(let id, let merge):
+      let row = try txn(id)
+      guard let other = row.copyOf else { throw Failure.notFound }
+      try await build { a throws(AuthorError) in
+        a.resolveCopy(txnID: id, parentVersion: row.version, otherTxnID: other, decision: merge ? .merge : .keepBoth)
+      }
     case .archive(let id, let archived):
       _ = try txn(id)
       try await build { a throws(AuthorError) in a.annotate(txnID: id, set: [("archived", archived ? "user" : nil)]) }

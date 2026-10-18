@@ -154,6 +154,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var merchant: String
   public var monogram: String
   public var isNewMerchant: Bool
+  public var reviewReason: TxnReviewReason?
   public var rawMerchant: String?
   public var amount: Money
   public var isIncome: Bool
@@ -163,6 +164,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var spokenWhen: String
   /// "Looks like Groceries".
   public var suggestion: CategoryOption?
+  public var copyLine: String? = nil
 }
 
 /// One line of the All caught up list.
@@ -222,7 +224,9 @@ public struct ReviewWindow: Sendable, Hashable {
 
 extension Txn {
   public var inReview: Bool {
-    if archived || isTransfer { return false }
+    if archived { return false }
+    if isHeldCopy { return true }
+    if isTransfer { return false }
     if needsReview { return true }
     if categoryID == nil && splits.isEmpty { return true }
     return categorySource == .model
@@ -257,12 +261,23 @@ public enum ReviewEngine {
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
     let d = t.postedAt.date
     let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
-    return ReviewCardModel(
+    var card = ReviewCardModel(
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
-      isNewMerchant: t.isNewMerchant, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
+      isNewMerchant: t.isNewMerchant, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
       suggestion: s.category(t.reviewSuggestion).map(CategoryOption.init)
     )
+    card.copyLine = copyLine(t, s)
+    return card
+  }
+
+  public static func copyLine(_ t: Txn, _ s: LedgerState) -> String? {
+    guard let held = t.heldCopy else { return nil }
+    let other = s.txn(held.of) ?? t
+    let amount = "\(other.amount.currency) \(MoneyFormat.string(other.amount.minor))"
+    return held.fromOtherInbox
+      ? "Looks like a copy of \(other.title) \(amount) from your other inbox"
+      : "Looks like a copy of \(other.title) \(amount) you already have"
   }
 
   /// Monday first, as `LocalDate.weekday` counts.

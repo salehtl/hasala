@@ -65,6 +65,10 @@
         MailLaunch.disconnectAlert = "outlook-1"
         profile([.bankAlerts, .mailbox("outlook-1")])(graph)
       }),
+      Screen("mail.disconnectGmail", scenario: "passkeyUser", prepare: { graph in
+        MailLaunch.disconnectAlert = "gmail-1"
+        profile([.bankAlerts, .mailbox("gmail-1")])(graph)
+      }),
       Screen("mail.disconnected", scenario: "mailboxes2", drive: { graph in
         // Disconnected: the grey row stays (past transactions stay).
         try? await mock(graph)?.disconnect("outlook-1")

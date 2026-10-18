@@ -258,6 +258,15 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       let i = try index(id)
       s.txns[i].archived = archived
       return (archived ? "Archived" : "Restored", [.archived(txn: id, archived: !archived)])
+    case .resolveCopy(let id, let merge):
+      let i = try index(id)
+      guard s.txns[i].isHeldCopy else { throw .notFound }
+      if merge {
+        s.txns.remove(at: i)
+        return ("Merged", [])
+      }
+      s.txns[i].heldCopy = nil
+      return ("Kept both", [])
     case .skipReview(let id):
       s.skippedReview.insert(id)
       return (nil, [])

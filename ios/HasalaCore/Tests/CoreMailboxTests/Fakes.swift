@@ -68,6 +68,13 @@ actor FakeLedger: MailboxLedger {
     authoredTrust.append((domain, trusted))
     trust[domain] = trusted
   }
+  var plans: [String: MailboxRetirePlan] = [:]
+  var retired: [MailboxRetirePlan] = []
+  func setPlan(_ p: MailboxRetirePlan) { plans[p.grantID] = p }
+  func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan {
+    plans[grantID] ?? MailboxRetirePlan(grantID: grantID, provider: provider, legacy: true, total: 0, edited: 0)
+  }
+  func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) { retired.append(plan) }
   func flush() async -> FlushOutcome {
     flushes += 1
     if let n = accountFullAfter, flushes > n { return .accountFull }
@@ -86,11 +93,13 @@ actor FakeServer: MailboxServer {
   var offline = false
   /// Route 36's refusal, when set (e.g. `.noWatchTopic`: a server without the Pub/Sub push).
   var watchRefusal: MailboxServerError?
+  var linkRefusal: MailboxServerError?
   var topicReads = 0
 
   func setLink(_ l: MailboxLinkStatus) { link = l }
   func setTopic(_ t: String?) { topic = t }
   func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
+  func setLinkRefusal(_ e: MailboxServerError?) { linkRefusal = e }
 
   func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
     if offline { throw .offline }
@@ -101,6 +110,7 @@ actor FakeServer: MailboxServer {
     -> MailboxLinkResult
   {
     puts.append((idToken, stepUp))
+    if let linkRefusal { throw linkRefusal }
     linkedProviders.append(provider)
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     return MailboxLinkResult(status: link)

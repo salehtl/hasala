@@ -111,6 +111,21 @@ final class CoreScreensTests: XCTestCase {
     element(app, "txn.close").tap()
   }
 
+  @MainActor
+  func testReviewDeckOffersMergeOrKeepBothForACopy() throws {
+    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+    let line = element(app, "review.copy")
+    XCTAssertTrue(line.waitForExistence(timeout: 15))
+    XCTAssertEqual(line.label, "Looks like a copy of Starbucks DIFC AED 27.00 from your other inbox")
+    XCTAssertTrue(element(app, "review.reason.probable_copy").exists)
+    XCTAssertTrue(element(app, "review.merge").exists && element(app, "review.keepBoth").exists)
+    attach(app, "Review · Copy")
+    try audit(app)
+    element(app, "review.merge").tap()
+    XCTAssertTrue(line.waitForNonExistence(timeout: uiWait), "the copy stayed on the deck")
+    attach(app, "Review · Copy merged")
+  }
+
   /// Review from the Review tab: Transfer by a drag up and the pick sheet, Undo, the pill,
   /// skip, Use for the rest, then All caught up and "See activity".
   @MainActor

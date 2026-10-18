@@ -110,8 +110,9 @@ protocol MailboxConnecting: AnyObject, Observable {
   func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
   func signInAgain(_ mailboxID: String) async throws(MailConnectFailure)
-  /// Stops reading the mailbox and forgets its sign-in. Past transactions stay.
-  func disconnect(_ mailboxID: String) async throws(MailConnectFailure)
+  /// Stops reading the mailbox and forgets its sign-in.
+  func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure)
+  func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact?
   /// The first scan's progress: it reads the window and files what it finds, then ends
   /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
   func firstScan() -> AsyncStream<ScanProgress>
@@ -119,6 +120,11 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of mail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)
+}
+
+struct MailboxDisconnectImpact: Equatable, Sendable {
+  var transactions: Int
+  var edited: Int
 }
 
 struct MailImport: Equatable, Sendable {
@@ -158,6 +164,10 @@ struct MailImport: Equatable, Sendable {
 
 extension MailboxConnecting {
   var importing: MailImport? { nil }
+
+  func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
+    try await disconnect(mailboxID, removeTransactions: false)
+  }
 
   /// Known at once where the mailboxes are held in memory (the mock).
   var mailboxesKnown: Bool { true }

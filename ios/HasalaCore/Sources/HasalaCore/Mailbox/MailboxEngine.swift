@@ -35,6 +35,13 @@ import CoreTemplate
 import CoreTime
 import Foundation
 
+public enum MailboxDisconnectOutcome: Sendable, Equatable {
+  case failed
+  case disconnected
+  case removed(Int)
+  case disconnectedRemoveFailed
+}
+
 public struct MailboxEngineConfig: Sendable {
   /// `provenance.grant_id`: the account's user id (one link per account).
   public var grantID: String
@@ -67,6 +74,26 @@ public struct MailboxEngineConfig: Sendable {
   public init(grantID: String, buildTopic: String? = nil) {
     self.grantID = grantID
     self.buildTopic = buildTopic
+  }
+
+  public func grantID(provider: MailProviderID, address: String?) -> String {
+    guard let address, !address.isEmpty else { return grantID }
+    var key = Data(grantID.utf8)
+    key.append(0)
+    key.append(contentsOf: provider.rawValue.utf8)
+    key.append(0)
+    key.append(contentsOf: Self.normalized(address).utf8)
+    return "\(grantID)/mbx-\(Hex.encode(sha256(key).prefix(16)))"
+  }
+
+  static func normalized(_ address: String) -> String {
+    let bytes = Array(address.utf8)
+    let blank: Set<UInt8> = [0x20, 0x09, 0x0d, 0x0a]
+    guard let first = bytes.firstIndex(where: { !blank.contains($0) }),
+      let last = bytes.lastIndex(where: { !blank.contains($0) })
+    else { return "" }
+    let folded = bytes[first...last].map { (0x41...0x5a).contains($0) ? $0 + 0x20 : $0 }
+    return String(decoding: folded, as: UTF8.self)
   }
 }
 
@@ -134,6 +161,7 @@ public enum ConnectFailure: String, Sendable, Equatable {
   case nonceMismatch = "nonce_mismatch"
   case stepUpFailed = "step_up_failed"
   case serverRefused = "server_refused"
+  case mailboxInUse = "mailbox_in_use"
   case keychain
   case google
 }
@@ -280,6 +308,12 @@ public actor MailboxEngine {
   /// `replacing`: the mailbox tables hold another provider's lane (the account switches
   /// provider). Only once the new link is made are they cleared, in the same commit as the new
   /// state, so this is a first connect; a cancelled or failed switch leaves them as they were.
+  public static func backfillDays(newestImportMs: Int64?, nowMs: Int64) -> Int {
+    guard let newest = newestImportMs else { return 90 }
+    let gapDays = (nowMs - newest) / 86_400_000 + 2
+    return gapDays <= 90 ? 90 : 365
+  }
+
   public func connect(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false) async
     -> ConnectResult
   {
@@ -342,6 +376,8 @@ public actor MailboxEngine {
       link = try await server.putLink(provider: provider.id, idToken: idToken, stepUp: proof)
     } catch .offline {
       return .failed(.offline)
+    } catch .refused(409, "mailbox_in_use") {
+      return .failed(.mailboxInUse)
     } catch {
       return .failed(.serverRefused)
     }
@@ -401,6 +437,23 @@ public actor MailboxEngine {
   /// revoke and delete the Keychain item → `DELETE /mailbox/link` → clear the mailbox tables.
   /// A revoke that did not go through stops the disconnect there (false): the token is kept, so
   /// the retry can still end the grant, and nothing says it ended when it didn't.
+  public func retirePlan() async -> MailboxRetirePlan? {
+    guard let state = try? await store.loadState(), state.phase != .unlinked, state.phase != .otherDevice else { return nil }
+    return await ledger.retirePlan(grantID: grant(state), provider: provider.id.rawValue)
+  }
+
+  public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
+    guard await disconnect() else { return .failed }
+    guard let plan else { return .disconnected }
+    do throws(MailboxLedgerError) {
+      try await ledger.authorRetire(plan)
+    } catch {
+      return .disconnectedRemoveFailed
+    }
+    _ = await ledger.flush()
+    return .removed(plan.total)
+  }
+
   public func disconnect() async -> Bool {
     await exclusive {
       let proof: JSONValue
@@ -561,7 +614,7 @@ public actor MailboxEngine {
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: await ledger.knownCards())
+    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state))
     let cut: Bool
     do {
       cut = try await listAndProcess(
@@ -622,7 +675,7 @@ public actor MailboxEngine {
     }
     let days = Int64(state.backfillDays ?? 90)
     let since = max(0, (started - days * 86_400_000) / 1000)
-    var run = Run(trusted: trusted, cards: [:])
+    var run = Run(trusted: trusted, cards: [:], grant: grant(state))
     run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
     do {
@@ -672,7 +725,7 @@ public actor MailboxEngine {
     }
     while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
-      guard let n = await authorStagedBatch(cards: cards, report: &report) else {
+      guard let n = await authorStagedBatch(cards: cards, grant: grant(state), report: &report) else {
         report.haltedOn = .offline
         return await finish(&state, report)
       }
@@ -694,7 +747,7 @@ public actor MailboxEngine {
       // column records the cap): ids only, and the accounted set skips everything already done.
       let days = Int64(state.backfillDays ?? 90)
       let since = max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
-      var run = Run(trusted: trusted, cards: cards)
+      var run = Run(trusted: trusted, cards: cards, grant: grant(state))
       do {
         let cut = try await listAndProcess(
           source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
@@ -727,7 +780,9 @@ public actor MailboxEngine {
     return await finish(&state, report)
   }
 
-  func authorStagedBatch(cards: [CardKey: CardState], report: inout CycleReport) async -> Int? {
+  func grant(_ state: MailboxState) -> String { config.grantID(provider: provider.id, address: state.address) }
+
+  func authorStagedBatch(cards: [CardKey: CardState], grant: String, report: inout CycleReport) async -> Int? {
     guard let batch = try? await store.staged(limit: config.backfillBatch) else { return nil }
     if batch.isEmpty { return 0 }
     var c = MailboxCommit()
@@ -741,7 +796,7 @@ public actor MailboxEngine {
         continue
       }
       let draft = MessageDisposer.finalize(
-        m, provider: provider.id, grantID: config.grantID, cards: cards, categorizer: categorizer)
+        m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer)
       c.drafts.append(draft)
       c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
       counted.count(draft)
@@ -756,7 +811,7 @@ public actor MailboxEngine {
     let cards = await ledger.knownCards()
     var authored = 0
     while true {
-      guard let n = await authorStagedBatch(cards: cards, report: &report) else {
+      guard let n = await authorStagedBatch(cards: cards, grant: run.grant, report: &report) else {
         run.stop = .offline
         return false
       }
@@ -861,7 +916,7 @@ public actor MailboxEngine {
         if !trusted.contains(domain) { trusted.append(domain) }
         let days = Int64(state.backfillDays ?? 90)
         let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
-        var run = Run(trusted: trusted, cards: await ledger.knownCards())
+        var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state))
         do {
           let (ids, _) = try await list(source, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
           report.listed = ids.count
@@ -956,6 +1011,7 @@ public actor MailboxEngine {
   struct Run {
     var trusted: [String]
     var cards: [CardKey: CardState]
+    var grant: String
     var width = 6
     var stagingFull = false
     var saw429 = false
@@ -1250,7 +1306,7 @@ public actor MailboxEngine {
           c.stage.append(m)
         case .author:
           let draft = MessageDisposer.finalize(
-            m, provider: provider.id, grantID: config.grantID, cards: run.cards, categorizer: categorizer)
+            m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer)
           report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))

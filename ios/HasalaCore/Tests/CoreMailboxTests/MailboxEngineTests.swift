@@ -185,7 +185,10 @@ let day: Int64 = 86_400_000
     #expect(done.ops == 2 && done.phase == .active && done.haltedOn == nil)
     let drafts = await second.enqueued()
     #expect(Set(drafts.map(\.messageID)) == ["d1", "e1"])
-    #expect(drafts.allSatisfy { $0.payload["provenance"]?["grant_id"] == .string("00000000-0000-4000-8000-00000000000b") })
+    let grant = MailboxEngineConfig(grantID: "00000000-0000-4000-8000-00000000000b")
+      .grantID(provider: .gmail, address: "synthetic.user@example.com")
+    #expect(grant.hasPrefix("00000000-0000-4000-8000-00000000000b/mbx-"))
+    #expect(drafts.allSatisfy { $0.payload["provenance"]?["grant_id"] == .string(grant) })
     #expect(try second.keychain.read() == "fake-refresh-token-second-account")
   }
 }

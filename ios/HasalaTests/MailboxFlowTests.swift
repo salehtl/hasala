@@ -185,6 +185,11 @@ struct MailboxFlowTests: AccountSuite {
     #expect(ChooseEmailTitle.change.title == "Use another email")
     #expect(ChooseEmailTitle.change.footnote(oneLink: true).contains("replaces"))
     #expect(MailProviderKind.outlook.chooserSubtitle == "Outlook.com, Hotmail or Live")
+    for title in [ChooseEmailTitle.setup, .addMailbox, .change] {
+      for oneLink in [true, false] {
+        #expect(title.subtitle(oneLink: oneLink).contains("different from the email you sign in to Hasala with"))
+      }
+    }
   }
 
   /// A mailbox that needs a new sign-in isn't connected (scenario `outlookSignIn`): Add a

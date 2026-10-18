@@ -69,6 +69,7 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var fields: ParsedFields?
   /// The empty shape's day (canonical instant of local midnight), always set.
   public var dayPostedAt: String
+  public var headerIDHash: String? = nil
 }
 
 public struct CardKey: Sendable, Hashable, Codable, Comparable {
@@ -159,6 +160,7 @@ public enum MessageDisposer {
       gates: MailGates(ar: analysis.verdict.reason.rawValue, senderTrusted: senderTrusted, template: nil, forwarded: forwarded),
       fields: nil, dayPostedAt: day)
     mail.ingestID = ingestID(raw)
+    mail.headerIDHash = MessageIDEvidence.hash(headers: headers)
 
     guard let norm else { return .mail(mail) }
     for t in templates where t.definition.match.senderDomain.contains(where: { want in
@@ -192,11 +194,12 @@ public enum MessageDisposer {
       // The empty needs-review shape (spec 04 §7.6 row 2): no amount, no currency, no direction,
       // no body text; dated at local midnight of the email's local day.
       let gates = gatesJSON(m.gates, template: "none", card: "none")
-      let p = JSONObject([
+      var p = JSONObject([
         ("unparsed", .bool(true)), ("needs_review", .bool(true)), ("posted_at", .string(m.dayPostedAt)),
         ("posted_precision", .string("day")), ("merchant_raw", .string("")), ("last4", .string("")),
         ("category", .null), ("entry_method", .string("mailbox")), ("provenance", provenance), ("gates", gates),
       ])
+      if let h = m.headerIDHash { p["dedupe"] = .object(JSONObject([("message_id", .string(h))])) }
       return MailboxIngestDraft(
         messageID: m.messageID, ingestID: m.ingestID, internalDateMs: m.internalDateMs, payload: p, needsReview: true)
     }
@@ -232,6 +235,7 @@ public enum MessageDisposer {
     p["provenance"] = provenance
     p["bank"] = .string(m.bank)
     p["gates"] = gatesJSON(m.gates, template: m.gates.template ?? "none", card: card)
+    if let h = m.headerIDHash { p["dedupe"] = .object(JSONObject([("message_id", .string(h))])) }
     return MailboxIngestDraft(
       messageID: m.messageID, ingestID: m.ingestID, internalDateMs: m.internalDateMs, payload: p,
       needsReview: !filesItself)

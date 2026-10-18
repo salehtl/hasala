@@ -155,7 +155,7 @@ public enum ActivityEngine {
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime) -> ReviewSummary {
     // Skipped cards leave the deck until tomorrow, but they are still unsorted.
     let queue = s.txns.filter(\.inReview)
-    let unplanned = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + $1.amount.minor }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
   }

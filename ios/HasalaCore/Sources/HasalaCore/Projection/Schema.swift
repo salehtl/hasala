@@ -12,10 +12,10 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 2
+  public static let version = 4
 
   static let tables = [
-    "projection_meta", "txn", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
+    "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
     "plan_cell", "plan_move", "income_source", "category_plan_role", "plan_overwrite", "budget_split", "rate", "account", "card",
     "bill", "bill_resolution", "checkin", "fork_notice", "anomaly",
   ]
@@ -95,7 +95,13 @@ public enum ProjectionSchema {
       is_new_merchant       INTEGER NOT NULL,
       version               INTEGER NOT NULL,
       pending               INTEGER NOT NULL DEFAULT 0 CHECK (pending IN (0,1)),
-      review_lane           TEXT CHECK (review_lane IN ('unreadable','duplicate','needs_review','uncategorized'))
+      review_lane           TEXT CHECK (review_lane IN ('unreadable','duplicate','needs_review','uncategorized','copy')),
+      source_mailbox        TEXT,
+      source_provider       TEXT,
+      user_touched          INTEGER NOT NULL DEFAULT 0 CHECK (user_touched IN (0,1)),
+      copy_of               TEXT,
+      copy_decision         TEXT CHECK (copy_decision IN ('keep_both')),
+      held_copy             INTEGER NOT NULL DEFAULT 0 CHECK (held_copy IN (0,1))
     );
     CREATE INDEX txn_local_month ON txn(local_month, posted_ms DESC);
     CREATE INDEX txn_category    ON txn(category);
@@ -105,6 +111,21 @@ public enum ProjectionSchema {
     CREATE INDEX txn_mailbox_message ON txn(mailbox_message_id) WHERE mailbox_message_id IS NOT NULL;
     CREATE INDEX txn_needs_review    ON txn(needs_review) WHERE needs_review = 1;
     CREATE INDEX txn_review_lane     ON txn(review_lane) WHERE review_lane IS NOT NULL;
+    CREATE INDEX txn_source_mailbox  ON txn(source_provider, source_mailbox) WHERE source_mailbox IS NOT NULL;
+
+    CREATE TABLE txn_alias (
+      txn_id             TEXT NOT NULL REFERENCES txn(id),
+      idx                INTEGER NOT NULL,
+      alias_txn_id       TEXT NOT NULL,
+      ingest_id          TEXT NOT NULL,
+      source_mailbox     TEXT,
+      source_provider    TEXT,
+      mailbox_message_id TEXT,
+      kind               TEXT NOT NULL CHECK (kind IN ('certain','user')),
+      PRIMARY KEY (txn_id, idx)
+    );
+    CREATE INDEX txn_alias_ingest  ON txn_alias(ingest_id);
+    CREATE INDEX txn_alias_message ON txn_alias(mailbox_message_id) WHERE mailbox_message_id IS NOT NULL;
 
     CREATE TABLE txn_part (
       txn_id            TEXT NOT NULL REFERENCES txn(id),
@@ -277,7 +298,7 @@ public enum ProjectionSchema {
       JOIN txn t ON t.id = l.txn_id
       LEFT JOIN category c ON c.id = l.category
       LEFT JOIN project p ON p.id = t.project_id AND p.status <> 'removed'
-     WHERE t.superseded_by IS NULL AND t.unparsed = 0 AND t.archived IS NULL;
+     WHERE t.superseded_by IS NULL AND t.unparsed = 0 AND t.archived IS NULL AND t.held_copy = 0;
 
     CREATE VIEW rule_stats AS
       SELECT category_source_ref AS rule_id, COUNT(*) AS match_count
