@@ -102,8 +102,9 @@ public struct ReviewSummary: Sendable, Hashable {
 }
 
 public struct ActivitySnapshot: Sendable, Hashable {
-  public var month: YearMonth
-  /// "26 transactions this month".
+  public var period: Period
+  public var isThisMonth: Bool
+  /// "26 transactions this month", or "105 transactions · Aug – Oct 2026".
   public var countLine: String
   public var chips: [ActivityChip]
   public var filter: TxnFilter
@@ -120,11 +121,16 @@ public struct ActivitySnapshot: Sendable, Hashable {
 }
 
 public enum ActivityEngine {
-  public static func snapshot(_ s: LedgerState, now: LocalDateTime, filter: TxnFilter) -> ActivitySnapshot {
-    let month = now.date.yearMonth
-    let inMonth = s.txns.filter { $0.postedAt.date.yearMonth == month && !$0.archived }
-    let reviewQueue = inMonth.filter(\.inReview)
-    let billCount = inMonth.filter { isBill($0, s) && !$0.inReview }.count
+  public static func snapshot(
+    _ s: LedgerState, now: LocalDateTime, filter: TxnFilter, period: Period? = nil
+  ) -> ActivitySnapshot {
+    let today = now.date.yearMonth
+    let period = (period ?? .month(today)).clamped(to: today)
+    let isThisMonth = period == .month(today)
+    let window = ReviewWindow(period)
+    let inPeriod = s.txns.filter { !$0.archived && window.contains($0.postedAt.date) }
+    let reviewQueue = inPeriod.filter(\.inReview)
+    let billCount = inPeriod.filter { isBill($0, s) && !$0.inReview }.count
 
     let chips = [
       ActivityChip(kind: .all, count: nil, accentCount: false),
@@ -135,26 +141,28 @@ public enum ActivityEngine {
       ActivityChip(kind: .archived, count: nil, accentCount: false),
     ]
 
-    let listed = s.txns.filter { matches($0, filter, s, month: month) }.sorted { $0.postedAt > $1.postedAt }
+    let listed = s.txns.filter { matches($0, filter, s, in: window) }.sorted { $0.postedAt > $1.postedAt }
     let days = group(listed, s, today: now.date)
     let showsOverview = filter.kind == .all && filter.category == nil && !filter.isSearching
+    let n = inPeriod.count
+    let noun = "\(n) transaction\(n == 1 ? "" : "s")"
 
     return ActivitySnapshot(
-      month: month,
-      countLine: "\(inMonth.count) transaction\(inMonth.count == 1 ? "" : "s") this month",
+      period: period,
+      isThisMonth: isThisMonth,
+      countLine: isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)",
       chips: chips,
       filter: filter,
-      review: showsOverview && !reviewQueue.isEmpty ? reviewSummary(s, now: now) : nil,
-      comingUp: showsOverview ? comingUp(s, today: now.date, within: 7) : [],
+      review: showsOverview && !reviewQueue.isEmpty ? reviewSummary(s, now: now, in: window) : nil,
+      comingUp: showsOverview && period.contains(today) ? comingUp(s, today: now.date, within: 7) : [],
       days: days,
       rows: filter.category == nil ? [] : listed.map { dated($0, s) },
-      summary: filter.category.flatMap { summary($0, listed, s, now: now) }
+      summary: filter.category.flatMap { summary($0, listed, s, now: now, period: period) }
     )
   }
 
-  public static func reviewSummary(_ s: LedgerState, now: LocalDateTime) -> ReviewSummary {
-    // Skipped cards leave the deck until tomorrow, but they are still unsorted.
-    let queue = s.txns.filter(\.inReview)
+  public static func reviewSummary(_ s: LedgerState, now: LocalDateTime, in window: ReviewWindow = .all) -> ReviewSummary {
+    let queue = s.txns.filter { $0.inReview && window.contains($0.postedAt.date) }
     let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + $1.amount.minor }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
@@ -164,13 +172,13 @@ public enum ActivityEngine {
     t.billID != nil || s.category(t.categoryID)?.role == .bill
   }
 
-  static func matches(_ t: Txn, _ f: TxnFilter, _ s: LedgerState, month: YearMonth) -> Bool {
+  static func matches(_ t: Txn, _ f: TxnFilter, _ s: LedgerState, in window: ReviewWindow) -> Bool {
     if f.isSearching {
       let q = f.text.trimmedSpaces.lowercased()
       let hay = [t.title, t.provenance?.rawMerchant ?? "", t.note, s.category(t.categoryID)?.name ?? ""]
         .joined(separator: "\n").lowercased()
       if !hay.contains(q) { return false }
-    } else if t.postedAt.date.yearMonth != month {
+    } else if !window.contains(t.postedAt.date) {
       return false
     }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !t.countsInPlan { return false }
@@ -187,14 +195,16 @@ public enum ActivityEngine {
 
   static func group(_ txns: [Txn], _ s: LedgerState, today: LocalDate) -> [DayGroup] {
     var groups: [DayGroup] = []
+    var index: [LocalDate: Int] = [:]
     for t in txns {
       let d = t.postedAt.date
       let row = row(t, s)
       let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
-      if let i = groups.firstIndex(where: { $0.date == d }) {
+      if let i = index[d] {
         groups[i].rows.append(row)
         groups[i].total.minor += signed
       } else {
+        index[d] = groups.count
         groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row]))
       }
     }
@@ -285,20 +295,35 @@ public enum ActivityEngine {
     return s.category(b.categoryID)?.hue ?? .sand
   }
 
-  static func summary(_ c: CategoryID, _ txns: [Txn], _ s: LedgerState, now: LocalDateTime) -> FilterSummary? {
+  static func summary(
+    _ c: CategoryID, _ txns: [Txn], _ s: LedgerState, now: LocalDateTime, period: Period
+  ) -> FilterSummary? {
     guard let cat = s.category(c) else { return nil }
-    let month = now.date.yearMonth
-    let total = s.spent(c, in: month).minor
-    let budget = s.plan.budget(c, month).minor
-    let verdict = Pace.verdict(spent: total, budget: budget, day: now.date.day, days: month.days,
-                               paced: cat.role == .everyday)
+    let total = period.months.reduce(Int64(0)) { $0 + s.spent(c, in: $1).minor }
+    let budget = period.months.reduce(Int64(0)) { $0 + s.plan.budget(c, $1).minor }
+    let (day, days) = elapsed(period, today: now.date)
+    let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)
     let pct = budget > 0 ? total * 100 / budget : 0
     return FilterSummary(
       title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
-      today: Pace.monthGone(day: now.date.day, days: month.days), verdict: verdict,
+      today: Pace.monthGone(day: day, days: days), verdict: verdict,
       caption: MoneyPhrase([
         .text("\(pct)% of \(cat.name)\(cat.name.hasSuffix("s") ? "'" : "'s") "), .amount(.aed(budget), .compact),
       ])
     )
+  }
+
+  public static func elapsed(_ period: Period, today: LocalDate) -> (day: Int, days: Int) {
+    var day = 0
+    var days = 0
+    for m in period.months {
+      days += m.days
+      if m < today.yearMonth {
+        day += m.days
+      } else if m == today.yearMonth {
+        day += today.day
+      }
+    }
+    return (day, days)
   }
 }

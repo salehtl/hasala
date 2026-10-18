@@ -19,6 +19,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaSample
   case firstDays
   case mayaCopy
+  case mayaRange
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -50,6 +51,9 @@ public enum Scenario: String, Sendable, CaseIterable {
       copy.heldCopy = HeldCopy(of: "starbucks", fromOtherInbox: true)
       copy.isNewMerchant = false
       s.txns.append(copy)
+    }
+    if self == .mayaRange {
+      s.txns += MayaHistory.rangeReview
     }
     if self == .mayaSample {
       var n = 0

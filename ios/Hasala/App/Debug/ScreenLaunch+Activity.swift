@@ -10,6 +10,10 @@
     static let activityScreens: [Screen] = [
       // Activity · Overview (Paper 1QG-0).
       Screen("activity", scenario: "maya", prepare: shell(.activity)),
+      Screen("activity.range", scenario: "maya", prepare: { graph in
+        graph.app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
+        shell(.activity)(graph)
+      }),
       // Activity · Transaction detail (Carrefour) (3FZ-0).
       Screen("activity.txn", scenario: "maya", prepare: shell(.activity, sheet: .transaction("carrefour"))),
       // Activity · Choose a category (Lulu) (5PR-0): a to-review row's sheet, then Category.
@@ -31,6 +35,10 @@
       }),
       // Review · Tab · To sort (6) (NPV-0).
       Screen("review", scenario: "maya", prepare: shell(.review)),
+      Screen("review.range", scenario: "maya", prepare: { graph in
+        graph.app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
+        shell(.review)(graph)
+      }),
       // Review · Deck (2 of 6) (26H-0): the Apple.com row opens the deck, "Use" files it, and
       // Lulu Hypermarket is on top, 2 of 6.
       Screen("review.deck", scenario: "maya", prepare: { graph in

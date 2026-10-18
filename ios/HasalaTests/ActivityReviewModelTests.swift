@@ -104,6 +104,34 @@ struct ActivityReviewModelTests {
     #expect(ReviewTabView.emptyLine(app.period) == "Nothing in Aug – Oct 2026 needs a look.")
   }
 
+  @Test func aPeriodChosenInActivityScopesHomeAndReview() throws {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaRange.state))
+    let activity = ActivityViewModel(app: app)
+    #expect(activity.snapshot.isThisMonth && app.snapshot.isThisMonth)
+    #expect(app.reviewCount == 6)
+    activity.choosePeriod()
+    #expect(app.sheet == .period)
+    let range = Period(YearMonth(2026, 8), YearMonth(2026, 10))
+    app.period = range
+    app.sheet = nil
+    #expect(activity.snapshot.period == range && !activity.snapshot.isThisMonth)
+    #expect(activity.snapshot.days.contains { $0.date.yearMonth == YearMonth(2026, 8) })
+    #expect(app.snapshot.period == range)
+    #expect(app.reviewWindow == ReviewWindow(range))
+    #expect(app.reviewCount == 9)
+    let review = try #require(app.snapshot.aboutNow.first { $0.id == "review" })
+    #expect(review.detail.rendered(hidden: false) == "9 waiting")
+    let deck = ReviewViewModel(app: app)
+    #expect(Set(deck.cards.map(\.id)).isSuperset(of: ["aug-corner-shop", "sep-steam", "aug-talabat-copy"]))
+    #expect(deck.cards.first { $0.id == "sep-steam" }?.senderUnverified == true)
+    #expect(deck.cards.first { $0.id == "aug-talabat-copy" }?.reviewReason == .probableCopy)
+    #expect(ReviewTabView.emptyLine(app.period) == "Nothing in Aug – Oct 2026 needs a look.")
+    #expect(app.thisMonthSnapshot.isThisMonth)
+    activity.backToThisMonth()
+    #expect(app.period == .month(MayaLedger.october))
+    #expect(activity.snapshot.isThisMonth && app.snapshot.isThisMonth && app.reviewCount == 6)
+  }
+
   /// The Review tab's line under the title, about ten seconds a card.
   @Test func theReviewTabSaysHowLongItTakes() {
     #expect(ReviewTabView.countLine(6) == "6 to sort · about a minute")
