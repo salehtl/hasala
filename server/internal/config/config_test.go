@@ -71,7 +71,8 @@ func TestDefaultsAreSpec02s(t *testing.T) {
 	if c.APNs.Enabled || c.APNs.Topic != "app.hasala.ios" || strings.Join(c.APNs.AllowedEnvironments, ",") != "production,sandbox" {
 		t.Errorf("apns defaults = %+v", c.APNs)
 	}
-	if c.Email.From != "no-reply@hasala.app" || c.Email.FromName != "Hasala" || c.Email.FreezeURL != "https://hasala.app/freeze" ||
+	if c.Email.From != "no-reply@hasala.app" || c.Email.FromName != "Hasala" ||
+		c.Email.ReplyTo != "support@hasala.app" || c.Email.FreezeURL != "https://hasala.app/freeze" ||
 		c.Email.WebBaseURL != "https://hasala.app" || c.Email.Enabled() || c.Gmail.LinkEnabled() || c.Gmail.PushEnabled() {
 		t.Errorf("email/gmail defaults = %+v / %+v", c.Email, c.Gmail)
 	}
@@ -177,6 +178,7 @@ func TestTheOptionalGroupsAreAllOrNothing(t *testing.T) {
 	wantErr(t, env{"HASALA_EMAIL_CF_ACCOUNT_ID": strings.Repeat("a", 32)}, "API_TOKEN_FILE")
 	wantErr(t, env{"HASALA_EMAIL_CF_ACCOUNT_ID": "nothex", "HASALA_EMAIL_API_TOKEN_FILE": key}, "32 lowercase hex")
 	wantErr(t, env{"HASALA_EMAIL_FROM": "no-reply@example.test"}, "hasala.app")
+	wantErr(t, env{"HASALA_EMAIL_REPLY_TO": "support@example.test"}, "email.reply_to")
 	wantErr(t, env{"HASALA_FREEZE_URL": "http://hasala.app/freeze"}, "https URL on hasala.app")
 	wantErr(t, env{"HASALA_WEB_BASE_URL": "https://evil.test"}, "https URL on hasala.app")
 }

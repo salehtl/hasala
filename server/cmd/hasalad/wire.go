@@ -60,6 +60,7 @@ func newSender(cfg config.Config) (mail.Sender, error) {
 		return nil, refusal{err}
 	}
 	cf.FromName = cfg.Email.FromName
+	cf.ReplyTo = cfg.Email.ReplyTo
 	if cfg.Email.APIBaseURL != "" && cfg.Email.APIBaseURL != mail.DefaultBaseURL {
 		cf.BaseURL = cfg.Email.APIBaseURL
 		slog.Warn("hasalad serve: email goes to a non-default API base (HASALA_EMAIL_API_BASE_URL); local runs only")

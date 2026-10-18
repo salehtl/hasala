@@ -354,6 +354,10 @@ let
       "M11"
       (hasala { email.from = "no-reply@example.com"; })
     ];
+    "email.replyTo outside rpId" = [
+      "M11"
+      (hasala { email.replyTo = "support@example.com"; })
+    ];
     "tunnel without authKeyFile" = [
       "M12"
       (hasala (tunnelOn // { authKeyFile = null; }))
@@ -662,6 +666,7 @@ let
     "HASALA_EMAIL_API_TOKEN_FILE"
     "HASALA_EMAIL_FROM"
     "HASALA_EMAIL_FROM_NAME"
+    "HASALA_EMAIL_REPLY_TO"
     "HASALA_PASSWORD_HASH_CONCURRENCY"
     "HASALA_PURGE_LEDGER_PATH"
     "HASALA_LOG_GENERATION_FILE"
