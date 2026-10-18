@@ -4,16 +4,15 @@ import SwiftUI
 
 /// Review · Pick a need (Paper 3SH-0), and its Want, Save and Transfer equivalents: a white
 /// medium sheet floating 8 from the edges (radius 40), one detent that fits its content. The
-/// bucket's categories with the suggestion ticked and marked "Suggested", the project chips,
-/// "Always use X for M", and "Sort into X". Close, a swipe down or the scrim cancel: nothing
-/// is sorted and the card goes back to the deck. At large text sizes it grows to large and
+/// bucket's categories with the suggestion marked "Suggested", the project chips and "Always
+/// use it for M". A tap on a category files the card at once. Close, a swipe down or the
+/// scrim cancel: nothing is sorted and the card goes back to the deck. At large text sizes it grows to large and
 /// scrolls (page 14).
 struct ReviewPickSheet: View {
   let model: any ReviewDeckModel
   let pick: ReviewPick
   let sort: (CategoryID, Bool, ProjectID?) -> Void
 
-  @State private var selected: CategoryID?
   @State private var project: ProjectID?
   @State private var alwaysUse = true
   /// The content's measured height, which the one detent fits; an estimate until then.
@@ -22,7 +21,6 @@ struct ReviewPickSheet: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var options: [CategoryOption] { model.options(for: pick.choice, card: pick.card.id) }
-  private var selectedName: String? { options.first { $0.id == selected }?.name }
 
   var body: some View {
     ScrollView {
@@ -31,12 +29,6 @@ struct ReviewPickSheet: View {
         list
         if !model.projects.isEmpty, pick.choice != .transfer { projects }
         ruleRow
-        Button(selectedName.map { "Sort into \($0)" } ?? "Choose a category") {
-          if let selected { sort(selected, alwaysUse, project) }
-        }
-        .buttonStyle(.pill(.primary, fill: true))
-        .disabled(selected == nil)
-        .accessibilityIdentifier("pick.sort")
       }
       .padding(.top, 8)
       .padding(.horizontal, HSpacing.insetPage)
@@ -52,19 +44,18 @@ struct ReviewPickSheet: View {
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
     .onAppear {
-      selected = options.first { $0.id == pick.card.suggestion?.id }?.id ?? options.first?.id
       // A transfer is not a merchant's habit: no rule unless the person asks for one.
       alwaysUse = pick.choice != .transfer
     }
   }
 
   /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
-  /// 56 with 1 dividers, the project block 66, the rule row 44, the button 54, gaps 20, and
-  /// the 8 / 28 insets), so it opens at its size instead of growing into it.
+  /// 56 with 1 dividers, the project block 66, the rule row 44, gaps 20, and the 8 / 28
+  /// insets), so it opens at its size instead of growing into it.
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
     let projects: CGFloat = model.projects.isEmpty || pick.choice == .transfer ? 0 : 66 + 20
-    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 20 + 54 + 28
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
@@ -84,14 +75,14 @@ struct ReviewPickSheet: View {
     .padding(.top, 12)
   }
 
-  /// The bucket's categories, straight on the sheet: disc 40, name, "Suggested", the tick.
+  /// The bucket's categories, straight on the sheet: disc 40, name, "Suggested".
   private var list: some View {
     VStack(spacing: 0) {
       ForEach(Array(options.enumerated()), id: \.element.id) { i, o in
         if i > 0 {
           HColor.borderSubtle.frame(height: 1).padding(.leading, 52).accessibilityHidden(true)
         }
-        Button { selected = o.id } label: {
+        Button { sort(o.id, alwaysUse, project) } label: {
           HStack(spacing: 12) {
             CategoryDisc(hue: o.hue, icon: o.glyph.icon)
             Text(o.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
@@ -100,10 +91,6 @@ struct ReviewPickSheet: View {
               InfoChip("Suggested", style: .suggested)
             }
             Spacer(minLength: 8)
-            ZStack {
-              if selected == o.id { HIconView(.check, size: 22, color: HColor.listRowCheck) }
-            }
-            .frame(width: 24, height: 24)
           }
           .frame(minHeight: 56)
           .contentShape(Rectangle())
@@ -111,7 +98,8 @@ struct ReviewPickSheet: View {
         .buttonStyle(HRowPressStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pick.card.suggestion?.id == o.id ? "\(o.name), suggested" : o.name)
-        .accessibilityAddTraits(selected == o.id ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Sorts it now")
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("pick.\(o.id)")
       }
     }
@@ -135,7 +123,7 @@ struct ReviewPickSheet: View {
 
   private var ruleRow: some View {
     Toggle(isOn: $alwaysUse) {
-      Text("Always use \(selectedName ?? "it") for \(pick.card.merchant)")
+      Text("Always use it for \(pick.card.merchant)")
         .hType(.subheadline.weight(.medium))
         .foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)

@@ -25,6 +25,7 @@ public struct GlassToast: View {
   let actionTitle: String?
   let action: (() -> Void)?
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   /// One line + Undo ("Sorted into Groceries"), two lines + Show ("Amounts hidden" / "Until you
   /// tap the eye again"), or one line with no action ("Bill marked as paid").
@@ -51,7 +52,6 @@ public struct GlassToast: View {
         }
       }
       .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 8)
       if let actionTitle {
         Button(actionTitle) { action?() }
           .buttonStyle(.plain)
@@ -80,7 +80,10 @@ public struct GlassToast: View {
     .shadow(color: HColor.materialGlassShadowFar, radius: 12, x: 0, y: 8)
     // Contain, not combine: the action ("Undo", "Show") stays its own button.
     .accessibilityElement(children: .contain)
+    .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : Self.maxWidth)
   }
+
+  public static let maxWidth: CGFloat = 320
 
   @ViewBuilder private var discView: some View {
     switch disc {

@@ -126,7 +126,7 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(waitForLabel(position, containing: "1 of 6", timeout: 15),
                   "the deck reads '\(position.exists ? position.label : "nothing")'")
     tap(app, "review.pill.transfer")
-    tap(app, "pick.sort")
+    tap(app, "pick.transfer")
     XCTAssertTrue(waitForLabel(position, containing: "2 of 6", timeout: 15), "the card was not sorted")
     attach(app, "Review · one sorted")
     tap(app, "review.close")

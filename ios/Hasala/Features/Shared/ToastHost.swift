@@ -1,7 +1,7 @@
 import HasalaDesign
 import SwiftUI
 
-/// Floats the app's toast (Paper page 14 §03 "Toast"): the glass strip 20 from the sides,
+/// Floats the app's toast (Paper page 14 §03 "Toast"): the glass strip, hugging its words up to 320 and centred,
 /// 14 above the tab bar, or on the home indicator's safe area (34 from the bottom) where
 /// there is no bar. Every tab root, sheet and pushed screen that can show a toast hosts one
 /// (`toast`, with its action as a button inside).

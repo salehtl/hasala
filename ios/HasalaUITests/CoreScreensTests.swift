@@ -146,15 +146,16 @@ final class CoreScreensTests: XCTestCase {
 
     // Drag the first card (the ATM withdrawal) up: Transfer.
     drag(app, to: CGVector(dx: 0.5, dy: 0.05))
-    let sort = element(app, "pick.sort")
-    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    let sheet = element(app, "pick.close")
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Transfer · which one?"].exists)
     attach(app, "Review · Pick transfer")
     try audit(app)
     element(app, "pick.transfer").tap()
-    sort.tap()
     XCTAssertTrue(app.staticTexts["Sorted into Transfer"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
     XCTAssertEqual(position.label, "2 of 6")
+    attach(app, "Review · Deck after a one-tap sort")
 
     // Undo puts it back.
     element(app, "toast").buttons["Undo"].tap()
@@ -162,13 +163,12 @@ final class CoreScreensTests: XCTestCase {
 
     // Sort it again from the pill.
     element(app, "review.pill.transfer").tap()
-    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
     element(app, "pick.transfer").tap()
-    sort.tap()
     XCTAssertTrue(position.waitForLabel("2 of 6"))
 
     // Card 2: money in; skip it for now.
-    XCTAssertTrue(sort.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
     let skip = element(app, "review.skip")
     XCTAssertTrue(skip.waitForExistence(timeout: uiWait) && skip.isHittable)
     skip.tap()
@@ -183,9 +183,9 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(merchant.waitForLabel(containing: "Steam"), merchant.debugDescription)
     XCTAssertFalse(element(app, "review.use").exists)
     element(app, "review.pill.want").tap()
-    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
     element(app, "pick.alwaysUse").tap()
-    sort.tap()
+    element(app, "pick.entertainment").tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     XCTAssertEqual(element(app, "review.done.tally").label, "5 sorted")
     attach(app, "Review · All caught up")
@@ -214,7 +214,7 @@ final class CoreScreensTests: XCTestCase {
     drag(app, to: CGVector(dx: 0.02, dy: 0.5))
     XCTAssertTrue(app.staticTexts["Want · which one?"].waitForExistence(timeout: uiWait))
     element(app, "pick.close").tap()
-    XCTAssertTrue(element(app, "pick.sort").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(element(app, "pick.close").waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(merchant.waitForLabel(containing: "Lulu Hypermarket"))
     XCTAssertEqual(element(app, "review.position").label, "1 of 6")
 
@@ -241,7 +241,7 @@ final class CoreScreensTests: XCTestCase {
     for offset in [CGVector(dx: 60, dy: 0), CGVector(dx: -60, dy: 0), CGVector(dx: 0, dy: -50), CGVector(dx: 0, dy: 50)] {
       middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(offset), withVelocity: 120,
                    thenHoldForDuration: 0.3)
-      XCTAssertFalse(element(app, "pick.sort").waitForExistence(timeout: 1), "a short drag committed")
+      XCTAssertFalse(element(app, "pick.close").waitForExistence(timeout: 1), "a short drag committed")
     }
     XCTAssertTrue(merchant.label.contains("ADCB ATM withdrawal"))
     XCTAssertEqual(element(app, "review.position").label, "1 of 6")
@@ -264,13 +264,12 @@ final class CoreScreensTests: XCTestCase {
     let card = element(app, "review.card")
     let rest = card.frame
     drag(app, to: CGVector(dx: 0.98, dy: 0.5))
-    let sort = element(app, "pick.sort")
-    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    let sheet = element(app, "pick.close")
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
     XCTAssertEqual(card.frame.midX, rest.midX, accuracy: 1, "the card leans with Reduce Motion")
     XCTAssertEqual(card.frame.midY, rest.midY, accuracy: 1, "the card leans with Reduce Motion")
     attach(app, "Reduce Motion · Pick a need")
     element(app, "pick.rent").tap()
-    sort.tap()
     XCTAssertTrue(position.waitForLabel("2 of 6"))
     attach(app, "Reduce Motion · Deck")
     try audit(app)
@@ -278,10 +277,9 @@ final class CoreScreensTests: XCTestCase {
     // Money in: the Transfer pill (the card stays put); then Use for the four suggestions.
     let second = card.frame
     element(app, "review.pill.transfer").tap()
-    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
     XCTAssertEqual(card.frame.midY, second.midY, accuracy: 1, "the card rises with Reduce Motion")
     element(app, "pick.salary").tap()
-    sort.tap()
     for _ in 0..<3 {
       let use = element(app, "review.use")
       XCTAssertTrue(use.waitForExistence(timeout: uiWait))
@@ -289,9 +287,9 @@ final class CoreScreensTests: XCTestCase {
     }
     // Steam's sender is not verified: no Use, so a pill and the pick sheet, without a rule.
     element(app, "review.pill.want").tap()
-    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
     element(app, "pick.alwaysUse").tap()
-    sort.tap()
+    element(app, "pick.entertainment").tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     // Need asks to remember the merchant by default: one rule.
     XCTAssertEqual(element(app, "review.done.tally").label, "6 sorted · 1 new rule")
