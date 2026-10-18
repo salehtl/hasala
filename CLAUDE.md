@@ -217,6 +217,15 @@ Release scripts:
   that is not a plist. They also do not search compressed resources (zip,
   gzip, LZFSE, compressed data in `Assets.car`). Thus the endpoint guard is
   the exact `HasalaAPIBaseURL` check, not the dev-host search.
+- `archive.sh` makes a release only from a local branch with the name
+  `main` (exit 11 on other branches). `--allow-branch` makes a TRIAL build,
+  and `upload.sh` does not upload a TRIAL build. If another worktree uses
+  `main`, make a release worktree on the branch `main`, then
+  `git merge --ff-only origin/main` in it.
+- An update of Xcode stops all simulator work. The `simctl` wrapper runs
+  `xcodebuild -runFirstLaunch`, and this command waits for the admin
+  password of the owner. Until the owner gives it, `simctl` and the UI
+  tests stop with no error.
 - `ios/scripts/tests/run.sh` runs the release-script tests offline (stub
   xcodebuild and altool, fake keys, synthetic .ipa files).
   `ios/scripts/tests/devshell_test.sh` runs them again in the devShell, where
@@ -272,6 +281,21 @@ There are two Postgres roles:
 
 Tests start their own temporary cluster (`internal/pgtest`). To use one
 cluster again, set `HASALA_TEST_POSTGRES_URL`.
+
+### Rules for agents on this Mac
+
+- Do not write code comments. (The owner set this rule to save tokens.)
+- Do not change the branch of the main checkout. Other agents use it. Do
+  your work in your own worktree in `.claude/worktrees/`. Do not use
+  `git stash`, because all worktrees share it.
+- Search only in specific paths. Do not search all of the home folder. A
+  search in `~/Music` or the iCloud folder causes a macOS permission prompt.
+- Start at most four agents that use a simulator at the same time. Each
+  agent uses its own simulator and its own `-derivedDataPath`, and gives
+  `-jobs 4` to `xcodebuild`. Shut down the simulator when you stop, and
+  delete it when the work is complete. With more simulators, the Mac uses
+  all of its memory and the UI tests fail on timeouts.
+- The repository merges pull requests only with squash.
 
 ## Website
 
