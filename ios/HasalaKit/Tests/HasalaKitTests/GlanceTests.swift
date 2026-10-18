@@ -16,13 +16,15 @@ struct GlanceEngineTests {
 
   @Test func spentSoFarIsTheHero() throws {
     let w = try #require(snapshot().spentSoFar)
-    #expect(MoneyFormat.string(w.spent.minor, style: .rounded) == "10,288")
+    #expect(w.spent == HomeEngine.snapshot(s, now: now).hero.spent)
+    #expect(w.spent == .aed(Spending.total(s, in: MayaLedger.october)))
+    #expect(MoneyFormat.string(w.spent.minor, style: .rounded) == "11,116")
     #expect(w.verdict == .onTrack)
-    #expect(w.caption.rendered(hidden: false) == "On track · 8,712 left")
+    #expect(w.caption.rendered(hidden: false) == "On track · 7,884 left")
     #expect(w.caption.rendered(hidden: true) == "On track · ••• left")
     #expect(w.billWords == "1 bill due Wed")
     #expect(w.billNamed == "DEWA on Wed")
-    #expect(MoneyFormat.short(w.spent.minor) == "10.3K")
+    #expect(MoneyFormat.short(w.spent.minor) == "11.1K")
   }
 
   @Test func theLaunchSetIsFilled() {
