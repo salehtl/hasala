@@ -299,6 +299,7 @@ final class BootController {
     // What was searched belongs to the account that is closing (merchant names): the next
     // account opened in this process starts with none.
     SearchHistory.shared.clear()
+    WidgetLinkInbox.shared.pending = nil
     widgets?.stop()
     widgets = nil
     WidgetPublisher.clear()
