@@ -10,21 +10,47 @@ import SwiftUI
 private let widgetShadowNear = Color(HRGBA(0, 0, 0, 0.0588))  // #0000000F
 private let widgetShadowFar = Color(HRGBA(0, 0, 0, 0.0784))  // #00000014
 
+public enum WidgetHost: Sendable, Hashable {
+  case canvas
+  case system
+}
+
+public extension EnvironmentValues {
+  @Entry var widgetHost: WidgetHost = .canvas
+}
+
+struct WidgetChrome<S: ShapeStyle, B: View>: ViewModifier {
+  @Environment(\.widgetHost) private var host
+  let fill: S
+  let padding: EdgeInsets
+  let minHeight: CGFloat?
+  let backdrop: B
+
+  func body(content: Content) -> some View {
+    switch host {
+    case .canvas:
+      content
+        .padding(padding)
+        .frame(minHeight: minHeight)
+        .background(alignment: .top) { backdrop }
+        .background(fill, in: RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous))
+        .shadow(color: widgetShadowNear, radius: 1, x: 0, y: 1)
+        .shadow(color: widgetShadowFar, radius: 12, x: 0, y: 8)
+    case .system:
+      content
+        .padding(padding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(alignment: .top) { backdrop }
+    }
+  }
+}
+
 extension View {
-  /// The card: `padding` inside, at least `minHeight` tall with the padding counted in, the
-  /// fill, r26, the content clipped, and the two literal shadows. `backdrop` draws between the
-  /// fill and the content, in the card's own frame (the net-worth sparkline).
   func widgetChrome<S: ShapeStyle, B: View>(
     _ fill: S, padding: EdgeInsets, minHeight: CGFloat? = nil, @ViewBuilder backdrop: () -> B
   ) -> some View {
-    self
-      .padding(padding)
-      .frame(minHeight: minHeight)
-      .background(alignment: .top, content: backdrop)
-      .background(fill, in: RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous))
-      .clipShape(RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous))
-      .shadow(color: widgetShadowNear, radius: 1, x: 0, y: 1)
-      .shadow(color: widgetShadowFar, radius: 12, x: 0, y: 8)
+    modifier(WidgetChrome(fill: fill, padding: padding, minHeight: minHeight, backdrop: backdrop()))
   }
 
   func widgetChrome<S: ShapeStyle>(_ fill: S, padding: EdgeInsets, minHeight: CGFloat? = nil) -> some View {
@@ -77,6 +103,7 @@ private func wholeDirhams(_ m: Money, _ word: String) -> MoneyPhrase {
 public struct BudgetPaceWidgetView: View {
   let model: BudgetPaceWidget
   let hidden: Bool
+  @Environment(\.widgetHost) private var host
 
   public init(_ model: BudgetPaceWidget, hidden: Bool) {
     self.model = model
@@ -84,7 +111,7 @@ public struct BudgetPaceWidgetView: View {
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: host == .system ? 8 : 12) {
       ReflowingRow {
         HStack(spacing: 8) {
           Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
@@ -101,7 +128,7 @@ public struct BudgetPaceWidgetView: View {
             HStack(spacing: 8) {
               Circle().fill(row.bucket.hue.dotGradient).frame(width: 10, height: 10)
               Text(row.bucket.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-              Text(spentOfPlan(row)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+              Text(spentOfPlan(row)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary)
                 .singleLineAtDefaultTextSize()
             }
           } trailing: {
@@ -115,7 +142,9 @@ public struct BudgetPaceWidgetView: View {
         .accessibilityValue(rowSummary(row))
       }
     }
-    .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+    .widgetChrome(HColor.widgetSurface, padding: host == .system
+      ? EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16)
+      : EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Budget pace, \(model.monthGone)")
   }
@@ -128,10 +157,10 @@ public struct BudgetPaceWidgetView: View {
         Text("Done").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusSuccessForeground)
       }
     case .overBudget:
-      Text(leftPhrase(row).rendered(hidden: hidden))
+      Text(leftPhrase(row).rendered(hidden: hidden)).privacySensitive()
         .hFigure(.compact).foregroundStyle(HColor.paceOverBudget).singleLineAtDefaultTextSize()
     case .onTrack, .overPace:
-      Text(leftPhrase(row).rendered(hidden: hidden))
+      Text(leftPhrase(row).rendered(hidden: hidden)).privacySensitive()
         .hFigure(.compact).foregroundStyle(HColor.textPrimary).singleLineAtDefaultTextSize()
     }
   }
@@ -242,7 +271,7 @@ public struct NetWorthWidgetView: View {
                   hiddenGlyphs: 6, hiddenDots: 22, color: HColor.widgetOnInverse, unitColor: HColor.widgetOnInverseSecondary, unitGap: 4)
         HStack(spacing: 6) {
           Circle().fill(changeColor).frame(width: 7, height: 7)
-          Text(model.change.rendered(hidden: hidden)).hType(.footnote.weight(.semibold))
+          Text(model.change.rendered(hidden: hidden)).privacySensitive().hType(.footnote.weight(.semibold))
             .foregroundStyle(changeColor)
             .accessibilityLabel(model.change.spoken(hidden: hidden))
         }
@@ -330,7 +359,7 @@ public struct ProjectWidgetView: View {
                       hiddenDots: 24, color: HColor.textPrimary)
             Text("left").hFigure(.widgetUnit).foregroundStyle(HColor.textPrimary)
           }
-          Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary)
             .lineLimitAtDefaultTextSize(2)
             .accessibilityLabel(model.caption.spoken(hidden: hidden))
         }
@@ -366,7 +395,7 @@ public struct GoalWidgetView: View {
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 0) {
           Text(model.percentLabel).hFigure(.hero).foregroundStyle(Hue.mint.ink)
-          Text(model.caption.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+          Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
             .lineLimitAtDefaultTextSize(2)
             .accessibilityLabel(model.caption.spoken(hidden: hidden))
         }
@@ -386,6 +415,7 @@ public struct GoalWidgetView: View {
 public struct TodayWidgetView: View {
   let model: TodayWidget
   let hidden: Bool
+  @Environment(\.widgetHost) private var host
 
   public init(_ model: TodayWidget, hidden: Bool) {
     self.model = model
@@ -398,11 +428,11 @@ public struct TodayWidgetView: View {
         Text("Today").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
       } trailing: {
-        Text(model.summary.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        Text(model.summary.rendered(hidden: hidden)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary)
           .accessibilityLabel(model.summary.spoken(hidden: hidden))
       }
       .padding(.bottom, 4)
-      ForEach(model.rows) { TodayRow(row: $0, hidden: hidden) }
+      ForEach(host == .system ? Array(model.rows.prefix(2)) : model.rows) { TodayRow(row: $0, hidden: hidden) }
     }
     .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16))
     .accessibilityElement(children: .contain)
@@ -450,9 +480,9 @@ struct TodayRow: View {
 
   private var words: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Text(row.merchant).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+      Text(row.merchant).privacySensitive().hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .singleLineAtDefaultTextSize()
-      Text(row.detail).hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
+      Text(row.detail).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
     }
   }
 

@@ -22,7 +22,7 @@ public struct Money: Sendable, Hashable, Codable {
 }
 
 /// How many fraction digits an amount is shown with.
-public enum MoneyStyle: Sendable, Hashable {
+public enum MoneyStyle: String, Sendable, Hashable, Codable {
   /// Always two decimals: `2,282.45`, `0.00`.
   case exact
   /// Whole units when there are no fils, two decimals otherwise: `12,350`, `9,040.80`.
