@@ -115,11 +115,20 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	}
 
 	// Confirm: once confirmed, then already_confirmed; a bad token is 410.
+	// The operator's notice hook runs for the first only.
+	notices := 0
+	r.wl.OnConfirmed = func() { notices++ }
 	if w := r.post("/api/v1/waitlist/confirm", `{"token":"`+l["waitlist/confirm"]+`"}`, nil); w.Body.String() != `{"status":"confirmed"}` {
 		t.Fatalf("confirm %d %s", w.Code, w.Body)
 	}
+	if notices != 1 {
+		t.Fatalf("OnConfirmed ran %d times for a confirmation, want 1", notices)
+	}
 	if w := r.post("/api/v1/waitlist/confirm", `{"token":"`+l["waitlist/confirm"]+`"}`, nil); w.Body.String() != `{"status":"already_confirmed"}` {
 		t.Fatalf("second confirm %s", w.Body)
+	}
+	if notices != 1 {
+		t.Fatalf("OnConfirmed ran again for already_confirmed (%d)", notices)
 	}
 	wantStatus(t, r.post("/api/v1/waitlist/confirm", `{"token":"`+strings.Repeat("A", 43)+`"}`, nil), http.StatusGone)
 	wantStatus(t, r.post("/api/v1/waitlist/confirm", `{"token":"short"}`, nil), http.StatusBadRequest)
