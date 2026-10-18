@@ -31,12 +31,17 @@ struct SignInView: View {
   private var passwordFailure: AuthFailure? { model.lastTried == .password ? failure : nil }
   private var passkeyFailure: AuthFailure? { model.lastTried == .passkey ? failure : nil }
 
+  private static let formID = "signIn.form"
+
   var body: some View {
     AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         if passkey { passkeyGroup }
         if passkey && password { OrDivider(label: "or use your email") }
-        if password { passwordFields }
+        if password {
+          VStack(alignment: .leading, spacing: 12) { passwordFields }
+            .id(Self.formID)
+        }
       }
     } footer: {
       if capabilities.contains(.recoverAccess) {
@@ -46,6 +51,7 @@ struct SignInView: View {
         SupportLink(lead: "Trouble signing in?", identifier: "signIn.support")
       }
     }
+    .revealsOnKeyboard(Self.formID)
   }
 
   private var passkeyGroup: some View {

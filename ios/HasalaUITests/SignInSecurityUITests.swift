@@ -39,6 +39,37 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
+  /// Welcome back with the keyboard up (the beta's links: recover, email support, the
+  /// support page): the links step aside, the email, the password and "Sign in with
+  /// password" stay above the keyboard, and Return on the email moves to the password.
+  @MainActor
+  func testSignInFormStaysAboveTheKeyboard() throws {
+    try signInFormStaysAbove(arguments: [])
+  }
+
+  @MainActor
+  func testSignInFormStaysAboveTheKeyboardAtLargeText() throws {
+    try signInFormStaysAbove(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXXL"])
+  }
+
+  @MainActor
+  private func signInFormStaysAbove(arguments: [String]) throws {
+    let app = launch(scenario: nil, screen: "signin", release: true, arguments: arguments)
+    XCTAssertTrue(el(app, "signIn.recover").waitForExistence(timeout: 15))
+    let links = ["signIn.recover", "signIn.support", "signIn.support.web"]
+    tap(app, "signIn.email")
+    assertClearOfKeyboard(app, shown: ["signIn.email", "signIn.password", "signIn.withPassword"], hidden: links,
+                          "Keyboard · Sign in · email")
+    el(app, "signIn.email").typeText("maya@example.com\n")
+    let password = el(app, "signIn.password")
+    let focused = NSPredicate(format: "hasKeyboardFocus == true")
+    XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: focused, object: password)],
+                                    timeout: uiWait), .completed, "Return on the email didn't move to the password")
+    XCTAssertEqual(el(app, "signIn.email").value as? String, "maya@example.com")
+    assertClearOfKeyboard(app, shown: ["signIn.password", "signIn.withPassword"], hidden: links,
+                          "Keyboard · Sign in · password")
+  }
+
   // MARK: - New iPhone: unlock
 
   /// Password-only (Paper G80 → GDD → GJJ → GL7): the words only, Return on the twelfth

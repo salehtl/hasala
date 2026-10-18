@@ -1,4 +1,5 @@
 import Foundation
+import HasalaDesign
 import SwiftUI
 import Testing
 
@@ -555,6 +556,24 @@ struct StoryClockTests {
     // A finished story doesn't run again.
     c.resume(at: t0)
     #expect(!c.isRunning)
+  }
+}
+
+/// The welcome cards' idle float: every phase stays finite and within ±4 pt for the whole
+/// loop, starting and ending at rest, so a card never loses its place on screen.
+@MainActor
+@Suite("Welcome idle float")
+struct IdleFloatTests {
+  @Test(arguments: 0..<4) func theFloatStaysInPlace(phase: Int) {
+    let timeline = KeyframeTimeline(initialValue: CGFloat.zero) { IdleFloat.track(phase: phase) }
+    #expect(abs(timeline.duration - HMotion.idlePeriod) < 0.001)
+    for step in 0...400 {
+      let y = timeline.value(time: timeline.duration * Double(step) / 400)
+      #expect(y.isFinite)
+      #expect(abs(y) <= HMotion.idleFloat + 0.5)
+    }
+    #expect(abs(timeline.value(time: 0)) < 0.001)
+    #expect(abs(timeline.value(time: timeline.duration)) < 0.001)
   }
 }
 

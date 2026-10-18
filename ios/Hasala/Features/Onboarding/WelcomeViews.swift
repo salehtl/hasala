@@ -146,7 +146,10 @@ struct StoriesView: View {
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
     .hHaptic(.selection, trigger: settles)
     .onAppear(perform: appeared)
-    .onDisappear { onScreen = false }
+    .onDisappear {
+      onScreen = false
+      clock.pause(at: .now)
+    }
     .onChange(of: shouldRun) { _, run in
       if run { clock.resume(at: .now) } else { clock.pause(at: .now) }
     }
@@ -365,7 +368,10 @@ struct StoriesView: View {
 
   private func appeared() {
     onScreen = true
-    guard runs.allSatisfy({ $0 == nil }) else { return }
+    guard runs.allSatisfy({ $0 == nil }) else {
+      if shouldRun { clock.resume(at: .now) }
+      return
+    }
     // First appearance: the current story deals in and its copy rises 12 at +160 ms.
     start(page, byUser: false)
     resetOthers(except: page)
@@ -453,7 +459,7 @@ struct StoriesView: View {
   private func advanceWhenDone() async {
     guard clock.isRunning else { return }
     try? await Task.sleep(for: .seconds(clock.remaining(at: .now)))
-    guard !Task.isCancelled, clock.isRunning else { return }
+    guard !Task.isCancelled, clock.isRunning, shouldRun else { return }
     if page < count - 1 {
       go(to: page + 1, byUser: false)
     } else {

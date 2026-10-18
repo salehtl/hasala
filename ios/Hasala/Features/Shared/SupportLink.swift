@@ -40,5 +40,6 @@ struct SupportLink: View {
         .accessibilityIdentifier("\(identifier).web")
       }
     }
+    .dockLink()
   }
 }

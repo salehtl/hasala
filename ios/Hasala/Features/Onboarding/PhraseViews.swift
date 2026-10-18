@@ -116,7 +116,6 @@ struct PhraseShowView: View {
     } actions: {
       if mode == .create {
         BusyButton(title: "I've written them down", busy: busy, enabled: seen, identifier: "phrase.written") {
-          revealed = false
           onContinue()
         }
         ActionNote(text: "They hide again when you leave this screen.")
