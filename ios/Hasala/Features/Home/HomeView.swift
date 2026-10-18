@@ -13,9 +13,9 @@ import SwiftUI
 ///
 /// The wash follows the verdict (blue on track, sand ahead of pace, rose over) and cross-fades
 /// when it changes. The period pill opens the period picker; another period scopes the hero,
-/// shows that month's Budget pace and "Still about now". A Release build leaves out what isn't
-/// built yet (`BuildSurface`): "Edit", "Add widget", and taps on widgets without a
-/// detail screen. A review account's ledger is sample data, and Home says so.
+/// shows that month's Budget pace and "Still about now". This month's widgets follow the
+/// arrangement kept on this iPhone ("Edit", "Add widget"). A Release build leaves out taps on
+/// widgets without a detail screen (`BuildSurface`). A review account's ledger is sample data, and Home says so.
 struct HomeView: View {
   @Bindable var app: AppModel
   let model: any HomeModel
@@ -24,7 +24,27 @@ struct HomeView: View {
 
   private var snapshot: HomeSnapshot { model.snapshot }
   private var hidden: Bool { model.hidden }
-  private var unfinished: Bool { BuildSurface.showsUnfinished }
+  private var canvas: [HomeCanvasItem] { model.canvas }
+
+  private var canvasActions: WidgetCanvasActions {
+    WidgetCanvasActions(
+      opens: { model.widgetOpens($0.id) },
+      open: { item in if let next = model.openWidget(item.id) { app.router.home.append(next) } },
+      setEditing: { app.editingHome = $0 },
+      add: { app.sheet = .widgetGallery },
+      remove: { item in
+        if app.removeWidget(item.id) {
+          AccessibilityNotification.Announcement("\(item.title) removed").post()
+        }
+      },
+      move: { item, index in app.moveWidget(item.id, to: index) },
+      moveBy: { item, offset in
+        if app.moveWidget(item.id, by: offset) {
+          AccessibilityNotification.Announcement(offset < 0 ? "Moved up" : "Moved down").post()
+        }
+      },
+      configure: { item in app.sheet = .widgetConfig(item.kind, entry: item.id) })
+  }
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).home) {
@@ -47,24 +67,24 @@ struct HomeView: View {
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)
-        if !snapshot.widgets.isEmpty {
-          WidgetCanvas(title: snapshot.canvasTitle, widgets: snapshot.widgets, hidden: hidden,
-                       editable: unfinished && snapshot.isThisMonth,
-                       opens: model.widgetOpens,
-                       open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
-                       edit: { app.say("Editing widgets isn't in this build yet", icon: .info) })
+        if !canvas.isEmpty || snapshot.isThisMonth {
+          WidgetCanvas(title: snapshot.canvasTitle, items: canvas, hidden: hidden,
+                       editable: snapshot.isThisMonth, editing: app.editingHome && snapshot.isThisMonth,
+                       actions: canvasActions)
         }
         if !snapshot.aboutNow.isEmpty {
           StillAboutNow(rows: snapshot.aboutNow, hidden: hidden) { destination in
             model.openNotification(destination)?()
           }
-          .padding(.top, snapshot.widgets.isEmpty ? 0 : -8)
+          .padding(.top, canvas.isEmpty ? 0 : -8)
         }
       }
       .overlay(alignment: .bottom) {
         HomeImportPill(work: app.mailbox?.importing) { app.router.open(.profile, profile: [.bankAlerts]) }
           .padding(.bottom, 12)
       }
+      .onChange(of: snapshot.isThisMonth) { _, _ in app.editingHome = false }
+      .onChange(of: app.tab) { _, tab in if tab != .home { app.editingHome = false } }
       .navigationDestination(for: HomeRoute.self) { route in
         switch route {
         case .bills: BillsScreen(app: app)

@@ -9,14 +9,15 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
   func testHomeShowsOnlyWhatWorks() throws {
     let app = launchRelease()
 
-    // The hero, its Insights link and the bell; no "Edit" or "Add widget", no Needs-you rail.
+    // The hero, its Insights link and the bell; no Needs-you rail. "Edit" and "Add widget"
+    // arrange Home in every build.
     attach(app, "Release · Home")
     assertNoPlaceholders(app, "Home")
     assertPersonalAccountsOnly(app, "Home")
     XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 11,115.62"))
-    assertAbsent(app, ["home.seeMonth", "home.sampleData", "home.editWidgets", "Needs you"], "Home")
-    assertNoButtons(app, ["See all", "Edit", "Add widget", "See month"], "Home")
-    assertPresent(app, ["home.insights"], "Home")
+    assertAbsent(app, ["home.seeMonth", "home.sampleData", "Needs you"], "Home")
+    assertNoButtons(app, ["See all", "See month"], "Home")
+    assertPresent(app, ["home.insights", "home.editWidgets", "home.addWidget"], "Home")
     XCTAssertEqual(
       app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'needsYou.'")).count, 0,
       "Home still draws Needs-you cards")
@@ -49,7 +50,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
     // Widgets without a detail screen are not buttons; the others go somewhere.
-    for id in ["widget.netWorth", "widget.project.Japan trip", "widget.goal.Emergency fund"] {
+    for id in ["widget.netWorth", "widget.project.japan", "widget.goal.emergency"] {
       XCTAssertTrue(el(app, id).exists, "\(id) is missing")
       XCTAssertFalse(app.buttons[id].exists, "\(id) is a button with nowhere to go")
     }
@@ -69,6 +70,25 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(reveal(app, pace))
     pace.tap()
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testTheWidgetGalleryOffersWhatWorks() throws {
+    let app = launchRelease()
+    tap(app, "home.addWidget", opening: "gallery.sheet")
+    assertNoPlaceholders(app, "Add a widget")
+    for kind in ["spentSoFar", "budgetPace", "categoryWatch", "nextBill", "netWorth", "comingUp", "project", "goal",
+                 "toReview", "today"] {
+      XCTAssertTrue(el(app, "gallery.\(kind)").exists, "gallery.\(kind) is missing")
+    }
+    attach(app, "Release · Add a widget")
+    try audit(app, overSheet: true)
+    tap(app, "gallery.comingUp")
+    XCTAssertTrue(el(app, "gallery.sheet").waitForNonExistence(timeout: uiWait))
+    let coming = app.buttons["widget.comingUp"]
+    XCTAssertTrue(reveal(app, coming))
+    coming.tap()
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
   }
 
   /// With nothing to look at the bell has no badge and the sheet says so; mail's row

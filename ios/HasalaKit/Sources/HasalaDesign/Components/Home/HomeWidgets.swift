@@ -540,6 +540,28 @@ public struct HomeWidgetView: View {
     case .project(let m): ProjectWidgetView(m, hidden: hidden)
     case .goal(let m): GoalWidgetView(m, hidden: hidden)
     case .today(let m): TodayWidgetView(m, hidden: hidden)
+    case .spentSoFar(let m): SpentSoFarWidgetView(m, hidden: hidden)
+    case .categoryWatch(let m): CategoryWatchWidgetView(m, hidden: hidden)
+    case .comingUp(let m): ComingUpWidgetView(m, hidden: hidden)
+    case .toReview(let m): ToReviewWidgetView(m, hidden: hidden)
+    }
+  }
+}
+
+public struct HomeCanvasItemView: View {
+  let item: HomeCanvasItem
+  let hidden: Bool
+
+  public init(_ item: HomeCanvasItem, hidden: Bool) {
+    self.item = item
+    self.hidden = hidden
+  }
+
+  public var body: some View {
+    if let widget = item.widget {
+      HomeWidgetView(widget, hidden: hidden)
+    } else {
+      WaitingWidgetView(title: item.kind.title, sentence: item.kind.waitingSentence)
     }
   }
 }

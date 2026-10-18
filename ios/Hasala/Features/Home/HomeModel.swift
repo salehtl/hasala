@@ -20,6 +20,7 @@ struct Bell: Equatable {
 @MainActor
 protocol HomeModel: AnyObject, Observable {
   var snapshot: HomeSnapshot { get }
+  var canvas: [HomeCanvasItem] { get }
   var hidden: Bool { get }
   var bell: Bell { get }
   /// A widget tap; returns a screen to push, if any.
@@ -52,6 +53,14 @@ final class HomeViewModel: HomeModel {
 
   /// One engine pass per ledger change (`AppModel.snapshot` is memoised by revision).
   var snapshot: HomeSnapshot { app.snapshot }
+
+  var canvas: [HomeCanvasItem] {
+    let snapshot = app.snapshot
+    guard snapshot.isThisMonth else {
+      return snapshot.widgets.map { HomeCanvasItem(entry: HomeLayout.Entry($0.kind), widget: $0) }
+    }
+    return app.homeCanvas
+  }
 
   var hidden: Bool { app.amountsHidden }
 
@@ -125,11 +134,21 @@ final class HomeViewModel: HomeModel {
     case "today":
       app.tab = .activity
       return nil
-    case "nextBill":
+    case "nextBill", "comingUp":
       return .bills
     case "netWorth":
       return .accounts
+    case "toReview":
+      app.startReview()
+      return nil
+    case "spentSoFar":
+      return nil
     default:
+      if id.hasPrefix(Self.categoryPrefix) {
+        app.tab = .plan
+        app.router.plan = [.category(String(id.dropFirst(Self.categoryPrefix.count)))]
+        return nil
+      }
       // TODO(spec 04 §16.1 "Project detail", §16.2 P4): a project or goal opens its detail;
       // until then Debug opens Plan, where both live.
       app.tab = .plan
@@ -137,11 +156,14 @@ final class HomeViewModel: HomeModel {
     }
   }
 
-  /// The widgets with a built destination: Plan, Activity and Bills.
-  static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "nextBill"]
+  static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."
+
+  /// The widgets with a built destination: Plan, a category, Activity, Bills and the review deck.
+  static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "nextBill", "comingUp", "toReview"]
 
   func widgetOpens(_ id: String) -> Bool {
-    BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id)
+    if id == "spentSoFar" { return false }
+    return BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id) || id.hasPrefix(Self.categoryPrefix)
   }
 }
 

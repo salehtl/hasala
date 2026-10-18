@@ -134,10 +134,20 @@ struct LaunchView: View {
       let graph = MockGraph(
         app: AppModel(
           store: InMemoryLedger(state: scenario.state, now: scenario.now),
-          amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox),
+          amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
+          layouts: mockLayouts(arguments)),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth))
       launch?.open(graph)
       return graph
+    }
+
+    static let keepLayoutArgument = "-HasalaKeepHomeLayout"
+    static let layoutSuite = "app.hasala.mock.homeLayout"
+
+    static func mockLayouts(_ arguments: [String]) -> HomeLayoutStore? {
+      guard let defaults = UserDefaults(suiteName: layoutSuite) else { return nil }
+      if !arguments.contains(keepLayoutArgument) { HomeLayoutStore.forgetAll(defaults) }
+      return HomeLayoutStore(defaults: defaults, account: "maya")
     }
   }
 #endif
