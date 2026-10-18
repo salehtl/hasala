@@ -105,6 +105,10 @@ regenerate; every vector's expectation follows.
   provider's rule. Schema 2 added `provider`, `providers`, `outlook` and the
   reason `no_eop`; a schema-1 reader would run the Outlook vectors through the
   Gmail rule, so it must refuse schema 2.
+- `reasons` is also the closed set of a v4 transaction's `gates.ar` (spec 03c
+  §3.1). A fold that refuses one of them refuses a mailbox alert the lane
+  authored. The Swift test `OutlookNoEOPTests.everyAuthResultsReasonFolds`
+  reads this list and checks it.
 - `expect.domain` is `verifiedDomain(block, provider)`: a string exactly when
   `trusted`.
 - Non-ASCII code points are written as `\uXXXX` escapes.

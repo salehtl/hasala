@@ -62,7 +62,7 @@ struct OutlookRig {
   static let t0 = Rig.t0
   static let config = MicrosoftOAuthConfig(clientID: "00000000-0000-4000-8000-00000000c11e", redirectScheme: "msauth.app.hasala.ios")
   let graph = FakeGraph()
-  let tables = try! MailboxTableStore.inMemory()
+  let tables: MailboxTableStore
   let authored = AuthoredDrafts()
   let store: any MailboxPersistence
   let ledger = FakeLedger()
@@ -75,12 +75,21 @@ struct OutlookRig {
   let engine: MailboxEngine
 
   /// `viaURLSession` serves FakeGraph through a real URLSession (`URLSessionHTTPExchange`).
-  init(trustProven: Bool = false, viaURLSession: Bool = false, categorizer: any IngestCategorizer = NoCategorizer()) {
+  init(
+    trustProven: Bool = false, viaURLSession: Bool = false, categorizer: any IngestCategorizer = NoCategorizer(),
+    ledgerStore: LedgerStore? = nil, author real: MailboxOpAuthor? = nil
+  ) {
+    tables = ledgerStore.map { MailboxTableStore(writer: $0.db) } ?? (try! MailboxTableStore.inMemory())
     let authored = self.authored
     let clock = self.clock
     store = LedgerMailboxPersistence(
       tables: tables,
       author: { drafts, at in
+        if let real {
+          let rows = try real(drafts, at)
+          authored.append(drafts)
+          return rows
+        }
         authored.append(drafts)
         return drafts.map {
           MailboxPendingOpRow(
