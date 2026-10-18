@@ -27,7 +27,10 @@ final class WidgetPublisher {
     self.today = today
     self.center = center
     self.reload = reload
-    for name in [UIApplication.significantTimeChangeNotification, UIApplication.willEnterForegroundNotification] {
+    for name in [
+      UIApplication.significantTimeChangeNotification, UIApplication.willEnterForegroundNotification,
+      UIApplication.protectedDataDidBecomeAvailableNotification,
+    ] {
       observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         MainActor.assumeIsolated { self?.timeMoved() }
       })

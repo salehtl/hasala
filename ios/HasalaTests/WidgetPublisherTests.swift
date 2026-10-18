@@ -115,6 +115,24 @@ struct WidgetPublisherTests {
     publisher.stop()
   }
 
+  @Test func aFailedWriteIsTriedAgain() async throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    try Data().write(to: store.directory)
+    let reloads = Reloads()
+    let center = NotificationCenter()
+    let publisher = WidgetPublisher(app: AppModel(store: InMemoryLedger()), store: store, center: center) {
+      reloads.count += 1
+    }
+    #expect(store.read() == nil && reloads.count == 0)
+    try FileManager.default.removeItem(at: store.directory)
+    center.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+    await settle()
+    #expect(store.read() == publisher.snapshot)
+    #expect(reloads.count == 1)
+    publisher.stop()
+  }
+
   @Test func theFileIsProtectedAndNotBackedUp() throws {
     let store = temporaryStore()
     defer { try? FileManager.default.removeItem(at: store.directory) }
