@@ -95,6 +95,13 @@ public struct TxnGates: Sendable, Equatable, Codable {
     self.card = card
     self.forwarded = forwarded
   }
+
+  public enum ReviewReason: String, Sendable { case senderUnverified = "sender_unverified" }
+
+  public var reviewReason: ReviewReason? {
+    guard ar != nil || sender != nil else { return nil }
+    return ar == "pass" && sender == "trusted" ? nil : .senderUnverified
+  }
 }
 
 /// A transaction as the client shows it (state.ts `Txn`, plus 03c §11).
