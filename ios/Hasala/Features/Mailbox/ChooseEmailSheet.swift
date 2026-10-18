@@ -20,16 +20,18 @@ enum ChooseEmailTitle: Sendable {
 
   /// With `oneLink` no line promises a second mailbox.
   func subtitle(oneLink: Bool) -> String {
-    let setup = "Pick where your bank sends its alerts. Access is read-only, and this iPhone does the reading."
+    let setup = "Pick where your bank sends its alerts. \(Self.notSignIn) Access is read-only, and this iPhone does the reading."
     switch self {
     case .setup: return setup
     case .addMailbox:
       return oneLink
-        ? setup : "Pick the one your bank also sends alerts to. Access is read-only, and this iPhone does the reading."
+        ? setup : "Pick the one your bank also sends alerts to. \(Self.notSignIn) Access is read-only, and this iPhone does the reading."
     case .change:
-      return "Hasala reads one mailbox at a time. Pick the one your bank sends its alerts to. Access is read-only, and this iPhone does the reading."
+      return "Hasala reads one mailbox at a time. Pick the one your bank sends its alerts to. \(Self.notSignIn) Access is read-only, and this iPhone does the reading."
     }
   }
+
+  static let notSignIn = "It can be different from the email you sign in to Hasala with."
 
   func footnote(oneLink: Bool) -> String {
     switch self {

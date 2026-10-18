@@ -330,7 +330,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       try Self.checkTakeover(link, confirmed: replacing)
     }
     let switching = current.map { $0.provider != provider } ?? false
-    try Self.linked(await lane.connect(backfillDays: 90, replacing: replaces), provider: provider)
+    let days = MailboxEngine.backfillDays(
+      newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
+    try Self.linked(await lane.connect(backfillDays: days, replacing: replaces), provider: provider)
     rt.activate(provider)
     if switching, let old = current { await old.endGrant() }
     await rt.refreshMailbox()
@@ -442,6 +444,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     case .permissionMissing: "Hasala needs permission to read your bank alerts. Try again and allow it."
     case .noMailbox: "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
+    case .mailboxInUse:
+      "This \(provider.appName) address is connected to another Hasala account. Disconnect it there, or connect a different address."
     case .notConfigured: "\(provider.appName) isn't available in this build."
     case .stateMismatch, .nonceMismatch, .serverRefused, .keychain, .google:
       provider == .outlook

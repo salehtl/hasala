@@ -127,4 +127,10 @@ extension LedgerReader {
       try Int.fetchOne(db, sql: "SELECT count(*) FROM txn WHERE ingest_id = ?", arguments: [ingestID]) ?? 0
     } > 0
   }
+
+  public func newestMailboxPostedMs() throws -> Int64? {
+    try db.read { db in
+      try Int64.fetchOne(db, sql: "SELECT max(posted_ms) FROM txn WHERE mailbox_message_id IS NOT NULL")
+    }
+  }
 }

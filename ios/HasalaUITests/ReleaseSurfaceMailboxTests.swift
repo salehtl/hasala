@@ -37,6 +37,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "mail.choose").waitForExistence(timeout: uiWait), "Add a mailbox did not open")
     assertPresent(app, ["mail.choose.gmail", "mail.choose.outlook"], "Add a mailbox")
     assertText(app, "Pick where your bank sends its alerts.", "Add a mailbox")
+    assertText(app, "different from the email you sign in to Hasala with", "Add a mailbox")
     assertText(app, "You can disconnect it at any time.", "Add a mailbox")
     assertNoText(app, ["also sends", "on its own"], "Add a mailbox")
     assertNoPlaceholders(app, "Add a mailbox")
