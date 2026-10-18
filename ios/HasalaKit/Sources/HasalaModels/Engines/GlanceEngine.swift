@@ -19,6 +19,7 @@ public enum GlanceEngine {
       case .project(let m): projects.append(m)
       case .goal(let m): goals.append(m)
       case .today(let m): today = m
+      case .spentSoFar, .categoryWatch, .comingUp, .toReview: break
       }
     }
     return WidgetSnapshot(

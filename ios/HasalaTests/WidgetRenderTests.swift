@@ -95,6 +95,10 @@ struct WidgetRenderTests {
                                              fill: Hue.sky.perceptualGradient, width: 170))
     try render("device-10-today", device(TodayWidgetView(today, hidden: false), fill: HColor.widgetSurface,
                                          width: 364))
+    try render("paper-02-budget-pace-xxxl", canvas(BudgetPaceWidgetView(pace, hidden: false), width: wide)
+      .environment(\.dynamicTypeSize, .xxxLarge))
+    try render("device-02-budget-pace-xxxl", device(BudgetPaceWidgetView(pace, hidden: false), fill: HColor.widgetSurface,
+                                                    width: 364).environment(\.dynamicTypeSize, .xxxLarge))
     try render("device-11-budget-pace-hidden", device(BudgetPaceWidgetView(try #require(h.budgetPace), hidden: true),
                                                       fill: HColor.widgetSurface, width: 364))
   }

@@ -86,6 +86,10 @@ struct MainView: View {
         NotificationsSheet(app: app)
       case .period:
         PeriodSheet(app: app)
+      case .widgetGallery:
+        WidgetGallerySheet(app: app)
+      case .widgetConfig(let kind, let entry):
+        WidgetConfigSheet(app: app, kind: kind, entry: entry)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

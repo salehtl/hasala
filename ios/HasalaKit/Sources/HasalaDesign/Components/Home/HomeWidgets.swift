@@ -111,7 +111,25 @@ public struct BudgetPaceWidgetView: View {
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: host == .system ? 8 : 12) {
+    Group {
+      if host == .system {
+        ViewThatFits(in: .vertical) {
+          content(model.rows, spacing: 6, rowSpacing: 4)
+          content(model.rows.filter { $0.bucket != .savings }, spacing: 8, rowSpacing: 6)
+        }
+      } else {
+        content(model.rows, spacing: 12, rowSpacing: 6)
+      }
+    }
+    .widgetChrome(HColor.widgetSurface, padding: host == .system
+      ? EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
+      : EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Budget pace, \(model.monthGone)")
+  }
+
+  private func content(_ rows: [BucketPaceRow], spacing: CGFloat, rowSpacing: CGFloat) -> some View {
+    VStack(alignment: .leading, spacing: spacing) {
       ReflowingRow {
         HStack(spacing: 8) {
           Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
@@ -122,8 +140,8 @@ public struct BudgetPaceWidgetView: View {
       } trailing: {
         Text(model.monthGone).hType(.footnote).foregroundStyle(HColor.textSecondary)
       }
-      ForEach(model.rows) { row in
-        VStack(spacing: 6) {
+      ForEach(rows) { row in
+        VStack(spacing: rowSpacing) {
           ReflowingRow(spacing: 12) {
             HStack(spacing: 8) {
               Circle().fill(row.bucket.hue.dotGradient).frame(width: 10, height: 10)
@@ -142,11 +160,6 @@ public struct BudgetPaceWidgetView: View {
         .accessibilityValue(rowSummary(row))
       }
     }
-    .widgetChrome(HColor.widgetSurface, padding: host == .system
-      ? EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16)
-      : EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Budget pace, \(model.monthGone)")
   }
 
   @ViewBuilder private func trailing(_ row: BucketPaceRow) -> some View {
@@ -540,6 +553,28 @@ public struct HomeWidgetView: View {
     case .project(let m): ProjectWidgetView(m, hidden: hidden)
     case .goal(let m): GoalWidgetView(m, hidden: hidden)
     case .today(let m): TodayWidgetView(m, hidden: hidden)
+    case .spentSoFar(let m): SpentSoFarWidgetView(m, hidden: hidden)
+    case .categoryWatch(let m): CategoryWatchWidgetView(m, hidden: hidden)
+    case .comingUp(let m): ComingUpWidgetView(m, hidden: hidden)
+    case .toReview(let m): ToReviewWidgetView(m, hidden: hidden)
+    }
+  }
+}
+
+public struct HomeCanvasItemView: View {
+  let item: HomeCanvasItem
+  let hidden: Bool
+
+  public init(_ item: HomeCanvasItem, hidden: Bool) {
+    self.item = item
+    self.hidden = hidden
+  }
+
+  public var body: some View {
+    if let widget = item.widget {
+      HomeWidgetView(widget, hidden: hidden)
+    } else {
+      WaitingWidgetView(title: item.kind.title, sentence: item.kind.waitingSentence)
     }
   }
 }

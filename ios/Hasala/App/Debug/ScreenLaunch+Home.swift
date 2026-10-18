@@ -33,6 +33,18 @@
         ])
       }),
       Screen("home.period", scenario: "maya", prepare: shell(.home, sheet: .period)),
+      Screen("home.edit", scenario: "maya") { graph in graph.app.editingHome = true },
+      Screen("home.gallery", scenario: "maya", prepare: { graph in
+        graph.app.editingHome = true
+        shell(.home, sheet: .widgetGallery)(graph)
+      }),
+      Screen("home.widgetConfig", scenario: "maya", prepare: { graph in
+        graph.app.editingHome = true
+        shell(.home, sheet: .widgetConfig(.categoryWatch, entry: nil))(graph)
+      }),
+      Screen("home.noWidgets", scenario: "maya") { graph in
+        for id in graph.app.currentHomeLayout.ids { graph.app.removeWidget(id) }
+      },
       Screen("home.periodRange", scenario: "maya", prepare: { graph in
         graph.app.period = Period(YearMonth(2026, 8), MayaLedger.october)
         shell(.home, sheet: .period)(graph)

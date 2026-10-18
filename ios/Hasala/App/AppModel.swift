@@ -65,11 +65,84 @@ final class AppModel {
   @ObservationIgnored private var reviewMemo = Memo<ReviewMemoKey, Int>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
+  @ObservationIgnored private var canvasMemo = Memo<CanvasMemoKey, [HomeCanvasItem]>()
+  @ObservationIgnored private var previewMemo = Memo<Int, [HomeWidgetKind: HomeCanvasItem]>()
 
-  init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
+  @ObservationIgnored let layouts: HomeLayoutStore?
+  private(set) var homeLayout: HomeLayout?
+  var editingHome = false
+
+  init(
+    store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
+    layouts: HomeLayoutStore? = nil
+  ) {
     self.store = store
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
+    self.layouts = layouts
+    homeLayout = layouts?.load()
+  }
+
+  var homeCanvas: [HomeCanvasItem] {
+    let layout = homeLayout
+    return canvasMemo.value(for: CanvasMemoKey(revision: store.revision, layout: layout)) {
+      HomeEngine.canvas(layout, store.state, now: store.now)
+    }
+  }
+
+  var currentHomeLayout: HomeLayout { homeLayout ?? HomeLayout(homeCanvas.map(\.entry)) }
+
+  var widgetPreviews: [HomeWidgetKind: HomeCanvasItem] {
+    previewMemo.value(for: store.revision) { HomeEngine.previews(store.state, now: store.now) }
+  }
+
+  func suggestedWidgetConfig(_ kind: HomeWidgetConfig.Kind) -> HomeWidgetConfig? {
+    HomeEngine.suggested(kind, store.state, now: store.now)
+  }
+
+  func widgetOptions(_ kind: HomeWidgetConfig.Kind) -> [HomeWidgetOption] {
+    HomeEngine.options(kind, store.state, now: store.now)
+  }
+
+  @discardableResult
+  func addWidget(_ entry: HomeLayout.Entry) -> Bool {
+    changeHomeLayout { $0.add(entry) }
+  }
+
+  @discardableResult
+  func removeWidget(_ id: String) -> Bool {
+    let done = changeHomeLayout { $0.remove(id) }
+    if done, homeLayout?.isEmpty == true { editingHome = false }
+    return done
+  }
+
+  @discardableResult
+  func moveWidget(_ id: String, to index: Int) -> Bool {
+    changeHomeLayout { $0.move(id, to: index) }
+  }
+
+  @discardableResult
+  func moveWidget(_ id: String, by offset: Int) -> Bool {
+    changeHomeLayout { $0.move(id, by: offset) }
+  }
+
+  @discardableResult
+  func configureWidget(_ id: String, _ config: HomeWidgetConfig) -> Bool {
+    changeHomeLayout { $0.configure(id, config) }
+  }
+
+  func forgetHomeLayout() {
+    editingHome = false
+    homeLayout = nil
+    layouts?.forget()
+  }
+
+  private func changeHomeLayout(_ change: (inout HomeLayout) -> Bool) -> Bool {
+    var layout = currentHomeLayout
+    guard change(&layout) else { return false }
+    homeLayout = layout
+    layouts?.save(layout)
+    return true
   }
 
   /// "Connect your email" or "Sign in again" on the bell, Profile and Bank alerts, when
@@ -225,6 +298,11 @@ final class AppModel {
     let parts = [t.title, t.subtitle].compactMap { $0 } + [t.actionTitle.map { "\($0) available" }].compactMap { $0 }
     return parts.map(sentence).joined(separator: " ")
   }
+}
+
+struct CanvasMemoKey: Equatable {
+  var revision: Int
+  var layout: HomeLayout?
 }
 
 struct HomeMemoKey: Equatable {
