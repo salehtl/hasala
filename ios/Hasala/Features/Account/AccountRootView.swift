@@ -1,4 +1,5 @@
 import HasalaDesign
+import HasalaWidgetData
 import SwiftUI
 
 /// The account gate in front of the app (spec 04 §13.1 BootWalls + OnboardingFlow):
@@ -31,7 +32,13 @@ struct AccountRootView<Main: View>: View {
       .environment(onboarding)
       .onAppear { onboarding.phaseChanged(from: nil, to: session.phase) }
       .onChange(of: session.phase) { old, new in onboarding.phaseChanged(from: old, to: new) }
-      .onOpenURL { session.open($0) }
+      .onOpenURL { url in
+        if let link = WidgetLink(url: url) {
+          WidgetLinkInbox.shared.pending = link
+        } else {
+          session.open(url)
+        }
+      }
       .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
         if let url = activity.webpageURL { session.open(url) }
       }

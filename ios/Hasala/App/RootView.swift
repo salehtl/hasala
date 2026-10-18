@@ -112,11 +112,13 @@ struct LaunchView: View {
     let onboarding: OnboardingStore
     /// Where setup resumes in this scenario.
     let setupFacts: OnboardingStep.Facts
+    let widgets: WidgetPublisher
 
     init(app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts) {
       self.app = app
       self.session = session
       self.setupFacts = setupFacts
+      widgets = WidgetPublisher(app: app)
       onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
 

@@ -112,6 +112,49 @@ echo 'let d = UserDefaults.standard; let m = UITextInputMode.activeInputModes' >
 echo 'let d = UserDefaults.standard' >"$t/HasalaCore/Sources/HasalaCore/TestSupport/T.swift"
 lint "HasalaMocks and TestSupport are not scanned" 0 "$t"
 
+# widgets TREE CATEGORY...: gives TREE a widget extension whose manifest declares CATEGORY...
+widgets() {
+	local t="$1"
+	shift
+	mkdir -p "$t/HasalaWidgets"
+	{
+		echo '<?xml version="1.0" encoding="UTF-8"?>'
+		echo '<plist version="1.0"><dict><key>NSPrivacyAccessedAPITypes</key><array>'
+		local c
+		for c in "$@"; do
+			echo "<dict><key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategory$c</string></dict>"
+		done
+		echo '</array></dict></plist>'
+	} >"$t/HasalaWidgets/PrivacyInfo.xcprivacy"
+	echo 'struct W {}' >"$t/HasalaWidgets/W.swift"
+}
+
+t="$(tree widgets-clean)"
+widgets "$t"
+lint "a widget extension that uses nothing" 0 "$t"
+grep -q '^widget extension' "$work/out" && echo "ok   ...and the extension is linted" || {
+	echo "FAIL ...the extension was not linted"
+	fail=1
+}
+
+t="$(tree widgets-undeclared UserDefaults)"
+widgets "$t"
+echo 'let d = UserDefaults(suiteName: "group")' >"$t/HasalaWidgets/Prefs.swift"
+lint "UserDefaults in the extension, declared only by the app" 1 "$t"
+
+t="$(tree widgets-kit UserDefaults)"
+widgets "$t"
+mkdir -p "$t/HasalaKit/Sources/HasalaDesign"
+echo 'let d = UserDefaults.standard' >"$t/HasalaKit/Sources/HasalaDesign/D.swift"
+lint "UserDefaults in HasalaKit counts against the extension too" 1 "$t"
+widgets "$t" UserDefaults
+lint "...and passes once the extension declares it" 0 "$t"
+
+t="$(tree widgets-missing-manifest)"
+widgets "$t"
+rm "$t/HasalaWidgets/PrivacyInfo.xcprivacy"
+lint "an extension with no manifest" 2 "$t"
+
 t="$(tree missing-manifest)"
 rm "$t/Hasala/PrivacyInfo.xcprivacy"
 lint "no manifest" 2 "$t"

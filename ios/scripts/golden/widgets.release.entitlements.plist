@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The exported widget extension's entitlements (Hasala.app/PlugIns/HasalaWidgets.appex),
+  checked like golden/app.release.entitlements.plist: ios/HasalaWidgets/HasalaWidgets.entitlements
+  after the distribution re-sign. The App Group is the one the app writes its widget
+  snapshot to; the extension has no keychain, push or associated domains.
+-->
+<plist version="1.0">
+<dict>
+  <key>application-identifier</key>
+  <string>8CFG28JHP3.app.hasala.ios.widgets</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>8CFG28JHP3</string>
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>group.app.hasala.ios</string>
+  </array>
+  <key>get-task-allow</key>
+  <false/>
+</dict>
+</plist>
