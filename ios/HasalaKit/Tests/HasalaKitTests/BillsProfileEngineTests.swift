@@ -52,7 +52,7 @@ struct BillsProfileEngineParityTests {
     #expect(d.history.first?.note == "Expected · no bank email yet")
     #expect(d.history.dropFirst().allSatisfy { $0.kind == .paid && $0.amount == .aed(550_00) })
     #expect(d.historyNote == "6 on time")
-    #expect(d.footnote == "Bills are found from your history. Nothing is shared with AXA Insurance.")
+    #expect(d.footnote == "Recurring payments are found from your history. Nothing is shared with AXA Insurance.")
   }
 
   /// The other bills open the same page: a price change leads with its news, an upcoming bill

@@ -61,6 +61,7 @@ final class ProfileUITests: XCTestCase {
     openProfile(app)
     XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Bank alerts are working"))
     XCTAssertTrue(app.buttons["profile.bankAlerts"].exists, "the bank alerts card opens Bank alerts")
+    XCTAssertTrue(el(app, "profile.bills").label.hasPrefix("Recurring"), el(app, "profile.bills").label)
     XCTAssertTrue(el(app, "profile.bills").label.contains("9 tracked · 1 new found"))
     try audit(app)
     attachPage(app, "Profile", screens: 3)
@@ -73,9 +74,10 @@ final class ProfileUITests: XCTestCase {
     let next14 = el(app, "bills.next14")
     XCTAssertTrue(next14.waitForExistence(timeout: uiWait))
     XCTAssertEqual(next14.label, "AED 1,039.15")
+    XCTAssertTrue(app.navigationBars["Recurring"].exists)
     XCTAssertTrue(el(app, "bills.attention.axa").exists)
     try audit(app)
-    attachPage(app, "Bills", screens: 5)
+    attachPage(app, "Recurring", screens: 5)
     let track = el(app, "bills.track.apple-bill")
     XCTAssertTrue(scroll(app, toShow: track))
     track.tap()
@@ -206,7 +208,7 @@ final class ProfileUITests: XCTestCase {
     try audit(app, atLargeText: true)
     for id in ["bills.paid.axa", "bills.track.apple-bill", "bill.dewa"] {
       XCTAssertTrue(bringUp(app, el(app, id)), "could not reach \(id)")
-      attach(app, "AX3 · Bills · \(id)")
+      attach(app, "AX3 · Recurring · \(id)")
       try audit(app, atLargeText: true)
     }
     tap(app, "bill.dewa")

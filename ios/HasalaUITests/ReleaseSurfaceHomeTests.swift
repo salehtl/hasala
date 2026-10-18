@@ -42,8 +42,8 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // A row opens its screen: du's new price is in Bills.
     tap(app, "bell.row.price.du")
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
-    assertNoPlaceholders(app, "Bills")
-    assertAbsent(app, ["bills.allSchedules"], "Bills")
+    assertNoPlaceholders(app, "Recurring")
+    assertAbsent(app, ["bills.allSchedules"], "Recurring")
     back(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
@@ -58,10 +58,10 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Home widgets")
     nextBill.tap()
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
-    attach(app, "Release · Bills")
-    assertNoPlaceholders(app, "Bills")
-    assertAbsent(app, ["bills.allSchedules"], "Home › Bills")
-    assertNoButtons(app, ["Remind me"], "Bills")
+    attach(app, "Release · Recurring")
+    assertNoPlaceholders(app, "Recurring")
+    assertAbsent(app, ["bills.allSchedules"], "Home › Recurring")
+    assertNoButtons(app, ["Remind me"], "Recurring")
     try audit(app)
     back(app)
     let pace = app.buttons["widget.budgetPace"]
