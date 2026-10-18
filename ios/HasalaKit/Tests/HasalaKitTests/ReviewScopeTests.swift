@@ -107,3 +107,57 @@ struct ReviewScopeTests {
     #expect(october.contains(LocalDate(2026, 10, 31)) && !october.contains(LocalDate(2026, 11, 1)))
   }
 }
+
+@MainActor
+@Suite("Review queue · the copy lane and the sender reason in a period")
+struct ReviewScopeReasonTests {
+  let october = ReviewWindow.month(YearMonth(2026, 10))
+  let september = ReviewWindow.month(YearMonth(2026, 9))
+  let now = MayaLedger.now
+
+  @Test func aHeldCopyIsInItsOwnPeriodAsACopyUntilKept() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
+    let s = ledger.state
+    #expect(ReviewEngine.queue(s, in: october).filter { $0.id == "starbucks-copy" }.count == 1)
+    #expect(!ReviewEngine.queue(s, in: september).contains { $0.id == "starbucks-copy" })
+    let card = try #require(ReviewEngine.cards(s, in: october).first { $0.id == "starbucks-copy" })
+    #expect(card.reviewReason == .probableCopy && !card.senderUnverified)
+    let row = ActivityEngine.row(try #require(s.txn("starbucks-copy")), s)
+    #expect(row.toReview && row.reviewReason == .probableCopy)
+    #expect(row.detail == "Looks like a copy · 09:09")
+    let toReview = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .toReview))
+    #expect(toReview.days.flatMap(\.rows).contains { $0.id == "starbucks-copy" })
+    let all = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .all))
+    #expect(!all.days.flatMap(\.rows).contains { $0.id == "starbucks-copy" })
+
+    _ = try ledger.apply(.resolveCopy("starbucks-copy", merge: false))
+    #expect(!ReviewEngine.queue(ledger.state, in: october).contains { $0.id == "starbucks-copy" })
+    #expect(ReviewEngine.queue(ledger.state, in: october).count == ReviewEngine.queue(s, in: october).count - 1)
+  }
+
+  @Test func theSenderReasonFollowsItsRowIntoThePeriod() throws {
+    var s = MayaLedger.state
+    var old = try #require(s.txn("steam"))
+    old.id = "steam-sep"
+    old.postedAt = LocalDateTime(2026, 9, 20, 11, 2)
+    s.txns.append(old)
+    let ledger = InMemoryLedger(state: s)
+    #expect(ReviewEngine.cards(s, in: september).filter(\.senderUnverified).map(\.id) == ["steam-sep"])
+    #expect(ReviewEngine.cards(s, in: october).filter(\.senderUnverified).map(\.id) == ["steam"])
+    try ledger.apply(.categorize("steam-sep", "entertainment", learnRule: false, project: nil))
+    #expect(ReviewEngine.cards(ledger.state, in: september).isEmpty)
+    #expect(ledger.state.txn("steam-sep")?.activeReviewReason == nil)
+    #expect(ReviewEngine.cards(ledger.state, in: october).filter(\.senderUnverified).map(\.id) == ["steam"])
+  }
+
+  @Test func aHeldCopyThatAlsoFailedTheSenderCheckShowsOnceAsACopy() throws {
+    var s = Scenario.mayaCopy.state
+    let i = try #require(s.txns.firstIndex { $0.id == "starbucks-copy" })
+    s.txns[i].needsReview = true
+    s.txns[i].reviewReason = .senderUnverified
+    let ids = ReviewEngine.queue(s, in: october).map(\.id)
+    #expect(ids.filter { $0 == "starbucks-copy" }.count == 1)
+    let card = try #require(ReviewEngine.cards(s, in: october).first { $0.id == "starbucks-copy" })
+    #expect(card.reviewReason == .probableCopy)
+  }
+}
