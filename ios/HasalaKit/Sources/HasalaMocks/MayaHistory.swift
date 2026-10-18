@@ -27,6 +27,20 @@ public enum MayaHistory {
     return s
   }
 
+  public static var rangeReview: [Txn] {
+    var copy = h("talabat-8", "Talabat", 88_55, 8, 6, "dining", hour: 20)
+    copy.id = "aug-talabat-copy"
+    copy.postedAt.minute = 3
+    copy.heldCopy = HeldCopy(of: "h-talabat-8", fromOtherInbox: true)
+    return [
+      Txn(id: "aug-corner-shop", merchant: "Corner Shop", amount: .aed(18_75),
+          postedAt: LocalDateTime(2026, 8, 24, 18, 30), accountID: "dib"),
+      Txn(id: "sep-steam", merchant: "Steam", amount: .aed(42_00), postedAt: LocalDateTime(2026, 9, 18, 22, 15),
+          accountID: "dib", needsReview: true, suggestion: "entertainment", reviewReason: .senderUnverified),
+      copy,
+    ]
+  }
+
   static func h(_ id: String, _ merchant: String, _ minor: Int64, _ month: Int, _ day: Int, _ category: CategoryID,
                 hour: Int = 12, account: AccountID = "dib", direction: Direction = .out) -> Txn {
     Txn(id: "h-\(id)", merchant: merchant, amount: .aed(minor), direction: direction,
