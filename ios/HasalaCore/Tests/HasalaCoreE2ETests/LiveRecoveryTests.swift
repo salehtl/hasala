@@ -87,10 +87,14 @@ struct LiveRecoveryTests {
     #expect(binding.display_name == "Maya Recover")
     let bearerC = try #require(try c.env.secrets.session()).token
     let info = try await c.env.client.account(bearer: bearerC)
-    #expect(info.email == email && info.has_passkey == true)
+    #expect(info.email == email && info.has_passkey == true && info.has_password == false)
     await #expect {
       _ = try await a.env.client.account(bearer: bearerA)
     } throws: { ($0 as? APIError)?.failure?.status == 401 }
+    let d = Live.phone("live-recover-d-\(email)")
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountSignIn.withPassword(d.env, email: email, password: "copper lantern quietly 42", bound: nil)
+    }
     // The authenticator gave PRF output at creation: its wrap opens the same body.
     let wraps = try await c.env.client.keyWraps(bearer: bearerC).wraps
     #expect(wraps.map(\.credential_id) == c.passkeys.credentials.map { Base64.encodeURL($0.id) })

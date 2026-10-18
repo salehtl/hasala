@@ -77,6 +77,9 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(m.submitRecoveryCode())
     #expect(await m.finishRecovery(.passkey) == .done)
     #expect(account.recoveryKind == .passkey)
+    let after = try? await account.securityState()
+    #expect(after?.passkeys.count == 1)
+    #expect(after?.hasPassword == false)
     m.recoveryDone()
     #expect(outcome == .ready)
   }
@@ -93,6 +96,9 @@ struct SignInSecurityFlowTests: AccountSuite {
     m.confirmPassword = "a brand new passphrase"
     #expect(await m.finishRecovery(.password("a brand new passphrase")) == .done)
     #expect(account.recoveryKind == .password)
+    let after = try? await account.securityState()
+    #expect(after?.passkeys.isEmpty == true)
+    #expect(after?.hasPassword == true)
   }
 
   @Test func codeTimersComeFromTheSend() async {

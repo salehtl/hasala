@@ -477,9 +477,7 @@ struct RecoverMethodView: View {
     } else {
       AccountScreen(
         title: "Set a new way to sign in",
-        // Paper says the old passkeys and password stop working; `recover/finish` adds the
-        // new one and signs other devices out, and leaves the old ones on the account.
-        subtitle: "It's added to your account, and your other devices are signed out.",
+        subtitle: "Your old passkeys and password stop working, and other devices are signed out.",
         steps: (3, 3), back: .system
       ) {
         VStack(alignment: .leading, spacing: 12) {
@@ -532,8 +530,7 @@ struct RecoverPasswordView: View {
   }
 }
 
-/// "You're back in" (Paper H5V): what changed, a word on the old phrase, then Home. No
-/// "Old passkeys, password · Removed" row: recovery doesn't remove them.
+/// "You're back in" (Paper H5V): what changed, a word on the old phrase, then Home.
 private struct BackInView: View {
   let model: SignInModel
   let method: SignInMethod
@@ -550,6 +547,7 @@ private struct BackInView: View {
         method == .passkey
           ? StatusListRow(title: "New passkey", value: "In iCloud Keychain", state: .done)
           : StatusListRow(title: "New password", value: "Set", state: .done),
+        StatusListRow(title: "Old passkeys, password", value: "Removed", state: .done),
         StatusListRow(title: "Other devices", value: "Signed out", state: .done),
       ])
     } footer: {
