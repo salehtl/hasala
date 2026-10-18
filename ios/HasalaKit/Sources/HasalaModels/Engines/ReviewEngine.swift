@@ -228,8 +228,7 @@ extension Txn {
     if isHeldCopy { return true }
     if isTransfer { return false }
     if needsReview { return true }
-    if categoryID == nil && splits.isEmpty { return true }
-    return categorySource == .model
+    return categoryID == nil && splits.isEmpty
   }
 
   public var reviewSuggestion: CategoryID? {

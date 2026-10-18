@@ -82,13 +82,26 @@ struct ReviewScopeTests {
     #expect(ReviewEngine.queue(s, in: september).isEmpty)
   }
 
-  @Test func aModelGuessWaitsForAPerson() {
-    var guessed = unsorted("guessed", LocalDateTime(2026, 9, 12, 10, 0))
-    guessed.categoryID = "groceries"
-    guessed.categorySource = .model
-    let s = ledger([guessed])
-    #expect(ReviewEngine.queue(s, in: september).map(\.id) == ["guessed"])
+  @Test func aModelPickStandsUnlessItWasFlagged() {
+    var picked = unsorted("picked", LocalDateTime(2026, 9, 12, 10, 0))
+    picked.categoryID = "groceries"
+    picked.categorySource = .model
+    var flagged = unsorted("flagged", LocalDateTime(2026, 9, 13, 10, 0))
+    flagged.categoryID = "groceries"
+    flagged.categorySource = .model
+    flagged.needsReview = true
+    let s = ledger([picked, flagged])
+    #expect(!picked.inReview && flagged.inReview)
+    #expect(ReviewEngine.queue(s, in: september).map(\.id) == ["flagged"])
     #expect(ReviewEngine.cards(s, in: september).first?.suggestion?.name == "Groceries")
+  }
+
+  @Test func uncategorizedIncomeStaysInReview() {
+    var salary = unsorted("salary-in", LocalDateTime(2026, 9, 28, 9, 0))
+    salary.direction = .in
+    let s = ledger([salary])
+    #expect(salary.inReview)
+    #expect(ReviewEngine.queue(s, in: september).map(\.id) == ["salary-in"])
   }
 
   @Test func activityCountsTheSameRows() {

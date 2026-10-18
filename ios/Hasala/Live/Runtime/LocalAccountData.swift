@@ -48,6 +48,7 @@ enum LocalAccountData {
   /// approval keys.
   static func forget(defaults: UserDefaults = .standard) {
     SearchHistory.shared.clear()
+    WidgetLinkInbox.shared.pending = nil
     defaults.removeObject(forKey: setupFinishedKey)
     defaults.removeObject(forKey: legacySetupFinishedKey)
     defaults.removeObject(forKey: mailboxProviderKey)

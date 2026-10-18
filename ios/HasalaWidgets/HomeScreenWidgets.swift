@@ -6,6 +6,7 @@ import WidgetKit
 
 enum WaitingCopy {
   static let firstAlert = "Your first bank alert will fill this in."
+  static let stale = "Open Hasala to bring this up to date."
   static let bill = "Bills Hasala finds will show here."
   static let netWorth = "Your first account check-in will fill this in."
   static let project = "Start a project in Plan to see it here."
@@ -62,7 +63,7 @@ struct SpentSoFarEntryView: View {
       if let model {
         GlanceCard(link: .home, fill: ink) { SpentSoFarWidgetView(model, hidden: entry.hidden) }
       } else {
-        Waiting(title: "Spent so far", sentence: WaitingCopy.firstAlert, link: .home)
+        Waiting(title: "Spent so far", sentence: entry.firstSentence, link: .home)
       }
     }
   }
@@ -85,7 +86,7 @@ struct BudgetPaceEntryView: View {
     if let model = entry.snapshot?.budgetPace {
       GlanceCard(link: .plan, fill: light) { BudgetPaceWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Budget pace", sentence: WaitingCopy.firstAlert, link: .plan)
+      Waiting(title: "Budget pace", sentence: entry.firstSentence, link: .plan)
     }
   }
 }
@@ -107,7 +108,7 @@ struct CategoryWatchEntryView: View {
     if let model = entry.snapshot?.category(entry.selection) {
       GlanceCard(link: .category(model.id), fill: light) { CategoryWatchWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Category watch", sentence: entry.snapshot == nil ? WaitingCopy.firstAlert : WaitingCopy.category,
+      Waiting(title: "Category watch", sentence: entry.snapshot == nil ? entry.firstSentence : WaitingCopy.category,
               link: .plan)
     }
   }
@@ -132,7 +133,7 @@ struct NextBillEntryView: View {
     if let model = entry.snapshot?.nextBill {
       GlanceCard(link: .bills, fill: light) { NextBillWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Next bill", sentence: entry.snapshot == nil ? WaitingCopy.firstAlert : WaitingCopy.bill,
+      Waiting(title: "Next bill", sentence: entry.snapshot == nil ? entry.firstSentence : WaitingCopy.bill,
               link: .bills)
     }
   }
@@ -155,7 +156,7 @@ struct NetWorthEntryView: View {
     if let model = entry.snapshot?.netWorth {
       GlanceCard(link: .accounts, fill: ink) { NetWorthWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Net worth", sentence: WaitingCopy.netWorth, link: .home)
+      Waiting(title: "Net worth", sentence: entry.stale ? WaitingCopy.stale : WaitingCopy.netWorth, link: .home)
     }
   }
 }
@@ -177,7 +178,7 @@ struct ComingUpEntryView: View {
     if let model = entry.snapshot?.comingUp {
       GlanceCard(link: .bills, fill: light) { ComingUpWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Coming up", sentence: entry.snapshot == nil ? WaitingCopy.firstAlert : WaitingCopy.bill,
+      Waiting(title: "Coming up", sentence: entry.snapshot == nil ? entry.firstSentence : WaitingCopy.bill,
               link: .bills)
     }
   }
@@ -200,7 +201,7 @@ struct ProjectEntryView: View {
     if let model = entry.snapshot?.project(entry.selection) {
       GlanceCard(link: .plan, fill: light) { ProjectWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Project", sentence: WaitingCopy.project, link: .plan)
+      Waiting(title: "Project", sentence: entry.stale ? WaitingCopy.stale : WaitingCopy.project, link: .plan)
     }
   }
 }
@@ -226,7 +227,7 @@ struct GoalEntryView: View {
         GoalWidgetView(model, hidden: entry.hidden)
       }
     } else {
-      Waiting(title: "Goal", sentence: WaitingCopy.goal, link: .plan)
+      Waiting(title: "Goal", sentence: entry.stale ? WaitingCopy.stale : WaitingCopy.goal, link: .plan)
     }
   }
 }
@@ -260,7 +261,7 @@ struct ToReviewEntryView: View {
           ToReviewWidgetView(model, hidden: entry.hidden)
         }
       } else {
-        Waiting(title: "To review", sentence: WaitingCopy.firstAlert, link: .review)
+        Waiting(title: "To review", sentence: entry.firstSentence, link: .review)
       }
     }
   }
@@ -283,7 +284,7 @@ struct TodayEntryView: View {
     if let model = entry.snapshot?.today {
       GlanceCard(link: .activity, fill: light) { TodayWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Today", sentence: WaitingCopy.firstAlert, link: .activity)
+      Waiting(title: "Today", sentence: entry.firstSentence, link: .activity)
     }
   }
 }

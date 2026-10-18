@@ -39,9 +39,7 @@ final class InsightsModel {
   var hidden: Bool { app.amountsHidden }
   var current: YearMonth { now.date.yearMonth }
 
-  var earliest: YearMonth {
-    app.store.state.txns.map(\.postedAt.date.yearMonth).min().map { min($0, current) } ?? current
-  }
+  var earliest: YearMonth { app.earliestMonth.map { min($0, current) } ?? current }
 
   var snapshot: InsightsSnapshot {
     let key = Key(revision: app.store.revision, months: months, now: now)

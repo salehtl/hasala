@@ -2,6 +2,7 @@ import Foundation
 import HasalaModels
 import HasalaWidgetData
 import Observation
+import UIKit
 import WidgetKit
 
 @MainActor
@@ -9,17 +10,41 @@ final class WidgetPublisher {
   private let app: AppModel
   private let store: WidgetSnapshotStore?
   private let reload: @MainActor () -> Void
+  private let today: @MainActor () -> LocalDate
+  private let center: NotificationCenter
   private var last: Data?
   private var running = true
+  private var observers: [NSObjectProtocol] = []
 
   init(
     app: AppModel, store: WidgetSnapshotStore? = WidgetSnapshotStore.shared(),
-    reload: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadAllTimelines() }
+    center: NotificationCenter = .default,
+    reload: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadAllTimelines() },
+    today: @escaping @MainActor () -> LocalDate = { WidgetClock.today() }
   ) {
     self.app = app
     self.store = store
+    self.today = today
+    self.center = center
     self.reload = reload
+    for name in [
+      UIApplication.significantTimeChangeNotification, UIApplication.willEnterForegroundNotification,
+      UIApplication.protectedDataDidBecomeAvailableNotification,
+    ] {
+      observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.timeMoved() }
+      })
+    }
     observe()
+  }
+
+  func timeMoved() {
+    guard running else { return }
+    if today() != app.store.now.date {
+      let app = self.app
+      Task { await app.refresh() }
+    }
+    publish()
   }
 
   var snapshot: WidgetSnapshot {
@@ -28,6 +53,8 @@ final class WidgetPublisher {
 
   func stop() {
     running = false
+    observers.forEach(center.removeObserver)
+    observers = []
   }
 
   func publish() {

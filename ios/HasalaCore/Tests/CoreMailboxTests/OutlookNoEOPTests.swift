@@ -175,4 +175,59 @@ import Testing
     #expect(refused.gates?.ar == "no_eop" && refused.gates?.reviewReason == .senderUnverified)
     #expect(s.txns.values.filter { !$0.unparsed }.count == 199)
   }
+
+  static func withPayload(_ d: MailboxIngestDraft, _ edit: (inout JSONObject) -> Void) -> MailboxIngestDraft {
+    var p = d.payload
+    edit(&p)
+    return MailboxIngestDraft(messageID: d.messageID, ingestID: d.ingestID, internalDateMs: d.internalDateMs, payload: p, needsReview: true)
+  }
+
+  @Test func anOversizedMerchantOrProvenanceStillLetsTheBatchCommit() async throws {
+    let store = try RuntimeGlueTests.ledger()
+    let persistence = LedgerMailboxPersistence(
+      tables: MailboxTableStore(writer: store.db), author: Self.authoring(store).opAuthor, nowMs: { RuntimeGlueTests.now })
+    let long = String(repeating: "A", count: 9_000)
+    let merchant = Self.withPayload(RuntimeGlueTests.draft(3)) { $0["merchant_raw"] = .string(long) }
+    let provenance = Self.withPayload(RuntimeGlueTests.draft(7)) {
+      $0["provenance"] = .object(JSONObject([
+        ("provider", .string("gmail")), ("grant_id", .string("g1")), ("message_id", .string(long)),
+      ]))
+    }
+    var c = MailboxCommit()
+    c.drafts = (0..<10).map { n in n == 3 ? merchant : (n == 7 ? provenance : RuntimeGlueTests.draft(n, amount: "\(n + 1)00")) }
+    c.accounted = c.drafts.map {
+      AccountedRecord(messageID: $0.messageID, outcome: .op, internalDateMs: RuntimeGlueTests.now, atMs: RuntimeGlueTests.now)
+    }
+    try await persistence.commit(c)
+    #expect(try store.pendingCount() == 10)
+    let s = try Self.fold(store)
+    #expect(s.anomalies.isEmpty && s.txns.count == 10)
+    let m3 = try #require(Self.row(s, message: "m3"))
+    #expect(m3.unparsed && m3.needsReview && m3.parseError == "payload_refused" && m3.merchantRaw.isEmpty)
+    let refused = s.txns.values.filter { $0.parseError == "payload_refused" }
+    #expect(refused.count == 2)
+    #expect(refused.contains { $0.mailboxMessageID == nil })
+    #expect(s.txns.values.filter { !$0.unparsed }.count == 8)
+  }
+
+  @Test func theLastShapesTrimThenDropTheProvenance() {
+    let ok = RuntimeGlueTests.draft(1)
+    let trimmed = MessageDisposer.refusedShape(ok, keepGates: false, provenance: .trimmed)
+    #expect(trimmed.payload["provenance"] == ok.payload["provenance"])
+    let huge = Self.withPayload(ok) {
+      $0["provenance"] = .object(JSONObject([
+        ("provider", .string("gmail")), ("grant_id", .string("g1")), ("message_id", .string(String(repeating: "x", count: 300))),
+        ("extra", .string("y")),
+      ]))
+    }
+    #expect(MessageDisposer.refusedShape(huge, keepGates: false, provenance: .trimmed).payload["provenance"] == nil)
+    #expect(MessageDisposer.refusedShape(ok, keepGates: false, provenance: .none).payload["provenance"] == nil)
+    let extra = Self.withPayload(ok) {
+      $0["provenance"] = .object(JSONObject([
+        ("provider", .string("gmail")), ("grant_id", .string("g1")), ("message_id", .string("m1")), ("extra", .string("y")),
+      ]))
+    }
+    #expect(MessageDisposer.refusedShape(extra, keepGates: false, provenance: .trimmed).payload["provenance"]
+      == .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g1")), ("message_id", .string("m1"))])))
+  }
 }

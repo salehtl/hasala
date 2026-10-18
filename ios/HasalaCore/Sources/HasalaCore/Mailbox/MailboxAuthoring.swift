@@ -90,9 +90,9 @@ public final class MailboxAuthoring: Sendable {
 
   static func authorable(_ d: MailboxIngestDraft, _ ctx: AuthorContext) -> MailboxIngestDraft {
     if accepts(d, ctx) { return d }
-    let kept = MessageDisposer.refusedShape(d, keepGates: true)
-    if accepts(kept, ctx) { return kept }
-    return MessageDisposer.refusedShape(d, keepGates: false)
+    let shapes = [MessageDisposer.refusedShape(d, keepGates: true)]
+      + MessageDisposer.RefusedProvenance.allCases.map { MessageDisposer.refusedShape(d, keepGates: false, provenance: $0) }
+    return shapes.first { accepts($0, ctx) } ?? shapes[shapes.count - 1]
   }
 
   static func accepts(_ d: MailboxIngestDraft, _ ctx: AuthorContext) -> Bool {
