@@ -7,8 +7,8 @@
 # darwin devShell puts it on PATH). Every target root is a
 # synchronized folder, so adding or removing a Swift file never changes the
 # .pbxproj (spec 04 §1.2). Build settings live in Config/*.xcconfig, not here,
-# except target wiring. Gate A0: the app target only; the widget and the dormant
-# notification service extension join at A1 (spec 06 §15.2).
+# except target wiring. The widget extension (HasalaWidgets) is embedded in the app; the
+# dormant notification service extension joins at A1 (spec 06 §15.2).
 name: Hasala
 options:
   bundleIdPrefix: app.hasala
@@ -53,6 +53,9 @@ targets:
       # behind HASALA_MOCKS, which only Config/Debug.xcconfig sets.
       - package: HasalaKit
         product: HasalaMocks
+      - package: HasalaKit
+        product: HasalaWidgetData
+      - target: HasalaWidgets
       # Every HasalaCore L0-L4 product and HasalaModel (spec 04 §1.3), never
       # CoreTestSupport or CoreSoftAuth.
       - package: HasalaCore
@@ -104,6 +107,29 @@ targets:
       # The Keychain adapter for the live account service (WS-14).
       - package: HasalaCore
         product: HasalaKeychain
+  HasalaWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: HasalaWidgets
+        type: syncedFolder
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    configFiles:
+      Debug: Config/Widgets-Debug.xcconfig
+      Release: Config/Widgets-Release.xcconfig
+    dependencies:
+      - package: HasalaKit
+        product: HasalaModels
+      - package: HasalaKit
+        product: HasalaDesign
+      - package: HasalaKit
+        product: HasalaWidgetData
+      - package: HasalaKit
+        product: HasalaMocks
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
   HasalaTests:
     type: bundle.unit-test
     platform: iOS

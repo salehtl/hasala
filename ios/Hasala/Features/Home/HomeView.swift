@@ -12,8 +12,9 @@ import SwiftUI
 /// needs a look and it opens the Notifications sheet. There is no "Needs you" section.
 ///
 /// The wash follows the verdict (blue on track, sand ahead of pace, rose over) and cross-fades
-/// when it changes. A Release build leaves out what isn't built yet (`BuildSurface`): the
-/// period pill's chevron, "See month", "Edit", "Add widget", and taps on widgets without a
+/// when it changes. The period pill opens the period picker; another period scopes the hero,
+/// shows that month's Budget pace and "Still about now". A Release build leaves out what isn't
+/// built yet (`BuildSurface`): "Edit", "Add widget", and taps on widgets without a
 /// detail screen. A review account's ledger is sample data, and Home says so.
 struct HomeView: View {
   @Bindable var app: AppModel
@@ -38,17 +39,27 @@ struct HomeView: View {
             .padding(.bottom, -12)
         }
         HomeHero(
-          hero: snapshot.hero, hidden: hidden, month: app.store.now.date.yearMonth.title,
-          changePeriod: unfinished ? { app.say("Picking a period isn't in this build yet", icon: .info) } : nil,
-          seeMonth: unfinished ? { app.router.home.append(.insights) } : nil,
+          hero: snapshot.hero, hidden: hidden, period: app.period.title, isThisMonth: snapshot.isThisMonth,
+          changePeriod: { app.sheet = .period },
+          backToThisMonth: { app.period = .month(app.store.now.date.yearMonth) },
+          insights: { app.router.home.append(.insights) },
           setPlan: { app.tab = .plan })
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)
-        WidgetCanvas(widgets: snapshot.widgets, hidden: hidden, editable: unfinished,
-                     opens: model.widgetOpens,
-                     open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
-                     edit: { app.say("Editing widgets isn't in this build yet", icon: .info) })
+        if !snapshot.widgets.isEmpty {
+          WidgetCanvas(title: snapshot.canvasTitle, widgets: snapshot.widgets, hidden: hidden,
+                       editable: unfinished && snapshot.isThisMonth,
+                       opens: model.widgetOpens,
+                       open: { id in if let next = model.openWidget(id) { app.router.home.append(next) } },
+                       edit: { app.say("Editing widgets isn't in this build yet", icon: .info) })
+        }
+        if !snapshot.aboutNow.isEmpty {
+          StillAboutNow(rows: snapshot.aboutNow, hidden: hidden) { destination in
+            model.openNotification(destination)?()
+          }
+          .padding(.top, snapshot.widgets.isEmpty ? 0 : -8)
+        }
       }
       .overlay(alignment: .bottom) {
         HomeImportPill(work: app.mailbox?.importing) { app.router.open(.profile, profile: [.bankAlerts]) }
@@ -59,10 +70,46 @@ struct HomeView: View {
         case .bills: BillsScreen(app: app)
         case .bill(let id): BillDetailView(app: app, bill: id)
         case .accounts: AccountsView(app: app)
-        case .insights: InsightsPlaceholder()
+        case .insights: InsightsView(app: app)
         }
       }
     }
+  }
+}
+
+struct StillAboutNow: View {
+  let rows: [AboutNowRow]
+  let hidden: Bool
+  let open: (NotificationDestination) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Still about now").hType(.overline).foregroundStyle(HColor.textGroupedHeader)
+        .accessibilityAddTraits(.isHeader)
+      HListCard {
+        ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+          if i > 0 { HDivider(inset: .text16).padding(.trailing, 16) }
+          Button { open(row.destination) } label: {
+            ReflowingRow(spacing: 12) {
+              Text(row.title).hType(.headline).foregroundStyle(HColor.listRowTitle)
+            } trailing: {
+              Text(row.detail.rendered(hidden: hidden)).hType(.subheadline).foregroundStyle(HColor.listRowSupporting)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(HRowPressStyle())
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel(row.title)
+          .accessibilityValue(row.detail.spoken(hidden: hidden))
+          .accessibilityAddTraits(.isButton)
+          .accessibilityIdentifier("home.aboutNow.\(row.id)")
+        }
+      }
+    }
+    .padding(.horizontal, HSpacing.insetPage)
   }
 }
 
@@ -99,21 +146,6 @@ struct HomeImportPill: View {
     .frame(maxWidth: .infinity)
     .animation(motion.animation(.fade), value: work != nil)
     .animation(motion.animation(.stateSwap), value: work?.state)
-  }
-}
-
-/// "See month" in Debug, until Insights · October so far is built.
-// TODO(spec 04 §16.1 "Insights"): Insights and the September recap.
-private struct InsightsPlaceholder: View {
-  var body: some View {
-    ScrollView {
-      PlaceholderCard(systemImage: "chart.line.uptrend.xyaxis", title: "October so far",
-                      message: "This screen comes in a later build.")
-        .padding(HSpacing.insetPage)
-    }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle("October so far")
-    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

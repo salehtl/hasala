@@ -77,7 +77,9 @@ public enum MayaLedger {
       ("healthcare", 300_00), ("insurance", 550_00), ("dining", 1_600_00), ("entertainment", 600_00),
       ("shopping", 1_600_00), ("travel", 2_500_00), ("subscriptions", 350_00), ("savings", 3_000_00),
       ("investments", 2_000_00),
-    ].map { (PlanState.key($0.0, october), Money.aed(Int64($0.1))) })
+    ].flatMap { row in
+      [YearMonth(2026, 8), YearMonth(2026, 9), october].map { (PlanState.key(row.0, $0), Money.aed(Int64(row.1))) }
+    })
   )
 
   // MARK: - Transactions

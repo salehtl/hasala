@@ -1,4 +1,5 @@
 import HasalaDesign
+import HasalaWidgetData
 import SwiftUI
 
 /// The account gate in front of the app (spec 04 §13.1 BootWalls + OnboardingFlow):
@@ -26,32 +27,43 @@ struct AccountRootView<Main: View>: View {
   }
 
   var body: some View {
-    content
-      .environment(session)
-      .environment(onboarding)
-      .onAppear { onboarding.phaseChanged(from: nil, to: session.phase) }
-      .onChange(of: session.phase) { old, new in onboarding.phaseChanged(from: old, to: new) }
-      .onOpenURL { session.open($0) }
-      .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-        if let url = activity.webpageURL { session.open(url) }
+    ZStack {
+      content
+        .id(gate)
+        .transition(.opacity)
+    }
+    .animation(handOff, value: gate)
+    .environment(session)
+    .environment(onboarding)
+    .onAppear { onboarding.phaseChanged(from: nil, to: session.phase) }
+    .onChange(of: session.phase) { old, new in onboarding.phaseChanged(from: old, to: new) }
+    .onOpenURL { url in
+      if let link = WidgetLink(url: url) {
+        WidgetLinkInbox.shared.pending = link
+      } else {
+        session.open(url)
       }
-      .overlay(alignment: .bottom) {
-        // The gate's one note ("You already have an account"): the glass toast, risen in
-        // over the screen's dock and gone after the toast's dwell.
-        ZStack {
-          if let notice = session.notice {
-            GlassToast(.ink(.info), title: notice, actionTitle: "OK") { session.notice = nil }
-              .padding(.horizontal, HSpacing.insetPage)
-              .padding(.bottom, 90)
-              .hTransition(.toastIn)
-              .task {
-                try? await Task.sleep(for: .seconds(HMotion.toastDwell))
-                session.notice = nil
-              }
-          }
+    }
+    .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+      if let url = activity.webpageURL { session.open(url) }
+    }
+    .overlay(alignment: .bottom) {
+      // The gate's one note ("You already have an account"): the glass toast, risen in
+      // over the screen's dock and gone after the toast's dwell.
+      ZStack {
+        if let notice = session.notice {
+          GlassToast(.ink(.info), title: notice, actionTitle: "OK") { session.notice = nil }
+            .padding(.horizontal, HSpacing.insetPage)
+            .padding(.bottom, 90)
+            .hTransition(.toastIn)
+            .task {
+              try? await Task.sleep(for: .seconds(HMotion.toastDwell))
+              session.notice = nil
+            }
         }
-        .hAnimation(session.notice == nil ? .toastOut : .toastIn, value: session.notice)
       }
+      .hAnimation(session.notice == nil ? .toastOut : .toastIn, value: session.notice)
+    }
   }
 
   @Environment(\.scenePhase) private var scenePhase
@@ -61,6 +73,28 @@ struct AccountRootView<Main: View>: View {
   /// "No, that's not me" was tapped: the lockdown sheet follows once the approval sheet
   /// has finished dismissing (two sheets at once drop the second).
   @State private var lockdownAfterApproval = false
+
+  @StageMotion private var motion: MotionPolicy
+
+  private enum Gate: Hashable { case passcode, signedOut, checking, onboarding, needsUnlock, needsKeys, frozen, ready }
+
+  private var gate: Gate {
+    if session.phase != .ready, !session.services.hasPasscode() { return .passcode }
+    switch session.phase {
+    case .signedOut: return .signedOut
+    case .checking: return .checking
+    case .onboarding: return .onboarding
+    case .needsUnlock: return .needsUnlock
+    case .needsKeys: return .needsKeys
+    case .frozen: return .frozen
+    case .ready: return .ready
+    }
+  }
+
+  private var handOff: Animation? {
+    if motion.settled { return nil }
+    return HMotion.easeOutSoft(motion.reduceMotion ? HMotion.reduceMotionFade : 0.3)
+  }
 
   @ViewBuilder private var content: some View {
     let _ = passcodeChecked

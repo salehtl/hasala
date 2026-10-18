@@ -107,7 +107,7 @@ public struct BillDetail: Sendable, Hashable, Identifiable {
   public var history: [BillHistoryStep]
   /// "6 on time" beside the Payment history title.
   public var historyNote: String?
-  /// "Bills are found from your history. Nothing is shared with AXA Insurance."
+  /// "Recurring payments are found from your history. Nothing is shared with AXA Insurance."
   public var footnote: String
 
   public var isLate: Bool {
@@ -314,7 +314,7 @@ public enum BillsEngine {
       id: b.id, name: b.name, kind: b.kind, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
       state: state, pill: pill, amount: b.amount, approximate: b.approximate,
       cadence: cadence.joined(separator: " · "), noticed: noticed, history: steps, historyNote: historyNote,
-      footnote: "Bills are found from your history. Nothing is shared with \(payee(b))."
+      footnote: "Recurring payments are found from your history. Nothing is shared with \(payee(b))."
     )
   }
 

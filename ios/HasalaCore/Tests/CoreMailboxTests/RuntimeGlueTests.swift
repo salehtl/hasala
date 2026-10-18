@@ -296,7 +296,7 @@ struct RuntimeGlueTests {
     #expect(stamps.lastMs == nextAt)
   }
 
-  @Test("a draft outside the payload grammar throws and commits nothing")
+  @Test("a draft outside the payload grammar becomes an unparsed review row; the others commit")
   func authoringRefuses() async throws {
     let store = try Self.ledger()
     let authoring = MailboxAuthoring(store: store, writerID: Self.writer.string, random: SeededRandom(), stamps: AuthorStamps())
@@ -304,10 +304,21 @@ struct RuntimeGlueTests {
       tables: MailboxTableStore(writer: store.db), author: authoring.opAuthor, nowMs: { Self.now })
     var c = MailboxCommit()
     c.drafts = [Self.draft(1), Self.draft(2, amount: "-5")]
-    c.accounted = [AccountedRecord(messageID: "m1", outcome: .op, internalDateMs: Self.now, atMs: Self.now)]
-    await #expect(throws: MailboxPersistenceError.self) { try await persistence.commit(c) }
-    #expect(try store.pendingCount() == 0)
-    #expect(try await persistence.accounted(among: ["m1"]).isEmpty)
+    c.accounted = [
+      AccountedRecord(messageID: "m1", outcome: .op, internalDateMs: Self.now, atMs: Self.now),
+      AccountedRecord(messageID: "m2", outcome: .op, internalDateMs: Self.now, atMs: Self.now),
+    ]
+    try await persistence.commit(c)
+    let pending = try store.pendingOps()
+    #expect(pending.count == 2)
+    #expect(try await persistence.accounted(among: ["m1", "m2"]) == ["m1", "m2"])
+    let blob = Data(#"{"v":4,"kind":"ops","ops":["#.utf8) + pending[0].opJSON + Data(",".utf8) + pending[1].opJSON + Data("]}".utf8)
+    let ops = try OpCodec.decodeBlobOps(blob)
+    #expect(ops[0].payload == .object(Self.draft(1).payload))
+    #expect(ops[1].ingestID == Self.draft(2).ingestID)
+    #expect(ops[1].payload["unparsed"] == .bool(true) && ops[1].payload["needs_review"] == .bool(true))
+    #expect(ops[1].payload["parse_error"] == .string("payload_refused"))
+    #expect(ops[1].payload["provenance"] == Self.draft(2).payload["provenance"])
   }
 
   // MARK: PipelineCategorizer

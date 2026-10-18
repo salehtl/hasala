@@ -3,8 +3,9 @@ import HasalaModels
 import SwiftUI
 
 /// Review · Tab · To sort (Paper NPV-0): the root of the Review tab, the queue Hasala
-/// couldn't sort and the card that starts the swipe deck. Its queue is always now: no
-/// period pill, and the tab's badge counts the same transactions (`AppModel.reviewCount`).
+/// couldn't sort and the card that starts the swipe deck. Its queue covers `AppModel.reviewWindow`
+/// (Home's period, this month unless another is chosen), and the tab's badge counts the same transactions
+/// (`AppModel.reviewCount`).
 ///
 /// Start opens the deck at the oldest card; a row opens it at that row's card and reads on
 /// down the list. "Use N suggestions" and the "couldn't read" card are Debug only: the first
@@ -20,7 +21,7 @@ struct ReviewTabView: View {
 
   var body: some View {
     NavigationStack {
-      let cards = ReviewEngine.cards(app.store.state)
+      let cards = ReviewEngine.cards(app.store.state, in: app.reviewWindow)
       TabScreen(app: app, title: "Review", extra: .none, spacing: 24, titleGap: 4) {
         Text(Self.countLine(cards.count))
           .hType(.subheadline)
@@ -48,6 +49,10 @@ struct ReviewTabView: View {
     guard n > 0 else { return "All caught up" }
     let minutes = (n + 5) / 6
     return "\(n) to sort · " + (minutes == 1 ? "about a minute" : "about \(minutes) minutes")
+  }
+
+  static func emptyLine(_ period: Period) -> String {
+    "Nothing in \(period.title) needs a look."
   }
 
   // MARK: Start card
@@ -194,7 +199,7 @@ struct ReviewTabView: View {
         .accessibilityHidden(true)
       Text("Nothing to sort").hType(HType.title3).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      Text("New transactions Hasala can't sort on its own show up here.")
+      Text(Self.emptyLine(app.period))
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)

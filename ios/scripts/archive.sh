@@ -18,8 +18,9 @@
 # The API key comes from the environment (see asc-env.sh); xcodebuild uses it with
 # -allowProvisioningUpdates to create or refresh the development profile for the
 # archive. The export is signed MANUALLY (ExportOptions.plist): an "Apple
-# Distribution" identity in this Mac's keychain plus the App Store profile named
-# "Hasala App Store", both created through the App Store Connect API (the upload key
+# Distribution" identity in this Mac's keychain plus the App Store profiles named
+# "Hasala App Store" (app.hasala.ios) and "Hasala Widgets App Store"
+# (app.hasala.ios.widgets), all created through the App Store Connect API (the upload key
 # is App Manager, which may not use cloud-managed distribution certificates). Output,
 # all under ios/build/ (git-ignored):
 #
@@ -191,13 +192,15 @@ if ! xcodebuild -exportArchive \
 archive: the export signs manually (ExportOptions.plist) and needs, on this Mac:
   - an "Apple Distribution" identity for team 8CFG28JHP3 in a keychain on the
     search list (security find-identity -v -p codesigning), and
-  - the App Store profile named "Hasala App Store" for app.hasala.ios, made with that
-    certificate, installed in ~/Library/Developer/Xcode/UserData/Provisioning Profiles.
+  - the App Store profile named "Hasala App Store" for app.hasala.ios and the one
+    named "Hasala Widgets App Store" for app.hasala.ios.widgets (App Group
+    group.app.hasala.ios), made with that certificate, installed in
+    ~/Library/Developer/Xcode/UserData/Provisioning Profiles.
   Create either through the App Store Connect API (POST /v1/certificates,
   certificateType DISTRIBUTION, with a CSR whose key stays in the keychain;
   POST /v1/profiles, profileType IOS_APP_STORE), or in the developer portal.
-  When the certificate changes, make a new profile with that certificate and the
-  SAME name, "Hasala App Store", and move the old profile file out of
+  When the certificate changes, make new profiles with that certificate and the
+  SAME names, and move the old profile files out of
   ~/Library/Developer/Xcode/UserData/Provisioning Profiles (one name, one profile).
 The development archive above is fine; only the distribution re-sign failed.
 HINT

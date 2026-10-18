@@ -90,7 +90,7 @@ struct LiveLedgerMapperTests {
     let now = MayaLedger.now
     let got = HomeEngine.snapshot(live, now: now)
     let want = HomeEngine.snapshot(MayaLedger.state, now: now)
-    // The hero: 10,288.34 spent of 19,000, the tick at 11,217.17 (the bills paid so far are
+    // The hero: 11,115.62 spent of 19,000, the tick at 11,217.17 (the bills paid so far are
     // linked to their payments in the seed too), on track, and the tiles.
     #expect(got.hero == want.hero)
     #expect(got.hero == Maya.home.hero)
@@ -257,6 +257,32 @@ struct LiveLedgerMapperTests {
     }
     try await Self.eventually { try a.projection.reader.txn(steam.id)?.needsReview == true }
     #expect(try a.projection.reader.txn(steam.id)?.needsReview == true)
+  }
+
+  @Test func anUncategorizedRowFromAnEarlierMonthIsInThatMonthsQueue() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let author = LedgerEditAuthor(observer: a.observer, outbox: a.outbox)
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: author, profile: Self.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "review.window.tests")!), clock: { MayaLedger.now })
+    await store.reload()
+    let old = try #require(store.state.txns.first { $0.merchant == "Carrefour" && $0.postedAt.date == LocalDate(2026, 9, 13) })
+    try await author.undo([.category(txn: old.id, category: nil, needsReview: false)])
+    try await Self.eventually { try a.projection.reader.txn(old.id)?.category == nil }
+    await store.reload()
+    let row = try #require(try a.projection.reader.txn(old.id))
+    #expect(!row.needsReview && row.reviewLane == "uncategorized")
+    let september = ReviewWindow.month(YearMonth(2026, 9))
+    #expect(ReviewEngine.queue(store.state, in: september).map(\.id) == [old.id])
+    #expect(!ReviewEngine.queue(store.state, in: .month(YearMonth(2026, 10))).contains { $0.id == old.id })
+    let app = AppModel(store: store)
+    #expect(app.reviewCount == 6)
+    app.period = .month(YearMonth(2026, 9))
+    #expect(app.reviewCount == 1)
+    #expect(try store.apply(.categorize(old.id, "groceries", learnRule: false, project: nil)) != nil)
+    #expect(app.reviewCount == 0)
   }
 
   @Test func aStoppedImportKeepsItsCount() throws {

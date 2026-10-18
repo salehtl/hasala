@@ -17,7 +17,7 @@ struct HomeEngineParityTests {
   }
 }
 
-/// The hero: spent on needs and wants against their plan, the tick, the verdict and the wash.
+/// The hero: everything spent against the needs and wants plan, the tick, the verdict and the wash.
 @Suite("Home hero")
 struct HomeHeroTests {
   let now = MayaLedger.now
@@ -39,24 +39,23 @@ struct HomeHeroTests {
     let h = hero(MayaLedger.state)
     #expect(h.state == .live)
     #expect(h.overline == "Day 10 of 31")
-    #expect(MoneyFormat.string(h.spent.minor) == "10,288.34")
+    #expect(MoneyFormat.string(h.spent.minor) == "11,115.62")
     #expect(MoneyFormat.string(h.plan.minor) == "19,000.00")
-    #expect(MoneyFormat.string(h.left.minor) == "8,711.66")
-    #expect(h.caption.rendered(hidden: false) == "spent of 19,000 on needs and wants")
+    #expect(MoneyFormat.string(h.left.minor) == "7,884.38")
+    #expect(h.caption.rendered(hidden: false) == "spent of 19,000 planned")
     #expect(h.verdict == .onTrack)
     #expect(h.word.rendered(hidden: false) == "On track")
-    #expect(h.fact?.rendered(hidden: false) == "AED 8,711.66 left")
+    #expect(h.fact?.rendered(hidden: false) == "AED 7,884.38 left")
     #expect(h.wash == .sky)
     #expect(h.tiles.map(\.label) == ["Needs", "Wants", "Savings"])
     #expect(h.tiles.map { MoneyFormat.string($0.value.minor, style: $0.style) } == ["9,040.80", "1,247.54", "5,000.00"])
-    #expect(h.tiles[2].of == nil)
   }
 
   /// Hidden amounts (page 06 §6.3): the plan in the caption and "left" are three dots; the
   /// verdict word stays.
   @Test func hiddenAmountsKeepTheWords() {
     let h = hero(MayaLedger.state)
-    #expect(h.caption.rendered(hidden: true) == "spent of ••• on needs and wants")
+    #expect(h.caption.rendered(hidden: true) == "spent of ••• planned")
     #expect(h.fact?.rendered(hidden: true) == "AED ••• left")
     #expect(h.fact?.spoken(hidden: true) == "AED Amount hidden left")
     #expect(h.word.rendered(hidden: true) == "On track")
@@ -114,27 +113,27 @@ struct HomeHeroTests {
     #expect(h.tick == .aed(9_926_84))
     #expect(h.verdict == .overPace)
     #expect(h.word.rendered(hidden: false) == "Ahead of pace")
-    #expect(h.fact?.rendered(hidden: false) == "AED 4,711.66 left")
+    #expect(h.fact?.rendered(hidden: false) == "AED 3,884.38 left")
     #expect(h.wash == .sand)
   }
 
-  /// The `home.overPace` screen's plan: 11,000 with needs and wants each still under, so the
-  /// widget stays blue while the hero is well past the tick (amber from 78.5% to 93.5%).
+  /// The `home.overPace` screen's plan: 12,000 with needs and wants each still under, so the
+  /// widget stays blue while the hero is well past the tick (amber from 74.7% to 92.6%).
   @Test func aTighterPlanIsAheadOfPaceWithMoneyLeft() {
     let s = Self.maya(budgets: [
-      "groceries": 0, "transport": 50, "travel": 0, "shopping": 0, "entertainment": 0, "dining": 1_350,
+      "groceries": 0, "transport": 50, "travel": 0, "shopping": 0, "entertainment": 0, "dining": 2_350,
     ])
     let h = hero(s)
-    #expect(h.plan == .aed(11_000_00))
-    #expect(h.tick == .aed(8_636_52))
+    #expect(h.plan == .aed(12_000_00))
+    #expect(h.tick == .aed(8_959_10))
     #expect(h.verdict == .overPace && h.wash == .sand)
-    #expect(h.fact?.rendered(hidden: false) == "AED 711.66 left")
+    #expect(h.fact?.rendered(hidden: false) == "AED 884.38 left")
     guard case .budgetPace(let pace) = HomeEngine.snapshot(s, now: now).widgets[0] else {
       Issue.record("no Budget pace")
       return
     }
     #expect(pace.rows.map(\.verdict) == [.onTrack, .onTrack, .done])
-    #expect(pace.rows.map { MoneyFormat.string($0.left.minor, style: .rounded) } == ["259", "452", "0"])
+    #expect(pace.rows.map { MoneyFormat.string($0.left.minor, style: .rounded) } == ["259", "1,452", "0"])
   }
 
   /// Past the plan: "Over by AED …" in one run (it hides like any amount), no "left", rose.
@@ -142,7 +141,7 @@ struct HomeHeroTests {
     let h = hero(Self.maya(budgets: ["travel": 0, "rent": 0]))
     #expect(h.plan == .aed(9_000_00))
     #expect(h.verdict == .overBudget)
-    #expect(h.word.rendered(hidden: false) == "Over by AED 1,288.34")
+    #expect(h.word.rendered(hidden: false) == "Over by AED 2,115.62")
     #expect(h.word.rendered(hidden: true) == "Over by AED •••")
     #expect(h.word.spoken(hidden: true) == "Over by AED Amount hidden")
     #expect(h.fact == nil)
@@ -159,13 +158,12 @@ struct HomeHeroTests {
     }
     let h = hero(s)
     #expect(h.state == .noPlan)
-    #expect(h.spent == .aed(10_288_34))
+    #expect(h.spent == .aed(11_115_62))
     #expect(h.tick == nil && h.verdict == nil && h.fact == nil)
     #expect(h.word.rendered(hidden: false) == "No plan yet")
-    #expect(h.caption.rendered(hidden: false) == "spent on needs and wants")
+    #expect(h.caption.rendered(hidden: false) == "spent this month")
     #expect(h.wash == .sky)
-    // Savings has no plan either: the tile shows what was saved, alone.
-    #expect(h.tiles[2].of == nil)
+    #expect(h.tiles[2].value == .aed(5_000_00))
   }
 
   /// S9: the first import runs and nothing has arrived this month: zero that fills in.
@@ -186,12 +184,11 @@ struct HomeHeroTests {
     #expect(hero(arrived).state == .live)
   }
 
-  /// Savings part way: "2,000 of 5,000".
-  @Test func savingsPartWayShowsItsPlan() {
+  /// Savings part way shows only what was saved, so the tile never truncates.
+  @Test func savingsPartWayShowsWhatWasSaved() {
     let s = Self.maya { s in s.txns.removeAll { $0.id == "standing-order" } }
     let tile = hero(s).tiles[2]
-    #expect(MoneyFormat.string(tile.value.minor, style: tile.style) == "2,000")
-    #expect(tile.of == .aed(5_000_00))
+    #expect(MoneyFormat.string(tile.value.minor, style: tile.style) == "2,000.00")
   }
 }
 
@@ -238,7 +235,13 @@ struct NotificationsEngineTests {
     var s = MayaLedger.state
     var first = true
     for i in s.txns.indices where s.txns[i].needsReview {
-      if first { first = false } else { s.txns[i].needsReview = false }
+      if first {
+        first = false
+      } else {
+        s.txns[i].needsReview = false
+        s.txns[i].categoryID = "groceries"
+        s.txns[i].categorySource = .user
+      }
     }
     #expect(NotificationsEngine.snapshot(s, now: now).needsALook[0].title == "1 transaction to sort")
   }

@@ -11,6 +11,7 @@ import SwiftUI
 /// shows them. A widget is one tap target when its screen exists in this build; otherwise it
 /// is drawn without a button. Nothing here animates as it appears (owner's motion policy).
 struct WidgetCanvas: View {
+  var title = "Your widgets"
   let widgets: [HomeWidget]
   let hidden: Bool
   /// "Edit" and "Add widget".
@@ -61,7 +62,7 @@ struct WidgetCanvas: View {
   /// "Your widgets" and "Edit" 17/24 medium in the link blue, on one baseline.
   private var header: some View {
     ReflowingRow(alignment: .firstTextBaseline) {
-      Text("Your widgets").hType(.section).foregroundStyle(HColor.textPrimary)
+      Text(title).hType(.section).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
     } trailing: {
       if editable {

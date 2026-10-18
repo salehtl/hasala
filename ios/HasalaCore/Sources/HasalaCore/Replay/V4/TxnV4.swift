@@ -21,12 +21,14 @@ extension State {
     if let v = P.present(p["gates"]) { out.gates = try decodeGates(v) }
   }
 
+  public static let gateARValues = ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop"]
+
   /// 03c §3.1 `gates`: a closed enum per key; unknown keys ignored.
   static func decodeGates(_ v: JSONValue?) throws(PayloadError) -> TxnGates {
     let o = try P.object(v, "gates")
     var g = TxnGates()
     if let v = P.present(o["ar"]) {
-      g.ar = try P.oneOf(v, "gates.ar", ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error"])
+      g.ar = try P.oneOf(v, "gates.ar", gateARValues)
     }
     if let v = P.present(o["sender"]) { g.sender = try P.oneOf(v, "gates.sender", ["trusted", "untrusted"]) }
     if let v = P.present(o["template"]) {

@@ -19,6 +19,54 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func theReviewBadgeFollowsHomesPeriod() {
+    var state = MayaLedger.state
+    state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
+                          postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
+    let app = AppModel(store: InMemoryLedger(state: state))
+    #expect(app.period == .month(MayaLedger.october))
+    #expect(app.reviewCount == 6)
+    app.period = .month(YearMonth(2026, 9))
+    #expect(app.reviewWindow == ReviewWindow(from: LocalDate(2026, 9, 1), to: LocalDate(2026, 9, 30)))
+    #expect(app.reviewCount == 1)
+    app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
+    #expect(app.reviewWindow == ReviewWindow(from: LocalDate(2026, 8, 1), to: LocalDate(2026, 10, 31)))
+    #expect(app.reviewCount == 7)
+    app.period = .month(YearMonth(2026, 12))
+    #expect(app.period == .month(MayaLedger.october))
+    #expect(app.reviewCount == 6)
+    #expect(AppModel(store: InMemoryLedger(state: state)).period == .month(MayaLedger.october))
+  }
+
+  @Test func homesToReviewRowCountsTheReviewTabsQueue() {
+    var state = MayaLedger.state
+    for i in 0..<3 {
+      state.txns.append(Txn(id: "oct-\(i)", merchant: "Corner Shop", amount: .aed(12_50),
+                            postedAt: LocalDateTime(2026, 10, 3 + i, 18, 0), accountID: "dib"))
+    }
+    let app = AppModel(store: InMemoryLedger(state: state))
+    func homeWaiting() -> Int {
+      guard let row = app.snapshot.aboutNow.first(where: { $0.destination == .review }) else { return 0 }
+      return Int(row.detail.rendered(hidden: false).prefix { $0.isNumber }) ?? -1
+    }
+    app.period = .month(YearMonth(2026, 9))
+    #expect(app.reviewCount == 0)
+    #expect(homeWaiting() == app.reviewCount)
+    app.period = Period(YearMonth(2026, 9), MayaLedger.october)
+    #expect(app.reviewCount == 9)
+    #expect(homeWaiting() == app.reviewCount)
+  }
+
+  @Test func theEarliestMonthIsReadOncePerLedgerChange() throws {
+    let store = InMemoryLedger(state: MayaHistory.state)
+    let app = AppModel(store: store)
+    #expect(app.earliestMonth == YearMonth(2026, 4))
+    try store.apply(.archive("h-rent-4", true))
+    #expect(app.earliestMonth == YearMonth(2026, 4))
+    let empty = AppModel(store: InMemoryLedger(state: MayaHistory.firstDays, now: MayaHistory.firstDaysNow))
+    #expect(empty.earliestMonth == MayaLedger.october)
+  }
+
   @Test func theHiddenScenarioStartsHidden() {
     #expect(Scenario.mayaHidden.startsWithAmountsHidden)
     #expect(!Scenario.maya.startsWithAmountsHidden)

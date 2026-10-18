@@ -117,7 +117,7 @@ struct ProfileSheet: View {
           }
         }
         row(.bills, id: "profile.bills") {
-          MoneyThingRow(plate: HuePlate(hue: .sand, icon: .receipt), title: "Bills",
+          MoneyThingRow(plate: HuePlate(hue: .sand, icon: .receipt), title: "Recurring",
                         detail: MoneyPhrase(stringLiteral: snap.bills), hidden: model.hidden, badge: snap.newBills,
                         badgeSpoken: "\(snap.newBills) \(snap.newBills == 1 ? "item needs" : "items need") a look")
         }

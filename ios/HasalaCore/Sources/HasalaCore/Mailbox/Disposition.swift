@@ -237,6 +237,43 @@ public enum MessageDisposer {
       needsReview: !filesItself)
   }
 
+  public enum RefusedProvenance: Sendable, CaseIterable {
+    case whole, trimmed, none
+  }
+
+  public static let trimmedProvenanceLimit = 256
+
+  public static func refusedShape(
+    _ d: MailboxIngestDraft, keepGates: Bool, provenance keep: RefusedProvenance = .whole
+  ) -> MailboxIngestDraft {
+    var p = JSONObject([
+      ("unparsed", .bool(true)), ("needs_review", .bool(true)), ("parse_error", .string("payload_refused")),
+      ("posted_at", .string(dayInstant(d.internalDateMs))), ("posted_precision", .string("day")),
+      ("merchant_raw", .string("")), ("last4", .string("")), ("category", .null), ("entry_method", .string("mailbox")),
+    ])
+    switch keep {
+    case .whole:
+      if let prov = d.payload["provenance"] { p["provenance"] = prov }
+    case .trimmed:
+      if let prov = trimmedProvenance(d.payload["provenance"]) { p["provenance"] = prov }
+    case .none:
+      break
+    }
+    if keepGates, let g = d.payload["gates"] { p["gates"] = g }
+    return MailboxIngestDraft(
+      messageID: d.messageID, ingestID: d.ingestID, internalDateMs: d.internalDateMs, payload: p, needsReview: true)
+  }
+
+  static func trimmedProvenance(_ v: JSONValue?) -> JSONValue? {
+    guard let prov = v?.objectValue else { return nil }
+    var fields: [(String, JSONValue)] = []
+    for key in ["provider", "grant_id", "message_id"] {
+      guard let s = prov[key]?.stringValue, !s.isEmpty, s.utf8.count <= trimmedProvenanceLimit else { return nil }
+      fields.append((key, .string(s)))
+    }
+    return .object(JSONObject(fields))
+  }
+
   static func gatesJSON(_ g: MailGates, template: String, card: String) -> JSONValue {
     .object(
       JSONObject([

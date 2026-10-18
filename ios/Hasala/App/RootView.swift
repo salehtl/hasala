@@ -112,11 +112,13 @@ struct LaunchView: View {
     let onboarding: OnboardingStore
     /// Where setup resumes in this scenario.
     let setupFacts: OnboardingStep.Facts
+    let widgets: WidgetPublisher
 
     init(app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts) {
       self.app = app
       self.session = session
       self.setupFacts = setupFacts
+      widgets = WidgetPublisher(app: app)
       onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
 
@@ -131,7 +133,7 @@ struct LaunchView: View {
       let session = AuthScenario.session(for: auth)
       let graph = MockGraph(
         app: AppModel(
-          store: InMemoryLedger(state: scenario.state, now: MayaLedger.now),
+          store: InMemoryLedger(state: scenario.state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth))
       launch?.open(graph)

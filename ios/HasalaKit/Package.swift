@@ -17,6 +17,7 @@ let package = Package(
     .library(name: "HasalaModels", targets: ["HasalaModels"]),
     .library(name: "HasalaDesign", targets: ["HasalaDesign"]),
     .library(name: "HasalaMocks", targets: ["HasalaMocks"]),
+    .library(name: "HasalaWidgetData", targets: ["HasalaWidgetData"]),
   ],
   targets: [
     .target(name: "HasalaModels"),
@@ -26,6 +27,8 @@ let package = Package(
       resources: [.copy("Fonts")]
     ),
     .target(name: "HasalaMocks", dependencies: ["HasalaModels"]),
-    .testTarget(name: "HasalaKitTests", dependencies: ["HasalaModels", "HasalaDesign", "HasalaMocks"]),
+    .target(name: "HasalaWidgetData", dependencies: ["HasalaModels"]),
+    .testTarget(
+      name: "HasalaKitTests", dependencies: ["HasalaModels", "HasalaDesign", "HasalaMocks", "HasalaWidgetData"]),
   ]
 )

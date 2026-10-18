@@ -5,6 +5,7 @@ import CoreSync
 import Foundation
 import HasalaMocks
 import HasalaModels
+import HasalaWidgetData
 import Testing
 
 @testable import Hasala
@@ -74,6 +75,12 @@ struct LiveGateTests {
 
   @Test func theFaceIDLockIsOffUntilTheAppLockExists() {
     #expect(DevicePrefsStore(defaults: Self.defaults()).prefs.faceIDLock == false)
+  }
+
+  @Test func leavingTheAccountDropsAWaitingWidgetLink() {
+    WidgetLinkInbox.shared.pending = .review
+    LocalAccountData.forget(defaults: Self.defaults())
+    #expect(WidgetLinkInbox.shared.pending == nil)
   }
 
   @Test func leavingTheAccountForgetsWhatThisIPhoneNoted() {

@@ -54,7 +54,7 @@ public enum StatusTone: String, Sendable, Hashable, Codable {
   case accent, error, warning, success
 }
 
-public struct StatusPill: Sendable, Hashable {
+public struct StatusPill: Sendable, Hashable, Codable {
   public var text: String
   public var tone: StatusTone
   /// Paper draws a 7 pt dot before the text on poster pills, not on widget chips.
@@ -83,14 +83,42 @@ public struct HeroTile: Sendable, Hashable, Identifiable {
   public var label: String
   public var value: Money
   public var style: MoneyStyle
-  /// "of 5,000" after the value: savings part way through its plan.
-  public var of: Money?
 
-  public init(_ label: String, _ value: Money, style: MoneyStyle = .exact, of: Money? = nil) {
+  public init(_ label: String, _ value: Money, style: MoneyStyle = .exact) {
     self.label = label
     self.value = value
     self.style = style
-    self.of = of
+  }
+}
+
+public struct HeroMonthBar: Sendable, Hashable, Identifiable {
+  public var id: YearMonth { month }
+  public var month: YearMonth
+  public var spent: Money
+  public var plan: Money
+  public var verdict: Verdict
+
+  public init(month: YearMonth, spent: Money, plan: Money, verdict: Verdict) {
+    self.month = month
+    self.spent = spent
+    self.plan = plan
+    self.verdict = verdict
+  }
+
+  public var label: String { month.shortName }
+}
+
+public struct AboutNowRow: Sendable, Hashable, Identifiable {
+  public var id: String
+  public var title: String
+  public var detail: MoneyPhrase
+  public var destination: NotificationDestination
+
+  public init(id: String, title: String, detail: MoneyPhrase, destination: NotificationDestination) {
+    self.id = id
+    self.title = title
+    self.detail = detail
+    self.destination = destination
   }
 }
 
@@ -106,12 +134,14 @@ public struct SpendHero: Sendable, Hashable {
     case noPlan
     /// The first import is running and no transaction has arrived (S9): zero, filling in.
     case syncing
+    case ended
+    case range
   }
 
   public var state: State
   /// "Day 10 of 31" (drawn in capitals).
   public var overline: String
-  /// Needs + wants spent this month.
+  /// Everything spent in the period (`Spending.total`).
   public var spent: Money
   /// Needs + wants budgets this month; zero with no plan.
   public var plan: Money
@@ -129,11 +159,16 @@ public struct SpendHero: Sendable, Hashable {
   public var tiles: [HeroTile]
   /// The wash behind the hero: sky on track, sand ahead of pace, rose over.
   public var wash: Hue
+  public var bars: [HeroMonthBar]
+  public var note: MoneyPhrase?
 
   public init(
     state: State = .live, overline: String, spent: Money, plan: Money, tick: Money?, verdict: Verdict?,
-    word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue
+    word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue,
+    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil
   ) {
+    self.bars = bars
+    self.note = note
     self.state = state
     self.overline = overline
     self.spent = spent
@@ -161,7 +196,7 @@ public enum PosterFigure: Sendable, Hashable {
 
 // MARK: - Widgets (Paper "Widgets · launch set", the Home canvas)
 
-public struct BucketPaceRow: Sendable, Hashable, Identifiable {
+public struct BucketPaceRow: Sendable, Hashable, Codable, Identifiable {
   public var id: Bucket { bucket }
   public var bucket: Bucket
   public var spent: Money
@@ -179,7 +214,7 @@ public struct BucketPaceRow: Sendable, Hashable, Identifiable {
   public var progress: Permille { Permille.ratio(spent.minor, of: budget.minor) }
 }
 
-public struct BudgetPaceWidget: Sendable, Hashable {
+public struct BudgetPaceWidget: Sendable, Hashable, Codable {
   /// "32% of October gone".
   public var monthGone: String
   public var rows: [BucketPaceRow]
@@ -190,7 +225,7 @@ public struct BudgetPaceWidget: Sendable, Hashable {
   }
 }
 
-public struct NextBillWidget: Sendable, Hashable {
+public struct NextBillWidget: Sendable, Hashable, Codable {
   public var glyph: Glyph
   public var hue: Hue
   public var due: StatusPill
@@ -207,7 +242,7 @@ public struct NextBillWidget: Sendable, Hashable {
   }
 }
 
-public struct NetWorthWidget: Sendable, Hashable {
+public struct NetWorthWidget: Sendable, Hashable, Codable {
   public var total: Money
   public var change: MoneyPhrase
   /// Twelve points for the sparkline, as permille of the drawn range (geometry only).
@@ -220,7 +255,7 @@ public struct NetWorthWidget: Sendable, Hashable {
   }
 }
 
-public struct ProjectWidget: Sendable, Hashable {
+public struct ProjectWidget: Sendable, Hashable, Codable {
   public var name: String
   public var glyph: Glyph
   public var left: Money
@@ -237,7 +272,7 @@ public struct ProjectWidget: Sendable, Hashable {
   }
 }
 
-public struct GoalWidget: Sendable, Hashable {
+public struct GoalWidget: Sendable, Hashable, Codable {
   public var name: String
   public var glyph: Glyph
   public var progress: Permille
@@ -255,7 +290,7 @@ public struct GoalWidget: Sendable, Hashable {
   public var percentLabel: String { "\(progress.value / 10)%" }
 }
 
-public struct MiniTxnRow: Sendable, Hashable, Identifiable {
+public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   public var id: String
   public var merchant: String
   public var glyph: Glyph
@@ -285,7 +320,7 @@ public struct MiniTxnRow: Sendable, Hashable, Identifiable {
   }
 }
 
-public struct TodayWidget: Sendable, Hashable {
+public struct TodayWidget: Sendable, Hashable, Codable {
   /// "2 transactions · 91.50".
   public var summary: MoneyPhrase
   public var rows: [MiniTxnRow]
@@ -334,13 +369,24 @@ public struct HomeSnapshot: Sendable, Hashable {
   /// What needs a look (the bell's badge and its sheet), from the ledger.
   public var notifications: NotificationsSnapshot
   public var widgets: [HomeWidget]
+  public var period: Period?
+  public var canvasTitle: String
+  public var aboutNow: [AboutNowRow]
 
-  public init(header: HeaderState, hero: SpendHero, notifications: NotificationsSnapshot, widgets: [HomeWidget]) {
+  public init(
+    header: HeaderState, hero: SpendHero, notifications: NotificationsSnapshot, widgets: [HomeWidget],
+    period: Period? = nil, canvasTitle: String = "Your widgets", aboutNow: [AboutNowRow] = []
+  ) {
     self.header = header
     self.hero = hero
     self.notifications = notifications
     self.widgets = widgets
+    self.period = period
+    self.canvasTitle = canvasTitle
+    self.aboutNow = aboutNow
   }
+
+  public var isThisMonth: Bool { period == nil }
 }
 
 public extension Array where Element == HomeWidget {

@@ -46,7 +46,7 @@ struct BillDetailView: View {
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("It leaves Bills and Coming up. Its past payments stay in Activity.")
+      Text("It leaves Recurring and Coming up. Its past payments stay in Activity.")
     }
   }
 

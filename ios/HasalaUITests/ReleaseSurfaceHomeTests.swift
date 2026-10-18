@@ -9,20 +9,22 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
   func testHomeShowsOnlyWhatWorks() throws {
     let app = launchRelease()
 
-    // The hero and the bell; no "See month", "Edit" or "Add widget", no Needs-you rail.
+    // The hero, its Insights link and the bell; no "Edit" or "Add widget", no Needs-you rail.
     attach(app, "Release · Home")
     assertNoPlaceholders(app, "Home")
     assertPersonalAccountsOnly(app, "Home")
-    XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 10,288.34"))
+    XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 11,115.62"))
     assertAbsent(app, ["home.seeMonth", "home.sampleData", "home.editWidgets", "Needs you"], "Home")
     assertNoButtons(app, ["See all", "Edit", "Add widget", "See month"], "Home")
+    assertPresent(app, ["home.insights"], "Home")
     XCTAssertEqual(
       app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'needsYou.'")).count, 0,
       "Home still draws Needs-you cards")
-    // The period pill names the month; it is not a control until the picker exists.
-    XCTAssertTrue(el(app, "Period, October 2026").exists)
-    XCTAssertFalse(app.buttons["Period, October 2026"].exists, "the period pill is a button with nowhere to go")
     try audit(app)
+    tap(app, "home.period", opening: "period.sheet")
+    assertNoPlaceholders(app, "Period")
+    tap(app, "period.close")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
     // The bell counts what needs a look and opens it.
     let bell = app.buttons["header.notifications"].firstMatch
@@ -41,8 +43,8 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // A row opens its screen: du's new price is in Bills.
     tap(app, "bell.row.price.du")
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
-    assertNoPlaceholders(app, "Bills")
-    assertAbsent(app, ["bills.allSchedules"], "Bills")
+    assertNoPlaceholders(app, "Recurring")
+    assertAbsent(app, ["bills.allSchedules"], "Recurring")
     back(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
@@ -57,10 +59,10 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Home widgets")
     nextBill.tap()
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
-    attach(app, "Release · Bills")
-    assertNoPlaceholders(app, "Bills")
-    assertAbsent(app, ["bills.allSchedules"], "Home › Bills")
-    assertNoButtons(app, ["Remind me"], "Bills")
+    attach(app, "Release · Recurring")
+    assertNoPlaceholders(app, "Recurring")
+    assertAbsent(app, ["bills.allSchedules"], "Home › Recurring")
+    assertNoButtons(app, ["Remind me"], "Recurring")
     try audit(app)
     back(app)
     let pace = app.buttons["widget.budgetPace"]

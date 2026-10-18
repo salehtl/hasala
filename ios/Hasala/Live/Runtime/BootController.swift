@@ -61,6 +61,7 @@ final class BootController {
   private(set) var runtime: AccountRuntime?
   /// The screens' app model over the runtime's ledger (one per opened runtime).
   private(set) var app: AppModel?
+  @ObservationIgnored private var widgets: WidgetPublisher?
   /// Bumped per opened runtime, so the tab shell is rebuilt for a new account.
   private(set) var generation = 0
   /// Where setup resumes after a relaunch mid-setup.
@@ -262,6 +263,7 @@ final class BootController {
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app
+      self.widgets = WidgetPublisher(app: app)
       self.generation += 1
       self.setupFacts = facts
       rt.onAccount = { [weak self, weak rt] info in
@@ -297,6 +299,10 @@ final class BootController {
     // What was searched belongs to the account that is closing (merchant names): the next
     // account opened in this process starts with none.
     SearchHistory.shared.clear()
+    WidgetLinkInbox.shared.pending = nil
+    widgets?.stop()
+    widgets = nil
+    WidgetPublisher.clear()
     openingID += 1
     opening?.cancel()
     opening = nil

@@ -334,6 +334,38 @@ extension XCTestCase {
                    "\(id) reads \(row.value ?? "nothing"), not Syncing or Connected", file: file, line: line)
   }
 
+  /// The keyboard is up: each of `shown` is on screen above it (and above the dock's
+  /// `button`, when there is one), and none of `hidden` (the dock's links) is there to
+  /// cover a field. Attaches a screenshot.
+  @MainActor
+  func assertClearOfKeyboard(
+    _ app: XCUIApplication, shown: [String], button: String? = nil, hidden: [String], _ name: String,
+    file: StaticString = #filePath, line: UInt = #line
+  ) {
+    let keyboard = app.keyboards.firstMatch
+    XCTAssertTrue(keyboard.waitForExistence(timeout: uiWait), "\(name): the keyboard did not open", file: file,
+                  line: line)
+    waitForStill(app)
+    for id in hidden {
+      XCTAssertTrue(el(app, id).waitForNonExistence(timeout: uiWait), "\(name): \(id) stayed over the keyboard",
+                    file: file, line: line)
+    }
+    let top = keyboard.frame.minY
+    let dock = button.map { el(app, $0) }
+    if let button, let dock {
+      XCTAssertTrue(dock.exists && dock.isHittable, "\(name): \(button) can't be reached", file: file, line: line)
+      XCTAssertLessThanOrEqual(dock.frame.maxY, top + 1, "\(name): \(button) is under the keyboard", file: file,
+                               line: line)
+    }
+    for id in shown {
+      let e = el(app, id)
+      XCTAssertTrue(e.exists && e.isHittable, "\(name): \(id) can't be reached", file: file, line: line)
+      XCTAssertLessThanOrEqual(e.frame.maxY, (dock?.frame.minY ?? top) + 1, "\(name): \(id) is covered",
+                               file: file, line: line)
+    }
+    attach(app, name)
+  }
+
   @MainActor
   func attach(_ app: XCUIApplication, _ name: String) {
     let shot = XCTAttachment(screenshot: app.screenshot())

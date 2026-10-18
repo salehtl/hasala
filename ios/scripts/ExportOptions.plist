@@ -16,6 +16,8 @@
 	<dict>
 		<key>app.hasala.ios</key>
 		<string>Hasala App Store</string>
+		<key>app.hasala.ios.widgets</key>
+		<string>Hasala Widgets App Store</string>
 	</dict>
 	<key>uploadSymbols</key>
 	<true/>

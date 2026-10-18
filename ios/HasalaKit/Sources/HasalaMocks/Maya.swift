@@ -17,6 +17,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   /// The App Review demo account: the same ledger loaded as sample data, so every row read
   /// from a bank alert carries a `sample-<n>` message id instead of a Gmail one.
   case mayaSample
+  case firstDays
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -28,9 +29,12 @@ public enum Scenario: String, Sendable, CaseIterable {
 
   public var startsWithAmountsHidden: Bool { self == .mayaHidden }
 
+  public var now: LocalDateTime { self == .firstDays ? MayaHistory.firstDaysNow : MayaLedger.now }
+
   /// The ledger the scenario starts from.
   public var state: LedgerState {
-    var s = MayaLedger.state
+    if self == .firstDays { return MayaHistory.firstDays }
+    var s = self == .mayaSample ? MayaLedger.state : MayaHistory.state
     if self == .mayaCaughtUp {
       for i in s.txns.indices where s.txns[i].needsReview {
         s.txns[i].needsReview = false
@@ -62,7 +66,8 @@ public enum Maya {
     widgets: widgets
   )
 
-  // Needs + wants: 10,288.34 spent of 19,000 (12,350 + 6,650), 8,711.66 left. Today's tick is
+  // Spent: 11,115.62 of 19,000 (12,350 + 6,650), 7,884.38 left: needs and wants 10,288.34 plus
+  // 827.28 not sorted yet (savings moves and the transfer in don't count). Today's tick is
   // the 8,005.89 of bills paid so far plus 9,954.96 (the plan less this month's 9,045.04 of
   // bills) × 10 ÷ 31 = 3,211.28: 11,217.17, so spending is behind it: on track.
   // Savings: both standing orders went out on the 2nd, so the ledger has the 5,000 saved (the
@@ -70,13 +75,13 @@ public enum Maya {
   // D.3 open decision 5).
   static let hero = SpendHero(
     overline: "Day 10 of 31",
-    spent: .aed(10_288_34),
+    spent: .aed(11_115_62),
     plan: .aed(19_000_00),
     tick: .aed(11_217_17),
     verdict: .onTrack,
     word: "On track",
-    fact: MoneyPhrase([.text("AED "), .amount(.aed(8_711_66), hidden: 3), .text(" left")]),
-    caption: MoneyPhrase([.text("spent of "), .amount(.aed(19_000_00), .rounded, hidden: 3), .text(" on needs and wants")]),
+    fact: MoneyPhrase([.text("AED "), .amount(.aed(7_884_38), hidden: 3), .text(" left")]),
+    caption: MoneyPhrase([.text("spent of "), .amount(.aed(19_000_00), .rounded, hidden: 3), .text(" planned")]),
     tiles: [
       HeroTile("Needs", .aed(9_040_80)),
       HeroTile("Wants", .aed(1_247_54)),

@@ -82,6 +82,28 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 0)
   }
 
+  @Test func theQueueFollowsTheChosenPeriod() {
+    var state = MayaLedger.state
+    state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
+                          postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
+    let app = AppModel(store: InMemoryLedger(state: state))
+    #expect(app.reviewWindow == .month(YearMonth(2026, 10)))
+    #expect(app.reviewCount == 6)
+    #expect(!ReviewViewModel(app: app).cards.contains { $0.id == "sep-shop" })
+    app.period = .month(YearMonth(2026, 9))
+    #expect(app.reviewWindow == .month(YearMonth(2026, 9)))
+    #expect(app.reviewCount == 1)
+    let deck = ReviewViewModel(app: app)
+    #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
+    deck.sort("sep-shop", into: "groceries", alwaysUse: false, project: nil)
+    #expect(deck.cards.isEmpty && app.reviewCount == 0)
+    #expect(deck.sorted.map(\.merchant) == ["Corner Shop"])
+    app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
+    #expect(app.reviewCount == 6)
+    #expect(ReviewTabView.emptyLine(.month(YearMonth(2026, 9))) == "Nothing in September 2026 needs a look.")
+    #expect(ReviewTabView.emptyLine(app.period) == "Nothing in Aug – Oct 2026 needs a look.")
+  }
+
   /// The Review tab's line under the title, about ten seconds a card.
   @Test func theReviewTabSaysHowLongItTakes() {
     #expect(ReviewTabView.countLine(6) == "6 to sort · about a minute")
