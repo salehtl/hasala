@@ -4,10 +4,8 @@ import SwiftUI
 
 /// The tab shell (Paper "13 · Navigation · Tab bar and search"): Home, Plan, Review with
 /// its to-sort badge, Activity, and Search as the system's search-role tab, with the app's
-/// sheets and the review cover over them. Paper draws Search as a separate 64 pt glass
-/// circle beside a 288 pt bar; on the iOS 27 simulator `Tab(role: .search)` draws inline,
-/// with or without `.tabBarMinimizeBehavior(.never)`, and moving `.searchable` onto the
-/// TabView puts a search field in every tab. Not yet checked on an iOS 26 runtime.
+/// sheets and the review cover over them. Search is the separate glass circle beside the bar
+/// (Paper); on iOS 27 the system draws it apart only when the search tab activates search.
 ///
 /// Search is in every build: it finds transactions, categories and rules in this iPhone's
 /// own ledger, with no server call. Its direct answers (spec 04 §13.1) are not built.
@@ -62,6 +60,7 @@ struct MainView: View {
       }
     }
     .tabBarMinimizeBehavior(.never)
+    .tabViewSearchActivation(.searchTabSelection)
     // A main view that appears (again, after signing out and back in) starts with no
     // sheet or cover from the last time it was on screen; a Debug launch's screen then
     // opens over it.
