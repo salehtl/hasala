@@ -59,7 +59,7 @@ final class BillsViewModel: BillsModel {
   func dismiss(_ candidate: String) { app.perform(.dismissCandidate(candidate)) }
 }
 
-/// Pushed from Home (the Next bill widget) and Profile › Bills: the next 14 days, the bills
+/// Recurring, pushed from Home (the Next bill widget) and Profile › Recurring: the next 14 days, the bills
 /// that need a decision, the ones found in the history, what's coming and what's been paid.
 /// A row or "Details" opens the bill, on the stack the list is in.
 struct BillsView: View {
@@ -77,7 +77,7 @@ struct BillsView: View {
   var body: some View {
     // Sand while bills are due or need a look (Paper "Ambient wash · Bills due"); sky when
     // nothing is.
-    PushedPage(app: app, title: "Bills", wash: snap.next14.isZero && snap.needsALook.isEmpty ? .onTrack : .overPace,
+    PushedPage(app: app, title: "Recurring", wash: snap.next14.isZero && snap.needsALook.isEmpty ? .onTrack : .overPace,
                spacing: 28, top: 12) {
       hero.padding(.horizontal, HSpacing.insetPage)
       if !snap.needsALook.isEmpty { needsALook.padding(.horizontal, HSpacing.insetPage) }
