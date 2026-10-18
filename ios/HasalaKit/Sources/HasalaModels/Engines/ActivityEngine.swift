@@ -213,7 +213,9 @@ public enum ActivityEngine {
   public static func row(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
     let c = s.category(t.categoryID)
     let detail: String
-    if t.inReview {
+    if let reason = t.activeReviewReason {
+      detail = "\(reason.label) · \(t.postedAt.time)"
+    } else if t.inReview {
       detail = "To review · \(t.postedAt.time)"
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
@@ -225,7 +227,7 @@ public enum ActivityEngine {
       id: t.id, merchant: t.title, glyph: glyph, hue: t.inReview ? .other : (c?.hue ?? .other), detail: detail,
       amount: t.amount, isIncome: t.direction == .in,
       monogram: (t.inReview || c == nil) ? String(t.merchant.prefix(1)).uppercased() : nil,
-      toReview: t.inReview
+      toReview: t.inReview, reviewReason: t.activeReviewReason
     )
   }
 

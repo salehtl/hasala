@@ -99,8 +99,8 @@ public struct TxnGates: Sendable, Equatable, Codable {
   public enum ReviewReason: String, Sendable { case senderUnverified = "sender_unverified" }
 
   public var reviewReason: ReviewReason? {
-    guard ar != nil || sender != nil else { return nil }
-    return ar == "pass" && sender == "trusted" ? nil : .senderUnverified
+    guard let ar, ar != "pass" else { return nil }
+    return .senderUnverified
   }
 }
 

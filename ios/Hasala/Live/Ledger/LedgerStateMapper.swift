@@ -226,8 +226,10 @@ nonisolated enum LedgerStateMapper {
       isTransfer: row.category == "transfer" || row.transferState != nil, archived: row.archived != nil,
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
-      heldCopy: try heldCopy(row, r: r))
+      heldCopy: try heldCopy(row, r: r),
+      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) })
   }
+
 
   static func heldCopy(_ row: TxnRow, r: LedgerReader) throws -> HeldCopy? {
     guard row.heldCopy, let other = row.copyOf else { return nil }

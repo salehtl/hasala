@@ -237,6 +237,10 @@ extension Txn {
   }
 }
 
+extension ReviewCardModel {
+  public var senderUnverified: Bool { reviewReason == .senderUnverified }
+}
+
 public enum ReviewEngine {
   /// The queue, oldest first, without today's skips.
   public static func queue(_ s: LedgerState, in window: ReviewWindow = .all) -> [Txn] {

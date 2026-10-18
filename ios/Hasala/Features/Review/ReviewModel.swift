@@ -35,6 +35,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   @discardableResult func useSuggestion(_ card: TxnID) -> Bool
   func skip(_ card: TxnID)
   @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
+  @discardableResult func archive(_ card: TxnID) -> Bool
   func close(goToActivity: Bool)
 }
 
@@ -127,6 +128,9 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { app.perform(.resolveCopy(card, merge: merge)) }
+
+  @discardableResult
+  func archive(_ card: TxnID) -> Bool { app.perform(.archive(card, true)) }
 
   func close(goToActivity: Bool) {
     app.cover = nil

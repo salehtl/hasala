@@ -162,8 +162,8 @@ struct ReviewTabView: View {
         Text(card.merchant).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
         Text(Self.supporting(card))
-          .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
-          .foregroundStyle(card.suggestion == nil ? HColor.textSecondary : HColor.actionAccent)
+          .hType(HType(size: 13, leading: 16, weight: card.reviewReason != nil ? .medium : .regular, textStyle: .footnote))
+          .foregroundStyle(supportingColor(card))
           .fixedSize(horizontal: false, vertical: true)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -182,8 +182,14 @@ struct ReviewTabView: View {
     return [card.merchant, Self.supporting(card), amount].joined(separator: ", ")
   }
 
+  private func supportingColor(_ card: ReviewCardModel) -> Color {
+    if let reason = card.reviewReason { return ReviewReasonStyle.ink(reason) }
+    return card.suggestion == nil ? HColor.textSecondary : HColor.actionAccent
+  }
+
   /// "Looks like Groceries", or what the person decides.
   static func supporting(_ card: ReviewCardModel) -> String {
+    if let reason = card.reviewReason { return "\(reason.label) · you decide" }
     if let s = card.suggestion { return "Looks like \(s.name)" }
     if card.isIncome { return "Income or a transfer?" }
     return card.isNewMerchant ? "New merchant · you decide" : "You decide"

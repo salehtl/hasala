@@ -174,3 +174,210 @@ struct CheckboxToggleStyle: ToggleStyle {
     .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
   }
 }
+
+enum ReviewReasonStyle {
+  static func ink(_ reason: TxnReviewReason) -> Color {
+    switch reason {
+    case .senderUnverified: HColor.statusWarningForeground
+    case .probableCopy: HColor.statusInfoForeground
+    }
+  }
+
+  static func surface(_ reason: TxnReviewReason) -> Color {
+    switch reason {
+    case .senderUnverified: HColor.statusWarningSurface
+    case .probableCopy: HColor.reviewSuggestionSurface
+    }
+  }
+
+  static func icon(_ reason: TxnReviewReason) -> HIcon {
+    switch reason {
+    case .senderUnverified: .shield
+    case .probableCopy: .envelope
+    }
+  }
+
+  static func chip(_ reason: TxnReviewReason) -> InfoChip.Style {
+    switch reason {
+    case .senderUnverified: .warningReason
+    case .probableCopy: .reason
+    }
+  }
+}
+
+struct ReviewReasonSheet: View {
+  let reason: TxnReviewReason
+  let sort: () -> Void
+  let archive: () -> Void
+  var merge: () -> Void = {}
+  var keepBoth: () -> Void = {}
+
+  @State private var contentHeight: CGFloat?
+  @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          header
+          ReviewReasonInfo(reason: reason, sort: sort, archive: archive, merge: merge, keepBoth: keepBoth)
+        }
+        .padding(.top, 8)
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.bottom, 28)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+      }
+      .scrollBounceBehavior(.basedOnSize)
+      .ignoresSafeArea(.container, edges: typeSize.isAccessibilitySize ? [] : .bottom)
+      .background(HColor.sheetSurface)
+      .toolbar(.hidden, for: .navigationBar)
+    }
+    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? 600)])
+    .presentationDragIndicator(.visible)
+    .presentationBackground(HColor.sheetSurface)
+    .presentationCornerRadius(HRadius.sheet)
+  }
+
+  private var header: some View {
+    HStack {
+      GlassIconButton(.close, label: "Close") { dismiss() }
+        .accessibilityIdentifier("reason.close")
+      Spacer(minLength: 8)
+      Text("About this alert")
+        .hType(.headline.weight(.semibold))
+        .foregroundStyle(HColor.textPrimary)
+        .multilineTextAlignment(.center)
+        .accessibilityAddTraits(.isHeader)
+      Spacer(minLength: 8)
+      Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+    }
+    .padding(.top, 12)
+  }
+}
+
+struct ReviewReasonPage: View {
+  let reason: TxnReviewReason
+  let sort: () -> Void
+  let archive: () -> Void
+
+  var body: some View {
+    ScrollView {
+      ReviewReasonInfo(reason: reason, sort: sort, archive: archive)
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.top, 8)
+        .padding(.bottom, 40)
+    }
+    .background(HColor.sheetSurfaceLarge)
+    .navigationTitle("About this alert")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+struct ReviewReasonInfo: View {
+  let reason: TxnReviewReason
+  let sort: () -> Void
+  let archive: () -> Void
+  var merge: () -> Void = {}
+  var keepBoth: () -> Void = {}
+
+  @ScaledMetric(relativeTo: .subheadline) private var stepDisc: CGFloat = 24
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      hero
+      whatToDo.padding(.bottom, 8)
+      actions
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("reason.info")
+  }
+
+  private var explanation: String {
+    switch reason {
+    case .senderUnverified:
+      "Your mailbox couldn't confirm that this email came from your bank. It may still be real, so check it before you sort it."
+    case .probableCopy:
+      "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
+    }
+  }
+
+  private var steps: [String] {
+    switch reason {
+    case .senderUnverified:
+      [
+        "Open your bank app and look for this payment.",
+        "If it's there, sort it as usual.",
+        "If it isn't, archive it so it stays out of your plan. Don't tap links in that email.",
+      ]
+    case .probableCopy:
+      ["Merge it if it's the same payment.", "Keep both if you really paid twice."]
+    }
+  }
+
+  @ViewBuilder private var actions: some View {
+    switch reason {
+    case .senderUnverified:
+      Button("It's real, sort it") { sort() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("reason.sort")
+      Button("Not mine, archive it") { archive() }
+        .buttonStyle(.pill(.destructiveText, fill: true))
+        .accessibilityIdentifier("reason.archive")
+    case .probableCopy:
+      Button("Merge") { merge() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("reason.merge")
+      Button("Keep both") { keepBoth() }
+        .buttonStyle(.pill(.secondary, fill: true))
+        .accessibilityIdentifier("reason.keepBoth")
+    }
+  }
+
+  private var hero: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Circle().fill(ReviewReasonStyle.surface(reason)).frame(width: 56, height: 56)
+        .overlay {
+          HIconView(ReviewReasonStyle.icon(reason), size: 26, color: ReviewReasonStyle.ink(reason), strokeWidth: 1.9)
+        }
+        .accessibilityHidden(true)
+      Text(reason.title)
+        .hType(.section)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+      Text(explanation)
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, 4)
+  }
+
+  private var whatToDo: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("What to do").hType(.overline).foregroundStyle(HColor.textSecondary)
+        .accessibilityAddTraits(.isHeader)
+      VStack(alignment: .leading, spacing: 4) {
+        ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+          HStack(alignment: .top, spacing: 12) {
+            Text("\(i + 1)")
+              .hType(.footnote.weight(.semibold))
+              .foregroundStyle(HColor.textPrimary)
+              .frame(width: stepDisc, height: stepDisc)
+              .background(HColor.surfaceSecondary, in: Circle())
+            Text(step)
+              .hType(.subheadline)
+              .foregroundStyle(HColor.textPrimary)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.top, 2)
+          }
+          .padding(.vertical, 6)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Step \(i + 1). \(step)")
+        }
+      }
+    }
+  }
+}

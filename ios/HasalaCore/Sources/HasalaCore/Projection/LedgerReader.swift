@@ -4,6 +4,7 @@
 // Every query returns plain values; nothing here writes.
 import CoreCategorize
 import CoreDomain
+import CoreJSON
 import CoreReplay
 import CoreTime
 import Foundation
@@ -58,6 +59,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var copyOf: String?
   public var copyDecision: String?
   public var heldCopy: Bool
+  public var reviewReason: TxnGates.ReviewReason?
 
   init(_ r: Row) {
     id = r["id"]
@@ -105,6 +107,12 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     copyOf = r["copy_of"]
     copyDecision = r["copy_decision"]
     heldCopy = r["held_copy"]
+    reviewReason = Self.reviewReason(gatesJSON: r["gates_json"])
+  }
+
+  static func reviewReason(gatesJSON: String?) -> TxnGates.ReviewReason? {
+    guard let gatesJSON, let gates = try? JSONParser.parse(text: gatesJSON) else { return nil }
+    return TxnGates(ar: gates["ar"]?.stringValue, sender: gates["sender"]?.stringValue).reviewReason
   }
 }
 

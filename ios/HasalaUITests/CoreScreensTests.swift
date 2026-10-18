@@ -175,12 +175,17 @@ final class CoreScreensTests: XCTestCase {
     let merchant = element(app, "review.merchant")
     XCTAssertTrue(merchant.waitForLabel(containing: "Apple.com"), merchant.debugDescription)
 
-    // Card 3 onward: use each suggestion.
-    for _ in 0..<4 {
+    for _ in 0..<3 {
       let use = element(app, "review.use")
       XCTAssertTrue(use.waitForExistence(timeout: uiWait))
       use.tap()
     }
+    XCTAssertTrue(merchant.waitForLabel(containing: "Steam"), merchant.debugDescription)
+    XCTAssertFalse(element(app, "review.use").exists)
+    element(app, "review.pill.want").tap()
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    element(app, "pick.alwaysUse").tap()
+    sort.tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     XCTAssertEqual(element(app, "review.done.tally").label, "5 sorted")
     attach(app, "Review · All caught up")
@@ -277,11 +282,16 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertEqual(card.frame.midY, second.midY, accuracy: 1, "the card rises with Reduce Motion")
     element(app, "pick.salary").tap()
     sort.tap()
-    for _ in 0..<4 {
+    for _ in 0..<3 {
       let use = element(app, "review.use")
       XCTAssertTrue(use.waitForExistence(timeout: uiWait))
       use.tap()
     }
+    // Steam's sender is not verified: no Use, so a pill and the pick sheet, without a rule.
+    element(app, "review.pill.want").tap()
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    element(app, "pick.alwaysUse").tap()
+    sort.tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     // Need asks to remember the merchant by default: one rule.
     XCTAssertEqual(element(app, "review.done.tally").label, "6 sorted · 1 new rule")
@@ -382,5 +392,95 @@ final class CoreScreensTests: XCTestCase {
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.staticTexts["To review"].exists)
+  }
+
+  @MainActor
+  func testSenderUnverifiedReasonOnTheDeckActivityAndSheet() throws {
+    let app = launchHome()
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let row = element(app, "review.tab.row.steam")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, row))
+    XCTAssertTrue(row.label.contains("Couldn't verify sender"), row.label)
+    XCTAssertFalse(element(app, "review.tab.row.lulu").label.contains("Couldn't verify sender"))
+    attach(app, "Sender · Review tab")
+    row.tap()
+
+    let merchant = element(app, "review.merchant")
+    XCTAssertTrue(merchant.waitForLabel(containing: "Steam"), merchant.debugDescription)
+    XCTAssertTrue(merchant.label.contains("Couldn't verify the sender."), merchant.label)
+    XCTAssertTrue(element(app, "review.reason.sender_unverified").exists)
+    let strip = element(app, "review.reasonStrip.sender_unverified")
+    XCTAssertTrue(strip.exists)
+    attach(app, "Sender · Deck")
+    try audit(app)
+
+    strip.tap()
+    let sort = element(app, "reason.sort")
+    XCTAssertTrue(sort.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.staticTexts["Couldn't verify the sender"].exists)
+    attach(app, "Sender · About this alert")
+    try audit(app, overSheet: true)
+    sort.tap()
+    XCTAssertTrue(sort.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(merchant.waitForLabel(containing: "Steam"))
+    XCTAssertEqual(element(app, "review.position").label, "1 of 6")
+
+    element(app, "review.reason.sender_unverified").tap()
+    let archive = element(app, "reason.archive")
+    XCTAssertTrue(archive.waitForExistence(timeout: uiWait))
+    archive.tap()
+    XCTAssertTrue(archive.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(merchant.waitForLabel(containing: "ADCB ATM withdrawal"), merchant.debugDescription)
+    element(app, "toast").buttons["Undo"].tap()
+    element(app, "review.close").tap()
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("6 to sort · about a minute"))
+
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
+    element(app, "activity.chip.toReview").tap()
+    let steam = element(app, "txn.steam")
+    XCTAssertTrue(steam.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(steam.label.contains("Couldn't verify sender"), steam.label)
+    XCTAssertTrue(element(app, "txn.lulu").label.contains("To review"))
+    attach(app, "Sender · Activity To review")
+    try audit(app)
+    steam.tap()
+    let callout = element(app, "txn.reviewReason.sender_unverified")
+    XCTAssertTrue(callout.waitForExistence(timeout: uiWait))
+    attach(app, "Sender · Transaction")
+    try audit(app, overSheet: true)
+    callout.tap()
+    XCTAssertTrue(element(app, "reason.sort").waitForExistence(timeout: uiWait))
+    attach(app, "Sender · Transaction · About this alert")
+    try audit(app, overSheet: true)
+    element(app, "reason.sort").tap()
+    XCTAssertTrue(callout.waitForExistence(timeout: uiWait))
+    element(app, "txn.close").tap()
+  }
+
+  @MainActor
+  func testSenderUnverifiedAtLargeTextSizes() throws {
+    let app = launch(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    XCTAssertTrue(element(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let row = element(app, "review.tab.row.steam")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, row))
+    row.tap()
+    let strip = element(app, "review.reasonStrip.sender_unverified")
+    XCTAssertTrue(strip.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, strip))
+    attach(app, "AX3 · Sender · Deck")
+    try audit(app, atLargeText: true)
+    strip.tap()
+    let archive = element(app, "reason.archive")
+    XCTAssertTrue(archive.waitForExistence(timeout: uiWait))
+    attach(app, "AX3 · Sender · About this alert")
+    try audit(app, overSheet: true)
+    XCTAssertTrue(reveal(app, archive))
+    attach(app, "AX3 · Sender · About this alert · actions")
+    try audit(app, overSheet: true)
+    element(app, "reason.close").tap()
   }
 }
