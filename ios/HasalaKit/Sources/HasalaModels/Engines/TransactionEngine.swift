@@ -109,8 +109,8 @@ public enum TransactionEngine {
       amount: t.amount, isIncome: t.direction == .in, meta: meta, category: c.map(CategoryOption.init),
       pace: pace, account: s.account(t.accountID)?.label, note: t.note, provenance: t.provenance,
       sortedBy: sortedBy, splits: splits, isRefund: t.isRefund, isTransfer: t.isTransfer, archived: t.archived,
-      needsReview: t.needsReview, project: s.project(t.projectID)?.name, isSample: t.isSample,
-      suggestion: t.needsReview ? s.category(t.suggestion).map(CategoryOption.init) : nil,
+      needsReview: t.inReview, project: s.project(t.projectID)?.name, isSample: t.isSample,
+      suggestion: t.inReview ? s.category(t.reviewSuggestion).map(CategoryOption.init) : nil,
       sortedByRule: { if case .rule = t.categorySource { true } else { false } }()
     )
   }

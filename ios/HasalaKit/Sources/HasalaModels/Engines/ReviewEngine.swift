@@ -180,15 +180,66 @@ public struct SortedLine: Sendable, Hashable, Identifiable {
   public var learnedRule: Bool
 }
 
+public struct ReviewWindow: Sendable, Hashable {
+  public var from: LocalDate?
+  public var to: LocalDate?
+
+  public init(from: LocalDate?, to: LocalDate?) {
+    self.from = from
+    self.to = to
+  }
+
+  public static let all = ReviewWindow(from: nil, to: nil)
+
+  public static func month(_ m: YearMonth) -> ReviewWindow {
+    ReviewWindow(from: LocalDate(m.year, m.month, 1), to: LocalDate(m.year, m.month, m.days))
+  }
+
+  public static func range(_ from: LocalDate, _ to: LocalDate) -> ReviewWindow {
+    from <= to ? ReviewWindow(from: from, to: to) : ReviewWindow(from: to, to: from)
+  }
+
+  public func contains(_ d: LocalDate) -> Bool {
+    (from.map { d >= $0 } ?? true) && (to.map { d <= $0 } ?? true)
+  }
+
+  public var label: String {
+    guard let from, let to else {
+      if let from { return "Since \(from.dayMonth) \(from.year)" }
+      if let to { return "Until \(to.dayMonth) \(to.year)" }
+      return "All time"
+    }
+    if from.day == 1, to.year == from.year, to.month == from.month, to.day == from.yearMonth.days {
+      return from.yearMonth.title
+    }
+    return from.year == to.year
+      ? "\(from.dayMonth) – \(to.dayMonth) \(to.year)"
+      : "\(from.dayMonth) \(from.year) – \(to.dayMonth) \(to.year)"
+  }
+}
+
+extension Txn {
+  public var inReview: Bool {
+    if archived || isTransfer { return false }
+    if needsReview { return true }
+    if categoryID == nil && splits.isEmpty { return true }
+    return categorySource == .model
+  }
+
+  public var reviewSuggestion: CategoryID? {
+    suggestion ?? (categorySource == .model ? categoryID : nil)
+  }
+}
+
 public enum ReviewEngine {
   /// The queue, oldest first, without today's skips.
-  public static func queue(_ s: LedgerState) -> [Txn] {
-    s.txns.filter { $0.needsReview && !$0.archived && !s.skippedReview.contains($0.id) }
+  public static func queue(_ s: LedgerState, in window: ReviewWindow = .all) -> [Txn] {
+    s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && !s.skippedReview.contains($0.id) }
       .sorted { $0.postedAt < $1.postedAt }
   }
 
-  public static func cards(_ s: LedgerState) -> [ReviewCardModel] {
-    queue(s).map { card($0, s) }
+  public static func cards(_ s: LedgerState, in window: ReviewWindow = .all) -> [ReviewCardModel] {
+    queue(s, in: window).map { card($0, s) }
   }
 
   /// A session's order when it starts at one card (a To sort row): that card, the ones
@@ -208,7 +259,7 @@ public enum ReviewEngine {
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
       isNewMerchant: t.isNewMerchant, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
-      suggestion: s.category(t.suggestion).map(CategoryOption.init)
+      suggestion: s.category(t.reviewSuggestion).map(CategoryOption.init)
     )
   }
 

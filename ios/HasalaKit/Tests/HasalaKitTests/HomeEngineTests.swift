@@ -235,7 +235,13 @@ struct NotificationsEngineTests {
     var s = MayaLedger.state
     var first = true
     for i in s.txns.indices where s.txns[i].needsReview {
-      if first { first = false } else { s.txns[i].needsReview = false }
+      if first {
+        first = false
+      } else {
+        s.txns[i].needsReview = false
+        s.txns[i].categoryID = "groceries"
+        s.txns[i].categorySource = .user
+      }
     }
     #expect(NotificationsEngine.snapshot(s, now: now).needsALook[0].title == "1 transaction to sort")
   }

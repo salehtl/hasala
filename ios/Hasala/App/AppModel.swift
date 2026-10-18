@@ -62,7 +62,9 @@ final class AppModel {
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
-  @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
+  @ObservationIgnored private var reviewMemo = Memo<ReviewMemoKey, Int>()
+
+  var reviewScope: ReviewWindow?
 
   init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
     self.store = store
@@ -94,11 +96,16 @@ final class AppModel {
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
 
-  /// Transactions waiting to be sorted: the Review tab's badge (it never follows the
-  /// period, Paper "13 · Navigation"), once per ledger change.
+  /// Transactions waiting to be sorted in the review window: the Review tab's badge, once
+  /// per ledger or window change.
   var reviewCount: Int {
-    reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
+    let window = reviewWindow
+    return reviewMemo.value(for: ReviewMemoKey(revision: store.revision, window: window)) {
+      ReviewEngine.queue(store.state, in: window).count
+    }
   }
+
+  var reviewWindow: ReviewWindow { reviewScope ?? .month(store.now.date.yearMonth) }
 
   var showingProfile: Bool {
     get { sheet == .profile }
@@ -214,4 +221,9 @@ final class AppModel {
 struct HomeMemoKey: Equatable {
   var revision: Int
   var period: Period?
+}
+
+struct ReviewMemoKey: Hashable {
+  var revision: Int
+  var window: ReviewWindow
 }
