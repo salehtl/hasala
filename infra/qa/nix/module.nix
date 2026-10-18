@@ -215,6 +215,7 @@ let
     HASALA_EMAIL_API_TOKEN_FILE = "%d/email-api-token";
     HASALA_EMAIL_FROM = cfg.email.from;
     HASALA_EMAIL_FROM_NAME = cfg.email.fromName;
+    HASALA_EMAIL_REPLY_TO = cfg.email.replyTo;
   }
   // optionalAttrs turnstileOn {
     HASALA_TURNSTILE_SECRET_FILE = "%d/turnstile-secret";
@@ -763,6 +764,11 @@ in
         default = "Hasala";
         description = "Sender display name.";
       };
+      replyTo = mkOption {
+        type = types.str;
+        default = "support@hasala.app";
+        description = "Reply-To address; asserted to be at rpId.";
+      };
     };
 
     passwordHashConcurrency = mkOption {
@@ -1075,9 +1081,10 @@ in
               (cfg.email.cloudflareAccountId == null) == (cfg.email.apiTokenFile == null)
               && (cfg.email.cloudflareAccountId == null || matches "[0-9a-f]{32}" cfg.email.cloudflareAccountId)
               && lib.hasSuffix "@${cfg.rpId}" cfg.email.from
+              && lib.hasSuffix "@${cfg.rpId}" cfg.email.replyTo
               && (!cfg.tunnel.enable || emailOn)
             )
-            "email.cloudflareAccountId (32 hex) and email.apiTokenFile are both set or both null, required with the tunnel; email.from must be at rpId."
+            "email.cloudflareAccountId (32 hex) and email.apiTokenFile are both set or both null, required with the tunnel; email.from and email.replyTo must be at rpId."
           )
           (a "M12"
             (

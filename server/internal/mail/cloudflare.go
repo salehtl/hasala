@@ -27,8 +27,11 @@ type Cloudflare struct {
 	// FromName is the sender's display name ("Hasala"); empty sends the bare
 	// address. config refuses a name with <, >, ", @ or a line break.
 	FromName string
-	BaseURL  string
-	HTTP     *http.Client
+	// ReplyTo is the Reply-To address (support@hasala.app); empty sends none.
+	// config refuses anything but a plain address at hasala.app.
+	ReplyTo string
+	BaseURL string
+	HTTP    *http.Client
 }
 
 // NewCloudflare validates its inputs. from is the sender address
@@ -48,6 +51,7 @@ func NewCloudflare(accountID, token, from string) (*Cloudflare, error) {
 type cfRequest struct {
 	To      string `json:"to"`
 	From    any    `json:"from"` // the address, or cfAddress with a name
+	ReplyTo string `json:"reply_to,omitempty"`
 	Subject string `json:"subject"`
 	Text    string `json:"text"`
 	HTML    string `json:"html,omitempty"`
@@ -84,7 +88,7 @@ func (c *Cloudflare) Send(ctx context.Context, m Message) (string, error) {
 	if c.FromName != "" {
 		from = cfAddress{Address: c.from, Name: c.FromName}
 	}
-	body, err := json.Marshal(cfRequest{To: m.To, From: from, Subject: m.Subject, Text: m.Text, HTML: m.HTML})
+	body, err := json.Marshal(cfRequest{To: m.To, From: from, ReplyTo: c.ReplyTo, Subject: m.Subject, Text: m.Text, HTML: m.HTML})
 	if err != nil {
 		return "", fmt.Errorf("%w: encode", ErrPermanent)
 	}

@@ -246,6 +246,7 @@ type EmailConfig struct {
 	CloudflareAccountID string `toml:"cloudflare_account_id"`
 	FromName            string `toml:"from_name"`
 	From                string `toml:"from"`
+	ReplyTo             string `toml:"reply_to"`
 	FreezeURL           string `toml:"freeze_url"`
 	// APITokenFile (HASALA_EMAIL_API_TOKEN_FILE). Never TOML.
 	APITokenFile string `toml:"-"`
@@ -378,6 +379,7 @@ func defaults() Config {
 		Email: EmailConfig{
 			FromName:   "Hasala",
 			From:       "no-reply@hasala.app",
+			ReplyTo:    "support@hasala.app",
 			FreezeURL:  "https://hasala.app/freeze",
 			WebBaseURL: "https://hasala.app",
 		},
@@ -514,6 +516,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_EMAIL_CF_ACCOUNT_ID", &c.Email.CloudflareAccountID)
 	str("HASALA_EMAIL_FROM_NAME", &c.Email.FromName)
 	str("HASALA_EMAIL_FROM", &c.Email.From)
+	str("HASALA_EMAIL_REPLY_TO", &c.Email.ReplyTo)
 	str("HASALA_FREEZE_URL", &c.Email.FreezeURL)
 	str("HASALA_EMAIL_API_TOKEN_FILE", &c.Email.APITokenFile)
 	str("HASALA_WEB_BASE_URL", &c.Email.WebBaseURL)
@@ -874,9 +877,11 @@ var cfAccountID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func (c Config) validateEmail(prod bool) error {
 	e := c.Email
-	if !strings.HasSuffix(e.From, "@hasala.app") || strings.ContainsAny(e.From, " <>\"") ||
-		strings.ToLower(e.From) != e.From {
-		return fmt.Errorf("email.from is %q: it must be a lowercase address at hasala.app", e.From)
+	for name, addr := range map[string]string{"email.from": e.From, "email.reply_to": e.ReplyTo} {
+		if !strings.HasSuffix(addr, "@hasala.app") || strings.ContainsAny(addr, " <>\"\r\n,;") ||
+			strings.ToLower(addr) != addr {
+			return fmt.Errorf("%s is %q: it must be a lowercase address at hasala.app", name, addr)
+		}
 	}
 	if e.FromName == "" || strings.ContainsAny(e.FromName, "<>\"\r\n@") {
 		return fmt.Errorf("email.from_name is %q: a plain display name is required", e.FromName)

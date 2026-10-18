@@ -70,6 +70,7 @@ allowed_environments = ["production", "sandbox"]
 # cloudflare_account_id = "00000000000000000000000000000000"
 # from_name = "Hasala"
 # from = "no-reply@hasala.app"
+# reply_to = "support@hasala.app"
 # freeze_url = "https://hasala.app/freeze"
 
 # Spec 07's website routes and the email log are configured by environment
