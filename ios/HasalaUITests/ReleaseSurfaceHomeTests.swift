@@ -9,13 +9,14 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
   func testHomeShowsOnlyWhatWorks() throws {
     let app = launchRelease()
 
-    // The hero and the bell; no "See month", "Edit" or "Add widget", no Needs-you rail.
+    // The hero, its Insights link and the bell; no "Edit" or "Add widget", no Needs-you rail.
     attach(app, "Release · Home")
     assertNoPlaceholders(app, "Home")
     assertPersonalAccountsOnly(app, "Home")
     XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 11,115.62"))
     assertAbsent(app, ["home.seeMonth", "home.sampleData", "home.editWidgets", "Needs you"], "Home")
     assertNoButtons(app, ["See all", "Edit", "Add widget", "See month"], "Home")
+    assertPresent(app, ["home.insights"], "Home")
     XCTAssertEqual(
       app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'needsYou.'")).count, 0,
       "Home still draws Needs-you cards")

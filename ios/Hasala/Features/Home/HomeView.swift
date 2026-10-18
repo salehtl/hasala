@@ -14,7 +14,7 @@ import SwiftUI
 /// The wash follows the verdict (blue on track, sand ahead of pace, rose over) and cross-fades
 /// when it changes. The period pill opens the period picker; another period scopes the hero,
 /// shows that month's Budget pace and "Still about now". A Release build leaves out what isn't
-/// built yet (`BuildSurface`): "See month", "Edit", "Add widget", and taps on widgets without a
+/// built yet (`BuildSurface`): "Edit", "Add widget", and taps on widgets without a
 /// detail screen. A review account's ledger is sample data, and Home says so.
 struct HomeView: View {
   @Bindable var app: AppModel
@@ -42,7 +42,7 @@ struct HomeView: View {
           hero: snapshot.hero, hidden: hidden, period: app.period.title, isThisMonth: snapshot.isThisMonth,
           changePeriod: { app.sheet = .period },
           backToThisMonth: { app.period = .month(app.store.now.date.yearMonth) },
-          seeMonth: unfinished ? { app.router.home.append(.insights) } : nil,
+          insights: { app.router.home.append(.insights) },
           setPlan: { app.tab = .plan })
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
@@ -70,7 +70,7 @@ struct HomeView: View {
         case .bills: BillsScreen(app: app)
         case .bill(let id): BillDetailView(app: app, bill: id)
         case .accounts: AccountsView(app: app)
-        case .insights: InsightsPlaceholder()
+        case .insights: InsightsView(app: app)
         }
       }
     }
@@ -146,21 +146,6 @@ struct HomeImportPill: View {
     .frame(maxWidth: .infinity)
     .animation(motion.animation(.fade), value: work != nil)
     .animation(motion.animation(.stateSwap), value: work?.state)
-  }
-}
-
-/// "See month" in Debug, until Insights · October so far is built.
-// TODO(spec 04 §16.1 "Insights"): Insights and the September recap.
-private struct InsightsPlaceholder: View {
-  var body: some View {
-    ScrollView {
-      PlaceholderCard(systemImage: "chart.line.uptrend.xyaxis", title: "October so far",
-                      message: "This screen comes in a later build.")
-        .padding(HSpacing.insetPage)
-    }
-    .background(HColor.surfaceSecondary)
-    .navigationTitle("October so far")
-    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

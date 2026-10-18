@@ -21,8 +21,8 @@ struct HomeHero: View {
   let isThisMonth: Bool
   let changePeriod: () -> Void
   let backToThisMonth: () -> Void
-  /// "See month", "See recap", "See months" (Insights): Debug only.
-  let seeMonth: (() -> Void)?
+  /// "Insights": pushes Insights for Home's period.
+  let insights: (() -> Void)?
   /// "Set your plan" with no plan yet: the Plan tab.
   let setPlan: () -> Void
 
@@ -134,7 +134,7 @@ struct HomeHero: View {
                       link: .init("Set your plan", identifier: "home.setPlan", action: setPlan))
     case .live, .ended:
       HeroVerdictLine(verdict: hero.verdict, word: hero.word, fact: hero.fact, hidden: hidden,
-                      link: seeMonth.map { .init(isLive ? "See month" : "See recap", identifier: "home.seeMonth", action: $0) })
+                      link: insights.map { .init("Insights", identifier: "home.insights", action: $0) })
     case .range:
       ReflowingRow(spacing: 12) {
         Text("\(Text(hero.word.rendered(hidden: hidden)).font(HType.subheadline.weight(.semibold).font).foregroundStyle(HColor.textPrimary))\(Text(verbatim: hero.fact.map { " · " + $0.rendered(hidden: hidden) } ?? ""))")
@@ -144,9 +144,9 @@ struct HomeHero: View {
           .accessibilityLabel([hero.word.spoken(hidden: hidden), hero.fact?.spoken(hidden: hidden)].compactMap { $0 }
             .joined(separator: ", "))
       } trailing: {
-        if let seeMonth {
-          Button(action: seeMonth) {
-            Text("See months")
+        if let insights {
+          Button(action: insights) {
+            Text("Insights")
               .hType(.subheadline.weight(.medium))
               .foregroundStyle(HColor.textOnWashLink)
               .padding(.vertical, 12)
@@ -154,7 +154,7 @@ struct HomeHero: View {
           }
           .buttonStyle(.plain)
           .padding(.vertical, -12)
-          .accessibilityIdentifier("home.seeMonth")
+          .accessibilityIdentifier("home.insights")
         }
       }
     }

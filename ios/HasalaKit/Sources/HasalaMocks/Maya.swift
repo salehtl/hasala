@@ -17,6 +17,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   /// The App Review demo account: the same ledger loaded as sample data, so every row read
   /// from a bank alert carries a `sample-<n>` message id instead of a Gmail one.
   case mayaSample
+  case firstDays
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -28,9 +29,12 @@ public enum Scenario: String, Sendable, CaseIterable {
 
   public var startsWithAmountsHidden: Bool { self == .mayaHidden }
 
+  public var now: LocalDateTime { self == .firstDays ? MayaHistory.firstDaysNow : MayaLedger.now }
+
   /// The ledger the scenario starts from.
   public var state: LedgerState {
-    var s = MayaLedger.state
+    if self == .firstDays { return MayaHistory.firstDays }
+    var s = self == .mayaSample ? MayaLedger.state : MayaHistory.state
     if self == .mayaCaughtUp {
       for i in s.txns.indices where s.txns[i].needsReview {
         s.txns[i].needsReview = false
