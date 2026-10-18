@@ -46,6 +46,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   @ObservationIgnored private var nextToken = 1
   @ObservationIgnored private var writes: Task<Void, Never>?
   @ObservationIgnored private var reloadSeq = 0
+  @ObservationIgnored private var writesInFlight = 0
 
   init(
     reader: LedgerReader, author: LedgerEditAuthor?, profile: ProfileInfo, prefs: DevicePrefsStore,
@@ -132,7 +133,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     let reader = self.reader
     let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
       .value
-    guard seq == reloadSeq, let mapped else { return }
+    guard seq == reloadSeq, writesInFlight == 0, let mapped else { return }
     state = mapped
     now = today
     loaded = true
@@ -177,9 +178,11 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   /// optimistic change is replaced by what the projection holds).
   private func enqueue(_ write: @escaping @Sendable () async throws -> Void) {
     let previous = writes
+    writesInFlight += 1
     writes = Task { [weak self] in
       await previous?.value
       try? await write()
+      self?.writesInFlight -= 1
       await self?.reload()
     }
   }

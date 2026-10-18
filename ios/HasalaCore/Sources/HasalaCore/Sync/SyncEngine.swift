@@ -126,6 +126,7 @@ public actor SyncEngine {
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
       if hasInflight {
         set(.pushing)
+        await observer?.willPush()
         out.pushed = try await latchAware { () async throws(SyncStop) in try await Pusher.reconcile(context) }
       }
       set(.pulling)
@@ -133,6 +134,7 @@ public actor SyncEngine {
       out.pulled = try await Puller.pull(context, observer: observer)
       if out.pulled.alarms > 0 { status.integrityAlarms += out.pulled.alarms }
       set(.pushing)
+      await observer?.willPush()
       let pushed = try await latchAware { () async throws(SyncStop) in
         try await Pusher.flush(context, deadline: deadline)
       }

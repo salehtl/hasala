@@ -48,6 +48,7 @@ extension State {
       let bWins = b.verifiedSender && !a.verifiedSender
       let winner = bWins ? id : w
       mergeRow(bWins ? w : id, into: winner, kind: "certain", op: e.op.opID)
+      if bWins { carryUserEdits(from: w, to: id) }
       registerDedupeKeys(of: bWins ? w : id, to: winner)
       registerDedupeKeys(of: winner, to: winner)
       if let key = DuplicateRules.candidateKey(txns[winner]!), copyCandidates[key]?.contains(where: { utf8Equal($0, winner) }) != true {
@@ -106,6 +107,20 @@ extension State {
     for h in held { txns[h]!.copyOf = winner }
   }
 
+  mutating func carryUserEdits(from source: String, to target: String) {
+    guard let from = txns[source], let to = txns[target], !to.unparsed else { return }
+    func chosen(_ c: CategorySource?) -> Bool { c?.kind == .user || c?.kind == .held }
+    if chosen(from.categorySource), !chosen(to.categorySource) {
+      txns[target]!.category = from.category
+      txns[target]!.categorySource = from.categorySource
+      txns[target]!.needsReview = from.needsReview
+      if to.splits.isEmpty, !from.splits.isEmpty, from.amountMinor == to.amountMinor { txns[target]!.splits = from.splits }
+    }
+    for f in from.annotations.keys where to.annotations[f] == nil {
+      txns[target]!.annotations[f] = from.annotations[f]
+    }
+  }
+
   mutating func unmergeRow(_ id: String, seq: Int64) -> Bool {
     guard let t = txns[id], let w = t.mergedInto else { return false }
     if let live = liveByIngestID[t.ingestID], !utf8Equal(live, id) {
@@ -159,6 +174,7 @@ extension State {
         txns[p]!.mergedInto = id
         if unmergeRow(p, seq: seq) {
           promoted = p
+          carryUserEdits(from: id, to: p)
           for a in keep.dropFirst() {
             txns[a.txnID]?.mergedInto = p
             txns[p]!.aliases.append(a)
