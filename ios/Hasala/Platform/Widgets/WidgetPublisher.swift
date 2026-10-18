@@ -2,6 +2,7 @@ import Foundation
 import HasalaModels
 import HasalaWidgetData
 import Observation
+import OSLog
 import UIKit
 import WidgetKit
 
@@ -27,6 +28,7 @@ final class WidgetPublisher {
     self.today = today
     self.center = center
     self.reload = reload
+    if store == nil { Self.log.notice("no App Group container: widgets get no snapshot") }
     for name in [
       UIApplication.significantTimeChangeNotification, UIApplication.willEnterForegroundNotification,
       UIApplication.protectedDataDidBecomeAvailableNotification,
@@ -37,6 +39,8 @@ final class WidgetPublisher {
     }
     observe()
   }
+
+  private static let log = Logger(subsystem: "app.hasala.ios", category: "widgets")
 
   func timeMoved() {
     guard running else { return }
