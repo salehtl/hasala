@@ -22,6 +22,7 @@ public enum GlanceEngine {
       }
     }
     return WidgetSnapshot(
+      asOf: now.date,
       amountsHidden: amountsHidden,
       lockScreenDetails: s.prefs.notificationDetail,
       spentSoFar: waiting ? nil : spentSoFar(s, now: now, hero: home.hero),

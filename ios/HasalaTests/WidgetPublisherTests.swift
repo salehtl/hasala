@@ -3,6 +3,7 @@ import HasalaMocks
 import HasalaModels
 import HasalaWidgetData
 import Testing
+import UIKit
 
 @testable import Hasala
 
@@ -79,6 +80,39 @@ struct WidgetPublisherTests {
     #expect(store.read()?.toReview?.count == 6)
     #expect(publisher.snapshot == WidgetPublisher(app: AppModel(store: InMemoryLedger(state: state)), store: nil).snapshot)
     #expect(reloads.count == 1)
+  }
+
+  final class Day {
+    var date = MayaLedger.now.date
+    var refreshes = 0
+  }
+
+  @Test func republishesWhenTheDayChanges() async throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    let ledger = InMemoryLedger()
+    let app = AppModel(store: ledger)
+    let day = Day()
+    app.refreshWork = {
+      day.refreshes += 1
+      ledger.setNow(LocalDateTime(date: day.date, hour: 0, minute: 5))
+    }
+    let center = NotificationCenter()
+    let publisher = WidgetPublisher(app: app, store: store, center: center, reload: {}, today: { day.date })
+    #expect(store.read()?.asOf == MayaLedger.now.date)
+    center.post(name: UIApplication.significantTimeChangeNotification, object: nil)
+    await settle()
+    #expect(day.refreshes == 0)
+    day.date = LocalDate(2026, 10, 11)
+    center.post(name: UIApplication.significantTimeChangeNotification, object: nil)
+    await settle()
+    #expect(day.refreshes == 1)
+    #expect(store.read()?.asOf == LocalDate(2026, 10, 11))
+    day.date = LocalDate(2026, 10, 12)
+    center.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+    await settle()
+    #expect(store.read()?.asOf == LocalDate(2026, 10, 12))
+    publisher.stop()
   }
 
   @Test func theFileIsProtectedAndNotBackedUp() throws {

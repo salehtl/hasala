@@ -115,9 +115,10 @@ public struct ToReviewWidget: Sendable, Hashable, Codable {
 }
 
 public struct WidgetSnapshot: Sendable, Hashable, Codable {
-  public static let currentVersion = 1
+  public static let currentVersion = 2
 
   public var version: Int
+  public var asOf: LocalDate
   public var amountsHidden: Bool
   public var lockScreenDetails: Bool
   public var spentSoFar: SpentSoFarWidget?
@@ -132,12 +133,13 @@ public struct WidgetSnapshot: Sendable, Hashable, Codable {
   public var today: TodayWidget?
 
   public init(
-    amountsHidden: Bool, lockScreenDetails: Bool, spentSoFar: SpentSoFarWidget?, budgetPace: BudgetPaceWidget?,
+    asOf: LocalDate, amountsHidden: Bool, lockScreenDetails: Bool, spentSoFar: SpentSoFarWidget?, budgetPace: BudgetPaceWidget?,
     categories: [CategoryWatchWidget], nextBill: NextBillWidget?, netWorth: NetWorthWidget?,
     comingUp: ComingUpWidget?, projects: [ProjectWidget], goals: [GoalWidget], toReview: ToReviewWidget?,
     today: TodayWidget?
   ) {
     version = Self.currentVersion
+    self.asOf = asOf
     self.amountsHidden = amountsHidden
     self.lockScreenDetails = lockScreenDetails
     self.spentSoFar = spentSoFar
