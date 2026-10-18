@@ -14,7 +14,7 @@ public enum Spending {
   }
 
   public static func parts(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
-    if t.archived || t.isTransfer { return [] }
+    if t.archived || t.isTransfer || t.isHeldCopy { return [] }
     if let p = s.project(t.projectID), !p.countInPlan { return [] }
     if !t.splits.isEmpty {
       return t.splits.compactMap { sp in
