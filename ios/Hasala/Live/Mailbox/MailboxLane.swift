@@ -26,6 +26,7 @@ nonisolated final class MailboxLane: Sendable {
   let engine: MailboxEngine
   let tokens: RefreshingMailTokenProvider
   let presenter: any MailAuthSessionPresenter
+  let events = LaneEvents()
 
   /// nil when the build carries no client for `provider` (the `unset` placeholders, spec 06
   /// §15.2): that provider is then not offered.
@@ -59,6 +60,12 @@ nonisolated final class MailboxLane: Sendable {
       store: persistence, ledger: ledger, server: server, stepUp: stepUp, categorizer: categorizer,
       templates: BundledTemplates.load().templates, clock: clock, random: SystemRandom())
     self.presenter = presenter
+  }
+
+  func relayEvents() async {
+    let events = self.events
+    await engine.setProgressHandler { events.send(.progress($0)) }
+    await engine.setCommitHandler { events.send(.committed) }
   }
 
   /// Whether this iPhone keeps a refresh token for the provider (nil: unreadable now).
@@ -105,6 +112,13 @@ nonisolated final class MailboxLane: Sendable {
       phase = r.phase
       haltedOn = r.haltedOn
     }
+
+    var pause: MailboxProgress? {
+      guard phase == .scanning || phase == .authoringBackfill, let code = haltedOn, code != .stagingFull else {
+        return nil
+      }
+      return MailboxProgress(stage: .failed(code), done: 0, total: 0)
+    }
   }
 
   enum FirstScanEvent: Sendable {
@@ -120,13 +134,16 @@ nonisolated final class MailboxLane: Sendable {
   /// `app.hasala.ios.processing` and the next foreground runs (§7.7 step 3).
   func firstScan() -> AsyncStream<FirstScanEvent> {
     let engine = self.engine
+    let events = self.events
     return AsyncStream { continuation in
       // Not cancelled with the stream: the import outlives the setup screens.
       Task {
-        await engine.setProgressHandler { continuation.yield(.progress($0)) }
+        await relayEvents()
+        let id = events.add { if case .progress(let p) = $0 { continuation.yield(.progress(p)) } }
         var totals = FirstScanTotals()
         for r in await engine.runFirstScan(maxCycles: 50) { totals.add(r) }
-        await engine.setProgressHandler(nil)
+        events.remove(id)
+        if let pause = totals.pause { events.send(.progress(pause)) }
         continuation.yield(.ended(totals))
         continuation.finish()
       }
@@ -150,6 +167,31 @@ nonisolated final class MailboxLane: Sendable {
 
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
     await engine.runCycle(trigger: trigger, deadlineMs: deadlineMs)
+  }
+}
+
+nonisolated final class LaneEvents: @unchecked Sendable {
+  enum Event: Sendable {
+    case progress(MailboxProgress)
+    case committed
+  }
+
+  private let lock = NSLock()
+  private var listeners: [UUID: @Sendable (Event) -> Void] = [:]
+
+  @discardableResult
+  func add(_ listener: @escaping @Sendable (Event) -> Void) -> UUID {
+    let id = UUID()
+    lock.withLock { listeners[id] = listener }
+    return id
+  }
+
+  func remove(_ id: UUID) {
+    _ = lock.withLock { listeners.removeValue(forKey: id) }
+  }
+
+  func send(_ event: Event) {
+    for listener in lock.withLock({ Array(listeners.values) }) { listener(event) }
   }
 }
 

@@ -168,8 +168,8 @@ struct HomeHeroTests {
     #expect(h.tiles[2].of == nil)
   }
 
-  /// S9: the first import runs and nothing has arrived this month: skeletons, never a fake zero.
-  @Test func theFirstImportShowsSkeletons() {
+  /// S9: the first import runs and nothing has arrived this month: zero that fills in.
+  @Test func theFirstImportFillsInFromZero() {
     let s = Self.maya { s in
       s.mailbox.status = .importing
       s.txns.removeAll { $0.postedAt.date.yearMonth == MayaLedger.october }
@@ -177,6 +177,9 @@ struct HomeHeroTests {
     let h = hero(s)
     #expect(h.state == .syncing)
     #expect(h.word.rendered(hidden: false) == "Getting your transactions…")
+    #expect(h.spent == .aed(0))
+    #expect(h.tiles.map(\.label) == ["Needs", "Wants", "Savings"])
+    #expect(h.tiles.allSatisfy { $0.value.minor == 0 }, "\(h.tiles)")
     // Once a transaction is in, the month shows (the import may still be running).
     var arrived = s
     arrived.txns.append(MayaLedger.state.txns[0])

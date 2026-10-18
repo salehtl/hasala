@@ -46,6 +46,7 @@ public struct MailboxEngineConfig: Sendable {
   /// Authoring stops this long before the deadline (§3).
   public var authoringMarginMs: Int64 = 5_000
   public var backfillBatch = 200
+  public var firstScanCommitEvery = 25
   /// Downloads in flight at once. Each message is two `messages.get` calls (5 quota units each)
   /// against Gmail's 250 units per user per second; 6 at once on a fast link went over it.
   public var downloadWidth = 4
@@ -183,6 +184,8 @@ public actor MailboxEngine {
 
   private var busy = false
   private var onProgress: (@Sendable (MailboxProgress) -> Void)?
+  private var onCommit: (@Sendable () -> Void)?
+  private var scanTotal = 0
   /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
   private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -236,6 +239,8 @@ public actor MailboxEngine {
 
   /// Receives scan and backfill progress (called on the engine's executor; hop to the UI).
   public func setProgressHandler(_ h: (@Sendable (MailboxProgress) -> Void)?) { onProgress = h }
+
+  public func setCommitHandler(_ h: (@Sendable () -> Void)?) { onCommit = h }
 
   func emit(_ stage: MailboxProgress.Stage, _ done: Int, _ total: Int) {
     onProgress?(MailboxProgress(stage: stage, done: done, total: total))
@@ -606,7 +611,10 @@ public actor MailboxEngine {
     // nothing and stay scanning, rather than finish an empty scan (03c §7.2: T empty lists nothing).
     if trusted.isEmpty { return await finish(&state, report) }
     let started = state.scanStartedMs ?? clock.nowMs()
-    if state.scanStartedMs == nil { state.scanStartedMs = started }
+    if state.scanStartedMs == nil {
+      state.scanStartedMs = started
+      scanTotal = 0
+    }
     if state.profileHistoryID == nil {
       do { state.profileHistoryID = try await source.changeToken() } catch let e {
         return await mailFailure(e, &state, report)
@@ -615,16 +623,27 @@ public actor MailboxEngine {
     let days = Int64(state.backfillDays ?? 90)
     let since = max(0, (started - days * 86_400_000) / 1000)
     var run = Run(trusted: trusted, cards: [:])
+    run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
     do {
       cut = try await listAndProcess(
-        source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .stage, paged: paged,
-        run: &run, report: &report, deadlineMs: deadlineMs)
+        source, domains: trusted, sinceSec: since, firstSinceSec: Self.monthStartSec(clock.nowMs()),
+        maxPages: config.maxListPages, mode: .stage, paged: paged, run: &run, report: &report, deadlineMs: deadlineMs)
     } catch let e as MailAPIError {
+      _ = await commitStaged(&run, &report)
+      if run.stop == .accountFull { return await halt(&state, .accountFull, report) }
       return await mailFailure(e, &state, report)
     } catch {
+      _ = await commitStaged(&run, &report)
       report.haltedOn = .offline
       return await finish(&state, report)
+    }
+    switch run.stop {
+    case .accountFull?: return await halt(&state, .accountFull, report)
+    case let code?:
+      report.haltedOn = code
+      return await finish(&state, report)
+    case nil: break
     }
     if run.stagingFull {
       report.haltedOn = .stagingFull
@@ -646,30 +665,19 @@ public actor MailboxEngine {
     let cards = await ledger.knownCards()
     let total = (try? await store.stagedCount()) ?? 0
     var authored = 0
-    emit(.authoring, 0, total)
+    if total > 0 {
+      emit(.authoring, 0, total)
+    } else if scanTotal > 0 {
+      emit(.authoring, scanTotal, scanTotal)
+    }
     while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
-      guard let batch = try? await store.staged(limit: config.backfillBatch), !batch.isEmpty else { break }
-      var c = MailboxCommit()
-      let at = clock.nowMs()
-      for m in batch {
-        c.unstage.append(m.messageID)
-        if await ledger.isIngested(m.ingestID) {
-          c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .dup, internalDateMs: m.internalDateMs, atMs: at))
-          report.dup += 1
-          continue
-        }
-        let draft = MessageDisposer.finalize(
-          m, provider: provider.id, grantID: config.grantID, cards: cards, categorizer: categorizer)
-        c.drafts.append(draft)
-        c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
-        report.count(draft)
-      }
-      do { try await store.commit(c) } catch {
+      guard let n = await authorStagedBatch(cards: cards, report: &report) else {
         report.haltedOn = .offline
         return await finish(&state, report)
       }
-      authored += batch.count
+      if n == 0 { break }
+      authored += n
       emit(.authoring, authored, total)
     }
     switch await ledger.flush() {
@@ -713,9 +721,64 @@ public actor MailboxEngine {
       state.phase = .active
       state.lastSuccessAtMs = clock.nowMs()
       report.completed = true
-      emit(.done, total, total)
+      let all = max(total, scanTotal)
+      emit(.done, all, all)
     }
     return await finish(&state, report)
+  }
+
+  func authorStagedBatch(cards: [CardKey: CardState], report: inout CycleReport) async -> Int? {
+    guard let batch = try? await store.staged(limit: config.backfillBatch) else { return nil }
+    if batch.isEmpty { return 0 }
+    var c = MailboxCommit()
+    var counted = report
+    let at = clock.nowMs()
+    for m in batch {
+      c.unstage.append(m.messageID)
+      if await ledger.isIngested(m.ingestID) {
+        c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .dup, internalDateMs: m.internalDateMs, atMs: at))
+        counted.dup += 1
+        continue
+      }
+      let draft = MessageDisposer.finalize(
+        m, provider: provider.id, grantID: config.grantID, cards: cards, categorizer: categorizer)
+      c.drafts.append(draft)
+      c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
+      counted.count(draft)
+    }
+    do { try await store.commit(c) } catch { return nil }
+    report = counted
+    return batch.count
+  }
+
+  func commitStaged(_ run: inout Run, _ report: inout CycleReport) async -> Bool {
+    run.sinceCommit = 0
+    let cards = await ledger.knownCards()
+    var authored = 0
+    while true {
+      guard let n = await authorStagedBatch(cards: cards, report: &report) else {
+        run.stop = .offline
+        return false
+      }
+      if n == 0 { break }
+      authored += n
+    }
+    guard authored > 0 else { return true }
+    switch await ledger.flush() {
+    case .accountFull:
+      run.stop = .accountFull
+      return false
+    case .failed, .flushed: break
+    }
+    onCommit?()
+    return true
+  }
+
+  static func monthStartSec(_ nowMs: Int64) -> Int64? {
+    guard let d = LocalClock.localDate(nowMs), let first = CivilDate(year: d.year, month: d.month, day: 1) else {
+      return nil
+    }
+    return max(0, LocalClock.startOfDay(first) / 1000)
   }
 
   // MARK: - The first scan's foreground run (Setup 2 of 4)
@@ -896,6 +959,11 @@ public actor MailboxEngine {
     var width = 6
     var stagingFull = false
     var saw429 = false
+    var commitEvery: Int?
+    var firstPass: Set<String> = []
+    var sinceCommit = 0
+    var stop: MailboxHaltCode?
+    var pagedBase: Int?
   }
 
   enum Mode { case author, stage }
@@ -924,34 +992,46 @@ public actor MailboxEngine {
   /// listing call; the page token lives only within this run (§7.5 step 7g), and a later run
   /// re-lists the accounted pages cheaply (ids only, no downloads).
   func listAndProcess(
-    _ source: any MailSource, domains: [String], sinceSec: Int64, maxPages: Int, mode: Mode, paged: Bool,
-    run: inout Run, report: inout CycleReport, deadlineMs: Int64?
+    _ source: any MailSource, domains: [String], sinceSec: Int64, firstSinceSec: Int64? = nil, maxPages: Int,
+    mode: Mode, paged: Bool, run: inout Run, report: inout CycleReport, deadlineMs: Int64?
   ) async throws -> Bool {
+    let passes = firstSinceSec.map { $0 > sinceSec ? [$0, sinceSec] : [sinceSec] } ?? [sinceSec]
     if !paged {
-      let (ids, exhausted) = try await list(source, domains: domains, sinceSec: sinceSec, maxPages: maxPages)
+      var ids: [String] = []
+      var seen = Set<String>()
+      var exhausted = true
+      for (pass, since) in passes.enumerated() {
+        let (listed, done) = try await list(source, domains: domains, sinceSec: since, maxPages: maxPages)
+        for id in listed where seen.insert(id).inserted { ids.append(id) }
+        if pass == 0 && passes.count > 1 { run.firstPass = seen }
+        exhausted = done
+      }
       report.listed += ids.count
       let cut = try await process(source, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
       return cut || !exhausted
     }
     var seen = Set<String>()
     var cut = false
-    for group in BankDomains.groups(domains, size: source.maxSendersPerList) {
-      var token: String?
-      var pages = 0
-      repeat {
-        if shouldStop(deadlineMs) { return true }
-        let page = try await source.list(senders: group, since: sinceSec, pageToken: token)
-        let ids = page.ids.filter { seen.insert($0).inserted }
-        report.listed += ids.count
-        token = page.nextPageToken
-        pages += 1
-        if !ids.isEmpty,
-          try await process(source, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
-        {
-          return true
-        }
-      } while token != nil && pages < maxPages
-      if token != nil { cut = true }
+    run.pagedBase = 0
+    for (pass, since) in passes.enumerated() {
+      for group in BankDomains.groups(domains, size: source.maxSendersPerList) {
+        var token: String?
+        var pages = 0
+        repeat {
+          if shouldStop(deadlineMs) { return true }
+          let page = try await source.list(senders: group, since: since, pageToken: token)
+          let ids = page.ids.filter { seen.insert($0).inserted }
+          report.listed += ids.count
+          token = page.nextPageToken
+          pages += 1
+          if !ids.isEmpty,
+            try await process(source, ids: ids, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
+          {
+            return true
+          }
+        } while token != nil && pages < maxPages
+        if token != nil && pass == passes.count - 1 { cut = true }
+      }
     }
     return cut
   }
@@ -989,12 +1069,24 @@ public actor MailboxEngine {
     let projected = await ledger.projectedMessageIDs(among: all)
     let todo = all.filter { !accounted.contains($0) && !projected.contains($0) }
     var i = 0
+    let split = run.firstPass.isEmpty ? todo.count : (todo.firstIndex { !run.firstPass.contains($0) } ?? todo.count)
     run.width = max(1, min(config.downloadWidth, provider.maxDownloadWidth))
     let skipped = all.count - todo.count
-    emit(.downloading, skipped, all.count)
+    let base = run.pagedBase ?? 0
+    defer { if run.pagedBase != nil { run.pagedBase = base + all.count } }
+    if todo.isEmpty && mode == .author { return false }
+    var shown = base + all.count
+    if mode == .stage {
+      if run.pagedBase != nil { shown = max(shown, scanTotal) }
+      scanTotal = shown
+    }
+    emit(.downloading, base + skipped, shown)
     while i < todo.count {
       // A BGTask expiration cancels the task: stop at this boundary, everything so far committed.
-      if shouldStop(deadlineMs) { return true }
+      if shouldStop(deadlineMs) {
+        if mode == .stage, run.commitEvery != nil, run.sinceCommit > 0 { _ = await commitStaged(&run, &report) }
+        return true
+      }
       var width = run.width
       if mode == .stage {
         let room = config.stagingCap - ((try? await store.stagedCount()) ?? 0)
@@ -1004,7 +1096,7 @@ public actor MailboxEngine {
         }
         width = min(width, room)
       }
-      let chunk = Array(todo[i..<min(i + width, todo.count)])
+      let chunk = Array(todo[i..<min(i + width, i < split ? split : todo.count)])
       i += chunk.count
       let results = await fetchChunk(source, chunk, bank: run.trusted)
       // A 429 anywhere narrows the pipe to one request for the rest of the run (fetch.ts).
@@ -1015,7 +1107,13 @@ public actor MailboxEngine {
       for r in results {
         try await account(r.fetched, mode: mode, run: &run, report: &report)
       }
-      emit(.downloading, skipped + i, all.count)
+      if mode == .stage, let every = run.commitEvery {
+        run.sinceCommit += chunk.count
+        if run.sinceCommit >= every || i >= todo.count || i == split {
+          if !(await commitStaged(&run, &report)) { return true }
+        }
+      }
+      emit(.downloading, base + skipped + i, shown)
     }
     return false
   }

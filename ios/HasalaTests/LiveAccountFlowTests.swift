@@ -1,5 +1,6 @@
 import CoreAuth
 import CoreCrypto
+import CoreMailbox
 import CorePrimitives
 import CoreStore
 import CoreSync
@@ -260,6 +261,60 @@ struct LiveAccountFlowTests {
     #expect(session.phase == .signedOut)
     #expect(try a.env.secrets.session() == nil)
     #expect(a.binding != nil)  // keys and writer stay (`02` §9.3)
+  }
+
+  nonisolated final class StepUpLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _lines: [String] = []
+    var lines: [String] { lock.withLock { _lines } }
+    func add(_ line: String) { lock.withLock { _lines.append(line) } }
+  }
+
+  func mailboxStepUp(_ phone: Phone, passkey: Bool, explained: Bool, log: StepUpLog) -> LiveStepUp {
+    LiveStepUp(
+      env: phone.env, usesPasskey: { passkey },
+      askPassword: { log.add("password: \($0)"); return nil },
+      explain: { log.add("explain: \($0)"); return explained })
+  }
+
+  @Test func aPasskeyAccountIsToldWhyBeforeTheMailboxStepUp() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let log = StepUpLog()
+    await #expect(throws: MailboxStepUpError.unavailable) {
+      try await mailboxStepUp(a, passkey: true, explained: true, log: log)
+        .proof(kind: "mailbox.link", payloadHash: Data(repeating: 7, count: 32))
+    }
+    #expect(log.lines == ["explain: Confirm it's you to connect this mailbox to Hasala"])
+    #expect(server.lastStepUpAction == "mailbox.link")
+  }
+
+  @Test func aPasskeyAccountThatSaysNoIsNeverAsked() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let before = server.lastStepUpAction
+    let log = StepUpLog()
+    await #expect(throws: MailboxStepUpError.cancelled) {
+      try await mailboxStepUp(a, passkey: true, explained: false, log: log)
+        .proof(kind: "mailbox.unlink", payloadHash: nil)
+    }
+    #expect(log.lines == ["explain: Confirm it's you to disconnect this mailbox"])
+    #expect(server.lastStepUpAction == before)
+  }
+
+  @Test func aPasswordAccountIsAskedForItsPasswordWithTheReason() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let log = StepUpLog()
+    await #expect(throws: MailboxStepUpError.cancelled) {
+      try await mailboxStepUp(a, passkey: false, explained: true, log: log)
+        .proof(kind: "mailbox.link", payloadHash: Data(repeating: 7, count: 32))
+    }
+    #expect(log.lines == ["password: Confirm it's you to connect this mailbox to Hasala"])
+    #expect(server.lastStepUpAction == "mailbox.link")
   }
 }
 

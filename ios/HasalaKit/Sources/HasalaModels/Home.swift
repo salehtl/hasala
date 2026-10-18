@@ -104,8 +104,7 @@ public struct SpendHero: Sendable, Hashable {
     /// No needs or wants budget yet (S8): the spending still counts, with nothing to measure
     /// it against.
     case noPlan
-    /// The first import is running and no transaction has arrived (S9): skeletons, never a
-    /// fake zero.
+    /// The first import is running and no transaction has arrived (S9): zero, filling in.
     case syncing
   }
 

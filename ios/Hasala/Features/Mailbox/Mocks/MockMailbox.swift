@@ -49,6 +49,7 @@
     private(set) var sampleLoaded = false
     /// The alerts a mailbox fetched but couldn't read.
     var unreadableMail: [UnreadableMail] = []
+    var importing: MailImport?
 
     init(offersSampleData: Bool = false, mailboxes: [MailboxSnapshot] = []) {
       self.offersSampleData = offersSampleData
@@ -204,11 +205,14 @@
         // Like the live lane, the import outlives the stream.
         Task {
           var read = 0
+          self.importing = MailImport(state: .reading, read: 0, total: total)
           while read < total {
             try? await Task.sleep(for: step)
             read = min(total, read + 24)
+            self.importing = MailImport(state: .reading, read: read, total: total)
             continuation.yield(ScanProgress(phase: read < total / 3 ? .downloading : .sorting, read: read, total: total))
           }
+          self.importing = nil
           self.scanFinished()
           continuation.yield(ScanProgress(phase: .finished, read: total, total: total, summary: summary))
           continuation.finish()

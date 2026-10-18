@@ -31,6 +31,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   /// The lane's last status, as read with its phase: the mailbox row comes from it
   /// (`LiveMailboxConnecting.mailboxes`). Read-only plumbing; nothing is authored from it.
   private(set) var mailboxStatus: MailboxStatus?
+  private(set) var importProgress: MailboxProgress?
+  private(set) var importSeen = false
 
   @ObservationIgnored let reader: LedgerReader
   @ObservationIgnored private let author: LedgerEditAuthor?
@@ -74,6 +76,24 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     if mailboxStatus != status { mailboxStatus = status }
     if mailboxPhase != status.phase { mailboxPhase = status.phase }
     if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
+    switch status.phase {
+    case .scanning, .awaitingCards, .authoringBackfill:
+      if !importSeen { importSeen = true }
+    case .active, .unlinked, .otherDevice:
+      if importSeen { importSeen = false }
+      if importProgress != nil { importProgress = nil }
+    case .halted, .reconnectRequired:
+      break
+    }
+  }
+
+  func noteImport(_ progress: MailboxProgress) {
+    var next = progress
+    if case .failed = progress.stage, let last = importProgress {
+      next.done = last.done
+      next.total = last.total
+    }
+    if importProgress != next { importProgress = next }
   }
 
   /// Reads the projection again (off the main actor) and publishes it. A later reload

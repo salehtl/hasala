@@ -2,8 +2,8 @@ import HasalaModels
 import SwiftUI
 
 // The Home hero's own parts (Paper "Hero · Spent on needs + wants" 14SX-0, page 16 §01–02):
-// the period pill, the verdict line with its words in the verdict's colour, and the skeletons
-// of the first import. The bar is `MonthPaceBar`; the tiles are `StatTile`.
+// the period pill and the verdict line with its words in the verdict's colour. The bar is
+// `MonthPaceBar`; the tiles are `StatTile`.
 
 /// The period pill over the hero (Paper "Period pill · hit area 44"): white, 36 tall, the near
 /// shadow, "October 2026" 15/20 600 and a 14 pt chevron (2.6) when it opens the period picker.
@@ -140,19 +140,4 @@ public struct HeroVerdictLine: View {
 
   private var dotColor: Color { verdict?.foreground ?? HColor.textOnWashSecondary }
   private var wordColor: Color { verdict?.foreground ?? HColor.textPrimary }
-}
-
-/// The figure and caption skeletons while the first import runs (page 16 §02 S9): 250 × 52
-/// r12 for the figure, 220 × 14 r7 for the caption, in `--color-apple-fills-tertiary`.
-public struct HeroFigureSkeleton: View {
-  public init() {}
-
-  public var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      RoundedRectangle(cornerRadius: 12, style: .continuous).fill(HColor.appleFillsTertiary)
-        .frame(width: 250, height: 52).padding(.vertical, 3)
-      Capsule().fill(HColor.appleFillsTertiary).frame(width: 220, height: 14).padding(.vertical, 5)
-    }
-    .accessibilityHidden(true)
-  }
 }

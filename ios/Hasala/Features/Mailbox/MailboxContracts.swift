@@ -115,12 +115,50 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// The first scan's progress: it reads the window and files what it finds, then ends
   /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
   func firstScan() -> AsyncStream<ScanProgress>
+  var importing: MailImport? { get }
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of mail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)
 }
 
+struct MailImport: Equatable, Sendable {
+  enum State: Equatable, Sendable {
+    case reading
+    case paused
+    case offline
+    case stopped(String)
+  }
+
+  var state: State
+  var read: Int
+  var total: Int
+
+  var label: String {
+    switch state {
+    case .reading: "Reading your alerts"
+    case .paused: "Reading paused"
+    case .offline: "Offline"
+    case .stopped(let message): message
+    }
+  }
+
+  var count: String? {
+    guard state != .offline, total > 0 else { return nil }
+    if case .stopped = state { return nil }
+    return "\(min(read, total)) of \(total)"
+  }
+
+  var busy: Bool { state == .reading }
+
+  var opensBankAlerts: Bool {
+    if case .stopped = state { return true }
+    return false
+  }
+}
+
 extension MailboxConnecting {
+  var importing: MailImport? { nil }
+
   /// Known at once where the mailboxes are held in memory (the mock).
   var mailboxesKnown: Bool { true }
 

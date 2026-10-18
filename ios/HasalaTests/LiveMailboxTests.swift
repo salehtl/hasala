@@ -116,8 +116,8 @@ struct LiveMailboxTests {
 
   /// One step-up for both lanes: its reason names neither Gmail nor Outlook.
   @Test func theStepUpNamesNoProvider() {
-    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect your email")
-    #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect your email")
+    #expect(LiveStepUp.reason("mailbox.link") == "Confirm it's you to connect this mailbox to Hasala")
+    #expect(LiveStepUp.reason("mailbox.unlink") == "Confirm it's you to disconnect this mailbox")
   }
 
   /// Another iPhone holds the account's link (a new install or a recovered account, while
@@ -316,6 +316,57 @@ struct LiveMailboxTests {
     #expect(noMailbox.title == "Sign in again" && noMailbox.detail == LiveMailboxConnecting.message(.noMailbox))
     let elsewhere = summary(.otherDevice, halt: nil, health: .working)
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
+  }
+
+  @Test func homesImportPillFollowsTheFirstScan() {
+    func work(_ phase: MailboxPhase?, seen: Bool = true, _ progress: MailboxProgress? = nil) -> MailImport? {
+      LiveMailboxConnecting.importing(phase: phase, seen: seen, progress: progress)
+    }
+    let reading = MailboxProgress(stage: .downloading, done: 214, total: 268)
+    for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill] {
+      #expect(work(phase, reading) == MailImport(state: .reading, read: 214, total: 268))
+    }
+    let pill = work(.scanning, reading)
+    #expect(pill?.label == "Reading your alerts" && pill?.count == "214 of 268" && pill?.busy == true)
+    #expect(pill?.opensBankAlerts == false)
+    #expect(work(.scanning)?.count == nil && work(.scanning)?.busy == true)
+    let offline = work(.scanning, MailboxProgress(stage: .failed(.offline), done: 214, total: 268))
+    #expect(offline?.state == .offline && offline?.label == "Offline" && offline?.count == nil && offline?.busy == false)
+    for code in [MailboxHaltCode.gmail, .quota] {
+      let paused = work(.scanning, MailboxProgress(stage: .failed(code), done: 214, total: 268))
+      #expect(paused?.state == .paused && paused?.label == "Reading paused" && paused?.busy == false)
+      #expect(paused?.count == "214 of 268" && paused?.opensBankAlerts == false)
+    }
+    #expect(work(.scanning, MailboxProgress(stage: .done, done: 268, total: 268)) == nil)
+    for phase in [MailboxPhase.active, .unlinked, .otherDevice] {
+      #expect(work(phase, reading) == nil)
+    }
+    #expect(work(nil) == nil)
+    let stopped = work(.halted, reading)
+    #expect(stopped?.label == "Reading stopped" && stopped?.busy == false && stopped?.count == nil)
+    #expect(stopped?.opensBankAlerts == true)
+    let signIn = work(.reconnectRequired)
+    #expect(signIn?.label == "Sign in again" && signIn?.opensBankAlerts == true)
+    #expect(work(.halted, seen: false) == nil)
+    #expect(work(.reconnectRequired, seen: false) == nil)
+  }
+
+  @Test func aFirstScanThatGivesUpOnAPassingStopPausesThePill() {
+    func totals(_ phase: MailboxPhase, _ halt: MailboxHaltCode?) -> MailboxLane.FirstScanTotals {
+      var t = MailboxLane.FirstScanTotals()
+      t.phase = phase
+      t.haltedOn = halt
+      return t
+    }
+    for code in [MailboxHaltCode.offline, .gmail, .quota] {
+      #expect(totals(.scanning, code).pause == MailboxProgress(stage: .failed(code), done: 0, total: 0))
+      #expect(totals(.authoringBackfill, code).pause?.stage == .failed(code))
+    }
+    #expect(totals(.scanning, nil).pause == nil)
+    #expect(totals(.scanning, .stagingFull).pause == nil)
+    #expect(totals(.active, nil).pause == nil)
+    #expect(totals(.halted, .accountFull).pause == nil)
+    #expect(totals(.reconnectRequired, .reconnectRequired).pause == nil)
   }
 }
 

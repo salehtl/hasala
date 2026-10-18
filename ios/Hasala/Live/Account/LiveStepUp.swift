@@ -21,6 +21,7 @@ nonisolated struct LiveStepUp: MailboxStepUp {
   let usesPasskey: @Sendable () async -> Bool
   /// Asks for the account's password ("Confirm it's you"); nil when the user cancels.
   let askPassword: @Sendable (_ reason: String) async -> String?
+  let explain: @Sendable (_ reason: String) async -> Bool
 
   func proof(kind: String, payloadHash: Data?) async throws(MailboxStepUpError) -> JSONValue {
     guard kind == "mailbox.link" || kind == "mailbox.unlink",
@@ -32,6 +33,7 @@ nonisolated struct LiveStepUp: MailboxStepUp {
     let passkey = await usesPasskey()
     // Both lanes share this step-up, so the reason names no provider.
     let reason = Self.reason(kind)
+    if passkey, !(await explain(reason)) { throw .cancelled }
     let begin: StepUpBeginResponse
     do {
       begin = try await env.client.stepUpBegin(
@@ -87,34 +89,49 @@ nonisolated struct LiveStepUp: MailboxStepUp {
   /// The password alert's title and the approval key's reason: Gmail and Outlook share
   /// this step-up, so it names neither.
   static func reason(_ kind: String) -> String {
-    kind == "mailbox.link" ? "Confirm it's you to connect your email" : "Confirm it's you to disconnect your email"
+    kind == "mailbox.link"
+      ? "Confirm it's you to connect this mailbox to Hasala" : "Confirm it's you to disconnect this mailbox"
   }
 }
 
-/// "Confirm it's you" for a password account outside the account screens (the Gmail
-/// link's step-up): a system alert with one secure field over the key window.
-enum PasswordPrompt {
+/// "Confirm it's you" outside the account screens (the mailbox step-up): a system alert over
+/// the key window that names the change, with one secure field for a password account.
+enum StepUpPrompt {
+  static let passkeyMessage = "Face ID confirms it's really you, using your passkey."
+
   @MainActor
-  static func ask(_ reason: String) async -> String? {
-    guard let presenter = await settledPresenter() else { return nil }
-    let answer = FirstOf<String?>()
+  static func password(_ reason: String) async -> String? {
     let alert = UIAlertController(title: reason, message: "Enter your Hasala password.", preferredStyle: .alert)
     alert.addTextField { field in
       field.isSecureTextEntry = true
       field.textContentType = .password
       field.placeholder = "Password"
     }
-    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer.finish(nil) })
-    alert.addAction(
-      UIAlertAction(title: "Continue", style: .default) { [weak alert] _ in
-        answer.finish(alert?.textFields?.first?.text)
-      })
+    return await present(alert, cancelled: nil) { [weak alert] in alert?.textFields?.first?.text }
+  }
+
+  @MainActor
+  static func passkey(_ reason: String) async -> Bool {
+    let alert = UIAlertController(title: reason, message: passkeyMessage, preferredStyle: .alert)
+    return await present(alert, cancelled: false) { true }
+  }
+
+  @MainActor
+  private static func present<T: Sendable>(
+    _ alert: UIAlertController, cancelled: T, answer continued: @escaping @MainActor () -> T
+  ) async -> T {
+    guard let presenter = await settledPresenter() else { return cancelled }
+    let answer = FirstOf<T>()
+    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer.finish(cancelled) })
+    let proceed = UIAlertAction(title: "Continue", style: .default) { _ in answer.finish(continued()) }
+    alert.addAction(proceed)
+    alert.preferredAction = proceed
     presenter.present(alert, animated: true)
     // UIKit refuses a presentation silently (the presenter is busy): then nobody can
     // answer, so the step-up is treated as cancelled.
     Task { @MainActor in
       try? await Task.sleep(for: .seconds(1))
-      if alert.presentingViewController == nil { answer.finish(nil) }
+      if alert.presentingViewController == nil { answer.finish(cancelled) }
     }
     return await withCheckedContinuation { answer.install($0) }
   }

@@ -50,6 +50,7 @@ final class AccountRuntime {
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
   @ObservationIgnored var onAccount: (@MainActor (AccountInfo) async -> Void)?
+  @ObservationIgnored private var importFollower: ImportFollower?
 
   /// The bundled merchant dictionary (`.empty` when its tier is off).
   nonisolated static let dictionary = (try? MerchantDictionary.bundled().get()) ?? .empty
@@ -195,7 +196,8 @@ final class AccountRuntime {
       http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase)
     let persistence = LedgerMailboxPersistence(
       store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() })
-    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await PasswordPrompt.ask($0) })
+    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await StepUpPrompt.password($0) },
+      explain: { await StepUpPrompt.passkey($0) })
     let categorizer = PipelineCategorizer(projection: projection, dictionary: dictionary)
     var lanes: [MailboxProvider: MailboxLane] = [:]
     for p in MailboxProvider.allCases {
@@ -245,6 +247,7 @@ final class AccountRuntime {
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
+    await rt.followImports()
     return rt
   }
 
@@ -360,7 +363,70 @@ final class AccountRuntime {
 
   /// Stops the runtime's work: no more runs and no background work.
   func close() async {
+    stopFollowingImports()
     await coordinator.close()
+  }
+
+  func followImports() async {
+    let follower = ImportFollower(store: store) { [weak self] in
+      guard let self, let lane = self.lane else { return }
+      self.store.noteMailbox(await lane.status(), nowMs: self.context.clock.nowMs())
+    }
+    follower.follow(lanes.values.map(\.events))
+    for lane in lanes.values { await lane.relayEvents() }
+    importFollower = follower
+  }
+
+  private func stopFollowingImports() {
+    importFollower?.stop()
+    importFollower = nil
+  }
+}
+
+@MainActor
+final class ImportFollower {
+  private let store: LiveLedgerStore
+  private let refreshStatus: @MainActor () async -> Void
+  private var task: Task<Void, Never>?
+  private var listeners: [(LaneEvents, UUID)] = []
+
+  init(store: LiveLedgerStore, refreshStatus: @escaping @MainActor () async -> Void) {
+    self.store = store
+    self.refreshStatus = refreshStatus
+  }
+
+  func follow(_ sources: [LaneEvents]) {
+    let (stream, continuation) = AsyncStream<LaneEvents.Event>.makeStream(bufferingPolicy: .bufferingNewest(64))
+    for events in sources { listeners.append((events, events.add { continuation.yield($0) })) }
+    task = Task { [weak self] in
+      for await event in stream {
+        guard let self else { return }
+        await self.handle(event)
+      }
+    }
+  }
+
+  func stop() {
+    for (events, id) in listeners { events.remove(id) }
+    listeners = []
+    task?.cancel()
+    task = nil
+  }
+
+  func handle(_ event: LaneEvents.Event) async {
+    switch event {
+    case .committed:
+      await store.reload()
+    case .progress(let p):
+      store.noteImport(p)
+      switch p.stage {
+      case .done, .failed:
+        await refreshStatus()
+        await store.reload()
+      case .listing, .downloading, .authoring:
+        break
+      }
+    }
   }
 }
 
