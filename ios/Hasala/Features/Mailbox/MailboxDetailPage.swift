@@ -65,7 +65,6 @@ struct MailboxDetailPage: View {
     .navigationBarTitleDisplayMode(.inline)
     .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirming, presenting: impact) { impact in
       Button(MailCopy.keepTransactions(impact)) { Task { await disconnect(removing: false) } }
-        .keyboardShortcut(.defaultAction)
         .accessibilityIdentifier("mailbox.disconnect.keep")
       Button("Remove them", role: .destructive) { Task { await disconnect(removing: true) } }
         .accessibilityIdentifier("mailbox.disconnect.remove")
