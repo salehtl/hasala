@@ -324,6 +324,12 @@ struct SnapshotTests {
     #expect(FoldCanary.foldPrint.utf8.count == 32)
   }
 
+  @Test("the canary folds every v4 op type, so a new type changes the fold print and an update refolds")
+  func canaryCoversEveryV4Type() {
+    let types = Set(FoldCanary.log().flatMap { $0.ops.map(\.type) })
+    for t in OpType.allCases where t.minVersion >= 4 { #expect(types.contains(t), "\(t.rawValue)") }
+  }
+
   @Test("snapshot round trip keeps every map's order and the witness")
   func roundTrip() throws {
     var log = Log()
