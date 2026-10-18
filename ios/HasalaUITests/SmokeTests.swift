@@ -131,8 +131,8 @@ final class SmokeTests: XCTestCase {
     try audit(app, atLargeText: true)
     // Down the whole page: the tiles, then each widget. The audit can move the scroll
     // position, so each stop scrolls to its own element first.
-    for id in ["widget.budgetPace", "widget.nextBill", "widget.netWorth", "widget.project.Japan trip",
-               "widget.goal.Emergency fund", "widget.today"] {
+    for id in ["widget.budgetPace", "widget.nextBill", "widget.netWorth", "widget.project.japan",
+               "widget.goal.emergency", "widget.today"] {
       let target = el(app, id)
       XCTAssertTrue(target.waitForExistence(timeout: uiWait), "\(id) is missing")
       XCTAssertTrue(scroll(app, toShow: target), "could not scroll to \(id)")

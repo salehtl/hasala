@@ -78,6 +78,8 @@ enum SheetRoute: Hashable, Identifiable {
   /// Home's bell.
   case notifications
   case period
+  case widgetGallery
+  case widgetConfig(HomeWidgetKind, entry: String?)
 
   var id: String {
     switch self {
@@ -87,6 +89,8 @@ enum SheetRoute: Hashable, Identifiable {
     case .profile: "profile"
     case .notifications: "notifications"
     case .period: "period"
+    case .widgetGallery: "widgetGallery"
+    case .widgetConfig(let kind, let entry): "widgetConfig.\(kind.rawValue).\(entry ?? "new")"
     }
   }
 }

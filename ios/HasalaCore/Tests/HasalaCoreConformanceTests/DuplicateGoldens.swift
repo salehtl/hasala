@@ -23,6 +23,12 @@ enum DuplicateGoldens {
       entity: ("txn", G.ulid(n)), parent: parent)
   }
 
+  static func sort(_ n: Int, _ category: String, parent: Int, id: String) -> String {
+    G.op(
+      "txn_categorized", #"{"category":"\#(category)","needs_review":false,"source":{"kind":"user"}}"#, id: id,
+      entity: ("txn", G.ulid(n)), parent: parent, at: "2026-10-01T09:00:00.000Z")
+  }
+
   static let set = FoldGoldenSet(
     file: "fold-v4-duplicates.json",
     note:
@@ -94,6 +100,23 @@ enum DuplicateGoldens {
           (1, G.w1, [alert(1, grant: R.a, mid: mid), alert(3, grant: R.a, merchant: "ENOC 1043", at: "12:00:00")]),
           (2, G.w1, [alert(2, grant: R.b, mid: mid), alert(4, grant: R.b, merchant: "ENOC 1043", at: "12:04:00")]),
           (3, G.w1, [R.retire(R.a, legacy: false, id: "op-retire-a")]),
+        ]),
+      FoldGoldenCase(
+        name: "verified-wins-keeps-the-sort",
+        note: "The earlier, unverified copy was sorted (txn_categorized, source user) and noted before the verified copy arrived: the verified copy is canonical and takes the sort (category, category_source, needs_review) and the annotations it lacks.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a, mid: mid, verified: false)]),
+          (2, G.w2, [R.note, sort(1, "groceries", parent: 1, id: "op-sort-1")]),
+          (3, G.w1, [alert(2, grant: R.a, mid: mid, verified: true, message: "msg-2")]),
+        ]),
+      FoldGoldenCase(
+        name: "retire-promotes-the-sort",
+        note: "The canonical row was sorted, then its mailbox was removed: the alias brought back as the live row keeps the sort.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a, mid: mid)]),
+          (2, G.w1, [alert(2, grant: R.b, mid: mid)]),
+          (3, G.w2, [sort(1, "groceries", parent: 1, id: "op-sort-1")]),
+          (4, G.w1, [R.retire(R.a, legacy: false, id: "op-retire-a")]),
         ]),
     ])
 }

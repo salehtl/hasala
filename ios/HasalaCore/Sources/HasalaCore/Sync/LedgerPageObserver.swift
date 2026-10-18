@@ -51,6 +51,7 @@ public actor LedgerPageObserver: PageObserver {
   private var sampleIssued = false
   /// Why the last projection failed, if it did (content-free); nil after a success.
   public private(set) var projectionFailure: String?
+  private var unconfirmed: [(localSeq: Int64, opID: String, authoredMs: Int64, op: Op)] = []
 
   /// `dictionary` is the bundled merchant dictionary (`MerchantDictionary.bundled()`;
   /// `.empty` when its tier is disabled).
@@ -252,6 +253,16 @@ public actor LedgerPageObserver: PageObserver {
     try? project(s)
   }
 
+  public func willPush() async {
+    guard let rows = try? context.store.pendingOps() else { return }
+    var known = Set(unconfirmed.map(\.opID))
+    for r in rows where !known.contains(r.opID) {
+      guard let op = try? Pusher.decodeStored(r), let ms = try? parseInstantMs(op.authoredAt) else { continue }
+      unconfirmed.append((r.localSeq, r.opID, ms, op))
+      known.insert(r.opID)
+    }
+  }
+
   // MARK: Projection
 
   /// Re-applies the outbox overlay to the projection (after an `Outbox.enqueue`,
@@ -262,16 +273,20 @@ public actor LedgerPageObserver: PageObserver {
   }
 
   /// The outbox, one op per overlay blob, in order.
-  private func pendingOverlay() throws(SyncStop) -> [[Op]] {
-    do {
-      return try context.store.pendingOps().compactMap { try? [Pusher.decodeStored($0)] }
-    } catch {
-      throw .store(error)
-    }
+  private func pendingOverlay(over s: State) throws(SyncStop) -> [[Op]] {
+    let rows: [PendingOp]
+    do { rows = try context.store.pendingOps() } catch { throw .store(error) }
+    let folded = s.maxAuthored[context.writerID.string] ?? Int64.min
+    unconfirmed.removeAll { $0.authoredMs <= folded }
+    let pendingIDs = Set(rows.map(\.opID))
+    var items: [(Int64, Op)] = unconfirmed.filter { !pendingIDs.contains($0.opID) }.map { ($0.localSeq, $0.op) }
+    items += rows.compactMap { r in (try? Pusher.decodeStored(r)).map { (r.localSeq, $0) } }
+    items.sort { $0.0 < $1.0 }
+    return items.map { [$0.1] }
   }
 
   private func project(_ s: State) throws(SyncStop) {
-    let pending = try pendingOverlay()
+    let pending = try pendingOverlay(over: s)
     do {
       try projection.project(
         s, pending: pending, writerID: context.writerID.string, dictionary: dictionary, projectedAtMs: context.clock.nowMs())
@@ -348,7 +363,8 @@ public actor LedgerPageObserver: PageObserver {
     let ledger: State
     let base: AuthorContext
     do {
-      ledger = Projector.overlay(try loaded(), pending: try pendingOverlay(), writerID: context.writerID.string).0
+      let folded = try loaded()
+      ledger = Projector.overlay(folded, pending: try pendingOverlay(over: folded), writerID: context.writerID.string).0
       base = try baseContext()
     } catch {
       throw .sync(error)

@@ -50,7 +50,7 @@ struct MainView: View {
       Tab("Review", image: "TabReview", value: AppTab.review) {
         ReviewTabView(app: app)
       }
-      // Transactions to sort; it never follows the period, and is hidden at zero.
+      // Transactions to sort in the period; hidden at zero.
       .badge(app.reviewCount)
       Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
@@ -86,6 +86,10 @@ struct MainView: View {
         NotificationsSheet(app: app)
       case .period:
         PeriodSheet(app: app)
+      case .widgetGallery:
+        WidgetGallerySheet(app: app)
+      case .widgetConfig(let kind, let entry):
+        WidgetConfigSheet(app: app, kind: kind, entry: entry)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

@@ -6,8 +6,9 @@ import SwiftUI
   import HasalaMocks
 #endif
 
-/// Activity · Overview (Paper 1QG-0): the register. The title with the period pill and
-/// "26 transactions this month", the filter chips, then To review, Coming up and History by
+/// Activity · Overview (Paper 1QG-0, 15M3-0): the register. The title with Home's period pill and
+/// "26 transactions this month" (another period: the tinted pill and "Back to this month", the
+/// count under History), the filter chips, then To review, Coming up and History by
 /// day. Every row opens the transaction sheet; a Coming up row pushes its bill. A category
 /// filter turns it into Activity · Filtered (7LT-0): the category's chip, its pace, and its
 /// rows in one card.
@@ -55,22 +56,49 @@ struct ActivityFilterBar: View {
   var body: some View {
     if let summary = snap.summary, let category = snap.filter.category {
       VStack(alignment: .leading, spacing: 16) {
-        MonthPill(month: snap.month)
+        periodRow
         ActiveFilterChip(title: summary.title, hue: summary.hue) { model.show(category: nil) }
           .accessibilityIdentifier("activity.filter.\(category)")
       }
     } else {
       VStack(alignment: .leading, spacing: 20) {
-        HStack(spacing: 12) {
-          MonthPill(month: snap.month)
+        periodRow
+        chips
+          .padding(.horizontal, -HSpacing.insetPage)
+      }
+    }
+  }
+
+  private var pill: some View {
+    PeriodPill(snap.period.title, tinted: !snap.isThisMonth) { model.choosePeriod() }
+      .accessibilityIdentifier("activity.period")
+  }
+
+  @ViewBuilder private var periodRow: some View {
+    if snap.isThisMonth {
+      HStack(spacing: 12) {
+        pill
+        if snap.summary == nil {
           Text(snap.countLine)
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("activity.count")
         }
-        chips
-          .padding(.horizontal, -HSpacing.insetPage)
+      }
+    } else {
+      ReflowingRow(spacing: 12) {
+        pill
+      } trailing: {
+        Button { model.backToThisMonth() } label: {
+          Text("Back to this month")
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("activity.backToThisMonth")
       }
     }
   }
@@ -179,10 +207,17 @@ struct ActivityContent: View {
       header(model.searchText.isEmpty ? "History" : "Results") {
         ExportLink(rows: model.exportRows, title: "Export")
       }
+      if !snap.isThisMonth, snap.filter.kind == .all, !snap.filter.isSearching {
+        Text(snap.countLine)
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("activity.count")
+      }
       if snap.days.isEmpty {
-        EmptyListCard(kind: snap.filter.kind, query: model.searchText)
+        EmptyListCard(kind: snap.filter.kind, query: model.searchText, period: snap.period, isThisMonth: snap.isThisMonth)
       } else {
-        VStack(alignment: .leading, spacing: 20) {
+        LazyVStack(alignment: .leading, spacing: 20) {
           ForEach(snap.days) { day in
             VStack(alignment: .leading, spacing: 8) {
               DayHeader(day: day, hidden: model.hidden)
@@ -210,7 +245,8 @@ struct ActivityContent: View {
         rows(snap.rows)
         ExportLink(rows: model.exportRows, title: "Export these \(snap.rows.count)", prominent: true)
       } else {
-        EmptyListCard(kind: .all, query: "", category: summary.title)
+        EmptyListCard(kind: .all, query: "", period: snap.period, isThisMonth: snap.isThisMonth,
+                      category: summary.title)
       }
     }
     .padding(.horizontal, HSpacing.insetPage)
@@ -265,7 +301,11 @@ private struct DayHeader: View {
 private struct EmptyListCard: View {
   let kind: TxnFilter.Kind
   let query: String
+  let period: Period
+  let isThisMonth: Bool
   var category: String?
+
+  private var when: String { isThisMonth ? "this month" : "in \(period.title)" }
 
   var body: some View {
     VStack(spacing: 8) {
@@ -287,14 +327,20 @@ private struct EmptyListCard: View {
       return ("No matches for “\(query)”", "Try a merchant name or a category.")
     }
     if let category {
-      return ("Nothing in \(category) this month", "Transactions you sort into \(category) show here.")
+      return ("Nothing in \(category) \(when)", "Transactions you sort into \(category) show here.")
     }
     switch kind {
-    case .all: return ("Nothing yet this month", "Card payments show here, usually within a minute of your bank's email.")
+    case .all:
+      return (isThisMonth ? "Nothing yet this month" : "Nothing \(when)",
+              "Card payments show here, usually within a minute of your bank's email.")
     case .toReview: return ("Nothing to sort", "New transactions Hasala can't sort on its own show up here.")
-    case .bills: return ("No bills paid this month yet", "Payments to a bill you track show here.")
-    case .transfers: return ("No transfers this month", "Money moved between your own accounts shows here.")
-    case .income: return ("No income this month yet", "Salary and other money in show here once they arrive.")
+    case .bills:
+      return (isThisMonth ? "No bills paid this month yet" : "No bills paid \(when)",
+              "Payments to a bill you track show here.")
+    case .transfers: return ("No transfers \(when)", "Money moved between your own accounts shows here.")
+    case .income:
+      return (isThisMonth ? "No income this month yet" : "No income \(when)",
+              "Salary and other money in show here once they arrive.")
     case .archived: return ("Nothing archived", "Transactions you archive leave your plan and wait here.")
     }
   }

@@ -197,6 +197,8 @@ final class BootController {
       if case .needsUnlock? = previous, phase == .ready { LocalAccountData.markSetupFinished() }
       openRuntimeIfNeeded()
     case .signedOut:
+      app?.forgetHomeLayout()
+      HomeLayoutStore.forgetAll()
       Task { await closeRuntime() }
     case .checking, .needsUnlock, .needsKeys:
       break
@@ -259,7 +261,8 @@ final class BootController {
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
       self.opening = nil
       self.runtime = rt
-      let app = AppModel(store: rt.store, mailbox: self.services.mailbox)
+      let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
+      let app = AppModel(store: rt.store, mailbox: self.services.mailbox, layouts: layouts)
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app

@@ -49,4 +49,51 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
     XCTAssertTrue(app.staticTexts["Your widgets"].exists)
   }
+
+  @MainActor
+  func testHomesRangeScopesActivityAndReview() throws {
+    let app = launch(scenario: "mayaRange", motion: "off")
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.month.2026-08")
+    tap(app, "period.month.2026-10")
+    tap(app, "period.show")
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, Aug – Oct 2026"))
+
+    let tabBar = app.tabBars.firstMatch
+    tabBar.buttons["Activity"].tap()
+    let pill = app.buttons["activity.period"]
+    XCTAssertTrue(pill.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(pill.label, "Period, Aug – Oct 2026")
+    XCTAssertTrue(el(app, "activity.backToThisMonth").exists)
+    XCTAssertTrue(app.buttons["activity.chip.toReview"].label.contains("9"), app.buttons["activity.chip.toReview"].label)
+    attach(app, "Activity · Aug – Oct")
+    try audit(app)
+    let august = el(app, "txn.h-bounce-8")
+    for _ in 0..<40 where !august.exists {
+      app.swipeUp(velocity: .fast)
+    }
+    XCTAssertTrue(august.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "txn.h-rent-9").exists || el(app, "txn.h-salary-8").exists)
+
+    tabBar.buttons["Review"].tap()
+    let count = el(app, "review.tab.count")
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
+    XCTAssertTrue(el(app, "review.tab.row.aug-corner-shop").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "review.tab.row.sep-steam").exists)
+    XCTAssertTrue(el(app, "review.tab.row.aug-talabat-copy").exists)
+    attach(app, "Review · Aug – Oct")
+
+    tabBar.buttons["Activity"].tap()
+    app.swipeDown(velocity: .fast)
+    for _ in 0..<40 where !el(app, "activity.backToThisMonth").isHittable {
+      app.swipeDown(velocity: .fast)
+    }
+    tap(app, "activity.backToThisMonth")
+    XCTAssertTrue(pill.waitForLabel("Period, October 2026"))
+    XCTAssertTrue(el(app, "activity.count").waitForLabel("26 transactions this month"))
+    tabBar.buttons["Home"].tap()
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, October 2026"))
+    tabBar.buttons["Review"].tap()
+    XCTAssertTrue(el(app, "review.tab.count").waitForLabel("6 to sort · about a minute"))
+  }
 }

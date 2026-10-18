@@ -17,6 +17,8 @@ protocol ActivityModel: AnyObject, Observable {
   func show(category: CategoryID?)
   /// Shows exactly this filter (a request from Search).
   func apply(_ filter: TxnFilter)
+  func choosePeriod()
+  func backToThisMonth()
   func open(_ txn: TxnID)
   func openBill(_ bill: BillID)
   func startReview()
@@ -37,8 +39,9 @@ final class ActivityViewModel: ActivityModel {
   }
 
   var snapshot: ActivitySnapshot {
-    memo.value(for: [app.store.revision, filter]) {
-      ActivityEngine.snapshot(app.store.state, now: app.store.now, filter: filter)
+    let period = app.period
+    return memo.value(for: [app.store.revision, filter, period]) {
+      ActivityEngine.snapshot(app.store.state, now: app.store.now, filter: filter, period: period)
     }
   }
   var hidden: Bool { app.amountsHidden }
@@ -46,7 +49,7 @@ final class ActivityViewModel: ActivityModel {
 
   /// The rows "Export" shares: what the list shows.
   var exportRows: [ExportRow] {
-    exportMemo.value(for: [app.store.revision, filter]) {
+    exportMemo.value(for: [app.store.revision, filter, app.period]) {
       let s = app.store.state
       let snap = snapshot
       let ids = Set(snap.days.flatMap(\.rows).map(\.id) + snap.rows.map(\.id))
@@ -62,6 +65,9 @@ final class ActivityViewModel: ActivityModel {
   }
 
   func apply(_ filter: TxnFilter) { self.filter = filter }
+
+  func choosePeriod() { app.sheet = .period }
+  func backToThisMonth() { app.period = .month(app.store.now.date.yearMonth) }
 
   func open(_ txn: TxnID) { app.open(txn) }
   func openBill(_ bill: BillID) { app.router.activity.append(.bill(bill)) }

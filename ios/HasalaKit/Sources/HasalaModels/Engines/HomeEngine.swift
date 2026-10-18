@@ -2,7 +2,6 @@
 // and Last 3 months (1531-0): the hero with its pace, the bell's list and the widget canvas,
 // built from `LedgerState` (spec 10 §2, page 06 §6.4, page 16 §01–02).
 //
-// TODO(spec 04 §16.2 H2): the widget order comes from `prefs.homeWidgets`.
 
 public enum HomeEngine {
   public static func snapshot(_ s: LedgerState, now: LocalDateTime, period: Period? = nil) -> HomeSnapshot {
@@ -247,57 +246,150 @@ public enum HomeEngine {
   }
 
   static func widgets(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot) -> [HomeWidget] {
+    let sources = CanvasSources(s, now: now, plan: plan)
+    return defaultLayout(s, now: now, plan: plan).entries.compactMap { sources.widget(for: $0) }
+  }
+
+  public static func defaultLayout(_ s: LedgerState, now: LocalDateTime) -> HomeLayout {
+    defaultLayout(s, now: now, plan: PlanEngine.snapshot(s, now: now))
+  }
+
+  static func defaultLayout(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot) -> HomeLayout {
+    var out: [HomeLayout.Entry] = [HomeLayout.Entry(.budgetPace)]
+    if nextBill(s, now: now) != nil { out.append(HomeLayout.Entry(.nextBill)) }
+    if !s.accounts.isEmpty { out.append(HomeLayout.Entry(.netWorth)) }
+    for p in s.projects where !p.complete && plan.projects.contains(where: { $0.id == p.id }) {
+      out.append(HomeLayout.Entry(.project, config: .project(p.id)))
+    }
+    for g in s.goals { out.append(HomeLayout.Entry(.goal, config: .goal(g.id))) }
+    out.append(HomeLayout.Entry(.today))
+    return HomeLayout(out)
+  }
+
+  public static func canvas(_ layout: HomeLayout?, _ s: LedgerState, now: LocalDateTime) -> [HomeCanvasItem] {
+    let plan = PlanEngine.snapshot(s, now: now)
+    let sources = CanvasSources(s, now: now, plan: plan)
+    let l = layout ?? defaultLayout(s, now: now, plan: plan)
+    return l.entries.map { HomeCanvasItem(entry: $0, widget: sources.widget(for: $0)) }
+  }
+
+  public static func previews(_ s: LedgerState, now: LocalDateTime) -> [HomeWidgetKind: HomeCanvasItem] {
+    let plan = PlanEngine.snapshot(s, now: now)
+    let sources = CanvasSources(s, now: now, plan: plan)
+    var out: [HomeWidgetKind: HomeCanvasItem] = [:]
+    for kind in HomeWidgetKind.allCases {
+      let config = kind.configKind.flatMap { suggested($0, s, now: now, plan: plan) }
+      let entry = HomeLayout.Entry(kind, config: config)
+      out[kind] = HomeCanvasItem(entry: entry, widget: entry.isValid ? sources.widget(for: entry) : nil)
+    }
+    return out
+  }
+
+  public static func suggested(_ kind: HomeWidgetConfig.Kind, _ s: LedgerState, now: LocalDateTime) -> HomeWidgetConfig? {
+    suggested(kind, s, now: now, plan: PlanEngine.snapshot(s, now: now))
+  }
+
+  static func suggested(_ kind: HomeWidgetConfig.Kind, _ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot)
+    -> HomeWidgetConfig?
+  {
+    let all = options(kind, s, now: now, plan: plan)
+    if kind == .category {
+      let ahead = GlanceEngine.categories(s, now: now).first { $0.verdict == .overPace || $0.verdict == .overBudget }
+      if let ahead, all.contains(where: { $0.config == .category(ahead.id) }) { return .category(ahead.id) }
+    }
+    return all.first?.config
+  }
+
+  public static func options(_ kind: HomeWidgetConfig.Kind, _ s: LedgerState, now: LocalDateTime) -> [HomeWidgetOption] {
+    options(kind, s, now: now, plan: PlanEngine.snapshot(s, now: now))
+  }
+
+  static func options(_ kind: HomeWidgetConfig.Kind, _ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot)
+    -> [HomeWidgetOption]
+  {
+    switch kind {
+    case .category:
+      let watched = GlanceEngine.categories(s, now: now)
+      return [Bucket.needs, .wants].flatMap { bucket in
+        watched.filter { s.category($0.id)?.bucket == bucket }.map { c in
+          HomeWidgetOption(
+            config: .category(c.id), title: c.name,
+            detail: c.isOver
+              ? MoneyPhrase([.amount(Money(minor: -c.left.minor, currency: c.left.currency), .rounded, hidden: 3), .text(" over")])
+              : MoneyPhrase([.amount(c.left, .rounded, hidden: 3), .text(" left")]),
+            section: bucket == .needs ? "Needs" : "Wants", glyph: c.glyph, hue: c.hue)
+        }
+      }
+    case .project:
+      return s.projects.filter { p in !p.complete && plan.projects.contains { $0.id == p.id } }.map { p in
+        let left = plan.projects.first { $0.id == p.id }?.left ?? p.budget
+        return HomeWidgetOption(config: .project(p.id), title: p.name,
+                                detail: MoneyPhrase([.amount(left, .rounded, hidden: 3), .text(" left")]),
+                                section: "Projects", glyph: p.glyph, hue: .peach)
+      }
+    case .goal:
+      return s.goals.map { g in
+        HomeWidgetOption(config: .goal(g.id), title: g.name,
+                         detail: MoneyPhrase([.text("\(Permille.ratio(g.saved.minor, of: g.target.minor).value / 10)% saved")]),
+                         section: "Savings goals", glyph: g.glyph, hue: .mint)
+      }
+    }
+  }
+
+  static func budgetPaceWidget(_ plan: PlanSnapshot, now: LocalDateTime) -> BudgetPaceWidget {
     let month = now.date.yearMonth
-    var out: [HomeWidget] = []
-
     let pct = Pace.monthGone(day: now.date.day, days: month.days).value / 10
-    out.append(.budgetPace(budgetPace(plan, label: "\(pct)% of \(month.name) gone")))
+    return budgetPace(plan, label: "\(pct)% of \(month.name) gone")
+  }
 
-    if let next = nextBill(s, now: now) {
-      let n = now.date.days(until: next.nextDue)
-      out.append(.nextBill(NextBillWidget(
-        glyph: s.category(next.categoryID)?.glyph ?? .utilities, hue: s.category(next.categoryID)?.hue ?? .sand,
-        due: StatusPill(n == 0 ? "Today" : (n == 1 ? "Tomorrow" : "In \(n) days"), tone: .warning, showsDot: false),
-        amount: next.amount,
-        caption: "\(next.name) · expected \(next.nextDue.weekdayShort)"
-      )))
-    }
+  static func nextBillWidget(_ s: LedgerState, now: LocalDateTime) -> NextBillWidget? {
+    guard let next = nextBill(s, now: now) else { return nil }
+    let n = now.date.days(until: next.nextDue)
+    return NextBillWidget(
+      glyph: s.category(next.categoryID)?.glyph ?? .utilities, hue: s.category(next.categoryID)?.hue ?? .sand,
+      due: StatusPill(n == 0 ? "Today" : (n == 1 ? "Tomorrow" : "In \(n) days"), tone: .warning, showsDot: false),
+      amount: next.amount,
+      caption: "\(next.name) · expected \(next.nextDue.weekdayShort)"
+    )
+  }
 
-    if !s.accounts.isEmpty {
-      let total = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
-      out.append(.netWorth(NetWorthWidget(
-        total: .aed(total),
-        change: MoneyPhrase([
-          .signedMoney(s.netWorth.monthChange, style: .rounded, hiddenGlyphs: 3), .text(" this month"),
-        ]),
-        spark: s.netWorth.spark.map(Permille.init)
-      )))
-    }
+  static func netWorthWidget(_ s: LedgerState) -> NetWorthWidget? {
+    guard !s.accounts.isEmpty else { return nil }
+    let total = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
+    return NetWorthWidget(
+      total: .aed(total),
+      change: MoneyPhrase([
+        .signedMoney(s.netWorth.monthChange, style: .rounded, hiddenGlyphs: 3), .text(" this month"),
+      ]),
+      spark: s.netWorth.spark.map(Permille.init)
+    )
+  }
 
-    for p in s.projects where !p.complete {
-      guard let m = plan.projects.first(where: { $0.id == p.id }) else { continue }
-      out.append(.project(ProjectWidget(
-        name: p.name, glyph: p.glyph, left: m.left,
-        caption: MoneyPhrase([
-          .text("of "), .amount(p.budget, .rounded, hidden: 4), .text(" · \(p.startVerb) \(p.starts.dayMonth)"),
-        ]),
-        progress: m.progress
-      )))
-    }
+  static func projectWidget(_ p: Project, plan: PlanSnapshot) -> ProjectWidget? {
+    guard !p.complete, let m = plan.projects.first(where: { $0.id == p.id }) else { return nil }
+    return ProjectWidget(
+      name: p.name, glyph: p.glyph, left: m.left,
+      caption: MoneyPhrase([
+        .text("of "), .amount(p.budget, .rounded, hidden: 4), .text(" · \(p.startVerb) \(p.starts.dayMonth)"),
+      ]),
+      progress: m.progress
+    )
+  }
 
-    for g in s.goals {
-      out.append(.goal(GoalWidget(
-        name: g.name, glyph: g.glyph, progress: Permille.ratio(g.saved.minor, of: g.target.minor),
-        caption: MoneyPhrase([
-          .amount(g.saved, .rounded), .text(" of "), .amount(g.target, .rounded), .text(" · \(g.by.shortName)"),
-        ])
-      )))
-    }
+  static func goalWidget(_ g: Goal) -> GoalWidget {
+    GoalWidget(
+      name: g.name, glyph: g.glyph, progress: Permille.ratio(g.saved.minor, of: g.target.minor),
+      caption: MoneyPhrase([
+        .amount(g.saved, .rounded), .text(" of "), .amount(g.target, .rounded), .text(" · \(g.by.shortName)"),
+      ])
+    )
+  }
 
+  static func todayWidget(_ s: LedgerState, now: LocalDateTime) -> TodayWidget {
     let today = s.txns.filter { $0.postedAt.date == now.date && $0.countsInPlan }
       .sorted { $0.postedAt > $1.postedAt }
     let todayTotal = today.reduce(Int64(0)) { $0 + ($1.direction == .out ? $1.amount.minor : -$1.amount.minor) }
-    out.append(.today(TodayWidget(
+    return TodayWidget(
       summary: MoneyPhrase([
         .text("\(today.count) transaction\(today.count == 1 ? "" : "s") · "), .amount(.aed(todayTotal), .rounded, hidden: 3),
       ]),
@@ -307,7 +399,41 @@ public enum HomeEngine {
         return MiniTxnRow(id: "t.\(t.id)", merchant: t.merchant, glyph: c?.glyph ?? .review, hue: c?.hue ?? .other,
                           detail: detail, amount: t.amount, isIncome: t.direction == .in)
       }
-    )))
-    return out
+    )
+  }
+}
+
+struct CanvasSources {
+  let s: LedgerState
+  let now: LocalDateTime
+  let plan: PlanSnapshot
+
+  init(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot) {
+    self.s = s
+    self.now = now
+    self.plan = plan
+  }
+
+  func widget(for entry: HomeLayout.Entry) -> HomeWidget? {
+    switch entry.kind {
+    case .budgetPace: return .budgetPace(HomeEngine.budgetPaceWidget(plan, now: now))
+    case .nextBill: return HomeEngine.nextBillWidget(s, now: now).map(HomeWidget.nextBill)
+    case .netWorth: return HomeEngine.netWorthWidget(s).map(HomeWidget.netWorth)
+    case .today: return .today(HomeEngine.todayWidget(s, now: now))
+    case .project:
+      guard case .project(let id)? = entry.config, let p = s.projects.first(where: { $0.id == id }) else { return nil }
+      return HomeEngine.projectWidget(p, plan: plan).map(HomeWidget.project)
+    case .goal:
+      guard case .goal(let id)? = entry.config, let g = s.goals.first(where: { $0.id == id }) else { return nil }
+      return .goal(HomeEngine.goalWidget(g))
+    case .spentSoFar:
+      let hero = HomeEngine.hero(s, now: now, plan: plan)
+      return GlanceEngine.spentSoFar(s, now: now, hero: hero).map(HomeWidget.spentSoFar)
+    case .categoryWatch:
+      guard case .category(let id)? = entry.config else { return nil }
+      return GlanceEngine.categories(s, now: now).first { $0.id == id }.map(HomeWidget.categoryWatch)
+    case .comingUp: return GlanceEngine.comingUp(s, now: now).map(HomeWidget.comingUp)
+    case .toReview: return .toReview(GlanceEngine.toReview(s, now: now))
+    }
   }
 }

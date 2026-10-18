@@ -338,22 +338,36 @@ public struct TodayWidget: Sendable, Hashable, Codable {
 }
 
 /// One tile on the Home canvas, in the order the person arranged them.
-public enum HomeWidget: Sendable, Hashable, Identifiable {
+public enum HomeWidget: Sendable, Hashable, Identifiable, CanvasSized {
   case budgetPace(BudgetPaceWidget)
   case nextBill(NextBillWidget)
   case netWorth(NetWorthWidget)
   case project(ProjectWidget)
   case goal(GoalWidget)
   case today(TodayWidget)
+  case spentSoFar(SpentSoFarWidget)
+  case categoryWatch(CategoryWatchWidget)
+  case comingUp(ComingUpWidget)
+  case toReview(ToReviewWidget)
 
-  public enum Size: Sendable { case small, medium }
+  public enum Size: String, Sendable, Hashable, Codable { case small, medium }
 
-  public var size: Size {
+  public var kind: HomeWidgetKind {
     switch self {
-    case .budgetPace, .today: .medium
-    case .nextBill, .netWorth, .project, .goal: .small
+    case .budgetPace: .budgetPace
+    case .nextBill: .nextBill
+    case .netWorth: .netWorth
+    case .project: .project
+    case .goal: .goal
+    case .today: .today
+    case .spentSoFar: .spentSoFar
+    case .categoryWatch: .categoryWatch
+    case .comingUp: .comingUp
+    case .toReview: .toReview
     }
   }
+
+  public var size: Size { kind.size }
 
   public var id: String {
     switch self {
@@ -363,6 +377,10 @@ public enum HomeWidget: Sendable, Hashable, Identifiable {
     case .project(let p): "project." + p.name
     case .goal(let g): "goal." + g.name
     case .today: "today"
+    case .spentSoFar: "spentSoFar"
+    case .categoryWatch(let c): "categoryWatch." + c.id
+    case .comingUp: "comingUp"
+    case .toReview: "toReview"
     }
   }
 }
@@ -395,12 +413,12 @@ public struct HomeSnapshot: Sendable, Hashable {
   public var isThisMonth: Bool { period == nil }
 }
 
-public extension Array where Element == HomeWidget {
+public extension Array where Element: CanvasSized {
   /// Lays the canvas out in rows: a medium widget alone, small widgets in pairs
   /// (an unpaired small widget sits alone at the left), as on Paper's canvas.
-  var canvasRows: [[HomeWidget]] {
-    var rows: [[HomeWidget]] = []
-    var pending: HomeWidget?
+  var canvasRows: [[Element]] {
+    var rows: [[Element]] = []
+    var pending: Element?
     for w in self {
       switch w.size {
       case .medium:
