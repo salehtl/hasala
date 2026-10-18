@@ -13,6 +13,7 @@ struct SearchView: View {
   @State private var query = ""
   /// The field is up and focused when Search opens (Paper "Search · Ready": keyboard up).
   @State private var searching = false
+  @State private var ask = AskSearchModel()
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
   /// questions (the fourth row, "Compare October with September", needs an answer card).
@@ -58,6 +59,9 @@ struct SearchView: View {
       .autocorrectionDisabled()
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
+      .task(id: query.trimmedSpaces) {
+        await ask.run(query.trimmedSpaces, app.store.state, now: app.store.now)
+      }
     }
     .onAppear {
       searching = true
@@ -81,7 +85,7 @@ struct SearchView: View {
           VStack(spacing: 0) {
             ForEach(Array(asks.enumerated()), id: \.offset) { i, s in
               if i > 0 { HColor.borderSubtle.frame(height: 1).padding(.leading, 46).accessibilityHidden(true) }
-              Button { query = s.term } label: {
+              Button { query = ask.available ? s.question : s.term } label: {
                 HStack(spacing: 12) {
                   HIconView(.chat, size: 18, color: HColor.actionAccent, strokeWidth: 2)
                   Text(s.question).hType(.callout).foregroundStyle(HColor.textPrimary)
@@ -146,10 +150,17 @@ struct SearchView: View {
   @ViewBuilder
   private func results(_ q: String) -> some View {
     let found = SearchResults(q, app.store.state, now: app.store.now)
-    if found.isEmpty {
+    let answer = ask.answer(for: q)
+    let thinking = ask.isThinking(about: q)
+    if found.isEmpty && answer == nil && !thinking {
       nothingFound(q)
     } else {
       VStack(alignment: .leading, spacing: 14) {
+        if let answer {
+          answerSection(answer, q)
+        } else if thinking {
+          thinkingRow
+        }
         if let top = found.top {
           VStack(alignment: .leading, spacing: 8) {
             overline("Top result")
@@ -244,6 +255,94 @@ struct SearchView: View {
     }
   }
 
+  private var thinkingRow: some View {
+    HStack(spacing: 10) {
+      ProgressView().controlSize(.small)
+      Text("Reading your question on this iPhone…").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 16)
+    .frame(minHeight: 52)
+    .background(HColor.surfaceOnWash, in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("search.ask.thinking")
+  }
+
+  @ViewBuilder
+  private func answerSection(_ a: AskAnswer, _ q: String) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      overline("Answer")
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 8) {
+          HIconView(.wand, size: 16, color: HColor.actionAccent, strokeWidth: 2)
+          Text(a.headline).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+        }
+        VStack(alignment: .leading, spacing: 2) {
+          MoneyText(a.total, figure: .large, unit: .unit, hidden: app.amountsHidden, hiddenGlyphs: 4,
+                    color: a.isIncome ? HColor.moneyIn : HColor.textPrimary, sign: a.isIncome ? .income : .none)
+          Text("\(a.isIncome ? "Received" : "Spent") · \(a.countLine)").hType(.footnote)
+            .foregroundStyle(HColor.textSecondary)
+        }
+        if !a.scope.isEmpty {
+          FlowLayout(spacing: 6) {
+            ForEach(a.scope, id: \.self) { chip in
+              Text(chip).hType(.caption1).foregroundStyle(HColor.textPrimary)
+                .padding(.horizontal, 10)
+                .frame(minHeight: 26)
+                .background(HColor.chipSurfaceOnCard, in: Capsule())
+            }
+          }
+          .accessibilityElement(children: .combine)
+          .accessibilityLabel("Searched for " + a.scope.joined(separator: ", "))
+        }
+        HStack(spacing: 6) {
+          HIconView(.lock, size: 12, color: HColor.textSecondary, strokeWidth: 2)
+          Text("Understood on this iPhone. Nothing was sent.").hType(.caption1)
+            .foregroundStyle(HColor.textSecondary)
+        }
+        .accessibilityElement(children: .combine)
+      }
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+      .hElevation(.nearFar)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("search.answer")
+    }
+    if !a.rows.isEmpty {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .firstTextBaseline) {
+          overline("Transactions")
+          Spacer()
+          if let filter = a.activity {
+            Button("See all") {
+              SearchHistory.shared.add(q)
+              ActivityRequests.shared.show(filter, in: app)
+            }
+            .buttonStyle(.plain)
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .accessibilityIdentifier("search.answer.seeAll")
+          }
+        }
+        HListCard {
+          ForEach(Array(a.rows.prefix(5).enumerated()), id: \.element.id) { i, row in
+            if i > 0 { HDivider(inset: .disc68) }
+            Button {
+              SearchHistory.shared.add(q)
+              app.open(row.id)
+            } label: {
+              resultRow(row, "", detail: row.detail)
+            }
+            .buttonStyle(HRowPressStyle())
+            .accessibilityIdentifier("search.answer.txn.\(row.id)")
+          }
+        }
+      }
+    }
+  }
+
   /// The best match: disc, the merchant with the typed part bold, its last amount and day,
   /// and "See all" (Activity searching the same words).
   private func topResult(_ row: MiniTxnRow, _ q: String) -> some View {
@@ -305,7 +404,7 @@ struct SearchView: View {
 
   /// The typed part in bold, the rest regular (Paper "Carre" + "four").
   private func highlighted(_ text: String, _ q: String) -> Text {
-    guard let r = text.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) else {
+    guard !q.isEmpty, let r = text.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) else {
       return Text(text)
     }
     let bold = Font.custom(HWeight.bold.interFace, size: 16, relativeTo: .callout)
