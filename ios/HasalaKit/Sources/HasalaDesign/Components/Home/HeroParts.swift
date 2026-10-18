@@ -10,10 +10,12 @@ import SwiftUI
 /// Without an action it is not a control: it names the month the figures are for.
 public struct PeriodPill: View {
   let title: String
+  let tinted: Bool
   let action: (() -> Void)?
 
-  public init(_ title: String, action: (() -> Void)? = nil) {
+  public init(_ title: String, tinted: Bool = false, action: (() -> Void)? = nil) {
     self.title = title
+    self.tinted = tinted
     self.action = action
   }
 
@@ -34,18 +36,20 @@ public struct PeriodPill: View {
 
   private var pill: some View {
     HStack(spacing: 6) {
-      Text(title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+      Text(title).hType(.subheadline.weight(.semibold)).foregroundStyle(ink)
       if action != nil {
-        HIconView(.chevronDown, size: 14, color: HColor.textPrimary, strokeWidth: 2.6)
+        HIconView(.chevronDown, size: 14, color: ink, strokeWidth: 2.6)
       }
     }
     .padding(.leading, 14)
     .padding(.trailing, action == nil ? 14 : 12)
     .padding(.vertical, 8)
     .frame(minHeight: 36)
-    .background(HColor.surfacePrimary, in: Capsule())
+    .background(tinted ? HColor.actionAccentSubtle : HColor.surfacePrimary, in: Capsule())
     .hElevation(.near)
   }
+
+  private var ink: Color { tinted ? HColor.actionAccent : HColor.textPrimary }
 }
 
 /// The pill's press (darken and 0.97, `HPressStyle`) on the pill alone, with the 44 row

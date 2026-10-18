@@ -17,7 +17,7 @@ final class SmokeTests: XCTestCase {
 
     let hero = el(app, "home.hero.left")
     XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
-    XCTAssertTrue(hero.waitForLabel("AED 10,288.34"), hero.label)
+    XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
     XCTAssertTrue(app.staticTexts["Your widgets"].exists)
     // Home has no Needs-you rail any more (decided 14 Oct): the bell counts what needs a look.
     XCTAssertFalse(app.staticTexts["Needs you"].exists)
@@ -51,14 +51,14 @@ final class SmokeTests: XCTestCase {
     app.buttons["header.hideAmounts"].firstMatch.tap()
     XCTAssertTrue(el(app, "toast").waitForExistence(timeout: uiWait))
     XCTAssertEqual(hero.label, "Amount hidden")
-    XCTAssertFalse(app.staticTexts["10,288.34"].exists)
+    XCTAssertFalse(app.staticTexts["11,115.62"].exists)
     attach(app, "Home · Amounts hidden")
     // Audit the hidden state once the toast has gone by itself, not while it animates away
     // mid-audit.
     XCTAssertTrue(el(app, "toast").waitForNonExistence(timeout: 20))
     try audit(app)
     app.buttons["header.hideAmounts"].firstMatch.tap()
-    XCTAssertTrue(hero.waitForLabel("AED 10,288.34"), hero.label)
+    XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
 
     // Every tab opens; coming back to Home shows the hero as it was (no replay).
     let tabBar = app.tabBars.firstMatch
@@ -73,7 +73,7 @@ final class SmokeTests: XCTestCase {
     try audit(app)
     tabBar.buttons["Home"].tap()
     XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(hero.label, "AED 10,288.34")
+    XCTAssertEqual(hero.label, "AED 11,115.62")
 
     // The profile sheet carries the build footer.
     app.buttons["header.profile"].firstMatch.tap()
@@ -126,7 +126,7 @@ final class SmokeTests: XCTestCase {
 
     let hero = el(app, "home.hero.left")
     XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
-    XCTAssertTrue(hero.waitForLabel("AED 10,288.34"), hero.label)
+    XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
     attach(app, "AX3 · Home")
     try audit(app, atLargeText: true)
     // Down the whole page: the tiles, then each widget. The audit can move the scroll
@@ -203,7 +203,7 @@ final class SmokeTests: XCTestCase {
     // the owner's 600 ms.
     XCTAssertTrue((tick + 50...510).contains(verdict), value)
     XCTAssertTrue((verdict...620).contains(done), value)
-    XCTAssertEqual(el(app, "home.hero.left").label, "AED 10,288.34")
+    XCTAssertEqual(el(app, "home.hero.left").label, "AED 11,115.62")
   }
 
   /// Home's wash sits behind the scroll view (owner's TestFlight report: a pull to refresh
@@ -214,7 +214,7 @@ final class SmokeTests: XCTestCase {
     let app = launch(scenario: "maya", release: true, motion: "off")
     let hero = el(app, "home.hero.left")
     XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
-    XCTAssertTrue(hero.waitForLabel("AED 10,288.34"), hero.label)
+    XCTAssertTrue(hero.waitForLabel("AED 11,115.62"), hero.label)
 
     // Under the bar, at the leading edge (no content there): the wash's blue, or the canvas.
     let probe = CGPoint(x: 6, y: 150)

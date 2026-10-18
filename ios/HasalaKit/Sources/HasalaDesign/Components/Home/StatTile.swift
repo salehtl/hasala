@@ -3,8 +3,8 @@ import SwiftUI
 
 /// A stat tile under the Home hero (Paper "Hero stats", page 16 §01): the label 13/18 in the
 /// wash's secondary ink over the figure 17/22 bold, on white 70%, radius 18, inset 12/14.
-/// Savings part way through its plan adds "of 5,000" 13/18 on the figure's baseline. Not a
-/// control: it reads "Needs, AED 9,040.80" (hidden: "Needs, Amount hidden").
+/// The figure stays on one line and shrinks to fit the tile rather than cut. Not a control: it
+/// reads "Needs, AED 9,040.80" (hidden: "Needs, Amount hidden").
 public struct StatTile: View {
   let tile: HeroTile
   let hidden: Bool
@@ -18,15 +18,8 @@ public struct StatTile: View {
     VStack(alignment: .leading, spacing: 2) {
       Text(tile.label).hType(.footnote).foregroundStyle(HColor.textOnWashSecondary)
         .singleLineAtDefaultTextSize()
-      HStack(alignment: .firstTextBaseline, spacing: 4) {
-        MoneyText(tile.value, figure: .stat, style: tile.style, hidden: hidden, hiddenGlyphs: 4,
-                  color: HColor.textPrimary)
-        if let of = ofPhrase {
-          Text(of.rendered(hidden: hidden))
-            .hType(.footnote).foregroundStyle(HColor.textOnWashSecondary)
-            .singleLineAtDefaultTextSize()
-        }
-      }
+      MoneyText(tile.value, figure: Self.figure, style: tile.style, hidden: hidden, hiddenGlyphs: 4,
+                color: HColor.textPrimary)
     }
     .padding(.vertical, 12)
     .padding(.horizontal, 14)
@@ -37,16 +30,17 @@ public struct StatTile: View {
     .accessibilityValue(spoken)
   }
 
-  /// "of 5,000" in whole dirhams, 3 dots when hidden.
-  private var ofPhrase: MoneyPhrase? {
-    tile.of.map { MoneyPhrase([.text("of "), .amount($0, .rounded, hidden: 3)]) }
-  }
+  static let figure: HFigure = {
+    var f = HFigure.stat
+    f.minimumScale = 0.76
+    f.maxDynamicTypeSize = .xxLarge
+    return f
+  }()
 
-  /// "AED 9,040.80", or "2,000.00 of 5,000"; hidden, one "Amount hidden" for the tile.
+  /// "AED 9,040.80"; hidden, one "Amount hidden" for the tile.
   private var spoken: String {
     if hidden { return "Amount hidden" }
     let value = MoneyPhrase([.amount(tile.value, tile.style)]).spoken(hidden: false)
-    if let of = ofPhrase { return "\(value) \(of.spoken(hidden: false))" }
-    return "\(tile.value.currency) \(value)"
+    return "\(tile.value.currency) \(value)" + (tile.label == "Savings" ? " saved" : "")
   }
 }

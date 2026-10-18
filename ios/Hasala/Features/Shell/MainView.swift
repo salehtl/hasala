@@ -82,6 +82,8 @@ struct MainView: View {
         ProfileSheet(app: app)
       case .notifications:
         NotificationsSheet(app: app)
+      case .period:
+        PeriodSheet(app: app)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

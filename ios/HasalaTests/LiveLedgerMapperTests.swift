@@ -90,7 +90,7 @@ struct LiveLedgerMapperTests {
     let now = MayaLedger.now
     let got = HomeEngine.snapshot(live, now: now)
     let want = HomeEngine.snapshot(MayaLedger.state, now: now)
-    // The hero: 10,288.34 spent of 19,000, the tick at 11,217.17 (the bills paid so far are
+    // The hero: 11,115.62 spent of 19,000, the tick at 11,217.17 (the bills paid so far are
     // linked to their payments in the seed too), on track, and the tiles.
     #expect(got.hero == want.hero)
     #expect(got.hero == Maya.home.hero)

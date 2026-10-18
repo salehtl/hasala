@@ -13,10 +13,11 @@ struct HomeModelTests {
     let home = HomeViewModel(app: app)
     #expect(home.snapshot == Maya.home)
     #expect(home.bell.count == 4)
-    // Sorting a transaction updates the bell's first row; the hero moves with the ledger.
+    // Sorting a transaction updates the bell's first row; the hero already counted it.
     app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
     #expect(home.bell.needsALook[0].title == "5 transactions to sort")
-    #expect(home.snapshot.hero.spent == .aed(10_502_64))
+    #expect(home.snapshot.hero.spent == .aed(11_115_62))
+    #expect(home.snapshot.hero.tiles[0].value == .aed(9_255_10))
     #expect(home.openWidget("nextBill") == .bills)
     #expect(home.openWidget("today") == nil)
     #expect(app.tab == .activity)
