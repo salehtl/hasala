@@ -150,19 +150,21 @@ struct IdleFloat: ViewModifier {
   let phase: Int
 
   func body(content: Content) -> some View {
-    let quarter = HMotion.idlePeriod / 4
-    let sign: CGFloat = phase.isMultiple(of: 2) ? -1 : 1
-    let lead = Double(phase % 3) * 0.35
-    return content.keyframeAnimator(initialValue: CGFloat.zero, repeating: active) { view, y in
+    content.keyframeAnimator(initialValue: CGFloat.zero, repeating: active) { view, y in
       view.offset(y: active ? y : 0)
     } keyframes: { _ in
-      KeyframeTrack {
-        LinearKeyframe(0, duration: lead)
-        CubicKeyframe(sign * HMotion.idleFloat, duration: quarter)
-        CubicKeyframe(0, duration: quarter)
-        CubicKeyframe(-sign * HMotion.idleFloat, duration: quarter)
-        CubicKeyframe(0, duration: quarter)
-      }
+      Self.track(phase: phase)
+    }
+  }
+
+  static func track(phase: Int) -> some Keyframes<CGFloat> {
+    let quarter = HMotion.idlePeriod / 4
+    let sign: CGFloat = phase.isMultiple(of: 2) ? -1 : 1
+    return KeyframeTrack {
+      CubicKeyframe(sign * HMotion.idleFloat, duration: quarter)
+      CubicKeyframe(0, duration: quarter)
+      CubicKeyframe(-sign * HMotion.idleFloat, duration: quarter)
+      CubicKeyframe(0, duration: quarter)
     }
   }
 }
