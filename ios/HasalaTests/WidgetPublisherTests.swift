@@ -159,8 +159,21 @@ struct WidgetPublisherTests {
     #expect(reloads.count == 1)
   }
 
-  @Test func theAppGroupContainerIsReachable() {
+  @Test(
+    "The App Group container is reachable in a signed build",
+    .enabled(if: WidgetSnapshotStore.shared() != nil, "unsigned build: no App Group"))
+  func theAppGroupContainerIsReachable() {
     #expect(WidgetSnapshotStore.shared() != nil)
+  }
+
+  @Test func withoutTheAppGroupNothingIsWrittenOrReloaded() {
+    let reloads = Reloads()
+    let publisher = WidgetPublisher(app: AppModel(store: InMemoryLedger()), store: nil) { reloads.count += 1 }
+    publisher.publish()
+    publisher.timeMoved()
+    #expect(reloads.count == 0)
+    #expect(publisher.snapshot.toReview?.count == 6)
+    publisher.stop()
   }
 }
 
