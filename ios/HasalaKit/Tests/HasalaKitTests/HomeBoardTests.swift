@@ -28,14 +28,14 @@ struct MayaTests {
   @Test func heroMatchesTheBoard() {
     let hero = Maya.home.hero
     #expect(hero.overline == "Day 10 of 31")
-    #expect(MoneyFormat.string(hero.spent.minor) == "10,288.34")
-    #expect(hero.caption.rendered(hidden: false) == "spent of 19,000 on needs and wants")
+    #expect(MoneyFormat.string(hero.spent.minor) == "11,115.62")
+    #expect(hero.caption.rendered(hidden: false) == "spent of 19,000 planned")
     #expect(hero.word.rendered(hidden: false) == "On track")
-    #expect(hero.fact?.rendered(hidden: false) == "AED 8,711.66 left")
+    #expect(hero.fact?.rendered(hidden: false) == "AED 7,884.38 left")
     #expect(hero.verdict == .onTrack)
     #expect(hero.wash == .sky)
-    // The board's bar: fill 196 of 362 (54%), tick at 213 (59%).
-    #expect(Permille.ratio(hero.spent.minor, of: hero.plan.minor).value == 541)
+    // The bar: fill 58.5% (the board's 196 of 362 drew needs and wants only), tick at 213 (59%).
+    #expect(Permille.ratio(hero.spent.minor, of: hero.plan.minor).value == 585)
     #expect(hero.tick.map { Permille.ratio($0.minor, of: hero.plan.minor).value } == 590)
     // Needs and Wants as drawn; Savings follows the ledger (plan D.3 decision 5).
     #expect(hero.tiles.map { MoneyFormat.string($0.value.minor, style: $0.style) } == ["9,040.80", "1,247.54", "5,000.00"])
