@@ -34,6 +34,22 @@ public struct MailboxLedgerError: Error, Sendable, Equatable {
   public init(_ detail: String) { self.detail = detail }
 }
 
+public struct MailboxRetirePlan: Sendable, Equatable {
+  public var grantID: String
+  public var provider: String
+  public var legacy: Bool
+  public var total: Int
+  public var edited: Int
+
+  public init(grantID: String, provider: String, legacy: Bool, total: Int, edited: Int) {
+    self.grantID = grantID
+    self.provider = provider
+    self.legacy = legacy
+    self.total = total
+    self.edited = edited
+  }
+}
+
 public protocol MailboxLedger: Sendable {
   /// Pull to head so peers' ops are visible to dedup (§7.5 step 2).
   func syncToHead() async throws(MailboxLedgerError)
@@ -51,6 +67,8 @@ public protocol MailboxLedger: Sendable {
   func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError)
   /// Authors `sender_trust_set {domain, trusted}` (03c §7.1; "Add a sender", "Trust <domain>").
   func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError)
+  func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan
+  func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError)
   /// Uploads the outbox (§5.5).
   func flush() async -> FlushOutcome
 }

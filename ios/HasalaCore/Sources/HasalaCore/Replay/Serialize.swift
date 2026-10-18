@@ -110,6 +110,14 @@ extension State {
         ])
       }))
     }
+    if !mailboxRetirements.isEmpty {
+      o.append(("mailboxRetirements", .array(mailboxRetirements.map { r in
+        obj([
+          "at_seq": dec(r.atSeq), "grant_id": .string(r.grantID), "legacy": .bool(r.legacy), "op_id": .string(r.opID),
+          "provider": .string(r.provider), "txn_ids": .array(r.txnIDs.map(JSONValue.string)),
+        ])
+      })))
+    }
     return JSONValue.object(JSONObject(o)).sortingKeysByUTF8()
   }
 
@@ -141,6 +149,9 @@ extension State {
       o["gates"] = obj(go)
     }
     if let v = t.successorID { o["successor_id"] = .string(v) }
+    if let v = t.sourceMailbox { o["source_mailbox"] = .string(v) }
+    if let v = t.sourceProvider { o["source_provider"] = .string(v) }
+    if let v = t.retiredBy { o["retired_by"] = .string(v) }
     if !t.annotations.isEmpty {
       o["annotations"] = pairs(t.annotations) { k in obj(["op_id": .string(k.opID), "value": str(k.value)]) }
     }

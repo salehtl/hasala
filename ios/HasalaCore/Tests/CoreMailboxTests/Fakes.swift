@@ -68,6 +68,13 @@ actor FakeLedger: MailboxLedger {
     authoredTrust.append((domain, trusted))
     trust[domain] = trusted
   }
+  var plans: [String: MailboxRetirePlan] = [:]
+  var retired: [MailboxRetirePlan] = []
+  func setPlan(_ p: MailboxRetirePlan) { plans[p.grantID] = p }
+  func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan {
+    plans[grantID] ?? MailboxRetirePlan(grantID: grantID, provider: provider, legacy: true, total: 0, edited: 0)
+  }
+  func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) { retired.append(plan) }
   func flush() async -> FlushOutcome {
     flushes += 1
     if let n = accountFullAfter, flushes > n { return .accountFull }

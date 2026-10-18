@@ -52,6 +52,9 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var version: Int64
   public var pending: Bool
   public var reviewLane: String?
+  public var sourceMailbox: String?
+  public var sourceProvider: String?
+  public var userTouched: Bool
 
   init(_ r: Row) {
     id = r["id"]
@@ -93,6 +96,9 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     version = r["version"]
     pending = r["pending"]
     reviewLane = r["review_lane"]
+    sourceMailbox = r["source_mailbox"]
+    sourceProvider = r["source_provider"]
+    userTouched = r["user_touched"]
   }
 }
 

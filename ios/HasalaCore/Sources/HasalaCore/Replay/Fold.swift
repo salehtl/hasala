@@ -180,6 +180,7 @@ extension State {
     case .accountSet: try applyAccountSet(e)
     case .cardLinked: try applyCardLinked(e)
     case .accountCheckin: try applyAccountCheckin(e)
+    case .mailboxRetired: try applyMailboxRetired(e)
     // versioned entities
     case .txnIngested, .txnSuperseded, .txnCategorized, .txnSplit, .txnEdited, .txnDuplicateDisposition,
       .ruleAdded, .projectDefined, .goalDefined, .billSet:

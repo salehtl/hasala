@@ -655,6 +655,10 @@ public struct OpAuthor: Sendable {
       [("other_txn_id", .string(otherTxnID)), ("disposition", disposition.map { .string($0.rawValue) } ?? .null)])
   }
 
+  public mutating func retireMailbox(grantID: String, provider: String, legacy: Bool) {
+    add(.mailboxRetired, [("grant_id", .string(grantID)), ("provider", .string(provider)), ("legacy", .bool(legacy))])
+  }
+
   // MARK: Configuration
 
   public mutating func setHomeCurrency(_ code: String) { add(.homeCurrencySet, [("currency", .string(code))]) }

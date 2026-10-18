@@ -59,6 +59,7 @@ public enum OpType: String, CaseIterable, Sendable, Hashable {
   case senderTrustSet = "sender_trust_set"
   case projectDefined = "project_defined"
   case goalDefined = "goal_defined"
+  case mailboxRetired = "mailbox_retired"
 
   /// Type strings that are never registered and never reused. An op carrying
   /// one is an unknown type (03c §17).
@@ -72,7 +73,7 @@ public enum OpType: String, CaseIterable, Sendable, Hashable {
     case .bankDeclared, .budgetSplitSet, .categoryDefined: 3
     case .budgetSet, .budgetMoved, .incomeSourceSet, .categoryPlanRoleSet, .billSet, .billOccurrenceSet,
       .accountSet, .cardLinked, .accountCheckin, .txnAnnotated, .merchantNamed, .senderTrustSet,
-      .projectDefined, .goalDefined:
+      .projectDefined, .goalDefined, .mailboxRetired:
       4
     default: 1
     }

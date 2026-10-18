@@ -99,7 +99,13 @@ extension State {
       out.direction = try P.direction(p["direction"])
       out.needsReview = try P.bool(p["needs_review"], category == nil)
     }
-    if v >= 4 { try decodeTxnV4Deltas(p, into: &out) }
+    if v >= 4 {
+      try decodeTxnV4Deltas(p, into: &out)
+      if let source = mailboxSourceOf(p) {
+        out.sourceProvider = source.provider
+        out.sourceMailbox = source.grant
+      }
+    }
     return out
   }
 
@@ -130,6 +136,13 @@ extension State {
     guard let grant = prov["grant_id"]?.stringValue, !grant.isEmpty else { return nil }
     guard let message = prov["message_id"]?.stringValue, !message.isEmpty else { return nil }
     return message
+  }
+
+  static func mailboxSourceOf(_ p: JSONObject) -> (provider: String, grant: String)? {
+    guard mailboxMessageIDOf(p) != nil, let prov = p["provenance"]?.objectValue,
+      let provider = prov["provider"]?.stringValue, let grant = prov["grant_id"]?.stringValue
+    else { return nil }
+    return (provider, grant)
   }
 
   /// replay.ts `decodeEditPayload` (v4: the same fields; `category` is refused

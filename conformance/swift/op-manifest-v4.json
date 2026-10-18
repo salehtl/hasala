@@ -30,7 +30,8 @@
     "merchant_named",
     "sender_trust_set",
     "project_defined",
-    "goal_defined"
+    "goal_defined",
+    "mailbox_retired"
   ],
   "parent_free": [
     "rate_set",
@@ -50,7 +51,8 @@
     "account_checkin",
     "txn_annotated",
     "merchant_named",
-    "sender_trust_set"
+    "sender_trust_set",
+    "mailbox_retired"
   ],
   "min_versions": {
     "txn_ingested": 1,
@@ -80,7 +82,8 @@
     "merchant_named": 4,
     "sender_trust_set": 4,
     "project_defined": 4,
-    "goal_defined": 4
+    "goal_defined": 4,
+    "mailbox_retired": 4
   },
   "entity_kinds": {
     "txn_ingested": "txn",

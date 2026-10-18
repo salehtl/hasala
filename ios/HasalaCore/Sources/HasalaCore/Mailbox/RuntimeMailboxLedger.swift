@@ -103,6 +103,18 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     }
   }
 
+  public func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan {
+    let legacy = ((try? reader.otherMailboxCount(grantID: grantID, provider: provider)) ?? 1) == 0
+    let counts = (try? reader.mailboxImports(grantID: grantID, provider: provider, legacy: legacy)) ?? MailboxImportCounts(total: 0, edited: 0)
+    return MailboxRetirePlan(grantID: grantID, provider: provider, legacy: legacy, total: counts.total, edited: counts.edited)
+  }
+
+  public func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) {
+    try await author { a throws(AuthorError) in
+      a.retireMailbox(grantID: plan.grantID, provider: plan.provider, legacy: plan.legacy)
+    }
+  }
+
   public func flush() async -> FlushOutcome {
     let out = await engine.run(.authored)
     if await engine.status.latch == .accountFull { return .accountFull }

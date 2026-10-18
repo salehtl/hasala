@@ -51,6 +51,7 @@
     "crypto-v3/frames.json",
     "crypto-v3/wraps.json",
     "crypto-v3/signatures.json",
-    "crypto-v3/password.json"
+    "crypto-v3/password.json",
+    "fold-v4-mailbox-retire.json"
   ]
 }

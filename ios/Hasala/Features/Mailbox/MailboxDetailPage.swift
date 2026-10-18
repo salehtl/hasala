@@ -13,6 +13,8 @@ struct MailboxDetailPage: View {
   @Bindable var app: AppModel
   let mailboxID: String
   @State private var confirming = false
+  @State private var impact: MailboxDisconnectImpact?
+  @State private var confirmingPlain = false
   @State private var busy = false
   @State private var failure: MailConnectFailure?
   /// The sign-in again, made once for this page.
@@ -61,9 +63,19 @@ struct MailboxDetailPage: View {
     .background(HColor.surfaceSecondary)
     .navigationTitle(mailbox?.provider.appName ?? "Mailbox")
     .navigationBarTitleDisplayMode(.inline)
-    .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirming) {
+    .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirming, presenting: impact) { impact in
+      Button(MailCopy.keepTransactions(impact)) { Task { await disconnect(removing: false) } }
+        .keyboardShortcut(.defaultAction)
+        .accessibilityIdentifier("mailbox.disconnect.keep")
+      Button("Remove them", role: .destructive) { Task { await disconnect(removing: true) } }
+        .accessibilityIdentifier("mailbox.disconnect.remove")
       Button("Cancel", role: .cancel) {}
-      Button("Disconnect", role: .destructive) { Task { await disconnect() } }
+    } message: { impact in
+      if let m = mailbox { Text(MailCopy.disconnectChoiceMessage(m.provider, impact)) }
+    }
+    .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirmingPlain) {
+      Button("Cancel", role: .cancel) {}
+      Button("Disconnect", role: .destructive) { Task { await disconnect(removing: false) } }
     } message: {
       if let m = mailbox { Text(MailCopy.disconnectMessage(m.provider)) }
     }
@@ -71,7 +83,7 @@ struct MailboxDetailPage: View {
     .hHaptic(.success, trigger: signedIn) { old, new in new > old }
     #if HASALA_MOCKS
       // A Debug screen id that stands for "Disconnect this mailbox" (`MailLaunch`).
-      .task { if MailLaunch.takeDisconnect(mailboxID) { confirming = true } }
+      .task { if MailLaunch.takeDisconnect(mailboxID) { await askToDisconnect() } }
     #endif
   }
 
@@ -137,7 +149,7 @@ struct MailboxDetailPage: View {
       }
     }
     .accessibilityIdentifier("mailbox.details")
-    disconnect(m, footnote: "Past transactions stay. No new alerts from this mailbox.")
+    disconnect(m, footnote: "No new alerts from this mailbox. You choose whether its transactions stay.")
   }
 
   /// "This happens after a password change, a long time signed out, or a work policy. No new
@@ -212,7 +224,7 @@ struct MailboxDetailPage: View {
         .accessibilityIdentifier("mailbox.readElsewhere")
     } else if m.state != .disconnected, app.mailbox?.capabilities.contains(.disconnect) == true {
       VStack(alignment: .leading, spacing: 10) {
-        Button("Disconnect this mailbox") { confirming = true }
+        Button("Disconnect this mailbox") { Task { await askToDisconnect() } }
           .buttonStyle(.pill(.destructiveQuiet, size: .large, fill: true, loading: busy))
           .accessibilityIdentifier("mailbox.disconnect")
         if let footnote {
@@ -226,7 +238,7 @@ struct MailboxDetailPage: View {
 
   /// Paper 1NEG's footnote, naming the provider's own settings.
   static func disconnectFootnote(_ provider: MailProviderKind) -> String {
-    "New alerts from this mailbox stop, and its sign-in is deleted from this iPhone. Transactions already read stay. You can also remove Hasala in your \(provider.company) account settings."
+    "New alerts from this mailbox stop, and its sign-in is deleted from this iPhone. You choose whether the transactions it brought in stay. You can also remove Hasala in your \(provider.company) account settings."
   }
 
   /// A mailbox read on another iPhone: this iPhone holds no sign-in to end, so it says
@@ -251,16 +263,25 @@ struct MailboxDetailPage: View {
     }
   }
 
+  private func askToDisconnect() async {
+    guard let lane = app.mailbox, !busy else { return }
+    busy = true
+    impact = await lane.disconnectImpact(mailboxID)
+    busy = false
+    if impact == nil { confirmingPlain = true } else { confirming = true }
+  }
+
   /// Disconnect, then back to Bank alerts. The mock keeps a grey row there; the live lane
   /// keeps none, so the toast says what happened in both.
-  private func disconnect() async {
+  private func disconnect(removing: Bool) async {
     guard let lane = app.mailbox, let m = mailbox else { return }
+    let removed = removing ? impact?.transactions : nil
     busy = true
     defer { busy = false }
     do {
-      try await lane.disconnect(mailboxID)
+      try await lane.disconnect(mailboxID, removeTransactions: removing)
       failure = nil
-      app.say("\(m.provider.appName) disconnected. Past transactions stay.")
+      app.say(MailCopy.disconnected(m.provider, removed: removed))
       if let i = app.router.profile.lastIndex(of: .bankAlerts) {
         app.router.profile.removeSubrange((i + 1)...)
       } else {

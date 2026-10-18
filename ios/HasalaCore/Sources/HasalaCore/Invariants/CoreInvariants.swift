@@ -106,7 +106,7 @@ public enum Invariants {
         while steps <= s.txns.count {
           guard let row = s.txns[cur] else { break }
           guard let next = row.successorID else {
-            ok = row.isLive
+            ok = row.supersededBy == nil
             break
           }
           cur = next

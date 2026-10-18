@@ -183,12 +183,26 @@
       mailboxes[i].lastChecked = "Sat 10 Oct, 13:40"
     }
 
-    func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
+    var imported: [String: MailboxDisconnectImpact] = [
+      gmail.id: MailboxDisconnectImpact(transactions: 42, edited: 3),
+      "outlook-1": MailboxDisconnectImpact(transactions: 12, edited: 0),
+    ]
+    private(set) var removed: [String] = []
+
+    func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
+      guard let impact = imported[mailboxID], impact.transactions > 0 else { return nil }
+      return impact
+    }
+
+    func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
       try? await Task.sleep(for: connectDelay)
       guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return }
-      // The grey row stays: past transactions stay.
       mailboxes[i].state = .disconnected
       mailboxes[i].meta = "Off since 10 Oct"
+      if removeTransactions {
+        removed.append(mailboxID)
+        imported[mailboxID] = nil
+      }
     }
 
     func firstScan() -> AsyncStream<ScanProgress> {

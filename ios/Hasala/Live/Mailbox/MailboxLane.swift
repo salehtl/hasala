@@ -158,6 +158,10 @@ nonisolated final class MailboxLane: Sendable {
   /// Bank alerts (spec 04 §7.10).
   func status() async -> MailboxStatus { await engine.status() }
   func disconnect() async -> Bool { await engine.disconnect() }
+  func retirePlan() async -> MailboxRetirePlan? { await engine.retirePlan() }
+  func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
+    await engine.disconnect(removing: plan)
+  }
   /// The other provider's link replaced this one: end this provider's grant here.
   func endGrant() async { await engine.endGrant() }
   func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {

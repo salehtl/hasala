@@ -312,7 +312,8 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 40)
+    #expect(s.cursors.hot == 42)
+    #expect(s.mailboxRetirements.first?.txnIDs == ["01JC0000000000000000000003", "01JC0000000000000000000008"])
     #expect(s.anomalies.map(\.kind) == ["duplicate_ingest"])
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")

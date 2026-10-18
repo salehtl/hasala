@@ -349,13 +349,29 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
 
   /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch or subscription
   /// stopped, the grant ended, the server's link deleted.
-  func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
+  func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     let lane = try lane()
     // The server's delete has no holder check: from here it would end the other
     // iPhone's reading, and this iPhone holds no sign-in to delete.
     try Self.checkDisconnect(await lane.status().phase)
-    guard await lane.disconnect() else { throw .failed("Couldn't disconnect \(lane.provider.appName). Try again.") }
+    let plan = removeTransactions ? await lane.retirePlan() : nil
+    let outcome = await lane.disconnect(removing: plan)
     await runtime()?.refreshMailbox()
+    try Self.disconnected(outcome, provider: lane.provider)
+  }
+
+  func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
+    guard let lane = try? lane(), let plan = await lane.retirePlan(), plan.total > 0 else { return nil }
+    return MailboxDisconnectImpact(transactions: plan.total, edited: plan.edited)
+  }
+
+  static func disconnected(_ outcome: MailboxDisconnectOutcome, provider: MailProviderKind) throws(MailConnectFailure) {
+    switch outcome {
+    case .disconnected, .removed: return
+    case .failed: throw .failed("Couldn't disconnect \(provider.appName). Try again.")
+    case .disconnectedRemoveFailed:
+      throw .failed("\(provider.appName) is disconnected, but its transactions couldn't be removed. They stay for now.")
+    }
   }
 
   /// A disconnect from an iPhone that doesn't hold the link is refused, as `admit`

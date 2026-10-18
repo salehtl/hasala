@@ -68,10 +68,10 @@ struct SwiftGoldenTests {
       (
         "files",
         .array(
-          [
+          ([
             "op-manifest-v4.json", "crypto-v3/frames.json", "crypto-v3/wraps.json", "crypto-v3/signatures.json",
             "crypto-v3/password.json",
-          ].map { .string($0) })
+          ] + FoldGoldens.sets.map(\.file)).map { JSONValue.string($0) })
       ),
     ])
   }

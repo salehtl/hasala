@@ -35,6 +35,13 @@ import CoreTemplate
 import CoreTime
 import Foundation
 
+public enum MailboxDisconnectOutcome: Sendable, Equatable {
+  case failed
+  case disconnected
+  case removed(Int)
+  case disconnectedRemoveFailed
+}
+
 public struct MailboxEngineConfig: Sendable {
   /// `provenance.grant_id`: the account's user id (one link per account).
   public var grantID: String
@@ -430,6 +437,23 @@ public actor MailboxEngine {
   /// revoke and delete the Keychain item → `DELETE /mailbox/link` → clear the mailbox tables.
   /// A revoke that did not go through stops the disconnect there (false): the token is kept, so
   /// the retry can still end the grant, and nothing says it ended when it didn't.
+  public func retirePlan() async -> MailboxRetirePlan? {
+    guard let state = try? await store.loadState(), state.phase != .unlinked, state.phase != .otherDevice else { return nil }
+    return await ledger.retirePlan(grantID: grant(state), provider: provider.id.rawValue)
+  }
+
+  public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
+    guard await disconnect() else { return .failed }
+    guard let plan else { return .disconnected }
+    do throws(MailboxLedgerError) {
+      try await ledger.authorRetire(plan)
+    } catch {
+      return .disconnectedRemoveFailed
+    }
+    _ = await ledger.flush()
+    return .removed(plan.total)
+  }
+
   public func disconnect() async -> Bool {
     await exclusive {
       let proof: JSONValue

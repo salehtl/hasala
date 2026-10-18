@@ -59,7 +59,10 @@ final class SetupMailLink: MailboxConnecting {
   }
 
   func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) { try await base.signInAgain(mailboxID) }
-  func disconnect(_ mailboxID: String) async throws(MailConnectFailure) { try await base.disconnect(mailboxID) }
+  func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
+    try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
+  }
+  func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? { await base.disconnectImpact(mailboxID) }
   func firstScan() -> AsyncStream<ScanProgress> { base.firstScan() }
   func loadSampleData() async throws(SetupFailure) { try await base.loadSampleData() }
 }

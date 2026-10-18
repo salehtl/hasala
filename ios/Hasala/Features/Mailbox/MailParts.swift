@@ -80,6 +80,41 @@ enum MailCopy {
   /// The system alert's message before a disconnect (Paper "Mailbox · Disconnect (alert)").
   /// Google's: the disconnect revokes Hasala's access at Google itself, so it says so
   /// (and where to check). Microsoft has no revoke, so its permission is removed there.
+  static func keepTransactions(_ impact: MailboxDisconnectImpact) -> String {
+    impact.transactions == 1
+      ? "Keep the 1 transaction from this inbox" : "Keep the \(impact.transactions) transactions from this inbox"
+  }
+
+  static func disconnectChoiceMessage(_ provider: MailProviderKind, _ impact: MailboxDisconnectImpact) -> String {
+    let (stops, consent) =
+      switch provider {
+      case .gmail:
+        (
+          "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone.",
+          "To check on Google's side, visit \(consentPage(provider))."
+        )
+      case .outlook:
+        (
+          "Hasala stops reading this mailbox and forgets its sign-in.",
+          "To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
+        )
+      }
+    let count = impact.transactions == 1 ? "1 transaction" : "\(impact.transactions) transactions"
+    var lines = [stops, "It brought in \(count). Keep them, or remove them from your totals."]
+    if impact.edited > 0 {
+      lines.append(impact.edited == 1 ? "Removing also takes the 1 you changed." : "Removing also takes the \(impact.edited) you changed.")
+    }
+    lines.append(consent)
+    return lines.joined(separator: " ")
+  }
+
+  static func disconnected(_ provider: MailProviderKind, removed: Int?) -> String {
+    guard let removed else { return "\(provider.appName) disconnected. Past transactions stay." }
+    return removed == 1
+      ? "\(provider.appName) disconnected. 1 transaction removed."
+      : "\(provider.appName) disconnected. \(removed) transactions removed."
+  }
+
   static func disconnectMessage(_ provider: MailProviderKind) -> String {
     switch provider {
     case .gmail:

@@ -133,4 +133,40 @@ extension LedgerReader {
       try Int64.fetchOne(db, sql: "SELECT max(posted_ms) FROM txn WHERE mailbox_message_id IS NOT NULL")
     }
   }
+
+  public func mailboxImports(grantID: String, provider: String, legacy: Bool) throws -> MailboxImportCounts {
+    let account = MailboxGrant.account(of: grantID)
+    return try db.read { db in
+      let row = try Row.fetchOne(
+        db,
+        sql: """
+          SELECT count(*) AS total, coalesce(sum(user_touched), 0) AS touched FROM txn
+          WHERE superseded_by IS NULL AND source_provider = ? AND (source_mailbox = ? OR (? AND source_mailbox = ?))
+          """, arguments: [provider, grantID, legacy, account])
+      return MailboxImportCounts(total: row?["total"] ?? 0, edited: row?["touched"] ?? 0)
+    }
+  }
+
+  public func otherMailboxCount(grantID: String, provider: String) throws -> Int {
+    let account = MailboxGrant.account(of: grantID)
+    return try db.read { db in
+      try Int.fetchOne(
+        db,
+        sql: """
+          SELECT count(DISTINCT source_mailbox) FROM txn
+          WHERE source_provider = ? AND source_mailbox != ? AND substr(source_mailbox, 1, ?) = ?
+          """, arguments: [provider, grantID, account.utf8.count + MailboxGrant.mailboxMarker.utf8.count, account + MailboxGrant.mailboxMarker])
+        ?? 0
+    }
+  }
+}
+
+public struct MailboxImportCounts: Sendable, Equatable {
+  public var total: Int
+  public var edited: Int
+
+  public init(total: Int, edited: Int) {
+    self.total = total
+    self.edited = edited
+  }
 }

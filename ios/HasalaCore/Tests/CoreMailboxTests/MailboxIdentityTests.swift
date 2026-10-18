@@ -88,3 +88,49 @@ import Testing
     #expect(ids.sorted() == ["d1", "gap1", "new1"])
   }
 }
+
+@Suite struct MailboxDisconnectChoiceTests {
+  let day: Int64 = 86_400_000
+  let account = "00000000-0000-4000-8000-000000000001"
+
+  @Test func thePlanNamesThisMailboxAndRemoveAuthorsTheRetireAfterTheDisconnect() async throws {
+    let rig = Rig()
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 5 * day))
+    await rig.connectAndActivate()
+    let grant = MailboxEngineConfig(grantID: account).grantID(provider: .gmail, address: "synthetic.user@example.com")
+    await rig.ledger.setPlan(MailboxRetirePlan(grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2))
+    let plan = try #require(await rig.engine.retirePlan())
+    #expect(plan == MailboxRetirePlan(grantID: grant, provider: "gmail", legacy: true, total: 7, edited: 2))
+    let flushes = await rig.ledger.flushes
+    #expect(await rig.engine.disconnect(removing: plan) == .removed(7))
+    #expect(await rig.ledger.retired == [plan])
+    #expect(await rig.ledger.flushes == flushes + 1)
+    #expect(await rig.state().phase == .unlinked)
+    #expect(await rig.engine.retirePlan() == nil)
+  }
+
+  @Test func keepAuthorsNothing() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    #expect(await rig.engine.disconnect(removing: nil) == .disconnected)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+
+  @Test func aDisconnectThatFailsRemovesNothing() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let plan = try #require(await rig.engine.retirePlan())
+    rig.gmail.fail("/revoke", with: [503])
+    #expect(await rig.engine.disconnect(removing: plan) == .failed)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.state().phase == .active)
+  }
+
+  @Test func aCancelledStepUpRemovesNothing() async throws {
+    let rig = Rig(stepUpFails: true)
+    await rig.connectAndActivate()
+    let plan = MailboxRetirePlan(grantID: "g", provider: "gmail", legacy: false, total: 1, edited: 0)
+    #expect(await rig.engine.disconnect(removing: plan) == .failed)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+}

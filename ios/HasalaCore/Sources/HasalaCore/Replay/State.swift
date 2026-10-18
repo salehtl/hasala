@@ -134,6 +134,9 @@ public struct Txn: Sendable, Equatable, Codable {
   public var bank: String?
   public var gates: TxnGates?
   public var successorID: String?
+  public var sourceMailbox: String?
+  public var sourceProvider: String?
+  public var retiredBy: String?
   /// field → keyed value (03c §3.5); every value is a string or a clear.
   public var annotations: OrderedDictionary<String, Keyed<String?>> = [:]
 
@@ -142,7 +145,7 @@ public struct Txn: Sendable, Equatable, Codable {
 
   /// state.ts `countsTowardMoney`.
   public var countsTowardMoney: Bool { !unparsed }
-  public var isLive: Bool { supersededBy == nil }
+  public var isLive: Bool { supersededBy == nil && retiredBy == nil }
 }
 
 // MARK: - Rules, categories, configuration
@@ -316,6 +319,24 @@ public struct CheckpointEntry: Sendable, Equatable, Codable {
 public struct Cursors: Sendable, Equatable, Codable {
   public var hot: Int64 = 0
   public var cold: Int64 = 0
+}
+
+public struct MailboxRetirement: Sendable, Equatable, Codable {
+  public var opID: String
+  public var grantID: String
+  public var provider: String
+  public var legacy: Bool
+  public var atSeq: Int64
+  public var txnIDs: [String]
+
+  public init(opID: String, grantID: String, provider: String, legacy: Bool, atSeq: Int64, txnIDs: [String]) {
+    self.opID = opID
+    self.grantID = grantID
+    self.provider = provider
+    self.legacy = legacy
+    self.atSeq = atSeq
+    self.txnIDs = txnIDs
+  }
 }
 
 // MARK: - Projects and goals (03c §6)
@@ -721,6 +742,7 @@ public struct State: Sendable, Equatable, Codable {
   /// `bank\0last4` → link.
   public var cards: OrderedDictionary<String, CardLink> = [:]
   public var checkins: OrderedDictionary<String, Checkin> = [:]
+  public var mailboxRetirements: [MailboxRetirement] = []
 
   // Not witnessed: delivery bookkeeping and derived values.
   /// The op ids applied at `cursors.hot` (the duplicate-delivery guard).

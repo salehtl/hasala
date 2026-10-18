@@ -41,6 +41,8 @@ struct TxnPayload {
   var postedPrecision: String?
   var bank: String?
   var gates: TxnGates?
+  var sourceMailbox: String?
+  var sourceProvider: String?
 }
 
 struct EditPayload {
@@ -231,11 +233,17 @@ extension State {
     t.postedPrecision = p.postedPrecision
     t.bank = p.bank
     t.gates = p.gates
+    t.sourceMailbox = p.sourceMailbox
+    t.sourceProvider = p.sourceProvider
 
     // 03c §3.1: a v4 supersede links the predecessor and carries its
     // annotations forward (only note and archived onto an unparsed successor).
     if superseding, op.v >= 4, let previous, txns[previous] != nil {
       txns[previous]!.successorID = id
+      if t.sourceMailbox == nil {
+        t.sourceMailbox = txns[previous]!.sourceMailbox
+        t.sourceProvider = txns[previous]!.sourceProvider
+      }
       let carried = txns[previous]!.annotations
       let fields = carried.keys.sorted { compareUTF8($0, $1) < 0 }
       for f in fields {
@@ -468,7 +476,7 @@ extension State {
     byFingerprint[fp] = bucket
   }
 
-  private mutating func unindexFingerprint(_ fp: String, _ id: String) {
+  mutating func unindexFingerprint(_ fp: String, _ id: String) {
     guard var bucket = byFingerprint[fp] else { return }
     if let i = bucket.firstIndex(where: { utf8Equal($0, id) }) { bucket.remove(at: i) }
     byFingerprint[fp] = bucket.isEmpty ? nil : bucket
