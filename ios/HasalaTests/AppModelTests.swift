@@ -57,6 +57,16 @@ struct AppModelTests {
     #expect(homeWaiting() == app.reviewCount)
   }
 
+  @Test func theEarliestMonthIsReadOncePerLedgerChange() throws {
+    let store = InMemoryLedger(state: MayaHistory.state)
+    let app = AppModel(store: store)
+    #expect(app.earliestMonth == YearMonth(2026, 4))
+    try store.apply(.archive("h-rent-4", true))
+    #expect(app.earliestMonth == YearMonth(2026, 4))
+    let empty = AppModel(store: InMemoryLedger(state: MayaHistory.firstDays, now: MayaHistory.firstDaysNow))
+    #expect(empty.earliestMonth == MayaLedger.october)
+  }
+
   @Test func theHiddenScenarioStartsHidden() {
     #expect(Scenario.mayaHidden.startsWithAmountsHidden)
     #expect(!Scenario.maya.startsWithAmountsHidden)

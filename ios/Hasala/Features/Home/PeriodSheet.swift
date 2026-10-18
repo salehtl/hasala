@@ -10,8 +10,7 @@ struct PeriodSheet: View {
   init(app: AppModel) {
     self.app = app
     let today = app.store.now.date.yearMonth
-    let earliest = app.store.state.txns.map(\.postedAt.date.yearMonth).min()
-    _picking = State(initialValue: PeriodPicking(period: app.period, today: today, earliest: earliest))
+    _picking = State(initialValue: PeriodPicking(period: app.period, today: today, earliest: app.earliestMonth))
   }
 
   var body: some View {

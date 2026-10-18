@@ -64,6 +64,7 @@ final class AppModel {
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<ReviewMemoKey, Int>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
+  @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
 
   init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
     self.store = store
@@ -90,6 +91,10 @@ final class AppModel {
     return homeMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
       HomeEngine.snapshot(store.state, now: store.now, period: period)
     }
+  }
+
+  var earliestMonth: YearMonth? {
+    earliestMemo.value(for: store.revision) { store.state.txns.lazy.map(\.postedAt.date.yearMonth).min() }
   }
 
   var thisMonthSnapshot: HomeSnapshot {
