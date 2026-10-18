@@ -9,7 +9,7 @@ import Testing
 @Suite("Screen launch")
 struct ScreenLaunchTests {
   /// The ledger scenarios HasalaMocks knows besides the account ones.
-  static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample"]
+  static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample", "mayaCopy"]
 
   @Test func everyRegisteredScreenParsesAndHasAScenario() {
     let screens = ScreenLaunch.registry

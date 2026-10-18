@@ -27,14 +27,14 @@ let rateSet = #"{"v":4,"type":"rate_set","op_id":"01J0000000000000000000000R","a
 
 @Suite("CoreWire: registry")
 struct RegistryTests {
-  @Test("29 types in 00 §3's wire order, then mailbox_retired; profile_set is reserved")
+  @Test("30 types in 00 §3's wire order, then mailbox_retired and txn_copy_resolved; profile_set is reserved")
   func order() {
-    #expect(OpType.allCases.count == 29)
+    #expect(OpType.allCases.count == 30)
     #expect(
       OpType.allCases.dropFirst(14).map(\.rawValue) == [
         "budget_set", "budget_moved", "income_source_set", "category_plan_role_set", "bill_set",
         "bill_occurrence_set", "account_set", "card_linked", "account_checkin", "txn_annotated", "merchant_named",
-        "sender_trust_set", "project_defined", "goal_defined", "mailbox_retired",
+        "sender_trust_set", "project_defined", "goal_defined", "mailbox_retired", "txn_copy_resolved",
       ])
     #expect(OpType(rawValue: "profile_set") == nil)
     #expect(OpType.reserved == ["profile_set"])
@@ -48,7 +48,7 @@ struct RegistryTests {
     #expect(
       versioned == [
         "txn_ingested", "txn_superseded", "txn_categorized", "txn_split", "txn_edited", "txn_duplicate_disposition",
-        "rule_added", "bill_set", "project_defined", "goal_defined",
+        "rule_added", "bill_set", "project_defined", "goal_defined", "txn_copy_resolved",
       ])
     #expect(OpType.billSet.entityKind == "bill" && OpType.goalDefined.entityKind == "goal")
   }

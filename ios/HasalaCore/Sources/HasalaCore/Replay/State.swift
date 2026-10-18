@@ -137,6 +137,13 @@ public struct Txn: Sendable, Equatable, Codable {
   public var sourceMailbox: String?
   public var sourceProvider: String?
   public var retiredBy: String?
+  public var dedupe: TxnDedupe?
+  public var mergedInto: String?
+  public var mergeKind: String?
+  public var mergeOp: String?
+  public var aliases: [TxnAlias] = []
+  public var copyOf: String?
+  public var copyDecision: String?
   /// field → keyed value (03c §3.5); every value is a string or a clear.
   public var annotations: OrderedDictionary<String, Keyed<String?>> = [:]
 
@@ -145,7 +152,9 @@ public struct Txn: Sendable, Equatable, Codable {
 
   /// state.ts `countsTowardMoney`.
   public var countsTowardMoney: Bool { !unparsed }
-  public var isLive: Bool { supersededBy == nil && retiredBy == nil }
+  public var isLive: Bool { supersededBy == nil && retiredBy == nil && mergedInto == nil }
+  public var isHeldCopy: Bool { copyOf != nil && copyDecision == nil && isLive }
+  public var verifiedSender: Bool { gates?.ar == "pass" && gates?.sender == "trusted" }
 }
 
 // MARK: - Rules, categories, configuration
@@ -319,6 +328,41 @@ public struct CheckpointEntry: Sendable, Equatable, Codable {
 public struct Cursors: Sendable, Equatable, Codable {
   public var hot: Int64 = 0
   public var cold: Int64 = 0
+}
+
+public struct TxnDedupe: Sendable, Equatable, Codable {
+  public var messageID: String?
+  public var bankRef: String?
+
+  public init(messageID: String? = nil, bankRef: String? = nil) {
+    self.messageID = messageID
+    self.bankRef = bankRef
+  }
+
+  public var keys: [String] {
+    [messageID.map { "mid:" + $0 }, bankRef.map { "ref:" + $0 }].compactMap { $0 }
+  }
+}
+
+public struct TxnAlias: Sendable, Equatable, Codable {
+  public var txnID: String
+  public var ingestID: String
+  public var sourceMailbox: String?
+  public var sourceProvider: String?
+  public var mailboxMessageID: String?
+  public var kind: String
+
+  public init(
+    txnID: String, ingestID: String, sourceMailbox: String?, sourceProvider: String?, mailboxMessageID: String?,
+    kind: String
+  ) {
+    self.txnID = txnID
+    self.ingestID = ingestID
+    self.sourceMailbox = sourceMailbox
+    self.sourceProvider = sourceProvider
+    self.mailboxMessageID = mailboxMessageID
+    self.kind = kind
+  }
 }
 
 public struct MailboxRetirement: Sendable, Equatable, Codable {
@@ -743,6 +787,9 @@ public struct State: Sendable, Equatable, Codable {
   public var cards: OrderedDictionary<String, CardLink> = [:]
   public var checkins: OrderedDictionary<String, Checkin> = [:]
   public var mailboxRetirements: [MailboxRetirement] = []
+  public var byDedupeKey: OrderedDictionary<String, String> = [:]
+  public var copyCandidates: OrderedDictionary<String, [String]> = [:]
+  public var mergedIngest: OrderedDictionary<String, String> = [:]
 
   // Not witnessed: delivery bookkeeping and derived values.
   /// The op ids applied at `cursors.hot` (the duplicate-delivery guard).

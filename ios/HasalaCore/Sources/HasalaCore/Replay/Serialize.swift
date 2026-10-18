@@ -110,6 +110,7 @@ extension State {
         ])
       }))
     }
+    if !byDedupeKey.isEmpty { o.append(("byDedupeKey", pairs(byDedupeKey) { .string($0) })) }
     if !mailboxRetirements.isEmpty {
       o.append(("mailboxRetirements", .array(mailboxRetirements.map { r in
         obj([
@@ -152,6 +153,25 @@ extension State {
     if let v = t.sourceMailbox { o["source_mailbox"] = .string(v) }
     if let v = t.sourceProvider { o["source_provider"] = .string(v) }
     if let v = t.retiredBy { o["retired_by"] = .string(v) }
+    if let d = t.dedupe {
+      var dj: [String: JSONValue] = [:]
+      if let v = d.messageID { dj["message_id"] = .string(v) }
+      if let v = d.bankRef { dj["bank_ref"] = .string(v) }
+      o["dedupe"] = obj(dj)
+    }
+    if let v = t.mergedInto { o["merged_into"] = .string(v) }
+    if let v = t.mergeKind { o["merge_kind"] = .string(v) }
+    if let v = t.mergeOp { o["merge_op"] = .string(v) }
+    if !t.aliases.isEmpty {
+      o["aliases"] = .array(t.aliases.map { a in
+        obj([
+          "ingest_id": .string(a.ingestID), "kind": .string(a.kind), "mailbox_message_id": str(a.mailboxMessageID),
+          "source_mailbox": str(a.sourceMailbox), "source_provider": str(a.sourceProvider), "txn_id": .string(a.txnID),
+        ])
+      })
+    }
+    if let v = t.copyOf { o["copy_of"] = .string(v) }
+    if let v = t.copyDecision { o["copy_decision"] = .string(v) }
     if !t.annotations.isEmpty {
       o["annotations"] = pairs(t.annotations) { k in obj(["op_id": .string(k.opID), "value": str(k.value)]) }
     }

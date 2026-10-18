@@ -18,6 +18,7 @@ enum CausalPayload {
   case project(Project)
   case goal(Goal)
   case bill(Bill)
+  case copyResolution(other: String, decision: String?)
 }
 
 struct TxnPayload {
@@ -43,6 +44,7 @@ struct TxnPayload {
   var gates: TxnGates?
   var sourceMailbox: String?
   var sourceProvider: String?
+  var dedupe: TxnDedupe?
 }
 
 struct EditPayload {
@@ -155,6 +157,7 @@ extension State {
   static let creates: [OpType] = [.txnIngested, .txnSuperseded, .ruleAdded, .projectDefined, .goalDefined, .billSet]
   static let edits: [OpType] = [
     .txnCategorized, .txnSplit, .txnEdited, .txnDuplicateDisposition, .ruleAdded, .projectDefined, .goalDefined, .billSet,
+    .txnCopyResolved,
   ]
 
   /// Mirrors the head version onto the materialized entity (the fork-loser
@@ -214,6 +217,10 @@ extension State {
         anomaly(seq, "duplicate_ingest", "\(op.opID) re-ingests \(ingestID.prefix(12))…, live as \(previous)")
         return false
       }
+      if let merged = mergedIngest[ingestID] {
+        anomaly(seq, "duplicate_ingest", "\(op.opID) re-ingests \(ingestID.prefix(12))…, merged as \(merged)")
+        return false
+      }
     } else if previous == nil {
       anomaly(seq, "supersede_without_origin", "\(op.opID) supersedes \(ingestID.prefix(12))…, which no ingest introduced")
     } else {
@@ -235,11 +242,14 @@ extension State {
     t.gates = p.gates
     t.sourceMailbox = p.sourceMailbox
     t.sourceProvider = p.sourceProvider
+    t.dedupe = p.dedupe
 
     // 03c §3.1: a v4 supersede links the predecessor and carries its
     // annotations forward (only note and archived onto an unparsed successor).
     if superseding, op.v >= 4, let previous, txns[previous] != nil {
       txns[previous]!.successorID = id
+      let held = txns.filter { $0.value.isLive && $0.value.copyOf.map { utf8Equal($0, previous) } == true }.map(\.key)
+      for h in held { txns[h]!.copyOf = id }
       if t.sourceMailbox == nil {
         t.sourceMailbox = txns[previous]!.sourceMailbox
         t.sourceProvider = txns[previous]!.sourceProvider
@@ -258,7 +268,16 @@ extension State {
     txns[id] = t
     liveByIngestID[ingestID] = id
     freezeIfPossible(id, seq: seq)
-    indexFingerprint(id, seq: seq)
+    guard op.v >= 4 else {
+      indexFingerprint(id, seq: seq)
+      return true
+    }
+    detectCopy(id, e)
+    if txns[id]!.copyOf != nil {
+      indexFingerprintIfAbsent(id, seq: seq)
+    } else if txns[id]!.mergedInto == nil {
+      indexFingerprint(id, seq: seq)
+    }
     return true
   }
 
@@ -367,6 +386,8 @@ extension State {
         return
       }
       txns[id]!.duplicateDisposition = disposition
+    case .copyResolution(let other, let decision):
+      resolveCopy(id, other: other, decision: decision, e)
     default:
       anomaly(seq, "unhandled_op", "\(op.type.rawValue) \(op.opID) reached the edit path with no handler")
     }
@@ -474,6 +495,12 @@ extension State {
     }
     bucket.append(id)
     byFingerprint[fp] = bucket
+  }
+
+  mutating func indexFingerprintIfAbsent(_ id: String, seq: Int64) {
+    let fp = fingerprint(txns[id]!)
+    if byFingerprint[fp]?.contains(where: { utf8Equal($0, id) }) == true { return }
+    byFingerprint[fp, default: []].append(id)
   }
 
   mutating func unindexFingerprint(_ fp: String, _ id: String) {

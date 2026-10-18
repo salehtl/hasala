@@ -105,6 +105,16 @@ public final class InMemoryLedger: LedgerStore {
     case .archive(let id, let archived):
       try editTxn(id) { $0.archived = archived }
       title = archived ? "Archived" : "Restored"
+    case .resolveCopy(let id, let merge):
+      guard let i = s.txns.firstIndex(where: { $0.id == id }), s.txns[i].isHeldCopy else { throw .notFound }
+      touched.insert(id)
+      if merge {
+        s.txns.remove(at: i)
+        title = "Merged"
+      } else {
+        s.txns[i].heldCopy = nil
+        title = "Kept both"
+      }
     case .skipReview(let id):
       s.skippedReview.insert(id)
       title = nil

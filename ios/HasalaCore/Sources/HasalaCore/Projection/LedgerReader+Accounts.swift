@@ -124,7 +124,9 @@ extension LedgerReader {
   /// Whether any projected row (live or superseded, pending included) carries `ingestID`.
   public func hasIngest(_ ingestID: String) throws -> Bool {
     try db.read { db in
-      try Int.fetchOne(db, sql: "SELECT count(*) FROM txn WHERE ingest_id = ?", arguments: [ingestID]) ?? 0
+      try Int.fetchOne(
+        db, sql: "SELECT (SELECT count(*) FROM txn WHERE ingest_id = ?) + (SELECT count(*) FROM txn_alias WHERE ingest_id = ?)",
+        arguments: [ingestID, ingestID]) ?? 0
     } > 0
   }
 

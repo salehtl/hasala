@@ -273,11 +273,17 @@ struct ReviewDeckView: View {
     return ReviewCardView(
       card: card, hidden: model.hidden, lean: lean.map(choice(for:)), leanEdge: lean, strength: leanStrength,
       use: { use(card) },
+      merge: { resolveCopy(card, merge: true) },
+      keepBoth: { resolveCopy(card, merge: false) },
       actions: {
+        if card.copyLine != nil {
+          Button("Merge") { resolveCopy(card, merge: true) }
+          Button("Keep both") { resolveCopy(card, merge: false) }
+        }
         ForEach(ReviewChoice.allCases, id: \.self) { c in
           Button(c.label) { send(card, c) }
         }
-        if let s = card.suggestion {
+        if card.copyLine == nil, let s = card.suggestion {
           Button("Use \(s.name)") { use(card) }
         }
         Button("Skip") { skip(card) }
@@ -493,6 +499,13 @@ struct ReviewDeckView: View {
     }
   }
 
+  private func resolveCopy(_ card: ReviewCardModel, merge: Bool) {
+    tap += 1
+    file(card, toward: nil, as: merge ? "Merged" : "Kept both") {
+      model.resolveCopy(card.id, merge: merge)
+    }
+  }
+
   private func skip(_ card: ReviewCardModel) {
     file(card, toward: nil, as: nil) {
       model.skip(card.id)
@@ -674,6 +687,8 @@ struct ReviewCardView<Actions: View>: View {
   let leanEdge: SwipeEdge?
   let strength: Double
   let use: () -> Void
+  var merge: () -> Void = {}
+  var keepBoth: () -> Void = {}
   @ViewBuilder let actions: () -> Actions
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -692,7 +707,11 @@ struct ReviewCardView<Actions: View>: View {
       .accessibilityLabel(spoken)
       .accessibilityActions { actions() }
       .accessibilityIdentifier("review.merchant")
-      if let s = card.suggestion { strip(s) }
+      if let line = card.copyLine {
+        copyStrip(line)
+      } else if let s = card.suggestion {
+        strip(s)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(HColor.surfacePrimary)
@@ -711,13 +730,16 @@ struct ReviewCardView<Actions: View>: View {
   private var identity: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .top) {
-        if !card.isNewMerchant, let s = card.suggestion {
+        if card.copyLine == nil, !card.isNewMerchant, let s = card.suggestion {
           CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: .s56)
         } else {
           MerchantMonogram(letter: card.monogram, size: 56)
         }
         Spacer(minLength: 8)
-        if card.isNewMerchant {
+        if let r = card.reviewReason {
+          InfoChip(r.label, style: .reason)
+            .accessibilityIdentifier("review.reason.\(r.rawValue)")
+        } else if card.isNewMerchant {
           InfoChip("New merchant", style: .reason)
         }
       }
@@ -743,6 +765,32 @@ struct ReviewCardView<Actions: View>: View {
       Text(card.meta).hType(.footnote).foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+  }
+
+  private func copyStrip(_ line: String) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(line)
+        .hType(.subheadline.weight(.semibold))
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("review.copy")
+      HStack(spacing: 8) {
+        Button("Keep both", action: keepBoth)
+          .buttonStyle(.pill(.secondary, size: .small))
+          .accessibilityIdentifier("review.keepBoth")
+        Button("Merge", action: merge)
+          .buttonStyle(.pill(.primary, size: .small))
+          .accessibilityIdentifier("review.merge")
+      }
+    }
+    .padding(.top, 14)
+    .padding(.bottom, 14)
+    .padding(.leading, 24)
+    .padding(.trailing, 16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.reviewSuggestionSurface)
+    .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
   }
 
   /// "Looks like Groceries" with "Use" (Paper "Suggestion strip": 14 / 16 / 14 / 24, gap 12).
@@ -817,9 +865,10 @@ struct ReviewCardView<Actions: View>: View {
       ? "Amount hidden"
       : (card.isIncome ? "plus " : "") + "\(card.amount.currency) \(MoneyFormat.string(card.amount.minor))"
     var line = "\(card.merchant), \(amount), \(card.spokenWhen)."
+    if let copy = card.copyLine { line += " \(copy)." }
     if card.isNewMerchant { line += " New merchant." }
     if let raw = card.rawMerchant { line += " Bank text: \(raw)." }
-    if let s = card.suggestion { line += " Looks like \(s.name)." }
+    if card.copyLine == nil, let s = card.suggestion { line += " Looks like \(s.name)." }
     return line
   }
 }

@@ -55,6 +55,9 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var sourceMailbox: String?
   public var sourceProvider: String?
   public var userTouched: Bool
+  public var copyOf: String?
+  public var copyDecision: String?
+  public var heldCopy: Bool
 
   init(_ r: Row) {
     id = r["id"]
@@ -99,6 +102,9 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     sourceMailbox = r["source_mailbox"]
     sourceProvider = r["source_provider"]
     userTouched = r["user_touched"]
+    copyOf = r["copy_of"]
+    copyDecision = r["copy_decision"]
+    heldCopy = r["held_copy"]
   }
 }
 
@@ -235,7 +241,9 @@ public struct LedgerReader: Sendable {
       var out: Set<String> = []
       for chunk in stride(from: 0, to: ids.count, by: 500).map({ Array(ids[$0..<min($0 + 500, ids.count)]) }) {
         let marks = chunk.map { _ in "?" }.joined(separator: ",")
-        for s in try String.fetchAll(db, sql: "SELECT mailbox_message_id FROM txn WHERE mailbox_message_id IN (\(marks))", arguments: StatementArguments(chunk)) {
+        let sql =
+          "SELECT mailbox_message_id FROM txn WHERE mailbox_message_id IN (\(marks)) UNION SELECT mailbox_message_id FROM txn_alias WHERE mailbox_message_id IN (\(marks))"
+        for s in try String.fetchAll(db, sql: sql, arguments: StatementArguments(chunk + chunk)) {
           out.insert(s)
         }
       }

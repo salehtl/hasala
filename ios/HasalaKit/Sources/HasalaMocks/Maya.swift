@@ -17,6 +17,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   /// The App Review demo account: the same ledger loaded as sample data, so every row read
   /// from a bank alert carries a `sample-<n>` message id instead of a Gmail one.
   case mayaSample
+  case mayaCopy
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -38,6 +39,13 @@ public enum Scenario: String, Sendable, CaseIterable {
         s.txns[i].categorySource = .user
         s.txns[i].isTransfer = s.txns[i].categoryID == "transfer"
       }
+    }
+    if self == .mayaCopy, var copy = s.txn("starbucks") {
+      copy.id = "starbucks-copy"
+      copy.postedAt.minute += 4
+      copy.heldCopy = HeldCopy(of: "starbucks", fromOtherInbox: true)
+      copy.isNewMerchant = false
+      s.txns.append(copy)
     }
     if self == .mayaSample {
       var n = 0

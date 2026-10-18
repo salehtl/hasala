@@ -38,18 +38,26 @@ extension State {
     }
     let legacy = try P.boolField(p["legacy"], "legacy")
     var retired: [String] = []
-    for (id, t) in txns where t.isLive {
+    var retiredLive: [String] = []
+    for (id, t) in txns where t.retiredBy == nil && t.supersededBy == nil {
       guard
         MailboxGrant.covers(
           sourceMailbox: t.sourceMailbox, sourceProvider: t.sourceProvider, grantID: grant, provider: provider,
           legacy: legacy)
       else { continue }
       txns[id]!.retiredBy = e.op.opID
+      retired.append(id)
+      if let w = t.mergedInto {
+        txns[w]?.aliases.removeAll { utf8Equal($0.txnID, id) }
+        mergedIngest[t.ingestID] = nil
+        continue
+      }
+      retiredLive.append(id)
       if let live = liveByIngestID[t.ingestID], utf8Equal(live, id) { liveByIngestID[t.ingestID] = nil }
       unindexFingerprint(fingerprint(t), id)
       clearPending(t)
-      retired.append(id)
     }
+    releaseAfterRetire(retiredLive, seq: e.seq)
     mailboxRetirements.append(
       MailboxRetirement(
         opID: e.op.opID, grantID: grant, provider: provider, legacy: legacy, atSeq: e.seq, txnIDs: retired))

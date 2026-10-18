@@ -127,13 +127,16 @@ public enum Projector {
           successor_id, possible_duplicate_of, duplicate_disposition, mailbox_message_id, note, archived, account_id,
           effective_account_id, counter_account_id, project_id, refund_of, refund_target, refund_state, transfer_peer,
           transfer_target, transfer_state, is_new_merchant, version, pending, review_lane, source_mailbox, source_provider,
-          user_touched)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          user_touched, copy_of, copy_decision, held_copy)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """)
     let part = try db.makeStatement(
       sql: "INSERT INTO txn_part (txn_id, idx, category, amount_minor, amount_home_minor, note) VALUES (?,?,?,?,?,?)")
     let retiredIngests = Set(s.txns.values.filter { $0.retiredBy != nil }.map(\.ingestID))
-    for (i, (id, t)) in s.txns.enumerated() where t.isLive || !retiredIngests.contains(t.ingestID) {
+    let alias = try db.makeStatement(
+      sql: "INSERT INTO txn_alias (txn_id, idx, alias_txn_id, ingest_id, source_mailbox, source_provider, mailbox_message_id, kind) VALUES (?,?,?,?,?,?,?,?)")
+    for (i, (id, t)) in s.txns.enumerated()
+    where t.mergedInto == nil && (t.isLive || !retiredIngests.contains(t.ingestID)) {
       let ms = (try? parseInstantMs(t.postedAt)) ?? 0
       let local = LocalClock.localDate(ms)
       let key = keys[id] ?? ""
@@ -156,9 +159,13 @@ public enum Projector {
         refundTarget, refundOf == nil ? nil : Attribution.refundState(t, target: refundTarget.flatMap { s.txns[$0] }), peer, peerTarget,
         peer == nil ? nil : Attribution.transferState(t, target: peerTarget.flatMap { s.txns[$0] }, targetPeer: peerBack),
         isNew, t.version, pending.contains(id), ReviewQueue.lane(t)?.rawValue, t.sourceMailbox, t.sourceProvider,
-        userTouched(t),
+        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy,
       ]
       try insert.execute(arguments: StatementArguments(args))
+      for (k, a) in t.aliases.enumerated() {
+        let aa: [(any DatabaseValueConvertible)?] = [id, k, a.txnID, a.ingestID, a.sourceMailbox, a.sourceProvider, a.mailboxMessageID, a.kind]
+        try alias.execute(arguments: StatementArguments(aa))
+      }
       if !t.splits.isEmpty {
         let homes = MoneyMath.apportion(home: t.amountHomeMinor, parts: t.splits.map(\.amountMinor))
         for (k, p) in t.splits.enumerated() {

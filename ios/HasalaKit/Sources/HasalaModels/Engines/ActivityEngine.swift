@@ -154,8 +154,8 @@ public enum ActivityEngine {
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime) -> ReviewSummary {
     // Skipped cards leave the deck until tomorrow, but they are still unsorted.
-    let queue = s.txns.filter { $0.needsReview && !$0.archived }
-    let unplanned = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let queue = s.txns.filter { ($0.needsReview || $0.isHeldCopy) && !$0.archived }
+    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + $1.amount.minor }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
   }
@@ -175,8 +175,8 @@ public enum ActivityEngine {
     }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !t.countsInPlan { return false }
     switch f.kind {
-    case .all: return !t.archived && (f.isSearching || f.category != nil || !t.needsReview)
-    case .toReview: return !t.archived && t.needsReview
+    case .all: return !t.archived && (f.isSearching || f.category != nil || !(t.needsReview || t.isHeldCopy))
+    case .toReview: return !t.archived && (t.needsReview || t.isHeldCopy)
     case .bills: return !t.archived && !t.needsReview && isBill(t, s)
     case .transfers: return !t.archived && t.isTransfer
     // Money that came in and stays in: not a transfer between accounts, not a refund.

@@ -183,7 +183,7 @@ extension State {
     case .mailboxRetired: try applyMailboxRetired(e)
     // versioned entities
     case .txnIngested, .txnSuperseded, .txnCategorized, .txnSplit, .txnEdited, .txnDuplicateDisposition,
-      .ruleAdded, .projectDefined, .goalDefined, .billSet:
+      .ruleAdded, .projectDefined, .goalDefined, .billSet, .txnCopyResolved:
       try applyCausal(e)
     }
   }

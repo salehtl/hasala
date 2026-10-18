@@ -34,6 +34,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
   @discardableResult func useSuggestion(_ card: TxnID) -> Bool
   func skip(_ card: TxnID)
+  @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
   func close(goToActivity: Bool)
 }
 
@@ -106,6 +107,7 @@ final class ReviewViewModel: ReviewDeckModel {
   @discardableResult
   func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
     let rulesBefore = app.store.state.rules.count
+    if app.store.state.txn(card)?.isHeldCopy == true { _ = app.perform(.resolveCopy(card, merge: false)) }
     guard app.perform(.categorize(card, category, learnRule: alwaysUse, project: project)) else { return false }
     record(card, learnedRule: app.store.state.rules.count > rulesBefore)
     return true
@@ -120,6 +122,9 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   func skip(_ card: TxnID) { app.perform(.skipReview(card)) }
+
+  @discardableResult
+  func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { app.perform(.resolveCopy(card, merge: merge)) }
 
   func close(goToActivity: Bool) {
     app.cover = nil

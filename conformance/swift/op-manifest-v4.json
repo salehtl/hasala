@@ -31,7 +31,8 @@
     "sender_trust_set",
     "project_defined",
     "goal_defined",
-    "mailbox_retired"
+    "mailbox_retired",
+    "txn_copy_resolved"
   ],
   "parent_free": [
     "rate_set",
@@ -83,7 +84,8 @@
     "sender_trust_set": 4,
     "project_defined": 4,
     "goal_defined": 4,
-    "mailbox_retired": 4
+    "mailbox_retired": 4,
+    "txn_copy_resolved": 4
   },
   "entity_kinds": {
     "txn_ingested": "txn",
@@ -95,7 +97,8 @@
     "rule_added": "rule",
     "bill_set": "bill",
     "project_defined": "project",
-    "goal_defined": "goal"
+    "goal_defined": "goal",
+    "txn_copy_resolved": "txn"
   },
   "reserved": [
     "profile_set"
