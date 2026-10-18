@@ -60,7 +60,8 @@ final class AppModel {
   @ObservationIgnored var refreshWork: (@MainActor () async -> Void)?
 
   private var toastTask: Task<Void, Never>?
-  @ObservationIgnored private var homeMemo = Memo<Int, HomeSnapshot>()
+  @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
+  private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
 
   init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
@@ -73,9 +74,21 @@ final class AppModel {
   /// mail needs it.
   var mailOffer: MailOffer? { mailbox?.offer }
 
-  /// What Home draws, recomputed once per ledger change.
+  var period: Period {
+    get { chosenPeriod?.clamped(to: store.now.date.yearMonth) ?? .month(store.now.date.yearMonth) }
+    set {
+      let today = store.now.date.yearMonth
+      let p = newValue.clamped(to: today)
+      chosenPeriod = p == .month(today) ? nil : p
+    }
+  }
+
+  /// What Home draws, recomputed once per ledger change or period.
   var snapshot: HomeSnapshot {
-    homeMemo.value(for: store.revision) { HomeEngine.snapshot(store.state, now: store.now) }
+    let period = chosenPeriod
+    return homeMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+      HomeEngine.snapshot(store.state, now: store.now, period: period)
+    }
   }
 
   /// The header's avatar letter, without running the Home engine on every tab.
@@ -196,4 +209,9 @@ final class AppModel {
     let parts = [t.title, t.subtitle].compactMap { $0 } + [t.actionTitle.map { "\($0) available" }].compactMap { $0 }
     return parts.map(sentence).joined(separator: " ")
   }
+}
+
+struct HomeMemoKey: Equatable {
+  var revision: Int
+  var period: Period?
 }

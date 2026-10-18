@@ -76,6 +76,7 @@ enum SheetRoute: Hashable, Identifiable {
   case profile
   /// Home's bell.
   case notifications
+  case period
 
   var id: String {
     switch self {
@@ -84,6 +85,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .moveMoney(let id): "move.\(id ?? "assign")"
     case .profile: "profile"
     case .notifications: "notifications"
+    case .period: "period"
     }
   }
 }

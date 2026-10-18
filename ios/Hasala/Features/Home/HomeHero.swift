@@ -16,11 +16,12 @@ import SwiftUI
 struct HomeHero: View {
   let hero: SpendHero
   let hidden: Bool
-  /// "October 2026".
-  let month: String
-  /// The pill's action: Debug only, until the period picker exists (plan D.2).
-  let changePeriod: (() -> Void)?
-  /// "See month" (Insights): Debug only.
+  /// "October 2026", "Aug – Oct 2026".
+  let period: String
+  let isThisMonth: Bool
+  let changePeriod: () -> Void
+  let backToThisMonth: () -> Void
+  /// "See month", "See recap", "See months" (Insights): Debug only.
   let seeMonth: (() -> Void)?
   /// "Set your plan" with no plan yet: the Plan tab.
   let setPlan: () -> Void
@@ -37,28 +38,58 @@ struct HomeHero: View {
   private var isLive: Bool { hero.state == .live }
 
   /// Spent as a share of the plan, for the bar's geometry only.
+  private var hasBar: Bool { hero.state == .live || hero.state == .ended }
+
   private var target: Double {
-    isLive && hero.plan.minor > 0 ? Double(max(0, hero.spent.minor)) / Double(hero.plan.minor) : 0
+    hasBar && hero.plan.minor > 0 ? Double(max(0, hero.spent.minor)) / Double(hero.plan.minor) : 0
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      PeriodPill(month, action: changePeriod)
+      periodRow
       figureBlock
       VStack(alignment: .leading, spacing: 10) {
-        MonthPaceBar(
-          spent: hero.spent, plan: isLive ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
-          verdict: hero.verdict ?? .onTrack, overflow: 18, hidden: hidden, phase: phase)
+        if hero.state == .range {
+          HeroMonthBars(bars: hero.bars, hidden: hidden)
+        } else {
+          MonthPaceBar(
+            spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
+            verdict: hero.verdict ?? .onTrack, overflow: 18, hidden: hidden, live: isLive, phase: phase)
+        }
         verdictLine
           .opacity(phase.verdictVisible ? 1 : 0)
       }
       tiles
+      if let note = hero.note {
+        Text(note.rendered(hidden: hidden)).hType(.subheadline).foregroundStyle(HColor.textOnWashSecondary)
+          .accessibilityLabel(note.spoken(hidden: hidden))
+          .accessibilityIdentifier("home.hero.note")
+      }
     }
     .padding(.horizontal, HSpacing.insetPage)
     .heroReveal($phase, target: target, policy: motion)
     #if HASALA_MOCKS
       .modifier(RevealTimingProbe(phase: phase, target: target))
     #endif
+  }
+
+  private var periodRow: some View {
+    ReflowingRow(spacing: 12) {
+      PeriodPill(period, tinted: !isThisMonth, action: changePeriod)
+        .accessibilityIdentifier("home.period")
+    } trailing: {
+      if !isThisMonth {
+        Button(action: backToThisMonth) {
+          Text("Back to this month")
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textOnWashLink)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home.backToThisMonth")
+      }
+    }
   }
 
   // MARK: Figure
@@ -101,23 +132,42 @@ struct HomeHero: View {
     case .noPlan:
       HeroVerdictLine(verdict: nil, word: hero.word, fact: nil, hidden: hidden,
                       link: .init("Set your plan", identifier: "home.setPlan", action: setPlan))
-    case .live:
+    case .live, .ended:
       HeroVerdictLine(verdict: hero.verdict, word: hero.word, fact: hero.fact, hidden: hidden,
-                      link: seeMonth.map { .init("See month", identifier: "home.seeMonth", action: $0) })
+                      link: seeMonth.map { .init(isLive ? "See month" : "See recap", identifier: "home.seeMonth", action: $0) })
+    case .range:
+      ReflowingRow(spacing: 12) {
+        Text("\(Text(hero.word.rendered(hidden: hidden)).font(HType.subheadline.weight(.semibold).font).foregroundStyle(HColor.textPrimary))\(Text(verbatim: hero.fact.map { " · " + $0.rendered(hidden: hidden) } ?? ""))")
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textOnWashSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityLabel([hero.word.spoken(hidden: hidden), hero.fact?.spoken(hidden: hidden)].compactMap { $0 }
+            .joined(separator: ", "))
+      } trailing: {
+        if let seeMonth {
+          Button(action: seeMonth) {
+            Text("See months")
+              .hType(.subheadline.weight(.medium))
+              .foregroundStyle(HColor.textOnWashLink)
+              .padding(.vertical, 12)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .padding(.vertical, -12)
+          .accessibilityIdentifier("home.seeMonth")
+        }
+      }
     }
   }
 
   // MARK: Tiles
 
-  /// Three tiles side by side; stacked at the accessibility sizes, or when they wouldn't fit.
+  /// Three tiles side by side, their figures shrinking to fit; stacked at the accessibility sizes.
   @ViewBuilder private var tiles: some View {
     if typeSize.isAccessibilitySize {
       VStack(spacing: 8) { tileViews }
     } else {
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) { tileViews }
-        VStack(spacing: 8) { tileViews }
-      }
+      HStack(spacing: 8) { tileViews }
     }
   }
 
@@ -155,5 +205,34 @@ private struct HeroFigureLine: View {
     MoneyText(amount, figure: .display, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 38,
               hiddenTracking: 3, color: HColor.textPrimary)
       .padding(.vertical, hidden ? 0 : -trim)
+  }
+}
+
+private struct HeroMonthBars: View {
+  let bars: [HeroMonthBar]
+  let hidden: Bool
+  @ScaledMetric(relativeTo: .subheadline) private var labelWidth: CGFloat = 36
+
+  var body: some View {
+    Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+      ForEach(bars) { bar in
+        GridRow {
+          Text(bar.label).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+            .frame(width: labelWidth, alignment: .leading)
+          MonthPaceBar(spent: bar.spent, plan: bar.plan, tick: nil, verdict: bar.verdict, overflow: 10,
+                       hidden: hidden, live: false)
+            .padding(.trailing, 10)
+            .frame(maxWidth: .infinity)
+          MoneyText(bar.spent, figure: HFigure.compact, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary)
+            .gridColumnAlignment(.trailing)
+        }
+      }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("By month")
+    .accessibilityValue(bars.map { bar in
+      "\(bar.month.title), " + (hidden ? "Amount hidden" : "AED \(MoneyFormat.string(bar.spent.minor))")
+    }.joined(separator: "; "))
+    .accessibilityIdentifier("home.hero.months")
   }
 }

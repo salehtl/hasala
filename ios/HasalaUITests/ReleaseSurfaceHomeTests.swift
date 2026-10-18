@@ -13,16 +13,17 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Home")
     assertNoPlaceholders(app, "Home")
     assertPersonalAccountsOnly(app, "Home")
-    XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 10,288.34"))
+    XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 11,115.62"))
     assertAbsent(app, ["home.seeMonth", "home.sampleData", "home.editWidgets", "Needs you"], "Home")
     assertNoButtons(app, ["See all", "Edit", "Add widget", "See month"], "Home")
     XCTAssertEqual(
       app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'needsYou.'")).count, 0,
       "Home still draws Needs-you cards")
-    // The period pill names the month; it is not a control until the picker exists.
-    XCTAssertTrue(el(app, "Period, October 2026").exists)
-    XCTAssertFalse(app.buttons["Period, October 2026"].exists, "the period pill is a button with nowhere to go")
     try audit(app)
+    tap(app, "home.period", opening: "period.sheet")
+    assertNoPlaceholders(app, "Period")
+    tap(app, "period.close")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
     // The bell counts what needs a look and opens it.
     let bell = app.buttons["header.notifications"].firstMatch
