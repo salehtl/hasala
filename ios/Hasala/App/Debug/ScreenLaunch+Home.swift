@@ -37,6 +37,9 @@
         graph.app.period = Period(YearMonth(2026, 8), MayaLedger.october)
         shell(.home, sheet: .period)(graph)
       }),
+      Screen("home.importing", scenario: "mailboxes2", prepare: { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 40, total: 268)
+      }),
       Screen("home.september", scenario: "maya", prepare: { graph in
         graph.app.period = .month(YearMonth(2026, 9))
       }),

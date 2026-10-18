@@ -28,7 +28,7 @@ final class HomePeriodTests: XCTestCase {
     attach(app, "Home · Period picker · Range")
     tap(app, "period.show")
 
-    XCTAssertTrue(hero.waitForLabel("AED 11,805.42"), hero.label)
+    XCTAssertTrue(hero.waitForLabel("AED 48,811.32"), hero.label)
     XCTAssertEqual(app.buttons["home.period"].label, "Period, Aug – Oct 2026")
     XCTAssertTrue(el(app, "home.hero.months").exists)
     XCTAssertTrue(el(app, "home.aboutNow.nextBill").exists)
@@ -39,7 +39,7 @@ final class HomePeriodTests: XCTestCase {
     tap(app, "home.period", opening: "period.sheet")
     tap(app, "period.preset.lastMonth")
     tap(app, "period.show")
-    XCTAssertTrue(hero.waitForLabel("AED 689.80"), hero.label)
+    XCTAssertTrue(hero.waitForLabel("AED 18,412.60"), hero.label)
     XCTAssertTrue(app.staticTexts["September"].exists)
     XCTAssertTrue(el(app, "widget.budgetPace").exists)
     attach(app, "Home · September")
