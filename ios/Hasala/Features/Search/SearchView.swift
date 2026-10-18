@@ -285,15 +285,32 @@ struct SearchView: View {
         }
         if !a.scope.isEmpty {
           FlowLayout(spacing: 6) {
-            ForEach(a.scope, id: \.self) { chip in
-              Text(chip).hType(.caption1).foregroundStyle(HColor.textPrimary)
-                .padding(.horizontal, 10)
-                .frame(minHeight: 26)
+            ForEach(a.scope) { chip in
+              Button { ask.remove(chip.part, app.store.state) } label: {
+                HStack(spacing: 4) {
+                  Text(chip.label).hType(.caption1).foregroundStyle(HColor.textPrimary)
+                  HIconView(.close, size: 10, color: HColor.textSecondary, strokeWidth: 2.4)
+                }
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                .frame(minHeight: 28)
                 .background(HColor.chipSurfaceOnCard, in: Capsule())
+                .contentShape(Capsule().inset(by: -6))
+              }
+              .buttonStyle(HPressStyle(scales: false))
+              .accessibilityLabel("Remove \(chip.label) filter")
+            }
+            if a.scope.count > 1 {
+              Button("Clear all") { ask.clearScope() }
+                .buttonStyle(.plain)
+                .hType(.caption1.weight(.medium))
+                .foregroundStyle(HColor.textLink)
+                .frame(minHeight: 28)
+                .accessibilityIdentifier("search.answer.clear")
             }
           }
-          .accessibilityElement(children: .combine)
-          .accessibilityLabel("Searched for " + a.scope.joined(separator: ", "))
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier("search.answer.scope")
         }
         HStack(spacing: 6) {
           HIconView(.lock, size: 12, color: HColor.textSecondary, strokeWidth: 2)
@@ -327,7 +344,7 @@ struct SearchView: View {
           }
         }
         HListCard {
-          ForEach(Array(a.rows.prefix(5).enumerated()), id: \.element.id) { i, row in
+          ForEach(Array(a.rows.prefix(20).enumerated()), id: \.element.id) { i, row in
             if i > 0 { HDivider(inset: .disc68) }
             Button {
               SearchHistory.shared.add(q)

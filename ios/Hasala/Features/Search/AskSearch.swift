@@ -122,5 +122,16 @@ final class AskSearchModel {
     }
   }
 
+  func remove(_ part: AskScope.Part, _ s: LedgerState) {
+    guard case .answered(let q, let a) = phase else { return }
+    let f = a.filter.removing(part)
+    phase = f.isEmpty ? .keywords(q, .nothingUnderstood) : .answered(q, AskEngine.answer(s, filter: f))
+  }
+
+  func clearScope() {
+    guard case .answered(let q, _) = phase else { return }
+    phase = .keywords(q, .nothingUnderstood)
+  }
+
   func clear() { phase = .idle }
 }

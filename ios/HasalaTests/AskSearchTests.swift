@@ -36,7 +36,7 @@ struct AskSearchTests {
     #expect(a.total == .aed(689_80))
     #expect(a.rows.map(\.id) == ["carrefour-sep26", "carrefour-sep13"])
     #expect(a.headline == "At Carrefour in September")
-    #expect(a.scope == ["Carrefour", "September", "Spent"])
+    #expect(a.scope.map(\.label) == ["Carrefour", "September", "Spent"])
     #expect(a.countLine == "2 transactions")
     #expect(!a.isIncome)
     #expect(a.activity == TxnFilter(text: "Carrefour"))
@@ -104,6 +104,26 @@ struct AskSearchTests {
     #expect(range(SearchIntent(period: .lastDays, days: 7))! == (LocalDate(2026, 10, 4), LocalDate(2026, 10, 10)))
     #expect(AskSearch.filter(SearchIntent(period: .month, month: 11), now: now).period?.label == "November 2025")
     #expect(AskSearch.filter(SearchIntent(flow: .spent), now: now).direction == .out)
+  }
+
+  @Test func removingScopeRecomputesWithoutTheModel() async throws {
+    let s = store.state, now = store.now
+    let m = AskSearchModel(parser: SearchQueryParser(model: CannedSearchModel(replies: [
+      "carrefour september": .reply(SearchModelReply(merchants: ["Carrefour"], period: .month, month: 9, flow: .spent)),
+    ])))
+    await m.run("carrefour september", s, now: now, debounce: .zero)
+    #expect(m.answer(for: "carrefour september")?.total == .aed(689_80))
+    m.remove(.period, s)
+    let all = try #require(m.answer(for: "carrefour september"))
+    #expect(all.total == .aed(1_031_95))
+    #expect(all.scope.map(\.part) == [.merchant("Carrefour"), .direction])
+    #expect(all.headline == "At Carrefour")
+    m.remove(.merchant("Carrefour"), s)
+    m.remove(.direction, s)
+    #expect(m.phase == .keywords("carrefour september", .nothingUnderstood))
+    await m.run("carrefour september", s, now: now, debounce: .zero)
+    m.clearScope()
+    #expect(m.answer(for: "carrefour september") == nil)
   }
 
   @Test func vocabularyFromTheLedger() {

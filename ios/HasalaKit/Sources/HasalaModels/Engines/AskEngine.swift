@@ -85,9 +85,45 @@ public struct AskFilter: Sendable, Hashable {
   }
 }
 
+public struct AskScope: Sendable, Hashable, Identifiable {
+  public enum Part: Sendable, Hashable {
+    case merchant(String)
+    case category
+    case period
+    case minimum
+    case maximum
+    case direction
+  }
+
+  public var part: Part
+  public var label: String
+  public var id: Part { part }
+}
+
+extension AskFilter {
+  public func removing(_ part: AskScope.Part) -> AskFilter {
+    var f = self
+    switch part {
+    case .merchant(let m): f.merchants.removeAll { $0 == m }
+    case .category: f.category = nil
+    case .period: f.period = nil
+    case .minimum: f.minimumFils = nil
+    case .maximum: f.maximumFils = nil
+    case .direction: f.direction = nil
+    }
+    return f
+  }
+
+  public var isEmpty: Bool {
+    merchants.isEmpty && category == nil && minimumFils == nil && maximumFils == nil && period == nil
+      && direction == nil
+  }
+}
+
 public struct AskAnswer: Sendable, Hashable {
+  public var filter: AskFilter
   public var headline: String
-  public var scope: [String]
+  public var scope: [AskScope]
   public var rows: [MiniTxnRow]
   public var total: Money
   public var isIncome: Bool
@@ -114,7 +150,7 @@ public enum AskEngine {
       else if f.merchants.isEmpty, let c = f.category { TxnFilter(category: c) }
       else { nil }
     return AskAnswer(
-      headline: headline(f, s, isIncome: isIncome), scope: scope(f, s), rows: rows, total: .aed(max(total, 0)),
+      filter: f, headline: headline(f, s, isIncome: isIncome), scope: scope(f, s), rows: rows, total: .aed(max(total, 0)),
       isIncome: isIncome, countLine: "\(found.count) transaction\(found.count == 1 ? "" : "s")", activity: activity)
   }
 
@@ -160,13 +196,13 @@ public enum AskEngine {
     return words.joined(separator: " ")
   }
 
-  static func scope(_ f: AskFilter, _ s: LedgerState) -> [String] {
-    var out = f.merchants
-    if let c = s.category(f.category) { out.append(c.name) }
-    if let p = f.period { out.append(p.label) }
-    if let lo = f.minimumFils { out.append("≥ \(MoneyFormat.string(lo, style: .compact))") }
-    if let hi = f.maximumFils { out.append("≤ \(MoneyFormat.string(hi, style: .compact))") }
-    if let d = f.direction { out.append(d == .in ? "Money in" : "Spent") }
+  static func scope(_ f: AskFilter, _ s: LedgerState) -> [AskScope] {
+    var out = f.merchants.map { AskScope(part: .merchant($0), label: $0) }
+    if let c = s.category(f.category) { out.append(AskScope(part: .category, label: c.name)) }
+    if let p = f.period { out.append(AskScope(part: .period, label: p.label)) }
+    if let lo = f.minimumFils { out.append(AskScope(part: .minimum, label: "≥ \(MoneyFormat.string(lo, style: .compact))")) }
+    if let hi = f.maximumFils { out.append(AskScope(part: .maximum, label: "≤ \(MoneyFormat.string(hi, style: .compact))")) }
+    if let d = f.direction { out.append(AskScope(part: .direction, label: d == .in ? "Money in" : "Spent")) }
     return out
   }
 }
