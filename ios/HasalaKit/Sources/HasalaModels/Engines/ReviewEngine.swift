@@ -224,8 +224,7 @@ extension Txn {
   public var inReview: Bool {
     if archived || isTransfer { return false }
     if needsReview { return true }
-    if categoryID == nil && splits.isEmpty { return true }
-    return categorySource == .model
+    return categoryID == nil && splits.isEmpty
   }
 
   public var reviewSuggestion: CategoryID? {
