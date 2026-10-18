@@ -41,6 +41,7 @@ enum ActivityRoute: Hashable {
 /// Pushed inside the transaction sheet (one sheet at a time: its editors push, never stack).
 enum TransactionRoute: Hashable {
   case category, note, rename, split
+  case reviewReason(TxnReviewReason)
 }
 
 /// Pages pushed inside the profile sheet (Paper "Profile · Your profile (sheet)": its rows

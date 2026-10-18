@@ -268,10 +268,11 @@ public struct MiniTxnRow: Sendable, Hashable, Identifiable {
   public var monogram: String?
   /// The to-review variant: an accent dot before the title (Paper "kit Lists and cards").
   public var toReview: Bool
+  public var reviewReason: TxnReviewReason?
 
   public init(
     id: String, merchant: String, glyph: Glyph, hue: Hue, detail: String, amount: Money,
-    isIncome: Bool = false, monogram: String? = nil, toReview: Bool = false
+    isIncome: Bool = false, monogram: String? = nil, toReview: Bool = false, reviewReason: TxnReviewReason? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -282,7 +283,12 @@ public struct MiniTxnRow: Sendable, Hashable, Identifiable {
     self.isIncome = isIncome
     self.monogram = monogram
     self.toReview = toReview
+    self.reviewReason = reviewReason
   }
+}
+
+extension MiniTxnRow {
+  public var senderUnverified: Bool { reviewReason == .senderUnverified }
 }
 
 public struct TodayWidget: Sendable, Hashable {

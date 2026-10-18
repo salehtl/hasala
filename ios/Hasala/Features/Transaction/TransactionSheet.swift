@@ -15,6 +15,7 @@ struct TransactionSheet: View {
   @Bindable var app: AppModel
   let model: any TransactionModel
   @State private var confirmArchive = false
+  @ScaledMetric(relativeTo: .subheadline) private var senderLane: CGFloat = 20
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -65,6 +66,10 @@ struct TransactionSheet: View {
             app.router.transaction.removeAll()
           }
         case .split: SplitEditorView(model: model) { app.router.transaction.removeAll() }
+        case .reviewReason(let reason):
+          ReviewReasonPage(
+            reason: reason, sort: { app.router.transaction.removeAll() },
+            archive: { model.setArchived(true) })
         }
       }
       .confirmationDialog("Archive this transaction?", isPresented: $confirmArchive, titleVisibility: .visible) {
@@ -85,6 +90,7 @@ struct TransactionSheet: View {
     ScrollView {
       VStack(spacing: 16) {
         summary(d)
+        if let reason = d.reviewReason { reasonCallout(reason) }
         details(d)
         if d.isSample {
           sampleNote
@@ -151,6 +157,38 @@ struct TransactionSheet: View {
     if d.archived { out.append(StatusPill("Archived", tone: .warning)) }
     if let p = d.project { out.append(StatusPill(p, tone: .accent, showsDot: false)) }
     return out
+  }
+
+  private func reasonCallout(_ reason: TxnReviewReason) -> some View {
+    let ink = ReviewReasonStyle.ink(reason)
+    return Button { push(.reviewReason(reason)) } label: {
+      HStack(alignment: .top, spacing: 12) {
+        HIconView(ReviewReasonStyle.icon(reason), size: 20, color: ink, strokeWidth: 1.9)
+          .frame(height: senderLane)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(reason.title)
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(ink)
+          Text(reason.detail)
+            .hType(.footnote)
+            .foregroundStyle(ink)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        HIconView(.chevronRight, size: 16, color: ink)
+          .frame(maxHeight: .infinity)
+      }
+      .padding(.vertical, 14)
+      .padding(.horizontal, 16)
+      .background(ReviewReasonStyle.surface(reason), in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(reason.title). \(reason.detail)")
+    .accessibilityHint("Shows what this means and what to do")
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("txn.reviewReason.\(reason.rawValue)")
   }
 
   // MARK: Details

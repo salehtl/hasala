@@ -498,6 +498,13 @@ public struct TransactionRow: View {
   let row: MiniTxnRow
   let hidden: Bool
 
+  static func tone(_ reason: TxnReviewReason?) -> StatusTone {
+    switch reason {
+    case .senderUnverified: .warning
+    case nil: .accent
+    }
+  }
+
   public init(_ row: MiniTxnRow, hidden: Bool) {
     self.row = row
     self.hidden = hidden
@@ -507,7 +514,7 @@ public struct TransactionRow: View {
     HListRow(
       leading: row.monogram.map { .monogram($0) } ?? .disc(row.hue, row.glyph.icon),
       title: row.merchant,
-      supporting: row.toReview ? .status(row.detail, .accent) : .text(row.detail),
+      supporting: row.toReview ? .status(row.detail, Self.tone(row.reviewReason)) : .text(row.detail),
       trailing: .amount(row.amount, in: row.isIncome),
       hidden: hidden)
   }

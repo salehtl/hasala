@@ -34,6 +34,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
   @discardableResult func useSuggestion(_ card: TxnID) -> Bool
   func skip(_ card: TxnID)
+  @discardableResult func archive(_ card: TxnID) -> Bool
   func close(goToActivity: Bool)
 }
 
@@ -120,6 +121,9 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   func skip(_ card: TxnID) { app.perform(.skipReview(card)) }
+
+  @discardableResult
+  func archive(_ card: TxnID) -> Bool { app.perform(.archive(card, true)) }
 
   func close(goToActivity: Bool) {
     app.cover = nil

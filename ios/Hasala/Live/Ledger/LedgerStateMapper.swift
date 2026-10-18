@@ -225,7 +225,8 @@ nonisolated enum LedgerStateMapper {
       isRefund: row.category == "refunds" || row.refundState != nil,
       isTransfer: row.category == "transfer" || row.transferState != nil, archived: row.archived != nil,
       projectID: row.projectID, billID: billID, provenance: provenance,
-      detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID)
+      detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
+      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) })
   }
 
   // MARK: Bills

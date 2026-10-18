@@ -154,6 +154,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var merchant: String
   public var monogram: String
   public var isNewMerchant: Bool
+  public var reviewReason: TxnReviewReason?
   public var rawMerchant: String?
   public var amount: Money
   public var isIncome: Bool
@@ -178,6 +179,10 @@ public struct SortedLine: Sendable, Hashable, Identifiable {
   /// Money now counted in the plan by this sort (spending only).
   public var counted: Int64
   public var learnedRule: Bool
+}
+
+extension ReviewCardModel {
+  public var senderUnverified: Bool { reviewReason == .senderUnverified }
 }
 
 public enum ReviewEngine {
@@ -206,7 +211,7 @@ public enum ReviewEngine {
     let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
     return ReviewCardModel(
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
-      isNewMerchant: t.isNewMerchant, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
+      isNewMerchant: t.isNewMerchant, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
       suggestion: s.category(t.suggestion).map(CategoryOption.init)
     )
