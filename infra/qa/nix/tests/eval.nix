@@ -7,7 +7,7 @@
 #   AT-E1  a minimal system, a fully configured one, one with the Gmail
 #          mailbox link but no Pub/Sub push and one with the Outlook mailbox
 #          link alone evaluate their toplevel with no failed assertion;
-#   AT-E2  each misuse fails the named module assertion (M1–M22), and each
+#   AT-E2  each misuse fails the named module assertion (M1–M23), and each
 #          ill-typed value (a Nix path literal for a secret, an unknown key
 #          kind, a tester limit of 0) fails the option's type, via tryEval;
 #   AT-E3  the rendered units carry exactly the environment and credentials the
@@ -99,6 +99,8 @@ let
           monitoring = {
             onFailure = [ "notify-failure@%n.service" ];
             healthCheck.enable = true;
+            ntfyUrl = "http://127.0.0.1:2586/test";
+            earlyAccessNotice = true;
           };
           asc = {
             enable = true;
@@ -352,6 +354,10 @@ let
       "M11"
       (hasala { email.from = "no-reply@example.com"; })
     ];
+    "email.replyTo outside rpId" = [
+      "M11"
+      (hasala { email.replyTo = "support@example.com"; })
+    ];
     "tunnel without authKeyFile" = [
       "M12"
       (hasala (tunnelOn // { authKeyFile = null; }))
@@ -515,6 +521,10 @@ let
       "M22"
       (hasala { apns.keyFile = "secrets/apns.p8"; })
     ];
+    "earlyAccessNotice without ntfyUrl" = [
+      "M23"
+      (hasala { monitoring.earlyAccessNotice = true; })
+    ];
   };
 
   # AT-E2, type errors: name → [ the option to force, the configuration ].
@@ -656,6 +666,7 @@ let
     "HASALA_EMAIL_API_TOKEN_FILE"
     "HASALA_EMAIL_FROM"
     "HASALA_EMAIL_FROM_NAME"
+    "HASALA_EMAIL_REPLY_TO"
     "HASALA_PASSWORD_HASH_CONCURRENCY"
     "HASALA_PURGE_LEDGER_PATH"
     "HASALA_LOG_GENERATION_FILE"
@@ -672,6 +683,8 @@ let
     "HASALA_EMAIL_RATE_BULK"
     "HASALA_EMAIL_LOG_RETENTION"
     "HASALA_INVITE_TTL"
+    "HASALA_OPS_NTFY_URL"
+    "HASALA_OPS_NTFY_CLICK"
     "GOMEMLIMIT"
     "TZ"
   ];
@@ -749,6 +762,11 @@ let
       hasaladEnv.HASALA_OUTLOOK_NOTIFICATION_URL == "https://api.hasala.app/hooks/outlook/graph"
       && hasaladEnv.HASALA_OUTLOOK_LIFECYCLE_URL == "https://api.hasala.app/hooks/outlook/graph/lifecycle"
     ) "AT-E3 the [outlook] push URLs"
+    ++ check (
+      hasaladEnv.HASALA_OPS_NTFY_URL == "http://127.0.0.1:2586/test"
+      && hasaladEnv.HASALA_OPS_NTFY_CLICK == "https://${consoleHost}/"
+      && !(linkOnlyEnv ? HASALA_OPS_NTFY_URL)
+    ) "AT-E3 the early-access notice"
     ++
       check
         (sameSet (mailboxKeys outlookLinkOnlyEnv) [

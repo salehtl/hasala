@@ -21,7 +21,7 @@ import (
 
 // Footer is the S-35 footer every account email ends with.
 const Footer = "—\nHasala never asks for your recovery phrase, your password or a code by email, " +
-	"by phone or on a website. Don't reply to this email."
+	"by phone or on a website. Questions? Reply to this email."
 
 // DefaultFreezeURL is the freeze page; the token goes in the fragment.
 const DefaultFreezeURL = "https://hasala.app/freeze"

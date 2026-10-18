@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 1024 1024">
+<title>Hasala</title>
+<defs>
+<linearGradient id="t" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#5479FF"/><stop offset="1" stop-color="#2B4AD2"/></linearGradient>
+<linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9DC94"/><stop offset="1" stop-color="#EBB04A"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#t)"/>
+<g transform="translate(512 512) scale(1.1) translate(-512 -512)">
+<rect x="244" y="600" width="536" height="64" rx="32" fill="#142659"/>
+<path d="M353.704 632A184 184 0 1 1 670.296 632Z" fill="#C98A1E"/>
+<path d="M366.167 632A184 184 0 1 1 657.833 632Z" fill="url(#c)"/>
+<line x1="442.1" y1="486.7" x2="581.9" y2="486.7" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
+<line x1="442.1" y1="552.9" x2="581.9" y2="552.9" stroke="#8A5A05" stroke-width="25.8" stroke-linecap="round"/>
+</g>
+</svg>

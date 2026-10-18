@@ -146,6 +146,9 @@ in
       onFailure = [ "notify-failure@%n.service" ];
       ntfyUrl = "<the host's ntfy topic URL on loopback>";
       healthCheck.enable = true;
+      # One ntfy notice per new early-access request (a waitlist entry that
+      # confirmed its address, now waiting in the console). It names nobody.
+      earlyAccessNotice = true;
     };
     # Every Hasala unit, and the hasala-admin sandbox, gets these on top of the
     # module's own (/var/lib/postgresql, /run/postgresql, /run/secrets): the
@@ -364,6 +367,17 @@ next renewal (about 4 days, when the watch report answers
 `409 {"error":"no_watch_topic"}` and the app stops the watch) or until it
 expires (7 days); nothing relays its pushes in the meantime, and the link
 itself keeps working.
+
+## The early-access notice
+
+`monitoring.earlyAccessNotice = true` (with `monitoring.ntfyUrl`, M23) makes
+`hasalad serve` post one ntfy notice, "New early-access request", each time a
+waitlist entry confirms its address and so appears in the console to approve.
+The notice carries no email address, bank or id, and with the console enabled
+it opens `https://<console host>/`. A notice that ntfy does not accept within
+10 seconds is dropped and logged; the console stays the record. After the
+activation, `journalctl -u hasalad -o cat | grep 'optional groups'` lists
+`ops-ntfy`.
 
 ## Outlook: the link and the hook
 

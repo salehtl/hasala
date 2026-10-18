@@ -25,6 +25,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/msjwt"
+	"github.com/salehtl/hasala/server/internal/opsnotify"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
@@ -58,6 +59,8 @@ func newSender(cfg config.Config) (mail.Sender, error) {
 	if err != nil {
 		return nil, refusal{err}
 	}
+	cf.FromName = cfg.Email.FromName
+	cf.ReplyTo = cfg.Email.ReplyTo
 	if cfg.Email.APIBaseURL != "" && cfg.Email.APIBaseURL != mail.DefaultBaseURL {
 		cf.BaseURL = cfg.Email.APIBaseURL
 		slog.Warn("hasalad serve: email goes to a non-default API base (HASALA_EMAIL_API_BASE_URL); local runs only")
@@ -246,6 +249,16 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
+	if cfg.Ops.Enabled() {
+		n := opsnotify.New(cfg.Ops.NtfyURL, cfg.Ops.NtfyClick)
+		wl.OnConfirmed = func() {
+			go func() {
+				if err := n.Post(context.Background(), "Hasala", "New early-access request", "inbox_tray"); err != nil {
+					slog.Warn("hasalad serve: early-access notice not delivered", "err", err)
+				}
+			}()
+		}
+	}
 	wl.Register(q)
 	if keys != nil {
 		logf := func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) }

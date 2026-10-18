@@ -162,6 +162,9 @@ func logGroups(cfg config.Config) {
 	if cfg.Email.Enabled() {
 		on = append(on, "email")
 	}
+	if cfg.Ops.Enabled() {
+		on = append(on, "ops-ntfy")
+	}
 	if cfg.Server.MetricsListen != "" {
 		on = append(on, "metrics")
 	}

@@ -50,6 +50,8 @@ type Config struct {
 	Email    EmailConfig    `toml:"email"`
 	// Web is spec 07's website routes and mail limits (environment only).
 	Web WebConfig `toml:"-"`
+	// Ops is the operator's notices (environment only).
+	Ops OpsConfig `toml:"-"`
 
 	// Console is the operator console's configuration (spec 07 §8, §14.1). It
 	// is environment-only and read only by the console mode; serve refuses to
@@ -244,6 +246,7 @@ type EmailConfig struct {
 	CloudflareAccountID string `toml:"cloudflare_account_id"`
 	FromName            string `toml:"from_name"`
 	From                string `toml:"from"`
+	ReplyTo             string `toml:"reply_to"`
 	FreezeURL           string `toml:"freeze_url"`
 	// APITokenFile (HASALA_EMAIL_API_TOKEN_FILE). Never TOML.
 	APITokenFile string `toml:"-"`
@@ -276,6 +279,16 @@ type WebConfig struct {
 	RateBulk           int64         // HASALA_EMAIL_RATE_BULK, per hour
 	LogRetention       time.Duration // HASALA_EMAIL_LOG_RETENTION
 }
+
+// OpsConfig is the operator's ntfy notice for each new early-access request
+// (a waitlist entry that confirmed its address). Off when NtfyURL is empty.
+type OpsConfig struct {
+	NtfyURL   string // HASALA_OPS_NTFY_URL: the ntfy topic URL, no credentials in it
+	NtfyClick string // HASALA_OPS_NTFY_CLICK: optional https URL the notice opens
+}
+
+// Enabled reports whether the notice is configured.
+func (o OpsConfig) Enabled() bool { return o.NtfyURL != "" }
 
 // ConsoleConfig is the operator console's environment (spec 07 §8.1, §14.1).
 // Only `hasalad console` reads it.
@@ -366,6 +379,7 @@ func defaults() Config {
 		Email: EmailConfig{
 			FromName:   "Hasala",
 			From:       "no-reply@hasala.app",
+			ReplyTo:    "support@hasala.app",
 			FreezeURL:  "https://hasala.app/freeze",
 			WebBaseURL: "https://hasala.app",
 		},
@@ -502,6 +516,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	str("HASALA_EMAIL_CF_ACCOUNT_ID", &c.Email.CloudflareAccountID)
 	str("HASALA_EMAIL_FROM_NAME", &c.Email.FromName)
 	str("HASALA_EMAIL_FROM", &c.Email.From)
+	str("HASALA_EMAIL_REPLY_TO", &c.Email.ReplyTo)
 	str("HASALA_FREEZE_URL", &c.Email.FreezeURL)
 	str("HASALA_EMAIL_API_TOKEN_FILE", &c.Email.APITokenFile)
 	str("HASALA_WEB_BASE_URL", &c.Email.WebBaseURL)
@@ -514,6 +529,8 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	integer("HASALA_EMAIL_RATE_WAITLIST", &c.Web.RateWaitlist)
 	integer("HASALA_EMAIL_RATE_BULK", &c.Web.RateBulk)
 	dur("HASALA_EMAIL_LOG_RETENTION", &c.Web.LogRetention)
+	str("HASALA_OPS_NTFY_URL", &c.Ops.NtfyURL)
+	str("HASALA_OPS_NTFY_CLICK", &c.Ops.NtfyClick)
 
 	str("HASALA_CONSOLE_LISTEN", &c.Console.Listen)
 	str("HASALA_CONSOLE_METRICS_LISTEN", &c.Console.MetricsListen)
@@ -574,6 +591,9 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 		return err
 	}
 	if err := c.validateOutlook(); err != nil {
+		return err
+	}
+	if err := c.validateOps(); err != nil {
 		return err
 	}
 	if err := c.validateEmail(prod); err != nil {
@@ -793,6 +813,27 @@ func (c Config) validateOutlook() error {
 	return nil
 }
 
+func (c Config) validateOps() error {
+	o := c.Ops
+	if !o.Enabled() {
+		if o.NtfyClick != "" {
+			return errors.New("HASALA_OPS_NTFY_CLICK needs HASALA_OPS_NTFY_URL")
+		}
+		return nil
+	}
+	u, err := url.Parse(o.NtfyURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil ||
+		u.Path == "" || u.Path == "/" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("HASALA_OPS_NTFY_URL %q: want http(s)://<host>/<topic>, with no credentials, query or fragment", o.NtfyURL)
+	}
+	if o.NtfyClick != "" {
+		if u, err := url.Parse(o.NtfyClick); err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return fmt.Errorf("HASALA_OPS_NTFY_CLICK %q: want an https URL", o.NtfyClick)
+		}
+	}
+	return nil
+}
+
 func hostOf(raw string) string {
 	u, _ := url.Parse(raw)
 	return u.Host
@@ -836,9 +877,11 @@ var cfAccountID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func (c Config) validateEmail(prod bool) error {
 	e := c.Email
-	if !strings.HasSuffix(e.From, "@hasala.app") || strings.ContainsAny(e.From, " <>\"") ||
-		strings.ToLower(e.From) != e.From {
-		return fmt.Errorf("email.from is %q: it must be a lowercase address at hasala.app", e.From)
+	for name, addr := range map[string]string{"email.from": e.From, "email.reply_to": e.ReplyTo} {
+		if !strings.HasSuffix(addr, "@hasala.app") || strings.ContainsAny(addr, " <>\"\r\n,;") ||
+			strings.ToLower(addr) != addr {
+			return fmt.Errorf("%s is %q: it must be a lowercase address at hasala.app", name, addr)
+		}
 	}
 	if e.FromName == "" || strings.ContainsAny(e.FromName, "<>\"\r\n@") {
 		return fmt.Errorf("email.from_name is %q: a plain display name is required", e.FromName)

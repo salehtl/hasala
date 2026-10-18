@@ -215,11 +215,18 @@ let
     HASALA_EMAIL_API_TOKEN_FILE = "%d/email-api-token";
     HASALA_EMAIL_FROM = cfg.email.from;
     HASALA_EMAIL_FROM_NAME = cfg.email.fromName;
+    HASALA_EMAIL_REPLY_TO = cfg.email.replyTo;
   }
   // optionalAttrs turnstileOn {
     HASALA_TURNSTILE_SECRET_FILE = "%d/turnstile-secret";
     HASALA_TURNSTILE_REQUIRED = "true";
     HASALA_TURNSTILE_HOSTNAMES = cfg.rpId;
+  }
+  // optionalAttrs cfg.monitoring.earlyAccessNotice {
+    HASALA_OPS_NTFY_URL = cfg.monitoring.ntfyUrl;
+  }
+  // optionalAttrs (cfg.monitoring.earlyAccessNotice && cfg.console.enable) {
+    HASALA_OPS_NTFY_CLICK = "https://${toString cfg.console.host}/";
   };
 
   hasaladCredentials =
@@ -757,6 +764,11 @@ in
         default = "Hasala";
         description = "Sender display name.";
       };
+      replyTo = mkOption {
+        type = types.str;
+        default = "support@hasala.app";
+        description = "Reply-To address; asserted to be at rpId.";
+      };
     };
 
     passwordHashConcurrency = mkOption {
@@ -868,7 +880,8 @@ in
         default = [ ];
         description = "OnFailure= units for every Hasala unit, e.g. [ \"notify-failure@%n.service\" ].";
       };
-      ntfyUrl = nullStr "Where hasala-health posts its recovery notice.";
+      ntfyUrl = nullStr "Where hasala-health posts its recovery notice, and hasalad its early-access notice.";
+      earlyAccessNotice = mkEnableOption "an ntfy notice to monitoring.ntfyUrl for each new early-access request (a waitlist entry that confirmed its address, now waiting in the console). It names nobody; it opens the console when that is enabled";
       healthCheck.enable = mkEnableOption "the hasala-health probes (every 2 minutes)";
       healthCheck.aasaUrl = mkOption {
         type = types.str;
@@ -1068,9 +1081,10 @@ in
               (cfg.email.cloudflareAccountId == null) == (cfg.email.apiTokenFile == null)
               && (cfg.email.cloudflareAccountId == null || matches "[0-9a-f]{32}" cfg.email.cloudflareAccountId)
               && lib.hasSuffix "@${cfg.rpId}" cfg.email.from
+              && lib.hasSuffix "@${cfg.rpId}" cfg.email.replyTo
               && (!cfg.tunnel.enable || emailOn)
             )
-            "email.cloudflareAccountId (32 hex) and email.apiTokenFile are both set or both null, required with the tunnel; email.from must be at rpId."
+            "email.cloudflareAccountId (32 hex) and email.apiTokenFile are both set or both null, required with the tunnel; email.from and email.replyTo must be at rpId."
           )
           (a "M12"
             (
@@ -1158,6 +1172,9 @@ in
           (a "M22" (secretsInStore == [ ])
             "every secret-file option is an absolute path outside ${builtins.storeDir} (a secret in the store is world-readable); offending: ${concatStringsSep ", " secretsInStore}."
           )
+          (a "M23" (
+            !cfg.monitoring.earlyAccessNotice || cfg.monitoring.ntfyUrl != null
+          ) "monitoring.earlyAccessNotice posts to monitoring.ntfyUrl: set it too.")
         ];
 
       # ------------------------------------------------------------- §5.11
