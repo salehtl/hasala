@@ -145,12 +145,92 @@ public struct SearchQueryParser: Sendable {
     switch await model.interpret(Self.plain(query.trimmingCharacters(in: .whitespacesAndNewlines)), vocabulary: vocabulary) {
     case .failed(let f): return .keywordsOnly(.failed(f))
     case .reply(let r):
-      let intent = Self.intent(r, vocabulary: vocabulary)
+      let intent = Self.intent(r, vocabulary: vocabulary, query: query)
       return intent.narrows ? .intent(intent) : .keywordsOnly(.nothingUnderstood)
     }
   }
 
-  public static func intent(_ r: SearchModelReply, vocabulary v: SearchVocabulary) -> SearchIntent {
+  public static func intent(_ r: SearchModelReply, vocabulary v: SearchVocabulary, query: String? = nil) -> SearchIntent {
+    let i = intent(r, vocabulary: v)
+    guard let query else { return i }
+    return grounded(i, in: query, reply: r, vocabulary: v)
+  }
+
+  static let timeWords: Set<String> = [
+    "today", "tonight", "yesterday", "day", "days", "week", "weeks", "weekend", "month", "months", "year", "years",
+    "since", "ago", "recent", "recently", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct",
+    "nov", "dec", "january", "february", "march", "april", "june", "july", "august", "september", "october",
+    "november", "december",
+  ]
+  static let overWords = ["over", "above", "more than", "at least", "greater than", "bigger than", "min"]
+  static let underWords = ["under", "below", "less than", "at most", "cheaper than", "smaller than", "max"]
+
+  static func words(_ q: String) -> [String] {
+    q.lowercased().split { !($0.isLetter || $0.isNumber) }.map(String.init)
+  }
+
+  static func mentions(_ q: String, _ name: String) -> Bool {
+    let n = words(name)
+    guard !n.isEmpty else { return false }
+    let w = words(q)
+    guard w.count >= n.count else { return false }
+    return (0...(w.count - n.count)).contains { Array(w[$0..<($0 + n.count)]) == n }
+  }
+
+  static func grounded(_ i: SearchIntent, in query: String, reply r: SearchModelReply, vocabulary v: SearchVocabulary) -> SearchIntent {
+    var g = i
+    let w = words(query)
+    let lower = " " + w.joined(separator: " ") + " "
+    let isCategory: (String) -> SearchVocabulary.Category? = { m in
+      v.categories.first { $0.id.caseInsensitiveCompare(m) == .orderedSame || $0.name.caseInsensitiveCompare(m) == .orderedSame }
+    }
+    let candidates = ([i.category].compactMap { $0 }.compactMap { id in v.categories.first { $0.id == id } })
+      + r.merchants.compactMap { isCategory($0.trimmingCharacters(in: .whitespaces)) }
+    g.category = candidates.first { mentions(query, $0.name) || mentions(query, $0.id) }?.id
+    g.merchants = i.merchants.filter { isCategory($0) == nil }
+    if g.category != nil {
+      g.merchants = g.merchants.filter { mentions(query, $0) }
+    }
+    if g.minimumFils == 0 { g.minimumFils = nil }
+    if g.maximumFils == 0 { g.maximumFils = nil }
+    if !query.contains(where: { $0.isASCII && $0.isNumber }) {
+      g.minimumFils = nil
+      g.maximumFils = nil
+    }
+    let over = overWords.contains { lower.contains(" \($0) ") }
+    let under = underWords.contains { lower.contains(" \($0) ") }
+    if let lo = g.minimumFils, let hi = g.maximumFils, lo == hi {
+      if over && !under { g.maximumFils = nil } else if under && !over { g.minimumFils = nil }
+    } else if g.minimumFils != nil && g.maximumFils == nil && under && !over {
+      (g.minimumFils, g.maximumFils) = (nil, g.minimumFils)
+    } else if g.maximumFils != nil && g.minimumFils == nil && over && !under {
+      (g.minimumFils, g.maximumFils) = (g.maximumFils, nil)
+    }
+    if let n = Self.lastDays(w) {
+      g.period = .lastDays
+      g.days = n
+      g.month = nil
+      g.year = nil
+    } else if !w.contains(where: timeWords.contains) {
+      g.period = .any
+      g.month = nil
+      g.year = nil
+      g.days = nil
+    } else if g.period == .month, !w.contains(where: { $0.count == 4 && Int($0) != nil }) {
+      g.year = nil
+    }
+    return g
+  }
+
+  static func lastDays(_ w: [String]) -> Int? {
+    guard w.count >= 3 else { return nil }
+    for k in 0..<(w.count - 2) where ["past", "last"].contains(w[k]) && ["day", "days"].contains(w[k + 2]) {
+      if let n = Int(w[k + 1]), (1...366).contains(n) { return n }
+    }
+    return nil
+  }
+
+  static func intent(_ r: SearchModelReply, vocabulary v: SearchVocabulary) -> SearchIntent {
     let known = r.merchants.compactMap { m in
       v.merchants.first { $0.caseInsensitiveCompare(m.trimmingCharacters(in: .whitespaces)) == .orderedSame }
     }

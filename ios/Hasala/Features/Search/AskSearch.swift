@@ -1,6 +1,7 @@
 import HasalaModel
 import HasalaModels
 import Observation
+import os
 
 enum AskSearch {
   static func vocabulary(_ s: LedgerState, now: LocalDateTime) -> SearchVocabulary {
@@ -81,6 +82,7 @@ final class AskSearchModel {
   }
 
   private(set) var phase: Phase = .idle
+  private static let log = Logger(subsystem: "app.hasala.ios", category: "search")
   @ObservationIgnored let parser: SearchQueryParser
   @ObservationIgnored private(set) var available: Bool
 
@@ -118,7 +120,9 @@ final class AskSearchModel {
     if Task.isCancelled { return }
     switch parsed {
     case .intent(let i): phase = .answered(q, AskSearch.answer(i, s, now: now))
-    case .keywordsOnly(let why): phase = .keywords(q, why)
+    case .keywordsOnly(let why):
+      Self.log.info("ask search fell back: \(String(describing: why), privacy: .public)")
+      phase = .keywords(q, why)
     }
   }
 
