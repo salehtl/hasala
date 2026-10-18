@@ -20,7 +20,7 @@ enum HomeRoute: Hashable {
   case bill(BillID)
   /// Accounts · Net worth.
   case accounts
-  /// Insights · October so far ("See month"): a Debug placeholder until Insights is built.
+  /// Insights, from the hero's "Insights" link, for Home's period.
   case insights
 }
 

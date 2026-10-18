@@ -20,8 +20,8 @@ struct HomeHero: View {
   let month: String
   /// The pill's action: Debug only, until the period picker exists (plan D.2).
   let changePeriod: (() -> Void)?
-  /// "See month" (Insights): Debug only.
-  let seeMonth: (() -> Void)?
+  /// "Insights": pushes Insights for this period.
+  let insights: (() -> Void)?
   /// "Set your plan" with no plan yet: the Plan tab.
   let setPlan: () -> Void
 
@@ -103,7 +103,7 @@ struct HomeHero: View {
                       link: .init("Set your plan", identifier: "home.setPlan", action: setPlan))
     case .live:
       HeroVerdictLine(verdict: hero.verdict, word: hero.word, fact: hero.fact, hidden: hidden,
-                      link: seeMonth.map { .init("See month", identifier: "home.seeMonth", action: $0) })
+                      link: insights.map { .init("Insights", identifier: "home.insights", action: $0) })
     }
   }
 

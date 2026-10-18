@@ -2,6 +2,7 @@ public enum InsightsTarget: Sendable, Hashable {
   case bucket(Bucket)
   case category(CategoryID)
   case merchant(String)
+  case unsorted
 }
 
 public enum InsightsLens: String, Sendable, Hashable, CaseIterable {
@@ -209,7 +210,7 @@ public struct InsightsNotice: Sendable, Hashable {
 
 public struct InsightsLegendRow: Sendable, Hashable, Identifiable {
   public enum Kind: String, Sendable, Hashable {
-    case needs, wants, savings, unspent
+    case needs, wants, other, unsorted, savings, unspent
   }
 
   public var id: Kind { kind }
@@ -231,17 +232,19 @@ public struct InsightsLegendRow: Sendable, Hashable, Identifiable {
 public struct InsightsSplit: Sendable, Hashable {
   public var needs: Int64
   public var wants: Int64
+  public var unsorted: Int64
   public var savings: Int64
   public var unspent: Int64
 
-  public init(needs: Int64, wants: Int64, savings: Int64, unspent: Int64) {
+  public init(needs: Int64, wants: Int64, unsorted: Int64 = 0, savings: Int64, unspent: Int64) {
     self.needs = needs
     self.wants = wants
+    self.unsorted = unsorted
     self.savings = savings
     self.unspent = unspent
   }
 
-  public var total: Int64 { max(0, needs) + max(0, wants) + max(0, savings) + max(0, unspent) }
+  public var total: Int64 { max(0, needs) + max(0, wants) + max(0, unsorted) + max(0, savings) + max(0, unspent) }
 }
 
 public struct InsightsSummary: Sendable, Hashable {

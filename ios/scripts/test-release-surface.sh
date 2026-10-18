@@ -33,8 +33,8 @@ fi
 # Every Release-surface class: the shell's, then each area's (plan B7.4).
 classes=(
 	ReleaseSurfaceTests ReleaseSurfaceJoinTests ReleaseSurfaceSetupTests ReleaseSurfaceMailboxTests
-	ReleaseSurfaceSignInTests ReleaseSurfaceHomeTests ReleaseSurfaceActivityTests ReleaseSurfacePlanTests
-	ReleaseSurfaceProfileTests
+	ReleaseSurfaceSignInTests ReleaseSurfaceHomeTests ReleaseSurfaceInsightsTests ReleaseSurfaceActivityTests
+	ReleaseSurfacePlanTests ReleaseSurfaceProfileTests
 )
 only=()
 for c in "${classes[@]}"; do only+=("-only-testing:HasalaUITests/$c"); done

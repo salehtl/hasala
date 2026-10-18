@@ -191,12 +191,55 @@ struct InsightsCountingTests {
     #expect(F.totals(s).income == 500_000)
   }
 
-  @Test func reviewArchivedTransferAndUncategorizedRowsAreLeftOut() {
+  @Test func everyExpenseCountsIncludingReviewAndUncategorized() {
     let s = F.ledger([
       F.txn("1", 1000), F.txn("1", 2000, needsReview: true), F.txn("1", 3000, archived: true),
       F.txn("transfer", 4000, isTransfer: true), F.txn(nil, 5000), F.txn("transfer", 6000),
+      F.txn(nil, 7000, direction: .in), F.txn("salary", 8000),
     ])
-    #expect(F.totals(s).spent == 1000)
+    let t = F.totals(s)
+    #expect(t.spent == 8000)
+    #expect(t.needs == 3000)
+    #expect(t.unsorted == 5000)
+  }
+
+  @Test func anUncategorizedRefundIsSubtracted() {
+    var refund = F.txn(nil, 400, direction: .in)
+    refund.isRefund = true
+    let s = F.ledger([F.txn(nil, 1000), refund])
+    #expect(F.totals(s).unsorted == 600)
+  }
+
+  @Test func splitsCountLineByLineAndSavingsPartsStayOut() {
+    let s = F.ledger([F.txn("1", 1000, id: "x", splits: [
+      SplitLine(id: 1, categoryID: "1", amount: .aed(600)), SplitLine(id: 2, categoryID: "savings", amount: .aed(400)),
+    ])])
+    let t = F.totals(s)
+    #expect(t.spent == 600)
+    #expect(t.saved == 400)
+  }
+
+  @Test func uncategorizedSpendingHasItsOwnRowSoThePartsAddUp() {
+    let s = F.ledger([F.txn("1", 1000, F.july), F.txn(nil, 500, F.july, needsReview: true), F.txn(nil, 200)])
+    let snap = InsightsEngine.snapshot(s, months: F.july...F.july, now: F.afterJune)
+    #expect(snap.summary.spent == .aed(1500))
+    #expect(snap.categories.map(\.title) == ["Groceries", "Uncategorized"])
+    #expect(snap.buckets.map(\.title) == ["Needs", "Not yet sorted"])
+    #expect(snap.categories.reduce(Int64(0)) { $0 + $1.amount.minor } == 1500)
+    #expect(snap.buckets.reduce(Int64(0)) { $0 + $1.amount.minor } == 1500)
+    #expect(snap.summary.legend.map(\.kind) == [.needs, .wants, .unsorted])
+    #expect(snap.categories[1].delta?.kind == .up(percent: 150))
+    let d = InsightsEngine.drill(s, target: .unsorted, months: F.july...F.july, now: F.afterJune)
+    #expect(d.total == .aed(500))
+    #expect(d.title == "Not yet sorted · July")
+    #expect(d.rows.first?.detail.hasPrefix("Uncategorized · ") == true)
+  }
+
+  @Test func theRuleIsHomesSpendingRule() {
+    for t in MayaHistory.state.txns {
+      let mine = InsightsEngine.spentParts(t, in: MayaHistory.state).reduce(Int64(0)) { $0 + $1.minor }
+      #expect(mine == HomeSpendingRule.spent(t, in: MayaHistory.state), "\(t.id)")
+    }
   }
 
   @Test func savingsIsMovedToSavingsNeverSpending() {
@@ -215,6 +258,26 @@ struct InsightsCountingTests {
     let snap = InsightsEngine.snapshot(s, months: F.june...F.june, now: F.afterJune)
     #expect(snap.summary.split?.unspent == 0)
     #expect(snap.summary.figure == .aed(1000))
+  }
+}
+
+enum HomeSpendingRule {
+  static func spent(_ t: Txn, in s: LedgerState) -> Int64 {
+    if t.archived || t.isTransfer { return 0 }
+    if let p = s.project(t.projectID), !p.countInPlan { return 0 }
+    if !t.splits.isEmpty {
+      return t.splits.reduce(Int64(0)) { $0 + (counts(s.category($1.categoryID)) ? $1.amount.minor : 0) }
+    }
+    let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
+    guard let c = s.category(t.categoryID) else {
+      return t.direction == .out || t.isRefund ? signed : 0
+    }
+    return counts(c) ? signed : 0
+  }
+
+  static func counts(_ c: Category?) -> Bool {
+    guard let c else { return false }
+    return c.kind == .spending && c.bucket != .savings && c.role != .saving
   }
 }
 
@@ -454,7 +517,9 @@ struct InsightsMayaTests {
     let oct = InsightsEngine.snapshot(s, months: MayaLedger.october...MayaLedger.october, now: MayaLedger.now)
     #expect(oct.status == "Day 10 of 31")
     #expect(oct.summary.label == "Spent so far")
-    #expect(oct.summary.figure == .aed(10_288_34))
+    #expect(oct.summary.figure == .aed(11_115_62))
+    #expect(oct.summary.legend.first { $0.kind == .unsorted }?.amount == .aed(827_28))
+    #expect(oct.categories.contains { $0.target == .unsorted && $0.amount == .aed(827_28) })
     #expect(oct.summary.kept == nil)
     #expect(oct.lensNote == "vs Sep at day 10")
     #expect(oct.reports.first?.value == .money(.aed(227_568_00)))

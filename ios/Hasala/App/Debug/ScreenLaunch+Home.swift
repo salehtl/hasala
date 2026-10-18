@@ -8,6 +8,8 @@
     static let homeScreens: [Screen] = [
       // Home · Default.
       Screen("home", scenario: "maya"),
+      Screen("home.insights", scenario: "maya", prepare: shell(.home, home: [.insights])),
+      Screen("home.insights.firstDays", scenario: "firstDays", prepare: shell(.home, home: [.insights])),
       // Home · Amounts hidden, as the board draws it: Maya has just tapped the eye, so the
       // toast confirms it ("Amounts hidden · Until you tap the eye again · Show"). The
       // `mayaHidden` scenario starts hidden without the toast.

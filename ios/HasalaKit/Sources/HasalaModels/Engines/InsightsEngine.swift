@@ -34,41 +34,55 @@ public enum InsightsEngine {
 
   // MARK: - What counts
 
+  public static let unsortedID: CategoryID = ""
+
+  public static func countsAsSpending(_ c: Category?) -> Bool {
+    guard let c else { return false }
+    return c.kind == .spending && c.bucket != .savings && c.role != .saving
+  }
+
+  public static func isSaving(_ c: Category) -> Bool {
+    c.kind == .spending && (c.bucket == .savings || c.role == .saving)
+  }
+
+  public static func spentParts(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
+    if t.archived || t.isTransfer { return [] }
+    if let p = s.project(t.projectID), !p.countInPlan { return [] }
+    if !t.splits.isEmpty {
+      return t.splits.compactMap { sp in
+        let c = s.category(sp.categoryID)
+        return countsAsSpending(c) ? (c, sp.amount.minor) : nil
+      }
+    }
+    let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
+    guard let c = s.category(t.categoryID) else {
+      return t.direction == .out || t.isRefund ? [(nil, signed)] : []
+    }
+    return countsAsSpending(c) ? [(c, signed)] : []
+  }
+
   public static func lines(_ s: LedgerState, in window: InsightsWindow? = nil) -> [InsightsLine] {
-    var projects: [ProjectID: Project] = [:]
-    for p in s.projects { projects[p.id] = p }
-    var categories: [CategoryID: Category] = [:]
-    for c in s.categories { categories[c.id] = c }
     var out: [InsightsLine] = []
-    for t in s.txns where t.countsInPlan {
+    for t in s.txns where !t.archived && !t.isTransfer {
       if let window, !window.contains(t.postedAt.date) { continue }
-      let carvedOut = t.projectID.flatMap { projects[$0] }.map { !$0.countInPlan } ?? false
-      let parts: [(category: CategoryID, minor: Int64)] = t.splits.isEmpty
-        ? (t.categoryID.map { [($0, t.amount.minor)] } ?? [])
-        : t.splits.map { ($0.categoryID, $0.amount.minor) }
-      let sign: Int64 = t.direction == .out ? 1 : -1
+      func line(_ part: Int, _ c: Category?, _ kind: InsightsLine.Kind, _ minor: Int64) {
+        out.append(InsightsLine(txnID: t.id, part: part, merchant: t.merchant, postedAt: t.postedAt,
+                                categoryID: c?.id ?? unsortedID, bucket: c?.bucket ?? .other, kind: kind,
+                                minor: minor))
+      }
+      for (i, part) in spentParts(t, in: s).enumerated() { line(i, part.category, .spent, part.minor) }
+      let carvedOut = s.project(t.projectID).map { !$0.countInPlan } ?? false
+      let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
+      let parts: [(category: CategoryID, minor: Int64, signed: Int64)] = t.splits.isEmpty
+        ? (t.categoryID.map { [($0, t.amount.minor, signed)] } ?? [])
+        : t.splits.map { ($0.categoryID, $0.amount.minor, $0.amount.minor) }
       for (i, part) in parts.enumerated() {
-        guard let c = categories[part.category] else { continue }
-        let kind: InsightsLine.Kind
-        let minor: Int64
-        switch c.kind {
-        case .excluded:
-          continue
-        case .income:
-          guard t.direction == .in else { continue }
-          kind = .income
-          minor = part.minor
-        case .spending:
-          guard !carvedOut else { continue }
-          switch c.bucket {
-          case .needs, .wants: kind = .spent
-          case .savings: kind = .saved
-          case .income, .project, .other: continue
-          }
-          minor = sign * part.minor
+        guard let c = s.category(part.category) else { continue }
+        if c.kind == .income, t.direction == .in {
+          line(100 + i, c, .income, part.minor)
+        } else if isSaving(c), !carvedOut {
+          line(200 + i, c, .saved, part.signed)
         }
-        out.append(InsightsLine(txnID: t.id, part: i, merchant: t.merchant, postedAt: t.postedAt,
-                                categoryID: c.id, bucket: c.bucket, kind: kind, minor: minor))
       }
     }
     return out
@@ -77,6 +91,8 @@ public enum InsightsEngine {
   public struct Totals: Sendable, Hashable {
     public var needs: Int64 = 0
     public var wants: Int64 = 0
+    public var unsorted: Int64 = 0
+    public var otherSpent: Int64 = 0
     public var saved: Int64 = 0
     public var income: Int64 = 0
     public var byCategory: [CategoryID: Int64] = [:]
@@ -94,14 +110,24 @@ public enum InsightsEngine {
           byCategory[l.categoryID, default: 0] += l.minor
           countByCategory[l.categoryID, default: 0] += 1
         case .spent:
-          if l.bucket == .needs { needs += l.minor } else { wants += l.minor }
+          if l.categoryID == InsightsEngine.unsortedID {
+            unsorted += l.minor
+          } else {
+            switch l.bucket {
+            case .needs: needs += l.minor
+            case .wants: wants += l.minor
+            default: otherSpent += l.minor
+            }
+          }
           byCategory[l.categoryID, default: 0] += l.minor
           countByCategory[l.categoryID, default: 0] += 1
         }
       }
     }
 
-    public var spent: Int64 { needs + wants }
+    public var spent: Int64 { needs + wants + unsorted + otherSpent }
+
+    public var onlyNeedsAndWants: Bool { unsorted == 0 && otherSpent == 0 }
 
     public func bucket(_ b: Bucket) -> Int64 {
       switch b {
@@ -109,7 +135,7 @@ public enum InsightsEngine {
       case .wants: wants
       case .savings: saved
       case .income: income
-      case .project, .other: 0
+      case .project, .other: otherSpent
       }
     }
   }
@@ -198,24 +224,41 @@ public enum InsightsEngine {
 
     let summary = summary(cur: cur, prev: prev, compared: compared, isCurrent: ctx.isCurrent, focus: focus)
 
-    let bucketRows: [InsightsRow] = [Bucket.needs, .wants].compactMap { b -> InsightsRow? in
+    var bucketRows: [InsightsRow] = [Bucket.needs, .wants].compactMap { b -> InsightsRow? in
       let amount = cur.bucket(b)
       guard amount != 0 else { return nil }
       return InsightsRow(
         id: "bucket.\(b.rawValue)", target: .bucket(b), title: b == .needs ? "Needs" : "Wants",
         glyph: b == .needs ? .rent : .shopping, hue: b.hue, bucket: b, amount: .aed(amount),
         sharePercent: percent(amount, of: spent), bar: Permille(0),
-        count: ctx.current.filter { $0.kind == .spent && $0.bucket == b }.count,
+        count: ctx.current.filter { matches($0, .bucket(b)) }.count,
         delta: delta(amount, prev.bucket(b)))
-    }.sorted { $0.amount.minor > $1.amount.minor }
+    }
+    if cur.otherSpent != 0 {
+      bucketRows.append(InsightsRow(
+        id: "bucket.other", target: .bucket(.other), title: "Other spending", glyph: .tag, hue: .other,
+        bucket: .other, amount: .aed(cur.otherSpent), sharePercent: percent(cur.otherSpent, of: spent),
+        bar: Permille(0), count: ctx.current.filter { matches($0, .bucket(.other)) }.count,
+        delta: delta(cur.otherSpent, prev.otherSpent)))
+    }
+    if cur.unsorted != 0 {
+      bucketRows.append(unsortedRow(title: "Not yet sorted", cur: cur, prev: prev, spent: spent, ctx: ctx,
+                                    delta: delta))
+    }
+    bucketRows.sort { $0.amount.minor > $1.amount.minor }
 
-    let categoryRows: [InsightsRow] = cur.byCategory.compactMap { id, amount -> InsightsRow? in
-      guard amount != 0, let c = s.category(id), c.bucket == .needs || c.bucket == .wants else { return nil }
+    var categoryRows: [InsightsRow] = cur.byCategory.compactMap { id, amount -> InsightsRow? in
+      guard amount != 0, let c = s.category(id), countsAsSpending(c) else { return nil }
       return InsightsRow(
         id: "category.\(id)", target: .category(id), title: c.name, glyph: c.glyph, hue: c.hue, bucket: c.bucket,
         amount: .aed(amount), sharePercent: percent(amount, of: spent), bar: Permille(0),
         count: cur.countByCategory[id] ?? 0, delta: delta(amount, prev.byCategory[id] ?? 0))
-    }.sorted { a, b in
+    }
+    if cur.unsorted != 0 {
+      categoryRows.append(unsortedRow(title: "Uncategorized", cur: cur, prev: prev, spent: spent, ctx: ctx,
+                                      delta: delta))
+    }
+    categoryRows.sort { a, b in
       a.amount.minor != b.amount.minor
         ? a.amount.minor > b.amount.minor : (order[a.id.dropCategory] ?? 0) < (order[b.id.dropCategory] ?? 0)
     }
@@ -225,7 +268,7 @@ public enum InsightsEngine {
     let changes: [InsightsChange]
     let notice: InsightsNotice?
     if let comparison = ctx.comparison {
-      let spentOnly = { (t: Totals) in t.byCategory.filter { s.category($0.key)?.bucket != .savings } }
+      let spentOnly = { (t: Totals) in t.byCategory.filter { countsAsSpending(s.category($0.key)) } }
       changes = topChanges(current: spentOnly(cur), previous: spentOnly(prev)).compactMap { item in
         guard let c = s.category(item.category) else { return nil }
         let now = cur.byCategory[item.category] ?? 0
@@ -252,12 +295,12 @@ public enum InsightsEngine {
 
     let footer: MoneyPhrase = MoneyPhrase([
       .text("Share of "), .amount(.aed(spent)),
-      .text(ctx.isCurrent ? " spent so far." : " spent on needs and wants."),
+      .text(ctx.isCurrent ? " spent so far." : (cur.onlyNeedsAndWants ? " spent on needs and wants." : " spent.")),
       .text(" Tap a row to see its transactions."),
     ])
     let empty = ctx.isCurrent
-      ? "Nothing spent on needs and wants in \(focus.name) yet."
-      : "Nothing was spent on needs and wants in \(focus.name)."
+      ? "Nothing spent in \(focus.name) yet."
+      : "Nothing was spent in \(focus.name)."
 
     return InsightsSnapshot(
       months: months, focus: focus, isCurrent: ctx.isCurrent, title: title(of: months), status: status,
@@ -266,6 +309,14 @@ public enum InsightsEngine {
       summary: summary, buckets: scaled(bucketRows), categories: scaled(categoryRows), merchants: scaled(merchantRows),
       lensFooter: footer, lensEmpty: empty, changes: changes, changesNotice: notice, flow: flow, flowEmpty: flowEmpty,
       reports: reports(s, ctx, cur: cur, now: now), share: share(focus: focus, isCurrent: ctx.isCurrent, totals: cur))
+  }
+
+  static func unsortedRow(title: String, cur: Totals, prev: Totals, spent: Int64, ctx: Context,
+                          delta: (Int64, Int64) -> InsightsDelta?) -> InsightsRow {
+    InsightsRow(
+      id: "category.", target: .unsorted, title: title, glyph: .review, hue: .other, bucket: .other,
+      amount: .aed(cur.unsorted), sharePercent: percent(cur.unsorted, of: spent), bar: Permille(0),
+      count: cur.countByCategory[unsortedID] ?? 0, delta: delta(cur.unsorted, prev.unsorted))
   }
 
   static func scaled(_ rows: [InsightsRow]) -> [InsightsRow] {
@@ -285,6 +336,14 @@ public enum InsightsEngine {
       InsightsLegendRow(kind: .wants, title: "Wants", amount: .aed(cur.wants), delta: delta(cur.wants, prev.wants),
                         target: .bucket(.wants)),
     ]
+    if cur.otherSpent != 0 || prev.otherSpent != 0 {
+      legend.append(InsightsLegendRow(kind: .other, title: "Other spending", amount: .aed(cur.otherSpent),
+                                      delta: delta(cur.otherSpent, prev.otherSpent), target: .bucket(.other)))
+    }
+    if cur.unsorted != 0 || prev.unsorted != 0 {
+      legend.append(InsightsLegendRow(kind: .unsorted, title: "Not yet sorted", amount: .aed(cur.unsorted),
+                                      delta: delta(cur.unsorted, prev.unsorted), target: .unsorted))
+    }
     if cur.saved != 0 || prev.saved != 0 || cur.income > 0 {
       legend.append(InsightsLegendRow(kind: .savings, title: "Moved to savings", amount: .aed(cur.saved),
                                       delta: delta(cur.saved, prev.saved), target: .bucket(.savings)))
@@ -304,7 +363,8 @@ public enum InsightsEngine {
     return InsightsSummary(
       label: "Net · in minus spent", figure: .aed(net), isNet: true, keptPercent: percent(net, of: cur.income),
       income: .aed(cur.income), spent: .aed(cur.spent), saved: .aed(cur.saved),
-      split: InsightsSplit(needs: cur.needs, wants: cur.wants, savings: cur.saved, unspent: unspent),
+      split: InsightsSplit(needs: cur.needs, wants: cur.wants, unsorted: cur.unsorted + cur.otherSpent,
+                           savings: cur.saved, unspent: unspent),
       note: MoneyPhrase([.text("Where "), .amount(.aed(cur.income)), .text(" of income went")]),
       legend: legend)
   }
@@ -361,10 +421,14 @@ public enum InsightsEngine {
               "Your first full month shows here on 1 \(next.name). Each month after that adds a bar, up to six.")
     }
     let avg = average(complete.map(\.out.minor))
+    let sortedOnly = ctx.all.allSatisfy { l in
+      l.kind != .spent || !(months.contains { $0.month == l.postedAt.date.yearMonth })
+        || (l.categoryID != unsortedID && (l.bucket == .needs || l.bucket == .wants))
+    }
     let span = months.count == 1
       ? months[0].month.name : "\(months[0].month.shortName)\u{2013}\(months[months.count - 1].month.shortName)"
     let note = MoneyPhrase([
-      .text("Out is spending on needs and wants, "), .amount(.aed(avg)),
+      .text(sortedOnly ? "Out is spending on needs and wants, " : "Out is everything you spent, "), .amount(.aed(avg)),
       .text(" a month on average. Transfers between your accounts and moves to savings are left out."),
     ])
     return (InsightsFlow(span: span, months: months, averageOut: .aed(avg), note: note), nil)
@@ -436,7 +500,10 @@ public enum InsightsEngine {
   public static func matches(_ l: InsightsLine, _ target: InsightsTarget) -> Bool {
     switch target {
     case .bucket(.savings): l.kind == .saved
-    case .bucket(let b): l.kind == .spent && l.bucket == b
+    case .bucket(.other), .bucket(.project), .bucket(.income):
+      l.kind == .spent && l.categoryID != unsortedID && l.bucket != .needs && l.bucket != .wants
+    case .bucket(let b): l.kind == .spent && l.categoryID != unsortedID && l.bucket == b
+    case .unsorted: l.kind == .spent && l.categoryID == unsortedID
     case .category(let c): l.kind != .income && l.categoryID == c
     case .merchant(let m): l.kind == .spent && l.merchant == m
     }
@@ -452,7 +519,10 @@ public enum InsightsEngine {
     let name: String
     switch target {
     case .bucket(.savings): name = "Savings"
-    case .bucket(let b): name = b == .needs ? "Needs" : "Wants"
+    case .bucket(.needs): name = "Needs"
+    case .bucket(.wants): name = "Wants"
+    case .bucket: name = "Other spending"
+    case .unsorted: name = "Not yet sorted"
     case .category(let c): name = s.category(c)?.name ?? "Category"
     case .merchant(let m): name = m
     }
