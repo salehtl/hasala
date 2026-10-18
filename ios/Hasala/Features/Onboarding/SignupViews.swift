@@ -113,25 +113,28 @@ struct AboutYouView: View {
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        AccountField("Your name", help: "What Hasala calls you, in the app and in emails.", error: model.nameError) {
-          WrappingTextField(placeholder: "", text: $model.displayName)
-            .textContentType(.name)
-            .textInputAutocapitalization(.words)
-            .autocorrectionDisabled()
-            .accessibilityIdentifier("about.name")
+        VStack(alignment: .leading, spacing: 12) {
+          AccountField("Your name", help: "What Hasala calls you, in the app and in emails.", error: model.nameError) {
+            WrappingTextField(placeholder: "", text: $model.displayName)
+              .textContentType(.name)
+              .textInputAutocapitalization(.words)
+              .autocorrectionDisabled()
+              .accessibilityIdentifier("about.name")
+          }
+          AccountField("Email", help: model.emailHelp, error: model.emailError) {
+            WrappingTextField(placeholder: "you@example.com", text: $model.email)
+              .textContentType(.username)
+              .keyboardType(.emailAddress)
+              .textInputAutocapitalization(.never)
+              .autocorrectionDisabled()
+              .accessibilityIdentifier("about.email")
+          } trailing: {
+            if model.emailConfirmed, !typeSize.isAccessibilitySize { ConfirmedChip() }
+          }
+          // At the accessibility sizes the address needs the box's width: the chip goes under it.
+          if model.emailConfirmed, typeSize.isAccessibilitySize { ConfirmedChip() }
         }
-        AccountField("Email", help: model.emailHelp, error: model.emailError) {
-          WrappingTextField(placeholder: "you@example.com", text: $model.email)
-            .textContentType(.username)
-            .keyboardType(.emailAddress)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .accessibilityIdentifier("about.email")
-        } trailing: {
-          if model.emailConfirmed, !typeSize.isAccessibilitySize { ConfirmedChip() }
-        }
-        // At the accessibility sizes the address needs the box's width: the chip goes under it.
-        if model.emailConfirmed, typeSize.isAccessibilitySize { ConfirmedChip() }
+        .id(Self.fieldsID)
         FailureBanner(failure: model.failure)
         GlyphNote(icon: .shieldCheck,
                   text: "We only email you about your account: codes, invites and security alerts. Never your money, never marketing.")
@@ -142,7 +145,10 @@ struct AboutYouView: View {
       }
       LinkButton(title: "Already have an account? Sign in", identifier: "about.signIn", action: onSignIn)
     }
+    .revealsOnKeyboard(Self.fieldsID)
   }
+
+  private static let fieldsID = "about.fields"
 }
 
 /// Six-box email code entry, shared by signup, forgot password and recovery.
@@ -251,28 +257,31 @@ struct CreatePasswordView: View {
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        LabeledField(label: "Password") {
-          // A UIKit field: SwiftUI's can't carry Hasala's password rules for AutoFill.
-          RuledNewPasswordField(placeholder: "12 characters or more", text: $model.newPassword, secure: !model.passwordShown,
-                                identifier: "password.new")
-        } accessory: {
-          ShowHidePill(visible: $model.passwordShown)
-        }
-        if !model.newPassword.isEmpty {
-          PasswordStrengthCard(assessment: model.passwordAssessment)
-            .hTransition(.rise)
-        }
-        VStack(alignment: .leading, spacing: 8) {
-          LabeledField(label: "Type it again", error: mismatch ? "Passwords don't match." : nil) {
-            RuledNewPasswordField(placeholder: "Confirm password", text: $model.confirmPassword, secure: true,
-                                  identifier: "password.confirm")
+        VStack(alignment: .leading, spacing: 12) {
+          LabeledField(label: "Password") {
+            // A UIKit field: SwiftUI's can't carry Hasala's password rules for AutoFill.
+            RuledNewPasswordField(placeholder: "12 characters or more", text: $model.newPassword, secure: !model.passwordShown,
+                                  identifier: "password.new")
+          } accessory: {
+            ShowHidePill(visible: $model.passwordShown)
           }
-          if model.passwordsMatch {
-            StatusLine(text: "Passwords match.", tone: .success)
-              .padding(.top, 2)
+          if !model.newPassword.isEmpty {
+            PasswordStrengthCard(assessment: model.passwordAssessment)
+              .hTransition(.rise)
           }
+          VStack(alignment: .leading, spacing: 8) {
+            LabeledField(label: "Type it again", error: mismatch ? "Passwords don't match." : nil) {
+              RuledNewPasswordField(placeholder: "Confirm password", text: $model.confirmPassword, secure: true,
+                                    identifier: "password.confirm")
+            }
+            if model.passwordsMatch {
+              StatusLine(text: "Passwords match.", tone: .success)
+                .padding(.top, 2)
+            }
+          }
+          .padding(.top, 4)
         }
-        .padding(.top, 4)
+        .id(Self.fieldsID)
         NoteRow(icon: .lock,
                 text: "Your password signs you in, but it can't unlock your data on a new iPhone. The 12 words in the next step do that.")
       }
@@ -287,7 +296,10 @@ struct CreatePasswordView: View {
         model.back()
       }
     }
+    .revealsOnKeyboard(Self.fieldsID)
   }
+
+  private static let fieldsID = "password.fields"
 
   /// Said only once the second field is as long as the first: never while still typing.
   private var mismatch: Bool {

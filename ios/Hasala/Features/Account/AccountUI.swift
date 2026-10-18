@@ -214,6 +214,47 @@ private struct ActionDock<Content: View>: View {
       .padding(.top, 8)
       .padding(.bottom, keyboardUp ? 12 : 0)
       .environment(\.pillDisabledBase, HColor.surfaceSecondary)
+      .environment(\.dockTyping, keyboardUp)
+      .hAnimation(.fade, value: keyboardUp)
+  }
+}
+
+extension EnvironmentValues {
+  @Entry var dockTyping = false
+}
+
+private struct DockLinkWhileTyping: ViewModifier {
+  @Environment(\.dockTyping) private var typing
+
+  func body(content: Content) -> some View {
+    if !typing {
+      content.transition(.opacity)
+    }
+  }
+}
+
+extension View {
+  func dockLink() -> some View {
+    modifier(DockLinkWhileTyping())
+  }
+
+  func revealsOnKeyboard(_ id: String) -> some View {
+    modifier(KeyboardReveal(id: id))
+  }
+}
+
+private struct KeyboardReveal: ViewModifier {
+  let id: String
+  @Environment(\.hMotion) private var motion
+
+  func body(content: Content) -> some View {
+    ScrollViewReader { proxy in
+      content
+        .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.bottom > 120 } action: { up in
+          guard up else { return }
+          Task { withAnimation(motion.animation(.fade)) { proxy.scrollTo(id) } }
+        }
+    }
   }
 }
 
@@ -691,6 +732,7 @@ struct SecondaryLink: View {
     // A link dims while pressed, as text buttons do; it has no fill to darken.
     .buttonStyle(.plain)
     .accessibilityIdentifier(identifier)
+    .dockLink()
   }
 }
 
@@ -896,6 +938,7 @@ struct WebLink: View {
         .contentShape(Rectangle())
     }
     .accessibilityIdentifier(identifier)
+    .dockLink()
   }
 }
 

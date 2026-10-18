@@ -106,6 +106,58 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "phrase.start").waitForExistence(timeout: 10))
   }
 
+  // MARK: - The stories wait under a pushed screen
+
+  /// Story 1 is playing when "Get started" opens Welcome · Join: under it the stories
+  /// don't move on, and Back finds the same story.
+  @MainActor
+  func testStoriesWaitUnderAPushedScreen() throws {
+    let app = launch(scenario: "newUser")
+    let progress = el(app, "stories.progress")
+    XCTAssertTrue(progress.waitForExistence(timeout: 15))
+    XCTAssertEqual(progress.label, "Page 1 of 4")
+    tap(app, "stories.getStarted")
+    XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: uiWait))
+    sleep(8)
+    back(app)
+    XCTAssertTrue(progress.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(progress.label, "Page 1 of 4", "the stories moved on under Welcome · Join")
+  }
+
+  // MARK: - The keyboard
+
+  /// With the keyboard up, the dock keeps its button over the keyboard and its links step
+  /// aside, so they never cover a field (invite, about you, the password).
+  @MainActor
+  func testDockLinksStepAsideForTheKeyboard() throws {
+    try dockLinksStepAside(arguments: [])
+  }
+
+  @MainActor
+  func testDockLinksStepAsideForTheKeyboardAtLargeText() throws {
+    try dockLinksStepAside(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXXL"])
+  }
+
+  @MainActor
+  private func dockLinksStepAside(arguments: [String]) throws {
+    let app = launch(scenario: "newUser", screen: "join.invite", arguments: arguments)
+    tap(app, "invite.field")
+    assertClearOfKeyboard(app, shown: ["invite.field"], button: "invite.continue", hidden: ["invite.waitlist"],
+                          "Keyboard · Invite")
+
+    let about = launch(scenario: "newUser", screen: "join.aboutTyped", arguments: arguments)
+    tap(about, "about.name")
+    assertClearOfKeyboard(about, shown: ["about.name", "about.email"], button: "about.continue",
+                          hidden: ["about.signIn"], "Keyboard · About you")
+
+    let password = launch(scenario: "newUser", screen: "join.method", arguments: arguments)
+    tap(password, "method.password")
+    tap(password, "method.continue")
+    tap(password, "password.new")
+    assertClearOfKeyboard(password, shown: ["password.new", "password.confirm"], button: "password.create",
+                          hidden: ["password.useFaceID"], "Keyboard · Password")
+  }
+
   // MARK: - Reduce Motion
 
   /// With Reduce Motion the stories cross-fade (a tap on the drawing moves on, no slide),
