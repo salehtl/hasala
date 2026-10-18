@@ -22,11 +22,11 @@ public enum HomeEngine {
       return HomeSnapshot(
         header: header, hero: endedHero(s, month: month, plan: plan), notifications: notifications,
         widgets: [.budgetPace(budgetPace(plan, label: "Ended \(month.lastDay.dayMonth)"))],
-        period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now))
+        period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
     }
     return HomeSnapshot(
       header: header, hero: rangeHero(s, period: p, now: now), notifications: notifications, widgets: [],
-      period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now))
+      period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
   }
 
   // MARK: - The hero
@@ -168,7 +168,7 @@ public enum HomeEngine {
     return MoneyPhrase([.text("\(c.name) "), .amount(.aed(spent), hidden: 3), .text(" · your top want")])
   }
 
-  static func aboutNow(_ s: LedgerState, now: LocalDateTime) -> [AboutNowRow] {
+  static func aboutNow(_ s: LedgerState, now: LocalDateTime, review: ReviewWindow) -> [AboutNowRow] {
     var rows: [AboutNowRow] = []
     if let next = nextBill(s, now: now) {
       let n = now.date.days(until: next.nextDue)
@@ -178,7 +178,7 @@ public enum HomeEngine {
         detail: MoneyPhrase([.text(next.approximate ? "~" : ""), .amount(next.amount, hidden: 3), .text(" · \(when)")]),
         destination: .bills))
     }
-    let waiting = ReviewEngine.queue(s).count
+    let waiting = ReviewEngine.queue(s, in: review).count
     if waiting > 0 {
       rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(waiting) waiting")]), destination: .review))
     }
