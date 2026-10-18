@@ -123,8 +123,8 @@ public enum ActivityEngine {
   public static func snapshot(_ s: LedgerState, now: LocalDateTime, filter: TxnFilter) -> ActivitySnapshot {
     let month = now.date.yearMonth
     let inMonth = s.txns.filter { $0.postedAt.date.yearMonth == month && !$0.archived }
-    let reviewQueue = inMonth.filter(\.needsReview)
-    let billCount = inMonth.filter { isBill($0, s) && !$0.needsReview }.count
+    let reviewQueue = inMonth.filter(\.inReview)
+    let billCount = inMonth.filter { isBill($0, s) && !$0.inReview }.count
 
     let chips = [
       ActivityChip(kind: .all, count: nil, accentCount: false),
@@ -154,7 +154,7 @@ public enum ActivityEngine {
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime) -> ReviewSummary {
     // Skipped cards leave the deck until tomorrow, but they are still unsorted.
-    let queue = s.txns.filter { $0.needsReview && !$0.archived }
+    let queue = s.txns.filter(\.inReview)
     let unplanned = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + $1.amount.minor }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
@@ -175,12 +175,12 @@ public enum ActivityEngine {
     }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !t.countsInPlan { return false }
     switch f.kind {
-    case .all: return !t.archived && (f.isSearching || f.category != nil || !t.needsReview)
-    case .toReview: return !t.archived && t.needsReview
-    case .bills: return !t.archived && !t.needsReview && isBill(t, s)
+    case .all: return !t.archived && (f.isSearching || f.category != nil || !t.inReview)
+    case .toReview: return t.inReview
+    case .bills: return !t.archived && !t.inReview && isBill(t, s)
     case .transfers: return !t.archived && t.isTransfer
     // Money that came in and stays in: not a transfer between accounts, not a refund.
-    case .income: return !t.archived && !t.needsReview && t.direction == .in && !t.isTransfer && !t.isRefund
+    case .income: return !t.archived && !t.inReview && t.direction == .in && !t.isTransfer && !t.isRefund
     case .archived: return t.archived
     }
   }
@@ -213,7 +213,7 @@ public enum ActivityEngine {
   public static func row(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
     let c = s.category(t.categoryID)
     let detail: String
-    if t.needsReview {
+    if t.inReview {
       detail = "To review · \(t.postedAt.time)"
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
@@ -222,17 +222,17 @@ public enum ActivityEngine {
     }
     let glyph = t.isTransfer ? Glyph.transfer : (c?.glyph ?? .review)
     return MiniTxnRow(
-      id: t.id, merchant: t.title, glyph: glyph, hue: t.needsReview ? .other : (c?.hue ?? .other), detail: detail,
+      id: t.id, merchant: t.title, glyph: glyph, hue: t.inReview ? .other : (c?.hue ?? .other), detail: detail,
       amount: t.amount, isIncome: t.direction == .in,
-      monogram: (t.needsReview || c == nil) ? String(t.merchant.prefix(1)).uppercased() : nil,
-      toReview: t.needsReview
+      monogram: (t.inReview || c == nil) ? String(t.merchant.prefix(1)).uppercased() : nil,
+      toReview: t.inReview
     )
   }
 
   /// A row of a category's list: the day takes the category's place ("Sat 10 Oct · 13:20").
   public static func dated(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
     var r = row(t, s)
-    if !t.needsReview && t.splits.isEmpty {
+    if !t.inReview && t.splits.isEmpty {
       r.detail = "\(t.postedAt.date.short) · \(t.detailOverride ?? t.postedAt.time)"
     }
     return r

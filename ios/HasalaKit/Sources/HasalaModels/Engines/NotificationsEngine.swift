@@ -77,7 +77,7 @@ public enum NotificationsEngine {
     // Transactions to sort: one item for the whole queue (the Review tab counts them one by one).
     let review = ActivityEngine.reviewSummary(s, now: now)
     if review.count > 0 {
-      let newest = s.txns.filter { $0.needsReview && !$0.archived }.map(\.postedAt.date).max() ?? today
+      let newest = s.txns.filter(\.inReview).map(\.postedAt.date).max() ?? today
       dated.append((newest, NotificationItem(
         id: "review", disc: .hue(.sky, .review),
         title: "\(review.count) transaction\(review.count == 1 ? "" : "s") to sort",

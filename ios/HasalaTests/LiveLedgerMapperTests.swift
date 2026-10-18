@@ -259,6 +259,32 @@ struct LiveLedgerMapperTests {
     #expect(try a.projection.reader.txn(steam.id)?.needsReview == true)
   }
 
+  @Test func anUncategorizedRowFromAnEarlierMonthIsInThatMonthsQueue() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let author = LedgerEditAuthor(observer: a.observer, outbox: a.outbox)
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: author, profile: Self.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "review.window.tests")!), clock: { MayaLedger.now })
+    await store.reload()
+    let old = try #require(store.state.txns.first { $0.merchant == "Carrefour" && $0.postedAt.date == LocalDate(2026, 9, 13) })
+    try await author.undo([.category(txn: old.id, category: nil, needsReview: false)])
+    try await Self.eventually { try a.projection.reader.txn(old.id)?.category == nil }
+    await store.reload()
+    let row = try #require(try a.projection.reader.txn(old.id))
+    #expect(!row.needsReview && row.reviewLane == "uncategorized")
+    let september = ReviewWindow.month(YearMonth(2026, 9))
+    #expect(ReviewEngine.queue(store.state, in: september).map(\.id) == [old.id])
+    #expect(!ReviewEngine.queue(store.state, in: .month(YearMonth(2026, 10))).contains { $0.id == old.id })
+    let app = AppModel(store: store)
+    #expect(app.reviewCount == 6)
+    app.reviewScope = september
+    #expect(app.reviewCount == 1)
+    #expect(try store.apply(.categorize(old.id, "groceries", learnRule: false, project: nil)) != nil)
+    #expect(app.reviewCount == 0)
+  }
+
   @Test func aStoppedImportKeepsItsCount() throws {
     let a = try Self.account()
     let store = LiveLedgerStore(

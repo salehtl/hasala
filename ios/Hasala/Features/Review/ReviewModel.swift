@@ -45,6 +45,7 @@ final class ReviewViewModel: ReviewDeckModel {
   private var learned: Set<TxnID> = []
   /// The order this session reads the queue in: oldest first, or from the row that opened it.
   private let order: [TxnID]
+  private let window: ReviewWindow
   let total: Int
   var picking: ReviewPick?
   var celebrated = false
@@ -52,7 +53,8 @@ final class ReviewViewModel: ReviewDeckModel {
 
   init(app: AppModel) {
     self.app = app
-    let queue = ReviewEngine.queue(app.store.state).map(\.id)
+    window = app.reviewWindow
+    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: ReviewEntry.take(for: app))
     #if HASALA_MOCKS
@@ -65,7 +67,7 @@ final class ReviewViewModel: ReviewDeckModel {
   var cards: [ReviewCardModel] {
     memo.value(for: app.store.revision) {
       let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
-      return ReviewEngine.cards(app.store.state).enumerated()
+      return ReviewEngine.cards(app.store.state, in: window).enumerated()
         .sorted { (rank[$0.element.id] ?? order.count + $0.offset) < (rank[$1.element.id] ?? order.count + $1.offset) }
         .map(\.element)
     }
@@ -83,7 +85,7 @@ final class ReviewViewModel: ReviewDeckModel {
   var sorted: [SortedLine] {
     let s = app.store.state
     return sortedIDs.compactMap { id in
-      guard let t = s.txn(id), !t.needsReview, let c = s.category(t.categoryID) else { return nil }
+      guard let t = s.txn(id), !t.inReview, let c = s.category(t.categoryID) else { return nil }
       return ReviewEngine.sortedLine(t, into: c, learnedRule: learned.contains(id))
     }
   }
@@ -92,7 +94,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let s = app.store.state
     var options = ReviewEngine.options(for: choice, s, txn: s.txn(card))
     // The suggestion leads its bucket's list (Paper "Pick a need": "Suggested").
-    if let sug = s.txn(card)?.suggestion, let i = options.firstIndex(where: { $0.id == sug }) {
+    if let sug = s.txn(card)?.reviewSuggestion, let i = options.firstIndex(where: { $0.id == sug }) {
       options.insert(options.remove(at: i), at: 0)
     }
     return options
@@ -113,7 +115,7 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   func useSuggestion(_ card: TxnID) -> Bool {
-    guard let c = app.store.state.txn(card)?.suggestion else { return false }
+    guard let c = app.store.state.txn(card)?.reviewSuggestion else { return false }
     guard app.perform(.categorize(card, c, learnRule: false, project: nil)) else { return false }
     record(card, learnedRule: false)
     return true
