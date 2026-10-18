@@ -130,6 +130,8 @@ func TestDownTo21IsWhat00021Left(t *testing.T) { downIsWhatUpLeft(t, 21) }
 // 00023's Down is pgtest-only too, and gives back exactly what 00022 left.
 func TestDownTo22IsWhat00022Left(t *testing.T) { downIsWhatUpLeft(t, 22) }
 
+func TestDownTo23IsWhat00023Left(t *testing.T) { downIsWhatUpLeft(t, 23) }
+
 // downIsWhatUpLeft compares a database migrated up to version with one
 // migrated all the way up and then down to version.
 func downIsWhatUpLeft(t *testing.T, version int64) {
@@ -621,9 +623,10 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	}
 	// 00001 plus the pre-deploy migrations of 00002–00029 (squashed into the
 	// baseline before the first QA deploy): today 00010_keys, 00020_mailbox_links,
-	// 00021_waitlist_invites_mail, 00022_accounts and 00023_mailbox_outlook.
+	// 00021_waitlist_invites_mail, 00022_accounts, 00023_mailbox_outlook and
+	// 00024_mailbox_one_account.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 23 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 23", latest, err)
+	if err != nil || latest != 24 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 24", latest, err)
 	}
 }
