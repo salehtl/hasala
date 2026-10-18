@@ -43,14 +43,15 @@ enum Live {
 
   /// A user awaiting bootstrap with `aak`, and its credential's attestation hash.
   static func seedUser(_ user: UserID, email: String, aak: Data, attestationHash: Data, random: some RandomSource) throws {
+    let handle = hex(try random.bytes(32))
     _ = try sql(
       """
       BEGIN;
-      INSERT INTO users (id, idp, idp_sub_hash, email_norm, authority_pubkey_pending)
-        VALUES ('\(user.string)', 'passkey', \(hex(try random.bytes(32))), '\(email)', \(hex(aak)));
+      INSERT INTO users (id, user_handle, created_at, email_norm, email_verified_at, display_name, authority_pubkey_pending)
+        VALUES ('\(user.string)', \(handle), now(), '\(email)', now(), 'Live Test', \(hex(aak)));
       INSERT INTO webauthn_credentials (credential_id, user_id, user_handle, public_key, backup_eligible, backup_state,
                                         created_at, attestation_sha256)
-        VALUES (\(hex(try random.bytes(16))), '\(user.string)', \(hex(try random.bytes(32))), '\\x00', false, false,
+        VALUES (\(hex(try random.bytes(16))), '\(user.string)', \(handle), '\\x00', false, false,
                 now(), \(hex(attestationHash)));
       INSERT INTO oplog_seq (user_id) VALUES ('\(user.string)');
       INSERT INTO account_usage (user_id, resource, amount) VALUES ('\(user.string)', 'oplog_hot_bytes', 0);
@@ -63,8 +64,8 @@ enum Live {
     let token = Base64.encodeURL(try random.bytes(32))
     _ = try sql(
       """
-      INSERT INTO sessions (token_hash, user_id, expires_at)
-        VALUES (\(hex(sha256(Data(token.utf8)))), '\(user.string)', now() + interval '1 day');
+      INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
+        VALUES (\(hex(sha256(Data(token.utf8)))), '\(user.string)', 'register', now(), now(), now() + interval '1 day');
       """)
     return token
   }

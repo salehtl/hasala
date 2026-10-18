@@ -253,12 +253,20 @@
       await pause()
       // `recover/finish` refuses a kind other than the verified one (uniformly).
       guard recoveryKind == credential.method else { throw .refused }
+      let (email, devices) = (security.email, security.devices)
       if case .password(let pw) = credential {
         password = pw
-        if existing == .none { existing = .passwordOnly }
+        existing = .passwordOnly
+        security = Self.securityState(for: .passwordOnly)
+        security.passwordChanged = "Changed today"
       } else {
+        password = nil
         existing = .passkey
+        security = Self.securityState(for: .passkey)
+        security.passkeys = [security.passkeys[0]]
       }
+      security.email = email
+      security.devices = devices
       profile = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail, method: credential.method)
     }
 
