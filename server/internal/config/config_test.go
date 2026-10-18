@@ -317,6 +317,29 @@ func TestTheOutlookGroupIsALinkAndAnOptionalPush(t *testing.T) {
 	wantErr(t, env{"HASALA_MAILBOX_ROUTE_KEY_FILE": key}, "missing: gmail.ios_client_id")
 }
 
+func TestTheOpsNoticeIsAnNtfyTopic(t *testing.T) {
+	if c := mustLoad(t, env{}); c.Ops.Enabled() {
+		t.Fatal("the ops notice is on by default")
+	}
+	c := mustLoad(t, env{"HASALA_OPS_NTFY_URL": "http://127.0.0.1:2586/kakapo", "HASALA_OPS_NTFY_CLICK": "https://console.example/"})
+	if !c.Ops.Enabled() || c.Ops.NtfyClick != "https://console.example/" {
+		t.Fatalf("ops: %+v", c.Ops)
+	}
+	mustLoad(t, env{"HASALA_OPS_NTFY_URL": "https://ntfy.example/topic"})
+	wantErr(t, env{"HASALA_OPS_NTFY_CLICK": "https://console.example/"}, "needs HASALA_OPS_NTFY_URL")
+	for name, u := range map[string]string{
+		"no topic": "http://127.0.0.1:2586/",
+		"scheme":   "ftp://127.0.0.1/topic",
+		"userinfo": "http://u:p@127.0.0.1:2586/topic",
+		"query":    "http://127.0.0.1:2586/topic?auth=x",
+		"no host":  "http:///topic",
+	} {
+		t.Run(name, func(t *testing.T) { wantErr(t, env{"HASALA_OPS_NTFY_URL": u}, "HASALA_OPS_NTFY_URL") })
+	}
+	wantErr(t, env{"HASALA_OPS_NTFY_URL": "http://127.0.0.1:2586/kakapo", "HASALA_OPS_NTFY_CLICK": "http://console.example/"},
+		"HASALA_OPS_NTFY_CLICK")
+}
+
 func TestSecretFilesMustBePrivate(t *testing.T) {
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": secretFile(t, 0o640)}, "no group or other permission")
 	wantErr(t, env{"HASALA_AUTH_KEY_FILE": filepath.Join(t.TempDir(), "absent")}, "secret file")

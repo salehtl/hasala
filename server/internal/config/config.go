@@ -50,6 +50,8 @@ type Config struct {
 	Email    EmailConfig    `toml:"email"`
 	// Web is spec 07's website routes and mail limits (environment only).
 	Web WebConfig `toml:"-"`
+	// Ops is the operator's notices (environment only).
+	Ops OpsConfig `toml:"-"`
 
 	// Console is the operator console's configuration (spec 07 §8, §14.1). It
 	// is environment-only and read only by the console mode; serve refuses to
@@ -276,6 +278,16 @@ type WebConfig struct {
 	RateBulk           int64         // HASALA_EMAIL_RATE_BULK, per hour
 	LogRetention       time.Duration // HASALA_EMAIL_LOG_RETENTION
 }
+
+// OpsConfig is the operator's ntfy notice for each new early-access request
+// (a waitlist entry that confirmed its address). Off when NtfyURL is empty.
+type OpsConfig struct {
+	NtfyURL   string // HASALA_OPS_NTFY_URL: the ntfy topic URL, no credentials in it
+	NtfyClick string // HASALA_OPS_NTFY_CLICK: optional https URL the notice opens
+}
+
+// Enabled reports whether the notice is configured.
+func (o OpsConfig) Enabled() bool { return o.NtfyURL != "" }
 
 // ConsoleConfig is the operator console's environment (spec 07 §8.1, §14.1).
 // Only `hasalad console` reads it.
@@ -514,6 +526,8 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	integer("HASALA_EMAIL_RATE_WAITLIST", &c.Web.RateWaitlist)
 	integer("HASALA_EMAIL_RATE_BULK", &c.Web.RateBulk)
 	dur("HASALA_EMAIL_LOG_RETENTION", &c.Web.LogRetention)
+	str("HASALA_OPS_NTFY_URL", &c.Ops.NtfyURL)
+	str("HASALA_OPS_NTFY_CLICK", &c.Ops.NtfyClick)
 
 	str("HASALA_CONSOLE_LISTEN", &c.Console.Listen)
 	str("HASALA_CONSOLE_METRICS_LISTEN", &c.Console.MetricsListen)
@@ -574,6 +588,9 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 		return err
 	}
 	if err := c.validateOutlook(); err != nil {
+		return err
+	}
+	if err := c.validateOps(); err != nil {
 		return err
 	}
 	if err := c.validateEmail(prod); err != nil {
@@ -789,6 +806,27 @@ func (c Config) validateOutlook() error {
 	}
 	if a, b := hostOf(o.NotificationURL), hostOf(o.LifecycleURL); a != b {
 		return fmt.Errorf("outlook.notification_url and outlook.lifecycle_url name different hosts (%s, %s)", a, b)
+	}
+	return nil
+}
+
+func (c Config) validateOps() error {
+	o := c.Ops
+	if !o.Enabled() {
+		if o.NtfyClick != "" {
+			return errors.New("HASALA_OPS_NTFY_CLICK needs HASALA_OPS_NTFY_URL")
+		}
+		return nil
+	}
+	u, err := url.Parse(o.NtfyURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil ||
+		u.Path == "" || u.Path == "/" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("HASALA_OPS_NTFY_URL %q: want http(s)://<host>/<topic>, with no credentials, query or fragment", o.NtfyURL)
+	}
+	if o.NtfyClick != "" {
+		if u, err := url.Parse(o.NtfyClick); err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return fmt.Errorf("HASALA_OPS_NTFY_CLICK %q: want an https URL", o.NtfyClick)
+		}
 	}
 	return nil
 }

@@ -53,6 +53,9 @@ type Service struct {
 	MaxOpen, MaxPending int
 	// ConfirmedRetention is HASALA_WAITLIST_RETENTION (180 days).
 	ConfirmedRetention time.Duration
+	// OnConfirmed, when set, runs after a confirmation commits: the entry is
+	// then on the console's list to approve. It gets nothing about the entry.
+	OnConfirmed func()
 
 	mu        sync.Mutex
 	countsAt  time.Time
@@ -195,6 +198,9 @@ func (s *Service) Confirm(ctx context.Context, token string) (string, error) {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", err
+	}
+	if s.OnConfirmed != nil {
+		s.OnConfirmed()
 	}
 	return "confirmed", nil
 }

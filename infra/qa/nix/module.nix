@@ -220,6 +220,12 @@ let
     HASALA_TURNSTILE_SECRET_FILE = "%d/turnstile-secret";
     HASALA_TURNSTILE_REQUIRED = "true";
     HASALA_TURNSTILE_HOSTNAMES = cfg.rpId;
+  }
+  // optionalAttrs cfg.monitoring.earlyAccessNotice {
+    HASALA_OPS_NTFY_URL = cfg.monitoring.ntfyUrl;
+  }
+  // optionalAttrs (cfg.monitoring.earlyAccessNotice && cfg.console.enable) {
+    HASALA_OPS_NTFY_CLICK = "https://${toString cfg.console.host}/";
   };
 
   hasaladCredentials =
@@ -868,7 +874,8 @@ in
         default = [ ];
         description = "OnFailure= units for every Hasala unit, e.g. [ \"notify-failure@%n.service\" ].";
       };
-      ntfyUrl = nullStr "Where hasala-health posts its recovery notice.";
+      ntfyUrl = nullStr "Where hasala-health posts its recovery notice, and hasalad its early-access notice.";
+      earlyAccessNotice = mkEnableOption "an ntfy notice to monitoring.ntfyUrl for each new early-access request (a waitlist entry that confirmed its address, now waiting in the console). It names nobody; it opens the console when that is enabled";
       healthCheck.enable = mkEnableOption "the hasala-health probes (every 2 minutes)";
       healthCheck.aasaUrl = mkOption {
         type = types.str;
@@ -1158,6 +1165,9 @@ in
           (a "M22" (secretsInStore == [ ])
             "every secret-file option is an absolute path outside ${builtins.storeDir} (a secret in the store is world-readable); offending: ${concatStringsSep ", " secretsInStore}."
           )
+          (a "M23" (
+            !cfg.monitoring.earlyAccessNotice || cfg.monitoring.ntfyUrl != null
+          ) "monitoring.earlyAccessNotice posts to monitoring.ntfyUrl: set it too.")
         ];
 
       # ------------------------------------------------------------- §5.11
