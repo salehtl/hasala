@@ -188,9 +188,9 @@ struct HomePeriodTests {
       return
     }
     #expect(pace.monthGone == "Ended 30 Sep")
-    #expect(home.aboutNow.map(\.title) == ["Next bill · DEWA", "To review"])
-    #expect(home.aboutNow.map { $0.detail.rendered(hidden: false) } == ["~489.15 · in 4 days", "6 waiting"])
-    #expect(home.aboutNow.map(\.destination) == [.bills, .review])
+    #expect(home.aboutNow.map(\.title) == ["Next bill · DEWA"])
+    #expect(home.aboutNow.map { $0.detail.rendered(hidden: false) } == ["~489.15 · in 4 days"])
+    #expect(home.aboutNow.map(\.destination) == [.bills])
   }
 
   @Test func aClosedMonthOverItsPlanNamesTheTopWant() {
@@ -227,7 +227,7 @@ struct HomePeriodTests {
     #expect(h.fact?.rendered(hidden: false) == "full months only")
     #expect(h.tiles.map { MoneyFormat.string($0.value.minor, style: $0.style) } == ["9,731", "1,248", "5,000"])
     #expect(home.widgets.isEmpty)
-    #expect(home.aboutNow.count == 2)
+    #expect(home.aboutNow.map { $0.detail.rendered(hidden: false) }.last == "6 waiting")
   }
 
   @Test func aPastRangeHasNoToday() {

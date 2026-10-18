@@ -38,6 +38,25 @@ struct AppModelTests {
     #expect(AppModel(store: InMemoryLedger(state: state)).period == .month(MayaLedger.october))
   }
 
+  @Test func homesToReviewRowCountsTheReviewTabsQueue() {
+    var state = MayaLedger.state
+    for i in 0..<3 {
+      state.txns.append(Txn(id: "oct-\(i)", merchant: "Corner Shop", amount: .aed(12_50),
+                            postedAt: LocalDateTime(2026, 10, 3 + i, 18, 0), accountID: "dib"))
+    }
+    let app = AppModel(store: InMemoryLedger(state: state))
+    func homeWaiting() -> Int {
+      guard let row = app.snapshot.aboutNow.first(where: { $0.destination == .review }) else { return 0 }
+      return Int(row.detail.rendered(hidden: false).prefix { $0.isNumber }) ?? -1
+    }
+    app.period = .month(YearMonth(2026, 9))
+    #expect(app.reviewCount == 0)
+    #expect(homeWaiting() == app.reviewCount)
+    app.period = Period(YearMonth(2026, 9), MayaLedger.october)
+    #expect(app.reviewCount == 9)
+    #expect(homeWaiting() == app.reviewCount)
+  }
+
   @Test func theHiddenScenarioStartsHidden() {
     #expect(Scenario.mayaHidden.startsWithAmountsHidden)
     #expect(!Scenario.maya.startsWithAmountsHidden)

@@ -135,4 +135,16 @@ struct WidgetLinkRoutingTests {
     #expect(app.router.home.isEmpty)
     #expect(app.cover == nil)
   }
+
+  @Test func theReviewLinkOpensThisMonthsDeck() {
+    let app = AppModel(store: InMemoryLedger())
+    app.period = .month(YearMonth(2026, 9))
+    #expect(app.reviewCount == 0)
+    let widget = WidgetPublisher(app: app, store: nil).snapshot
+    app.open(.review)
+    #expect(app.period == .month(MayaLedger.october))
+    #expect(app.reviewCount == widget.toReview?.count)
+    #expect(app.reviewCount == 6)
+    #expect(app.cover == .review)
+  }
 }
