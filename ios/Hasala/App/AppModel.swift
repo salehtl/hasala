@@ -63,8 +63,7 @@ final class AppModel {
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<ReviewMemoKey, Int>()
-
-  var reviewScope: ReviewWindow?
+  @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
 
   init(store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil) {
     self.store = store
@@ -93,11 +92,16 @@ final class AppModel {
     }
   }
 
+  var thisMonthSnapshot: HomeSnapshot {
+    if chosenPeriod == nil { return snapshot }
+    return thisMonthMemo.value(for: store.revision) { HomeEngine.snapshot(store.state, now: store.now) }
+  }
+
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
 
-  /// Transactions waiting to be sorted in the review window: the Review tab's badge, once
-  /// per ledger or window change.
+  /// Transactions waiting to be sorted in Home's period: the Review tab's badge, once per
+  /// ledger or period change.
   var reviewCount: Int {
     let window = reviewWindow
     return reviewMemo.value(for: ReviewMemoKey(revision: store.revision, window: window)) {
@@ -105,7 +109,7 @@ final class AppModel {
     }
   }
 
-  var reviewWindow: ReviewWindow { reviewScope ?? .month(store.now.date.yearMonth) }
+  var reviewWindow: ReviewWindow { ReviewWindow(period) }
 
   var showingProfile: Bool {
     get { sheet == .profile }

@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Review · Tab · To sort (Paper NPV-0): the root of the Review tab, the queue Hasala
 /// couldn't sort and the card that starts the swipe deck. Its queue covers `AppModel.reviewWindow`
-/// (this month unless a period is chosen), and the tab's badge counts the same transactions
+/// (Home's period, this month unless another is chosen), and the tab's badge counts the same transactions
 /// (`AppModel.reviewCount`).
 ///
 /// Start opens the deck at the oldest card; a row opens it at that row's card and reads on
@@ -51,8 +51,8 @@ struct ReviewTabView: View {
     return "\(n) to sort · " + (minutes == 1 ? "about a minute" : "about \(minutes) minutes")
   }
 
-  static func emptyLine(_ window: ReviewWindow) -> String {
-    "Nothing in \(window.label) needs a look."
+  static func emptyLine(_ period: Period) -> String {
+    "Nothing in \(period.title) needs a look."
   }
 
   // MARK: Start card
@@ -199,7 +199,7 @@ struct ReviewTabView: View {
         .accessibilityHidden(true)
       Text("Nothing to sort").hType(HType.title3).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      Text(Self.emptyLine(app.reviewWindow))
+      Text(Self.emptyLine(app.period))
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)

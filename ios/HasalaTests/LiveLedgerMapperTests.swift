@@ -279,7 +279,7 @@ struct LiveLedgerMapperTests {
     #expect(!ReviewEngine.queue(store.state, in: .month(YearMonth(2026, 10))).contains { $0.id == old.id })
     let app = AppModel(store: store)
     #expect(app.reviewCount == 6)
-    app.reviewScope = september
+    app.period = .month(YearMonth(2026, 9))
     #expect(app.reviewCount == 1)
     #expect(try store.apply(.categorize(old.id, "groceries", learnRule: false, project: nil)) != nil)
     #expect(app.reviewCount == 0)

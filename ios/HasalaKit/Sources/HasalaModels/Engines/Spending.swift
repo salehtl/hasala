@@ -10,16 +10,23 @@ public enum Spending {
   }
 
   public static func spent(_ t: Txn, in s: LedgerState) -> Int64 {
-    if t.archived || t.isTransfer { return 0 }
-    if let p = s.project(t.projectID), !p.countInPlan { return 0 }
+    parts(t, in: s).reduce(Int64(0)) { $0 + $1.minor }
+  }
+
+  public static func parts(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
+    if t.archived || t.isTransfer { return [] }
+    if let p = s.project(t.projectID), !p.countInPlan { return [] }
     if !t.splits.isEmpty {
-      return t.splits.reduce(Int64(0)) { $0 + (counts(s.category($1.categoryID)) ? $1.amount.minor : 0) }
+      return t.splits.compactMap { sp in
+        let c = s.category(sp.categoryID)
+        return counts(c) ? (c, sp.amount.minor) : nil
+      }
     }
     let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
     guard let c = s.category(t.categoryID) else {
-      return t.direction == .out || t.isRefund ? signed : 0
+      return t.direction == .out || t.isRefund ? [(nil, signed)] : []
     }
-    return counts(c) ? signed : 0
+    return counts(c) ? [(c, signed)] : []
   }
 
   public static func counts(_ c: Category?) -> Bool {

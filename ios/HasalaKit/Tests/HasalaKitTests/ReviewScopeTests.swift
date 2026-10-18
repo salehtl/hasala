@@ -39,6 +39,20 @@ struct ReviewScopeTests {
     #expect(!ids.contains("aug-31") && !ids.contains("transfer-in"))
   }
 
+  @Test func aPeriodRunsFromItsFirstDayToItsLast() {
+    let window = ReviewWindow(Period(YearMonth(2026, 10), YearMonth(2026, 8)))
+    #expect(window == ReviewWindow(from: LocalDate(2026, 8, 1), to: LocalDate(2026, 10, 31)))
+    #expect(ReviewWindow(.month(YearMonth(2026, 9))) == september)
+    let s = ledger([
+      unsorted("jul-31", LocalDateTime(2026, 7, 31, 23, 59)),
+      unsorted("aug-1", LocalDateTime(2026, 8, 1, 0, 0)),
+      unsorted("sep-30", LocalDateTime(2026, 9, 30, 23, 59)),
+    ])
+    let ids = ReviewEngine.queue(s, in: window).map(\.id)
+    #expect(ids.prefix(2) == ["aug-1", "sep-30"])
+    #expect(!ids.contains("jul-31") && ids.count == 8)
+  }
+
   @MainActor @Test func sortingItTakesItOutOfTheQueue() throws {
     let store = InMemoryLedger(state: ledger([unsorted("sep-shop", LocalDateTime(2026, 9, 12, 10, 0))]))
     #expect(ReviewEngine.queue(store.state, in: september).count == 1)

@@ -7,13 +7,7 @@ public enum InsightsEngine {
 
   // MARK: - Periods
 
-  public static func title(of months: ClosedRange<YearMonth>) -> String {
-    let a = months.lowerBound
-    let b = months.upperBound
-    if a == b { return b.title }
-    if a.year == b.year { return "\(a.shortName)\u{2013}\(b.shortName) \(b.year)" }
-    return "\(a.shortName) \(a.year) \u{2013} \(b.shortName) \(b.year)"
-  }
+  public static func title(of months: ClosedRange<YearMonth>) -> String { Period(months).title }
 
   public static func window(_ month: YearMonth, now: LocalDateTime) -> InsightsWindow {
     let first = LocalDate(month.year, month.month, 1)
@@ -36,29 +30,14 @@ public enum InsightsEngine {
 
   public static let unsortedID: CategoryID = ""
 
-  public static func countsAsSpending(_ c: Category?) -> Bool {
-    guard let c else { return false }
-    return c.kind == .spending && c.bucket != .savings && c.role != .saving
-  }
+  public static func countsAsSpending(_ c: Category?) -> Bool { Spending.counts(c) }
 
   public static func isSaving(_ c: Category) -> Bool {
     c.kind == .spending && (c.bucket == .savings || c.role == .saving)
   }
 
   public static func spentParts(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
-    if t.archived || t.isTransfer { return [] }
-    if let p = s.project(t.projectID), !p.countInPlan { return [] }
-    if !t.splits.isEmpty {
-      return t.splits.compactMap { sp in
-        let c = s.category(sp.categoryID)
-        return countsAsSpending(c) ? (c, sp.amount.minor) : nil
-      }
-    }
-    let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
-    guard let c = s.category(t.categoryID) else {
-      return t.direction == .out || t.isRefund ? [(nil, signed)] : []
-    }
-    return countsAsSpending(c) ? [(c, signed)] : []
+    Spending.parts(t, in: s)
   }
 
   public static func lines(_ s: LedgerState, in window: InsightsWindow? = nil) -> [InsightsLine] {

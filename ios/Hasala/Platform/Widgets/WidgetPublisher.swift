@@ -23,7 +23,7 @@ final class WidgetPublisher {
   }
 
   var snapshot: WidgetSnapshot {
-    GlanceEngine.snapshot(app.store.state, now: app.store.now, home: app.snapshot, amountsHidden: app.amountsHidden)
+    GlanceEngine.snapshot(app.store.state, now: app.store.now, home: app.thisMonthSnapshot, amountsHidden: app.amountsHidden)
   }
 
   func stop() {

@@ -59,6 +59,28 @@ struct WidgetPublisherTests {
     #expect(reloads.count == 3)
   }
 
+  @Test func showsThisMonthWhateverPeriodHomeShows() async throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    var state = MayaHistory.state
+    state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
+                          postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
+    let app = AppModel(store: InMemoryLedger(state: state))
+    let reloads = Reloads()
+    let publisher = WidgetPublisher(app: app, store: store) { reloads.count += 1 }
+    let october = try #require(store.read()?.spentSoFar)
+    #expect(october.spent == app.snapshot.hero.spent)
+    #expect(october.spent == .aed(Spending.total(state, in: MayaLedger.october)))
+    app.period = .month(YearMonth(2026, 9))
+    await settle()
+    #expect(app.snapshot.hero.spent == .aed(Spending.total(state, in: YearMonth(2026, 9))))
+    #expect(app.reviewCount == 1)
+    #expect(store.read()?.spentSoFar == october)
+    #expect(store.read()?.toReview?.count == 6)
+    #expect(publisher.snapshot == WidgetPublisher(app: AppModel(store: InMemoryLedger(state: state)), store: nil).snapshot)
+    #expect(reloads.count == 1)
+  }
+
   @Test func theFileIsProtectedAndNotBackedUp() throws {
     let store = temporaryStore()
     defer { try? FileManager.default.removeItem(at: store.directory) }

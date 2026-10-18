@@ -189,11 +189,13 @@ public struct ReviewWindow: Sendable, Hashable {
     self.to = to
   }
 
+  public init(_ period: Period) {
+    self.init(from: period.first.firstDay, to: period.last.lastDay)
+  }
+
   public static let all = ReviewWindow(from: nil, to: nil)
 
-  public static func month(_ m: YearMonth) -> ReviewWindow {
-    ReviewWindow(from: LocalDate(m.year, m.month, 1), to: LocalDate(m.year, m.month, m.days))
-  }
+  public static func month(_ m: YearMonth) -> ReviewWindow { ReviewWindow(.month(m)) }
 
   public static func range(_ from: LocalDate, _ to: LocalDate) -> ReviewWindow {
     from <= to ? ReviewWindow(from: from, to: to) : ReviewWindow(from: to, to: from)

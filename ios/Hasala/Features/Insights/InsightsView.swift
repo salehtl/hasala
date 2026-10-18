@@ -42,12 +42,9 @@ struct InsightsView: View {
         }
       }
     }
+    .onChange(of: app.period) { _, _ in model.periodChanged() }
     .sheet(item: $model.sheet) { sheet in
       switch sheet {
-      case .period:
-        InsightsPeriodSheet(selected: model.months, current: model.current, earliest: model.earliest) {
-          model.choose($0)
-        }
       case .drill(let target):
         InsightsDrillSheet(model: model, target: target)
       }
@@ -59,7 +56,7 @@ struct InsightsView: View {
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
       : AnyLayout(HStackLayout(spacing: 8))
     return layout {
-      PeriodPill(snap.title) { model.sheet = .period }
+      PeriodPill(snap.title) { model.choosePeriod() }
         .accessibilityIdentifier("insights.period")
       if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
       status(snap)

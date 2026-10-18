@@ -20,14 +20,29 @@ struct InsightsModelTests {
     let app = AppModel(store: InMemoryLedger(state: MayaHistory.state))
     let model = InsightsModel(app: app)
     model.showsAllCategories = true
-    model.choose(YearMonth(2026, 9)...YearMonth(2026, 9))
+    app.period = .month(YearMonth(2026, 9))
+    model.periodChanged()
     #expect(model.snapshot.status == "Closed month")
     #expect(model.snapshot.summary.figure == .aed(6_587_40))
     #expect(!model.showsAllCategories)
-    model.choose(MayaLedger.october...MayaLedger.october)
+    app.period = .month(MayaLedger.october)
     let before = model.snapshot.summary.spent
     app.perform(.markTransfer("atm"))
     #expect(model.snapshot.summary.spent == .aed(before.minor - 500_00))
+  }
+
+  @Test func followsHomesPeriodAndOpensTheSharedPicker() {
+    let app = AppModel(store: InMemoryLedger(state: MayaHistory.state))
+    app.period = Period(YearMonth(2026, 8), MayaLedger.october)
+    let model = InsightsModel(app: app)
+    #expect(model.months == YearMonth(2026, 8)...MayaLedger.october)
+    #expect(model.snapshot.title == app.period.title)
+    app.period = .month(YearMonth(2026, 9))
+    #expect(model.months == YearMonth(2026, 9)...YearMonth(2026, 9))
+    #expect(model.snapshot.status == "Closed month")
+    #expect(model.snapshot.summary.spent == app.snapshot.hero.spent)
+    model.choosePeriod()
+    #expect(app.sheet == .period)
   }
 
   @Test func theDrillDownTotalIsTheRowItCameFrom() {

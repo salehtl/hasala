@@ -23,7 +23,13 @@ public struct Period: Sendable, Hashable, Codable, CustomStringConvertible {
     last = max(a, b)
   }
 
+  public init(_ months: ClosedRange<YearMonth>) {
+    self.init(months.lowerBound, months.upperBound)
+  }
+
   public static func month(_ m: YearMonth) -> Period { Period(m, m) }
+
+  public var range: ClosedRange<YearMonth> { first...last }
 
   public var isMonth: Bool { first == last }
 

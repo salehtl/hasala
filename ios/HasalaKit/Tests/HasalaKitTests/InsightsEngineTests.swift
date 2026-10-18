@@ -235,10 +235,11 @@ struct InsightsCountingTests {
     #expect(d.rows.first?.detail.hasPrefix("Uncategorized · ") == true)
   }
 
-  @Test func theRuleIsHomesSpendingRule() {
-    for t in MayaHistory.state.txns {
-      let mine = InsightsEngine.spentParts(t, in: MayaHistory.state).reduce(Int64(0)) { $0 + $1.minor }
-      #expect(mine == HomeSpendingRule.spent(t, in: MayaHistory.state), "\(t.id)")
+  @Test func spentIsHomesTotal() {
+    let s = MayaHistory.state
+    for m in Period(YearMonth(2026, 4), MayaLedger.october).months {
+      let snap = InsightsEngine.snapshot(s, months: m...m, now: MayaLedger.now)
+      #expect(snap.summary.spent == .aed(Spending.total(s, in: m)), "\(m)")
     }
   }
 
@@ -258,26 +259,6 @@ struct InsightsCountingTests {
     let snap = InsightsEngine.snapshot(s, months: F.june...F.june, now: F.afterJune)
     #expect(snap.summary.split?.unspent == 0)
     #expect(snap.summary.figure == .aed(1000))
-  }
-}
-
-enum HomeSpendingRule {
-  static func spent(_ t: Txn, in s: LedgerState) -> Int64 {
-    if t.archived || t.isTransfer { return 0 }
-    if let p = s.project(t.projectID), !p.countInPlan { return 0 }
-    if !t.splits.isEmpty {
-      return t.splits.reduce(Int64(0)) { $0 + (counts(s.category($1.categoryID)) ? $1.amount.minor : 0) }
-    }
-    let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
-    guard let c = s.category(t.categoryID) else {
-      return t.direction == .out || t.isRefund ? signed : 0
-    }
-    return counts(c) ? signed : 0
-  }
-
-  static func counts(_ c: Category?) -> Bool {
-    guard let c else { return false }
-    return c.kind == .spending && c.bucket != .savings && c.role != .saving
   }
 }
 
@@ -425,8 +406,8 @@ struct InsightsPeriodTests {
 
   @Test func labels() {
     #expect(InsightsEngine.title(of: F.june...F.june) == "June 2026")
-    #expect(InsightsEngine.title(of: YearMonth(2026, 3)...F.june) == "Mar\u{2013}Jun 2026")
-    #expect(InsightsEngine.title(of: YearMonth(2025, 12)...YearMonth(2026, 2)) == "Dec 2025 \u{2013} Feb 2026")
+    #expect(InsightsEngine.title(of: YearMonth(2026, 3)...F.june) == "Mar – Jun 2026")
+    #expect(InsightsEngine.title(of: YearMonth(2025, 12)...YearMonth(2026, 2)) == "Dec 2025 – Feb 2026")
   }
 
   @Test func aRangeShowsItsLatestMonth() {

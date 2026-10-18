@@ -32,7 +32,7 @@ public enum GlanceEngine {
       comingUp: comingUp(s, now: now),
       projects: projects,
       goals: goals,
-      toReview: waiting ? nil : toReview(s),
+      toReview: waiting ? nil : toReview(s, now: now),
       today: waiting ? nil : today
     )
   }
@@ -113,8 +113,8 @@ public enum GlanceEngine {
     return ComingUpWidget(days: comingUpDays, total: .aed(out.reduce(0) { $0 + $1.amount.minor }), rows: Array(rows))
   }
 
-  static func toReview(_ s: LedgerState) -> ToReviewWidget {
-    let queue = ReviewEngine.queue(s)
+  static func toReview(_ s: LedgerState, now: LocalDateTime) -> ToReviewWidget {
+    let queue = ReviewEngine.queue(s, in: .month(now.date.yearMonth))
     let notCounted = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + $1.amount.minor }
     return ToReviewWidget(count: queue.count, notCounted: .aed(notCounted))
   }

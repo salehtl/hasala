@@ -6,19 +6,16 @@ import Observation
 @Observable
 final class InsightsModel {
   enum Sheet: Hashable, Identifiable {
-    case period
     case drill(InsightsTarget)
 
     var id: String {
       switch self {
-      case .period: "period"
       case .drill(let t): "drill.\(t)"
       }
     }
   }
 
   private let app: AppModel
-  var months: ClosedRange<YearMonth>
   var lens: InsightsLens = .categories
   var showsAllCategories = false
   var showsTable = false
@@ -31,11 +28,12 @@ final class InsightsModel {
     let now: LocalDateTime
   }
 
-  init(app: AppModel, months: ClosedRange<YearMonth>? = nil) {
+  init(app: AppModel) {
     self.app = app
-    let current = app.store.now.date.yearMonth
-    self.months = months ?? current...current
   }
+
+  var period: Period { app.period }
+  var months: ClosedRange<YearMonth> { app.period.range }
 
   var now: LocalDateTime { app.store.now }
   var hidden: Bool { app.amountsHidden }
@@ -54,10 +52,9 @@ final class InsightsModel {
     InsightsEngine.drill(app.store.state, target: target, months: months, now: now)
   }
 
-  func choose(_ range: ClosedRange<YearMonth>) {
-    months = range
-    showsAllCategories = false
-  }
+  func choosePeriod() { app.sheet = .period }
+
+  func periodChanged() { showsAllCategories = false }
 
   func open(_ target: InsightsTarget) { sheet = .drill(target) }
 
