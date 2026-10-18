@@ -22,7 +22,7 @@
 #   3. The mail capture, then `hasalad serve`, polled until /api/v1/healthz answers.
 #      A self-check (`hasalad email test`) proves a queued email reaches the capture.
 #   4. Review invites from `hasalad invite mint --review` (the first goes to E1).
-#   5. Two new simulators (A and B), booted; one build-for-testing; then one
+#   5. New simulators (A, and B when a test runs there), booted; one build-for-testing; then one
 #      test-without-building per test on its simulator, in order, stopping at the
 #      first failure (HASALA_E2E_CONTINUE=1 runs the rest anyway).
 #   6. Teardown on any exit: the server, the capture, the wake watcher, Postgres
@@ -278,13 +278,18 @@ RUNTIME="${HASALA_E2E_RUNTIME:-$("$XCRUN" simctl list runtimes available |
 }
 SIM_A="$("$XCRUN" simctl create "hasala-e2e-a-$$" "$DEVICE_TYPE" "$RUNTIME")"
 SIMS+=("$SIM_A")
-SIM_B="$("$XCRUN" simctl create "hasala-e2e-b-$$" "$DEVICE_TYPE" "$RUNTIME")"
-SIMS+=("$SIM_B")
-for sim in "$SIM_A" "$SIM_B"; do
+SIM_B=""
+for t in "${TESTS[@]}"; do
+	if [[ "$(sim_for "$t")" == B && -z "$SIM_B" ]]; then
+		SIM_B="$("$XCRUN" simctl create "hasala-e2e-b-$$" "$DEVICE_TYPE" "$RUNTIME")"
+		SIMS+=("$SIM_B")
+	fi
+done
+for sim in "${SIMS[@]}"; do
 	"$XCRUN" simctl boot "$sim"
 	"$XCRUN" simctl bootstatus "$sim" -b >/dev/null
 done
-log "simulators: A=$SIM_A B=$SIM_B ($RUNTIME)"
+log "simulators: A=$SIM_A B=${SIM_B:-none} ($RUNTIME)"
 
 TEAM="$(sed -n 's/^DEVELOPMENT_TEAM = //p' "$IOS/Config/Shared.xcconfig" | head -1)"
 case "$SIGNING" in
