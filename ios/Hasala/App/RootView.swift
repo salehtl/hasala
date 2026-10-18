@@ -131,7 +131,7 @@ struct LaunchView: View {
       let session = AuthScenario.session(for: auth)
       let graph = MockGraph(
         app: AppModel(
-          store: InMemoryLedger(state: scenario.state, now: MayaLedger.now),
+          store: InMemoryLedger(state: scenario.state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth))
       launch?.open(graph)
