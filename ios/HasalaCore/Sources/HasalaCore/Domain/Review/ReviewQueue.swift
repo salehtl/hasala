@@ -10,8 +10,9 @@ public enum ReviewLane: String, Sendable, CaseIterable {
   case unreadable, duplicate
   case needsReview = "needs_review"
   case uncategorized
+  case copy
 
-  public var inDeck: Bool { self == .needsReview || self == .uncategorized }
+  public var inDeck: Bool { self == .needsReview || self == .uncategorized || self == .copy }
 }
 
 public enum ReviewQueue {
@@ -19,7 +20,8 @@ public enum ReviewQueue {
     if t.supersededBy != nil { return nil }
     if t.annotation("archived") != nil { return nil }
     if t.unparsed { return .unreadable }
-    if t.possibleDuplicateOf != nil && t.duplicateDisposition == nil { return .duplicate }
+    if t.isHeldCopy { return .copy }
+    if t.possibleDuplicateOf != nil && t.duplicateDisposition == nil && t.copyOf == nil { return .duplicate }
     if t.needsReview { return .needsReview }
     if (t.category == nil && t.splits.isEmpty) || t.categorySource?.kind == .model { return .uncategorized }
     return nil

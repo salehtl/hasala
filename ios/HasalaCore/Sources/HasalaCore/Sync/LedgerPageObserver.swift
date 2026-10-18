@@ -16,7 +16,8 @@
 //     stored bytes, and the result agrees with the pinned heads;
 //   - the blob is opened again with the epoch keys this device holds and
 //     decoded through R10, and the outcome must be the stored `disposition`
-//     (folded = opened, set_aside = set aside, alarm = AEAD failure).
+//     (folded = opened, set_aside = set aside, alarm = AEAD failure), except
+//     that a row an older build set aside and this build opens is read now.
 // Any difference (a corrupted blob or key, a row that no longer opens the way
 // it did) records an `integrity_alarm` fold event and halts `inconsistent`;
 // nothing is dropped from the state quietly. Nothing is fetched again and no
@@ -137,16 +138,24 @@ public actor LedgerPageObserver: PageObserver {
     try checkStoredChain(upTo: cursor)
     let opener = Opener(epochHWM: sync.epochHWM, keys: try context.epochKeys(upTo: sync.epochHWM))
     var s = State()
+    var reread = 0
     try storedPages(upTo: cursor) { (rows: [WireRowRecord]) throws(SyncStop) in
       var page: [FoldRow] = []
       for r in rows {
         let outcome = try reopen(r, opener)
-        guard WireRowRecord.Disposition(outcome) == r.disposition else { throw integrityHalt("cold_fold_disposition") }
+        let now = WireRowRecord.Disposition(outcome)
+        if now != r.disposition {
+          guard r.disposition == .setAside, now == .folded else { throw integrityHalt("cold_fold_disposition") }
+          reread += 1
+        }
         page.append(FoldRow(seq: r.seq, writerID: r.writerID.string, counter: r.counter, outcome: outcome))
       }
       s = try Self.fold(page, onto: s)
     }
     guard s.cursors.hot == cursor else { throw .halted(.inconsistent("cold_fold_cursor")) }
+    if reread > 0 {
+      try? store.recordFoldEvent(kind: "set_aside_reread", detail: "rows_\(reread)", at: context.clock.nowMs())
+    }
     return s
   }
 

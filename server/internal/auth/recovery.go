@@ -4,7 +4,8 @@ package auth
 // §10.9, routes #7, #48, #8). Never email alone: the code proves the mailbox,
 // the recovery key (derived from the phrase) signs the new authenticator's
 // raw bytes, and one transaction registers it with a new writer and a bound
-// session while every other session is revoked.
+// session while every other session, every other passkey, the old password
+// and every outstanding ceremony of the account are revoked.
 
 import (
 	"context"
@@ -367,6 +368,9 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err != nil {
 		return release(err)
 	}
+	if err := revokeOldCredentialsTx(ctx, tx, userID, cred, kind == MethodPassword, now); err != nil {
+		return release(err)
+	}
 	m, err := a.Sessions.IssueTx(ctx, tx, Mint{UserID: userID, MintedBy: MintedRecover, CredentialID: cred, WriterID: w.WriterID})
 	if err != nil {
 		return release(err)
@@ -384,4 +388,55 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	a.Mail.Kick()
 	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID,
 		Wake: wakeFor(userID, w.WriterID, revoked)}, nil
+}
+
+func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keepCredential []byte, keepPassword bool, now time.Time) error {
+	rows, err := tx.Query(ctx,
+		`DELETE FROM webauthn_credentials WHERE user_id = $1 AND ($2::bytea IS NULL OR credential_id <> $2)
+		 RETURNING credential_id`, userID, keepCredential)
+	if err != nil {
+		return fmt.Errorf("auth: recovery: remove old passkeys: %w", err)
+	}
+	removed, err := pgx.CollectRows(rows, pgx.RowTo[[]byte])
+	if err != nil {
+		return fmt.Errorf("auth: recovery: remove old passkeys: %w", err)
+	}
+	for _, id := range removed {
+		if err := recordEventTx(ctx, tx, nil, userID, AuthEvent{Kind: EventPasskeyRemoved, CredentialID: id}, now); err != nil {
+			return err
+		}
+	}
+	if !keepPassword {
+		tag, err := tx.Exec(ctx,
+			`UPDATE users SET password_hash = NULL, password_salt = NULL, password_version = NULL, password_set_at = NULL,
+			        password_failures = 0, password_paused_until = NULL
+			  WHERE id = $1 AND password_hash IS NOT NULL`, userID)
+		if err != nil {
+			return fmt.Errorf("auth: recovery: remove the old password: %w", err)
+		}
+		if tag.RowsAffected() == 1 {
+			if err := recordEventTx(ctx, tx, nil, userID, AuthEvent{Kind: EventPasswordRemoved}, now); err != nil {
+				return err
+			}
+		}
+	}
+	for _, q := range []string{
+		`DELETE FROM step_up_challenges WHERE user_id = $1 AND used_at IS NULL`,
+		`DELETE FROM webauthn_ceremonies WHERE user_id = $1`,
+		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
+		`DELETE FROM email_change_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
+	} {
+		if _, err := tx.Exec(ctx, q, userID); err != nil {
+			return fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
+		}
+	}
+	for _, q := range []string{
+		`UPDATE password_login_ceremonies SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`,
+		`UPDATE email_codes SET burned_at = $2 WHERE user_id = $1 AND used_at IS NULL AND burned_at IS NULL`,
+	} {
+		if _, err := tx.Exec(ctx, q, userID, now); err != nil {
+			return fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
+		}
+	}
+	return nil
 }

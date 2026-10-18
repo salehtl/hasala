@@ -655,6 +655,18 @@ public struct OpAuthor: Sendable {
       [("other_txn_id", .string(otherTxnID)), ("disposition", disposition.map { .string($0.rawValue) } ?? .null)])
   }
 
+  public mutating func retireMailbox(grantID: String, provider: String, legacy: Bool) {
+    add(.mailboxRetired, [("grant_id", .string(grantID)), ("provider", .string(provider)), ("legacy", .bool(legacy))])
+  }
+
+  public enum CopyDecision: String, Sendable, Equatable { case merge, keepBoth = "keep_both" }
+
+  public mutating func resolveCopy(txnID: String, parentVersion: Int64, otherTxnID: String, decision: CopyDecision?) {
+    add(
+      .txnCopyResolved, entity: ("txn", txnID), parent: parentVersion,
+      [("other_txn_id", .string(otherTxnID)), ("decision", decision.map { .string($0.rawValue) } ?? .null)])
+  }
+
   // MARK: Configuration
 
   public mutating func setHomeCurrency(_ code: String) { add(.homeCurrencySet, [("currency", .string(code))]) }

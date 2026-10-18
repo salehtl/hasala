@@ -435,7 +435,10 @@ final class CountingMailbox: MailboxConnecting {
     return try await base.connect(provider, replacing: replacing)
   }
   func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) { try await base.signInAgain(mailboxID) }
-  func disconnect(_ mailboxID: String) async throws(MailConnectFailure) { try await base.disconnect(mailboxID) }
+  func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
+    try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
+  }
+  func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? { await base.disconnectImpact(mailboxID) }
   func firstScan() -> AsyncStream<ScanProgress> {
     scans += 1
     return base.firstScan()

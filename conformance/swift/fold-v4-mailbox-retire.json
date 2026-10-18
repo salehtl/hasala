@@ -1,0 +1,3408 @@
+{
+  "note": "mailbox_retired (v4, parent-free): {grant_id, provider, legacy}. Every v4 txn row projects source_mailbox (provenance.grant_id) and source_provider. The op retires the live rows that one mailbox imported before its position: rows whose source_provider equals provider and whose source_mailbox equals grant_id, or, when legacy is true, equals the account part of grant_id (before \"/mbx-\"). A retired row keeps every field, gets retired_by, and leaves liveByIngestID, byFingerprint and pendingByCurrency, so the same message imported again is a new row. Keep authors no op. Written by the Swift executor; the TypeScript reference (schema 3) and Go (no fold) do not model v4.",
+  "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
+  "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
+  "cases": [
+    {
+      "name": "project",
+      "group": "fold_v4",
+      "note": "Rows from two mailboxes and a manual row; each v4 import carries its mailbox and provider.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "16850",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "24280",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "1200",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CASH MARKET",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-edit-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-note-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000001",
+                "set": {
+                  "note": "Team lunch"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|1200|debit|CASH MARKET|2026-10-03",
+              [
+                "01JC0000000000000000000004"
+              ]
+            ],
+            [
+              "4412|16850|debit|ENOC 1043|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "4412|24280|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "4412|5000|debit|CARREFOUR MOE|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-edit-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000004",
+              "01JC0000000000000000000004"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003",
+                "01JC0000000000000000000004"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-1",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "16850",
+                "bank": "enbd",
+                "category": "transport",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "24280",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "1200",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "CASH MARKET",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "7f1a2438dbbffca9018e1412f243dec2119db0d235f4f78e4fe387267249e290",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "retire-remove",
+      "group": "fold_v4",
+      "note": "Remove retires mailbox A's two rows, the edited and annotated ones too; mailbox B and the manual row stay live.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "16850",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "24280",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "1200",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CASH MARKET",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-edit-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-note-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000001",
+                "set": {
+                  "note": "Team lunch"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-a",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|1200|debit|CASH MARKET|2026-10-03",
+              [
+                "01JC0000000000000000000004"
+              ]
+            ],
+            [
+              "4412|24280|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "5"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-edit-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000004",
+              "01JC0000000000000000000004"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "5",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+              "legacy": false,
+              "op_id": "op-retire-a",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000003",
+                "01JC0000000000000000000004"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-1",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "16850",
+                "bank": "enbd",
+                "category": "transport",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "24280",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "1200",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "CASH MARKET",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "5b9f670fc4fe969d81afd90cc145abf6a52c27b0e73c6f4f7a9bb782493e4333",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "keep",
+      "group": "fold_v4",
+      "note": "Keep authors nothing: the same log with no retire, every row live and counted.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "16850",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "24280",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "1200",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CASH MARKET",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-edit-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-note-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000001",
+                "set": {
+                  "note": "Team lunch"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-5",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000005"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000005",
+              "payload": {
+                "amount_minor": "21540",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:30:00.000Z",
+                "merchant_raw": "SPINNEYS MARINA",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-5"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|1200|debit|CASH MARKET|2026-10-03",
+              [
+                "01JC0000000000000000000004"
+              ]
+            ],
+            [
+              "4412|16850|debit|ENOC 1043|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "4412|21540|debit|SPINNEYS MARINA|2026-10-03",
+              [
+                "01JC0000000000000000000005"
+              ]
+            ],
+            [
+              "4412|24280|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "4412|5000|debit|CARREFOUR MOE|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "5"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-edit-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000005",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000005",
+                "kind": "txn",
+                "op_id": "op-ingest-5",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000004",
+              "01JC0000000000000000000004"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000005",
+              "01JC0000000000000000000005"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003",
+                "01JC0000000000000000000004",
+                "01JC0000000000000000000005"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-1",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "16850",
+                "bank": "enbd",
+                "category": "transport",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "24280",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "1200",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "CASH MARKET",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000005",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "21540",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000005",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000005",
+                "last4": "4412",
+                "mailbox_message_id": "msg-5",
+                "merchant_raw": "SPINNEYS MARINA",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:30:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "6d5b147337f2727a7e01e53887c7562b0dc047aa941a358cb4d40ed54fbfce95",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "reconnect-after-remove",
+      "group": "fold_v4",
+      "note": "After the retire the same mailbox is connected again: message 1 imports again under its ingest id as a new live row with no duplicate_ingest, and a new message imports as usual; the retired rows stay retired.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "16850",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "24280",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "1200",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CASH MARKET",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-edit-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-note-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000001",
+                "set": {
+                  "note": "Team lunch"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-a",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        },
+        {
+          "seq": "6",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-reingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000011"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-5",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000005"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000005",
+              "payload": {
+                "amount_minor": "21540",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:30:00.000Z",
+                "merchant_raw": "SPINNEYS MARINA",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-5"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|1200|debit|CASH MARKET|2026-10-03",
+              [
+                "01JC0000000000000000000004"
+              ]
+            ],
+            [
+              "4412|21540|debit|SPINNEYS MARINA|2026-10-03",
+              [
+                "01JC0000000000000000000005"
+              ]
+            ],
+            [
+              "4412|24280|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "4412|5000|debit|CARREFOUR MOE|2026-10-03",
+              [
+                "01JC0000000000000000000011"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "6"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-edit-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000005",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000005",
+                "kind": "txn",
+                "op_id": "op-ingest-5",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000011",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000011",
+                "kind": "txn",
+                "op_id": "op-reingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000011"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000004",
+              "01JC0000000000000000000004"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000005",
+              "01JC0000000000000000000005"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "5",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+              "legacy": false,
+              "op_id": "op-retire-a",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000003",
+                "01JC0000000000000000000004",
+                "01JC0000000000000000000005",
+                "01JC0000000000000000000011"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-1",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "16850",
+                "bank": "enbd",
+                "category": "transport",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "24280",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "1200",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "CASH MARKET",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000005",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "21540",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000005",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000005",
+                "last4": "4412",
+                "mailbox_message_id": "msg-5",
+                "merchant_raw": "SPINNEYS MARINA",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:30:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000011",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000011",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "05a2f812fab09284b59a3b9b8dc7cad9335d03c77da1b7c26cd4fcfaac70b18c",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "old-rows-legacy",
+      "group": "fold_v4",
+      "note": "Rows imported before grant ids named a mailbox carry the bare account id. With legacy true the Gmail retire takes the Gmail legacy row; the Outlook legacy row and another account's row stay.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "outlook",
+                  "grant_id": "01JCUSER0000000000000000AA",
+                  "message_id": "msg-2"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000BB",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "NOON.COM",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-4"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-a",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail",
+                "legacy": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|5000|debit|ENOC 1043|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "4412|5000|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "3",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+              "legacy": true,
+              "op_id": "op-retire-a",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000004"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA",
+                "source_provider": "outlook",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000BB",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": "msg-4",
+                "merchant_raw": "NOON.COM",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "997fd20b4893030b37e473c01f53ef484095195293b459fdeeafd83993ca9c76",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "old-rows-left-alone",
+      "group": "fold_v4",
+      "note": "The same log with legacy false: only the row that names mailbox A is retired.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "outlook",
+                  "grant_id": "01JCUSER0000000000000000AA",
+                  "message_id": "msg-2"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000BB",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "NOON.COM",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-4"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-a",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|5000|debit|CARREFOUR MOE|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ],
+            [
+              "4412|5000|debit|ENOC 1043|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "4412|5000|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "3",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+              "legacy": false,
+              "op_id": "op-retire-a",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000004"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA",
+                "source_provider": "outlook",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000BB",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": "msg-4",
+                "merchant_raw": "NOON.COM",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "retired_by": "op-retire-a",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "d209ba926d0f43759bdde38a718bcda7e7a58291c55ceeb6c84a5011926ccecb",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "retire-malformed",
+      "group": "fold_v4",
+      "note": "A retire with no legacy flag, or a provider outside [a-z0-9_]{2,32}, is an invalid_payload and retires nothing.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "5000",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CARREFOUR MOE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "16850",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "24280",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "1200",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "merchant_raw": "CASH MARKET",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "manual"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-edit-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-note-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000001",
+                "set": {
+                  "note": "Team lunch"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-bad-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "gmail"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "6",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-bad-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "provider": "Gmail",
+                "legacy": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "5",
+              "detail": "",
+              "kind": "invalid_payload"
+            },
+            {
+              "at_seq": "6",
+              "detail": "",
+              "kind": "invalid_payload"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|1200|debit|CASH MARKET|2026-10-03",
+              [
+                "01JC0000000000000000000004"
+              ]
+            ],
+            [
+              "4412|16850|debit|ENOC 1043|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "4412|24280|debit|IKEA FESTIVAL CITY|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "4412|5000|debit|CARREFOUR MOE|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "6"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-edit-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000004",
+              "01JC0000000000000000000004"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003",
+                "01JC0000000000000000000004"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "5000",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-1",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "CARREFOUR MOE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "16850",
+                "bank": "enbd",
+                "category": "transport",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "24280",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "IKEA FESTIVAL CITY",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "1200",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "manual",
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "4412",
+                "mailbox_message_id": null,
+                "merchant_raw": "CASH MARKET",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "01ea375bb884297a2cefba92e77f42ad9c1a2ff964177cbc58d41ada8a82ed0f",
+        "anomaly_kinds": [
+          "invalid_payload",
+          "invalid_payload"
+        ]
+      }
+    }
+  ]
+}

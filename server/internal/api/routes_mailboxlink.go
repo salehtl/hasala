@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/gmailpush"
@@ -436,6 +437,15 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		if tag.RowsAffected() != 1 {
 			return errLinkRejected
 		}
+		var taken bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM mailbox_links WHERE address_hmac = $1 AND user_id <> $2)`,
+			addrHMAC, userID).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return errMailboxInUse
+		}
 		if err := auth.RecordQuietEventTx(ctx, tx, userID, auth.AuthEvent{Kind: auth.EventMailboxLinked,
 			WriterID: info.WriterID, CredentialID: p.CredentialID}, now); err != nil {
 			return err
@@ -443,7 +453,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		// One link per account (mailbox_links_one_per_user): the conflict is
 		// on the account, so this replaces the link of either provider, the
 		// other provider's included, and two racing links leave the later one.
-		return tx.QueryRow(ctx,
+		err = tx.QueryRow(ctx,
 			`INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id,
 			                            client_state_hash, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
@@ -454,9 +464,18 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 			       created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at
 			 RETURNING created_at`,
 			userID, provider, addrHMAC, routeKey.KeyID(), info.WriterID, clientStateHash, now).Scan(&created)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "mailbox_links_one_account_per_mailbox" {
+			return errMailboxInUse
+		}
+		return err
 	})
 	if errors.Is(err, errLinkRejected) {
 		s.writeLinkRejected(w, r, "nonce not issued to this session, used or expired")
+		return
+	}
+	if errors.Is(err, errMailboxInUse) {
+		writeErr(w, http.StatusConflict, "mailbox_in_use", "this mailbox is connected to another Hasala account")
 		return
 	}
 	if err != nil {
@@ -618,4 +637,7 @@ func (s *Server) handleUnlink(w http.ResponseWriter, r *http.Request, userID uui
 	w.WriteHeader(http.StatusNoContent)
 }
 
-var errNoLink = errors.New("api: no mailbox link")
+var (
+	errNoLink       = errors.New("api: no mailbox link")
+	errMailboxInUse = errors.New("api: mailbox linked to another account")
+)

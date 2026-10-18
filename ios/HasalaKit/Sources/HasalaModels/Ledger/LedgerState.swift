@@ -143,6 +143,42 @@ public struct SplitLine: Sendable, Hashable, Codable, Identifiable {
   }
 }
 
+public enum TxnReviewReason: String, Sendable, Hashable, Codable {
+  case probableCopy = "probable_copy"
+  case senderUnverified = "sender_unverified"
+
+  public var label: String {
+    switch self {
+    case .probableCopy: "Looks like a copy"
+    case .senderUnverified: "Couldn't verify sender"
+    }
+  }
+
+  public var title: String {
+    switch self {
+    case .probableCopy: "Looks like a copy"
+    case .senderUnverified: "Couldn't verify the sender"
+    }
+  }
+
+  public var detail: String {
+    switch self {
+    case .probableCopy: "It matches one you already have. Merge it, or keep both."
+    case .senderUnverified: "Check this matches your bank app before you sort it."
+    }
+  }
+}
+
+public struct HeldCopy: Sendable, Hashable, Codable {
+  public var of: TxnID
+  public var fromOtherInbox: Bool
+
+  public init(of: TxnID, fromOtherInbox: Bool) {
+    self.of = of
+    self.fromOtherInbox = fromOtherInbox
+  }
+}
+
 public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var id: TxnID
   /// The display name ("Carrefour"); a rename changes this (03c §3.6).
@@ -176,6 +212,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// sample's rows carry `sample-<n>` instead (CoreDomain `SampleSeed`): no email exists
   /// behind them.
   public var mailboxMessageID: String?
+  public var heldCopy: HeldCopy?
+  public var reviewReason: TxnReviewReason?
 
   public init(
     id: TxnID, merchant: String, place: String? = nil, amount: Money, direction: Direction = .out,
@@ -183,7 +221,9 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
     isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
-    provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil
+    provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil,
+    heldCopy: HeldCopy? = nil,
+    reviewReason: TxnReviewReason? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -207,10 +247,19 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.provenance = provenance
     self.detailOverride = detailOverride
     self.mailboxMessageID = mailboxMessageID
+    self.heldCopy = heldCopy
+    self.reviewReason = reviewReason
   }
+
+  public var isHeldCopy: Bool { heldCopy != nil }
+
 
   /// A row of the App Review sample (its message id is `sample-<n>`; Gmail ids are hex).
   public var isSample: Bool { mailboxMessageID?.hasPrefix("sample-") == true }
+
+  public var activeReviewReason: TxnReviewReason? { isHeldCopy ? .probableCopy : (needsReview ? reviewReason : nil) }
+
+  public var senderUnverified: Bool { activeReviewReason == .senderUnverified }
 
   /// "Starbucks DIFC".
   public var title: String { place.map { "\(merchant) \($0)" } ?? merchant }
@@ -224,7 +273,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   }
 
   /// Counts in budgets this month: sorted, not archived, not a transfer.
-  public var countsInPlan: Bool { !needsReview && !archived && !isTransfer }
+  public var countsInPlan: Bool { !needsReview && !archived && !isTransfer && !isHeldCopy }
 }
 
 public enum BillCadence: String, Sendable, Hashable, Codable {

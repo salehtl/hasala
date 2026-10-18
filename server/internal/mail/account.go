@@ -197,7 +197,8 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 		method := strings.TrimPrefix(subkind, "recovery_used_")
 		return withFreeze("Your Hasala recovery phrase was used", "Your recovery phrase was used",
 			"Your recovery phrase was used to get back into your Hasala account on "+when+
-				", and a new "+method+" was added.")
+				", and a new "+method+" was added.",
+			"Your old passkeys and your old password were removed, and every other device was signed out.")
 	case "new_passkey":
 		return alert("New passkey for Hasala", "New passkey added",
 			"A new passkey was added to your Hasala account on "+when+".", notYou)

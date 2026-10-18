@@ -69,15 +69,15 @@ final class LiveE2ETests: LiveE2ECase {
     // Publishing the keys (password register #45, then GET /keys and /account).
     tap(app, "ready.continue", timeout: 90)
 
-    // Setup: ENBD, then the review account's sample instead of Gmail. A live build offers
-    // Gmail only, so Continue goes straight to its read-only screen (no Choose your email),
-    // where the sample is the dock's one pill and Google's sign-in the text button under it.
+    // Setup: ENBD, then Choose your email (Gmail or Outlook), then the review account's
+    // sample instead of Gmail on its read-only screen, where the sample is the dock's one
+    // pill and Google's sign-in the text button under it.
     tap(app, "bank.enbd", timeout: 30)
     tap(app, "bank.continue")
+    tap(app, "mail.choose.gmail", timeout: 60)
     let sample = el(app, "mail.sample")
     XCTAssertTrue(sample.waitForExistence(timeout: 60),
                   "no 'Use sample data': the review flag (#40 review_account) did not reach setup")
-    XCTAssertFalse(el(app, "mail.choose.outlook").exists, "a live build offered Outlook")
     attach(app, "Your email · sample offered")
     sample.tap()
 
@@ -126,7 +126,7 @@ final class LiveE2ETests: LiveE2ECase {
     XCTAssertTrue(waitForLabel(position, containing: "1 of 6", timeout: 15),
                   "the deck reads '\(position.exists ? position.label : "nothing")'")
     tap(app, "review.pill.transfer")
-    tap(app, "pick.sort")
+    tap(app, "pick.transfer")
     XCTAssertTrue(waitForLabel(position, containing: "2 of 6", timeout: 15), "the card was not sorted")
     attach(app, "Review · one sorted")
     tap(app, "review.close")

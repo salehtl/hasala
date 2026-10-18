@@ -80,9 +80,27 @@ import Testing
     #expect(TxnGates().reviewReason == nil)
     #expect(TxnGates(ar: "pass", sender: "trusted").reviewReason == nil)
     #expect(TxnGates(ar: "no_eop", sender: "untrusted").reviewReason == .senderUnverified)
-    #expect(TxnGates(ar: "pass", sender: "untrusted").reviewReason == .senderUnverified)
+    #expect(TxnGates(ar: "pass", sender: "untrusted").reviewReason == nil)
+    #expect(TxnGates(sender: "untrusted").reviewReason == nil)
+    #expect(TxnGates(ar: "no_ar", sender: "untrusted").reviewReason == .senderUnverified)
+    #expect(TxnGates(ar: "multiple_ar", sender: "untrusted").reviewReason == .senderUnverified)
     #expect(TxnGates(ar: "fail", sender: "trusted").reviewReason == .senderUnverified)
     #expect(TxnGates.ReviewReason.senderUnverified.rawValue == "sender_unverified")
+  }
+
+  @Test func aGmailDKIMAndDMARCFailIsSenderUnverified() {
+    let headers = [
+      "Authentication-Results: mx.google.com;", "       dkim=fail header.d=bank.example;",
+      "       dmarc=fail header.from=bank.example", "From: x", "",
+    ].joined(separator: "\r\n")
+    let a = AuthResults.analyze(headers, provider: .gmail)
+    #expect(a.verdict.reason == .fail)
+    #expect(TxnGates(ar: a.verdict.reason.rawValue, sender: "untrusted").reviewReason == .senderUnverified)
+    let pass = AuthResults.analyze(
+      ["Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: x", ""].joined(separator: "\r\n"),
+      provider: .gmail)
+    #expect(pass.verdict.reason == .pass)
+    #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").reviewReason == nil)
   }
 
   @Test func aNoEOPAlertFoldsIntoReview() async throws {
@@ -99,6 +117,18 @@ import Testing
     #expect(t.gates?.ar == "no_eop" && t.gates?.sender == "untrusted")
     #expect(t.gates?.reviewReason == .senderUnverified)
     #expect(t.category == nil)
+  }
+
+  @Test func aPassingAlertBehindTheClosedTrustGateHasNoSenderReason() async throws {
+    let store = try RuntimeGlueTests.ledger()
+    let rig = OutlookRig(trustProven: false, ledgerStore: store, author: Self.authoring(store).opAuthor)
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-gated", amount: "1.00", dateMs: Self.t0 - Self.day))
+    await rig.connectAndActivate()
+    let s = try Self.fold(store)
+    let t = try #require(Self.row(s, message: "AAkALgAA-gated"))
+    #expect(t.needsReview)
+    #expect(t.gates?.ar == "pass" && t.gates?.sender == "untrusted")
+    #expect(t.gates?.reviewReason == nil)
   }
 
   @Test func aBatchOf200WithOneNoEOPAlertImportsAll() async throws {

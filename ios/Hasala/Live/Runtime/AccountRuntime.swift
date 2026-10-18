@@ -209,7 +209,7 @@ final class AccountRuntime {
     let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
     let store = LiveLedgerStore(
       reader: projection.reader, author: LedgerEditAuthor(observer: observer, outbox: outbox), profile: profile,
-      prefs: DevicePrefsStore())
+      prefs: DevicePrefsStore(), clock: LiveLedgerStore.runClock())
     // The running lane's cycle (nil in a build that connects no mailbox). Typed apart: the
     // coordinator's initializer is too much for the type checker with it inline.
     var mailboxStage: WorkCoordinator.MailboxStage?

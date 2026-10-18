@@ -90,6 +90,43 @@ struct ObserverSyncTests {
     #expect(try b.reader.activity().map(\.merchantRaw) == ["Talabat"])
   }
 
+  @Test("a row an older build set aside is read when an update's cold fold opens it")
+  func coldRefoldRereadsSetAside() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    try await a.author { x in _ = try Self.manual(&x, "Talabat", 6_450, at: w.clock.nowMs() + LocalClock.offsetMs) }
+    #expect(await a.run(.authored).stop == nil)
+    #expect(await b.run(.launch).stop == nil)
+    let full = try await a.state()
+    try await b.context.store.db.write { db in
+      try db.execute(sql: "UPDATE wire_rows SET disposition = 'set_aside'")
+      try db.execute(sql: "UPDATE fold_snapshot SET fold_print = 'older semantics'")
+    }
+    let again = try Runtime(b.context, projection: b.projection)
+    try await again.observer.open()
+    #expect(try await again.state().serialized() == full.serialized())
+    #expect(try await again.state().unreadable.isEmpty)
+    #expect(try again.reader.activity().map(\.merchantRaw) == ["Talabat"])
+    let events = try b.context.store.foldEvents().map { "\($0.kind):\($0.detail)" }
+    #expect(events.contains { $0.hasPrefix("set_aside_reread:rows_") })
+    #expect(!events.contains { $0.hasPrefix("integrity_alarm") })
+  }
+
+  @Test("a row stored as opened that a cold fold sets aside still halts")
+  func coldRefoldFoldedToSetAsideHalts() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    try await a.author { x in _ = try Self.manual(&x, "Talabat", 6_450, at: w.clock.nowMs() + LocalClock.offsetMs) }
+    #expect(await a.run(.authored).stop == nil)
+    #expect(await b.run(.launch).stop == nil)
+    try await b.context.store.db.write { db in
+      try db.execute(sql: "UPDATE wire_rows SET disposition = 'alarm'")
+      try db.execute(sql: "UPDATE fold_snapshot SET fold_print = 'older semantics'")
+    }
+    let again = try Runtime(b.context, projection: b.projection)
+    await #expect(throws: SyncStop.halted(.inconsistent("cold_fold_disposition"))) { try await again.observer.open() }
+  }
+
   @Test("rows pulled before the observer existed are folded when it opens")
   func observerLessRows() async throws {
     let (w, a, b) = try await twoRuntimes()

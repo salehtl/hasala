@@ -25,6 +25,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case split(TxnID, [SplitLine])
   /// `txn_annotated{archived}`.
   case archive(TxnID, Bool)
+  case resolveCopy(TxnID, merge: Bool)
   /// Review "Skip for now": device-local until the next local midnight (no op).
   case skipReview(TxnID)
 

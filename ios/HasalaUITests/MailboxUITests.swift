@@ -172,12 +172,38 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(alert.descendants(matching: .any)
       .matching(NSPredicate(format: "label CONTAINS %@", "account.live.com/consent/Manage")).firstMatch.exists)
     attach(app, "Mailbox · Disconnect")
-    alert.buttons["Disconnect"].tap()
+    XCTAssertTrue(alert.buttons["Keep the 12 transactions from this inbox"].firstMatch.exists)
+    XCTAssertTrue(alert.buttons["Remove them"].firstMatch.exists)
+    alert.buttons["Keep the 12 transactions from this inbox"].firstMatch.tap()
     let row = el(app, "bankAlerts.mailbox.outlook-1")
     XCTAssertTrue(row.waitForExistence(timeout: 10), "Bank alerts did not come back")
     XCTAssertTrue(row.waitForLabel(containing: "Off since 10 Oct"))
     XCTAssertTrue(app.staticTexts["Outlook disconnected. Past transactions stay."].waitForExistence(timeout: uiWait))
     attach(app, "Bank alerts · disconnected row")
+  }
+
+  @MainActor
+  func testDisconnectAsksToKeepOrRemoveTheTransactions() throws {
+    let app = launch(scenario: "passkeyUser")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.buttons["header.profile"].firstMatch.tap()
+    tap(app, "profile.bankAlerts")
+    tap(app, "bankAlerts.mailbox.gmail-1")
+    XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: uiWait))
+    tap(app, "mailbox.disconnect")
+    let alert = app.alerts["Disconnect maya@example.com?"]
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "It brought in 42 transactions.")).firstMatch.exists)
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "Removing also takes the 3 you changed.")).firstMatch.exists)
+    XCTAssertTrue(alert.buttons["Keep the 42 transactions from this inbox"].firstMatch.exists)
+    XCTAssertTrue(alert.buttons["Cancel"].firstMatch.exists)
+    attach(app, "Mailbox · Disconnect · keep or remove")
+    alert.buttons["Remove them"].firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["Gmail disconnected. 42 transactions removed."].waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForLabel(containing: "Off since 10 Oct"))
+    attach(app, "Bank alerts · removed")
   }
 
   /// Bank alerts and both mailbox layouts at AX3: nothing clipped, every control reachable.

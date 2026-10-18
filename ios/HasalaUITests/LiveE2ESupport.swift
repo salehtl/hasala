@@ -124,6 +124,7 @@ class LiveE2ECase: XCTestCase {
     }
     let app = XCUIApplication()
     app.launchEnvironment["HASALA_API_BASE_URL"] = e2e.api
+    app.launchEnvironment["HASALA_LEDGER_NOW"] = "sample"
     app.launch()
     return app
   }

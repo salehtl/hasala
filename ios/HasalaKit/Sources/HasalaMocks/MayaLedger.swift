@@ -103,7 +103,7 @@ public enum MayaLedger {
         provenance: alert(dib, "09:05", "STARBUCKS DIFC GATE")),
     Txn(id: "steam", merchant: "Steam", amount: .aed(59_49), postedAt: oct(10, 11, 2), accountID: "dib",
         needsReview: true, isNewMerchant: true, suggestion: "entertainment",
-        provenance: alert(dib, "11:02", "STEAMPOWERED.COM")),
+        provenance: alert(dib, "11:02", "STEAMPOWERED.COM"), reviewReason: .senderUnverified),
     Txn(id: "dubai-taxi", merchant: "Dubai Taxi", amount: .aed(38_50), postedAt: oct(10, 8, 10), accountID: "dib",
         needsReview: true, isNewMerchant: true, suggestion: "transport",
         provenance: alert(dib, "08:10", "DUBAI TAXI CORP")),

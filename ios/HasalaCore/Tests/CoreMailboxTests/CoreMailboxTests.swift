@@ -266,7 +266,7 @@ import Testing
     #expect(known.payload["gates"]?["card"] == .string("known"))
     #expect(known.payload.keys == [
       "amount_minor", "currency", "direction", "posted_at", "posted_precision", "merchant_raw", "last4", "category",
-      "category_source", "needs_review", "unparsed", "tier", "entry_method", "provenance", "bank", "gates",
+      "category_source", "needs_review", "unparsed", "tier", "entry_method", "provenance", "bank", "gates", "dedupe",
     ])
     #expect(known.payload["amount_minor"] == .string("25000"))
     #expect(known.payload["provenance"] == .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g")), ("message_id", .string("m1"))])))
@@ -298,7 +298,8 @@ import Testing
     #expect(p.fields == nil)
     let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
     #expect(d.needsReview)
-    #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","card":"none","forwarded":false}}"#)
+    let mid = MessageIDEvidence.hash(headers: "Message-ID: <\(Rig.t0).synthetic@example.invalid>") ?? ""
+    #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","card":"none","forwarded":false},"dedupe":{"message_id":"\#(mid)"}}"#)
   }
 
   @Test func nonBankMailIsSetAside() {

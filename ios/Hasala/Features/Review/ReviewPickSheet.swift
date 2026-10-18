@@ -4,16 +4,15 @@ import SwiftUI
 
 /// Review · Pick a need (Paper 3SH-0), and its Want, Save and Transfer equivalents: a white
 /// medium sheet floating 8 from the edges (radius 40), one detent that fits its content. The
-/// bucket's categories with the suggestion ticked and marked "Suggested", the project chips,
-/// "Always use X for M", and "Sort into X". Close, a swipe down or the scrim cancel: nothing
-/// is sorted and the card goes back to the deck. At large text sizes it grows to large and
+/// bucket's categories with the suggestion marked "Suggested", the project chips and "Always
+/// use it for M". A tap on a category files the card at once. Close, a swipe down or the
+/// scrim cancel: nothing is sorted and the card goes back to the deck. At large text sizes it grows to large and
 /// scrolls (page 14).
 struct ReviewPickSheet: View {
   let model: any ReviewDeckModel
   let pick: ReviewPick
   let sort: (CategoryID, Bool, ProjectID?) -> Void
 
-  @State private var selected: CategoryID?
   @State private var project: ProjectID?
   @State private var alwaysUse = true
   /// The content's measured height, which the one detent fits; an estimate until then.
@@ -22,7 +21,6 @@ struct ReviewPickSheet: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var options: [CategoryOption] { model.options(for: pick.choice, card: pick.card.id) }
-  private var selectedName: String? { options.first { $0.id == selected }?.name }
 
   var body: some View {
     ScrollView {
@@ -31,12 +29,6 @@ struct ReviewPickSheet: View {
         list
         if !model.projects.isEmpty, pick.choice != .transfer { projects }
         ruleRow
-        Button(selectedName.map { "Sort into \($0)" } ?? "Choose a category") {
-          if let selected { sort(selected, alwaysUse, project) }
-        }
-        .buttonStyle(.pill(.primary, fill: true))
-        .disabled(selected == nil)
-        .accessibilityIdentifier("pick.sort")
       }
       .padding(.top, 8)
       .padding(.horizontal, HSpacing.insetPage)
@@ -52,19 +44,18 @@ struct ReviewPickSheet: View {
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
     .onAppear {
-      selected = options.first { $0.id == pick.card.suggestion?.id }?.id ?? options.first?.id
       // A transfer is not a merchant's habit: no rule unless the person asks for one.
       alwaysUse = pick.choice != .transfer
     }
   }
 
   /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
-  /// 56 with 1 dividers, the project block 66, the rule row 44, the button 54, gaps 20, and
-  /// the 8 / 28 insets), so it opens at its size instead of growing into it.
+  /// 56 with 1 dividers, the project block 66, the rule row 44, gaps 20, and the 8 / 28
+  /// insets), so it opens at its size instead of growing into it.
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
     let projects: CGFloat = model.projects.isEmpty || pick.choice == .transfer ? 0 : 66 + 20
-    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 20 + 54 + 28
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
@@ -84,14 +75,14 @@ struct ReviewPickSheet: View {
     .padding(.top, 12)
   }
 
-  /// The bucket's categories, straight on the sheet: disc 40, name, "Suggested", the tick.
+  /// The bucket's categories, straight on the sheet: disc 40, name, "Suggested".
   private var list: some View {
     VStack(spacing: 0) {
       ForEach(Array(options.enumerated()), id: \.element.id) { i, o in
         if i > 0 {
           HColor.borderSubtle.frame(height: 1).padding(.leading, 52).accessibilityHidden(true)
         }
-        Button { selected = o.id } label: {
+        Button { sort(o.id, alwaysUse, project) } label: {
           HStack(spacing: 12) {
             CategoryDisc(hue: o.hue, icon: o.glyph.icon)
             Text(o.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
@@ -100,10 +91,6 @@ struct ReviewPickSheet: View {
               InfoChip("Suggested", style: .suggested)
             }
             Spacer(minLength: 8)
-            ZStack {
-              if selected == o.id { HIconView(.check, size: 22, color: HColor.listRowCheck) }
-            }
-            .frame(width: 24, height: 24)
           }
           .frame(minHeight: 56)
           .contentShape(Rectangle())
@@ -111,7 +98,8 @@ struct ReviewPickSheet: View {
         .buttonStyle(HRowPressStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pick.card.suggestion?.id == o.id ? "\(o.name), suggested" : o.name)
-        .accessibilityAddTraits(selected == o.id ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint("Sorts it now")
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("pick.\(o.id)")
       }
     }
@@ -135,7 +123,7 @@ struct ReviewPickSheet: View {
 
   private var ruleRow: some View {
     Toggle(isOn: $alwaysUse) {
-      Text("Always use \(selectedName ?? "it") for \(pick.card.merchant)")
+      Text("Always use it for \(pick.card.merchant)")
         .hType(.subheadline.weight(.medium))
         .foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
@@ -172,5 +160,212 @@ struct CheckboxToggleStyle: ToggleStyle {
     .buttonStyle(.plain)
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
+  }
+}
+
+enum ReviewReasonStyle {
+  static func ink(_ reason: TxnReviewReason) -> Color {
+    switch reason {
+    case .senderUnverified: HColor.statusWarningForeground
+    case .probableCopy: HColor.statusInfoForeground
+    }
+  }
+
+  static func surface(_ reason: TxnReviewReason) -> Color {
+    switch reason {
+    case .senderUnverified: HColor.statusWarningSurface
+    case .probableCopy: HColor.reviewSuggestionSurface
+    }
+  }
+
+  static func icon(_ reason: TxnReviewReason) -> HIcon {
+    switch reason {
+    case .senderUnverified: .shield
+    case .probableCopy: .envelope
+    }
+  }
+
+  static func chip(_ reason: TxnReviewReason) -> InfoChip.Style {
+    switch reason {
+    case .senderUnverified: .warningReason
+    case .probableCopy: .reason
+    }
+  }
+}
+
+struct ReviewReasonSheet: View {
+  let reason: TxnReviewReason
+  let sort: () -> Void
+  let archive: () -> Void
+  var merge: () -> Void = {}
+  var keepBoth: () -> Void = {}
+
+  @State private var contentHeight: CGFloat?
+  @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          header
+          ReviewReasonInfo(reason: reason, sort: sort, archive: archive, merge: merge, keepBoth: keepBoth)
+        }
+        .padding(.top, 8)
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.bottom, 28)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+      }
+      .scrollBounceBehavior(.basedOnSize)
+      .ignoresSafeArea(.container, edges: typeSize.isAccessibilitySize ? [] : .bottom)
+      .background(HColor.sheetSurface)
+      .toolbar(.hidden, for: .navigationBar)
+    }
+    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? 600)])
+    .presentationDragIndicator(.visible)
+    .presentationBackground(HColor.sheetSurface)
+    .presentationCornerRadius(HRadius.sheet)
+  }
+
+  private var header: some View {
+    HStack {
+      GlassIconButton(.close, label: "Close") { dismiss() }
+        .accessibilityIdentifier("reason.close")
+      Spacer(minLength: 8)
+      Text("About this alert")
+        .hType(.headline.weight(.semibold))
+        .foregroundStyle(HColor.textPrimary)
+        .multilineTextAlignment(.center)
+        .accessibilityAddTraits(.isHeader)
+      Spacer(minLength: 8)
+      Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+    }
+    .padding(.top, 12)
+  }
+}
+
+struct ReviewReasonPage: View {
+  let reason: TxnReviewReason
+  let sort: () -> Void
+  let archive: () -> Void
+
+  var body: some View {
+    ScrollView {
+      ReviewReasonInfo(reason: reason, sort: sort, archive: archive)
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.top, 8)
+        .padding(.bottom, 40)
+    }
+    .background(HColor.sheetSurfaceLarge)
+    .navigationTitle("About this alert")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+struct ReviewReasonInfo: View {
+  let reason: TxnReviewReason
+  let sort: () -> Void
+  let archive: () -> Void
+  var merge: () -> Void = {}
+  var keepBoth: () -> Void = {}
+
+  @ScaledMetric(relativeTo: .subheadline) private var stepDisc: CGFloat = 24
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      hero
+      whatToDo.padding(.bottom, 8)
+      actions
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("reason.info")
+  }
+
+  private var explanation: String {
+    switch reason {
+    case .senderUnverified:
+      "Your mailbox couldn't confirm that this email came from your bank. It may still be real, so check it before you sort it."
+    case .probableCopy:
+      "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
+    }
+  }
+
+  private var steps: [String] {
+    switch reason {
+    case .senderUnverified:
+      [
+        "Open your bank app and look for this payment.",
+        "If it's there, sort it as usual.",
+        "If it isn't, archive it so it stays out of your plan. Don't tap links in that email.",
+      ]
+    case .probableCopy:
+      ["Merge it if it's the same payment.", "Keep both if you really paid twice."]
+    }
+  }
+
+  @ViewBuilder private var actions: some View {
+    switch reason {
+    case .senderUnverified:
+      Button("It's real, sort it") { sort() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("reason.sort")
+      Button("Not mine, archive it") { archive() }
+        .buttonStyle(.pill(.destructiveText, fill: true))
+        .accessibilityIdentifier("reason.archive")
+    case .probableCopy:
+      Button("Merge") { merge() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("reason.merge")
+      Button("Keep both") { keepBoth() }
+        .buttonStyle(.pill(.secondary, fill: true))
+        .accessibilityIdentifier("reason.keepBoth")
+    }
+  }
+
+  private var hero: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Circle().fill(ReviewReasonStyle.surface(reason)).frame(width: 56, height: 56)
+        .overlay {
+          HIconView(ReviewReasonStyle.icon(reason), size: 26, color: ReviewReasonStyle.ink(reason), strokeWidth: 1.9)
+        }
+        .accessibilityHidden(true)
+      Text(reason.title)
+        .hType(.section)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+      Text(explanation)
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, 4)
+  }
+
+  private var whatToDo: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("What to do").hType(.overline).foregroundStyle(HColor.textSecondary)
+        .accessibilityAddTraits(.isHeader)
+      VStack(alignment: .leading, spacing: 4) {
+        ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+          HStack(alignment: .top, spacing: 12) {
+            Text("\(i + 1)")
+              .hType(.footnote.weight(.semibold))
+              .foregroundStyle(HColor.textPrimary)
+              .frame(width: stepDisc, height: stepDisc)
+              .background(HColor.surfaceSecondary, in: Circle())
+            Text(step)
+              .hType(.subheadline)
+              .foregroundStyle(HColor.textPrimary)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.top, 2)
+          }
+          .padding(.vertical, 6)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Step \(i + 1). \(step)")
+        }
+      }
+    }
   }
 }

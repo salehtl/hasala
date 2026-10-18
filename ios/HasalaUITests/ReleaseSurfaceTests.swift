@@ -38,4 +38,20 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
     result.tap()
     XCTAssertTrue(el(app, "txn.merchant").waitForLabel("Carrefour"))
   }
+
+  @MainActor
+  func testAQuestionAnswersOrFallsBackToWords() throws {
+    let app = launchRelease()
+    app.tabBars.firstMatch.buttons["Search"].tap()
+    let field = app.searchFields["Ask about your money"]
+    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
+    type("carrefour september", into: field)
+    XCTAssertTrue(el(app, "search.ask.thinking").waitForNonExistence(timeout: 30), "the question never settled")
+    let answered = el(app, "search.answer").waitForExistence(timeout: 2)
+    if !answered {
+      XCTAssertTrue(el(app, "search.txn.carrefour").exists || el(app, "search.none").exists, "no keyword fallback")
+    }
+    attach(app, answered ? "Search · Release · answered" : "Search · Release · keyword fallback")
+    assertNoPlaceholders(app, "Search question")
+  }
 }

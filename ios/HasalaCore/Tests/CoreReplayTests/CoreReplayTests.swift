@@ -312,12 +312,22 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 40)
+    #expect(s.cursors.hot == 45)
+    #expect(s.txns["01JC0000000000000000000009"]?.mergedInto == "01JC0000000000000000000010")
+    #expect(s.txns["01JC0000000000000000000011"]?.copyOf == "01JC0000000000000000000010")
+    #expect(s.txns["01JC0000000000000000000011"]?.copyDecision == "keep_both")
+    #expect(s.mailboxRetirements.first?.txnIDs == ["01JC0000000000000000000003", "01JC0000000000000000000008"])
     #expect(s.anomalies.map(\.kind) == ["duplicate_ingest"])
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")
     #expect(s.plan.overwrites.count == 1)
     #expect(FoldCanary.foldPrint.utf8.count == 32)
+  }
+
+  @Test("the canary folds every v4 op type, so a new type changes the fold print and an update refolds")
+  func canaryCoversEveryV4Type() {
+    let types = Set(FoldCanary.log().flatMap { $0.ops.map(\.type) })
+    for t in OpType.allCases where t.minVersion >= 4 { #expect(types.contains(t), "\(t.rawValue)") }
   }
 
   @Test("snapshot round trip keeps every map's order and the witness")

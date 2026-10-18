@@ -35,6 +35,9 @@ struct ReviewDeckView: View {
   @State private var tap = 0
   /// The pick sheet's choice, filed once the sheet has gone.
   @State private var pendingSort: PendingSort?
+  @State private var reasonInfo: ReviewCardModel?
+  @State private var pendingArchive: ReviewCardModel?
+  @State private var pendingCopy: (card: ReviewCardModel, merge: Bool)?
 
   private struct PendingSort {
     let pick: ReviewPick
@@ -71,6 +74,24 @@ struct ReviewDeckView: View {
       }
       .frame(maxHeight: .infinity)
       .animation(motion.animation(.stateSwap), value: showsDeck)
+      .sheet(item: $reasonInfo, onDismiss: reasonInfoClosed) { card in
+        if let reason = card.reviewReason {
+          ReviewReasonSheet(
+            reason: reason, sort: { reasonInfo = nil },
+            archive: {
+              pendingArchive = card
+              reasonInfo = nil
+            },
+            merge: {
+              pendingCopy = (card, true)
+              reasonInfo = nil
+            },
+            keepBoth: {
+              pendingCopy = (card, false)
+              reasonInfo = nil
+            })
+        }
+      }
     }
     .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
     .background(HColor.surfaceSecondary)
@@ -273,14 +294,24 @@ struct ReviewDeckView: View {
     return ReviewCardView(
       card: card, hidden: model.hidden, lean: lean.map(choice(for:)), leanEdge: lean, strength: leanStrength,
       use: { use(card) },
+      merge: { resolveCopy(card, merge: true) },
+      keepBoth: { resolveCopy(card, merge: false) },
+      reason: { reasonInfo = card },
       actions: {
+        if card.copyLine != nil {
+          Button("Merge") { resolveCopy(card, merge: true) }
+          Button("Keep both") { resolveCopy(card, merge: false) }
+        }
         ForEach(ReviewChoice.allCases, id: \.self) { c in
           Button(c.label) { send(card, c) }
         }
-        if let s = card.suggestion {
+        if card.reviewReason == nil, let s = card.suggestion {
           Button("Use \(s.name)") { use(card) }
         }
         Button("Skip") { skip(card) }
+        if card.reviewReason != nil {
+          Button("About this alert") { reasonInfo = card }
+        }
       }
     )
     .offset(drag)
@@ -486,11 +517,29 @@ struct ReviewDeckView: View {
 
   /// "Use": files the suggestion, flying the card toward its bucket's side.
   private func use(_ card: ReviewCardModel) {
-    guard let s = card.suggestion else { return }
+    guard card.reviewReason == nil, let s = card.suggestion else { return }
     tap += 1
     file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name) {
       model.useSuggestion(card.id)
     }
+  }
+
+  private func resolveCopy(_ card: ReviewCardModel, merge: Bool) {
+    tap += 1
+    file(card, toward: nil, as: merge ? "Merged" : "Kept both") {
+      model.resolveCopy(card.id, merge: merge)
+    }
+  }
+
+  private func reasonInfoClosed() {
+    if let copy = pendingCopy {
+      pendingCopy = nil
+      resolveCopy(copy.card, merge: copy.merge)
+      return
+    }
+    guard let card = pendingArchive else { return }
+    pendingArchive = nil
+    file(card, toward: nil, as: nil) { model.archive(card.id) }
   }
 
   private func skip(_ card: ReviewCardModel) {
@@ -674,6 +723,9 @@ struct ReviewCardView<Actions: View>: View {
   let leanEdge: SwipeEdge?
   let strength: Double
   let use: () -> Void
+  var merge: () -> Void = {}
+  var keepBoth: () -> Void = {}
+  var reason: () -> Void = {}
   @ViewBuilder let actions: () -> Actions
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -692,7 +744,13 @@ struct ReviewCardView<Actions: View>: View {
       .accessibilityLabel(spoken)
       .accessibilityActions { actions() }
       .accessibilityIdentifier("review.merchant")
-      if let s = card.suggestion { strip(s) }
+      if let line = card.copyLine {
+        copyStrip(line)
+      } else if let r = card.reviewReason {
+        reasonStrip(r)
+      } else if let s = card.suggestion {
+        strip(s)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(HColor.surfacePrimary)
@@ -711,13 +769,19 @@ struct ReviewCardView<Actions: View>: View {
   private var identity: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .top) {
-        if !card.isNewMerchant, let s = card.suggestion {
+        if card.copyLine == nil, !card.isNewMerchant, let s = card.suggestion {
           CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: .s56)
         } else {
           MerchantMonogram(letter: card.monogram, size: 56)
         }
         Spacer(minLength: 8)
-        if card.isNewMerchant {
+        if let r = card.reviewReason {
+          Button(action: reason) {
+            InfoChip(r.label, style: ReviewReasonStyle.chip(r))
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("review.reason.\(r.rawValue)")
+        } else if card.isNewMerchant {
           InfoChip("New merchant", style: .reason)
         }
       }
@@ -743,6 +807,61 @@ struct ReviewCardView<Actions: View>: View {
       Text(card.meta).hType(.footnote).foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+  }
+
+  private func copyStrip(_ line: String) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(line)
+        .hType(.subheadline.weight(.semibold))
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("review.copy")
+      HStack(spacing: 8) {
+        Button("Keep both", action: keepBoth)
+          .buttonStyle(.pill(.secondary, size: .small))
+          .accessibilityIdentifier("review.keepBoth")
+        Button("Merge", action: merge)
+          .buttonStyle(.pill(.primary, size: .small))
+          .accessibilityIdentifier("review.merge")
+      }
+    }
+    .padding(.top, 14)
+    .padding(.bottom, 14)
+    .padding(.leading, 24)
+    .padding(.trailing, 16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.reviewSuggestionSurface)
+    .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
+  }
+
+  private func reasonStrip(_ r: TxnReviewReason) -> some View {
+    let ink = ReviewReasonStyle.ink(r)
+    return Button(action: reason) {
+      HStack(spacing: 12) {
+        Circle().fill(HColor.surfacePrimary).frame(width: 32, height: 32)
+          .overlay { HIconView(ReviewReasonStyle.icon(r), size: 16, color: ink, strokeWidth: 2) }
+        Text(r.detail)
+          .hType(.footnote.weight(.medium))
+          .foregroundStyle(ink)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        HIconView(.chevronRight, size: 16, color: ink)
+      }
+      .padding(.vertical, 14)
+      .padding(.leading, 24)
+      .padding(.trailing, 16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(ReviewReasonStyle.surface(r))
+      .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(r.title). \(r.detail)")
+    .accessibilityHint("Shows what this means and what to do")
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("review.reasonStrip.\(r.rawValue)")
   }
 
   /// "Looks like Groceries" with "Use" (Paper "Suggestion strip": 14 / 16 / 14 / 24, gap 12).
@@ -817,9 +936,14 @@ struct ReviewCardView<Actions: View>: View {
       ? "Amount hidden"
       : (card.isIncome ? "plus " : "") + "\(card.amount.currency) \(MoneyFormat.string(card.amount.minor))"
     var line = "\(card.merchant), \(amount), \(card.spokenWhen)."
+    if let copy = card.copyLine {
+      line += " \(copy)."
+    } else if let r = card.reviewReason {
+      line += " \(r.title)."
+    }
     if card.isNewMerchant { line += " New merchant." }
     if let raw = card.rawMerchant { line += " Bank text: \(raw)." }
-    if let s = card.suggestion { line += " Looks like \(s.name)." }
+    if card.copyLine == nil, let s = card.suggestion { line += " Looks like \(s.name)." }
     return line
   }
 }

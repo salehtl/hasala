@@ -1,3 +1,4 @@
+import CoreDomain
 import CoreMailbox
 import CoreProjection
 import CoreTime
@@ -64,7 +65,30 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
 
   /// "Now" in the fixed local clock (UTC+04:00, spec 03c §1.5).
   static func localNow() -> LocalDateTime {
-    let ms = Int64(Date().timeIntervalSince1970 * 1000)
+    local(Int64(Date().timeIntervalSince1970 * 1000))
+  }
+
+  static func runClock(_ environment: [String: String] = ProcessInfo.processInfo.environment)
+    -> @MainActor () -> LocalDateTime
+  {
+    #if DEBUG
+      if environment["HASALA_LEDGER_NOW"] == "sample" { return sampleNow }
+    #endif
+    return localNow
+  }
+
+  #if DEBUG
+    static func sampleNow() -> LocalDateTime {
+      let ms = Int64(Date().timeIntervalSince1970 * 1000)
+      guard let seed = try? SampleSeed.Document(json: SampleSeed.bundled()),
+        let anchor = try? parseInstantMs(seed.anchor),
+        let target = SampleSeed.target(anchorMs: anchor, nowMs: ms)
+      else { return local(ms) }
+      return local(target.targetMs)
+    }
+  #endif
+
+  private static func local(_ ms: Int64) -> LocalDateTime {
     let d = LocalClock.localDate(ms) ?? CivilDate(year: 2026, month: 1, day: 1)!
     let minutes = Int(((ms + LocalClock.offsetMs) % 86_400_000) / 60_000)
     return LocalDateTime(d.year, d.month, d.day, minutes / 60, minutes % 60)
@@ -234,6 +258,15 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       let i = try index(id)
       s.txns[i].archived = archived
       return (archived ? "Archived" : "Restored", [.archived(txn: id, archived: !archived)])
+    case .resolveCopy(let id, let merge):
+      let i = try index(id)
+      guard s.txns[i].isHeldCopy else { throw .notFound }
+      if merge {
+        s.txns.remove(at: i)
+        return ("Merged", [])
+      }
+      s.txns[i].heldCopy = nil
+      return ("Kept both", [])
     case .skipReview(let id):
       s.skippedReview.insert(id)
       return (nil, [])

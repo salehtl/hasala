@@ -46,6 +46,7 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var isTransfer: Bool
   public var archived: Bool
   public var needsReview: Bool
+  public var reviewReason: TxnReviewReason?
   public var project: String?
   /// A row of the App Review sample: no bank email is behind it.
   public var isSample: Bool = false
@@ -53,6 +54,10 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var suggestion: CategoryOption?
   /// One of the person's rules sorted it, so the provenance row opens the rules.
   public var sortedByRule: Bool = false
+}
+
+extension TransactionDetail {
+  public var senderUnverified: Bool { reviewReason == .senderUnverified }
 }
 
 public struct SplitLineModel: Sendable, Hashable, Identifiable {
@@ -109,7 +114,7 @@ public enum TransactionEngine {
       amount: t.amount, isIncome: t.direction == .in, meta: meta, category: c.map(CategoryOption.init),
       pace: pace, account: s.account(t.accountID)?.label, note: t.note, provenance: t.provenance,
       sortedBy: sortedBy, splits: splits, isRefund: t.isRefund, isTransfer: t.isTransfer, archived: t.archived,
-      needsReview: t.inReview, project: s.project(t.projectID)?.name, isSample: t.isSample,
+      needsReview: t.inReview, reviewReason: t.activeReviewReason, project: s.project(t.projectID)?.name, isSample: t.isSample,
       suggestion: t.inReview ? s.category(t.reviewSuggestion).map(CategoryOption.init) : nil,
       sortedByRule: { if case .rule = t.categorySource { true } else { false } }()
     )

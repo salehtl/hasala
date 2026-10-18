@@ -1,5 +1,6 @@
 #if HASALA_MOCKS
   import Foundation
+  import HasalaModel
   import HasalaModels
 
   // Activity, the transaction sheet, Review and Search (P6). Each screen is reached
@@ -54,6 +55,9 @@
           deck.useSuggestion("atm")
         }
       }),
+      Screen("review.copy", scenario: "mayaCopy", prepare: { graph in
+        startDeck(graph, at: "starbucks-copy") { _ in }
+      }),
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
       // Search · Ready.
@@ -61,6 +65,25 @@
       // Search · Results as you type ("carre").
       Screen("search.results", scenario: "maya", prepare: { graph in
         SearchHistory.launchQuery = "carre"
+        shell(.search)(graph)
+      }),
+      Screen("search.ask", scenario: "maya", prepare: { graph in
+        AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
+        SearchHistory.launchQuery = "How much did I spend at Carrefour in September?"
+        shell(.search)(graph)
+      }),
+      Screen("search.ask.coffee", scenario: "maya", prepare: { graph in
+        AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
+        SearchHistory.launchQuery = "coffee this month"
+        shell(.search)(graph)
+      }),
+      Screen("search.ask.ready", scenario: "maya", prepare: { graph in
+        AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
+        shell(.search)(graph)
+      }),
+      Screen("search.ask.arabic", scenario: "maya", prepare: { graph in
+        AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
+        SearchHistory.launchQuery = "كارفور"
         shell(.search)(graph)
       }),
     ]
