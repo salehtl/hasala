@@ -108,6 +108,10 @@ extension FakeServer {
         s.loseNextUploadResponse = false
         lose = true
       }
+      if !lose, s.losePullAfterNextUpload {
+        s.losePullAfterNextUpload = false
+        s.loseNextPull = true
+      }
       var seqs: [String] = []
       for (i, x) in apply.enumerated() {
         s.seq += 1

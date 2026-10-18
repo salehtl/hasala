@@ -44,13 +44,43 @@ struct LiveLedgerMapperTests {
     let outbox: Outbox
   }
 
-  static func account() throws -> Account {
+  nonisolated final class GatedClock: CoreTime.Clock, @unchecked Sendable {
+    let ms: Int64
+    private let lock = NSLock()
+    private var gate: DispatchSemaphore?
+    private let reached = DispatchSemaphore(value: 0)
+
+    init(ms: Int64) { self.ms = ms }
+
+    func close() { lock.withLock { gate = DispatchSemaphore(value: 0) } }
+
+    func open() { lock.withLock { () -> DispatchSemaphore? in defer { gate = nil }; return gate }?.signal() }
+
+    func nowMs() -> Int64 {
+      if let g = lock.withLock({ gate }) {
+        reached.signal()
+        g.wait()
+      }
+      return ms
+    }
+
+    func waitUntilHeld() async {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        DispatchQueue.global().async {
+          self.reached.wait()
+          c.resume()
+        }
+      }
+    }
+  }
+
+  static func account(clock: any CoreTime.Clock = FixedClock(ms: anchor)) throws -> Account {
     let store = try LedgerStore.inMemory()
     try store.create(StoreMeta(userID: user, writerID: writer, apiBase: "https://api.hasala.app", keyEpoch: 1, createdAt: anchor))
     let context = SyncContext(
       userID: user, writerID: writer, store: store,
       secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
-      client: AuthClient(transport: MiniHasalad(invite: "")), clock: FixedClock(ms: anchor), random: SystemRandom())
+      client: AuthClient(transport: MiniHasalad(invite: "")), clock: clock, random: SystemRandom())
     let projection = try ProjectionStore.inMemory()
     let observer = LedgerPageObserver(context: context, projection: projection, dictionary: AccountRuntime.dictionary)
     let outbox = Outbox(store: store, clock: FixedClock(ms: anchor), debounce: .seconds(3600), onAuthored: {})
@@ -257,6 +287,38 @@ struct LiveLedgerMapperTests {
     }
     try await Self.eventually { try a.projection.reader.txn(steam.id)?.needsReview == true }
     #expect(try a.projection.reader.txn(steam.id)?.needsReview == true)
+  }
+
+  @Test func aReloadWhileASortIsBeingWrittenDoesNotBringTheCardBack() async throws {
+    let clock = GatedClock(ms: Self.anchor)
+    let a = try Self.account(clock: clock)
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "sort.reload.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    let app = AppModel(store: store)
+    let deck = ReviewViewModel(app: app)
+    let steam = try #require(deck.cards.first { $0.merchant == "Steam" })
+    let before = deck.cards.count
+
+    clock.close()
+    #expect(deck.sort(steam.id, into: "entertainment", alwaysUse: false, project: nil))
+    await clock.waitUntilHeld()
+    await store.reload()
+    #expect(!deck.cards.contains { $0.id == steam.id })
+    #expect(deck.cards.count == before - 1)
+    #expect(app.reviewCount == before - 1)
+
+    clock.open()
+    try await Self.eventually { try a.projection.reader.txn(steam.id)?.category == "entertainment" }
+    #expect(try a.projection.reader.txn(steam.id)?.needsReview == false)
+    try await Task.sleep(for: .milliseconds(100))
+    await store.reload()
+    #expect(!deck.cards.contains { $0.id == steam.id })
+    #expect(store.state.txn(steam.id)?.categoryID == "entertainment")
   }
 
   @Test func anUncategorizedRowFromAnEarlierMonthIsInThatMonthsQueue() async throws {

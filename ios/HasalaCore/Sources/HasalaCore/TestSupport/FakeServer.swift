@@ -129,6 +129,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
     // tamper switches
     var cannedRefusals: [String: [(Int, String, String)]] = [:]
     var loseNextUploadResponse = false
+    var losePullAfterNextUpload = false
+    var loseNextPull = false
     var partialApplyNextUpload: Int?
     var dropHeadSigs = false
     var flipBlobByteAtSeq: Int64?
@@ -162,6 +164,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   /// The next upload is applied, but its answer is lost (a transport error).
   public func loseNextUploadResponse() { state.withLock { $0.loseNextUploadResponse = true } }
+
+  public func losePullAfterNextUpload() { state.withLock { $0.losePullAfterNextUpload = true } }
 
   /// The next upload stores only its first `rows` rows; the client sees a
   /// transport error, and its resend then meets `409 conflict`.
@@ -236,6 +240,12 @@ public final class FakeServer: Transport, @unchecked Sendable {
       return first
     }) {
       return Self.error(canned.0, canned.1, canned.2)
+    }
+    if route == "GET /api/v1/sync", state.withLock({ s -> Bool in
+      defer { s.loseNextPull = false }
+      return s.loseNextPull
+    }) {
+      throw .offline(.networkConnectionLost)
     }
     if route == "POST /api/v1/sync" {
       let (response, lose) = upload(request)

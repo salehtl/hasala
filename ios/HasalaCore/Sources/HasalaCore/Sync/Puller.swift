@@ -35,12 +35,14 @@ public protocol PageObserver: Sendable {
   func pageCommitted() async
   func pageAbandoned() async
   func pullEnded() async
+  func willPush() async
 }
 
 extension PageObserver {
   public func pageCommitted() async {}
   public func pageAbandoned() async {}
   public func pullEnded() async {}
+  public func willPush() async {}
 }
 
 public struct PullSummary: Sendable, Hashable {
