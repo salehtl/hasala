@@ -60,7 +60,8 @@ public enum HomeEngine {
     guard budget > 0 else {
       return SpendHero(
         state: .noPlan, overline: overline, spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
-        word: "No plan yet", fact: nil, caption: "spent this month", tiles: tiles, wash: .sky)
+        word: "No plan yet", fact: nil, caption: "spent this month", tiles: tiles, wash: .sky,
+        notCounted: notCounted(s, in: .month(month)))
     }
 
     let tick = Self.tick(s, month: month, plan: budget, day: day, days: days)
@@ -85,11 +86,25 @@ public enum HomeEngine {
       word: word, fact: fact,
       caption: planned(budget),
       tiles: tiles,
-      wash: verdict == .overBudget ? .rose : (verdict == .overPace ? .sand : .sky)
+      wash: verdict == .overBudget ? .rose : (verdict == .overPace ? .sand : .sky),
+      notCounted: notCounted(s, in: .month(month))
     )
   }
 
   static func spent(_ sec: PlanSection?) -> Int64 { sec.map { $0.budget.minor - $0.left.minor } ?? 0 }
+
+  public static func notCounted(_ s: LedgerState, in period: Period) -> SpendHero.NotCounted? {
+    let spend = Spending.notCounted(s, in: period)
+    let total = spend.reduce(Int64(0)) { $0 + $1.minor }
+    guard total > 0 else { return nil }
+    let one = spend.count == 1 ? spend[0].project : nil
+    return SpendHero.NotCounted(
+      amount: .aed(total), projects: spend.count, projectID: one?.id,
+      line: MoneyPhrase([
+        .text("Not counted: AED "), .amount(.aed(total), hidden: 3),
+        .text(" on \(one?.name ?? "\(spend.count) projects")"),
+      ]))
+  }
 
   static func planned(_ budget: Int64) -> MoneyPhrase {
     MoneyPhrase([.text("spent of "), .amount(.aed(budget), .rounded, hidden: 3), .text(" planned")])
@@ -103,19 +118,21 @@ public enum HomeEngine {
     let budget = (needs?.budget.minor ?? 0) + (wants?.budget.minor ?? 0)
     let tiles = heroTiles(needs: spent(needs), wants: spent(wants), saved: spent(section(.savings)))
     let note = topWant(s, month: month)
+    let notCounted = notCounted(s, in: .month(month))
     guard budget > 0 else {
       return SpendHero(
         state: .ended, overline: "Month ended", spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
         word: MoneyPhrase([.text("No plan for \(month.name)")]), fact: nil,
         caption: MoneyPhrase([.text("spent in \(month.name)")]), tiles: tiles, wash: .sky,
-        note: note)
+        note: note, notCounted: notCounted)
     }
     let over = total > budget
     return SpendHero(
       state: .ended, overline: "Month ended", spent: .aed(total), plan: .aed(budget), tick: nil,
       verdict: over ? .overBudget : .onTrack,
       word: MoneyPhrase([.text("Ended "), .amount(.aed(abs(budget - total)), hidden: 3), .text(over ? " over" : " under")]),
-      fact: nil, caption: planned(budget), tiles: tiles, wash: over ? .rose : .sky, note: note)
+      fact: nil, caption: planned(budget), tiles: tiles, wash: over ? .rose : .sky, note: note,
+      notCounted: notCounted)
   }
 
   public static func rangeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
@@ -149,7 +166,7 @@ public enum HomeEngine {
         HeroTile("Needs", .aed(needs), style: .rounded), HeroTile("Wants", .aed(wants), style: .rounded),
         HeroTile("Savings", .aed(saved), style: .rounded),
       ],
-      wash: .sky, bars: bars)
+      wash: .sky, bars: bars, notCounted: notCounted(s, in: period))
   }
 
   static func bucketSpent(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
@@ -322,9 +339,11 @@ public enum HomeEngine {
       }
     case .project:
       return s.projects.filter { p in !p.complete && plan.projects.contains { $0.id == p.id } }.map { p in
-        let left = plan.projects.first { $0.id == p.id }?.left ?? p.budget
+        let m = plan.projects.first { $0.id == p.id }
+        let detail = m?.left.map { MoneyPhrase([.amount($0, .rounded, hidden: 3), .text(" left")]) }
+          ?? MoneyPhrase([.amount(m?.spent ?? .aed(0), .rounded, hidden: 3), .text(" spent")])
         return HomeWidgetOption(config: .project(p.id), title: p.name,
-                                detail: MoneyPhrase([.amount(left, .rounded, hidden: 3), .text(" left")]),
+                                detail: detail,
                                 section: "Projects", glyph: p.glyph, hue: .peach)
       }
     case .goal:
@@ -367,12 +386,23 @@ public enum HomeEngine {
 
   static func projectWidget(_ p: Project, plan: PlanSnapshot) -> ProjectWidget? {
     guard !p.complete, let m = plan.projects.first(where: { $0.id == p.id }) else { return nil }
+    var caption: [MoneyPhrase.Part] = m.budget.map { [.text("of "), .amount($0, .rounded, hidden: 4)] } ?? []
+    if let starts = p.starts {
+      caption.append(.text("\(caption.isEmpty ? "" : " · ")\(p.startVerb) \(starts.dayMonth)"))
+    }
+    let unit: ProjectWidget.Unit
+    let figure: Money
+    if let left = m.left {
+      unit = left.minor < 0 ? .over : .left
+      figure = left.minor < 0 ? Money(minor: -left.minor, currency: left.currency) : left
+    } else {
+      unit = .spent
+      figure = m.spent
+    }
     return ProjectWidget(
-      name: p.name, glyph: p.glyph, left: m.left,
-      caption: MoneyPhrase([
-        .text("of "), .amount(p.budget, .rounded, hidden: 4), .text(" · \(p.startVerb) \(p.starts.dayMonth)"),
-      ]),
-      progress: m.progress
+      name: p.name, glyph: p.glyph, left: figure, unit: unit,
+      caption: MoneyPhrase(caption),
+      progress: m.budget == nil ? nil : m.progress
     )
   }
 

@@ -161,14 +161,30 @@ public struct SpendHero: Sendable, Hashable {
   public var wash: Hue
   public var bars: [HeroMonthBar]
   public var note: MoneyPhrase?
+  public var notCounted: NotCounted?
+
+  public struct NotCounted: Sendable, Hashable {
+    public var amount: Money
+    public var projects: Int
+    public var projectID: ProjectID?
+    public var line: MoneyPhrase
+
+    public init(amount: Money, projects: Int, projectID: ProjectID?, line: MoneyPhrase) {
+      self.amount = amount
+      self.projects = projects
+      self.projectID = projectID
+      self.line = line
+    }
+  }
 
   public init(
     state: State = .live, overline: String, spent: Money, plan: Money, tick: Money?, verdict: Verdict?,
     word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue,
-    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil
+    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil, notCounted: NotCounted? = nil
   ) {
     self.bars = bars
     self.note = note
+    self.notCounted = notCounted
     self.state = state
     self.overline = overline
     self.spent = spent
@@ -256,17 +272,23 @@ public struct NetWorthWidget: Sendable, Hashable, Codable {
 }
 
 public struct ProjectWidget: Sendable, Hashable, Codable {
+  public enum Unit: String, Sendable, Hashable, Codable {
+    case left, over, spent
+  }
+
   public var name: String
   public var glyph: Glyph
   public var left: Money
+  public var unit: Unit
   /// "of 12,000 · flies 14 Dec".
   public var caption: MoneyPhrase
-  public var progress: Permille
+  public var progress: Permille?
 
-  public init(name: String, glyph: Glyph, left: Money, caption: MoneyPhrase, progress: Permille) {
+  public init(name: String, glyph: Glyph, left: Money, unit: Unit = .left, caption: MoneyPhrase, progress: Permille?) {
     self.name = name
     self.glyph = glyph
     self.left = left
+    self.unit = unit
     self.caption = caption
     self.progress = progress
   }
@@ -304,10 +326,22 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   /// The to-review variant: an accent dot before the title (Paper "kit Lists and cards").
   public var toReview: Bool
   public var reviewReason: TxnReviewReason?
+  public var project: Project?
+
+  public struct Project: Sendable, Hashable, Codable {
+    public var id: ProjectID
+    public var name: String
+
+    public init(id: ProjectID, name: String) {
+      self.id = id
+      self.name = name
+    }
+  }
 
   public init(
     id: String, merchant: String, glyph: Glyph, hue: Hue, detail: String, amount: Money,
-    isIncome: Bool = false, monogram: String? = nil, toReview: Bool = false, reviewReason: TxnReviewReason? = nil
+    isIncome: Bool = false, monogram: String? = nil, toReview: Bool = false, reviewReason: TxnReviewReason? = nil,
+    project: Project? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -319,6 +353,7 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
     self.monogram = monogram
     self.toReview = toReview
     self.reviewReason = reviewReason
+    self.project = project
   }
 }
 

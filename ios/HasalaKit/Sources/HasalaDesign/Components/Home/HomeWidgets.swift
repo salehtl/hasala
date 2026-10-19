@@ -369,20 +369,27 @@ public struct ProjectWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
           HStack(alignment: .firstTextBaseline, spacing: 5) {
             MoneyText(model.left, figure: .widgetSmall, style: .rounded, hidden: hidden, hiddenGlyphs: 4,
-                      hiddenDots: 24, color: HColor.textPrimary)
-            Text("left").hFigure(.widgetUnit).foregroundStyle(HColor.textPrimary)
+                      hiddenDots: 24, color: figureColor)
+            Text(model.unit.rawValue).hFigure(.widgetUnit).foregroundStyle(figureColor)
           }
-          Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary)
-            .lineLimitAtDefaultTextSize(2)
-            .accessibilityLabel(model.caption.spoken(hidden: hidden))
+          if !model.caption.parts.isEmpty {
+            Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote)
+              .foregroundStyle(HColor.textSecondary)
+              .lineLimitAtDefaultTextSize(2)
+              .accessibilityLabel(model.caption.spoken(hidden: hidden))
+          }
         }
-        SlimProgressBar(model.progress)
+        if let progress = model.progress {
+          SlimProgressBar(progress, fill: model.unit == .over ? HColor.paceFillOverBudget : HColor.paceFill)
+        }
       }
     }
     .smallWidget()
     .smallWidgetChrome(HColor.widgetSurface, trailing: 16)
     .accessibilityElement(children: .combine)
   }
+
+  private var figureColor: Color { model.unit == .over ? HColor.paceOverBudget : HColor.textPrimary }
 }
 
 /// A savings goal (Small, the mint wash): the jar and its name, the percent funded, the

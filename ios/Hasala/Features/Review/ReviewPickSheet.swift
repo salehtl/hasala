@@ -21,13 +21,15 @@ struct ReviewPickSheet: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var options: [CategoryOption] { model.options(for: pick.choice, card: pick.card.id) }
+  private var projectChoices: [ProjectChoice] { model.projects(for: pick.card.id) }
+  private var showsProjects: Bool { !projectChoices.isEmpty && pick.choice != .transfer }
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
         header
         list
-        if !model.projects.isEmpty, pick.choice != .transfer { projects }
+        if showsProjects { projects }
         ruleRow
       }
       .padding(.top, 8)
@@ -54,7 +56,7 @@ struct ReviewPickSheet: View {
   /// insets), so it opens at its size instead of growing into it.
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
-    let projects: CGFloat = model.projects.isEmpty || pick.choice == .transfer ? 0 : 66 + 20
+    let projects: CGFloat = showsProjects ? 66 + 20 : 0
     return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 28
   }
 
@@ -113,9 +115,15 @@ struct ReviewPickSheet: View {
       FlowLayout(spacing: 8) {
         ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
           .accessibilityIdentifier("pick.project.none")
-        ForEach(model.projects, id: \.id) { p in
-          ChoiceChip(p.name, dot: .peach, selected: project == p.id, onCard: true) { project = p.id }
-            .accessibilityIdentifier("pick.project.\(p.id)")
+        ForEach(projectChoices) { p in
+          HStack(spacing: 6) {
+            ChoiceChip(p.name, dot: .peach, selected: project == p.id, onCard: true) { project = p.id }
+              .accessibilityLabel(p.suggested ? "\(p.name), suggested" : p.name)
+              .accessibilityIdentifier("pick.project.\(p.id)")
+            if p.suggested {
+              InfoChip("Suggested", style: .suggested).accessibilityHidden(true)
+            }
+          }
         }
       }
     }

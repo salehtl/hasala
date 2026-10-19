@@ -62,11 +62,73 @@ struct LiveMailboxTests {
   /// Main's `noMailboxIsSaidInWords`: the no-mailbox halt and failure in plain words, and
   /// Outlook's copy names personal Microsoft accounts.
   @Test func noMailboxIsSaidInWords() {
-    #expect(LiveMailboxConnecting.message(.noMailbox).contains("no Outlook mailbox"))
-    #expect(LiveMailboxConnecting.stopped(.noMailbox) == LiveMailboxConnecting.message(.noMailbox))
-    #expect(LiveMailboxConnecting.stopped(.gmail) == "Reading your bank alerts stopped. Try again.")
+    let outlook = "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com."
+    let gmail = "This Google account has no Gmail. Sign in with the account your bank alerts go to."
+    #expect(LiveMailboxConnecting.message(.noMailbox, provider: .outlook) == outlook)
+    #expect(LiveMailboxConnecting.message(.noMailbox, provider: .gmail) == gmail)
+    #expect(LiveMailboxConnecting.stopped(.noMailbox, provider: .outlook) == outlook)
+    #expect(LiveMailboxConnecting.stopped(.noMailbox, provider: .gmail) == gmail)
+    #expect(MailConnectFailure.noMailbox(.gmail).message(for: .gmail) == gmail)
+    #expect(LiveMailboxConnecting.stopped(.gmail, provider: .gmail) == "Reading your bank alerts stopped. Try again.")
     #expect(LiveMailboxConnecting.message(.google, provider: .outlook).contains("personal Microsoft accounts"))
     #expect(LiveMailboxConnecting.message(.offline, provider: .outlook).contains("Connect Outlook when"))
+  }
+
+  @Test func aConnectWithNoMailboxIsItsOwnFailure() throws {
+    #expect(throws: MailConnectFailure.noMailbox(.outlook)) {
+      try LiveMailboxConnecting.linked(.failed(.noMailbox), provider: .outlook)
+    }
+    #expect(throws: MailConnectFailure.offline) { try LiveMailboxConnecting.linked(.failed(.offline), provider: .outlook) }
+    #expect(throws: MailConnectFailure.cancelled) { try LiveMailboxConnecting.linked(.cancelled, provider: .outlook) }
+    #expect(throws: MailConnectFailure.failed(LiveMailboxConnecting.message(.permissionMissing, provider: .outlook))) {
+      try LiveMailboxConnecting.linked(.failed(.permissionMissing), provider: .outlook)
+    }
+    #expect(try LiveMailboxConnecting.linked(.connected(address: nil), provider: .outlook) == nil)
+    #expect(try LiveMailboxConnecting.linked(.connected(address: "maya.k@example.com"), provider: .outlook) == nil)
+    #expect(
+      try LiveMailboxConnecting.linked(.connected(address: "maya.other@example.com", anotherAddress: true), provider: .outlook)
+        == "maya.other@example.com")
+    #expect(MailConnectFailure.noMailbox(.outlook).message(for: .outlook)
+      == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com.")
+  }
+
+  @Test func theSwitchQuestionAndItsAnswerCrossTheLane() async throws {
+    #expect(throws: MailConnectFailure.switchDeclined) { try LiveMailboxConnecting.linked(.declined, provider: .gmail) }
+    let removed = ConnectResult.connected(address: "maya.home@example.com", anotherAddress: true, retired: .removed(3))
+    #expect(try LiveMailboxConnecting.linked(removed, provider: .gmail) == "maya.home@example.com")
+    #expect(LiveMailboxConnecting.retired(removed) == .removed(3))
+    #expect(LiveMailboxConnecting.retired(.declined) == nil)
+    #expect(LiveMailboxConnecting.removal(.removed(3), old: "maya@example.com") == .removed(3))
+    #expect(LiveMailboxConnecting.removal(.failed, old: "maya@example.com") == .failed(from: "maya@example.com"))
+    #expect(LiveMailboxConnecting.removal(nil, old: "maya@example.com") == nil)
+
+    let core = MailboxSwitchQuestion(
+      oldAddress: "maya@example.com", newAddress: "maya.home@example.com", transactions: 4, edited: 1,
+      oldHasNoMailbox: false)
+    #expect(LiveMailboxConnecting.question(core, provider: .gmail) == MailSwitchQuestion(
+      provider: .gmail, oldAddress: "maya@example.com", newAddress: "maya.home@example.com",
+      impact: MailboxDisconnectImpact(transactions: 4, edited: 1)))
+    var none = core
+    none.transactions = 0
+    none.oldHasNoMailbox = true
+    #expect(LiveMailboxConnecting.question(none, provider: .outlook).impact == nil)
+    #expect(LiveMailboxConnecting.question(none, provider: .outlook).oldHasNoMailbox)
+    #expect(!LiveMailboxConnecting.question(none, provider: .outlook).countUnknown)
+    var unknown = core
+    unknown.transactions = nil
+    let mapped = LiveMailboxConnecting.question(unknown, provider: .gmail)
+    #expect(mapped.impact == nil && mapped.countUnknown && mapped.offersRemove)
+    #expect(LiveMailboxConnecting.removal(.removed(nil), old: "maya@example.com") == .removed(nil))
+
+    let seen = Mutex<[MailSwitchQuestion]>([])
+    for (answer, expected) in [(MailSwitchChoice.keep, MailboxSwitchChoice.keep), (.remove, .remove), (.cancel, .cancel)] {
+      let confirm = LiveMailboxConnecting.confirm({ q in
+        seen.withLock { $0.append(q) }
+        return answer
+      }, provider: .gmail)
+      #expect(await confirm(core) == expected)
+    }
+    #expect(seen.withLock { $0.map(\.newAddress) } == Array(repeating: "maya.home@example.com", count: 3))
   }
 
   @Test func aMailboxOnAnotherAccountIsSaidInWords() {
@@ -261,7 +323,12 @@ struct LiveMailboxTests {
     #expect(row(.active)?.readElsewhere == false && row(.halted, halt: .noMailbox)?.readElsewhere == false)
     // No Outlook mailbox on the Microsoft account: a sign-in, in words that say why.
     #expect(row(.halted, halt: .noMailbox)?.state == .needsSignIn)
-    #expect(row(.halted, halt: .noMailbox)?.note == LiveMailboxConnecting.message(.noMailbox))
+    #expect(row(.halted, halt: .noMailbox)?.note == MailConnectFailure.noMailboxLine(.gmail))
+    let haltedOutlook = LiveMailboxConnecting.mailboxes(
+      phase: .halted, halt: .noMailbox, address: "maya.k@example.com", lastSuccessAtMs: nil, bankDomains: [],
+      provider: .outlook, nowMs: now
+    ).first
+    #expect(haltedOutlook?.note == MailConnectFailure.noMailboxLine(.outlook))
     #expect(row(.halted, halt: .gmail)?.note == nil)
     // An Outlook lane's row: its id and provider, a personal Microsoft account.
     let outlook = LiveMailboxConnecting.mailboxes(
@@ -321,7 +388,7 @@ struct LiveMailboxTests {
     #expect(fixable.title == "Sign in again" && fixable.needsYou)
     // No mailbox on that Microsoft account: the summary says so, not that access ended.
     let noMailbox = summary(.halted, halt: .noMailbox, health: .reconnect)
-    #expect(noMailbox.title == "Sign in again" && noMailbox.detail == LiveMailboxConnecting.message(.noMailbox))
+    #expect(noMailbox.title == "Sign in again" && noMailbox.detail == MailConnectFailure.noMailboxLine(.gmail))
     let elsewhere = summary(.otherDevice, halt: nil, health: .working)
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
   }
@@ -357,6 +424,24 @@ struct LiveMailboxTests {
     #expect(signIn?.label == "Sign in again" && signIn?.opensBankAlerts == true)
     #expect(work(.halted, seen: false) == nil)
     #expect(work(.reconnectRequired, seen: false) == nil)
+  }
+
+  @Test func aSignInWithAnotherAddressShowsThatAddressReadingFromTheStart() {
+    let now: Int64 = 10_000_000_000
+    let before = LiveMailboxConnecting.mailboxes(
+      phase: .halted, halt: .noMailbox, address: "maya.k@example.com", lastSuccessAtMs: now - 86_400_000,
+      bankDomains: ["dib.ae"], provider: .outlook, nowMs: now
+    ).first
+    #expect(before?.address == "maya.k@example.com" && before?.state == .needsSignIn && before?.note != nil)
+    let after = LiveMailboxConnecting.mailboxes(
+      phase: .scanning, halt: nil, address: "maya.new@example.com", lastSuccessAtMs: nil, bankDomains: [],
+      provider: .outlook, nowMs: now
+    ).first
+    #expect(after?.id == before?.id && after?.address == "maya.new@example.com")
+    #expect(after?.state == .syncing && after?.meta == "Checking now" && after?.note == nil)
+    #expect(after?.banks.isEmpty == true && after?.lastChecked == nil)
+    let pill = LiveMailboxConnecting.importing(phase: .scanning, seen: true, progress: nil)
+    #expect(pill?.state == .reading && pill?.busy == true)
   }
 
   @Test func aFirstScanThatGivesUpOnAPassingStopPausesThePill() {

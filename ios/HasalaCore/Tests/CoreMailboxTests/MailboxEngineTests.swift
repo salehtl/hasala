@@ -29,6 +29,24 @@ let day: Int64 = 86_400_000
     #expect(s.profileHistoryID == "1000")
   }
 
+  @Test func anAccountWithoutGmailIsRefusedBeforeTheLink() async throws {
+    let rig = Rig()
+    rig.gmail.noMailbox = true
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .failed(.noMailbox))
+    #expect(await rig.server.puts.isEmpty)
+    #expect(await rig.server.linkedProviders.isEmpty)
+    #expect(try rig.keychain.read() == nil)
+    #expect(await rig.state().phase == .unlinked)
+    #expect(rig.gmail.requests.filter { $0.path.hasPrefix("/gmail/") }.map(\.path) == ["/gmail/v1/users/me/profile"])
+  }
+
+  @Test func aGmailProbeThatFailsOtherwiseDoesNotBlockTheLink() async throws {
+    let rig = Rig()
+    rig.gmail.fail("/profile", with: [400])
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .connected(address: "synthetic.user@example.com"))
+    #expect(await rig.server.linkedProviders == [.gmail])
+  }
+
   @Test func cancelledSheetChangesNothing() async {
     let rig = Rig()
     var p = FakePresenter(gmail: rig.gmail)
@@ -328,6 +346,15 @@ let day: Int64 = 86_400_000
     let r2 = await rig.engine.runCycle(trigger: .appRefresh)
     #expect(r2.completed && r.ops + r2.ops == 3)
     #expect(rig.rawRequests.count == 3 - r.ops)
+  }
+
+  @Test func aGmailServiceThatIsTurnedOffHaltsWithItsOwnReason() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.gmail.noMailbox = true
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.haltedOn == .noMailbox)
+    #expect(await rig.state().phase == .halted)
   }
 
   @Test func revokedGrantAsksToReconnect() async {

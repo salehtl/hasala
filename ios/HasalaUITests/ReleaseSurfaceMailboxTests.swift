@@ -29,7 +29,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Bank alerts")
     assertPersonalAccountsOnly(app, "Bank alerts")
     // Debug's parts with no screen behind them yet.
-    assertAbsent(app, ["bankAlerts.addBank", "bankAlerts.unreadable"], "Bank alerts")
+    assertAbsent(app, ["bankAlerts.unreadable"], "Bank alerts")
     assertNoText(app, ["when new mail arrives"], "Bank alerts")
     attach(app, "Release · Bank alerts · no mailbox")
     try audit(app)
@@ -78,6 +78,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertNoText(app, ["Step 1 of 4"], "Banks")
     try audit(app)
     tap(app, "bank.dib")
+    tap(app, "bank.adib")
     XCTAssertEqual(el(app, "bank.continue").label, "Continue with 1 bank")
     tap(app, "bank.continue")
     let connect = el(app, "mail.connect.gmail")
@@ -181,7 +182,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
 
   /// Reading Gmail, Bank alerts offers "Use another email": Outlook's sign-in asks first
   /// ("Change your email?", main's "This replaces your Gmail connection."). Cancel keeps
-  /// Gmail; "Use Outlook" leaves one mailbox, Outlook's.
+  /// Gmail; "Use Outlook, keep the 42 transactions" leaves one mailbox, Outlook's.
   @MainActor
   func testSwitchFromGmailToOutlook() throws {
     let app = bankAlerts("gmailLinked")
@@ -210,7 +211,8 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(connect.exists, "Cancel left the Outlook screen")
     connect.tap()
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    alert.buttons["Use Outlook"].firstMatch.tap()
+    XCTAssertTrue(alert.buttons["Use Outlook, remove them"].firstMatch.exists)
+    alert.buttons["Use Outlook, keep the 42 transactions"].firstMatch.tap()
     assertMailboxAdded(app, "outlook-1")
     XCTAssertFalse(el(app, "bankAlerts.mailbox.gmail-1").exists, "Gmail is still read beside Outlook")
     assertPersonalAccountsOnly(app, "Bank alerts")
@@ -239,5 +241,33 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertText(app, "Outlook connected again. Catching up from the last check.", "Bank alerts")
     XCTAssertTrue(status.waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
     try audit(app)
+  }
+
+  @MainActor
+  func testChangeBanksAfterSetup() throws {
+    let app = bankAlerts("gmailLinked")
+    XCTAssertTrue(el(app, "bankAlerts.bank.enbd").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "bankAlerts.bank.dib").exists)
+    tap(app, "bankAlerts.changeBanks")
+    let save = el(app, "banks.save")
+    XCTAssertTrue(save.waitForExistence(timeout: uiWait), "Change banks did not open")
+    XCTAssertFalse(save.isEnabled, "Save is on with nothing changed")
+    attach(app, "Release · Your banks")
+    try audit(app)
+    tap(app, "bank.dib")
+    assertText(app, "Hasala stops reading alerts from DIB.", "Your banks")
+    tap(app, "bank.enbd")
+    tap(app, "bank.adib")
+    XCTAssertFalse(save.isEnabled, "Save is on with no bank")
+    tap(app, "bank.enbd")
+    tap(app, "bank.adib")
+    save.tap()
+    XCTAssertTrue(el(app, "bankAlerts.bank.dib").waitForNonExistence(timeout: uiWait), "DIB is still read")
+    XCTAssertTrue(el(app, "bankAlerts.bank.enbd").exists)
+    tap(app, "bankAlerts.changeBanks")
+    XCTAssertTrue(save.waitForExistence(timeout: uiWait))
+    tap(app, "bank.dib")
+    save.tap()
+    XCTAssertTrue(el(app, "bankAlerts.bank.dib").waitForExistence(timeout: uiWait), "DIB was not added back")
   }
 }

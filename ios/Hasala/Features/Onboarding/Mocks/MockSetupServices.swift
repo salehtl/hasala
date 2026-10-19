@@ -18,6 +18,7 @@
     private(set) var savePlanCalls = 0
     /// After each `chooseBanks`, with its banks (a scenario hands them to its mailbox mock).
     var choseBanks: ([SupportedBank]) -> Void = { _ in }
+    var setBanksCalls = 0
     /// The ledger's today: Maya's Saturday 10 October.
     var day = MayaLedger.now.date
 
@@ -33,6 +34,12 @@
 
     func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
       chooseBanksCalls += 1
+      self.banks = banks
+      choseBanks(banks)
+    }
+
+    func setBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
+      setBanksCalls += 1
       self.banks = banks
       choseBanks(banks)
     }

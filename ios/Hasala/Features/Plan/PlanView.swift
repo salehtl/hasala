@@ -24,6 +24,8 @@ struct PlanView: View {
         switch route {
         case .category(let id): CategoryDetailView(app: app, category: id)
         case .project(let id): ProjectDetailView(app: app, project: id)
+        case .projects: ProjectsListView(app: app)
+        case .addToProject(let id): ProjectAddTransactionsView(app: app, project: id)
         }
       }
     }
@@ -49,9 +51,7 @@ private struct PlanContent: View {
           model.open($0)
         }
       }
-      if !snap.projects.isEmpty {
-        ProjectsSection(model: model, reveal: reveal.fill)
-      }
+      ProjectsSection(model: model, reveal: reveal.fill)
     }
     .paceFillSequence($reveal, target: 1, policy: policy, once: .perProcess("plan.bars"))
   }
@@ -354,8 +354,6 @@ struct BudgetRowView: View {
 
 // MARK: - Projects
 
-/// "Projects" with the peach project cards: the whole card is one button to the project
-/// (page 16 §13). "New project" is Debug only until a project can be made.
 private struct ProjectsSection: View {
   let model: any PlanModel
   let reveal: Double
@@ -365,19 +363,16 @@ private struct ProjectsSection: View {
       ReflowingRow(alignment: .firstTextBaseline) {
         Text("Projects").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
       } trailing: {
-        if BuildSurface.showsUnfinished {
-          // A 20 pt line with a 44 pt target: the padding is inside the button (so the target
-          // is the button's own frame) and taken back outside it, so the header keeps its line.
-          Button { model.newProject() } label: {
-            Text("New project")
-              .hType(.subheadline.weight(.medium))
-              .foregroundStyle(HColor.textLink)
-              .padding(.vertical, 12)
-              .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .padding(.vertical, -12)
+        Button { model.newProject() } label: {
+          Text("New project")
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textLink)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .padding(.vertical, -12)
+        .accessibilityIdentifier("plan.newProject")
       }
       ForEach(model.snapshot.projects) { p in
         Button { model.open(project: p.id) } label: {
@@ -386,15 +381,27 @@ private struct ProjectsSection: View {
         .buttonStyle(HPressStyle(in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous)))
         .accessibilityIdentifier("plan.project.\(p.id)")
       }
+      if model.snapshot.projects.isEmpty {
+        Text("Set money aside for one thing, like a trip or a move. It stays out of your monthly plan.")
+          .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Button { model.openProjects() } label: {
+        HStack(spacing: 6) {
+          Text("All projects").hType(.subheadline.weight(.medium)).foregroundStyle(HColor.textLink)
+          HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.textLink)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("plan.allProjects")
     }
     .padding(.horizontal, HSpacing.insetPage)
   }
 }
 
-/// The peach project card (Paper "Project card · Japan trip"): the flag plate, the name over
-/// the dates, a chevron; the figure and "left of 12,000"; an 8 bar with no tick; and "Not
-/// counted in your monthly plan" while it sits outside the plan.
-private struct ProjectCard: View {
+struct ProjectCard: View {
   let project: PlanProjectModel
   let hidden: Bool
   let reveal: Double
@@ -402,23 +409,34 @@ private struct ProjectCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       HStack(spacing: 12) {
-        GlyphPlate(icon: .project, hue: .peach, size: 40)
+        GlyphPlate(icon: project.glyph.icon, hue: .peach, size: 40)
         VStack(alignment: .leading, spacing: 2) {
           Text(project.name).hType(.headline).foregroundStyle(HColor.textPrimary)
-          Text(project.dates).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+          if !project.dates.isEmpty {
+            Text(project.dates).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         HIconView(.chevronRight, size: HSpacing.iconSmall, color: Hue.peach.ink)
       }
-      HStack(alignment: .firstTextBaseline, spacing: 6) {
-        MoneyText(project.left, figure: HFigure.medium.weight(.bold), hidden: hidden, hiddenGlyphs: 4,
-                  color: HColor.textPrimary)
-        PhraseText(MoneyPhrase([.text("left of "), .amount(project.budget, .compact, hidden: 3)]), hidden: hidden)
+      SideBySideOrStacked(spacing: 6, spreads: false) {
+        MoneyText(figure, figure: HFigure.medium.weight(.bold), hidden: hidden, hiddenGlyphs: 4,
+                  color: over ? HColor.statusErrorForeground : HColor.textPrimary)
+          .fixedSize()
+        PhraseText(caption, hidden: hidden)
           .hType(.subheadline).foregroundStyle(HColor.textOnHueSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      SlimProgressBar(Permille(Int(Double(min(1000, project.progress.value)) * reveal)), fill: HColor.paceFill,
-                      track: HColor.progressTrackOnHue, height: 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      if project.budget != nil {
+        SlimProgressBar(Permille(Int(Double(min(1000, project.progress.value)) * reveal)), fill: HColor.paceFill,
+                        track: HColor.progressTrackOnHue, height: 8)
+      }
+      if !project.pending.isZero {
+        PhraseText(MoneyPhrase([.amount(project.pending, .compact, hidden: 3), .text(" waiting for review")]),
+                   hidden: hidden)
+          .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+      }
       if !project.countInPlan {
         HStack(alignment: .top, spacing: 6) {
           HIconView(.info, size: 14, color: HColor.textOnHueSecondary)
@@ -435,13 +453,27 @@ private struct ProjectCard: View {
     .accessibilityLabel(spoken)
   }
 
-  /// "Japan trip, 14–28 Dec, 65 days to go. AED 7,140.00 left of 12,000. Not counted in your
-  /// monthly plan."
+  private var over: Bool { project.left?.isNegative == true }
+
+  private var figure: Money {
+    guard let left = project.left else { return project.spent }
+    return .aed(abs(left.minor))
+  }
+
+  private var caption: MoneyPhrase {
+    guard let budget = project.budget else { return "spent · no budget" }
+    return MoneyPhrase([.text(over ? "over " : "left of "), .amount(budget, .compact, hidden: 3)])
+  }
+
   private var spoken: String {
-    let left = hidden ? "Amount hidden" : "AED \(MoneyFormat.string(project.left.minor))"
-    let of = MoneyPhrase([.amount(project.budget, .compact)]).spoken(hidden: hidden)
-    return "\(project.name), \(project.range), \(project.when). \(left) left of \(of)."
-      + (project.countInPlan ? "" : " Not counted in your monthly plan.")
+    let amount = hidden ? "Amount hidden" : "AED \(MoneyFormat.string(figure.minor))"
+    let when = [project.range, project.when].compactMap { $0 }.joined(separator: ", ")
+    var out = project.name + (when.isEmpty ? "." : ", \(when).")
+    out += " \(amount) \(caption.spoken(hidden: hidden))."
+    if !project.pending.isZero {
+      out += " " + MoneyPhrase([.amount(project.pending, .compact), .text(" waiting for review.")]).spoken(hidden: hidden)
+    }
+    return out + (project.countInPlan ? "" : " Not counted in your monthly plan.")
   }
 }
 

@@ -25,4 +25,11 @@ struct SearchTests {
     empty.categories = []
     #expect(SearchView.suggestions(in: empty, now: store.now).isEmpty)
   }
+
+  @Test func resultsCarryTheirProject() {
+    let store = InMemoryLedger()
+    let found = SearchResults("Emirates", store.state, now: store.now)
+    #expect(found.rows.first { $0.id == "emirates" }?.project == MiniTxnRow.Project(id: "japan", name: "Japan trip"))
+    #expect(SearchResults("Carrefour", store.state, now: store.now).rows.allSatisfy { $0.project == nil })
+  }
 }

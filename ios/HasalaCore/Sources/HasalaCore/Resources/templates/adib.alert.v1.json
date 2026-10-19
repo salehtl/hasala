@@ -1,0 +1,59 @@
+{
+  "id": "adib.alert.v1",
+  "version": 1,
+  "bank": "adib",
+  "normalizer_version": 1,
+  "match": {
+    "sender_domain": [
+      "adib.ae"
+    ],
+    "body_contains": [
+      "Transaction of"
+    ]
+  },
+  "default_currency": "AED",
+  "date_from": "email",
+  "extract": [
+    {
+      "field": "amount",
+      "type": "amount",
+      "source": "body",
+      "flags": [
+        "i"
+      ],
+      "patterns": [
+        "Transaction of[ \\n](?P<ccy>[A-Z]{3})(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]debited from your a/c",
+        "Transaction of[ \\n](?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]debited from your a/c"
+      ],
+      "on_match": {
+        "direction": "debit"
+      }
+    },
+    {
+      "field": "last4",
+      "type": "last4",
+      "source": "body",
+      "flags": [
+        "i"
+      ],
+      "patterns": [
+        "debited from your a/c[ \\n][*]?(?P<v>[0-9]{1,8})[ \\n]at[ \\n]"
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "text",
+      "source": "body",
+      "flags": [
+        "i"
+      ],
+      "patterns": [
+        "debited from your a/c[ \\n][*]?[0-9]{1,8}[ \\n]at[ \\n](?P<v>[^\\n]+?)\\.[ \\n]Avl Bal"
+      ]
+    }
+  ],
+  "required": [
+    "amount",
+    "direction"
+  ]
+}

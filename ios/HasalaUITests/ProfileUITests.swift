@@ -102,7 +102,7 @@ final class ProfileUITests: XCTestCase {
     app.buttons["header.hideAmounts"].firstMatch.tap()
     openProfile(app)
     XCTAssertTrue(el(app, "profile.accounts").waitForLabel(containing: "net worth Amount hidden"))
-    XCTAssertTrue(el(app, "profile.projects").label.contains("Japan trip · Amount hidden left"))
+    XCTAssertTrue(el(app, "profile.projects").label.contains("1 active"))
     attach(app, "Profile · Amounts hidden")
     el(app, "profile.close").tap()
     app.tabBars.firstMatch.buttons["Activity"].tap()

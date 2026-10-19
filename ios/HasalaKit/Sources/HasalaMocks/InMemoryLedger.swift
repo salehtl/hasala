@@ -25,6 +25,7 @@ public final class InMemoryLedger: LedgerStore {
     var bills: (before: [Bill], after: [Bill])?
     var candidates: (before: [BillCandidate], after: [BillCandidate])?
     var rules: (before: [Rule], after: [Rule])?
+    var projects: (before: [Project], after: [Project])?
   }
 
   private var undoRecords: [Int: UndoRecord] = [:]
@@ -41,6 +42,7 @@ public final class InMemoryLedger: LedgerStore {
     var s = state
     var touched = Set<TxnID>()
     var touchedPlan = false, touchedBills = false, touchedCandidates = false, touchedRules = false
+    var touchedProjects = false
     let title: String?
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
@@ -173,6 +175,46 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].state = .dismissed
       title = "Stopped tracking \(s.bills[i].name)"
 
+    case .saveProject(let id, let draft):
+      guard draft.refusal == nil else { throw .invalidProject }
+      let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let i = s.projects.firstIndex(where: { $0.id == id }) {
+        let old = s.projects[i]
+        s.projects[i] = Project(
+          id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
+          countInPlan: draft.countInPlan, complete: old.complete, completedOn: old.completedOn,
+          startVerb: draft.glyph == .travel ? "flies" : "starts")
+      } else {
+        s.projects.append(Project(
+          id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
+          countInPlan: draft.countInPlan, startVerb: draft.glyph == .travel ? "flies" : "starts"))
+      }
+      title = nil
+    case .setProjectCountInPlan(let id, let on):
+      guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      touchedProjects = true
+      s.projects[i].countInPlan = on
+      title = on ? "Counted in your monthly plan" : "Kept out of your monthly plan"
+    case .completeProject(let id, let done):
+      guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      touchedProjects = true
+      s.projects[i].complete = done
+      s.projects[i].completedOn = done ? now.date : nil
+      title = done ? "\(s.projects[i].name) marked complete" : "\(s.projects[i].name) reopened"
+    case .removeProject(let id):
+      guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      touchedProjects = true
+      s.projects.remove(at: i)
+      for k in s.txns.indices where s.txns[k].projectID == id { s.txns[k].projectID = nil }
+      title = nil
+    case .assignProject(let ids, let project):
+      if let project, s.project(project) == nil { throw .notFound }
+      guard !ids.isEmpty else { throw .notFound }
+      for id in ids { try editTxn(id) { $0.projectID = project } }
+      let name = s.project(project)?.name ?? ""
+      title = project == nil ? "Taken out of the project"
+        : ids.count == 1 ? "Added to \(name)" : "Added \(ids.count) to \(name)"
+
     case .setRuleEnabled(let id, let enabled):
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
       s.rules[i].enabled = enabled
@@ -197,6 +239,7 @@ public final class InMemoryLedger: LedgerStore {
     if touchedBills { record.bills = (before.bills, s.bills) }
     if touchedCandidates { record.candidates = (before.billCandidates, s.billCandidates) }
     if touchedRules { record.rules = (before.rules, s.rules) }
+    if touchedProjects { record.projects = (before.projects, s.projects) }
     let token = UndoToken(id: nextToken, title: title)
     nextToken += 1
     undoRecords[token.id] = record
@@ -218,6 +261,7 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.bills { Self.revertElements(&s.bills, before: old, after: new) }
     if let (old, new) = r.candidates { Self.revertElements(&s.billCandidates, before: old, after: new) }
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
+    if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
     state = s
     revision += 1
   }

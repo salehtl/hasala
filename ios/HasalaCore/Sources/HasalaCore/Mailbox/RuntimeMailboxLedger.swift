@@ -27,7 +27,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   public let authoring: MailboxAuthoring
 
   /// Display names for accounts created from a card ("<Bank> ···<last4>", 03b §4.2 table).
-  public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB"]
+  public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB"]
 
   /// `authoring` must be the one given to `LedgerMailboxPersistence`, built
   /// with `MailboxAuthoring(observer:)` so it shares the observer's stamps.
@@ -105,7 +105,9 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   public func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan {
     let legacy = ((try? reader.otherMailboxCount(grantID: grantID, provider: provider)) ?? 1) == 0
-    let counts = (try? reader.mailboxImports(grantID: grantID, provider: provider, legacy: legacy)) ?? MailboxImportCounts(total: 0, edited: 0)
+    guard let counts = try? reader.mailboxImports(grantID: grantID, provider: provider, legacy: legacy) else {
+      return MailboxRetirePlan(grantID: grantID, provider: provider, legacy: legacy, total: 0, edited: 0, countKnown: false)
+    }
     return MailboxRetirePlan(grantID: grantID, provider: provider, legacy: legacy, total: counts.total, edited: counts.edited)
   }
 

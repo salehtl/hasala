@@ -127,6 +127,7 @@ leaked="$(
 	{
 		find conformance/normalizer -type f ! -name edge-cases.json ! -name '.*' || true
 		find conformance/templates -type f -name 'corpus-*' || true
+		find conformance/templates/eml -type f || true
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		find reference/ledgerd-client/test/e2e -type f -name '*.json' || true

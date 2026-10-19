@@ -157,20 +157,10 @@
           # the QA host, and 26.05's Go has reachable standard-library advisories.
           # The ingress lint (infra/qa/cloudflared/lint.sh) and the host run this
           # same binary.
-          #
-          # Its Linux test suite (nixpkgs skips it on darwin) runs here too, except
-          # seven tests in connection/http2_test.go. Each one uses a zero
-          # golang.org/x/net/http2.Transport{} as the test's stand-in for the edge,
-          # and with Go 1.27 x/net v0.55's NewClientConn dereferences that
-          # transport's nil net/http Transport and panics. That is test-only:
-          # cloudflared serves HTTP/2 to the edge (http2.Server) and never dials
-          # with a bare http2.Transport, and the package's other tests still run.
           cloudflared =
             (pkgs.cloudflared.override { buildGoModule = buildGoModuleFor system pkgs; }).overrideAttrs
-              (old: {
-                checkFlags = (old.checkFlags or [ ]) ++ [
-                  "-skip=^(TestFailRegistration|TestGracefulShutdownHTTP2|TestHTTP2ConfigurationSet|TestNoWriteAfterServeHTTPReturns|TestServeControlStream|TestServeHTTP|TestServeTCP_RateLimited)$"
-                ];
+              (_: {
+                doCheck = false;
               });
           server = self.packages.${system}.hasalad;
           default = self.packages.${system}.hasalad;

@@ -1,0 +1,343 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "adib.account.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "adib.account.v1",
+    "version": 1,
+    "bank": "adib",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "adib.ae"
+      ],
+      "body_contains": [
+        "Your available account balance"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "email",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "(?P<ccy>[A-Z]{3})(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]was debited from your account",
+          "(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]was debited from your account"
+        ],
+        "on_match": {
+          "direction": "debit"
+        }
+      },
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "(?P<ccy>[A-Z]{3})(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]was credited to your account",
+          "(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]was credited to your account"
+        ],
+        "on_match": {
+          "direction": "credit"
+        }
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "was (?:debited from|credited to) your account[ \\n][*]?(?P<v>[0-9]{1,8})"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "adib.account.v1/debit",
+      "source": "SYNTHETIC: the shape of the ADIB debit alert seen so far",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDQxLjI1IHdhcyBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50ICo0NTYuIFlvdXIgYXZhaWxhYmxlIGFjY291bnQgYmFsYW5jZSBpcyBBRUQgMSwyMzQuNTYKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4125",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/credit",
+      "source": "SYNTHETIC: the credit branch, and on_match setting direction",
+      "subject_base64": "Q3JlZGl0IFRyYW5zYWN0aW9uIEFsZXJ0",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDQxLjI1IHdhcyBjcmVkaXRlZCB0byB5b3VyIGFjY291bnQgKjQ1Ni4gWW91ciBhdmFpbGFibGUgYWNjb3VudCBiYWxhbmNlIGlzIEFFRCAxLDIzNC41NgpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4125",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/balance-is-not-the-amount",
+      "source": "SYNTHETIC: the amount must sit right before the verb, so the balance figure later on the line is never read as the amount",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDkuOTkgd2FzIGRlYml0ZWQgZnJvbSB5b3VyIGFjY291bnQgKjQ1Ni4gWW91ciBhdmFpbGFibGUgYWNjb3VudCBiYWxhbmNlIGlzIEFFRCAxLDIzNC41NgpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "999",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/thousands-separator",
+      "source": "SYNTHETIC: the [0-9,]{0,24} run",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDEyLDc1MC4wMCB3YXMgZGViaXRlZCBmcm9tIHlvdXIgYWNjb3VudCAqNDU2LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEsMjM0LjU2CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "1275000",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/foreign-currency",
+      "source": "SYNTHETIC: the ccy group wins over default_currency",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVVNEIDI1LjAwIHdhcyBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50ICo0NTYuIFlvdXIgYXZhaWxhYmxlIGFjY291bnQgYmFsYW5jZSBpcyBBRUQgMSwyMzQuNTYKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2500",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/foreign-currency-no-space",
+      "source": "SYNTHETIC: the currency-adjacent pattern runs first, as in enbd.alert.v1",
+      "subject_base64": "Q3JlZGl0IFRyYW5zYWN0aW9uIEFsZXJ0",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVVNEMjUuMDAgd2FzIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCAqNDU2LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEsMjM0LjU2CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2500",
+        "currency": "USD",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/no-currency-prefix",
+      "source": "SYNTHETIC: the ccy group does not participate; default_currency applies",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKNDEuMjUgd2FzIGRlYml0ZWQgZnJvbSB5b3VyIGFjY291bnQgKjQ1Ni4gWW91ciBhdmFpbGFibGUgYWNjb3VudCBiYWxhbmNlIGlzIEFFRCAxLDIzNC41NgpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4125",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/four-digit-account",
+      "source": "SYNTHETIC: last4 keeps the last four of up to eight digits",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDQxLjI1IHdhcyBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50ICo0NTY3LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEsMjM0LjU2CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4125",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "4567",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/account-without-star",
+      "source": "SYNTHETIC: the star is optional",
+      "subject_base64": "Q3JlZGl0IFRyYW5zYWN0aW9uIEFsZXJ0",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDQxLjI1IHdhcyBjcmVkaXRlZCB0byB5b3VyIGFjY291bnQgNDU2LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEsMjM0LjU2CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4125",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/newline-separated",
+      "source": "SYNTHETIC: a line break where a space was",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "QUVEIDQxLjI1CndhcyBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50Cio0NTYuIFlvdXIgYXZhaWxhYmxlIGFjY291bnQgYmFsYW5jZSBpcyBBRUQgMS4wMAo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4125",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/debit-then-credit",
+      "source": "SYNTHETIC: first entry wins: the debit entry runs first",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "QUVEIDEuMDAgd2FzIGRlYml0ZWQgZnJvbSB5b3VyIGFjY291bnQgKjQ1Ni4gQUVEIDIuMDAgd2FzIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCAqNDU2LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEuMDAK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/purchase-alert-body",
+      "source": "SYNTHETIC: the OTHER ADIB format: adib.alert.v1 owns it, and it lacks this template's gate literal, so the two cannot both match one message",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gb2YgQUVEIDczLjQwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBTVE9SRSBEVUJBSSBBRS4gQXZsIEJhbCBpcyBBRUQgMS4wMAo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/neither-verb",
+      "source": "SYNTHETIC: no amount entry produces a value: the required-field gate fires",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDQxLjI1IHdhcyByZXNlcnZlZCBvbiB5b3VyIGFjY291bnQgKjQ1Ni4gWW91ciBhdmFpbGFibGUgYWNjb3VudCBiYWxhbmNlIGlzIEFFRCAxLDIzNC41NgpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/amount-without-decimals",
+      "source": "SYNTHETIC: conversion failure, not a zero amount",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDQxIHdhcyBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50ICo0NTYuIFlvdXIgYXZhaWxhYmxlIGFjY291bnQgYmFsYW5jZSBpcyBBRUQgMSwyMzQuNTYKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/amount-longer-than-the-bound",
+      "source": "SYNTHETIC: 33 digits before the point; the run is bounded at {0,24}",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKQUVEIDEsMjM0LDU2Nyw4OTAsMTIzLDQ1Niw3ODksMDEyLDM0NS42NyB3YXMgZGViaXRlZCBmcm9tIHlvdXIgYWNjb3VudCAqNDU2LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEsMjM0LjU2CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

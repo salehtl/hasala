@@ -43,6 +43,7 @@ final class AppRouter {
   /// fresh sheet did when each held its own path), then the queued sheet comes up.
   func sheetDismissed() {
     guard sheet == nil else { return }
+    MailConnectCoordinator.release()
     profile = []
     transaction = []
     guard let next = nextSheet else { return }

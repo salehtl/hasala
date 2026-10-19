@@ -18,7 +18,7 @@ protocol TransactionModel: AnyObject, Observable {
   var projects: [(id: ProjectID, name: String)] { get }
   /// The merchant as it is now ("Lulu Hypermarket"), for "Always use X for M".
   var merchantName: String { get }
-  func choose(_ category: CategoryID, alwaysUse: Bool, project: ProjectID?)
+  func choose(_ category: CategoryID, alwaysUse: Bool)
   func setNote(_ note: String)
   func rename(_ name: String)
   @discardableResult func saveSplit(_ lines: [SplitLine]) -> Bool
@@ -58,8 +58,8 @@ final class TransactionViewModel: TransactionModel {
     app.store.state.projects.filter { !$0.complete }.map { ($0.id, $0.name) }
   }
 
-  func choose(_ category: CategoryID, alwaysUse: Bool, project: ProjectID?) {
-    app.perform(.categorize(id, category, learnRule: alwaysUse, project: project))
+  func choose(_ category: CategoryID, alwaysUse: Bool) {
+    app.perform(.categorize(id, category, learnRule: alwaysUse, project: nil))
   }
 
   func setNote(_ note: String) { app.perform(.setNote(id, note)) }

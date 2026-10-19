@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, and your rights under UAE law."
-lastUpdated: 2026-10-16
+lastUpdated: 2026-10-19
 status: "final"
 plainWords: "Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data, show ads or send anything to an AI service."
 ---
@@ -191,7 +191,7 @@ Hasala asks Google for three permissions: `openid` and `email`, which give Hasal
 - Your iPhone asks Gmail only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like it's from your bank, Hasala reads just its sender details on your iPhone and then sets it aside.
 - From each bank alert, your iPhone keeps the amount, merchant, date and card, plus the Gmail message ID so you can open the original email later. These become transactions, which are encrypted on your iPhone before they sync.
 - Hasala can't send, delete, label or change your email.
-- At launch, Hasala reads alerts from Dubai Islamic Bank (DIB) and Emirates NBD.
+- Hasala reads alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
 
 ### Limited Use
 

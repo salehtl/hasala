@@ -1,5 +1,6 @@
 import CoreDomain
 import CoreMailbox
+import CorePrimitives
 import CoreProjection
 import CoreTime
 import Foundation
@@ -189,6 +190,17 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
 
   // MARK: The optimistic change
 
+  static func projectInverse(_ p: Project) -> LedgerEditAuthor.Inverse {
+    let completed = p.completedOn.flatMap { CivilDate(year: $0.year, month: $0.month, day: $0.day)?.wire }
+    return .projectState(
+      project: p.id, status: p.complete ? "completed" : "active", completedOn: p.complete ? completed : nil,
+      countInPlan: p.countInPlan)
+  }
+
+  func newProjectID() -> ProjectID {
+    (try? Ulid.mint(ms: Int64(Date().timeIntervalSince1970 * 1000), random: SystemRandom())) ?? UUID().uuidString
+  }
+
   /// Applies `edit` to `s` as the projection will show it, or throws why it can't be
   /// applied. Returns the toast's title and the undo's inverse writes.
   static func patch(_ edit: LedgerEdit, _ s: inout LedgerState, now: LocalDateTime) throws(ActionError)
@@ -310,6 +322,54 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
       s.rules[i].enabled = enabled
       return (nil, [])
+    case .saveProject(let id, let draft):
+      guard draft.refusal == nil else { throw .invalidProject }
+      let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+      let verb = draft.glyph == .travel ? "flies" : "starts"
+      if let i = s.projects.firstIndex(where: { $0.id == id }) {
+        let old = s.projects[i]
+        s.projects[i] = Project(
+          id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
+          countInPlan: draft.countInPlan, complete: old.complete, completedOn: old.completedOn, startVerb: verb)
+      } else {
+        s.projects.append(Project(
+          id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
+          countInPlan: draft.countInPlan, startVerb: verb))
+      }
+      return (nil, [])
+    case .setProjectCountInPlan(let id, let on):
+      guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      let old = s.projects[i]
+      s.projects[i].countInPlan = on
+      return (
+        on ? "Counted in your monthly plan" : "Kept out of your monthly plan",
+        [Self.projectInverse(old)]
+      )
+    case .completeProject(let id, let done):
+      guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      let old = s.projects[i]
+      s.projects[i].complete = done
+      s.projects[i].completedOn = done ? now.date : nil
+      return (done ? "\(old.name) marked complete" : "\(old.name) reopened", [Self.projectInverse(old)])
+    case .removeProject(let id):
+      guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      s.projects.remove(at: i)
+      for k in s.txns.indices where s.txns[k].projectID == id { s.txns[k].projectID = nil }
+      return (nil, [])
+    case .assignProject(let ids, let project):
+      if let project, s.project(project) == nil { throw .notFound }
+      guard !ids.isEmpty else { throw .notFound }
+      var inverses: [LedgerEditAuthor.Inverse] = []
+      for id in ids {
+        let i = try index(id)
+        inverses.append(.project(txn: id, project: s.txns[i].projectID))
+        s.txns[i].projectID = project
+      }
+      let name = s.project(project)?.name ?? ""
+      return (
+        project == nil ? "Taken out of the project" : ids.count == 1 ? "Added to \(name)" : "Added \(ids.count) to \(name)",
+        inverses
+      )
     case .setNotifications(let level):
       s.prefs.notifications = level
       return (nil, [])

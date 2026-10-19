@@ -35,6 +35,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case budget(category: String, month: YearMonth, amount: Money)
     case move(from: String?, to: String?, month: YearMonth, amount: Money)
     case occurrence(bill: String, due: LocalDate)
+    case projectState(project: String, status: String, completedOn: String?, countInPlan: Bool)
   }
 
   enum Failure: Error, Equatable {
@@ -128,14 +129,74 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
       for b in blobs { try await outbox.enqueue(b.ops) }
       try await observer.reproject()
+    case .saveProject(let id, let draft):
+      let existing = try reader.projects().first { $0.id == id }?.project
+      var d = try Self.projectDraft(draft)
+      if let existing {
+        d.status = OpAuthor.Status(rawValue: existing.status) ?? .active
+        d.completedOn = existing.completedOn.flatMap(CivilDate.init(wire:))
+      }
+      let made = d
+      try await build { a throws(AuthorError) in
+        try a.defineProject(id: id, parentVersion: existing?.version, made)
+      }
+    case .setProjectCountInPlan(let id, let on):
+      try await editProject(id) { $0.countInPlan = on }
+    case .completeProject(let id, let done):
+      let t = CivilDate(year: today.year, month: today.month, day: today.day)
+      try await editProject(id) { d in
+        d.status = done ? .completed : .active
+        d.completedOn = done ? t : nil
+      }
+    case .removeProject(let id):
+      try await editProject(id) { d in
+        d.status = .removed
+        d.completedOn = nil
+      }
+    case .assignProject(let ids, let project):
+      for id in ids { _ = try txn(id) }
+      try await build { a throws(AuthorError) in
+        for id in ids { a.annotate(txnID: id, set: [("project_id", project)]) }
+      }
     case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock:
       break
     }
   }
 
+  static func projectDraft(_ d: ProjectDraft) throws -> OpAuthor.ProjectDraft {
+    func civil(_ l: LocalDate?) throws -> CivilDate? {
+      guard let l else { return nil }
+      guard let c = CivilDate(year: l.year, month: l.month, day: l.day) else { throw Failure.refused("date") }
+      return c
+    }
+    return OpAuthor.ProjectDraft(
+      name: d.name.trimmingCharacters(in: .whitespacesAndNewlines), startsOn: try civil(d.starts),
+      endsOn: try civil(d.ends), budgetMinor: d.budget?.minor, countInPlan: d.countInPlan,
+      icon: LedgerStateMapper.icon(d.glyph))
+  }
+
+  static func projectDraft(_ p: CoreReplay.Project) -> OpAuthor.ProjectDraft {
+    OpAuthor.ProjectDraft(
+      name: p.name, startsOn: p.startsOn.flatMap(CivilDate.init(wire:)), endsOn: p.endsOn.flatMap(CivilDate.init(wire:)),
+      budgetMinor: p.budgetMinor, countInPlan: p.countInPlan, status: OpAuthor.Status(rawValue: p.status) ?? .active,
+      completedOn: p.completedOn.flatMap(CivilDate.init(wire:)), icon: p.icon)
+  }
+
+  private func editProject(_ id: String, _ change: (inout OpAuthor.ProjectDraft) -> Void) async throws {
+    guard let p = try reader.projects().first(where: { $0.id == id })?.project else { throw Failure.notFound }
+    var d = Self.projectDraft(p)
+    change(&d)
+    let draft = d
+    try await build { a throws(AuthorError) in try a.defineProject(id: id, parentVersion: p.version, draft) }
+  }
+
   /// Writes an undo back.
   func undo(_ inverses: [Inverse]) async throws {
     var rows: [String: TxnRow] = [:]
+    var projects: [String: CoreReplay.Project] = [:]
+    if inverses.contains(where: { if case .projectState = $0 { true } else { false } }) {
+      for (id, p) in try reader.projects() { projects[id] = p }
+    }
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
@@ -171,6 +232,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .occurrence(let bill, let due):
           guard let d = CivilDate(year: due.year, month: due.month, day: due.day) else { continue }
           a.setBillOccurrence(bill: bill, due: d, .clear)
+        case .projectState(let id, let status, let completedOn, let countInPlan):
+          guard let p = projects[id] else { continue }
+          var d = Self.projectDraft(p)
+          d.status = OpAuthor.Status(rawValue: status) ?? .active
+          d.completedOn = completedOn.flatMap(CivilDate.init(wire:))
+          d.countInPlan = countInPlan
+          try a.defineProject(id: id, parentVersion: p.version, d)
         }
       }
     }

@@ -406,7 +406,11 @@ struct SearchView: View {
       CategoryDisc(hue: row.hue, icon: row.glyph.icon)
       VStack(alignment: .leading, spacing: 1) {
         highlighted(row.merchant, q).hType(.callout).foregroundStyle(HColor.textPrimary)
-        Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        if let project = row.project {
+          ProjectChipFlow(project.name) { Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary) }
+        } else {
+          Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       MoneyText(row.amount, figure: .row, hidden: app.amountsHidden, hiddenGlyphs: 3,
@@ -414,6 +418,7 @@ struct SearchView: View {
         .fixedSize()
     }
     .padding(.horizontal, 16)
+    .padding(.vertical, 6)
     .frame(minHeight: 54)
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)

@@ -134,10 +134,20 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
       var(--glass-shadow-near) 0 1px 2px,
       var(--glass-outline) 0 0 0 0.5px;
     pointer-events: auto;
-    transition:
-      background-color 240ms var(--ease-out-soft),
-      box-shadow 240ms var(--ease-out-soft),
-      backdrop-filter 240ms var(--ease-out-soft);
+    transition: background-color 240ms var(--ease-out-soft);
+  }
+  .nav::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: rgb(0 0 0 / 4%) 0 10px 30px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 240ms var(--ease-out-soft);
+  }
+  :global(.is-scrolled) .nav::after {
+    opacity: 1;
   }
   .nav::before {
     content: '';
@@ -150,14 +160,6 @@ const links = variant === 'invite' ? NAV.filter((item) => item.href !== '/how-pr
   :global(.is-scrolled) .nav {
     --frost: rgb(255 255 255 / 92%);
     --blur: 24px;
-    box-shadow:
-      var(--glass-rim-light) 1.5px 1.5px 1px -0.5px inset,
-      var(--glass-rim-shade) -1.5px -1.5px 1px -0.5px inset,
-      var(--glass-rim-hairline) 0 0 0 0.5px inset,
-      var(--glass-rim-glow) 0 0 12px inset,
-      rgb(0 0 0 / 12%) 0 10px 30px,
-      var(--glass-shadow-near) 0 1px 2px,
-      var(--glass-outline) 0 0 0 0.5px;
   }
   .nav__home,
   .nav__cta,

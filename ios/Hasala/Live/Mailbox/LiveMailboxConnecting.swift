@@ -201,7 +201,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       if offer(phase: .halted, halt: halt, sampleLoaded: false, serverLink: .noLink, provider: provider) != nil {
         row.state = .needsSignIn
         // Not the provider ending access: the account has no mailbox to read.
-        if halt == .noMailbox { row.note = message(.noMailbox) }
+        if halt == .noMailbox { row.note = message(.noMailbox, provider: provider) }
       } else {
         row.note = "Reading your bank alerts stopped."
       }
@@ -317,8 +317,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// another iPhone holds one; a confirmed switch replaces the other provider's link, and
   /// the new lane clears the shared tables only once its link is made; then the old lane
   /// ends its grant.
-  @discardableResult
-  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
+  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
+  {
+    try await link(provider, replacing: replacing, removingOld: removingOld, ask: ask)
+  }
+
+  private func link(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
+  {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
     let current = rt.lane
@@ -332,19 +339,63 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     let switching = current.map { $0.provider != provider } ?? false
     let days = MailboxEngine.backfillDays(
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
-    try Self.linked(await lane.connect(backfillDays: days, replacing: replaces), provider: provider)
+    let oldPlan = switching && replaces && removingOld ? await current?.retirePlan() : nil
+    let oldName = status.address ?? current?.provider.appName ?? provider.appName
+    let result = await lane.connect(
+      backfillDays: days, replacing: replaces, confirm: Self.confirm(ask, provider: provider))
+    let nowReading = try Self.linked(result, provider: provider)
     rt.activate(provider)
     if switching, let old = current { await old.endGrant() }
+    var retired = Self.retired(result)
+    if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
     await rt.refreshMailbox()
-    return Self.mailboxID(provider)
+    return MailLinked(
+      mailboxID: Self.mailboxID(provider), nowReading: nowReading, removal: Self.removal(retired, old: oldName))
+  }
+
+  static func confirm(_ ask: @escaping MailSwitchAsk, provider: MailProviderKind) -> MailboxSwitchConfirm {
+    { question in await Self.asked(ask, question, provider: provider) }
+  }
+
+  static func asked(_ ask: MailSwitchAsk, _ q: MailboxSwitchQuestion, provider: MailProviderKind) async
+    -> MailboxSwitchChoice
+  {
+    switch await ask(question(q, provider: provider)) {
+    case .keep: .keep
+    case .remove: .remove
+    case .cancel: .cancel
+    }
+  }
+
+  static func question(_ q: MailboxSwitchQuestion, provider: MailProviderKind) -> MailSwitchQuestion {
+    MailSwitchQuestion(
+      provider: provider, oldAddress: q.oldAddress, newAddress: q.newAddress,
+      impact: q.transactions.flatMap { $0 > 0 ? MailboxDisconnectImpact(transactions: $0, edited: q.edited) : nil },
+      oldHasNoMailbox: q.oldHasNoMailbox, countUnknown: q.transactions == nil)
+  }
+
+  static func retired(_ result: ConnectResult) -> MailboxRetireOutcome? {
+    if case .connected(_, _, let retired) = result { return retired }
+    return nil
+  }
+
+  static func removal(_ retired: MailboxRetireOutcome?, old: String) -> MailSwitchRemoval? {
+    switch retired {
+    case nil: nil
+    case .removed(let n)?: .removed(n)
+    case .failed?: .failed(from: old)
+    }
   }
 
   /// The same lane connect: the provider's sign-in and the step-up again, then the lane
-  /// picks up where it stopped.
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+  /// picks up where it stopped, or reads another address from the start.
+  func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
     let fallback = try lane().provider
     let provider = MailProviderKind(rawValue: mailboxID) ?? fallback
-    try await connect(provider)
+    let linked = try await link(provider, replacing: false, removingOld: false, ask: ask)
+    guard await linkState() == .scanning else { return linked }
+    Task { for await _ in firstScan() {} }
+    return linked
   }
 
   /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch or subscription
@@ -380,11 +431,14 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     if phase == .otherDevice { throw .takenByOtherIPhone }
   }
 
-  private static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) {
+  @discardableResult
+  static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) -> String? {
     switch result {
-    case .connected: return
+    case .connected(let address, let another, _): return another ? address : nil
     case .cancelled: throw .cancelled
+    case .declined: throw .switchDeclined
     case .failed(.offline): throw .offline
+    case .failed(.noMailbox): throw .noMailbox(provider)
     case .failed(let f): throw .failed(message(f, provider: provider))
     }
   }
@@ -406,10 +460,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
         for await event in lane.firstScan() {
           switch event {
           case .progress(let p):
-            last = Self.progress(p)
+            last = Self.progress(p, provider: lane.provider)
             continuation.yield(last)
           case .ended(let t):
-            continuation.yield(Self.ended(t, last: last))
+            continuation.yield(Self.ended(t, last: last, provider: lane.provider))
           }
         }
         // Profile stops saying "Importing" (it runs on after setup is left).
@@ -420,7 +474,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   }
 
   /// Where the first scan's foreground runs left it, with what they filed.
-  static func ended(_ t: MailboxLane.FirstScanTotals, last: ScanProgress) -> ScanProgress {
+  static func ended(_ t: MailboxLane.FirstScanTotals, last: ScanProgress, provider: MailProviderKind) -> ScanProgress {
     let summary = SortSummary(
       total: t.ops, byRules: t.byRules, byDictionary: t.byDictionary, byModel: t.byModel, toReview: t.toReview)
     switch t.phase {
@@ -428,7 +482,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       return ScanProgress(phase: .finished, read: last.total, total: last.total, summary: summary)
     case .halted, .reconnectRequired, .otherDevice:
       return ScanProgress(
-        phase: .failed(stopped(t.haltedOn)), read: last.read, total: last.total, summary: summary)
+        phase: .failed(stopped(t.haltedOn, provider: provider)), read: last.read, total: last.total, summary: summary)
     case .unlinked, .scanning, .awaitingCards, .authoringBackfill:
       return ScanProgress(phase: .background, read: last.read, total: last.total, summary: summary)
     }
@@ -439,18 +493,18 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     try await rt.loadSample()
   }
 
-  static func progress(_ p: MailboxProgress) -> ScanProgress {
+  static func progress(_ p: MailboxProgress, provider: MailProviderKind) -> ScanProgress {
     switch p.stage {
     case .listing, .downloading: ScanProgress(phase: .downloading, read: p.done, total: p.total)
     case .authoring: ScanProgress(phase: .sorting, read: p.done, total: p.total)
     case .done: ScanProgress(phase: .finished, read: p.total, total: p.total)
-    case .failed(let code): ScanProgress(phase: .failed(stopped(code)), read: p.done, total: p.total)
+    case .failed(let code): ScanProgress(phase: .failed(stopped(code, provider: provider)), read: p.done, total: p.total)
     }
   }
 
   /// Why the first scan stopped, in words.
-  static func stopped(_ code: MailboxHaltCode?) -> String {
-    code == .noMailbox ? message(.noMailbox) : "Reading your bank alerts stopped. Try again."
+  static func stopped(_ code: MailboxHaltCode?, provider: MailProviderKind) -> String {
+    code == .noMailbox ? message(.noMailbox, provider: provider) : "Reading your bank alerts stopped. Try again."
   }
 
   /// Plain-language copy for a failed connect (spec 04 §7.11; content-free).
@@ -458,7 +512,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     switch f {
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
     case .permissionMissing: "Hasala needs permission to read your bank alerts. Try again and allow it."
-    case .noMailbox: "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    case .noMailbox: MailConnectFailure.noMailboxLine(provider)
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
     case .mailboxInUse:
       "This \(provider.appName) address is connected to another Hasala account. Disconnect it there, or connect a different address."

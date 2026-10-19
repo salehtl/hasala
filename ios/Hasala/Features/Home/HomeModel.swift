@@ -28,6 +28,7 @@ protocol HomeModel: AnyObject, Observable {
   /// Whether tapping the widget leads anywhere in this build (`BuildSurface`): a Release
   /// build doesn't make a widget tappable when its detail screen isn't built yet.
   func widgetOpens(_ id: String) -> Bool
+  func openNotCounted(_ line: SpendHero.NotCounted)
   /// A bell row (spec 10 §4.4, "Tapping an item opens its screen"): closes the sheet and opens
   /// the row's screen. What can open under a closing sheet opens now (a tab, a push, the next
   /// sheet); what needs the sheet gone first (the review cover) comes back to run once it is.
@@ -149,21 +150,29 @@ final class HomeViewModel: HomeModel {
         app.router.plan = [.category(String(id.dropFirst(Self.categoryPrefix.count)))]
         return nil
       }
-      // TODO(spec 04 §16.1 "Project detail", §16.2 P4): a project or goal opens its detail;
-      // until then Debug opens Plan, where both live.
       app.tab = .plan
+      if id.hasPrefix(Self.projectPrefix) {
+        app.router.plan = [.project(String(id.dropFirst(Self.projectPrefix.count)))]
+      }
       return nil
     }
   }
 
-  static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."
+  func openNotCounted(_ line: SpendHero.NotCounted) {
+    app.tab = .plan
+    app.router.plan = line.projectID.map { [.project($0)] } ?? [.projects]
+  }
 
-  /// The widgets with a built destination: Plan, a category, Activity, Bills and the review deck.
+  static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."
+  static let projectPrefix = HomeWidgetKind.project.rawValue + "."
+
+  /// The widgets with a built destination: Plan, a category, a project, Activity, Bills and the review deck.
   static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "nextBill", "comingUp", "toReview"]
 
   func widgetOpens(_ id: String) -> Bool {
     if id == "spentSoFar" { return false }
     return BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id) || id.hasPrefix(Self.categoryPrefix)
+      || id.hasPrefix(Self.projectPrefix)
   }
 }
 

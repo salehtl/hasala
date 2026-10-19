@@ -2,6 +2,7 @@ import Foundation
 import HasalaDesign
 import HasalaModels
 import Testing
+import UIKit
 
 @testable import Hasala
 
@@ -77,6 +78,202 @@ struct MailboxFlowTests: AccountSuite {
     #expect(lane.mailboxes.count == 2 && lane.offer == nil)
   }
 
+  func answering(
+    _ c: MailConnectCoordinator, _ choice: MailSwitchChoice, _ attempt: @escaping @MainActor () async -> Void
+  ) async -> MailSwitchQuestion? {
+    if c.presenters == 0 { c.attachPresenter() }
+    let task = Task { await attempt() }
+    var asked: MailSwitchQuestion?
+    for _ in 0..<2_000 {
+      if let q = c.question {
+        asked = q
+        break
+      }
+      if !c.busy, c.outcome != nil { break }
+      try? await Task.sleep(for: .milliseconds(1))
+    }
+    if asked != nil { c.answer(choice) }
+    await task.value
+    return asked
+  }
+
+  func otherAddress(imported: Int? = 12) -> MockMailbox {
+    let lane = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    lane.signInAgainReads = "maya.other@example.com"
+    if let imported { lane.imported["outlook-1"] = MailboxDisconnectImpact(transactions: imported, edited: 0) }
+    return lane
+  }
+
+  @Test func aSignInAgainToTheSameAddressAsksNothing() async {
+    let lane = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    let same = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await same.connect(.outlook)
+    #expect(same.nowReading == nil && same.question == nil && lane.questions.isEmpty)
+    #expect(same.signedInAgainLine == "Outlook connected again. Catching up from the last check.")
+    #expect(MailCopy.signedInAgain(.gmail) == "Gmail connected again. Catching up from the last check.")
+  }
+
+  @Test func anotherAddressAsksFirstAndKeepSaysWhatItReads() async {
+    let lane = otherAddress()
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    let asked = await answering(c, .keep) { await c.connect(.outlook) }
+    #expect(asked == MailSwitchQuestion(
+      provider: .outlook, oldAddress: "maya.k@example.com", newAddress: "maya.other@example.com",
+      impact: MailboxDisconnectImpact(transactions: 12, edited: 0)))
+    #expect(c.question == nil)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1") && c.nowReading == "maya.other@example.com")
+    #expect(c.signedInAgainLine == "Now reading maya.other@example.com.")
+    #expect(lane.mailboxes.first?.address == "maya.other@example.com" && lane.removed.isEmpty)
+    c.reset()
+    #expect(c.nowReading == nil && c.signedInAgainLine == nil)
+  }
+
+  @Test func anotherAddressRemoveSaysWhatWasRemoved() async {
+    let lane = otherAddress()
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(c, .remove) { await c.connect(.outlook) } != nil)
+    #expect(c.signedInAgainLine == "Now reading maya.other@example.com. 12 transactions removed.")
+    #expect(lane.removed == ["outlook-1"])
+
+    let failing = otherAddress(imported: 1)
+    failing.switchRemoveFails = true
+    let f = MailConnectCoordinator(mailbox: failing, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(f, .remove) { await f.connect(.outlook) } != nil)
+    #expect(f.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(f.signedInAgainLine
+      == "Now reading maya.other@example.com. The transactions from maya.k@example.com couldn't be removed. They stay.")
+    #expect(failing.removed.isEmpty && failing.mailboxes.first?.state == .connected)
+  }
+
+  @Test func tryAgainChangesNothingAndSaysNothing() async {
+    let lane = otherAddress()
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    #expect(await answering(c, .cancel) { await c.connect(.outlook) } != nil)
+    #expect(c.outcome == nil && c.failureLine == nil && c.inlineMessage == nil && c.errorScreen == nil)
+    #expect(lane.mailboxes.first?.address == "maya.k@example.com" && lane.mailboxes.first?.state == .needsSignIn)
+    #expect(lane.imported["outlook-1"]?.transactions == 12 && lane.removed.isEmpty)
+    #expect(await answering(c, .keep) { await c.connect(.outlook) } != nil)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(MailConnectFailure.switchDeclined.message(for: .outlook) == nil)
+    #expect(!MailConnectCoordinator.hasScreen(.switchDeclined, provider: .outlook))
+  }
+
+  @Test func aQuestionLeftOpenIsAnsweredCancel() async {
+    let lane = otherAddress()
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    c.attachPresenter()
+    let task = Task { await c.connect(.outlook) }
+    while c.question == nil { await Task.yield() }
+    let next = Task { await c.ask(MailSwitchQuestion(provider: .outlook, oldAddress: "a", newAddress: "b")) }
+    await task.value
+    #expect(c.outcome == nil && lane.mailboxes.first?.address == "maya.k@example.com")
+    c.answer(.keep)
+    #expect(await next.value == .keep && c.question == nil)
+  }
+
+  @Test func aQuestionWithNoPresenterIsAnsweredCancelAtOnce() async {
+    let lane = otherAddress()
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await c.connect(.outlook)
+    #expect(lane.questions.count == 1 && c.question == nil && c.outcome == nil)
+    #expect(lane.mailboxes.first?.address == "maya.k@example.com" && lane.mailboxes.first?.state == .needsSignIn)
+    #expect(lane.removed.isEmpty && lane.imported["outlook-1"]?.transactions == 12)
+  }
+
+  @Test func leavingTheForegroundOrThePresenterAnswersCancel() async {
+    for leave in [0, 1] {
+      let lane = otherAddress()
+      let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+      c.attachPresenter()
+      let task = Task { await c.connect(.outlook) }
+      for _ in 0..<2_000 where c.question == nil { try? await Task.sleep(for: .milliseconds(1)) }
+      #expect(c.question != nil)
+      if leave == 0 {
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+      } else {
+        c.detachPresenter()
+      }
+      await task.value
+      #expect(c.question == nil && c.outcome == nil)
+      #expect(lane.mailboxes.first?.address == "maya.k@example.com" && lane.mailboxes.first?.state == .needsSignIn)
+      #expect(lane.removed.isEmpty)
+    }
+  }
+
+  @Test func anUnknownCountOffersRemoveWithoutANumber() {
+    let q = MailSwitchQuestion(
+      provider: .gmail, oldAddress: "maya@example.com", newAddress: "maya.home@example.com", oldHasNoMailbox: true,
+      countUnknown: true)
+    #expect(q.offersRemove)
+    #expect(MailCopy.switchAddressMessage(q)
+      == "maya@example.com has no mailbox Hasala can read. Switch to maya.home@example.com? Keep the transactions from maya@example.com, or remove them from your totals.")
+    #expect(!MailSwitchQuestion(provider: .gmail, oldAddress: "a", newAddress: "b").offersRemove)
+    #expect(MailCopy.signedInAgain(.gmail, nowReading: "maya.home@example.com", removal: .removed(nil))
+      == "Now reading maya.home@example.com. The old transactions were removed.")
+  }
+
+  @Test func anotherAddressWithNothingImportedOffersOnlyTheSwitch() async {
+    let lane = otherAddress(imported: 0)
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    let asked = await answering(c, .keep) { await c.connect(.outlook) }
+    #expect(asked?.impact == nil)
+    #expect(c.signedInAgainLine == "Now reading maya.other@example.com.")
+
+    var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
+    noMailbox.note = MailConnectFailure.noMailboxLine(.outlook)
+    let quiet = mailbox([noMailbox])
+    quiet.signInAgainReads = "maya.other@example.com"
+    quiet.imported["outlook-1"] = nil
+    let q = MailConnectCoordinator(mailbox: quiet, context: .signInAgain(mailboxID: "outlook-1"))
+    await q.connect(.outlook)
+    #expect(quiet.questions.isEmpty && q.outcome == .connected(mailboxID: "outlook-1"))
+  }
+
+  @Test func theSwitchQuestionSaysWhatHappens() {
+    let impact = MailboxDisconnectImpact(transactions: 12, edited: 2)
+    let q = MailSwitchQuestion(
+      provider: .gmail, oldAddress: "maya@example.com", newAddress: "maya.home@example.com", impact: impact)
+    #expect(MailCopy.switchAddressTitle(q) == "You signed in as maya.home@example.com.")
+    #expect(MailCopy.switchAddressMessage(q)
+      == "Hasala reads maya@example.com. Switch to maya.home@example.com? maya@example.com brought in 12 transactions. Keep them, or remove them from your totals. Removing also takes the 2 you changed.")
+    var none = q
+    none.impact = nil
+    #expect(MailCopy.switchAddressMessage(none) == "Hasala reads maya@example.com. Switch to maya.home@example.com?")
+    var halted = q
+    halted.oldHasNoMailbox = true
+    halted.impact = MailboxDisconnectImpact(transactions: 1, edited: 0)
+    #expect(MailCopy.switchAddressMessage(halted)
+      == "maya@example.com has no mailbox Hasala can read. Switch to maya.home@example.com? maya@example.com brought in 1 transaction. Keep them, or remove them from your totals.")
+    #expect(MailCopy.keepOnSwitch("Switch", impact) == "Switch, keep the 12 transactions")
+    #expect(MailCopy.keepOnSwitch("Use Outlook", MailboxDisconnectImpact(transactions: 1, edited: 0))
+      == "Use Outlook, keep the 1 transaction")
+    #expect(MailCopy.switchMessage(from: .gmail, to: .outlook, impact: impact)
+      == "This replaces your Gmail connection. Hasala reads your bank alerts from Outlook instead. It brought in 12 transactions. Keep them, or remove them from your totals. Removing also takes the 2 you changed.")
+    #expect(MailCopy.switchMessage(from: .gmail, to: .outlook).hasSuffix("Past transactions stay."))
+    #expect(MailCopy.added(.outlook, removal: .removed(1)) == "Outlook connected. Checking for alerts. 1 transaction removed.")
+    #expect(MailCopy.disconnected(.gmail, removed: 42) == "Gmail disconnected. 42 transactions removed.")
+  }
+
+  @Test func aProviderSwitchCanRemoveTheOldTransactions() async throws {
+    let lane = try #require(AuthScenario.session(for: .gmailLinked, releaseSurface: true).services.mailbox as? MockMailbox)
+    lane.connectDelay = .zero
+    #expect(await lane.disconnectImpact("gmail-1") == MailboxDisconnectImpact(transactions: 42, edited: 3))
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.outlook, replacing: true, removingOld: true)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(c.addedLine == "Outlook connected. Checking for alerts. 42 transactions removed.")
+    #expect(lane.removed == ["gmail-1"] && lane.mailboxes.map(\.provider) == [.outlook])
+
+    let keep = try #require(AuthScenario.session(for: .gmailLinked, releaseSurface: true).services.mailbox as? MockMailbox)
+    keep.connectDelay = .zero
+    let k = MailConnectCoordinator(mailbox: keep, context: .addMailbox)
+    await k.connect(.outlook, replacing: true)
+    #expect(k.addedLine == "Outlook connected. Checking for alerts." && keep.removed.isEmpty)
+    let unconfirmed = MailConnectCoordinator(mailbox: keep, context: .addMailbox)
+    await unconfirmed.connect(.gmail, removingOld: true)
+    #expect(!unconfirmed.removingOld)
+  }
+
   /// The same mailbox added again after a disconnect brings its grey row back, syncing:
   /// Bank alerts never lists one address twice.
   @Test func reconnectingADisconnectedMailboxRevivesItsRow() async throws {
@@ -115,6 +312,115 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailConnectCoordinator.hasScreen(.adminApprovalNeeded(address: "a@example.com"), provider: .gmail))
     #expect(ConnectProviderView.tone(.alreadyConnected(address: "a@example.com")) == .accent)
     #expect(ConnectProviderView.tone(.offline) == .warning && ConnectProviderView.tone(.failed("x")) == .error)
+  }
+
+  @Test func aMicrosoftAccountWithNoMailboxHasItsScreenAndAnotherAccountConnects() async {
+    let lane = mailbox([MockMailbox.gmail])
+    lane.outlookNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.outlook)
+    #expect(c.outcome == .failed(.noMailbox(.outlook)))
+    #expect(c.errorScreen == .noMailbox(.outlook) && c.inlineMessage == nil)
+    #expect(MailConnectCoordinator.hasScreen(.noMailbox(.gmail), provider: .gmail))
+    #expect(ConnectProviderView.tone(.noMailbox(.outlook)) == .error)
+    c.reset()
+    await c.connect(.outlook)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1") && c.errorScreen == nil)
+    #expect(lane.connectCalls == 2)
+
+    let broken = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    broken.outlookNoMailbox = true
+    let again = MailConnectCoordinator(mailbox: broken, context: .signInAgain(mailboxID: "outlook-1"))
+    await again.connect(.outlook)
+    #expect(again.errorScreen == .noMailbox(.outlook))
+    await again.connect(.outlook)
+    #expect(again.outcome == .connected(mailboxID: "outlook-1") && broken.signInCalls == 2)
+  }
+
+  @Test func aRetryAfterAConfirmedSwitchStillReplaces() async {
+    let lane = mailbox([MockMailbox.gmail])
+    lane.holdOneLink()
+    lane.outlookNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    #expect(c.replaced(by: .outlook)?.id == "gmail-1")
+    await c.connect(.outlook, replacing: true)
+    #expect(c.errorScreen == .noMailbox(.outlook))
+    #expect(lane.mailboxes.map(\.id) == ["gmail-1"])
+    c.reset()
+    await c.retry(.outlook)
+    #expect(lane.replacingCalls == [true, true])
+    #expect(c.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(lane.mailboxes.map(\.id) == ["outlook-1"])
+
+    let unconfirmed = mailbox([MockMailbox.gmail])
+    unconfirmed.holdOneLink()
+    let u = MailConnectCoordinator(mailbox: unconfirmed, context: .addMailbox)
+    await u.connect(.outlook)
+    await u.retry(.outlook)
+    #expect(unconfirmed.replacingCalls == [false, false])
+    #expect(u.outcome == .failed(.failed("Disconnect Gmail first, then connect Outlook.")))
+
+    let other = mailbox([MockMailbox.gmail])
+    other.holdOneLink()
+    other.outlookNoMailbox = true
+    let o = MailConnectCoordinator(mailbox: other, context: .addMailbox)
+    await o.connect(.outlook, replacing: true)
+    await o.retry(.gmail)
+    #expect(other.replacingCalls == [true, false])
+  }
+
+  @Test func aGoogleAccountWithNoGmailHasItsScreenAndAnotherAccountConnects() async {
+    let lane = mailbox()
+    lane.gmailNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.gmail)
+    #expect(c.outcome == .failed(.noMailbox(.gmail)))
+    #expect(c.errorScreen == .noMailbox(.gmail) && c.inlineMessage == nil && c.failedWithNoMailbox)
+    c.reset()
+    await c.retry(.gmail)
+    #expect(c.outcome == .connected(mailboxID: "gmail-1") && c.errorScreen == nil && !c.failedWithNoMailbox)
+  }
+
+  @Test func aSignInAgainWithNoMailboxIsHandedToTheErrorScreen() async {
+    let lane = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    lane.outlookNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await c.connect(.outlook)
+    #expect(c.failedWithNoMailbox)
+    let router = AppRouter()
+    router.open(.profile, profile: [.bankAlerts])
+    MailConnectCoordinator.hand(c, to: router)
+    #expect(router.profile == [.bankAlerts, .connectMail(.outlook)])
+    #expect(MailConnectCoordinator.handed(.gmail) == nil)
+    #expect(MailConnectCoordinator.handed(.outlook) === c)
+    #expect(MailConnectCoordinator.handed(.outlook) == nil)
+
+    MailConnectCoordinator.hand(c, to: router)
+    router.sheet = nil
+    router.sheetDismissed()
+    #expect(MailConnectCoordinator.handed(.outlook) == nil)
+
+    MailConnectCoordinator.hand(c, to: router)
+    #expect(router.profile.isEmpty)
+    #expect(MailConnectCoordinator.handed(.outlook) == nil)
+
+    let cancelled = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    cancelled.outlookCancelled = true
+    let k = MailConnectCoordinator(mailbox: cancelled, context: .signInAgain(mailboxID: "outlook-1"))
+    await k.connect(.outlook)
+    #expect(!k.failedWithNoMailbox && k.failureLine == "Microsoft sign-in didn't finish. Nothing changed.")
+  }
+
+  @Test func theNoMailboxScreenSaysWhatToDo() {
+    let copy = MailConnectErrorView.copy(.noMailbox(.outlook), .outlook)
+    #expect(copy.title == "Outlook isn't connected.")
+    #expect(copy.subtitle == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com. Nothing was connected and nothing was read.")
+    #expect(copy.reasons == nil)
+    #expect(MailConnectErrorView.otherAccountTitle(.outlook) == "Use another Microsoft account")
+    let google = MailConnectErrorView.copy(.noMailbox(.gmail), .gmail)
+    #expect(google.title == "Gmail isn't connected.")
+    #expect(google.subtitle == "This Google account has no Gmail. Sign in with the account your bank alerts go to. Nothing was connected and nothing was read.")
+    #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
   }
 
   /// Setup's connect screen after Back from the first scan shows the mailbox it connected
@@ -324,7 +630,7 @@ struct MailboxFlowTests: AccountSuite {
       == "This happens after a password change, a long time signed out, or a work policy. No new Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else changes.")
     // Live's no-mailbox halt: a sign-in the provider didn't end, said in the row's words.
     var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
-    noMailbox.note = "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    noMailbox.note = MailConnectFailure.noMailboxLine(.outlook)
     #expect(MailboxDetailPage.signInBody(noMailbox) == noMailbox.note)
     #expect(MailboxDetailPage.signInHeading(noMailbox) == "Sign in with another account")
     #expect(MailboxDetailPage.signInHeading(MockMailbox.needingSignIn(MockMailbox.outlook))
@@ -451,7 +757,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(broken.hue == .sand && broken.needsYou)
     // A sign-in the provider didn't end (live: no Outlook mailbox on that account) says why.
     var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
-    noMailbox.note = "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    noMailbox.note = MailConnectFailure.noMailboxLine(.outlook)
     let empty = MailboxesSummary(
       [noMailbox], health: working, offer: .signInAgain(mailboxID: "outlook-1", provider: .outlook))
     #expect(empty.title == "Sign in again" && empty.detail == noMailbox.note)

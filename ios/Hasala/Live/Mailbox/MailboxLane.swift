@@ -82,9 +82,10 @@ nonisolated final class MailboxLane: Sendable {
   /// The wait is bounded, and every ending is bounded inside it (`MailGrantEnds.http`), so it
   /// ends first in practice. If it hasn't, the connect is refused ("Try again"): signing in
   /// regardless could let that ending reach Google after this link and end its grant.
-  func connect(backfillDays: Int, replacing: Bool = false) async -> ConnectResult {
+  func connect(backfillDays: Int, replacing: Bool = false, confirm: MailboxSwitchConfirm? = nil) async -> ConnectResult {
     if let refused = await MailGrantEnds.shared.connectGate() { return refused }
-    let r = await engine.connect(presenter: presenter, backfillDays: backfillDays, replacing: replacing)
+    let r = await engine.connect(
+      presenter: presenter, backfillDays: backfillDays, replacing: replacing, confirm: confirm)
     if case .connected = r {
       // The scan itself runs from `firstScan()` (foreground) or the processing task.
       BackgroundScheduler.shared.scheduleProcessing()
@@ -162,6 +163,7 @@ nonisolated final class MailboxLane: Sendable {
   func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
     await engine.disconnect(removing: plan)
   }
+  func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome { await engine.retire(plan) }
   /// The other provider's link replaced this one: end this provider's grant here.
   func endGrant() async { await engine.endGrant() }
   func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {

@@ -321,6 +321,42 @@ struct LiveLedgerMapperTests {
     #expect(store.state.txn(steam.id)?.categoryID == "entertainment")
   }
 
+  @Test func aProjectIsMadeFilledCompletedAndRemovedThroughTheOutbox() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "projects.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    let id = store.newProjectID()
+    #expect(id.count == 26)
+    try store.apply(.saveProject(id, ProjectDraft(
+      name: "Kitchen refresh", glyph: .rent, budget: .aed(8_000_00), starts: LocalDate(2026, 10, 1))))
+    try await Self.eventually { try a.projection.reader.projects().contains { $0.id == id } }
+    let row = try #require(try a.projection.reader.projects().first { $0.id == id }?.project)
+    #expect(row.name == "Kitchen refresh" && row.budgetMinor == 8_000_00 && row.startsOn == "2026-10-01")
+    #expect(row.endsOn == nil && row.icon == "house" && row.status == "active" && !row.countInPlan)
+
+    let carrefour = try #require(store.state.txns.first { $0.merchant.hasPrefix("Carrefour") && !$0.needsReview })
+    try store.apply(.assignProject([carrefour.id], id))
+    try await Self.eventually { try a.projection.reader.txn(carrefour.id)?.projectID == id }
+    await store.reload()
+    #expect(PlanEngine.project(id, store.state, now: MayaLedger.now)?.transactions.map(\.id) == [carrefour.id])
+
+    try store.apply(.completeProject(id, true))
+    try await Self.eventually { try a.projection.reader.projects().first { $0.id == id }?.project.status == "completed" }
+    #expect(try a.projection.reader.projects().first { $0.id == id }?.project.completedOn == "2026-10-10")
+    await store.reload()
+    #expect(store.state.project(id)?.complete == true)
+
+    try store.apply(.removeProject(id))
+    try await Self.eventually { try !a.projection.reader.projects().contains { $0.id == id } }
+    await store.reload()
+    #expect(store.state.project(id) == nil)
+  }
+
   @Test func anUncategorizedRowFromAnEarlierMonthIsInThatMonthsQueue() async throws {
     let a = try Self.account()
     for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
@@ -443,5 +479,16 @@ struct LiveLedgerMapperTests {
     try await shows(plain.id, "Something else")
     store.undo(try #require(renamed))
     try await shows(plain.id, plain.displayName)
+  }
+
+  @Test func theOptimisticPatchTakesARemovedProjectsTransactionsOut() throws {
+    var s = MayaLedger.state
+    #expect(s.txns.contains { $0.projectID == "japan" })
+    _ = try LiveLedgerStore.patch(.removeProject("japan"), &s, now: MayaLedger.now)
+    #expect(s.project("japan") == nil)
+    #expect(s.txns.allSatisfy { $0.projectID != "japan" })
+    #expect(throws: ActionError.invalidProject) {
+      try LiveLedgerStore.patch(.saveProject("x", ProjectDraft(name: " ")), &s, now: MayaLedger.now)
+    }
   }
 }

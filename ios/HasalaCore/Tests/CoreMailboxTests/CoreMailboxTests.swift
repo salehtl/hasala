@@ -34,10 +34,15 @@ import Testing
       "redirect_uri=com.googleusercontent.apps.synthetic-client:/oauth2redirect", "response_type=code",
       "scope=openid email https://www.googleapis.com/auth/gmail.readonly",
       "code_challenge=\(PKCE.challenge(verifier: a.codeVerifier))", "code_challenge_method=S256", "state=\(a.state)",
-      "nonce=the-nonce", "prompt=consent", "access_type=offline",
+      "nonce=the-nonce", "prompt=select_account consent", "access_type=offline",
     ])
     // Spaces are %20, never '+', so Google reads the scope list as three scopes.
     #expect(a.url.absoluteString.contains("scope=openid%20email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly"))
+  }
+
+  @Test func onlyMicrosoftPrefersAPrivateSignInSession() {
+    #expect(MailProviderID.outlook.prefersEphemeralSession)
+    #expect(!MailProviderID.gmail.prefersEphemeralSession)
   }
 
   @Test func unconfiguredBuildRefusesToStart() {
@@ -186,6 +191,37 @@ import Testing
     #expect(!GmailClient.isRateLimit(errorBody: body(#"{"error":{"code":403,"errors":[{"reason":"insufficientPermissions"}],"status":"PERMISSION_DENIED"}}"#)))
     #expect(!GmailClient.isRateLimit(errorBody: body("not json")))
     #expect(!GmailClient.isRateLimit(errorBody: Data()))
+  }
+
+  @Test func aGoogleAccountWithoutGmailIsNoMailbox() async {
+    func body(_ s: String) -> Data { Data(s.utf8) }
+    #expect(GmailClient.isMailServiceNotEnabled(errorBody: body(FakeGmail.noMailboxBody)))
+    #expect(GmailClient.isMailServiceNotEnabled(errorBody: body(#"{"error":{"code":400,"message":"Mail service not enabled","status":"FAILED_PRECONDITION"}}"#)))
+    #expect(GmailClient.isMailServiceNotEnabled(errorBody: body(#"{"error":{"code":400,"errors":[{"message":"Mail service not enabled","domain":"global","reason":"failedPrecondition"}]}}"#)))
+    #expect(!GmailClient.isMailServiceNotEnabled(errorBody: body(#"{"error":{"code":400,"message":"Precondition check failed.","errors":[{"message":"Precondition check failed.","domain":"global","reason":"failedPrecondition"}],"status":"FAILED_PRECONDITION"}}"#)))
+    #expect(!GmailClient.isMailServiceNotEnabled(errorBody: body(#"{"error":{"code":400,"message":"Mail service not enabled","status":"INVALID_ARGUMENT"}}"#)))
+    #expect(!GmailClient.isMailServiceNotEnabled(errorBody: body("not json")))
+    #expect(!GmailClient.isMailServiceNotEnabled(errorBody: Data()))
+
+    let fake = FakeGmail()
+    fake.noMailbox = true
+    let c = GmailClient(http: fake, accessToken: "t")
+    await #expect(throws: GmailAPIError.noMailbox) { try await c.checkMailbox() }
+    await #expect(throws: GmailAPIError.noMailbox) { _ = try await c.profileHistoryID() }
+    #expect(fake.requests.last?.path == "/gmail/v1/users/me/profile")
+    #expect(fake.requests.last?.query.contains { $0 == ("fields", "historyId") } == true)
+
+    let other = FakeGmail()
+    other.fail("/profile", with: [400])
+    other.fail("/profile", with: [403], reason: "failedPrecondition")
+    other.fail("/profile", with: [500])
+    let o = GmailClient(http: other, accessToken: "t")
+    await #expect(throws: GmailAPIError.status(400, op: "mailbox")) { try await o.checkMailbox() }
+    await #expect(throws: GmailAPIError.status(403, op: "mailbox")) { try await o.checkMailbox() }
+    await #expect(throws: GmailAPIError.status(500, op: "mailbox")) { try await o.checkMailbox() }
+    try? await o.checkMailbox()
+    other.offline = true
+    await #expect(throws: GmailAPIError.offline) { try await o.checkMailbox() }
   }
 
   @Test func quota403SurfacesAs429() async {

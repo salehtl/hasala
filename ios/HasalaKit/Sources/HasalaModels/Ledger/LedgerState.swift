@@ -351,16 +351,18 @@ public struct Project: Sendable, Hashable, Identifiable, Codable {
   public var id: ProjectID
   public var name: String
   public var glyph: Glyph
-  public var budget: Money
-  public var starts: LocalDate
-  public var ends: LocalDate
+  public var budget: Money?
+  public var starts: LocalDate?
+  public var ends: LocalDate?
   public var countInPlan: Bool
   public var complete: Bool
+  public var completedOn: LocalDate?
   /// The verb on the Home widget's caption: "flies 14 Dec", "starts 3 Jan".
   public var startVerb: String
 
-  public init(id: ProjectID, name: String, glyph: Glyph, budget: Money, starts: LocalDate, ends: LocalDate,
-              countInPlan: Bool = false, complete: Bool = false, startVerb: String = "starts") {
+  public init(id: ProjectID, name: String, glyph: Glyph, budget: Money?, starts: LocalDate?, ends: LocalDate?,
+              countInPlan: Bool = false, complete: Bool = false, completedOn: LocalDate? = nil,
+              startVerb: String = "starts") {
     self.startVerb = startVerb
     self.id = id
     self.name = name
@@ -370,6 +372,42 @@ public struct Project: Sendable, Hashable, Identifiable, Codable {
     self.ends = ends
     self.countInPlan = countInPlan
     self.complete = complete
+    self.completedOn = completedOn
+  }
+
+  public var isOpen: Bool { !complete }
+
+  public var draft: ProjectDraft {
+    ProjectDraft(name: name, glyph: glyph, budget: budget, starts: starts, ends: ends, countInPlan: countInPlan)
+  }
+}
+
+public struct ProjectDraft: Sendable, Hashable, Codable {
+  public var name: String
+  public var glyph: Glyph
+  public var budget: Money?
+  public var starts: LocalDate?
+  public var ends: LocalDate?
+  public var countInPlan: Bool
+
+  public init(name: String, glyph: Glyph = .flag, budget: Money? = nil, starts: LocalDate? = nil,
+              ends: LocalDate? = nil, countInPlan: Bool = false) {
+    self.name = name
+    self.glyph = glyph
+    self.budget = budget
+    self.starts = starts
+    self.ends = ends
+    self.countInPlan = countInPlan
+  }
+
+  public static let glyphs: [Glyph] = [.flag, .travel, .rent, .shopping, .savingsJar, .entertainment, .healthcare,
+                                       .transport]
+
+  public var refusal: String? {
+    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Give the project a name" }
+    if let b = budget, b.minor <= 0 { return "The money set aside must be more than 0" }
+    if let s = starts, let e = ends, e < s { return "The end date is before the start date" }
+    return nil
   }
 }
 

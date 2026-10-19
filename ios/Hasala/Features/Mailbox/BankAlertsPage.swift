@@ -26,6 +26,7 @@ struct BankAlertsPage: View {
   /// Each mailbox connected or read again, counted once its motion settles (the success
   /// haptic's trigger: a count, so the same mailbox twice plays twice).
   @State private var successes = 0
+  @State private var changingBanks = false
   @Environment(\.hMotion) private var motion
 
   init(app: AppModel) {
@@ -70,6 +71,9 @@ struct BankAlertsPage: View {
       if let arriving { land(arriving) }
     }
     .onDisappear { visible = false }
+    .sheet(isPresented: $changingBanks) {
+      ManageBanksSheet(current: lane?.chosenBanks() ?? []) { app.say("Banks updated") }
+    }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
     // A mailbox connected or signed in again: the motion policy's success, once each.
     .hHaptic(.success, trigger: successes) { old, new in new > old }
@@ -210,6 +214,7 @@ struct BankAlertsPage: View {
     .background(hero.hue.perceptualGradient, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bankAlerts.hero")
+    .mailSwitchQuestion(signIn)
   }
 
   /// The provider's sign-in for that mailbox, from here (no read-only screen: the person
@@ -221,8 +226,11 @@ struct BankAlertsPage: View {
     signIn = attempt
     Task {
       await attempt.connect(provider)
-      if case .connected? = attempt.outcome {
-        app.say(MailCopy.signedInAgain(provider))
+      if attempt.failedWithNoMailbox {
+        signIn = nil
+        MailConnectCoordinator.hand(attempt, to: app.router)
+      } else if let line = attempt.signedInAgainLine {
+        app.say(line)
         signIn = nil
         // The hero turns to Working; the haptic once it has.
         try? await Task.sleep(for: policy.settleDelay(.stateSwap))
@@ -363,7 +371,7 @@ struct BankAlertsPage: View {
 
   @ViewBuilder private var banksSection: some View {
     let banks = lane?.chosenBanks() ?? []
-    if !banks.isEmpty {
+    if lane != nil {
       VStack(alignment: .leading, spacing: 12) {
         HSectionHeader("Banks")
         HListCard {
@@ -374,13 +382,11 @@ struct BankAlertsPage: View {
               bank: bank, detail: Self.bankDetail(bank, lastEmail: reporting?.lastEmail(bank), checking: checking))
               .accessibilityIdentifier("bankAlerts.bank.\(bank.rawValue)")
           }
-          // Adding a bank has no screen yet (plan P3 work 5): Debug only.
-          if BuildSurface.showsUnfinished {
-            HDivider(inset: .disc68)
-            MailActionRow(title: "Add a bank", identifier: "bankAlerts.addBank") {
-              app.say("Adding a bank here isn't built yet", icon: .info)
-            }
-          }
+          if !banks.isEmpty { HDivider(inset: .disc68) }
+          MailActionRow(
+            title: banks.isEmpty ? "Choose your banks" : "Change banks", identifier: "bankAlerts.changeBanks",
+            glyph: banks.isEmpty ? PaperGlyph.plus : PaperGlyph.pencil
+          ) { changingBanks = true }
         }
       }
     }
