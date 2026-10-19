@@ -1,3 +1,9 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+`AGENTS.md` is a symlink to this file. Edit `CLAUDE.md`, and keep the symlink.
+
 # Hasala
 
 Hasala (حصّالة) is a private budget app for iPhone users in the UAE. It is a
@@ -42,15 +48,37 @@ is reachable.
 `scripts/check.sh` is the gate. It does these steps:
 
 - The real-mail fence.
+- The HasalaCore lints, and a check that the bundled templates
+  (`ios/HasalaCore/Sources/HasalaCore/Resources/templates`) are the same as
+  `server/internal/tmpl/seed`. After you change a seed template, run
+  `swift ios/tools/templates/sync.swift`.
 - The toolchain floor.
 - The hasalad fences (`server/cmd/hasalad/fence_test.go`).
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
   temporary Postgres (unix socket only).
 - The typecheck and `bun test` of the reference client.
-- The conformance suites.
+- The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
+  the Go packages and the bun test files of each fixture set. Each directory
+  in `conformance/` must have an entry. When you add a fixture set, add its
+  entry.
+- The known failures (`KNOWN_FAILING` in `scripts/check.sh`). The gate skips
+  each one by name, then runs it alone, and it must still fail.
 
 Before the first run in a checkout, run
 `(cd reference/ledgerd-client && bun install --frozen-lockfile)` one time.
+
+### One test
+
+- Go (in `server/` or `server/oracle/`):
+  `go test -count=1 -run '^TestName$' ./internal/oplog`. Tests that use
+  Postgres start their own temporary cluster.
+- Reference client (in `reference/ledgerd-client/`): `bun test <file>`, and
+  `bun run typecheck`.
+- HasalaCore: `swift test --package-path ios/HasalaCore --filter <Target>.<Class>/<test>`.
+  CI (job `swift`) runs `swift test --disable-automatic-resolution --explicit-target-dependency-import-check error`
+  in `ios/HasalaCore`.
+- The app: add `-only-testing:HasalaTests/<Class>/<test>` (or
+  `HasalaUITests/...`) to the `xcodebuild test` command in "The iOS app".
 
 ### CI
 
@@ -165,6 +193,8 @@ Project file:
 
 Tests:
 
+- `swift test --package-path ios/HasalaCore` tests the client core: the unit
+  tests and the conformance suite (it reads `conformance/` in place).
 - `swift test --package-path ios/HasalaKit` tests the design tokens, the money
   format, the Maya mock and the text contrast.
 - `xcodebuild test -project ios/Hasala.xcodeproj -scheme Hasala -destination 'platform=iOS Simulator,name=iPhone 17'`
