@@ -27,7 +27,8 @@
 #   2. The hasalad fences (spec 02 §4.4, cmd/hasalad/fence_test.go): the
 #      server's build graph never reaches the oracle module, the test sealers
 #      or a retired capability, and its source cannot encrypt or decrypt.
-#      Then govulncheck ./cmd/hasalad/... (needs the network).
+#      Then govulncheck ./cmd/hasalad/... (needs the network; skipped in CI,
+#      where the `vuln` job scans every package).
 #   3. ONE throwaway Postgres cluster for the whole run (unix socket, no TCP),
 #      shared through HASALA_TEST_POSTGRES_URL and stopped on any exit.
 #   4. go vet ./... and go test ./... in server/, then in server/oracle/.
@@ -61,9 +62,10 @@
 # CHECK_JOBS (default 8) caps go's package parallelism: the QA host is shared with
 # other services, so the gate keeps to about half the machine.
 #
-# CI: under GitHub Actions (GITHUB_ACTIONS=true) every step runs exactly as it
-# does anywhere else, with the same verdicts; only the reporting adapts to a
-# runner whose temp directory dies with the job. On failure the postgres log is
+# CI: under GitHub Actions (GITHUB_ACTIONS=true) every step but govulncheck runs
+# exactly as it does anywhere else, with the same verdicts; govulncheck is left
+# to the required `vuln` job, which scans both modules whole. The reporting
+# adapts to a runner whose temp directory dies with the job. On failure the postgres log is
 # printed instead of named, and the closing real-corpus count is also raised as
 # an annotation and written to the job summary, so a run without the private
 # fixtures says so on the pull request, not only at the end of a long log. CI
@@ -225,9 +227,13 @@ go test -count=1 -run '^TestFence' ./cmd/hasalad
 # Spec 02 §3.2. Only hasalad's own build graph, at symbol level: a finding in a
 # module it requires but never calls is reported without failing. It reads the
 # Go vulnerability database (vuln.go.dev), so this step needs the network. CI's
-# `vuln` job also scans every package of both modules.
+# `vuln` job scans every package of both modules, so CI skips this step.
 step "govulncheck ./cmd/hasalad/..."
-govulncheck ./cmd/hasalad/...
+if [[ -n "$CI_RUN" ]]; then
+	echo "skipped in CI: the vuln job runs govulncheck ./... in server/ and server/oracle/"
+else
+	govulncheck ./cmd/hasalad/...
+fi
 
 # --- 3. one throwaway Postgres cluster -------------------------------------------
 PG_STOP=""
@@ -458,8 +464,9 @@ if [[ -n "$oracle_pkgs" ]]; then
 	(cd server/oracle && go test -count=1 -p "$JOBS" -json -list . $oracle_pkgs) >>"$GO_LIST"
 fi
 bun "$ROOT/scripts/gotest-ran.ts" "$GO_LIST" "$GO_RECORD" "$ORACLE_RECORD"
-# shellcheck disable=SC2086
-(cd reference/ledgerd-client && bun test $(printf './%s ' $ts_files))
+ts_paths=()
+for f in $ts_files; do ts_paths+=("./$f"); done
+(cd reference/ledgerd-client && bun test "${ts_paths[@]}")
 
 # --- 7. known failures still fail -------------------------------------------------------
 # A build error must not pass for "still failing": the named test has to have
