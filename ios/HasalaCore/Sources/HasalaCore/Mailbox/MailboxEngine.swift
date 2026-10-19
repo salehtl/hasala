@@ -303,7 +303,8 @@ public actor MailboxEngine {
   /// Connect the provider's mailbox (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
   /// step-up `mailbox.link` over SHA-256(id_token) → `PUT /mailbox/link` → Keychain. A first
   /// connect then starts the scan over `backfillDays` (30, 90 or 365; §7.7); a reconnect or a
-  /// takeover resumes the normal cycle from the kept watermark.
+  /// takeover of the same address resumes the normal cycle from the kept watermark, and another
+  /// address is a first connect, as `replacing` is.
   ///
   /// `replacing`: the mailbox tables hold another provider's lane (the account switches
   /// provider). Only once the new link is made are they cleared, in the same commit as the new
@@ -367,6 +368,9 @@ public actor MailboxEngine {
     } catch {
       // Any other answer is the cycle's to handle (it halts with a reason the user sees).
     }
+    let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
+    let otherMailbox = stored.map { Self.isAnotherMailbox(linked: $0.address, signedIn: claims.email) } ?? false
+    let fresh = replacing || otherMailbox
     let proof: JSONValue
     do { proof = try await stepUp.proof(kind: "mailbox.link", payloadHash: sha256(Data(idToken.utf8))) } catch {
       return .failed(.stepUpFailed)
@@ -381,6 +385,11 @@ public actor MailboxEngine {
     } catch {
       return .failed(.serverRefused)
     }
+    if otherMailbox {
+      await endLocalPush()
+      notBeforeMs = 0
+      quotaStrikes = 0
+    }
     do {
       try await tokens.install(grant: grant)
       try provider.installLink(link)
@@ -388,7 +397,7 @@ public actor MailboxEngine {
       return .failed(.keychain)
     }
 
-    var s = replacing ? MailboxState() : ((try? await store.loadState()) ?? MailboxState())
+    var s = fresh ? MailboxState() : (stored ?? MailboxState())
     switch s.phase {
     case .scanning, .awaitingCards, .authoringBackfill, .active:
       break  // a re-link mid-setup (or while active) keeps its place
@@ -415,9 +424,16 @@ public actor MailboxEngine {
       }
     }
     var c = commitState(s)
-    c.clearAll = replacing
+    c.clearAll = fresh
     do { try await store.commit(c) } catch { return .failed(.keychain) }
     return .connected(address: claims.email)
+  }
+
+  static func isAnotherMailbox(linked: String?, signedIn: String?) -> Bool {
+    guard let linked, let signedIn else { return false }
+    let old = MailboxEngineConfig.normalized(linked)
+    let new = MailboxEngineConfig.normalized(signedIn)
+    return !old.isEmpty && !new.isEmpty && old != new
   }
 
   /// Ends this provider's grant on this iPhone after another provider's link replaced it: stops

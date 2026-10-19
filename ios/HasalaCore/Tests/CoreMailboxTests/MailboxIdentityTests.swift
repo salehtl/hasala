@@ -134,3 +134,94 @@ import Testing
     #expect(await rig.ledger.retired.isEmpty)
   }
 }
+
+@Suite struct AnotherAddressTests {
+  let day: Int64 = 86_400_000
+  let account = "00000000-0000-4000-8000-000000000001"
+  let other = "other.user@example.com"
+
+  func linkedThenSignedOut(_ rig: Rig) async {
+    rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 5 * day))
+    await rig.connectAndActivate()
+    await rig.tokens.invalidate()
+    rig.gmail.invalidGrant = true
+    _ = await rig.engine.runCycle(trigger: .launch)
+    rig.gmail.invalidGrant = false
+    rig.clock.advance(day)
+  }
+
+  @Test func signingInAgainWithTheSameAddressResumes() async throws {
+    let rig = Rig()
+    await linkedThenSignedOut(rig)
+    let before = await rig.state()
+    #expect(before.phase == .reconnectRequired && before.watermarkMs == Rig.t0)
+    let r = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
+    #expect(r == .connected(address: "synthetic.user@example.com"))
+    let s = await rig.state()
+    #expect(s.phase == .active && s.watermarkMs == Rig.t0 && s.scanStartedMs == before.scanStartedMs)
+    #expect(await rig.accounted("d1") == .op)
+    #expect(try await !rig.store.bankHealth().isEmpty)
+  }
+
+  @Test func theAddressIsComparedWithoutCaseOrBlanks() async throws {
+    let rig = Rig()
+    await linkedThenSignedOut(rig)
+    rig.gmail.email = " Synthetic.User@Example.COM"
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 30)
+    let s = await rig.state()
+    #expect(s.phase == .active && s.watermarkMs == Rig.t0)
+    #expect(await rig.accounted("d1") == .op)
+  }
+
+  @Test func anotherAddressStartsThatMailboxFreshAsAConfirmedReplaceDoes() async throws {
+    let signIn = Rig()
+    let replace = Rig()
+    for rig in [signIn, replace] {
+      await linkedThenSignedOut(rig)
+      rig.gmail.remove("d1")
+      rig.gmail.email = other
+      rig.gmail.add(SyntheticMail.enbdAlert(id: "b-old", dateMs: Rig.t0 - 40 * day))
+    }
+    let r = await signIn.engine.connect(presenter: FakePresenter(gmail: signIn.gmail), backfillDays: 90)
+    #expect(r == .connected(address: other))
+    #expect(
+      await replace.engine.connect(presenter: FakePresenter(gmail: replace.gmail), backfillDays: 90, replacing: true)
+        == .connected(address: other))
+
+    let s = await signIn.state()
+    #expect(s.phase == .scanning && s.address == other && s.watermarkMs == nil)
+    #expect(s.scanStartedMs == Rig.t0 + day && s.backfillDays == 90 && s.haltedOn == nil && s.haltedDetail == nil)
+    #expect(s == (await replace.state()))
+    #expect(await signIn.accountedCount() == 0)
+    #expect(try await signIn.store.bankHealth().isEmpty)
+    #expect(await signIn.server.puts.count == 2)
+    #expect(await signIn.server.puts.last?.1["kind"] == .string("mailbox.link"))
+    #expect(await signIn.server.deletes == 0)
+    #expect(await signIn.ledger.retired.isEmpty)
+    #expect(signIn.gmail.requests.map(\.path) == replace.gmail.requests.map(\.path))
+
+    let done = await signIn.engine.runCycle(trigger: .launch)
+    #expect(done.phase == .active && done.ops == 1)
+    _ = await replace.engine.runCycle(trigger: .launch)
+    let grant = MailboxEngineConfig(grantID: account).grantID(provider: .gmail, address: other)
+    let drafts = await signIn.enqueued()
+    #expect(drafts.map(\.messageID) == ["d1", "b-old"])
+    #expect(drafts.last?.payload["provenance"]?["grant_id"] == .string(grant))
+    #expect(drafts == (await replace.enqueued()))
+    #expect(await signIn.engine.status().address == other)
+  }
+
+  @Test func anotherAddressWithoutAMailboxChangesNothing() async throws {
+    let rig = Rig()
+    await linkedThenSignedOut(rig)
+    let before = await rig.state()
+    let puts = await rig.server.puts.count
+    rig.gmail.email = other
+    rig.gmail.noMailbox = true
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .failed(.noMailbox))
+    #expect(await rig.state() == before)
+    #expect(await rig.server.puts.count == puts)
+    #expect(await rig.accounted("d1") == .op)
+    #expect(try await !rig.store.bankHealth().isEmpty)
+  }
+}

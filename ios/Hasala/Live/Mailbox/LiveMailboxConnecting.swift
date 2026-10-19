@@ -340,11 +340,13 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   }
 
   /// The same lane connect: the provider's sign-in and the step-up again, then the lane
-  /// picks up where it stopped.
+  /// picks up where it stopped, or reads another address from the start.
   func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
     let fallback = try lane().provider
     let provider = MailProviderKind(rawValue: mailboxID) ?? fallback
     try await connect(provider)
+    guard await linkState() == .scanning else { return }
+    Task { for await _ in firstScan() {} }
   }
 
   /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch or subscription

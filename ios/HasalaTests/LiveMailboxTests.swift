@@ -383,6 +383,24 @@ struct LiveMailboxTests {
     #expect(work(.reconnectRequired, seen: false) == nil)
   }
 
+  @Test func aSignInWithAnotherAddressShowsThatAddressReadingFromTheStart() {
+    let now: Int64 = 10_000_000_000
+    let before = LiveMailboxConnecting.mailboxes(
+      phase: .halted, halt: .noMailbox, address: "maya.k@example.com", lastSuccessAtMs: now - 86_400_000,
+      bankDomains: ["dib.ae"], provider: .outlook, nowMs: now
+    ).first
+    #expect(before?.address == "maya.k@example.com" && before?.state == .needsSignIn && before?.note != nil)
+    let after = LiveMailboxConnecting.mailboxes(
+      phase: .scanning, halt: nil, address: "maya.new@example.com", lastSuccessAtMs: nil, bankDomains: [],
+      provider: .outlook, nowMs: now
+    ).first
+    #expect(after?.id == before?.id && after?.address == "maya.new@example.com")
+    #expect(after?.state == .syncing && after?.meta == "Checking now" && after?.note == nil)
+    #expect(after?.banks.isEmpty == true && after?.lastChecked == nil)
+    let pill = LiveMailboxConnecting.importing(phase: .scanning, seen: true, progress: nil)
+    #expect(pill?.state == .reading && pill?.busy == true)
+  }
+
   @Test func aFirstScanThatGivesUpOnAPassingStopPausesThePill() {
     func totals(_ phase: MailboxPhase, _ halt: MailboxHaltCode?) -> MailboxLane.FirstScanTotals {
       var t = MailboxLane.FirstScanTotals()

@@ -460,3 +460,82 @@ import Testing
     #expect(await rig.server.deletes == 0)
   }
 }
+
+@Suite struct OutlookAnotherAddressTests {
+  let day: Int64 = 86_400_000
+  let other = "other.user@outlook.example"
+
+  func linkedThenHalted(_ rig: OutlookRig) async {
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d1", dateMs: OutlookRig.t0 - 5 * day))
+    await rig.connectAndActivate()
+    rig.graph.noMailbox = true
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    rig.graph.noMailbox = false
+    rig.clock.advance(day)
+  }
+
+  @Test func signingInAgainWithTheSameAddressInAnyCaseResumes() async throws {
+    let rig = OutlookRig()
+    await linkedThenHalted(rig)
+    let before = await rig.state()
+    #expect(before.phase == .halted && before.watermarkMs == OutlookRig.t0)
+    rig.graph.email = "Synthetic.User@Outlook.Example"
+    #expect(await rig.connect(days: 30) == .connected(address: "Synthetic.User@Outlook.Example"))
+    let s = await rig.state()
+    #expect(s.phase == .active && s.watermarkMs == OutlookRig.t0 && s.haltedOn == nil)
+    #expect(rig.accounted("AAkALgAA-d1") == .op)
+    #expect(rig.subscriptionRequests("DELETE").isEmpty)
+  }
+
+  @Test func anotherAddressStartsThatMailboxFreshAndEndsTheOldSubscription() async throws {
+    let rig = OutlookRig()
+    let replace = OutlookRig()
+    for r in [rig, replace] {
+      await linkedThenHalted(r)
+      r.graph.remove("AAkALgAA-d1")
+      r.graph.email = other
+      r.graph.add(SyntheticOutlookMail.enbdAlert(id: "AAkALgAA-b1", dateMs: OutlookRig.t0 - 40 * day))
+    }
+    let old = try #require(rig.graph.subscriptions.first?.id)
+    #expect(await rig.connect() == .connected(address: other))
+    _ = await replace.engine.connect(presenter: OutlookPresenter(graph: replace.graph), backfillDays: 90, replacing: true)
+
+    let s = await rig.state()
+    #expect(s.phase == .scanning && s.address == other && s.watermarkMs == nil && s.haltedOn == nil)
+    #expect(s.scanStartedMs == OutlookRig.t0 + day && s.backfillDays == 90)
+    #expect(s == (await replace.state()))
+    #expect(rig.accounted("AAkALgAA-d1") == nil)
+    #expect(try await rig.store.bankHealth().isEmpty)
+    #expect(rig.subscriptionRequests("DELETE").map(\.path) == ["/v1.0/subscriptions/\(old)"])
+    #expect(try rig.link.read() == OutlookLinkState(clientState: OutlookServer.clientState))
+    #expect(await rig.server.linkedProviders == [.outlook, .outlook])
+    #expect(await rig.server.deletes == 0)
+    #expect(await rig.ledger.retired.isEmpty)
+
+    let done = await rig.engine.runCycle(trigger: .launch)
+    #expect(done.phase == .active && done.ops == 1)
+    _ = await replace.engine.runCycle(trigger: .launch)
+    #expect(rig.enqueued().map(\.messageID) == ["AAkALgAA-d1", "AAkALgAA-b1"])
+    #expect(rig.enqueued() == replace.enqueued())
+    let subs = rig.graph.subscriptions
+    #expect(subs.count == 1 && subs[0].id != old)
+    #expect(try rig.link.read()?.subscriptionID == subs[0].id)
+    #expect(await rig.engine.status().address == other)
+  }
+
+  @Test func anotherAddressWithoutAMailboxChangesNothing() async throws {
+    let rig = OutlookRig()
+    await linkedThenHalted(rig)
+    let before = await rig.state()
+    let link = try rig.link.read()
+    let subs = rig.graph.subscriptions
+    rig.graph.email = other
+    rig.graph.noMailbox = true
+    #expect(await rig.connect() == .failed(.noMailbox))
+    #expect(await rig.state() == before)
+    #expect(try rig.link.read() == link)
+    #expect(rig.graph.subscriptions == subs)
+    #expect(await rig.server.linkedProviders == [.outlook])
+    #expect(rig.accounted("AAkALgAA-d1") == .op)
+  }
+}
