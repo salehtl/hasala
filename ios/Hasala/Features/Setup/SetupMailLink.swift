@@ -58,7 +58,10 @@ final class SetupMailLink: MailboxConnecting {
     return id
   }
 
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) { try await base.signInAgain(mailboxID) }
+  @discardableResult
+  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String? {
+    try await base.signInAgain(mailboxID)
+  }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
   }

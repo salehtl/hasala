@@ -44,6 +44,7 @@ final class MailConnectCoordinator {
   /// The provider of the last attempt (the error screens name it).
   private(set) var provider: MailProviderKind?
   private(set) var replacing = false
+  private(set) var nowReading: String?
 
   init(mailbox: MailboxConnecting, context: Context) {
     self.mailbox = mailbox
@@ -58,11 +59,12 @@ final class MailConnectCoordinator {
     busy = true
     defer { busy = false }
     outcome = nil
+    nowReading = nil
     self.provider = provider
     self.replacing = replacing
     do {
       if case .signInAgain(let id) = context {
-        try await mailbox.signInAgain(id)
+        nowReading = try await mailbox.signInAgain(id)
         outcome = .connected(mailboxID: id)
       } else {
         outcome = .connected(mailboxID: try await mailbox.connect(provider, replacing: replacing))
@@ -81,12 +83,15 @@ final class MailConnectCoordinator {
 
   private static var pendingHand: MailConnectCoordinator?
 
-  static func hand(_ coordinator: MailConnectCoordinator) {
+  static func hand(_ coordinator: MailConnectCoordinator, to router: AppRouter) {
+    guard router.sheet == .profile, let provider = coordinator.provider else { return }
     pendingHand = coordinator
+    router.profile.append(.connectMail(provider))
   }
 
   static func handed(_ provider: MailProviderKind) -> MailConnectCoordinator? {
     guard let c = pendingHand, c.provider == provider else { return nil }
+    pendingHand = nil
     return c
   }
 
@@ -116,6 +121,12 @@ final class MailConnectCoordinator {
   /// Back to before the attempt ("Try again", "Choose a different email").
   func reset() {
     outcome = nil
+    nowReading = nil
+  }
+
+  var signedInAgainLine: String? {
+    guard case .connected? = outcome, let provider else { return nil }
+    return MailCopy.signedInAgain(provider, nowReading: nowReading)
   }
 
   // MARK: What the screens show

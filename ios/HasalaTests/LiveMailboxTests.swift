@@ -83,7 +83,11 @@ struct LiveMailboxTests {
     #expect(throws: MailConnectFailure.failed(LiveMailboxConnecting.message(.permissionMissing, provider: .outlook))) {
       try LiveMailboxConnecting.linked(.failed(.permissionMissing), provider: .outlook)
     }
-    try LiveMailboxConnecting.linked(.connected(address: nil), provider: .outlook)
+    #expect(try LiveMailboxConnecting.linked(.connected(address: nil), provider: .outlook) == nil)
+    #expect(try LiveMailboxConnecting.linked(.connected(address: "maya.k@example.com"), provider: .outlook) == nil)
+    #expect(
+      try LiveMailboxConnecting.linked(.connected(address: "maya.other@example.com", anotherAddress: true), provider: .outlook)
+        == "maya.other@example.com")
     #expect(MailConnectFailure.noMailbox(.outlook).message(for: .outlook)
       == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com.")
   }

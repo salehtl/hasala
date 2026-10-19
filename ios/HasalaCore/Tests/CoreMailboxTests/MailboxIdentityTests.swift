@@ -183,7 +183,7 @@ import Testing
       rig.gmail.add(SyntheticMail.enbdAlert(id: "b-old", dateMs: Rig.t0 - 40 * day))
     }
     let r = await signIn.engine.connect(presenter: FakePresenter(gmail: signIn.gmail), backfillDays: 90)
-    #expect(r == .connected(address: other))
+    #expect(r == .connected(address: other, anotherAddress: true))
     #expect(
       await replace.engine.connect(presenter: FakePresenter(gmail: replace.gmail), backfillDays: 90, replacing: true)
         == .connected(address: other))
@@ -223,5 +223,36 @@ import Testing
     #expect(await rig.server.puts.count == puts)
     #expect(await rig.accounted("d1") == .op)
     #expect(try await !rig.store.bankHealth().isEmpty)
+  }
+
+  @Test func anotherAddressThatCannotBeKeptLeavesNothingToResume() async throws {
+    let rig = Rig()
+    await linkedThenSignedOut(rig)
+    rig.gmail.remove("d1")
+    rig.gmail.email = other
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "b-new", dateMs: Rig.t0 - 2 * day))
+    rig.keychain.locked = true
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .failed(.keychain))
+    rig.keychain.locked = false
+    let s = await rig.state()
+    #expect(s == MailboxState())
+    #expect(await rig.accounted("d1") == nil)
+    #expect(try rig.keychain.read() == nil)
+
+    let reads = rig.gmail.requests.count
+    for trigger in [MailboxTrigger.retry, .launch, .refresh] {
+      let report = await rig.engine.runCycle(trigger: trigger)
+      #expect(report.phase == .unlinked && report.ops == 0)
+    }
+    #expect(rig.gmail.requests.count == reads)
+    #expect(await rig.state() == s)
+
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .connected(address: other))
+    let done = await rig.engine.runCycle(trigger: .launch)
+    #expect(done.phase == .active && done.ops == 1)
+    let grant = MailboxEngineConfig(grantID: account).grantID(provider: .gmail, address: other)
+    let drafts = await rig.enqueued()
+    #expect(drafts.map(\.messageID) == ["d1", "b-new"])
+    #expect(drafts.last?.payload["provenance"]?["grant_id"] == .string(grant))
   }
 }

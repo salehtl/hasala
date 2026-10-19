@@ -35,8 +35,9 @@ enum MailCopy {
 
   /// The toast after a new sign-in to a mailbox whose provider ended access (Paper flow:
   /// "Connected again · Checks again from the last check").
-  static func signedInAgain(_ provider: MailProviderKind) -> String {
-    "\(provider.appName) connected again. Catching up from the last check."
+  static func signedInAgain(_ provider: MailProviderKind, nowReading address: String? = nil) -> String {
+    if let address { return "Now reading \(address)." }
+    return "\(provider.appName) connected again. Catching up from the last check."
   }
 
   /// The toast after a new mailbox (Paper 1NYL).

@@ -223,10 +223,9 @@ struct BankAlertsPage: View {
       await attempt.connect(provider)
       if attempt.failedWithNoMailbox {
         signIn = nil
-        MailConnectCoordinator.hand(attempt)
-        app.router.profile.append(.connectMail(provider))
-      } else if case .connected? = attempt.outcome {
-        app.say(MailCopy.signedInAgain(provider))
+        MailConnectCoordinator.hand(attempt, to: app.router)
+      } else if let line = attempt.signedInAgainLine {
+        app.say(line)
         signIn = nil
         // The hero turns to Working; the haptic once it has.
         try? await Task.sleep(for: policy.settleDelay(.stateSwap))

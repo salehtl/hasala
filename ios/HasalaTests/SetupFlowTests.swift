@@ -464,7 +464,7 @@ final class CountingMailbox: MailboxConnecting {
     if cancelGmail, provider == .gmail { throw .cancelled }
     return try await base.connect(provider, replacing: replacing)
   }
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) { try await base.signInAgain(mailboxID) }
+  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String? { try await base.signInAgain(mailboxID) }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
   }

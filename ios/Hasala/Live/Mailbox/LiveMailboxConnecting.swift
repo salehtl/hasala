@@ -319,6 +319,12 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   /// ends its grant.
   @discardableResult
   func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
+    try await link(provider, replacing: replacing).mailboxID
+  }
+
+  private func link(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure)
+    -> (mailboxID: String, nowReading: String?)
+  {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
     let current = rt.lane
@@ -332,21 +338,23 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     let switching = current.map { $0.provider != provider } ?? false
     let days = MailboxEngine.backfillDays(
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
-    try Self.linked(await lane.connect(backfillDays: days, replacing: replaces), provider: provider)
+    let nowReading = try Self.linked(await lane.connect(backfillDays: days, replacing: replaces), provider: provider)
     rt.activate(provider)
     if switching, let old = current { await old.endGrant() }
     await rt.refreshMailbox()
-    return Self.mailboxID(provider)
+    return (Self.mailboxID(provider), nowReading)
   }
 
   /// The same lane connect: the provider's sign-in and the step-up again, then the lane
   /// picks up where it stopped, or reads another address from the start.
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+  @discardableResult
+  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String? {
     let fallback = try lane().provider
     let provider = MailProviderKind(rawValue: mailboxID) ?? fallback
-    try await connect(provider)
-    guard await linkState() == .scanning else { return }
+    let nowReading = try await link(provider, replacing: false).nowReading
+    guard await linkState() == .scanning else { return nowReading }
     Task { for await _ in firstScan() {} }
+    return nowReading
   }
 
   /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch or subscription
@@ -382,9 +390,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     if phase == .otherDevice { throw .takenByOtherIPhone }
   }
 
-  static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) {
+  @discardableResult
+  static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) -> String? {
     switch result {
-    case .connected: return
+    case .connected(let address, let another): return another ? address : nil
     case .cancelled: throw .cancelled
     case .failed(.offline): throw .offline
     case .failed(.noMailbox): throw .noMailbox(provider)

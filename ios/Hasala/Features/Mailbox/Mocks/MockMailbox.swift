@@ -40,6 +40,7 @@
     var outlookCancelled = false
     var outlookNoMailbox = false
     var gmailNoMailbox = false
+    var signInAgainReads: String?
     /// Every connect finds the mailbox already connected.
     var alreadyConnected = false
     /// Every connect finds no network.
@@ -190,7 +191,8 @@
       throw .noMailbox(provider)
     }
 
-    func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+    @discardableResult
+    func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String? {
       signInCalls += 1
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
@@ -201,6 +203,9 @@
       mailboxes[i].state = .connected
       mailboxes[i].meta = "Checked just now"
       mailboxes[i].lastChecked = "Sat 10 Oct, 13:40"
+      guard let address = signInAgainReads else { return nil }
+      mailboxes[i].address = address
+      return address
     }
 
     var imported: [String: MailboxDisconnectImpact] = [

@@ -169,6 +169,17 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(status.waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
   }
 
+  @MainActor
+  func testSignInAgainWithAnotherAddressSaysWhatItReads() throws {
+    let app = launch(scenario: nil, screen: "bankAlerts.signInOtherAddress")
+    let button = el(app, "bankAlerts.signInAgain")
+    XCTAssertTrue(button.waitForExistence(timeout: 15))
+    button.tap()
+    XCTAssertTrue(app.staticTexts["Now reading maya.other@example.com."].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["Outlook connected again. Catching up from the last check."].exists)
+    XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+  }
+
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue
   /// with Microsoft"; signed in again, the hero says it works.
   @MainActor

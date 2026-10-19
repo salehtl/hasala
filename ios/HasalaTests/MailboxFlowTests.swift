@@ -77,6 +77,26 @@ struct MailboxFlowTests: AccountSuite {
     #expect(lane.mailboxes.count == 2 && lane.offer == nil)
   }
 
+  @Test func aSignInAgainToAnotherAddressSaysWhatItReads() async {
+    let lane = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    let same = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await same.connect(.outlook)
+    #expect(same.nowReading == nil)
+    #expect(same.signedInAgainLine == "Outlook connected again. Catching up from the last check.")
+
+    let other = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    other.signInAgainReads = "maya.other@example.com"
+    let c = MailConnectCoordinator(mailbox: other, context: .signInAgain(mailboxID: "outlook-1"))
+    await c.connect(.outlook)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1") && c.nowReading == "maya.other@example.com")
+    #expect(c.signedInAgainLine == "Now reading maya.other@example.com.")
+    #expect(other.mailboxes.first?.address == "maya.other@example.com")
+    c.reset()
+    #expect(c.nowReading == nil && c.signedInAgainLine == nil)
+    #expect(MailCopy.signedInAgain(.gmail, nowReading: "maya.home@example.com") == "Now reading maya.home@example.com.")
+    #expect(MailCopy.signedInAgain(.gmail) == "Gmail connected again. Catching up from the last check.")
+  }
+
   /// The same mailbox added again after a disconnect brings its grey row back, syncing:
   /// Bank alerts never lists one address twice.
   @Test func reconnectingADisconnectedMailboxRevivesItsRow() async throws {
@@ -190,10 +210,21 @@ struct MailboxFlowTests: AccountSuite {
     let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
     await c.connect(.outlook)
     #expect(c.failedWithNoMailbox)
-    MailConnectCoordinator.hand(c)
+    let router = AppRouter()
+    router.open(.profile, profile: [.bankAlerts])
+    MailConnectCoordinator.hand(c, to: router)
+    #expect(router.profile == [.bankAlerts, .connectMail(.outlook)])
     #expect(MailConnectCoordinator.handed(.gmail) == nil)
     #expect(MailConnectCoordinator.handed(.outlook) === c)
-    MailConnectCoordinator.release()
+    #expect(MailConnectCoordinator.handed(.outlook) == nil)
+
+    MailConnectCoordinator.hand(c, to: router)
+    router.sheet = nil
+    router.sheetDismissed()
+    #expect(MailConnectCoordinator.handed(.outlook) == nil)
+
+    MailConnectCoordinator.hand(c, to: router)
+    #expect(router.profile.isEmpty)
     #expect(MailConnectCoordinator.handed(.outlook) == nil)
 
     let cancelled = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])

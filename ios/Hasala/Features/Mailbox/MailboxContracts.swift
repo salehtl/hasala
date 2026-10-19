@@ -120,7 +120,8 @@ protocol MailboxConnecting: AnyObject, Observable {
   @discardableResult
   func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure)
+  @discardableResult
+  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String?
   /// Stops reading the mailbox and forgets its sign-in.
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure)
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact?

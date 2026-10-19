@@ -497,7 +497,7 @@ import Testing
       r.graph.add(SyntheticOutlookMail.enbdAlert(id: "AAkALgAA-b1", dateMs: OutlookRig.t0 - 40 * day))
     }
     let old = try #require(rig.graph.subscriptions.first?.id)
-    #expect(await rig.connect() == .connected(address: other))
+    #expect(await rig.connect() == .connected(address: other, anotherAddress: true))
     _ = await replace.engine.connect(presenter: OutlookPresenter(graph: replace.graph), backfillDays: 90, replacing: true)
 
     let s = await rig.state()
@@ -537,5 +537,25 @@ import Testing
     #expect(rig.graph.subscriptions == subs)
     #expect(await rig.server.linkedProviders == [.outlook])
     #expect(rig.accounted("AAkALgAA-d1") == .op)
+  }
+
+  @Test func anotherAddressWhoseLinkCannotBeKeptForgetsItsSignIn() async throws {
+    let rig = OutlookRig()
+    await linkedThenHalted(rig)
+    rig.graph.email = other
+    rig.graph.add(SyntheticOutlookMail.enbdAlert(id: "AAkALgAA-b1", dateMs: OutlookRig.t0 - 2 * day))
+    rig.link.locked = true
+    #expect(await rig.connect() == .failed(.keychain))
+    rig.link.locked = false
+    #expect(try rig.keychain.read() == nil)
+    #expect(await rig.state() == MailboxState())
+    #expect(rig.accounted("AAkALgAA-d1") == nil)
+
+    let reads = rig.graph.graphRequests.count
+    for trigger in [MailboxTrigger.retry, .launch] {
+      let report = await rig.engine.runCycle(trigger: trigger)
+      #expect(report.phase == .unlinked && report.ops == 0)
+    }
+    #expect(rig.graph.graphRequests.count == reads)
   }
 }

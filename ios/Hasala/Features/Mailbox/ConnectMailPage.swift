@@ -61,7 +61,6 @@ struct ConnectMailPage: View {
         }
       }
       .hAnimation(.stateSwap, value: coordinator.errorScreen)
-      .onAppear { MailConnectCoordinator.release() }
       #if HASALA_MOCKS
         // A Debug screen id that stands for "Continue with <provider>" (`MailLaunch`).
         .task { if !banks.isEmpty, MailLaunch.takeConnect(provider) { await run(coordinator, mailbox) } }
@@ -113,7 +112,7 @@ struct ConnectMailPage: View {
         for await _ in mailbox.firstScan() {}
       }
     } else {
-      app.say(MailCopy.signedInAgain(provider))
+      app.say(MailCopy.signedInAgain(provider, nowReading: coordinator?.nowReading))
       MailboxMoment.hand(.signedInAgain(mailboxID: id))
     }
     if let i = app.router.profile.lastIndex(of: .bankAlerts) {

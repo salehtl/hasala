@@ -144,7 +144,7 @@ public struct MailboxProgress: Sendable, Equatable {
 }
 
 public enum ConnectResult: Sendable, Equatable {
-  case connected(address: String?)
+  case connected(address: String?, anotherAddress: Bool = false)
   case cancelled
   case failed(ConnectFailure)
 }
@@ -386,6 +386,9 @@ public actor MailboxEngine {
       return .failed(.serverRefused)
     }
     if otherMailbox {
+      var cleared = commitState(MailboxState())
+      cleared.clearAll = true
+      do { try await store.commit(cleared) } catch { return .failed(.keychain) }
       await endLocalPush()
       notBeforeMs = 0
       quotaStrikes = 0
@@ -394,6 +397,7 @@ public actor MailboxEngine {
       try await tokens.install(grant: grant)
       try provider.installLink(link)
     } catch {
+      if otherMailbox { await abandonSwitch() }
       return .failed(.keychain)
     }
 
@@ -425,8 +429,16 @@ public actor MailboxEngine {
     }
     var c = commitState(s)
     c.clearAll = fresh
-    do { try await store.commit(c) } catch { return .failed(.keychain) }
-    return .connected(address: claims.email)
+    do { try await store.commit(c) } catch {
+      if otherMailbox { await abandonSwitch() }
+      return .failed(.keychain)
+    }
+    return .connected(address: claims.email, anotherAddress: otherMailbox)
+  }
+
+  private func abandonSwitch() async {
+    await tokens.forget()
+    provider.forgetLink()
   }
 
   static func isAnotherMailbox(linked: String?, signedIn: String?) -> Bool {
