@@ -28,6 +28,7 @@ protocol HomeModel: AnyObject, Observable {
   /// Whether tapping the widget leads anywhere in this build (`BuildSurface`): a Release
   /// build doesn't make a widget tappable when its detail screen isn't built yet.
   func widgetOpens(_ id: String) -> Bool
+  func openNotCounted(_ line: SpendHero.NotCounted)
   /// A bell row (spec 10 §4.4, "Tapping an item opens its screen"): closes the sheet and opens
   /// the row's screen. What can open under a closing sheet opens now (a tab, a push, the next
   /// sheet); what needs the sheet gone first (the review cover) comes back to run once it is.
@@ -155,6 +156,11 @@ final class HomeViewModel: HomeModel {
       }
       return nil
     }
+  }
+
+  func openNotCounted(_ line: SpendHero.NotCounted) {
+    app.tab = .plan
+    app.router.plan = line.projectID.map { [.project($0)] } ?? [.projects]
   }
 
   static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."

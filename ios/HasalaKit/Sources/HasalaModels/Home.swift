@@ -161,14 +161,30 @@ public struct SpendHero: Sendable, Hashable {
   public var wash: Hue
   public var bars: [HeroMonthBar]
   public var note: MoneyPhrase?
+  public var notCounted: NotCounted?
+
+  public struct NotCounted: Sendable, Hashable {
+    public var amount: Money
+    public var projects: Int
+    public var projectID: ProjectID?
+    public var line: MoneyPhrase
+
+    public init(amount: Money, projects: Int, projectID: ProjectID?, line: MoneyPhrase) {
+      self.amount = amount
+      self.projects = projects
+      self.projectID = projectID
+      self.line = line
+    }
+  }
 
   public init(
     state: State = .live, overline: String, spent: Money, plan: Money, tick: Money?, verdict: Verdict?,
     word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue,
-    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil
+    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil, notCounted: NotCounted? = nil
   ) {
     self.bars = bars
     self.note = note
+    self.notCounted = notCounted
     self.state = state
     self.overline = overline
     self.spent = spent

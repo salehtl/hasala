@@ -82,6 +82,24 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
   }
 
   @MainActor
+  func testNotCountedOpensTheProject() throws {
+    let app = launchRelease()
+    XCTAssertFalse(el(app, "home.hero.notCounted").exists)
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    let line = app.buttons["home.hero.notCounted"]
+    XCTAssertTrue(line.waitForExistence(timeout: uiWait), "the not-counted line is not a button")
+    XCTAssertEqual(line.label, "Not counted: AED 4,860.00 on Japan trip")
+    attach(app, "Release · Home · Not counted")
+    assertNoPlaceholders(app, "Home · September")
+    XCTAssertTrue(reveal(app, line))
+    line.tap()
+    XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
+    assertNoPlaceholders(app, "Project")
+  }
+
+  @MainActor
   func testTheWidgetGalleryOffersWhatWorks() throws {
     let app = launchRelease()
     tap(app, "home.addWidget", opening: "gallery.sheet")
