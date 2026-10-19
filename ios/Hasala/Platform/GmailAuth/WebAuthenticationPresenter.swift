@@ -5,11 +5,21 @@ import UIKit
 /// The browser half of "Connect Gmail" (spec 04 §7.2): ASWebAuthenticationSession with the
 /// reversed client id as a custom callback scheme. The scheme is deliberately NOT registered in
 /// `CFBundleURLTypes` (spec 06 DV-2): the session captures the redirect itself, so no other app
-/// or page can open Hasala with a forged code. `prefersEphemeralWebBrowserSession = false`: the
-/// user is usually already signed in to Google in Safari (PO-4).
+/// or page can open Hasala with a forged code. Google shares Safari's session (the user is usually
+/// already signed in, PO-4) and always shows its account chooser; Microsoft gets a private session.
 final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASWebAuthenticationPresentationContextProviding {
   /// The running session, retained until its completion handler fires.
   private var session: ASWebAuthenticationSession?
+  let ephemeral: Bool
+
+  init(ephemeral: Bool) {
+    self.ephemeral = ephemeral
+    super.init()
+  }
+
+  convenience init(for provider: MailboxProvider) {
+    self.init(ephemeral: provider.providerID.prefersEphemeralSession)
+  }
 
   nonisolated func authorize(url: URL, callbackScheme: String) async throws(GmailOAuthError) -> URL {
     let result: Result<URL, GmailOAuthError> = await withCheckedContinuation { continuation in
@@ -20,8 +30,17 @@ final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASW
     return try result.get()
   }
 
+  func makeSession(
+    url: URL, scheme: String, completion: @escaping ASWebAuthenticationSession.CompletionHandler
+  ) -> ASWebAuthenticationSession {
+    let session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme), completionHandler: completion)
+    session.prefersEphemeralWebBrowserSession = ephemeral
+    session.presentationContextProvider = self
+    return session
+  }
+
   private func start(url: URL, scheme: String, done: @escaping (Result<URL, GmailOAuthError>) -> Void) {
-    let session = ASWebAuthenticationSession(url: url, callback: .customScheme(scheme)) { [weak self] callback, error in
+    let session = makeSession(url: url, scheme: scheme) { [weak self] callback, error in
       Task { @MainActor in self?.session = nil }
       if let callback {
         done(.success(callback))
@@ -31,8 +50,6 @@ final class WebAuthenticationPresenter: NSObject, GmailAuthSessionPresenter, ASW
         done(.failure(.malformedCallback))
       }
     }
-    session.prefersEphemeralWebBrowserSession = false
-    session.presentationContextProvider = self
     self.session = session
     if !session.start() {
       self.session = nil

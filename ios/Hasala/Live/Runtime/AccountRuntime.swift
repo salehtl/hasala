@@ -204,7 +204,7 @@ final class AccountRuntime {
       lanes[p] = MailboxLane(
         provider: p, build: build, secrets: env.secrets, userID: context.userID, persistence: persistence,
         ledger: mailboxLedger, server: mailboxServer, stepUp: stepUp, categorizer: categorizer,
-        presenter: WebAuthenticationPresenter())
+        presenter: WebAuthenticationPresenter(for: p))
     }
     let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
     let store = LiveLedgerStore(

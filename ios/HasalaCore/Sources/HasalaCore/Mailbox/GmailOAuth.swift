@@ -113,7 +113,7 @@ public struct GoogleOAuthClient: Sendable {
       [
         ("client_id", config.clientID), ("redirect_uri", config.redirectURI), ("response_type", "code"),
         ("scope", GmailOAuthConfig.scopes), ("code_challenge", PKCE.challenge(verifier: verifier)),
-        ("code_challenge_method", "S256"), ("state", state), ("nonce", nonce), ("prompt", "consent"),
+        ("code_challenge_method", "S256"), ("state", state), ("nonce", nonce), ("prompt", "select_account consent"),
         ("access_type", "offline"),
       ])
     return GmailAuthorization(url: url, state: state, codeVerifier: verifier, nonce: nonce)
