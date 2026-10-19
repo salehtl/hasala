@@ -51,11 +51,13 @@ public struct MoneyText: View {
   let unitColor: Color?
   let unitGap: CGFloat
   let sign: Sign
+  let approx: Bool
 
   public init(
     _ money: Money, figure: HFigure, unit: HFigure? = nil, style: MoneyStyle = .exact, hidden: Bool = false,
     hiddenGlyphs: Int = 4, hiddenDots: CGFloat? = nil, hiddenTracking: CGFloat = 2,
-    color: Color = HColor.moneyOut, unitColor: Color? = nil, unitGap: CGFloat = 8, sign: Sign = .none
+    color: Color = HColor.moneyOut, unitColor: Color? = nil, unitGap: CGFloat = 8, sign: Sign = .none,
+    approx: Bool = false
   ) {
     self.money = money
     self.figure = figure
@@ -69,10 +71,11 @@ public struct MoneyText: View {
     self.unitColor = unitColor
     self.unitGap = unitGap
     self.sign = sign
+    self.approx = approx
   }
 
   /// The sign leads the whole amount: "+AED 25,000", or "+25,000.00" without a unit.
-  private var shownSign: String { hidden ? "" : sign.glyph }
+  private var shownSign: String { hidden ? "" : (approx ? "\u{2248} " : "") + sign.glyph }
 
   private var digits: String {
     hidden
@@ -89,7 +92,7 @@ public struct MoneyText: View {
     .privacySensitive()
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      hidden ? "Amount hidden" : "\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))")
+      hidden ? "Amount hidden" : "\(approx ? "about " : "")\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))")
   }
 }
 

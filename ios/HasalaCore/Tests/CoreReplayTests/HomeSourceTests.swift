@@ -24,6 +24,8 @@ struct HomeSourceTests {
     #expect(log.state.txns[Ids.t1]?.homeSource == .identity)
     #expect(log.state.txns[Ids.t2]?.amountHomeMinor == 9181)
     #expect(log.state.txns[Ids.t2]?.homeSource == .rate)
+    #expect(log.state.txns[Ids.t2]?.homeRateMicro == 3_672_500)
+    #expect(log.state.txns[Ids.t1]?.homeRateMicro == nil)
     #expect(log.kinds.isEmpty)
   }
 
@@ -46,6 +48,7 @@ struct HomeSourceTests {
     try log.blob(op("txn_edited", #"{"amount_home_minor":"9250"}"#, id: 3, entity: ("txn", Ids.t1), parent: 1))
     #expect(log.state.txns[Ids.t1]?.amountHomeMinor == 9250)
     #expect(log.state.txns[Ids.t1]?.homeSource == .stated)
+    #expect(log.state.txns[Ids.t1]?.homeRateMicro == nil)
     try log.blob(op("txn_edited", #"{"amount_home_minor":null}"#, id: 4, entity: ("txn", Ids.t1), parent: 2))
     #expect(log.state.txns[Ids.t1]?.amountHomeMinor == nil)
     #expect(log.state.txns[Ids.t1]?.homeSource == nil)

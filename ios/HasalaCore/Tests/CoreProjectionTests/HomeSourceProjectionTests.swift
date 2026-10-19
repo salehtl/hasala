@@ -35,6 +35,8 @@ import Testing
     #expect(try r.txn("01JC0000000000000000000010")?.homeSource == .identity)
     #expect(try r.txn("01JC0000000000000000000020")?.homeSource == .rate)
     #expect(try r.txn("01JC0000000000000000000020")?.amountHomeMinor == 9181)
+    #expect(try r.txn("01JC0000000000000000000020")?.homeRateMicro == 3_672_500)
+    #expect(try r.txn("01JC0000000000000000000040")?.homeRateMicro == nil)
     #expect(try r.txn("01JC0000000000000000000030")?.homeSource == nil)
     #expect(try r.txn("01JC0000000000000000000030")?.amountHomeMinor == nil)
     #expect(try r.txn("01JC0000000000000000000040")?.homeSource == .stated)

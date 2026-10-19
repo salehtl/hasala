@@ -75,6 +75,7 @@ public enum ProjectionSchema {
       entry_method          TEXT CHECK (entry_method IN ('mailbox','manual','import')),
       amount_home_minor     INTEGER,
       home_source           TEXT CHECK (home_source IN ('identity','rate','stated')),
+      home_rate_micro       INTEGER,
       split                 INTEGER NOT NULL CHECK (split IN (0,1)),
       superseded_by         TEXT,
       successor_id          TEXT,

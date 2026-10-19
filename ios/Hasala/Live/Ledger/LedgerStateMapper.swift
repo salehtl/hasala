@@ -223,7 +223,9 @@ nonisolated enum LedgerStateMapper {
       : nil
     return HasalaModels.Txn(
       id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),
-      homeMinor: .some(row.amountHomeMinor), direction: row.direction == "credit" ? .in : .out, postedAt: at, accountID: row.effectiveAccountID,
+      homeMinor: .some(row.amountHomeMinor),
+      homeSource: .some(row.homeSource.flatMap { HasalaModels.HomeSource(rawValue: $0.rawValue) }), homeRateMicro: row.homeRateMicro,
+      direction: row.direction == "credit" ? .in : .out, postedAt: at, accountID: row.effectiveAccountID,
       categoryID: row.category, categorySource: source, needsReview: row.needsReview, isNewMerchant: row.isNewMerchant,
       suggestion: nil, note: row.note ?? "", splits: splits,
       isRefund: row.category == "refunds" || row.refundState != nil,

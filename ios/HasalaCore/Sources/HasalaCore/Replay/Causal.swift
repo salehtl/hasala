@@ -454,6 +454,7 @@ extension State {
       } else {
         txns[id]!.amountHomeMinor = home
         txns[id]!.homeSource = home == nil ? nil : .stated
+        txns[id]!.homeRateMicro = nil
         if txns[id]!.supersededBy == nil {
           if home == nil { markPending(txns[id]!) } else { clearPending(txns[id]!) }
         }

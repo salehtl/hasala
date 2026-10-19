@@ -53,7 +53,7 @@ extension State {
     if case .some(.some(let rate)) = rates[t.currency] {
       if let home = FX.convert(t.amountMinor, rate) {
         txns[id]!.amountHomeMinor = home
-        txns[id]!.homeSource = rateSource(t.currency)
+        setRateSource(id, t.currency, rate)
         clearPending(txns[id]!)
         return
       }
@@ -61,12 +61,18 @@ extension State {
     }
     txns[id]!.amountHomeMinor = nil
     txns[id]!.homeSource = nil
+    txns[id]!.homeRateMicro = nil
     markPending(txns[id]!)
   }
 
-  private func rateSource(_ ccy: String) -> Txn.HomeSource {
-    if let home = homeCurrency, utf8Equal(home, ccy) { return .identity }
-    return .rate
+  private mutating func setRateSource(_ id: String, _ ccy: String, _ micro: Int64) {
+    if let home = homeCurrency, utf8Equal(home, ccy) {
+      txns[id]!.homeSource = .identity
+      txns[id]!.homeRateMicro = nil
+    } else {
+      txns[id]!.homeSource = .rate
+      txns[id]!.homeRateMicro = micro
+    }
   }
 
   private mutating func backfill(_ ccy: String, _ micro: Int64, seq: Int64) {
@@ -77,7 +83,7 @@ extension State {
       guard let t = txns[id] else { continue }
       if let home = FX.convert(t.amountMinor, micro) {
         txns[id]!.amountHomeMinor = home
-        txns[id]!.homeSource = rateSource(ccy)
+        setRateSource(id, ccy, micro)
       } else {
         anomaly(seq, "money_overflow", "\(id): the home amount does not fit int64")
         still.append(id)

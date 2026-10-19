@@ -392,13 +392,18 @@ struct SearchView: View {
     let parts = row.detail.components(separatedBy: " · ")
     let what = "\(parts.first ?? "") · ", when = " on \(parts.last ?? "")"
     let digits = app.amountsHidden
-      ? MoneyFormat.hidden(count: 3) : (row.isIncome ? "+" : "") + MoneyFormat.string(row.amount.minor)
+      ? MoneyFormat.hidden(count: 3)
+      : row.notCounted ? "Not counted"
+      : (row.estimate ? "\u{2248} " : "") + (row.isIncome ? "+" : "") + MoneyFormat.string(row.amount.minor)
     let figure = Text(verbatim: digits)
       .font(.system(.footnote, design: .rounded, weight: .bold).monospacedDigit())
       .foregroundStyle(HColor.textPrimary)
     return Text("\(Text(verbatim: what).foregroundStyle(HColor.textSecondary))\(figure)\(Text(verbatim: when).foregroundStyle(HColor.textSecondary))")
       .hType(.footnote)
-      .accessibilityLabel(MoneyPhrase([.text(what), .amount(row.amount), .text(when)]).spoken(hidden: app.amountsHidden))
+      .accessibilityLabel(
+        row.notCounted && !app.amountsHidden
+          ? "\(what)Not counted\(when)"
+          : MoneyPhrase([.text(what + (row.estimate ? "about " : "")), .amount(row.amount), .text(when)]).spoken(hidden: app.amountsHidden))
   }
 
   private func resultRow(_ row: MiniTxnRow, _ q: String, detail: String) -> some View {
@@ -413,9 +418,14 @@ struct SearchView: View {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      MoneyText(row.amount, figure: .row, hidden: app.amountsHidden, hiddenGlyphs: 3,
-                color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: row.isIncome ? .income : .none)
-        .fixedSize()
+      if row.notCounted && !app.amountsHidden {
+        Text("Not counted").hType(.subheadline).foregroundStyle(HColor.textSecondary).fixedSize()
+      } else {
+        MoneyText(row.amount, figure: .row, hidden: app.amountsHidden, hiddenGlyphs: 3,
+                  color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: row.isIncome ? .income : .none,
+                  approx: row.estimate)
+          .fixedSize()
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 6)

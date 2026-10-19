@@ -183,6 +183,10 @@ public struct HeldCopy: Sendable, Hashable, Codable {
   }
 }
 
+public enum HomeSource: String, Sendable, Hashable, Codable {
+  case identity, rate, stated
+}
+
 public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var id: TxnID
   /// The display name ("Carrefour"); a rename changes this (03c §3.6).
@@ -191,9 +195,15 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var place: String?
   /// Always positive; `direction` carries the sign.
   public var amount: Money {
-    didSet { homeMinor = Money.homeMinor(of: amount) }
+    didSet {
+      homeMinor = Money.homeMinor(of: amount)
+      homeSource = Money.homeSource(of: amount)
+      homeRateMicro = nil
+    }
   }
   public var homeMinor: Int64?
+  public var homeSource: HomeSource?
+  public var homeRateMicro: Int64?
   public var direction: Direction
   public var postedAt: LocalDateTime
   public var accountID: AccountID?
@@ -223,7 +233,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var reviewReason: TxnReviewReason?
 
   public init(
-    id: TxnID, merchant: String, place: String? = nil, amount: Money, homeMinor: Int64?? = nil, direction: Direction = .out,
+    id: TxnID, merchant: String, place: String? = nil, amount: Money, homeMinor: Int64?? = nil,
+    homeSource: HomeSource?? = nil, homeRateMicro: Int64? = nil, direction: Direction = .out,
     postedAt: LocalDateTime, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
@@ -237,6 +248,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.place = place
     self.amount = amount
     self.homeMinor = homeMinor ?? Money.homeMinor(of: amount)
+    self.homeSource = self.homeMinor == nil ? nil : (homeSource ?? Money.homeSource(of: amount))
+    self.homeRateMicro = self.homeSource == .rate ? homeRateMicro : nil
     self.direction = direction
     self.postedAt = postedAt
     self.accountID = accountID
@@ -281,6 +294,10 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   }
 
   public var homeSigned: Int64? { homeMinor.map { direction == .out ? $0 : -$0 } }
+
+  public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
+
+  public var isNotCounted: Bool { homeMinor == nil }
 
   /// Counts in budgets this month: sorted, not archived, not a transfer.
   public var countsInPlan: Bool { !needsReview && !archived && !isTransfer && !isHeldCopy }

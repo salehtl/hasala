@@ -123,12 +123,12 @@ public enum Projector {
       sql: """
         INSERT INTO txn (ord, id, ingest_id, amount_minor, currency, direction, posted_at, posted_ms, local_date, local_month,
           posted_precision, merchant_raw, merchant_key, display_name, location, last4, bank, gates_json, category, category_source,
-          category_source_ref, needs_review, unparsed, tier, provenance, entry_method, amount_home_minor, home_source, split, superseded_by,
+          category_source_ref, needs_review, unparsed, tier, provenance, entry_method, amount_home_minor, home_source, home_rate_micro, split, superseded_by,
           successor_id, possible_duplicate_of, duplicate_disposition, mailbox_message_id, note, archived, account_id,
           effective_account_id, counter_account_id, project_id, refund_of, refund_target, refund_state, transfer_peer,
           transfer_target, transfer_state, is_new_merchant, version, pending, review_lane, source_mailbox, source_provider,
           user_touched, copy_of, copy_decision, held_copy)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """)
     let part = try db.makeStatement(
       sql: "INSERT INTO txn_part (txn_id, idx, category, amount_minor, amount_home_minor, note) VALUES (?,?,?,?,?,?)")
@@ -153,7 +153,8 @@ public enum Projector {
         i + 1, id, t.ingestID, t.amountMinor, t.currency, t.direction, t.postedAt, ms, local?.wire ?? "", local?.yearMonth.wire ?? "",
         t.postedPrecision ?? "time", t.merchantRaw, key, display, t.location, t.last4, t.bank, t.gates.map(gatesJSON),
         t.category, source.kind.rawValue, source.ref, t.needsReview, t.unparsed, t.tier, t.provenance, t.entryMethod,
-        t.amountHomeMinor, t.amountHomeMinor == nil ? nil : t.homeSource?.rawValue, !t.splits.isEmpty, t.supersededBy, t.successorID, t.possibleDuplicateOf, t.duplicateDisposition,
+        t.amountHomeMinor, t.amountHomeMinor == nil ? nil : t.homeSource?.rawValue,
+        t.amountHomeMinor == nil ? nil : t.homeRateMicro, !t.splits.isEmpty, t.supersededBy, t.successorID, t.possibleDuplicateOf, t.duplicateDisposition,
         t.mailboxMessageID, t.annotation("note"), t.annotation("archived"), t.annotation("account_id"),
         Attribution.accountOf(t, cards: cards).account, t.annotation("counter_account_id"), t.annotation("project_id"), refundOf,
         refundTarget, refundOf == nil ? nil : Attribution.refundState(t, target: refundTarget.flatMap { s.txns[$0] }), peer, peerTarget,
