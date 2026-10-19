@@ -288,10 +288,10 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
 
   /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, access
   /// recovery to a new passkey (so someone who lost theirs can get back in, and delete the
-  /// account), leaving (sign out, sign out everywhere, delete) and viewing the words.
-  /// Password reset, recovery to a new password, phrase rotation, adding or removing a
-  /// passkey, setting or changing the password, removing this or another device, changing
-  /// the email and freezing stay hidden. (The service can remove this iPhone, but Sign-in
+  /// account), leaving (sign out, sign out everywhere, delete), viewing the words and
+  /// adding a passkey. Password reset, recovery to a new password, phrase rotation,
+  /// removing a passkey, setting or changing the password, removing this or another device,
+  /// changing the email and freezing stay hidden. (The service can remove this iPhone, but Sign-in
   /// & security has no row for it.)
   static let beta: AccountCapabilities = [
     .signupPasskey, .signupPassword,
@@ -301,6 +301,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .deleteAccount,
     .recoverAccess,
     .viewPhrase,
+    .addPasskey,
   ]
 }
 
@@ -338,6 +339,7 @@ protocol AccountService: AnyObject {
   func unlockWithPasskey() async throws(AuthFailure)
   /// C3: the 12 words open the recovery wrap and enrol this iPhone.
   func unlockWithPhrase(_ words: [String]) async throws(AuthFailure)
+  func endUnlockOffer()
 
   // MARK: Relaunch with a session (§6.5)
 
@@ -403,6 +405,8 @@ extension AccountService {
   /// Everything, so the Debug mocks and test doubles offer every screen unchanged. A
   /// live service overrides this with only the actions it has wired.
   var capabilities: AccountCapabilities { .all }
+
+  func endUnlockOffer() {}
 
   // No ceremony binds the email change yet (C6): a service that doesn't carry it out says
   // so, and the screens offer it only with `.changeEmail` on the unfinished surface.

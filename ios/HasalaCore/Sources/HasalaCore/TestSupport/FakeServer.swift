@@ -120,6 +120,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var sessions: [String: Session] = [:]
     var registerCeremonies: [String: (signup: String, aak: Data, challenge: Data)] = [:]
     var loginCeremonies: [String: Data] = [:]
+    var addCeremonies: [String: (user: UserID, challenge: Data, nonce: Data)] = [:]
     var passwordCeremonies: [String: (email: String, nonce: Data)] = [:]
     var writerNonces: [Data: UserID] = [:]
     var stepUps: [Data: StepUpChallenge] = [:]
@@ -295,6 +296,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
       return APIResponse(status: 204)
     case "POST /api/v1/auth/logout-all": return logoutAll(r, token: token, sess: sess)
     case "POST /api/v1/auth/step-up/begin": return stepUpBegin(r, token: token, sess: sess)
+    case "POST /api/v1/auth/passkey/add/begin": return passkeyAddBegin(r, token: token, sess: sess)
+    case "POST /api/v1/auth/passkey/add/finish": return passkeyAddFinish(r, sess: sess)
     case "GET /api/v1/account":
       return Self.ok(
         AccountInfo(
