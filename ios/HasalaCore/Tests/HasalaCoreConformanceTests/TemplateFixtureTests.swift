@@ -9,6 +9,7 @@
 //     without the variable; their failure messages name the case, never its content.
 import CoreJSON
 import CorePrimitives
+import CoreResources
 import Foundation
 import Testing
 
@@ -108,7 +109,7 @@ struct TemplateFixtureTests {
     .enabled(if: Fixtures.hasPrivate, "HASALA_PRIVATE_FIXTURES is unset"))
   func corpus() throws {
     let files = TemplateFixtures.corpus()
-    #expect(files.count == 4)
+    #expect(files.count == TemplatesManifest.entries.count)
     var total = 0
     var matched = 0
     for f in files {
