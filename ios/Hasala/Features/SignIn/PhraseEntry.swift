@@ -142,6 +142,13 @@ struct PhraseEntryGrid: View {
       helper
     }
     .onAppear { focused.wrappedValue = true }
+    .task {
+      for _ in 0..<12 {
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled, text.isEmpty, !focused.wrappedValue else { return }
+        focused.wrappedValue = true
+      }
+    }
   }
 
   private var field: some View {

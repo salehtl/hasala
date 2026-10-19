@@ -148,7 +148,7 @@ extension XCTestCase {
     _ app: XCUIApplication, _ element: XCUIElement, limit: Int = 8, file: StaticString = #filePath, line: UInt = #line
   ) -> Bool {
     for i in 0..<limit {
-      if element.isHittable {
+      if element.isHittable, !isUnderKeyboard(app, element) {
         if i > 0 { waitForStill(app) }
         return true
       }
@@ -157,9 +157,16 @@ extension XCTestCase {
       from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0.3)
     }
     waitForStill(app)
-    let hittable = element.isHittable
+    let hittable = element.isHittable && !isUnderKeyboard(app, element)
     XCTAssertTrue(hittable, "\(element) is not hittable after \(limit) drags", file: file, line: line)
     return hittable
+  }
+
+  @MainActor
+  private func isUnderKeyboard(_ app: XCUIApplication, _ element: XCUIElement) -> Bool {
+    let keyboard = app.keyboards.firstMatch
+    guard keyboard.exists else { return false }
+    return element.frame.midY > keyboard.frame.minY
   }
 
   /// Runs the system accessibility audit on what is on screen and reports every issue
