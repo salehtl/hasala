@@ -49,8 +49,7 @@ struct HomeView: View {
   var body: some View {
     NavigationStack(path: Bindable(app.router).home) {
       TabScreen(
-        app: app, title: nil, extra: .bell(unread: model.bell.count),
-        onExtra: { app.router.open(.notifications) },
+        app: app, title: nil, extra: .none,
         wash: HWash(snapshot.hero.wash)
       ) {
         if session?.reviewAccount == true {

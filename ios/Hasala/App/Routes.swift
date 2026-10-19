@@ -80,7 +80,7 @@ enum SheetRoute: Hashable, Identifiable {
   case budget(CategoryID)
   case moveMoney(to: CategoryID?)
   case profile
-  /// Home's bell.
+  /// The header's bell, on every tab.
   case notifications
   case period
   case widgetGallery

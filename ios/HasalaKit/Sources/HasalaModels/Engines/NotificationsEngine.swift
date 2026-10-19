@@ -1,5 +1,5 @@
 // Home · Notifications (Paper 11Y9-0, 12AC-0; spec 10 §4, page 15 §15.2, page 18 §14): what
-// needs a look, from the ledger. The bell on Home counts these items; its large sheet lists
+// needs a look, from the ledger. The bell on every tab counts these items; its large sheet lists
 // them newest first under "Needs a look". Notifications never follow the period.
 //
 // The mailbox item ("Connect your email", "Sign in again to …") comes from the mail lane, not

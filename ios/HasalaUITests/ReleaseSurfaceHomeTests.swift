@@ -118,6 +118,25 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
   }
 
+  @MainActor
+  func testTheBellIsOnEveryTab() throws {
+    let app = launchRelease()
+    let tabBar = app.tabBars.firstMatch
+    let bell = app.buttons["header.notifications"].firstMatch
+    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
+      tabBar.buttons[tab].tap()
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
+      XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
+      XCTAssertEqual(bell.label, "Notifications, 4 new")
+      attach(app, "Release · Bell · \(tab)")
+    }
+    assertAbsent(app, ["header.add"], "Activity")
+    bell.tap()
+    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
+    assertAbsent(app, ["Earlier", "bell.settings"], "Notifications from Activity")
+    try audit(app)
+  }
+
   /// With nothing to look at the bell has no badge and the sheet says so; mail's row
   /// promises no work or school account.
   @MainActor

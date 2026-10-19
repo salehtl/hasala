@@ -5,8 +5,8 @@ import SwiftUI
 /// The main header on every tab root (Paper "Header · Main", page 13 "The same top on every
 /// screen."): Hide amounts on the left (the eye, eye-off while hidden), the Hasala mark
 /// centred and not a button, and on the right at most two 48 glass buttons, 10 apart, the
-/// profile avatar last. The second right button belongs to the tab: the bell on Home only,
-/// "+" on Activity, none on Plan or Review.
+/// profile avatar last. The bell is on every tab, just before the avatar; a tab's own button
+/// ("+" on Activity) comes before the bell.
 ///
 /// The buttons are the design system's `GlassIconButton` and `GlassAvatarButton`: native
 /// Liquid Glass at Paper's 48 (decision 2), so the bar's own shared glass is turned off for
@@ -16,13 +16,15 @@ struct MainHeader: ToolbarContent {
   /// screens draw themselves.
   static let iconColor = HColor.iconGlass
 
-  enum Extra { case bell(unread: Int), add, none }
+  enum Extra { case add, none }
 
   let amountsHidden: Bool
   let extra: Extra
+  let unread: Int
   let avatarInitial: String
   let onToggleAmounts: () -> Void
   let onExtra: () -> Void
+  let onNotifications: () -> Void
   let onProfile: () -> Void
 
   var body: some ToolbarContent {
@@ -41,13 +43,6 @@ struct MainHeader: ToolbarContent {
     }
     .sharedBackgroundVisibility(.hidden)
     switch extra {
-    case .bell(let unread):
-      ToolbarItem(placement: .topBarTrailing) {
-        GlassIconButton(.bell, label: unread > 0 ? "Notifications, \(unread) new" : "Notifications",
-                        badge: unread, action: onExtra)
-          .accessibilityIdentifier("header.notifications")
-      }
-      .sharedBackgroundVisibility(.hidden)
     case .add:
       ToolbarItem(placement: .topBarTrailing) {
         GlassIconButton(.add, label: "Add a transaction", action: onExtra)
@@ -57,6 +52,12 @@ struct MainHeader: ToolbarContent {
     case .none:
       ToolbarItem(placement: .topBarTrailing) { EmptyView() }
     }
+    ToolbarItem(placement: .topBarTrailing) {
+      GlassIconButton(.bell, label: unread > 0 ? "Notifications, \(unread) new" : "Notifications",
+                      badge: unread, action: onNotifications)
+        .accessibilityIdentifier("header.notifications")
+    }
+    .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .topBarTrailing) {
       GlassAvatarButton(initial: avatarInitial, label: "Your profile", action: onProfile)
         .accessibilityIdentifier("header.profile")
