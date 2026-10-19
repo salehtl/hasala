@@ -117,6 +117,41 @@ struct MailboxFlowTests: AccountSuite {
     #expect(ConnectProviderView.tone(.offline) == .warning && ConnectProviderView.tone(.failed("x")) == .error)
   }
 
+  @Test func aMicrosoftAccountWithNoMailboxHasItsScreenAndAnotherAccountConnects() async {
+    let lane = mailbox([MockMailbox.gmail])
+    lane.outlookNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.outlook)
+    #expect(c.outcome == .failed(.noMailbox(.outlook)))
+    #expect(c.errorScreen == .noMailbox(.outlook) && c.inlineMessage == nil)
+    #expect(MailConnectCoordinator.hasScreen(.noMailbox(.gmail), provider: .gmail))
+    #expect(ConnectProviderView.tone(.noMailbox(.outlook)) == .error)
+    c.reset()
+    await c.connect(.outlook)
+    #expect(c.outcome == .connected(mailboxID: "outlook-1") && c.errorScreen == nil)
+    #expect(lane.connectCalls == 2)
+
+    let broken = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    broken.outlookNoMailbox = true
+    let again = MailConnectCoordinator(mailbox: broken, context: .signInAgain(mailboxID: "outlook-1"))
+    await again.connect(.outlook)
+    #expect(again.errorScreen == .noMailbox(.outlook))
+    await again.connect(.outlook)
+    #expect(again.outcome == .connected(mailboxID: "outlook-1") && broken.signInCalls == 2)
+  }
+
+  @Test func theNoMailboxScreenSaysWhatToDo() {
+    let copy = MailConnectErrorView.copy(.noMailbox(.outlook), .outlook)
+    #expect(copy.title == "Outlook isn't connected.")
+    #expect(copy.subtitle == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com. Nothing was connected and nothing was read.")
+    #expect(copy.reasons == nil)
+    #expect(MailConnectErrorView.otherAccountTitle(.outlook) == "Use another Microsoft account")
+    let google = MailConnectErrorView.copy(.noMailbox(.gmail), .gmail)
+    #expect(google.title == "Gmail isn't connected.")
+    #expect(!google.subtitle.contains("Outlook") && !google.subtitle.contains("Microsoft"))
+    #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
+  }
+
   /// Setup's connect screen after Back from the first scan shows the mailbox it connected
   /// (from the service, so a new screen or a relaunch shows it too) and no second sign-in;
   /// Add a mailbox never treats an earlier mailbox as this attempt's.

@@ -35,6 +35,7 @@ enum MailConnectFailure: Error, Equatable {
   /// iPhone."; that iPhone may read a different provider than the one asked for).
   case takenByOtherIPhone
   case offline
+  case noMailbox(MailProviderKind)
   /// Anything else, with its content-free copy.
   case failed(String)
 
@@ -47,8 +48,18 @@ enum MailConnectFailure: Error, Equatable {
     case .alreadyConnected(let address): "\(address) is already connected."
     case .takenByOtherIPhone: "Your email is read on your other iPhone."
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
+    case .noMailbox(let account): Self.noMailboxLine(account)
     case .failed(let message): message
     }
+  }
+
+  static func noMailboxLine(_ provider: MailProviderKind) -> String {
+    let examples =
+      switch provider {
+      case .outlook: "you@outlook.com or you@hotmail.com"
+      case .gmail: "you@gmail.com"
+      }
+    return "This \(provider.company) account has no \(provider.appName) mailbox. Sign in with the account your bank alerts go to, such as \(examples)."
   }
 }
 

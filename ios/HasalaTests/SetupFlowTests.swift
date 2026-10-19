@@ -142,6 +142,21 @@ struct SetupFlowTests: AccountSuite {
     #expect(other.path == [.connect(.gmail)] && !other.choosingEmail)
   }
 
+  @Test func aMicrosoftAccountWithNoMailboxHasItsScreenInSetup() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.outlookNoMailbox = true
+    let m = model(s)
+    await m.continueWithBanks()
+    m.pickProvider(.outlook)
+    await m.connectMail(.outlook)
+    #expect(m.path == [.connect(.outlook), .connectError(.outlook)])
+    #expect(m.connectFailure(.outlook) == .noMailbox(.outlook))
+    await m.retryConnect(.outlook)
+    #expect(m.path == [.connect(.outlook), .scan] && m.facts.mailbox == .scanning)
+    #expect(lane.connectCalls == 2)
+  }
+
   /// A closed Google sign-in is not an error: the screen stays as it was.
   @Test func aClosedGoogleSignInChangesNothing() async throws {
     let mailbox = CountingMailbox(MockMailbox())

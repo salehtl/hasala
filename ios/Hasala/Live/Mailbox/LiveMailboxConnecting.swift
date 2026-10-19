@@ -380,11 +380,12 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     if phase == .otherDevice { throw .takenByOtherIPhone }
   }
 
-  private static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) {
+  static func linked(_ result: ConnectResult, provider: MailProviderKind) throws(MailConnectFailure) {
     switch result {
     case .connected: return
     case .cancelled: throw .cancelled
     case .failed(.offline): throw .offline
+    case .failed(.noMailbox): throw .noMailbox(provider)
     case .failed(let f): throw .failed(message(f, provider: provider))
     }
   }

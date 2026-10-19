@@ -232,7 +232,7 @@ struct ConnectProviderView: View {
     switch failure {
     case .alreadyConnected: .accent
     case .offline, .takenByOtherIPhone, .cancelled: .warning
-    case .adminApprovalNeeded, .failed: .error
+    case .adminApprovalNeeded, .noMailbox, .failed: .error
     }
   }
 }

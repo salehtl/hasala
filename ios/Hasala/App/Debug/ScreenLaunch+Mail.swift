@@ -59,6 +59,11 @@
         MailLaunch.connectOnAppear = .outlook
         profile([.bankAlerts, .addMailbox, .connectMail(.outlook)])(graph)
       }),
+      Screen("mail.add.errorNoMailbox", scenario: "passkeyUser", prepare: { graph in
+        mock(graph)?.outlookNoMailbox = true
+        MailLaunch.connectOnAppear = .outlook
+        profile([.bankAlerts, .addMailbox, .connectMail(.outlook)])(graph)
+      }),
       Screen("mail.detail", scenario: "mailboxes2", prepare: profile([.bankAlerts, .mailbox("outlook-1")])),
       Screen("mail.detailSignIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts, .mailbox("outlook-1")])),
       Screen("mail.disconnect", scenario: "mailboxes2", prepare: { graph in

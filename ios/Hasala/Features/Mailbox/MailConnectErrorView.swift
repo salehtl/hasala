@@ -49,6 +49,11 @@ struct MailConnectErrorView: View {
           .dockPill()
         TextLinkRow(lead: "Approved since?", link: "Try \(provider.company) again", identifier: "mail.error.retry",
                     busy: busy, action: onRetry)
+      } else if case .noMailbox(let account) = failure {
+        BusyButton(title: Self.otherAccountTitle(account), busy: busy, identifier: "mail.error.retry", action: onRetry)
+          .dockPill()
+        TextLinkRow(lead: "Alerts go somewhere else?", link: "Choose a different email",
+                    identifier: "mail.error.chooseDifferent", action: onChooseDifferent)
       } else {
         ProviderButton(provider: provider, loading: busy, action: onRetry)
           .dockPill()
@@ -57,6 +62,10 @@ struct MailConnectErrorView: View {
                     action: onChooseDifferent)
       }
     }
+  }
+
+  static func otherAccountTitle(_ provider: MailProviderKind) -> String {
+    "Use another \(provider.company) account"
   }
 
   struct Copy: Equatable {
@@ -109,6 +118,11 @@ struct MailConnectErrorView: View {
               detail: "Hasala needs read-only mail access to see your bank alerts. Without it, it can't connect."),
           ],
           numbered: false))
+    case .noMailbox(let account):
+      return Copy(
+        title: "\(account.appName) isn't connected.",
+        subtitle: MailConnectFailure.noMailboxLine(account) + " Nothing was connected and nothing was read.",
+        reasons: nil)
     default:
       return Copy(
         title: "\(provider.appName) isn't connected.",

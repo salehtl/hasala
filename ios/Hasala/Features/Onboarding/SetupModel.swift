@@ -428,7 +428,7 @@ final class SetupModel {
   /// The failures with a screen of their own (Paper P2.9 row 2).
   static func showsErrorScreen(_ f: MailConnectFailure) -> Bool {
     switch f {
-    case .adminApprovalNeeded, .cancelled: true
+    case .adminApprovalNeeded, .cancelled, .noMailbox: true
     default: false
     }
   }

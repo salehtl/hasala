@@ -38,6 +38,7 @@
     var outlookAdmin = false
     /// An Outlook sign-in is closed, or its permissions declined.
     var outlookCancelled = false
+    var outlookNoMailbox = false
     /// Every connect finds the mailbox already connected.
     var alreadyConnected = false
     /// Every connect finds no network.
@@ -129,6 +130,10 @@
       if offline { throw .offline }
       if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
       if provider == .outlook, outlookCancelled { throw .cancelled }
+      if provider == .outlook, outlookNoMailbox {
+        outlookNoMailbox = false
+        throw .noMailbox(.outlook)
+      }
       if holdsOneLink {
         // One link, as live holds it: the same provider working is already connected; the
         // other provider's link goes only on a confirmed switch, and its row with it (the
@@ -177,6 +182,10 @@
       if offline { throw .offline }
       guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { throw .failed("That mailbox is gone.") }
       if mailboxes[i].provider == .outlook, outlookCancelled { throw .cancelled }
+      if mailboxes[i].provider == .outlook, outlookNoMailbox {
+        outlookNoMailbox = false
+        throw .noMailbox(.outlook)
+      }
       // It picks up where it stopped: connected, checking from the last check.
       mailboxes[i].state = .connected
       mailboxes[i].meta = "Checked just now"

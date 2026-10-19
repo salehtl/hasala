@@ -69,6 +69,20 @@ struct LiveMailboxTests {
     #expect(LiveMailboxConnecting.message(.offline, provider: .outlook).contains("Connect Outlook when"))
   }
 
+  @Test func aConnectWithNoMailboxIsItsOwnFailure() throws {
+    #expect(throws: MailConnectFailure.noMailbox(.outlook)) {
+      try LiveMailboxConnecting.linked(.failed(.noMailbox), provider: .outlook)
+    }
+    #expect(throws: MailConnectFailure.offline) { try LiveMailboxConnecting.linked(.failed(.offline), provider: .outlook) }
+    #expect(throws: MailConnectFailure.cancelled) { try LiveMailboxConnecting.linked(.cancelled, provider: .outlook) }
+    #expect(throws: MailConnectFailure.failed(LiveMailboxConnecting.message(.permissionMissing, provider: .outlook))) {
+      try LiveMailboxConnecting.linked(.failed(.permissionMissing), provider: .outlook)
+    }
+    try LiveMailboxConnecting.linked(.connected(address: nil), provider: .outlook)
+    #expect(MailConnectFailure.noMailbox(.outlook).message(for: .outlook)
+      == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com.")
+  }
+
   @Test func aMailboxOnAnotherAccountIsSaidInWords() {
     let gmail = LiveMailboxConnecting.message(.mailboxInUse)
     #expect(gmail.contains("This Gmail address is connected to another Hasala account"))

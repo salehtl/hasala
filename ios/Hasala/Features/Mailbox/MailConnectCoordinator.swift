@@ -138,7 +138,7 @@ final class MailConnectCoordinator {
   /// didn't finish for any provider but Google (whose closed sheet says nothing).
   static func hasScreen(_ failure: MailConnectFailure, provider: MailProviderKind) -> Bool {
     switch failure {
-    case .adminApprovalNeeded: true
+    case .adminApprovalNeeded, .noMailbox: true
     case .cancelled: provider != .gmail
     case .alreadyConnected, .takenByOtherIPhone, .offline, .failed: false
     }

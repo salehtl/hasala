@@ -108,6 +108,28 @@ final class MailboxUITests: XCTestCase {
     assertMailboxAdded(app, "gmail-2")
   }
 
+  @MainActor
+  func testOutlookWithNoMailbox() throws {
+    var app = launch(scenario: nil, screen: "mail.add.errorNoMailbox")
+    XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 15))
+    XCTAssertTrue(says(app, "This Microsoft account has no Outlook mailbox."))
+    XCTAssertTrue(says(app, "such as you@outlook.com or you@hotmail.com"))
+    let other = el(app, "mail.error.retry")
+    XCTAssertEqual(other.label, "Use another Microsoft account")
+    XCTAssertEqual(el(app, "mail.error.chooseDifferent").label, "Alerts go somewhere else? Choose a different email")
+    attach(app, "Microsoft account has no mailbox")
+    try audit(app)
+    other.tap()
+    assertMailboxAdded(app, "outlook-1")
+
+    app = launch(scenario: nil, screen: "mail.add.errorNoMailbox", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.error.retry").waitForExistence(timeout: 15))
+    attach(app, "Microsoft account has no mailbox · AX3")
+    try audit(app, atLargeText: true)
+    tap(app, "mail.error.chooseDifferent")
+    XCTAssertTrue(el(app, "mail.choose.outlook").waitForExistence(timeout: uiWait), "the providers did not come back")
+  }
+
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue
   /// with Microsoft"; signed in again, the hero says it works.
   @MainActor
