@@ -78,6 +78,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertNoText(app, ["Step 1 of 4"], "Banks")
     try audit(app)
     tap(app, "bank.dib")
+    tap(app, "bank.adib")
     XCTAssertEqual(el(app, "bank.continue").label, "Continue with 1 bank")
     tap(app, "bank.continue")
     let connect = el(app, "mail.connect.gmail")
