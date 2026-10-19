@@ -163,7 +163,7 @@ public enum ActivityEngine {
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime, in window: ReviewWindow = .all) -> ReviewSummary {
     let queue = s.txns.filter { $0.inReview && window.contains($0.postedAt.date) }
-    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + ($1.homeMinor ?? 0) }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
   }
@@ -199,7 +199,7 @@ public enum ActivityEngine {
     for t in txns {
       let d = t.postedAt.date
       let row = row(t, s)
-      let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
+      let signed = t.homeSigned ?? 0
       if let i = index[d] {
         groups[i].rows.append(row)
         groups[i].total.minor += signed

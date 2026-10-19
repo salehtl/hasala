@@ -329,7 +329,7 @@ public enum ReviewEngine {
       id: t.id, merchant: t.title,
       detail: category.name + (learnedRule ? " · new rule" : ""),
       amount: t.amount, isIncome: t.direction == .in, glyph: category.glyph, hue: category.hue,
-      counted: counts ? t.amount.minor : 0, learnedRule: learnedRule
+      counted: counts ? t.homeMinor ?? 0 : 0, learnedRule: learnedRule
     )
   }
 }
