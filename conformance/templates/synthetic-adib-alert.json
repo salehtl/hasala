@@ -1,0 +1,357 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "adib.alert.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "adib.alert.v1",
+    "version": 1,
+    "bank": "adib",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "adib.ae"
+      ],
+      "body_contains": [
+        "Transaction of"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "email",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "Transaction of[ \\n](?P<ccy>[A-Z]{3})(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]debited from your a/c",
+          "Transaction of[ \\n](?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})[ \\n]debited from your a/c"
+        ],
+        "on_match": {
+          "direction": "debit"
+        }
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "debited from your a/c[ \\n][*]?(?P<v>[0-9]{1,8})[ \\n]at[ \\n]"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "debited from your a/c[ \\n][*]?[0-9]{1,8}[ \\n]at[ \\n](?P<v>[^\\n]+?)\\.[ \\n]Avl Bal"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "adib.alert.v1/purchase",
+      "source": "SYNTHETIC: the shape of the one ADIB alert seen so far, after normalization collapsed the terminal descriptor's padding to one U+0020",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDczLjQwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBTVE9SRTEgRFUgQkFJIEFFLiBBdmwgQmFsIGlzIEFFRCA0LDMyMS4wOQpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "7340",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE1 DU BAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/balance-is-not-the-amount",
+      "source": "SYNTHETIC: the amount anchor starts at Transaction of, so the larger Avl Bal figure later on the line is never read as the amount",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDEyLjUwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBDQUZFIERVQkFJIEFFLiBBdmwgQmFsIGlzIEFFRCA0LDMyMS4wOQpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "1250",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE CAFE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/thousands-separator",
+      "source": "SYNTHETIC: the [0-9,]{0,24} run",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDEyLDc1MC4wMCBkZWJpdGVkIGZyb20geW91ciBhL2MgKjEyMyBhdCBTQU1QTEUgU1RPUkUgRFVCQUkgQUUuIEF2bCBCYWwgaXMgQUVEIDQsMzIxLjA5CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "1275000",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/merchant-with-dot",
+      "source": "SYNTHETIC: the merchant capture is non-greedy up to the first \". Avl Bal\", so a dot inside the merchant name stays in it",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDk5LjAwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRS5BRSBEVUJBSSBBRS4gQXZsIEJhbCBpcyBBRUQgNCwzMjEuMDkKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "9900",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE.AE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/four-digit-account",
+      "source": "SYNTHETIC: last4 keeps the last four of up to eight digits",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDk5LjAwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqNDMyMSBhdCBTQU1QTEUgU1RPUkUgRFVCQUkgQUUuIEF2bCBCYWwgaXMgQUVEIDQsMzIxLjA5CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "9900",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "4321",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/account-without-star",
+      "source": "SYNTHETIC: the star is optional",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDk5LjAwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAxMjMgYXQgU0FNUExFIFNUT1JFIERVQkFJIEFFLiBBdmwgQmFsIGlzIEFFRCA0LDMyMS4wOQpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "9900",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/foreign-currency",
+      "source": "SYNTHETIC: the ccy group wins over default_currency",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgVVNEIDI1LjAwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBTVE9SRSBORVcgWU9SSyBVUy4gQXZsIEJhbCBpcyBBRUQgNCwzMjEuMDkKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2500",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE NEW YORK US",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/foreign-currency-no-space",
+      "source": "SYNTHETIC: the currency-adjacent pattern runs first, as in enbd.alert.v1",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgVVNEMjUuMDAgZGViaXRlZCBmcm9tIHlvdXIgYS9jICoxMjMgYXQgU0FNUExFIFNUT1JFIE5FVyBZT1JLIFVTLiBBdmwgQmFsIGlzIEFFRCA0LDMyMS4wOQpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2500",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE NEW YORK US",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/no-currency-prefix",
+      "source": "SYNTHETIC: the ccy group does not participate; default_currency applies",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgNzMuNDAgZGViaXRlZCBmcm9tIHlvdXIgYS9jICoxMjMgYXQgU0FNUExFIFNUT1JFIERVQkFJIEFFLiBBdmwgQmFsIGlzIEFFRCA0LDMyMS4wOQpZb3VycyBTaW5jZXJlbHksCkFidSBEaGFiaSBJc2xhbWljIEJhbmsK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "7340",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/case-folded",
+      "source": "SYNTHETIC: flags [\"i\"] fold the patterns, but body_contains is an exact literal: an upper-cased alert does not pass the gate and goes to review",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "VFJBTlNBQ1RJT04gT0YgQUVEIDczLjQwIERFQklURUQgRlJPTSBZT1VSIEEvQyAqMTIzIEFUIFNBTVBMRSBTVE9SRSBEVUJBSSBBRS4gQVZMIEJBTCBJUyBBRUQgMS4wMAo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/newline-separated",
+      "source": "SYNTHETIC: a line break where a space was, as a plain-text wrap leaves it",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gb2YgQUVEIDczLjQwCmRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzCmF0IFNBTVBMRSBTVE9SRSBEVUJBSSBBRS4KQXZsIEJhbCBpcyBBRUQgMS4wMAo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "7340",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/no-balance-sentence",
+      "source": "SYNTHETIC: merchant is anchored on the Avl Bal sentence and is not required; amount, direction and last4 still extract",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gb2YgQUVEIDczLjQwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBTVE9SRSBEVUJBSSBBRS4K",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "7340",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/credit-wording",
+      "source": "SYNTHETIC: no credit alert has been seen, so no credit wording is guessed: this must not match and goes to review",
+      "subject_base64": "Q3JlZGl0IFRyYW5zYWN0aW9uIEFsZXJ0",
+      "normalized_body_base64": "VHJhbnNhY3Rpb24gb2YgQUVEIDczLjQwIGNyZWRpdGVkIHRvIHlvdXIgYS9jICoxMjMuIEF2bCBCYWwgaXMgQUVEIDEuMDAK",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/balance-only",
+      "source": "SYNTHETIC: a balance line alone is not a transaction",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "QXZsIEJhbCBpcyBBRUQgNCwzMjEuMDkK",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/amount-without-decimals",
+      "source": "SYNTHETIC: conversion failure, not a zero amount",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDczIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBTVE9SRSBEVUJBSSBBRS4gQXZsIEJhbCBpcyBBRUQgNCwzMjEuMDkKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/amount-longer-than-the-bound",
+      "source": "SYNTHETIC: 33 digits before the point; the run is bounded at {0,24}",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgQUVEIDEsMjM0LDU2Nyw4OTAsMTIzLDQ1Niw3ODksMDEyLDM0NS42NyBkZWJpdGVkIGZyb20geW91ciBhL2MgKjEyMyBhdCBTQU1QTEUgU1RPUkUgRFVCQUkgQUUuIEF2bCBCYWwgaXMgQUVEIDQsMzIxLjA5CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE DUBAI AE",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

@@ -221,6 +221,64 @@ func syntheticENBDTransfer(t *testing.T) syntheticGroup {
 	}
 }
 
+func syntheticADIB(t *testing.T) syntheticGroup {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "adib.alert.v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := func(amount, acct, merchant string) string {
+		return "Purchase Transaction Alert\nDear Customer,\nTransaction of " + amount + " debited from your a/c " +
+			acct + " at " + merchant + ". Avl Bal is AED 4,321.09\nYours Sincerely,\nAbu Dhabi Islamic Bank\n"
+	}
+	const subj = "Purchase Transaction Alert"
+	return syntheticGroup{
+		file:       "synthetic-adib-alert.json",
+		template:   "adib.alert.v1",
+		definition: string(b),
+		cases: []syntheticCase{
+			{"purchase", "the shape of the one ADIB alert seen so far, after normalization collapsed the " +
+				"terminal descriptor's padding to one U+0020", subj,
+				line("AED 73.40", "*123", "SAMPLE STORE1 DU BAI AE")},
+			{"balance-is-not-the-amount", "the amount anchor starts at Transaction of, so the larger " +
+				"Avl Bal figure later on the line is never read as the amount", subj,
+				line("AED 12.50", "*123", "SAMPLE CAFE DUBAI AE")},
+			{"thousands-separator", "the [0-9,]{0,24} run", subj,
+				line("AED 12,750.00", "*123", "SAMPLE STORE DUBAI AE")},
+			{"merchant-with-dot", "the merchant capture is non-greedy up to the first \". Avl Bal\", so a dot " +
+				"inside the merchant name stays in it", subj,
+				line("AED 99.00", "*123", "SAMPLE.AE DUBAI AE")},
+			{"four-digit-account", "last4 keeps the last four of up to eight digits", subj,
+				line("AED 99.00", "*4321", "SAMPLE STORE DUBAI AE")},
+			{"account-without-star", "the star is optional", subj,
+				line("AED 99.00", "123", "SAMPLE STORE DUBAI AE")},
+			{"foreign-currency", "the ccy group wins over default_currency", subj,
+				line("USD 25.00", "*123", "SAMPLE STORE NEW YORK US")},
+			{"foreign-currency-no-space", "the currency-adjacent pattern runs first, as in enbd.alert.v1", subj,
+				line("USD25.00", "*123", "SAMPLE STORE NEW YORK US")},
+			{"no-currency-prefix", "the ccy group does not participate; default_currency applies", subj,
+				line("73.40", "*123", "SAMPLE STORE DUBAI AE")},
+			{"case-folded", `flags ["i"] fold the patterns, but body_contains is an exact literal: an upper-cased ` +
+				"alert does not pass the gate and goes to review", subj,
+				"TRANSACTION OF AED 73.40 DEBITED FROM YOUR A/C *123 AT SAMPLE STORE DUBAI AE. AVL BAL IS AED 1.00\n"},
+			{"newline-separated", "a line break where a space was, as a plain-text wrap leaves it", subj,
+				"Transaction of AED 73.40\ndebited from your a/c *123\nat SAMPLE STORE DUBAI AE.\nAvl Bal is AED 1.00\n"},
+			{"no-balance-sentence", "merchant is anchored on the Avl Bal sentence and is not required; amount, " +
+				"direction and last4 still extract", subj,
+				"Transaction of AED 73.40 debited from your a/c *123 at SAMPLE STORE DUBAI AE.\n"},
+			{"credit-wording", "no credit alert has been seen, so no credit wording is guessed: this must not " +
+				"match and goes to review", "Credit Transaction Alert",
+				"Transaction of AED 73.40 credited to your a/c *123. Avl Bal is AED 1.00\n"},
+			{"balance-only", "a balance line alone is not a transaction", subj,
+				"Avl Bal is AED 4,321.09\n"},
+			{"amount-without-decimals", "conversion failure, not a zero amount", subj,
+				line("AED 73", "*123", "SAMPLE STORE DUBAI AE")},
+			{"amount-longer-than-the-bound", "33 digits before the point; the run is bounded at {0,24}", subj,
+				line("AED 1,234,567,890,123,456,789,012,345.67", "*123", "SAMPLE STORE DUBAI AE")},
+		},
+	}
+}
+
 // dates: the three layouts and every semantic Go's time.Parse decides for us.
 // Mirrors TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce, but as a
 // fixture the TypeScript executor is checked against rather than a Go-only test.
@@ -549,6 +607,7 @@ func syntheticGroups(t *testing.T) []syntheticGroup {
 	out := []syntheticGroup{
 		syntheticENBD(t),
 		syntheticENBDTransfer(t),
+		syntheticADIB(t),
 		syntheticDates(),
 		syntheticAmounts(),
 		syntheticTextAndLast4(),

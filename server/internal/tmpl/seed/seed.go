@@ -1,4 +1,4 @@
-// Package seed holds the four published bank templates v2 starts from.
+// Package seed holds the published bank templates v2 starts from.
 //
 // They are the declarative port of v1's three Go parsers — internal/parse's
 // DIBParser, ENBDParser and ENBDAlertParser — and the whole point of the port
@@ -56,7 +56,7 @@ import (
 //go:embed *.json
 var files embed.FS
 
-// IDs are the four published template ids, in the order [Seed] returns them.
+// IDs are the published template ids, in the order [Seed] returns them.
 //
 // dib.card.v1 precedes dib.account.v1 because that is the order v1's DIBParser
 // tests them in; the two are mutually exclusive, so the order is documentation
@@ -67,6 +67,7 @@ var IDs = []string{
 	"dib.account.v1",
 	"enbd.transfer.v1",
 	"enbd.alert.v1",
+	"adib.alert.v1",
 }
 
 // Seed returns the published seed set.

@@ -23,6 +23,7 @@ public enum TemplatesManifest {
   }
 
   public static let entries: [Entry] = [
+    Entry(file: "adib.alert.v1.json", id: "adib.alert.v1", version: 1, sha256: "66afc2357dc1f50631ccf7d0a4f95fecb9fc45bbf2e7560d9adf435e4f193635"),
     Entry(file: "dib.account.v1.json", id: "dib.account.v1", version: 1, sha256: "867712af89c9cc9144befdf8957b8d7871433e6e0269514a5f12c086861080c3"),
     Entry(file: "dib.card.v1.json", id: "dib.card.v1", version: 1, sha256: "4b5ac96b9f3b50e59ac6d3d81f71adcbb2b9ccb42854c3be0e28a24b74ad5780"),
     Entry(file: "enbd.alert.v1.json", id: "enbd.alert.v1", version: 3, sha256: "0be29ccc0fd3202226ffec01f05ddd983406806a291793f10ffbd6606a89b545"),

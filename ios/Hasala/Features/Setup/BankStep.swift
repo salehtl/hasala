@@ -125,13 +125,21 @@ struct BankChoiceRow: View {
 struct BankMonogram: View {
   let bank: SupportedBank
 
-  private var hue: Hue { bank == .enbd ? .sky : .mint }
+  private var hue: Hue {
+    switch bank {
+    case .enbd: .sky
+    case .dib: .mint
+    case .adib: .lilac
+    }
+  }
+
+  private var wide: Bool { bank.monogram.count > 3 }
 
   var body: some View {
     let ink = hue.ink
     let monogram = Text(verbatim: bank.monogram)
-      .font(.custom(HWeight.bold.interFace, fixedSize: bank == .enbd ? 11 : 12))
-      .tracking(bank == .enbd ? -0.22 : -0.12)
+      .font(.custom(HWeight.bold.interFace, fixedSize: wide ? 11 : 12))
+      .tracking(wide ? -0.22 : -0.12)
       .foregroundStyle(ink)
     RoundedRectangle(cornerRadius: 12, style: .continuous)
       .fill(hue.perceptualGradient)

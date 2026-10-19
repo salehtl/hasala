@@ -11,6 +11,7 @@ import Foundation
 enum SupportedBank: String, CaseIterable, Identifiable, Sendable {
   case enbd
   case dib
+  case adib
 
   var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum SupportedBank: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .enbd: "Emirates NBD"
     case .dib: "Dubai Islamic Bank"
+    case .adib: "Abu Dhabi Islamic Bank"
     }
   }
 
@@ -25,6 +27,7 @@ enum SupportedBank: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .enbd: "Emirates NBD"
     case .dib: "DIB"
+    case .adib: "ADIB"
     }
   }
 
@@ -32,6 +35,7 @@ enum SupportedBank: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .enbd: "ENBD"
     case .dib: "DIB"
+    case .adib: "ADIB"
     }
   }
 
@@ -39,6 +43,7 @@ enum SupportedBank: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .enbd: nil
     case .dib: "Arabic alerts supported"
+    case .adib: nil
     }
   }
 }
