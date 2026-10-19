@@ -237,6 +237,7 @@ struct PaperGlyph: View {
     Part(d: "M9.9 9.9a3 3 0 0 0 4.2 4.2"),
   ]
   static let plus = [Part(d: "M12 5v14M5 12h14")]
+  static let pencil = [Part(d: "M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4")]
   /// The read-only card's tick and dash (12 in a 20 badge).
   static let tick = [Part(d: "m5 12.5 4.5 4.5L19 7.5")]
   static let dash = [Part(d: "M6 12h12")]

@@ -65,6 +65,32 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     }
   }
 
+  func setBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
+    let rt = try open()
+    var trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])
+    var kept: [String] = []
+    for bank in banks {
+      for d in MailboxLane.senderDomains(bank: bank.rawValue) where !kept.contains(d) { kept.append(d) }
+    }
+    var dropped: [String] = []
+    for bank in SupportedBank.allCases where !banks.contains(bank) {
+      for d in MailboxLane.senderDomains(bank: bank.rawValue) where !kept.contains(d) && !dropped.contains(d) {
+        if trusted.contains(d) { dropped.append(d) }
+      }
+    }
+    try await author(rt) { a throws(AuthorError) in
+      for bank in SupportedBank.allCases { a.declareBank(bank.rawValue, active: banks.contains(bank)) }
+      for d in kept where !trusted.contains(d) {
+        try a.setSenderTrust(typed: d, trusted: true, currentTrusted: trusted)
+        trusted.append(d)
+      }
+      for d in dropped {
+        try a.setSenderTrust(typed: d, trusted: false, currentTrusted: trusted)
+        trusted.removeAll { $0 == d }
+      }
+    }
+  }
+
   func requestBank(_ name: String) async throws(SetupFailure) {
     let rt = try open()
     guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }

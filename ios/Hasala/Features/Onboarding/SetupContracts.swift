@@ -119,6 +119,7 @@ protocol SetupAuthoring: AnyObject {
   func readBack() -> SetupReadBack
   /// `sender_trust_set` for each bank's alert senders and `bank_declared`.
   func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure)
+  func setBanks(_ banks: [SupportedBank]) async throws(SetupFailure)
   /// "Another bank? Tell us": a bank request to the operator (`07` P4). Content: the name only.
   func requestBank(_ name: String) async throws(SetupFailure)
   /// The income (`income_source_set`) and plan (`budget_split_set`, `budget_set`) in one
