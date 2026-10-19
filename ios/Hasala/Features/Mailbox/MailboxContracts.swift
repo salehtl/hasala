@@ -7,7 +7,7 @@ import HasalaModels
 // `MailProviderID`; the live mapping to the mail lanes lives only in `Live/Mailbox/`. In
 // copy, lists and settings say "mailbox"; steps and buttons say "your email".
 
-/// What Home's bell, the Profile card and Bank alerts offer for mail.
+/// What the bell, the Profile card and Bank alerts offer for mail.
 enum MailOffer: Hashable, Identifiable {
   /// No mailbox is read: setup's email step was skipped, or the last one went.
   case connect

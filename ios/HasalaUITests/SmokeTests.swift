@@ -116,6 +116,41 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait), "not on the Review tab")
   }
 
+  @MainActor
+  func testTheBellIsOnEveryTab() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    attach(app, "Bell · Home")
+    let tabBar = app.tabBars.firstMatch
+    let bell = app.buttons["header.notifications"].firstMatch
+    let profile = app.buttons["header.profile"].firstMatch
+    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
+      tabBar.buttons[tab].tap()
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
+      XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
+      XCTAssertEqual(bell.label, "Notifications, 4 new")
+      XCTAssertLessThan(bell.frame.maxX, profile.frame.minX, "\(tab): the bell is not before the profile")
+      attach(app, "Bell · \(tab)")
+      bell.tap()
+      XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
+      XCTAssertTrue(el(app, "bell.row.review").exists)
+      el(app, "bell.close").tap()
+      XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
+      XCTAssertTrue(tabBar.buttons[tab].isSelected, "the bell left \(tab)")
+    }
+
+    let add = app.buttons["header.add"].firstMatch
+    XCTAssertTrue(add.isHittable, "Activity lost its +")
+    XCTAssertLessThan(add.frame.maxX, bell.frame.minX)
+    let mark = app.images["Hasala"].firstMatch
+    if mark.exists { XCTAssertLessThanOrEqual(mark.frame.maxX, add.frame.minX, "the + overlaps the mark") }
+
+    bell.tap()
+    tap(app, "bell.row.bill.axa")
+    XCTAssertTrue(el(app, "bills.detail.axa").waitForExistence(timeout: uiWait), "no bill pushed")
+    XCTAssertEqual(tabBar.buttons["Home"].isSelected, true)
+  }
+
   /// Home and the tabs at `.accessibility3` (UIKit's AccessibilityXL): the layouts reflow
   /// instead of truncating, and the audit passes (spec 04 §17).
   @MainActor

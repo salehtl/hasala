@@ -69,9 +69,11 @@ struct TabScreen<Header: View, Content: View>: View {
       MainHeader(
         amountsHidden: app.amountsHidden,
         extra: extra,
+        unread: app.bellCount,
         avatarInitial: app.avatarInitial,
         onToggleAmounts: { app.toggleAmountsHidden() },
         onExtra: onExtra,
+        onNotifications: { app.router.open(.notifications) },
         onProfile: { app.showingProfile = true }
       )
     }
