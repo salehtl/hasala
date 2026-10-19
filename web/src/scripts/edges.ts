@@ -1,8 +1,8 @@
 /**
  * Screen edges for iOS Safari (global.css, "Screen edges"). Safari shows a
- * solid colour behind the status bar (html's background, which is
- * --edge-top) and can extend the fixed .edge-top / .edge-bottom strips
- * behind its controls, so both follow the block under each screen edge: its
+ * solid colour behind the status bar (html's background) and can extend the
+ * fixed .edge-top / .edge-bottom strips behind its controls, so both follow
+ * the block under each screen edge: its
  * declared --edge-t at its top, --edge-b at its bottom, mixed in between (a
  * wash's solid stand-in). The theme-color meta follows the top. Checked once
  * per frame on scroll and resize (the toolbar collapsing resizes the
@@ -30,20 +30,23 @@ function at(y: number): string {
   return '';
 }
 
-const set = (name: string, c: string) => (c ? root.style.setProperty(name, c) : root.style.removeProperty(name));
+const set = (el: HTMLElement | null, name: string, c: string) => (c ? el?.style.setProperty(name, c) : el?.style.removeProperty(name));
 
 onPage((signal) => {
   let frame = 0;
   let last = '';
+  const stripTop = document.querySelector<HTMLElement>('.edge-top');
+  const stripBottom = document.querySelector<HTMLElement>('.edge-bottom');
   const update = () => {
     frame = 0;
     const top = at(0);
     const bottom = at(innerHeight - 1);
     if (top + bottom === last) return;
     last = top + bottom;
-    set('--edge-top', top);
-    set('--edge-bottom', bottom);
-    // html's background is --edge-top, resolved to a plain colour.
+    set(root, 'background-color', top);
+    set(stripTop, '--edge-top', top);
+    set(stripBottom, '--edge-bottom', bottom);
+    // html's background, resolved to a plain colour.
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).backgroundColor);
   };
   const queue = () => (frame ||= requestAnimationFrame(update));
