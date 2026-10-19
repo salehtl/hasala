@@ -104,9 +104,10 @@ struct LiveLedgerMapperTests {
   }
 
   /// Seed → fold → project → map: the blobs as the rows of one pulled page.
-  static func foldedState() async throws -> LedgerState {
+  static func foldedState(extra: (inout OpAuthor) throws(AuthorError) -> Void = { _ throws(AuthorError) in }) async throws -> LedgerState {
     let a = try account()
-    let blobs = try await seed(a)
+    var blobs = try await seed(a)
+    if let more = try a.observer.stamps.build(try await a.observer.authorContext(), extra) { blobs.append(more) }
     var rows: [FoldRow] = []
     for (i, b) in blobs.enumerated() {
       let plaintext = Data(try OpCodec.encodeBlobOps(b.ops))
@@ -116,6 +117,24 @@ struct LiveLedgerMapperTests {
     try a.projection.project(
       state, pending: [], writerID: writer.string, dictionary: AccountRuntime.dictionary, projectedAtMs: anchor)
     return try LedgerStateMapper.map(a.projection.reader, context: context())
+  }
+
+  // MARK: Home source
+
+  @Test func foreignRowsCarryTheirHomeSource() async throws {
+    let wall = Int64(1_791_633_600_000)
+    var ids: [String] = []
+    let live = try await Self.foldedState { o throws(AuthorError) in
+      ids.append(try o.manualEntry(amountMinor: 25_00, currency: "USD", direction: "debit", localWallMs: wall, merchant: "Amazon US", category: "shopping"))
+      ids.append(try o.manualEntry(amountMinor: 40_00, currency: "EUR", direction: "debit", localWallMs: wall, merchant: "Zara Paris", category: "shopping"))
+    }
+    #expect(ids.count == 2)
+    let usd = try #require(live.txns.first { $0.id == ids.first })
+    #expect(usd.homeMinor == 91_81 && usd.homeSource == .rate && usd.homeRateMicro == 3_672_500)
+    #expect(usd.homeAmount.estimateLine == "Estimate at 3.6725 AED per USD. Your bank's charge can be a little higher.")
+    let eur = try #require(live.txns.first { $0.id == ids.last })
+    #expect(eur.homeMinor == nil && eur.homeSource == nil && eur.isNotCounted)
+    #expect(live.txns.filter { $0.amount.currency == "AED" }.allSatisfy { $0.homeSource == .identity })
   }
 
   // MARK: Home
