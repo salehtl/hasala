@@ -144,10 +144,38 @@ public struct MailboxProgress: Sendable, Equatable {
 }
 
 public enum ConnectResult: Sendable, Equatable {
-  case connected(address: String?, anotherAddress: Bool = false)
+  case connected(address: String?, anotherAddress: Bool = false, retired: MailboxRetireOutcome? = nil)
   case cancelled
+  case declined
   case failed(ConnectFailure)
 }
+
+public enum MailboxRetireOutcome: Sendable, Equatable {
+  case removed(Int)
+  case failed
+}
+
+public struct MailboxSwitchQuestion: Sendable, Equatable {
+  public var oldAddress: String
+  public var newAddress: String
+  public var transactions: Int
+  public var edited: Int
+  public var oldHasNoMailbox: Bool
+
+  public init(oldAddress: String, newAddress: String, transactions: Int, edited: Int, oldHasNoMailbox: Bool) {
+    self.oldAddress = oldAddress
+    self.newAddress = newAddress
+    self.transactions = transactions
+    self.edited = edited
+    self.oldHasNoMailbox = oldHasNoMailbox
+  }
+}
+
+public enum MailboxSwitchChoice: Sendable, Equatable {
+  case keep, remove, cancel
+}
+
+public typealias MailboxSwitchConfirm = @Sendable (MailboxSwitchQuestion) async -> MailboxSwitchChoice
 
 public enum ConnectFailure: String, Sendable, Equatable {
   case notConfigured = "not_configured"
@@ -315,15 +343,24 @@ public actor MailboxEngine {
     return gapDays <= 90 ? 90 : 365
   }
 
-  public func connect(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false) async
-    -> ConnectResult
-  {
-    await exclusive { await connectLocked(presenter: presenter, backfillDays: backfillDays, replacing: replacing) }
+  public func connect(
+    presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false,
+    confirm: MailboxSwitchConfirm? = nil
+  ) async -> ConnectResult {
+    let (result, plan) = await exclusive { () -> (ConnectResult, MailboxRetirePlan?) in
+      var plan: MailboxRetirePlan?
+      let r = await connectLocked(
+        presenter: presenter, backfillDays: backfillDays, replacing: replacing, confirm: confirm, retiring: &plan)
+      return (r, plan)
+    }
+    guard let plan, case .connected(let address, true, _) = result else { return result }
+    return .connected(address: address, anotherAddress: true, retired: await retire(plan))
   }
 
-  private func connectLocked(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool) async
-    -> ConnectResult
-  {
+  private func connectLocked(
+    presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool, confirm: MailboxSwitchConfirm?,
+    retiring: inout MailboxRetirePlan?
+  ) async -> ConnectResult {
     let oauth = provider.oauth
     guard oauth.isConfigured else { return .failed(.notConfigured) }
     let nonce: String
@@ -371,6 +408,20 @@ public actor MailboxEngine {
     let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
     let otherMailbox = stored.map { Self.isAnotherMailbox(linked: $0.address, signedIn: claims.email) } ?? false
     let fresh = replacing || otherMailbox
+    if otherMailbox, let old = stored {
+      let plan = await ledger.retirePlan(grantID: self.grant(old), provider: provider.id.rawValue)
+      let noMailbox = old.phase == .halted && old.haltedOn == .noMailbox
+      if !noMailbox || plan.total > 0 {
+        let question = MailboxSwitchQuestion(
+          oldAddress: old.address ?? "", newAddress: claims.email ?? "", transactions: plan.total, edited: plan.edited,
+          oldHasNoMailbox: noMailbox)
+        switch await confirm?(question) ?? .cancel {
+        case .cancel: return .declined
+        case .keep: break
+        case .remove: retiring = plan.total > 0 ? plan : nil
+        }
+      }
+    }
     let proof: JSONValue
     do { proof = try await stepUp.proof(kind: "mailbox.link", payloadHash: sha256(Data(idToken.utf8))) } catch {
       return .failed(.stepUpFailed)
@@ -473,10 +524,17 @@ public actor MailboxEngine {
   public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
     guard await disconnect() else { return .failed }
     guard let plan else { return .disconnected }
+    switch await retire(plan) {
+    case .removed(let n): return .removed(n)
+    case .failed: return .disconnectedRemoveFailed
+    }
+  }
+
+  public func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome {
     do throws(MailboxLedgerError) {
       try await ledger.authorRetire(plan)
     } catch {
-      return .disconnectedRemoveFailed
+      return .failed
     }
     _ = await ledger.flush()
     return .removed(plan.total)

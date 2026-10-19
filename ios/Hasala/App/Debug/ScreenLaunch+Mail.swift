@@ -46,6 +46,10 @@
         mock(graph)?.signInAgainReads = "maya.other@example.com"
         profile([.bankAlerts])(graph)
       }),
+      Screen("mail.detailSignInOtherAddress", scenario: "outlookSignIn", prepare: { graph in
+        mock(graph)?.signInAgainReads = "maya.other@example.com"
+        profile([.bankAlerts, .mailbox("outlook-1")])(graph)
+      }),
       Screen("mail.add", scenario: "passkeyUser", prepare: profile([.bankAlerts, .addMailbox])),
       // Outlook needs a new sign-in: its row says so, and leads to its sign-in again.
       Screen("mail.add.signIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts, .addMailbox])),

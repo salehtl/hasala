@@ -182,7 +182,8 @@ import Testing
       rig.gmail.email = other
       rig.gmail.add(SyntheticMail.enbdAlert(id: "b-old", dateMs: Rig.t0 - 40 * day))
     }
-    let r = await signIn.engine.connect(presenter: FakePresenter(gmail: signIn.gmail), backfillDays: 90)
+    let r = await signIn.engine.connect(
+      presenter: FakePresenter(gmail: signIn.gmail), backfillDays: 90, confirm: { _ in .keep })
     #expect(r == .connected(address: other, anotherAddress: true))
     #expect(
       await replace.engine.connect(presenter: FakePresenter(gmail: replace.gmail), backfillDays: 90, replacing: true)
@@ -232,7 +233,9 @@ import Testing
     rig.gmail.email = other
     rig.gmail.add(SyntheticMail.enbdAlert(id: "b-new", dateMs: Rig.t0 - 2 * day))
     rig.keychain.locked = true
-    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .failed(.keychain))
+    #expect(
+      await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, confirm: { _ in .keep })
+        == .failed(.keychain))
     rig.keychain.locked = false
     let s = await rig.state()
     #expect(s == MailboxState())

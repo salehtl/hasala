@@ -92,6 +92,39 @@ struct LiveMailboxTests {
       == "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com.")
   }
 
+  @Test func theSwitchQuestionAndItsAnswerCrossTheLane() async throws {
+    #expect(throws: MailConnectFailure.switchDeclined) { try LiveMailboxConnecting.linked(.declined, provider: .gmail) }
+    let removed = ConnectResult.connected(address: "maya.home@example.com", anotherAddress: true, retired: .removed(3))
+    #expect(try LiveMailboxConnecting.linked(removed, provider: .gmail) == "maya.home@example.com")
+    #expect(LiveMailboxConnecting.retired(removed) == .removed(3))
+    #expect(LiveMailboxConnecting.retired(.declined) == nil)
+    #expect(LiveMailboxConnecting.removal(.removed(3), old: "maya@example.com") == .removed(3))
+    #expect(LiveMailboxConnecting.removal(.failed, old: "maya@example.com") == .failed(from: "maya@example.com"))
+    #expect(LiveMailboxConnecting.removal(nil, old: "maya@example.com") == nil)
+
+    let core = MailboxSwitchQuestion(
+      oldAddress: "maya@example.com", newAddress: "maya.home@example.com", transactions: 4, edited: 1,
+      oldHasNoMailbox: false)
+    #expect(LiveMailboxConnecting.question(core, provider: .gmail) == MailSwitchQuestion(
+      provider: .gmail, oldAddress: "maya@example.com", newAddress: "maya.home@example.com",
+      impact: MailboxDisconnectImpact(transactions: 4, edited: 1)))
+    var none = core
+    none.transactions = 0
+    none.oldHasNoMailbox = true
+    #expect(LiveMailboxConnecting.question(none, provider: .outlook).impact == nil)
+    #expect(LiveMailboxConnecting.question(none, provider: .outlook).oldHasNoMailbox)
+
+    let seen = Mutex<[MailSwitchQuestion]>([])
+    for (answer, expected) in [(MailSwitchChoice.keep, MailboxSwitchChoice.keep), (.remove, .remove), (.cancel, .cancel)] {
+      let confirm = LiveMailboxConnecting.confirm({ q in
+        seen.withLock { $0.append(q) }
+        return answer
+      }, provider: .gmail)
+      #expect(await confirm(core) == expected)
+    }
+    #expect(seen.withLock { $0.map(\.newAddress) } == Array(repeating: "maya.home@example.com", count: 3))
+  }
+
   @Test func aMailboxOnAnotherAccountIsSaidInWords() {
     let gmail = LiveMailboxConnecting.message(.mailboxInUse)
     #expect(gmail.contains("This Gmail address is connected to another Hasala account"))

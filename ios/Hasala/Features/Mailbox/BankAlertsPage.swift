@@ -210,6 +210,7 @@ struct BankAlertsPage: View {
     .background(hero.hue.perceptualGradient, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bankAlerts.hero")
+    .mailSwitchQuestion(signIn)
   }
 
   /// The provider's sign-in for that mailbox, from here (no read-only screen: the person

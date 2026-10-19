@@ -460,11 +460,15 @@ final class CountingMailbox: MailboxConnecting {
   var offersSampleData: Bool { base.offersSampleData }
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }
-  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
+  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
+  {
     if cancelGmail, provider == .gmail { throw .cancelled }
-    return try await base.connect(provider, replacing: replacing)
+    return try await base.connect(provider, replacing: replacing, removingOld: removingOld, ask: ask)
   }
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String? { try await base.signInAgain(mailboxID) }
+  func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
+    try await base.signInAgain(mailboxID, ask: ask)
+  }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
   }

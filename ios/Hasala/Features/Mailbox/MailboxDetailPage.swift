@@ -78,6 +78,7 @@ struct MailboxDetailPage: View {
     } message: {
       if let m = mailbox { Text(MailCopy.disconnectMessage(m.provider)) }
     }
+    .mailSwitchQuestion(signIn)
     // Signed in again: the motion policy's success, once.
     .hHaptic(.success, trigger: signedIn) { old, new in new > old }
     #if HASALA_MOCKS

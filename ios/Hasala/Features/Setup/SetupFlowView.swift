@@ -57,7 +57,7 @@ private struct EmailStep: View {
       provider: provider, coordinator: coordinator, banks: model.orderedBanks,
       sample: model.offersSampleData ? { Task { await model.useSampleData() } } : nil,
       onConnected: { _ in model.continueFromEmail(provider) },
-      onChooseDifferent: chooseDifferent)
+      onChooseDifferent: chooseDifferent, asksSwitch: model.navigationPath.last == .connect(provider))
       .onChange(of: coordinator.outcome) { _, outcome in
         if case .failed? = outcome { model.connectFailed(provider) }
       }
@@ -95,6 +95,7 @@ private struct EmailErrorStep: View {
       },
       // Paper draws setup's error screens as step 2 of 4 (1MUP-0, 1NQF-0; requests/p3.md 1).
       steps: model.steps(2))
+      .mailSwitchQuestion(coordinator)
       .onChange(of: model.connectFailure(provider), initial: true) { _, failure in
         if let failure { shown = failure }
       }

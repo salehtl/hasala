@@ -170,14 +170,71 @@ final class MailboxUITests: XCTestCase {
   }
 
   @MainActor
-  func testSignInAgainWithAnotherAddressSaysWhatItReads() throws {
-    let app = launch(scenario: nil, screen: "bankAlerts.signInOtherAddress")
+  func testSignInAgainWithAnotherAddressAsksAndKeeps() throws {
+    var app = launch(scenario: nil, screen: "bankAlerts.signInOtherAddress")
     let button = el(app, "bankAlerts.signInAgain")
     XCTAssertTrue(button.waitForExistence(timeout: 15))
     button.tap()
+    let alert = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(alert.waitForExistence(timeout: 10), "the switch was not asked first")
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label BEGINSWITH %@", "Hasala reads maya.k@example.com. Switch to maya.other@example.com?"))
+      .firstMatch.exists)
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "It brought in 12 transactions.")).firstMatch.exists)
+    XCTAssertTrue(alert.buttons["Switch, remove them"].firstMatch.exists)
+    attach(app, "Sign in again · another address")
+    alert.buttons["Try again"].firstMatch.tap()
+    XCTAssertTrue(alert.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "bankAlerts.status").label.contains("Sign in again"), "Try again changed the mailbox")
+    XCTAssertTrue(button.exists)
+    button.tap()
+    XCTAssertTrue(alert.waitForExistence(timeout: 10))
+    alert.buttons["Switch, keep the 12 transactions"].firstMatch.tap()
     XCTAssertTrue(app.staticTexts["Now reading maya.other@example.com."].waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["Outlook connected again. Catching up from the last check."].exists)
     XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+    try audit(app)
+
+    app = launch(scenario: nil, screen: "bankAlerts.signInOtherAddress", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "bankAlerts.signInAgain").waitForExistence(timeout: 15))
+    try audit(app, atLargeText: true)
+    el(app, "bankAlerts.signInAgain").tap()
+    let large = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(large.waitForExistence(timeout: 10))
+    attach(app, "Sign in again · another address · AX3")
+    large.buttons["Switch, keep the 12 transactions"].firstMatch.tap()
+    XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testSignInAgainWithAnotherAddressCanRemoveTheOldTransactions() throws {
+    var app = launch(scenario: nil, screen: "mail.detailSignInOtherAddress")
+    let signIn = el(app, "mailbox.signInAgain")
+    XCTAssertTrue(signIn.waitForExistence(timeout: 15))
+    try audit(app)
+    signIn.tap()
+    let alert = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(alert.waitForExistence(timeout: 10), "the switch was not asked first")
+    XCTAssertTrue(alert.buttons["Switch, keep the 12 transactions"].firstMatch.exists)
+    attach(app, "Mailbox · another address")
+    alert.buttons["Switch, remove them"].firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["Now reading maya.other@example.com. 12 transactions removed."]
+      .waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: 10), "the page did not turn connected")
+    attach(app, "Mailbox · another address · removed")
+    try audit(app)
+
+    app = launch(scenario: nil, screen: "mail.detailSignInOtherAddress", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mailbox.signInAgain").waitForExistence(timeout: 15))
+    try audit(app, atLargeText: true)
+    el(app, "mailbox.signInAgain").tap()
+    let large = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(large.waitForExistence(timeout: 10))
+    large.buttons["Switch, remove them"].firstMatch.tap()
+    XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: 10), "the page did not turn connected")
+    try audit(app, atLargeText: true)
   }
 
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue

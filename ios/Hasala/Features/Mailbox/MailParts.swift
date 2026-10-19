@@ -35,14 +35,53 @@ enum MailCopy {
 
   /// The toast after a new sign-in to a mailbox whose provider ended access (Paper flow:
   /// "Connected again · Checks again from the last check").
-  static func signedInAgain(_ provider: MailProviderKind, nowReading address: String? = nil) -> String {
-    if let address { return "Now reading \(address)." }
-    return "\(provider.appName) connected again. Catching up from the last check."
+  static func signedInAgain(
+    _ provider: MailProviderKind, nowReading address: String? = nil, removal: MailSwitchRemoval? = nil
+  ) -> String {
+    guard let address else { return "\(provider.appName) connected again. Catching up from the last check." }
+    return with("Now reading \(address).", removal)
   }
 
   /// The toast after a new mailbox (Paper 1NYL).
-  static func added(_ provider: MailProviderKind) -> String {
-    "\(provider.appName) connected. Checking for alerts."
+  static func added(_ provider: MailProviderKind, removal: MailSwitchRemoval? = nil) -> String {
+    with("\(provider.appName) connected. Checking for alerts.", removal)
+  }
+
+  static func with(_ line: String, _ removal: MailSwitchRemoval?) -> String {
+    switch removal {
+    case nil: line
+    case .removed(let n)?: "\(line) \(removed(n))"
+    case .failed(let old)?: "\(line) The transactions from \(old) couldn't be removed. They stay."
+    }
+  }
+
+  static func removed(_ n: Int) -> String {
+    n == 1 ? "1 transaction removed." : "\(n) transactions removed."
+  }
+
+  static func impactLines(_ impact: MailboxDisconnectImpact) -> [String] {
+    let count = impact.transactions == 1 ? "1 transaction" : "\(impact.transactions) transactions"
+    var lines = ["It brought in \(count). Keep them, or remove them from your totals."]
+    if impact.edited > 0 {
+      lines.append(impact.edited == 1 ? "Removing also takes the 1 you changed." : "Removing also takes the \(impact.edited) you changed.")
+    }
+    return lines
+  }
+
+  static func switchAddressTitle(_ q: MailSwitchQuestion) -> String {
+    "You signed in as \(q.newAddress)."
+  }
+
+  static func switchAddressMessage(_ q: MailSwitchQuestion) -> String {
+    let lead = q.oldHasNoMailbox
+      ? "\(q.oldAddress) has no mailbox Hasala can read, so Hasala reads \(q.newAddress) instead."
+      : "Hasala reads \(q.oldAddress). Switch to \(q.newAddress)?"
+    return ([lead] + (q.impact.map(impactLines) ?? [])).joined(separator: " ")
+  }
+
+  static func keepOnSwitch(_ lead: String, _ impact: MailboxDisconnectImpact) -> String {
+    impact.transactions == 1
+      ? "\(lead), keep the 1 transaction" : "\(lead), keep the \(impact.transactions) transactions"
   }
 
   /// Where to take Hasala's permission away on the provider's side (Paper 1O9X names
@@ -60,8 +99,12 @@ enum MailCopy {
 
   /// Its message: "This replaces your Gmail connection. Hasala reads your bank alerts from
   /// Outlook instead."
-  static func switchMessage(from old: MailProviderKind, to new: MailProviderKind) -> String {
-    "This replaces your \(old.appName) connection. Hasala reads your bank alerts from \(new.appName) instead. Past transactions stay."
+  static func switchMessage(
+    from old: MailProviderKind, to new: MailProviderKind, impact: MailboxDisconnectImpact? = nil
+  ) -> String {
+    let lead = "This replaces your \(old.appName) connection. Hasala reads your bank alerts from \(new.appName) instead."
+    guard let impact else { return "\(lead) Past transactions stay." }
+    return ([lead] + impactLines(impact)).joined(separator: " ")
   }
 
   /// The system alert before a connect takes the account's link over from another iPhone
@@ -100,20 +143,12 @@ enum MailCopy {
           "To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
         )
       }
-    let count = impact.transactions == 1 ? "1 transaction" : "\(impact.transactions) transactions"
-    var lines = [stops, "It brought in \(count). Keep them, or remove them from your totals."]
-    if impact.edited > 0 {
-      lines.append(impact.edited == 1 ? "Removing also takes the 1 you changed." : "Removing also takes the \(impact.edited) you changed.")
-    }
-    lines.append(consent)
-    return lines.joined(separator: " ")
+    return ([stops] + impactLines(impact) + [consent]).joined(separator: " ")
   }
 
   static func disconnected(_ provider: MailProviderKind, removed: Int?) -> String {
     guard let removed else { return "\(provider.appName) disconnected. Past transactions stay." }
-    return removed == 1
-      ? "\(provider.appName) disconnected. 1 transaction removed."
-      : "\(provider.appName) disconnected. \(removed) transactions removed."
+    return "\(provider.appName) disconnected. \(Self.removed(removed))"
   }
 
   static func disconnectMessage(_ provider: MailProviderKind) -> String {
@@ -564,5 +599,44 @@ struct BankAlertsBankRow: View {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(bank.name), \(detail)")
     .accessibilityValue("Read")
+  }
+}
+
+private struct MailSwitchQuestionAlert: ViewModifier {
+  let coordinator: MailConnectCoordinator?
+  let asks: Bool
+
+  func body(content: Content) -> some View {
+    let question = asks ? coordinator?.question : nil
+    content
+      .alert(
+        question.map(MailCopy.switchAddressTitle) ?? "",
+        isPresented: Binding(get: { question != nil }, set: { _ in }), presenting: question
+      ) { q in
+        if let impact = q.impact {
+          Button(MailCopy.keepOnSwitch("Switch", impact)) { coordinator?.answer(.keep) }
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("mail.switch.keep")
+          Button("Switch, remove them", role: .destructive) { coordinator?.answer(.remove) }
+            .accessibilityIdentifier("mail.switch.remove")
+        } else {
+          Button("Switch to \(q.newAddress)") { coordinator?.answer(.keep) }
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("mail.switch.keep")
+        }
+        Button(q.oldHasNoMailbox ? "Cancel" : "Try again", role: .cancel) { coordinator?.answer(.cancel) }
+          .accessibilityIdentifier("mail.switch.cancel")
+      } message: { q in
+        Text(MailCopy.switchAddressMessage(q))
+      }
+      .onDisappear {
+        if asks, coordinator?.question != nil { coordinator?.answer(.cancel) }
+      }
+  }
+}
+
+extension View {
+  func mailSwitchQuestion(_ coordinator: MailConnectCoordinator?, asks: Bool = true) -> some View {
+    modifier(MailSwitchQuestionAlert(coordinator: coordinator, asks: asks))
   }
 }

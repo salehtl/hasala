@@ -50,17 +50,17 @@ final class SetupMailLink: MailboxConnecting {
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }
 
-  @discardableResult
-  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
-    if let id = existing(provider) { return id }
-    let id = try await base.connect(provider, replacing: replacing)
-    made[provider] = id
-    return id
+  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
+  {
+    if let id = existing(provider) { return MailLinked(mailboxID: id) }
+    let linked = try await base.connect(provider, replacing: replacing, removingOld: removingOld, ask: ask)
+    made[provider] = linked.mailboxID
+    return linked
   }
 
-  @discardableResult
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> String? {
-    try await base.signInAgain(mailboxID)
+  func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
+    try await base.signInAgain(mailboxID, ask: ask)
   }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)

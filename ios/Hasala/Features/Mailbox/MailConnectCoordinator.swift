@@ -44,7 +44,12 @@ final class MailConnectCoordinator {
   /// The provider of the last attempt (the error screens name it).
   private(set) var provider: MailProviderKind?
   private(set) var replacing = false
-  private(set) var nowReading: String?
+  private(set) var removingOld = false
+  private(set) var linked: MailLinked?
+  private(set) var question: MailSwitchQuestion?
+  @ObservationIgnored private var answering: CheckedContinuation<MailSwitchChoice, Never>?
+
+  var nowReading: String? { linked?.nowReading }
 
   init(mailbox: MailboxConnecting, context: Context) {
     self.mailbox = mailbox
@@ -54,23 +59,30 @@ final class MailConnectCoordinator {
   /// Runs the sign-in (or the sign-in again). A second tap while one runs does nothing.
   /// `replacing`: the person confirmed that this connect replaces the account's link to
   /// another provider ("Change your email?"; one link held, `.replace`).
-  func connect(_ provider: MailProviderKind, replacing: Bool = false) async {
+  func connect(_ provider: MailProviderKind, replacing: Bool = false, removingOld: Bool = false) async {
     guard !busy else { return }
     busy = true
     defer { busy = false }
     outcome = nil
-    nowReading = nil
+    linked = nil
     self.provider = provider
     self.replacing = replacing
+    self.removingOld = replacing && removingOld
+    let ask: MailSwitchAsk = { [weak self] question in await self?.ask(question) ?? .cancel }
     do {
       if case .signInAgain(let id) = context {
-        nowReading = try await mailbox.signInAgain(id)
+        let made = try await mailbox.signInAgain(id, ask: ask)
+        linked = made
         outcome = .connected(mailboxID: id)
       } else {
-        outcome = .connected(mailboxID: try await mailbox.connect(provider, replacing: replacing))
+        let made = try await mailbox.connect(provider, replacing: replacing, removingOld: self.removingOld, ask: ask)
+        linked = made
+        outcome = .connected(mailboxID: made.mailboxID)
       }
     } catch .cancelled where provider == .gmail {
       // The person closed Google's sheet: nothing to say (today's behaviour).
+      outcome = nil
+    } catch .switchDeclined {
       outcome = nil
     } catch {
       outcome = .failed(error)
@@ -78,7 +90,23 @@ final class MailConnectCoordinator {
   }
 
   func retry(_ provider: MailProviderKind) async {
-    await connect(provider, replacing: self.provider == provider && replacing)
+    let same = self.provider == provider
+    await connect(provider, replacing: same && replacing, removingOld: same && removingOld)
+  }
+
+  func ask(_ question: MailSwitchQuestion) async -> MailSwitchChoice {
+    answer(.cancel)
+    return await withCheckedContinuation { continuation in
+      answering = continuation
+      self.question = question
+    }
+  }
+
+  func answer(_ choice: MailSwitchChoice) {
+    question = nil
+    let waiting = answering
+    answering = nil
+    waiting?.resume(returning: choice)
   }
 
   private static var pendingHand: MailConnectCoordinator?
@@ -121,12 +149,18 @@ final class MailConnectCoordinator {
   /// Back to before the attempt ("Try again", "Choose a different email").
   func reset() {
     outcome = nil
-    nowReading = nil
+    linked = nil
   }
 
   var signedInAgainLine: String? {
     guard case .connected? = outcome, let provider else { return nil }
-    return MailCopy.signedInAgain(provider, nowReading: nowReading)
+    return MailCopy.signedInAgain(provider, nowReading: nowReading, removal: linked?.removal)
+  }
+
+  var addedLine: String? {
+    guard case .connected? = outcome, let provider else { return nil }
+    if let address = nowReading { return MailCopy.signedInAgain(provider, nowReading: address, removal: linked?.removal) }
+    return MailCopy.added(provider, removal: linked?.removal)
   }
 
   // MARK: What the screens show
@@ -177,7 +211,7 @@ final class MailConnectCoordinator {
     switch failure {
     case .adminApprovalNeeded, .noMailbox: true
     case .cancelled: provider != .gmail
-    case .alreadyConnected, .takenByOtherIPhone, .offline, .failed: false
+    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
     }
   }
 }

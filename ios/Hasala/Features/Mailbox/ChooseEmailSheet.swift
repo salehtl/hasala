@@ -41,7 +41,7 @@ enum ChooseEmailTitle: Sendable {
         : "You can add another mailbox later in Profile › Bank alerts. Disconnect any of them at any time."
     case .addMailbox:
       oneLink ? "You can disconnect it at any time." : "Each mailbox can be disconnected on its own, at any time."
-    case .change: "The one you pick replaces the mailbox Hasala reads now. Past transactions stay."
+    case .change: "The one you pick replaces the mailbox Hasala reads now. You choose whether its transactions stay."
     }
   }
 }

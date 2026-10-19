@@ -28,8 +28,11 @@ struct ConnectProviderView: View {
   /// the system Back is how to pick another, so the dock doesn't offer it again, and the
   /// screen fits above its dock inside the profile sheet.
   var choiceIsBack: Bool
+  var asksSwitch: Bool
   /// The mailbox a confirmed sign-in replaces, while "Change your email?" asks.
   @State private var switching: MailboxSnapshot?
+  @State private var switchImpact: MailboxDisconnectImpact?
+  @State private var askingImpact = false
   /// The provider of the link a confirmed sign-in takes over from another iPhone, while
   /// "Read your email on this iPhone?" asks.
   @State private var takingOver: MailProviderKind?
@@ -37,7 +40,7 @@ struct ConnectProviderView: View {
   init(
     provider: MailProviderKind, coordinator: MailConnectCoordinator, banks: [SupportedBank],
     sample: (() -> Void)? = nil, onConnected: @escaping (String) -> Void, onChooseDifferent: @escaping () -> Void,
-    choiceIsBack: Bool = false
+    choiceIsBack: Bool = false, asksSwitch: Bool = true
   ) {
     self.provider = provider
     self.coordinator = coordinator
@@ -46,6 +49,7 @@ struct ConnectProviderView: View {
     self.onConnected = onConnected
     self.onChooseDifferent = onChooseDifferent
     self.choiceIsBack = choiceIsBack
+    self.asksSwitch = asksSwitch
   }
 
   private var steps: (current: Int, of: Int)? {
@@ -127,11 +131,20 @@ struct ConnectProviderView: View {
     .scrollIndicatorsFlash(onAppear: true)
     .alert(MailCopy.switchTitle, isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
            presenting: switching) { _ in
-      Button("Cancel", role: .cancel) {}
-      Button("Use \(provider.appName)") { run(replacing: true) }
-        .accessibilityIdentifier("mail.confirmSwitch")
+      if let impact = switchImpact {
+        Button(MailCopy.keepOnSwitch("Use \(provider.appName)", impact)) { run(replacing: true) }
+          .keyboardShortcut(.defaultAction)
+          .accessibilityIdentifier("mail.confirmSwitch")
+        Button("Use \(provider.appName), remove them", role: .destructive) { run(replacing: true, removingOld: true) }
+          .accessibilityIdentifier("mail.confirmSwitch.remove")
+        Button("Cancel", role: .cancel) {}
+      } else {
+        Button("Cancel", role: .cancel) {}
+        Button("Use \(provider.appName)") { run(replacing: true) }
+          .accessibilityIdentifier("mail.confirmSwitch")
+      }
     } message: { old in
-      Text(MailCopy.switchMessage(from: old.provider, to: provider))
+      Text(MailCopy.switchMessage(from: old.provider, to: provider, impact: switchImpact))
     }
     .alert(MailCopy.takeoverTitle, isPresented: Binding(get: { takingOver != nil }, set: { if !$0 { takingOver = nil } }),
            presenting: takingOver) { _ in
@@ -141,6 +154,7 @@ struct ConnectProviderView: View {
     } message: { held in
       Text(MailCopy.takeoverMessage(from: held, to: provider))
     }
+    .mailSwitchQuestion(coordinator, asks: asksSwitch)
     // Setup moves on to the first scan; the profile's moment is Bank alerts' new row.
     .hHaptic(.success, trigger: connectedOutcome) { _, new in isSetup && new != nil }
   }
@@ -213,15 +227,21 @@ struct ConnectProviderView: View {
     if let held = coordinator.takesOver {
       takingOver = held
     } else if let old = coordinator.replaced(by: provider) {
-      switching = old
+      guard !askingImpact else { return }
+      askingImpact = true
+      Task {
+        switchImpact = await coordinator.mailbox.disconnectImpact(old.id)
+        askingImpact = false
+        switching = old
+      }
     } else {
       run(replacing: false)
     }
   }
 
-  private func run(replacing: Bool) {
+  private func run(replacing: Bool, removingOld: Bool = false) {
     Task {
-      await coordinator.connect(provider, replacing: replacing)
+      await coordinator.connect(provider, replacing: replacing, removingOld: removingOld)
       if case .connected(let id)? = coordinator.outcome { onConnected(id) }
     }
   }
@@ -231,7 +251,7 @@ struct ConnectProviderView: View {
   static func tone(_ failure: MailConnectFailure) -> InlineStatus.Tone {
     switch failure {
     case .alreadyConnected: .accent
-    case .offline, .takenByOtherIPhone, .cancelled: .warning
+    case .offline, .takenByOtherIPhone, .cancelled, .switchDeclined: .warning
     case .adminApprovalNeeded, .noMailbox, .failed: .error
     }
   }

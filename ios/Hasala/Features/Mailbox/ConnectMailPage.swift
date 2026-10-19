@@ -105,14 +105,14 @@ struct ConnectMailPage: View {
   /// read again. That holds when Bank alerts is made new in this screen's place, too.
   private func connected(_ id: String, _ mailbox: MailboxConnecting, _ context: MailConnectCoordinator.Context) {
     if context == .addMailbox {
-      app.say(MailCopy.added(provider))
+      app.say(coordinator?.addedLine ?? MailCopy.added(provider))
       MailboxMoment.hand(.added(mailboxID: id))
       Task {
         guard await mailbox.linkState() == .scanning else { return }
         for await _ in mailbox.firstScan() {}
       }
     } else {
-      app.say(MailCopy.signedInAgain(provider, nowReading: coordinator?.nowReading))
+      app.say(coordinator?.signedInAgainLine ?? MailCopy.signedInAgain(provider))
       MailboxMoment.hand(.signedInAgain(mailboxID: id))
     }
     if let i = app.router.profile.lastIndex(of: .bankAlerts) {
