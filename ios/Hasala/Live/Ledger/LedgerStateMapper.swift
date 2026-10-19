@@ -69,6 +69,7 @@ nonisolated enum LedgerStateMapper {
     for row in rows {
       txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
     }
+    markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
@@ -234,6 +235,25 @@ nonisolated enum LedgerStateMapper {
       reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) })
   }
 
+
+  static func samePurchaseRow(_ row: TxnRow) -> SamePurchase.Row {
+    SamePurchase.Row(
+      id: row.id, live: row.supersededBy == nil, unparsed: row.unparsed, archived: row.archived != nil,
+      manual: row.entryMethod == "manual" || row.provenance == "user", amountMinor: row.amountMinor, currency: row.currency,
+      amountHomeMinor: row.amountHomeMinor, direction: row.direction, bank: row.bank, last4: row.last4,
+      postedMs: row.postedMs, merchantKey: row.merchantKey, possibleDuplicateOf: row.possibleDuplicateOf,
+      duplicateDisposition: row.duplicateDisposition, heldCopy: row.heldCopy)
+  }
+
+  static func markSamePurchases(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], home: String) {
+    let pairs = SamePurchase.pairs(rows.map(samePurchaseRow), home: home)
+    guard !pairs.isEmpty else { return }
+    let index = Dictionary(txns.indices.map { (txns[$0].id, $0) }, uniquingKeysWith: { a, _ in a })
+    for p in pairs {
+      guard let i = index[p.home], index[p.foreign] != nil else { continue }
+      txns[i].samePurchase = SamePurchaseMatch(of: p.foreign, merchantMissing: p.merchantMissing)
+    }
+  }
 
   static func heldCopy(_ row: TxnRow, r: LedgerReader) throws -> HeldCopy? {
     guard row.heldCopy, let other = row.copyOf else { return nil }
