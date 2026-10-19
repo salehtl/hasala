@@ -157,6 +157,21 @@ struct SetupFlowTests: AccountSuite {
     #expect(lane.connectCalls == 2)
   }
 
+  @Test func aRetryInSetupKeepsAConfirmedSwitch() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.outlookNoMailbox = true
+    let m = model(s)
+    await m.continueWithBanks()
+    m.pickProvider(.outlook)
+    await m.coordinator(.outlook).connect(.outlook, replacing: true)
+    m.connectFailed(.outlook)
+    #expect(m.path == [.connect(.outlook), .connectError(.outlook)])
+    await m.retryConnect(.outlook)
+    #expect(lane.replacingCalls == [true, true])
+    #expect(m.path == [.connect(.outlook), .scan])
+  }
+
   /// A closed Google sign-in is not an error: the screen stays as it was.
   @Test func aClosedGoogleSignInChangesNothing() async throws {
     let mailbox = CountingMailbox(MockMailbox())

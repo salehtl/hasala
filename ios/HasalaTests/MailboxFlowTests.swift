@@ -140,6 +140,69 @@ struct MailboxFlowTests: AccountSuite {
     #expect(again.outcome == .connected(mailboxID: "outlook-1") && broken.signInCalls == 2)
   }
 
+  @Test func aRetryAfterAConfirmedSwitchStillReplaces() async {
+    let lane = mailbox([MockMailbox.gmail])
+    lane.holdOneLink()
+    lane.outlookNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    #expect(c.replaced(by: .outlook)?.id == "gmail-1")
+    await c.connect(.outlook, replacing: true)
+    #expect(c.errorScreen == .noMailbox(.outlook))
+    #expect(lane.mailboxes.map(\.id) == ["gmail-1"])
+    c.reset()
+    await c.retry(.outlook)
+    #expect(lane.replacingCalls == [true, true])
+    #expect(c.outcome == .connected(mailboxID: "outlook-1"))
+    #expect(lane.mailboxes.map(\.id) == ["outlook-1"])
+
+    let unconfirmed = mailbox([MockMailbox.gmail])
+    unconfirmed.holdOneLink()
+    let u = MailConnectCoordinator(mailbox: unconfirmed, context: .addMailbox)
+    await u.connect(.outlook)
+    await u.retry(.outlook)
+    #expect(unconfirmed.replacingCalls == [false, false])
+    #expect(u.outcome == .failed(.failed("Disconnect Gmail first, then connect Outlook.")))
+
+    let other = mailbox([MockMailbox.gmail])
+    other.holdOneLink()
+    other.outlookNoMailbox = true
+    let o = MailConnectCoordinator(mailbox: other, context: .addMailbox)
+    await o.connect(.outlook, replacing: true)
+    await o.retry(.gmail)
+    #expect(other.replacingCalls == [true, false])
+  }
+
+  @Test func aGoogleAccountWithNoGmailHasItsScreenAndAnotherAccountConnects() async {
+    let lane = mailbox()
+    lane.gmailNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.gmail)
+    #expect(c.outcome == .failed(.noMailbox(.gmail)))
+    #expect(c.errorScreen == .noMailbox(.gmail) && c.inlineMessage == nil && c.failedWithNoMailbox)
+    c.reset()
+    await c.retry(.gmail)
+    #expect(c.outcome == .connected(mailboxID: "gmail-1") && c.errorScreen == nil && !c.failedWithNoMailbox)
+  }
+
+  @Test func aSignInAgainWithNoMailboxIsHandedToTheErrorScreen() async {
+    let lane = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    lane.outlookNoMailbox = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await c.connect(.outlook)
+    #expect(c.failedWithNoMailbox)
+    MailConnectCoordinator.hand(c)
+    #expect(MailConnectCoordinator.handed(.gmail) == nil)
+    #expect(MailConnectCoordinator.handed(.outlook) === c)
+    MailConnectCoordinator.release()
+    #expect(MailConnectCoordinator.handed(.outlook) == nil)
+
+    let cancelled = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    cancelled.outlookCancelled = true
+    let k = MailConnectCoordinator(mailbox: cancelled, context: .signInAgain(mailboxID: "outlook-1"))
+    await k.connect(.outlook)
+    #expect(!k.failedWithNoMailbox && k.failureLine == "Microsoft sign-in didn't finish. Nothing changed.")
+  }
+
   @Test func theNoMailboxScreenSaysWhatToDo() {
     let copy = MailConnectErrorView.copy(.noMailbox(.outlook), .outlook)
     #expect(copy.title == "Outlook isn't connected.")
@@ -148,7 +211,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailConnectErrorView.otherAccountTitle(.outlook) == "Use another Microsoft account")
     let google = MailConnectErrorView.copy(.noMailbox(.gmail), .gmail)
     #expect(google.title == "Gmail isn't connected.")
-    #expect(!google.subtitle.contains("Outlook") && !google.subtitle.contains("Microsoft"))
+    #expect(google.subtitle == "This Google account has no Gmail. Sign in with the account your bank alerts go to. Nothing was connected and nothing was read.")
     #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
   }
 
@@ -359,7 +422,7 @@ struct MailboxFlowTests: AccountSuite {
       == "This happens after a password change, a long time signed out, or a work policy. No new Outlook alerts since Wed 7 Oct. Sign in again and the iPhone catches up. Nothing else changes.")
     // Live's no-mailbox halt: a sign-in the provider didn't end, said in the row's words.
     var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
-    noMailbox.note = "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    noMailbox.note = MailConnectFailure.noMailboxLine(.outlook)
     #expect(MailboxDetailPage.signInBody(noMailbox) == noMailbox.note)
     #expect(MailboxDetailPage.signInHeading(noMailbox) == "Sign in with another account")
     #expect(MailboxDetailPage.signInHeading(MockMailbox.needingSignIn(MockMailbox.outlook))
@@ -486,7 +549,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(broken.hue == .sand && broken.needsYou)
     // A sign-in the provider didn't end (live: no Outlook mailbox on that account) says why.
     var noMailbox = MockMailbox.needingSignIn(MockMailbox.outlook)
-    noMailbox.note = "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    noMailbox.note = MailConnectFailure.noMailboxLine(.outlook)
     let empty = MailboxesSummary(
       [noMailbox], health: working, offer: .signInAgain(mailboxID: "outlook-1", provider: .outlook))
     #expect(empty.title == "Sign in again" && empty.detail == noMailbox.note)

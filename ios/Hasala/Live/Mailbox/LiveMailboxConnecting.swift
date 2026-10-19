@@ -201,7 +201,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       if offer(phase: .halted, halt: halt, sampleLoaded: false, serverLink: .noLink, provider: provider) != nil {
         row.state = .needsSignIn
         // Not the provider ending access: the account has no mailbox to read.
-        if halt == .noMailbox { row.note = message(.noMailbox) }
+        if halt == .noMailbox { row.note = message(.noMailbox, provider: provider) }
       } else {
         row.note = "Reading your bank alerts stopped."
       }
@@ -407,10 +407,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
         for await event in lane.firstScan() {
           switch event {
           case .progress(let p):
-            last = Self.progress(p)
+            last = Self.progress(p, provider: lane.provider)
             continuation.yield(last)
           case .ended(let t):
-            continuation.yield(Self.ended(t, last: last))
+            continuation.yield(Self.ended(t, last: last, provider: lane.provider))
           }
         }
         // Profile stops saying "Importing" (it runs on after setup is left).
@@ -421,7 +421,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   }
 
   /// Where the first scan's foreground runs left it, with what they filed.
-  static func ended(_ t: MailboxLane.FirstScanTotals, last: ScanProgress) -> ScanProgress {
+  static func ended(_ t: MailboxLane.FirstScanTotals, last: ScanProgress, provider: MailProviderKind) -> ScanProgress {
     let summary = SortSummary(
       total: t.ops, byRules: t.byRules, byDictionary: t.byDictionary, byModel: t.byModel, toReview: t.toReview)
     switch t.phase {
@@ -429,7 +429,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
       return ScanProgress(phase: .finished, read: last.total, total: last.total, summary: summary)
     case .halted, .reconnectRequired, .otherDevice:
       return ScanProgress(
-        phase: .failed(stopped(t.haltedOn)), read: last.read, total: last.total, summary: summary)
+        phase: .failed(stopped(t.haltedOn, provider: provider)), read: last.read, total: last.total, summary: summary)
     case .unlinked, .scanning, .awaitingCards, .authoringBackfill:
       return ScanProgress(phase: .background, read: last.read, total: last.total, summary: summary)
     }
@@ -440,18 +440,18 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     try await rt.loadSample()
   }
 
-  static func progress(_ p: MailboxProgress) -> ScanProgress {
+  static func progress(_ p: MailboxProgress, provider: MailProviderKind) -> ScanProgress {
     switch p.stage {
     case .listing, .downloading: ScanProgress(phase: .downloading, read: p.done, total: p.total)
     case .authoring: ScanProgress(phase: .sorting, read: p.done, total: p.total)
     case .done: ScanProgress(phase: .finished, read: p.total, total: p.total)
-    case .failed(let code): ScanProgress(phase: .failed(stopped(code)), read: p.done, total: p.total)
+    case .failed(let code): ScanProgress(phase: .failed(stopped(code, provider: provider)), read: p.done, total: p.total)
     }
   }
 
   /// Why the first scan stopped, in words.
-  static func stopped(_ code: MailboxHaltCode?) -> String {
-    code == .noMailbox ? message(.noMailbox) : "Reading your bank alerts stopped. Try again."
+  static func stopped(_ code: MailboxHaltCode?, provider: MailProviderKind) -> String {
+    code == .noMailbox ? message(.noMailbox, provider: provider) : "Reading your bank alerts stopped. Try again."
   }
 
   /// Plain-language copy for a failed connect (spec 04 §7.11; content-free).
@@ -459,7 +459,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     switch f {
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
     case .permissionMissing: "Hasala needs permission to read your bank alerts. Try again and allow it."
-    case .noMailbox: "This Microsoft account has no Outlook mailbox. Connect the account your bank alerts go to."
+    case .noMailbox: MailConnectFailure.noMailboxLine(provider)
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
     case .mailboxInUse:
       "This \(provider.appName) address is connected to another Hasala account. Disconnect it there, or connect a different address."

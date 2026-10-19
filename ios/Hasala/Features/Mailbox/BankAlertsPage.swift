@@ -221,7 +221,11 @@ struct BankAlertsPage: View {
     signIn = attempt
     Task {
       await attempt.connect(provider)
-      if case .connected? = attempt.outcome {
+      if attempt.failedWithNoMailbox {
+        signIn = nil
+        MailConnectCoordinator.hand(attempt)
+        app.router.profile.append(.connectMail(provider))
+      } else if case .connected? = attempt.outcome {
         app.say(MailCopy.signedInAgain(provider))
         signIn = nil
         // The hero turns to Working; the haptic once it has.

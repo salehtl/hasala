@@ -39,12 +39,14 @@
     /// An Outlook sign-in is closed, or its permissions declined.
     var outlookCancelled = false
     var outlookNoMailbox = false
+    var gmailNoMailbox = false
     /// Every connect finds the mailbox already connected.
     var alreadyConnected = false
     /// Every connect finds no network.
     var offline = false
     /// Each `connect` call, whatever its outcome (tests: no second sign-in on Back).
     private(set) var connectCalls = 0
+    private(set) var replacingCalls: [Bool] = []
     /// Each `signInAgain` call.
     private(set) var signInCalls = 0
     private(set) var sampleLoaded = false
@@ -126,14 +128,11 @@
     @discardableResult
     func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
       connectCalls += 1
+      replacingCalls.append(replacing)
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
       if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
       if provider == .outlook, outlookCancelled { throw .cancelled }
-      if provider == .outlook, outlookNoMailbox {
-        outlookNoMailbox = false
-        throw .noMailbox(.outlook)
-      }
       if holdsOneLink {
         // One link, as live holds it: the same provider working is already connected; the
         // other provider's link goes only on a confirmed switch, and its row with it (the
@@ -141,6 +140,7 @@
         let live = mailboxes.filter { $0.state != .disconnected }
         if let i = mailboxes.firstIndex(where: { $0.provider == provider && $0.state == .needsSignIn }) {
           // The same provider's broken link: a new sign-in, as live's connect is then.
+          try failNoMailbox(provider)
           mailboxes[i].state = .connected
           mailboxes[i].meta = "Checked just now"
           return mailboxes[i].id
@@ -152,9 +152,11 @@
           guard replacing else {
             throw .failed("Disconnect \(other.provider.appName) first, then connect \(provider.appName).")
           }
+          try failNoMailbox(provider)
           mailboxes.removeAll { $0.id == other.id }
         }
       }
+      try failNoMailbox(provider)
       guard !alreadyConnected, let address = nextAddress(provider) else {
         throw .alreadyConnected(address: provider == .gmail ? Self.gmailAddress : Self.outlookAddress)
       }
@@ -176,16 +178,25 @@
       return id
     }
 
+    private func failNoMailbox(_ provider: MailProviderKind) throws(MailConnectFailure) {
+      switch provider {
+      case .outlook where outlookNoMailbox:
+        outlookNoMailbox = false
+      case .gmail where gmailNoMailbox:
+        gmailNoMailbox = false
+      default:
+        return
+      }
+      throw .noMailbox(provider)
+    }
+
     func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
       signInCalls += 1
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
       guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { throw .failed("That mailbox is gone.") }
       if mailboxes[i].provider == .outlook, outlookCancelled { throw .cancelled }
-      if mailboxes[i].provider == .outlook, outlookNoMailbox {
-        outlookNoMailbox = false
-        throw .noMailbox(.outlook)
-      }
+      try failNoMailbox(mailboxes[i].provider)
       // It picks up where it stopped: connected, checking from the last check.
       mailboxes[i].state = .connected
       mailboxes[i].meta = "Checked just now"

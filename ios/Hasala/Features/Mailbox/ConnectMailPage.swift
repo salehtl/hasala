@@ -29,7 +29,8 @@ struct ConnectMailPage: View {
     self.app = app
     self.provider = provider
     let context = Self.context(provider, offer: app.mailOffer)
-    _coordinator = State(initialValue: app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: context) })
+    let handed = MailConnectCoordinator.handed(provider)
+    _coordinator = State(initialValue: handed ?? app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: context) })
     _banks = State(initialValue: app.mailbox?.chosenBanks() ?? [])
   }
 
@@ -60,6 +61,7 @@ struct ConnectMailPage: View {
         }
       }
       .hAnimation(.stateSwap, value: coordinator.errorScreen)
+      .onAppear { MailConnectCoordinator.release() }
       #if HASALA_MOCKS
         // A Debug screen id that stands for "Continue with <provider>" (`MailLaunch`).
         .task { if !banks.isEmpty, MailLaunch.takeConnect(provider) { await run(coordinator, mailbox) } }
@@ -71,7 +73,10 @@ struct ConnectMailPage: View {
   /// screen, whose button shows the sign-in running.
   private func retry(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) {
     coordinator.reset()
-    Task { await run(coordinator, mailbox) }
+    Task {
+      await coordinator.retry(provider)
+      if case .connected(let id)? = coordinator.outcome { connected(id, mailbox, coordinator.context) }
+    }
   }
 
   private func run(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) async {

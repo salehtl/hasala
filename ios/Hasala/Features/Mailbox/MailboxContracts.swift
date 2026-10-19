@@ -54,12 +54,12 @@ enum MailConnectFailure: Error, Equatable {
   }
 
   static func noMailboxLine(_ provider: MailProviderKind) -> String {
-    let examples =
-      switch provider {
-      case .outlook: "you@outlook.com or you@hotmail.com"
-      case .gmail: "you@gmail.com"
-      }
-    return "This \(provider.company) account has no \(provider.appName) mailbox. Sign in with the account your bank alerts go to, such as \(examples)."
+    switch provider {
+    case .outlook:
+      "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com."
+    case .gmail:
+      "This Google account has no Gmail. Sign in with the account your bank alerts go to."
+    }
   }
 }
 

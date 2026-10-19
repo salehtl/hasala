@@ -38,6 +38,10 @@
         profile([.bankAlerts, .addMailbox, .connectMail(.outlook)])(graph)
       }),
       Screen("bankAlerts.signIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.signInNoMailbox", scenario: "outlookSignIn", prepare: { graph in
+        mock(graph)?.outlookNoMailbox = true
+        profile([.bankAlerts])(graph)
+      }),
       Screen("mail.add", scenario: "passkeyUser", prepare: profile([.bankAlerts, .addMailbox])),
       // Outlook needs a new sign-in: its row says so, and leads to its sign-in again.
       Screen("mail.add.signIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts, .addMailbox])),
@@ -63,6 +67,11 @@
         mock(graph)?.outlookNoMailbox = true
         MailLaunch.connectOnAppear = .outlook
         profile([.bankAlerts, .addMailbox, .connectMail(.outlook)])(graph)
+      }),
+      Screen("mail.add.errorNoMailboxGmail", scenario: "noMailbox", prepare: { graph in
+        mock(graph)?.gmailNoMailbox = true
+        MailLaunch.connectOnAppear = .gmail
+        profile([.bankAlerts, .addMailbox, .connectMail(.gmail)])(graph)
       }),
       Screen("mail.detail", scenario: "mailboxes2", prepare: profile([.bankAlerts, .mailbox("outlook-1")])),
       Screen("mail.detailSignIn", scenario: "outlookSignIn", prepare: profile([.bankAlerts, .mailbox("outlook-1")])),

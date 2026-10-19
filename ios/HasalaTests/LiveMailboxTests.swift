@@ -62,9 +62,14 @@ struct LiveMailboxTests {
   /// Main's `noMailboxIsSaidInWords`: the no-mailbox halt and failure in plain words, and
   /// Outlook's copy names personal Microsoft accounts.
   @Test func noMailboxIsSaidInWords() {
-    #expect(LiveMailboxConnecting.message(.noMailbox).contains("no Outlook mailbox"))
-    #expect(LiveMailboxConnecting.stopped(.noMailbox) == LiveMailboxConnecting.message(.noMailbox))
-    #expect(LiveMailboxConnecting.stopped(.gmail) == "Reading your bank alerts stopped. Try again.")
+    let outlook = "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com."
+    let gmail = "This Google account has no Gmail. Sign in with the account your bank alerts go to."
+    #expect(LiveMailboxConnecting.message(.noMailbox, provider: .outlook) == outlook)
+    #expect(LiveMailboxConnecting.message(.noMailbox, provider: .gmail) == gmail)
+    #expect(LiveMailboxConnecting.stopped(.noMailbox, provider: .outlook) == outlook)
+    #expect(LiveMailboxConnecting.stopped(.noMailbox, provider: .gmail) == gmail)
+    #expect(MailConnectFailure.noMailbox(.gmail).message(for: .gmail) == gmail)
+    #expect(LiveMailboxConnecting.stopped(.gmail, provider: .gmail) == "Reading your bank alerts stopped. Try again.")
     #expect(LiveMailboxConnecting.message(.google, provider: .outlook).contains("personal Microsoft accounts"))
     #expect(LiveMailboxConnecting.message(.offline, provider: .outlook).contains("Connect Outlook when"))
   }
@@ -275,7 +280,12 @@ struct LiveMailboxTests {
     #expect(row(.active)?.readElsewhere == false && row(.halted, halt: .noMailbox)?.readElsewhere == false)
     // No Outlook mailbox on the Microsoft account: a sign-in, in words that say why.
     #expect(row(.halted, halt: .noMailbox)?.state == .needsSignIn)
-    #expect(row(.halted, halt: .noMailbox)?.note == LiveMailboxConnecting.message(.noMailbox))
+    #expect(row(.halted, halt: .noMailbox)?.note == MailConnectFailure.noMailboxLine(.gmail))
+    let haltedOutlook = LiveMailboxConnecting.mailboxes(
+      phase: .halted, halt: .noMailbox, address: "maya.k@example.com", lastSuccessAtMs: nil, bankDomains: [],
+      provider: .outlook, nowMs: now
+    ).first
+    #expect(haltedOutlook?.note == MailConnectFailure.noMailboxLine(.outlook))
     #expect(row(.halted, halt: .gmail)?.note == nil)
     // An Outlook lane's row: its id and provider, a personal Microsoft account.
     let outlook = LiveMailboxConnecting.mailboxes(
@@ -335,7 +345,7 @@ struct LiveMailboxTests {
     #expect(fixable.title == "Sign in again" && fixable.needsYou)
     // No mailbox on that Microsoft account: the summary says so, not that access ended.
     let noMailbox = summary(.halted, halt: .noMailbox, health: .reconnect)
-    #expect(noMailbox.title == "Sign in again" && noMailbox.detail == LiveMailboxConnecting.message(.noMailbox))
+    #expect(noMailbox.title == "Sign in again" && noMailbox.detail == MailConnectFailure.noMailboxLine(.gmail))
     let elsewhere = summary(.otherDevice, halt: nil, health: .working)
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
   }

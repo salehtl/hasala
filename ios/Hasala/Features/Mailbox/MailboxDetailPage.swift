@@ -252,7 +252,11 @@ struct MailboxDetailPage: View {
     let policy = motion
     Task {
       await signIn.connect(provider)
-      if case .connected? = signIn.outcome {
+      if signIn.failedWithNoMailbox {
+        MailConnectCoordinator.hand(signIn)
+        self.signIn = app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: .signInAgain(mailboxID: mailboxID)) }
+        app.router.profile.append(.connectMail(provider))
+      } else if case .connected? = signIn.outcome {
         app.say(MailCopy.signedInAgain(provider))
         signIn.reset()
         // The page turns into the working layout; the haptic once it has.

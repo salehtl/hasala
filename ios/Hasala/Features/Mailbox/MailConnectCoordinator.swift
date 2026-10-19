@@ -43,6 +43,7 @@ final class MailConnectCoordinator {
   private(set) var outcome: Outcome?
   /// The provider of the last attempt (the error screens name it).
   private(set) var provider: MailProviderKind?
+  private(set) var replacing = false
 
   init(mailbox: MailboxConnecting, context: Context) {
     self.mailbox = mailbox
@@ -58,6 +59,7 @@ final class MailConnectCoordinator {
     defer { busy = false }
     outcome = nil
     self.provider = provider
+    self.replacing = replacing
     do {
       if case .signInAgain(let id) = context {
         try await mailbox.signInAgain(id)
@@ -71,6 +73,30 @@ final class MailConnectCoordinator {
     } catch {
       outcome = .failed(error)
     }
+  }
+
+  func retry(_ provider: MailProviderKind) async {
+    await connect(provider, replacing: self.provider == provider && replacing)
+  }
+
+  private static var pendingHand: MailConnectCoordinator?
+
+  static func hand(_ coordinator: MailConnectCoordinator) {
+    pendingHand = coordinator
+  }
+
+  static func handed(_ provider: MailProviderKind) -> MailConnectCoordinator? {
+    guard let c = pendingHand, c.provider == provider else { return nil }
+    return c
+  }
+
+  static func release() {
+    pendingHand = nil
+  }
+
+  var failedWithNoMailbox: Bool {
+    if case .failed(.noMailbox)? = outcome { return true }
+    return false
   }
 
   /// The mailbox a connect of `provider` here would replace, which the screen confirms

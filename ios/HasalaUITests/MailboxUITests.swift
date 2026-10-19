@@ -130,6 +130,45 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(el(app, "mail.choose.outlook").waitForExistence(timeout: uiWait), "the providers did not come back")
   }
 
+  @MainActor
+  func testGmailWithNoMailbox() throws {
+    var app = launch(scenario: nil, screen: "mail.add.errorNoMailboxGmail")
+    XCTAssertTrue(app.staticTexts["Gmail isn't connected."].waitForExistence(timeout: 15))
+    XCTAssertTrue(says(app, "This Google account has no Gmail. Sign in with the account your bank alerts go to."))
+    let other = el(app, "mail.error.retry")
+    XCTAssertEqual(other.label, "Use another Google account")
+    XCTAssertEqual(el(app, "mail.error.chooseDifferent").label, "Alerts go somewhere else? Choose a different email")
+    attach(app, "Google account has no Gmail")
+    try audit(app)
+    other.tap()
+    assertMailboxAdded(app, "gmail-1")
+
+    app = launch(scenario: nil, screen: "mail.add.errorNoMailboxGmail", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.error.retry").waitForExistence(timeout: 15))
+    attach(app, "Google account has no Gmail · AX3")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testSignInAgainFromTheHeroWithNoMailbox() throws {
+    let app = launch(scenario: nil, screen: "bankAlerts.signInNoMailbox")
+    let button = el(app, "bankAlerts.signInAgain")
+    XCTAssertTrue(button.waitForExistence(timeout: 15))
+    button.tap()
+    XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 10))
+    XCTAssertTrue(says(app, "This Microsoft account has no Outlook mailbox."))
+    let other = el(app, "mail.error.retry")
+    XCTAssertEqual(other.label, "Use another Microsoft account")
+    attach(app, "Sign in again · Microsoft account has no mailbox")
+    try audit(app)
+    other.tap()
+    XCTAssertTrue(app.staticTexts["Outlook connected again. Catching up from the last check."]
+      .waitForExistence(timeout: 10))
+    let status = el(app, "bankAlerts.status")
+    XCTAssertTrue(status.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(status.waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+  }
+
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue
   /// with Microsoft"; signed in again, the hero says it works.
   @MainActor
