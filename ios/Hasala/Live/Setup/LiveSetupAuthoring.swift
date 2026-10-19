@@ -102,6 +102,30 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     }
   }
 
+  func requestBank(slug: String, senderDomain: String?) async throws(SetupFailure) {
+    let rt = try open()
+    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    do {
+      try await rt.env.client.bankRequest(bank: slug, senderDomain: senderDomain, bearer: token)
+    } catch {
+      if case .transport = error { throw .offline }
+      throw .failed("Couldn't send that just now. Try again later.")
+    }
+  }
+
+  func bankRequests() async throws(SetupFailure) -> BankRequestsSnapshot {
+    let rt = try open()
+    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    let list: BankRequestsList
+    do {
+      list = try await rt.env.client.bankRequests(bearer: token)
+    } catch {
+      if case .transport = error { throw .offline }
+      throw .failed("Couldn't check your bank requests just now.")
+    }
+    return BankRequestsSnapshot(list)
+  }
+
   func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure) {
     let rt = try open()
     let now = rt.context.clock.nowMs()
@@ -137,5 +161,13 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
       throw .failed("Couldn't save that. Try again.")
     }
     await rt.store.reload()
+  }
+}
+
+extension BankRequestsSnapshot {
+  init(_ list: BankRequestsList) {
+    self.init(
+      requests: list.requests.map { RequestedBank(bank: $0.bank, name: $0.name, state: RequestedBankState(wire: $0.state)) },
+      catalog: list.catalog.map { BankCatalogChoice(slug: $0.bank, name: $0.name, state: RequestedBankState(wire: $0.state)) })
   }
 }

@@ -122,6 +122,8 @@ protocol SetupAuthoring: AnyObject {
   func setBanks(_ banks: [SupportedBank]) async throws(SetupFailure)
   /// "Another bank? Tell us": a bank request to the operator (`07` P4). Content: the name only.
   func requestBank(_ name: String) async throws(SetupFailure)
+  func requestBank(slug: String, senderDomain: String?) async throws(SetupFailure)
+  func bankRequests() async throws(SetupFailure) -> BankRequestsSnapshot
   /// The income (`income_source_set`) and plan (`budget_split_set`, `budget_set`) in one
   /// enqueue; `income` nil when skipped, `plan` nil when skipped.
   func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure)

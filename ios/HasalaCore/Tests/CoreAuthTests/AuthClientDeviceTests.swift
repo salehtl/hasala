@@ -55,6 +55,19 @@ struct AuthClientDeviceTests {
     #expect(t.last?.method == .post && t.last?.path == "/api/v1/bank-requests" && t.body == #"{"bank":"adcb","source":"app"}"#)
     _ = try await c.bankRequest(bank: "other", otherBank: "Mashreq Neo", bearer: "tok")
     #expect(t.body == #"{"bank":"other","otherBank":"Mashreq Neo","source":"app"}"#)
+    _ = try await c.bankRequest(bank: "fab", senderDomain: "alerts.example.ae", bearer: "tok")
+    #expect(t.body == #"{"bank":"fab","senderDomain":"alerts.example.ae","source":"app"}"#)
+  }
+
+  @Test("GET /bank-requests: the account's requests and the catalog")
+  func bankRequestsList() async throws {
+    let t = Recorder(APIResponse(status: 200, body: Data(#"""
+      {"requests":[{"bank":"fab","name":"First Abu Dhabi Bank","state":"collecting_samples","requestedAt":"2026-10-19T10:00:00Z"}],
+       "catalog":[{"bank":"enbd","name":"Emirates NBD","state":"supported"}]}
+      """#.utf8)))
+    let list = try await AuthClient(transport: t).bankRequests(bearer: "tok")
+    #expect(t.last?.method == .get && t.last?.path == "/api/v1/bank-requests")
+    #expect(list.requests.first?.state == "collecting_samples" && list.catalog.first?.bank == "enbd")
   }
 
   @Test("#76 PUT /account/display-name {display_name}; a refusal keeps the server's code")

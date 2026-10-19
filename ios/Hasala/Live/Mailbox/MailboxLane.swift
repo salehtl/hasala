@@ -170,6 +170,7 @@ nonisolated final class MailboxLane: Sendable {
     await engine.importSender(typed)
   }
   func viewEmail(messageID: String) async -> EmailView { await engine.viewEmail(messageID: messageID) }
+  func probeSenders(_ domains: [String]) async -> SenderProbeResult { await engine.probeSenders(domains) }
 
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
     await engine.runCycle(trigger: trigger, deadlineMs: deadlineMs)
