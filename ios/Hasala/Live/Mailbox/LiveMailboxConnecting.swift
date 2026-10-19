@@ -347,7 +347,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
     rt.activate(provider)
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)
-    if let oldPlan, oldPlan.total > 0 { retired = await lane.retire(oldPlan) }
+    if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
     await rt.refreshMailbox()
     return MailLinked(
       mailboxID: Self.mailboxID(provider), nowReading: nowReading, removal: Self.removal(retired, old: oldName))
@@ -370,8 +370,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   static func question(_ q: MailboxSwitchQuestion, provider: MailProviderKind) -> MailSwitchQuestion {
     MailSwitchQuestion(
       provider: provider, oldAddress: q.oldAddress, newAddress: q.newAddress,
-      impact: q.transactions > 0 ? MailboxDisconnectImpact(transactions: q.transactions, edited: q.edited) : nil,
-      oldHasNoMailbox: q.oldHasNoMailbox)
+      impact: q.transactions.flatMap { $0 > 0 ? MailboxDisconnectImpact(transactions: $0, edited: q.edited) : nil },
+      oldHasNoMailbox: q.oldHasNoMailbox, countUnknown: q.transactions == nil)
   }
 
   static func retired(_ result: ConnectResult) -> MailboxRetireOutcome? {

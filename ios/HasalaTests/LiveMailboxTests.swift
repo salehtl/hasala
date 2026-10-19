@@ -113,6 +113,12 @@ struct LiveMailboxTests {
     none.oldHasNoMailbox = true
     #expect(LiveMailboxConnecting.question(none, provider: .outlook).impact == nil)
     #expect(LiveMailboxConnecting.question(none, provider: .outlook).oldHasNoMailbox)
+    #expect(!LiveMailboxConnecting.question(none, provider: .outlook).countUnknown)
+    var unknown = core
+    unknown.transactions = nil
+    let mapped = LiveMailboxConnecting.question(unknown, provider: .gmail)
+    #expect(mapped.impact == nil && mapped.countUnknown && mapped.offersRemove)
+    #expect(LiveMailboxConnecting.removal(.removed(nil), old: "maya@example.com") == .removed(nil))
 
     let seen = Mutex<[MailSwitchQuestion]>([])
     for (answer, expected) in [(MailSwitchChoice.keep, MailboxSwitchChoice.keep), (.remove, .remove), (.cancel, .cancel)] {

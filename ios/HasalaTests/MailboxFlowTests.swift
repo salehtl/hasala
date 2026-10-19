@@ -2,6 +2,7 @@ import Foundation
 import HasalaDesign
 import HasalaModels
 import Testing
+import UIKit
 
 @testable import Hasala
 
@@ -80,6 +81,7 @@ struct MailboxFlowTests: AccountSuite {
   func answering(
     _ c: MailConnectCoordinator, _ choice: MailSwitchChoice, _ attempt: @escaping @MainActor () async -> Void
   ) async -> MailSwitchQuestion? {
+    if c.presenters == 0 { c.attachPresenter() }
     let task = Task { await attempt() }
     var asked: MailSwitchQuestion?
     for _ in 0..<2_000 {
@@ -159,6 +161,7 @@ struct MailboxFlowTests: AccountSuite {
   @Test func aQuestionLeftOpenIsAnsweredCancel() async {
     let lane = otherAddress()
     let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    c.attachPresenter()
     let task = Task { await c.connect(.outlook) }
     while c.question == nil { await Task.yield() }
     let next = Task { await c.ask(MailSwitchQuestion(provider: .outlook, oldAddress: "a", newAddress: "b")) }
@@ -166,6 +169,47 @@ struct MailboxFlowTests: AccountSuite {
     #expect(c.outcome == nil && lane.mailboxes.first?.address == "maya.k@example.com")
     c.answer(.keep)
     #expect(await next.value == .keep && c.question == nil)
+  }
+
+  @Test func aQuestionWithNoPresenterIsAnsweredCancelAtOnce() async {
+    let lane = otherAddress()
+    let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await c.connect(.outlook)
+    #expect(lane.questions.count == 1 && c.question == nil && c.outcome == nil)
+    #expect(lane.mailboxes.first?.address == "maya.k@example.com" && lane.mailboxes.first?.state == .needsSignIn)
+    #expect(lane.removed.isEmpty && lane.imported["outlook-1"]?.transactions == 12)
+  }
+
+  @Test func leavingTheForegroundOrThePresenterAnswersCancel() async {
+    for leave in [0, 1] {
+      let lane = otherAddress()
+      let c = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+      c.attachPresenter()
+      let task = Task { await c.connect(.outlook) }
+      for _ in 0..<2_000 where c.question == nil { try? await Task.sleep(for: .milliseconds(1)) }
+      #expect(c.question != nil)
+      if leave == 0 {
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+      } else {
+        c.detachPresenter()
+      }
+      await task.value
+      #expect(c.question == nil && c.outcome == nil)
+      #expect(lane.mailboxes.first?.address == "maya.k@example.com" && lane.mailboxes.first?.state == .needsSignIn)
+      #expect(lane.removed.isEmpty)
+    }
+  }
+
+  @Test func anUnknownCountOffersRemoveWithoutANumber() {
+    let q = MailSwitchQuestion(
+      provider: .gmail, oldAddress: "maya@example.com", newAddress: "maya.home@example.com", oldHasNoMailbox: true,
+      countUnknown: true)
+    #expect(q.offersRemove)
+    #expect(MailCopy.switchAddressMessage(q)
+      == "maya@example.com has no mailbox Hasala can read. Switch to maya.home@example.com? Keep the transactions from maya@example.com, or remove them from your totals.")
+    #expect(!MailSwitchQuestion(provider: .gmail, oldAddress: "a", newAddress: "b").offersRemove)
+    #expect(MailCopy.signedInAgain(.gmail, nowReading: "maya.home@example.com", removal: .removed(nil))
+      == "Now reading maya.home@example.com. The old transactions were removed.")
   }
 
   @Test func anotherAddressWithNothingImportedOffersOnlyTheSwitch() async {
@@ -191,7 +235,7 @@ struct MailboxFlowTests: AccountSuite {
       provider: .gmail, oldAddress: "maya@example.com", newAddress: "maya.home@example.com", impact: impact)
     #expect(MailCopy.switchAddressTitle(q) == "You signed in as maya.home@example.com.")
     #expect(MailCopy.switchAddressMessage(q)
-      == "Hasala reads maya@example.com. Switch to maya.home@example.com? It brought in 12 transactions. Keep them, or remove them from your totals. Removing also takes the 2 you changed.")
+      == "Hasala reads maya@example.com. Switch to maya.home@example.com? maya@example.com brought in 12 transactions. Keep them, or remove them from your totals. Removing also takes the 2 you changed.")
     var none = q
     none.impact = nil
     #expect(MailCopy.switchAddressMessage(none) == "Hasala reads maya@example.com. Switch to maya.home@example.com?")
@@ -199,7 +243,7 @@ struct MailboxFlowTests: AccountSuite {
     halted.oldHasNoMailbox = true
     halted.impact = MailboxDisconnectImpact(transactions: 1, edited: 0)
     #expect(MailCopy.switchAddressMessage(halted)
-      == "maya@example.com has no mailbox Hasala can read, so Hasala reads maya.home@example.com instead. It brought in 1 transaction. Keep them, or remove them from your totals.")
+      == "maya@example.com has no mailbox Hasala can read. Switch to maya.home@example.com? maya@example.com brought in 1 transaction. Keep them, or remove them from your totals.")
     #expect(MailCopy.keepOnSwitch("Switch", impact) == "Switch, keep the 12 transactions")
     #expect(MailCopy.keepOnSwitch("Use Outlook", MailboxDisconnectImpact(transactions: 1, edited: 0))
       == "Use Outlook, keep the 1 transaction")

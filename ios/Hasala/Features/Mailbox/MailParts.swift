@@ -50,7 +50,8 @@ enum MailCopy {
   static func with(_ line: String, _ removal: MailSwitchRemoval?) -> String {
     switch removal {
     case nil: line
-    case .removed(let n)?: "\(line) \(removed(n))"
+    case .removed(let n?)?: "\(line) \(removed(n))"
+    case .removed(nil)?: "\(line) The old transactions were removed."
     case .failed(let old)?: "\(line) The transactions from \(old) couldn't be removed. They stay."
     }
   }
@@ -59,9 +60,9 @@ enum MailCopy {
     n == 1 ? "1 transaction removed." : "\(n) transactions removed."
   }
 
-  static func impactLines(_ impact: MailboxDisconnectImpact) -> [String] {
+  static func impactLines(_ impact: MailboxDisconnectImpact, from source: String = "It") -> [String] {
     let count = impact.transactions == 1 ? "1 transaction" : "\(impact.transactions) transactions"
-    var lines = ["It brought in \(count). Keep them, or remove them from your totals."]
+    var lines = ["\(source) brought in \(count). Keep them, or remove them from your totals."]
     if impact.edited > 0 {
       lines.append(impact.edited == 1 ? "Removing also takes the 1 you changed." : "Removing also takes the \(impact.edited) you changed.")
     }
@@ -74,9 +75,15 @@ enum MailCopy {
 
   static func switchAddressMessage(_ q: MailSwitchQuestion) -> String {
     let lead = q.oldHasNoMailbox
-      ? "\(q.oldAddress) has no mailbox Hasala can read, so Hasala reads \(q.newAddress) instead."
+      ? "\(q.oldAddress) has no mailbox Hasala can read. Switch to \(q.newAddress)?"
       : "Hasala reads \(q.oldAddress). Switch to \(q.newAddress)?"
-    return ([lead] + (q.impact.map(impactLines) ?? [])).joined(separator: " ")
+    var lines = [lead]
+    if let impact = q.impact {
+      lines += impactLines(impact, from: q.oldAddress)
+    } else if q.countUnknown {
+      lines.append("Keep the transactions from \(q.oldAddress), or remove them from your totals.")
+    }
+    return lines.joined(separator: " ")
   }
 
   static func keepOnSwitch(_ lead: String, _ impact: MailboxDisconnectImpact) -> String {
@@ -605,6 +612,17 @@ struct BankAlertsBankRow: View {
 private struct MailSwitchQuestionAlert: ViewModifier {
   let coordinator: MailConnectCoordinator?
   let asks: Bool
+  @State private var shown = false
+  @State private var attached: MailConnectCoordinator?
+  @Environment(\.scenePhase) private var scenePhase
+
+  private func sync() {
+    let wanted = shown && asks ? coordinator : nil
+    guard attached !== wanted else { return }
+    attached?.detachPresenter()
+    wanted?.attachPresenter()
+    attached = wanted
+  }
 
   func body(content: Content) -> some View {
     let question = asks ? coordinator?.question : nil
@@ -613,8 +631,10 @@ private struct MailSwitchQuestionAlert: ViewModifier {
         question.map(MailCopy.switchAddressTitle) ?? "",
         isPresented: Binding(get: { question != nil }, set: { _ in }), presenting: question
       ) { q in
-        if let impact = q.impact {
-          Button(MailCopy.keepOnSwitch("Switch", impact)) { coordinator?.answer(.keep) }
+        if q.offersRemove {
+          Button(q.impact.map { MailCopy.keepOnSwitch("Switch", $0) } ?? "Switch, keep its transactions") {
+            coordinator?.answer(.keep)
+          }
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("mail.switch.keep")
           Button("Switch, remove them", role: .destructive) { coordinator?.answer(.remove) }
@@ -629,8 +649,18 @@ private struct MailSwitchQuestionAlert: ViewModifier {
       } message: { q in
         Text(MailCopy.switchAddressMessage(q))
       }
+      .onAppear {
+        shown = true
+        sync()
+      }
       .onDisappear {
-        if asks, coordinator?.question != nil { coordinator?.answer(.cancel) }
+        shown = false
+        sync()
+      }
+      .onChange(of: coordinator.map(ObjectIdentifier.init)) { sync() }
+      .onChange(of: asks) { sync() }
+      .onChange(of: scenePhase) { _, phase in
+        if phase != .active { attached?.leftForeground() }
       }
   }
 }

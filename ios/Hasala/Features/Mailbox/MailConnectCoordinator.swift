@@ -1,5 +1,6 @@
 import HasalaModels
 import Observation
+import UIKit
 
 /// One connect attempt, for setup's email step, Add a mailbox and Sign in again (plan
 /// B4.3): it runs the provider's sign-in through `MailboxConnecting` and says how it went.
@@ -48,12 +49,36 @@ final class MailConnectCoordinator {
   private(set) var linked: MailLinked?
   private(set) var question: MailSwitchQuestion?
   @ObservationIgnored private var answering: CheckedContinuation<MailSwitchChoice, Never>?
+  @ObservationIgnored private(set) var presenters = 0
+  @ObservationIgnored private var resigning: NSObjectProtocol?
 
   var nowReading: String? { linked?.nowReading }
 
   init(mailbox: MailboxConnecting, context: Context) {
     self.mailbox = mailbox
     self.context = context
+    resigning = NotificationCenter.default.addObserver(
+      forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.leftForeground() }
+    }
+  }
+
+  isolated deinit {
+    if let resigning { NotificationCenter.default.removeObserver(resigning) }
+  }
+
+  func attachPresenter() {
+    presenters += 1
+  }
+
+  func detachPresenter() {
+    presenters = max(0, presenters - 1)
+    if presenters == 0 { answer(.cancel) }
+  }
+
+  func leftForeground() {
+    if question != nil { answer(.cancel) }
   }
 
   /// Runs the sign-in (or the sign-in again). A second tap while one runs does nothing.
@@ -96,6 +121,7 @@ final class MailConnectCoordinator {
 
   func ask(_ question: MailSwitchQuestion) async -> MailSwitchChoice {
     answer(.cancel)
+    guard presenters > 0, UIApplication.shared.applicationState != .background else { return .cancel }
     return await withCheckedContinuation { continuation in
       answering = continuation
       self.question = question
@@ -155,6 +181,12 @@ final class MailConnectCoordinator {
   var signedInAgainLine: String? {
     guard case .connected? = outcome, let provider else { return nil }
     return MailCopy.signedInAgain(provider, nowReading: nowReading, removal: linked?.removal)
+  }
+
+  func takeRemovalFailure() -> String? {
+    guard case .failed? = linked?.removal, let line = addedLine else { return nil }
+    linked?.removal = nil
+    return line
   }
 
   var addedLine: String? {

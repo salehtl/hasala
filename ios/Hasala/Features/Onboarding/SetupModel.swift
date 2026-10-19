@@ -421,6 +421,7 @@ final class SetupModel {
     } else {
       go(scanTask != nil ? .scan : .income)
     }
+    if let line = coordinators[provider]?.takeRemovalFailure() { failure = .failed(line) }
   }
 
   /// A connect that didn't happen: the two the design draws a screen for (an admin's

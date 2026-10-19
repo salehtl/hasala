@@ -245,6 +245,31 @@ final class Snapshot<T: Sendable>: @unchecked Sendable {
     #expect(await rig.ledger.retired.map(\.grantID) == [oldGrant])
   }
 
+  @Test func anUnknownCountAlwaysAsksAndRemoveStillRetires() async throws {
+    let rig = Rig()
+    try await haltedOnNoMailbox(rig, total: 0)
+    let unknown = MailboxRetirePlan(grantID: oldGrant, provider: "gmail", legacy: true, total: 0, edited: 0, countKnown: false)
+    await rig.ledger.setPlan(unknown)
+    let declined = SwitchAsks(.cancel)
+    #expect(await connect(rig, declined) == .declined)
+    #expect(declined.questions == [
+      MailboxSwitchQuestion(oldAddress: old, newAddress: other, transactions: nil, edited: 0, oldHasNoMailbox: true)
+    ])
+    #expect(await rig.state().address == old)
+    #expect(await connect(rig, SwitchAsks(.remove)) == .connected(address: other, anotherAddress: true, retired: .removed(nil)))
+    #expect(await rig.ledger.retired == [unknown])
+  }
+
+  @Test func aDeclinedSwitchFreesTheLaneForTheNextCycle() async throws {
+    let rig = Rig()
+    await signedOutWithImports(rig)
+    #expect(await connect(rig, SwitchAsks(.cancel)) == .declined)
+    let report = await rig.engine.runCycle(trigger: .launch)
+    #expect(report.phase == .reconnectRequired)
+    #expect(await rig.engine.disconnect(removing: nil) == .disconnected)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+
   @Test func aProviderSwitchAsksNothingHere() async throws {
     let rig = Rig()
     await signedOutWithImports(rig)

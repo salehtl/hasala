@@ -145,6 +145,9 @@ struct MailSwitchQuestion: Equatable, Sendable {
   var newAddress: String
   var impact: MailboxDisconnectImpact?
   var oldHasNoMailbox = false
+  var countUnknown = false
+
+  var offersRemove: Bool { impact != nil || countUnknown }
 }
 
 enum MailSwitchChoice: Equatable, Sendable {
@@ -154,7 +157,7 @@ enum MailSwitchChoice: Equatable, Sendable {
 typealias MailSwitchAsk = @MainActor @Sendable (MailSwitchQuestion) async -> MailSwitchChoice
 
 enum MailSwitchRemoval: Equatable, Sendable {
-  case removed(Int)
+  case removed(Int?)
   case failed(from: String)
 }
 

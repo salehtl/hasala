@@ -181,7 +181,7 @@ final class MailboxUITests: XCTestCase {
       .matching(NSPredicate(format: "label BEGINSWITH %@", "Hasala reads maya.k@example.com. Switch to maya.other@example.com?"))
       .firstMatch.exists)
     XCTAssertTrue(alert.descendants(matching: .any)
-      .matching(NSPredicate(format: "label CONTAINS %@", "It brought in 12 transactions.")).firstMatch.exists)
+      .matching(NSPredicate(format: "label CONTAINS %@", "maya.k@example.com brought in 12 transactions.")).firstMatch.exists)
     XCTAssertTrue(alert.buttons["Switch, remove them"].firstMatch.exists)
     attach(app, "Sign in again · another address")
     alert.buttons["Try again"].firstMatch.tap()

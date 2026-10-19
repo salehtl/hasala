@@ -151,18 +151,18 @@ public enum ConnectResult: Sendable, Equatable {
 }
 
 public enum MailboxRetireOutcome: Sendable, Equatable {
-  case removed(Int)
+  case removed(Int?)
   case failed
 }
 
 public struct MailboxSwitchQuestion: Sendable, Equatable {
   public var oldAddress: String
   public var newAddress: String
-  public var transactions: Int
+  public var transactions: Int?
   public var edited: Int
   public var oldHasNoMailbox: Bool
 
-  public init(oldAddress: String, newAddress: String, transactions: Int, edited: Int, oldHasNoMailbox: Bool) {
+  public init(oldAddress: String, newAddress: String, transactions: Int?, edited: Int, oldHasNoMailbox: Bool) {
     self.oldAddress = oldAddress
     self.newAddress = newAddress
     self.transactions = transactions
@@ -411,14 +411,15 @@ public actor MailboxEngine {
     if otherMailbox, let old = stored {
       let plan = await ledger.retirePlan(grantID: self.grant(old), provider: provider.id.rawValue)
       let noMailbox = old.phase == .halted && old.haltedOn == .noMailbox
-      if !noMailbox || plan.total > 0 {
+      let imported = plan.countKnown ? plan.total : nil
+      if !noMailbox || imported != 0 {
         let question = MailboxSwitchQuestion(
-          oldAddress: old.address ?? "", newAddress: claims.email ?? "", transactions: plan.total, edited: plan.edited,
+          oldAddress: old.address ?? "", newAddress: claims.email ?? "", transactions: imported, edited: plan.edited,
           oldHasNoMailbox: noMailbox)
         switch await confirm?(question) ?? .cancel {
         case .cancel: return .declined
         case .keep: break
-        case .remove: retiring = plan.total > 0 ? plan : nil
+        case .remove: retiring = imported == 0 ? nil : plan
         }
       }
     }
@@ -525,7 +526,7 @@ public actor MailboxEngine {
     guard await disconnect() else { return .failed }
     guard let plan else { return .disconnected }
     switch await retire(plan) {
-    case .removed(let n): return .removed(n)
+    case .removed(let n): return .removed(n ?? 0)
     case .failed: return .disconnectedRemoveFailed
     }
   }
@@ -537,7 +538,7 @@ public actor MailboxEngine {
       return .failed
     }
     _ = await ledger.flush()
-    return .removed(plan.total)
+    return .removed(plan.countKnown ? plan.total : nil)
   }
 
   public func disconnect() async -> Bool {

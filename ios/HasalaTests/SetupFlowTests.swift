@@ -172,6 +172,22 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.path == [.connect(.outlook), .scan])
   }
 
+  @Test func aRemoveThatFailedDuringASwitchInSetupIsSaid() async throws {
+    let lane = MockMailbox(mailboxes: [MockMailbox.gmail])
+    lane.connectDelay = .zero
+    lane.step = .milliseconds(1)
+    lane.holdOneLink()
+    lane.switchRemoveFails = true
+    let m = model(services(with: lane))
+    await m.continueWithBanks()
+    m.pickProvider(.outlook)
+    await m.coordinator(.outlook).connect(.outlook, replacing: true, removingOld: true)
+    m.continueFromEmail(.outlook)
+    #expect(m.failure == .failed(
+      "Outlook connected. Checking for alerts. The transactions from maya@example.com couldn't be removed. They stay."))
+    #expect(m.coordinator(.outlook).takeRemovalFailure() == nil)
+  }
+
   /// A closed Google sign-in is not an error: the screen stays as it was.
   @Test func aClosedGoogleSignInChangesNothing() async throws {
     let mailbox = CountingMailbox(MockMailbox())
