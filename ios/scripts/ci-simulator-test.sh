@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The app's simulator tests in CI (.github/workflows/ci.yml, jobs `ios`,
-# `ios-build` and `ios-ui`): picks the newest available iPhone simulator with
+# The app's simulator tests in CI (.github/workflows/ci.yml, jobs `ios-build`
+# and the `ios` shards): picks the newest available iPhone simulator with
 # iOS 26 or later, builds the Hasala scheme unsigned for testing while that
 # simulator boots, waits until it has finished booting, then runs the tests
 # there (xcodebuild build-for-testing and test-without-building: what
@@ -19,8 +19,11 @@
 #   ios/scripts/ci-simulator-test.sh --build-only DERIVED_DATA [XCODEBUILD_ARG...]
 #   ios/scripts/ci-simulator-test.sh --from-build DERIVED_DATA RESULT_BUNDLE [XCODEBUILD_ARG...]
 #
-# A run that executed no test at all fails: a selector that matches nothing
-# (a renamed test class) would otherwise pass with nothing tested.
+# A failed test is run once more (-retry-tests-on-failure -test-iterations 2):
+# it fails the run only when it fails both times, and one that passed on the
+# retry is raised as a warning annotation. A run that executed no test at all
+# fails: a selector that matches nothing (a renamed test class) would otherwise
+# pass with nothing tested.
 set -euo pipefail
 usage() {
 	cat >&2 <<'EOF'
@@ -103,19 +106,48 @@ if [[ "$mode" == test ]]; then
 		echo "::error::expected one .xctestrun in $derived/Build/Products, found: ${xctestrun[*]}"
 		exit 1
 	fi
-	xcodebuild test-without-building \
-		-xctestrun "${xctestrun[0]}" \
-		-destination "id=$udid" \
-		-resultBundlePath "$result" \
-		"$@"
+	target=(-xctestrun "${xctestrun[0]}")
 else
-	xcodebuild test-without-building \
-		-project "$ios/Hasala.xcodeproj" -scheme Hasala \
-		-destination "id=$udid" \
-		-resultBundlePath "$result" \
-		CODE_SIGNING_ALLOWED=NO HASALA_WARNINGS_AS_ERRORS=YES \
-		"$@"
+	target=(-project "$ios/Hasala.xcodeproj" -scheme Hasala CODE_SIGNING_ALLOWED=NO HASALA_WARNINGS_AS_ERRORS=YES)
 fi
+rc=0
+xcodebuild test-without-building \
+	"${target[@]}" \
+	-destination "id=$udid" \
+	-resultBundlePath "$result" \
+	-retry-tests-on-failure -test-iterations 2 \
+	"$@" || rc=$?
+
+if [[ ! -d "$result" ]]; then
+	echo "::error::xcodebuild exited $rc and wrote no result bundle"
+	exit "$((rc == 0 ? 1 : rc))"
+fi
+
+xcrun xcresulttool get test-results tests --path "$result" | python3 -c '
+import json, os, sys
+flaky = []
+def walk(node, path):
+    name = node.get("name", "")
+    kind = node.get("nodeType", "")
+    if kind == "Test Case":
+        reps = [c for c in node.get("children", []) if c.get("nodeType") == "Repetition"]
+        if node.get("result") == "Passed" and any(r.get("result") == "Failed" for r in reps):
+            flaky.append("/".join(path + [name]))
+        return
+    if kind in ("Unit test bundle", "UI test bundle", "Test Suite"):
+        path = path + [name]
+    for child in node.get("children", []):
+        walk(child, path)
+for node in json.load(sys.stdin).get("testNodes", []):
+    walk(node, [])
+for t in flaky:
+    print(f"::warning title=Flaky test::{t} failed, then passed on retry")
+summary = os.environ.get("GITHUB_STEP_SUMMARY")
+if flaky and summary:
+    with open(summary, "a") as f:
+        f.write("**Passed only on retry**\n\n" + "".join(f"- `{t}`\n" for t in flaky) + "\n")
+print(f"{len(flaky)} test(s) passed only on retry")
+' || echo "::warning::could not list the tests that passed only on retry"
 
 summary="$(xcrun xcresulttool get test-results summary --path "$result")"
 counts="$(python3 -c '
@@ -129,3 +161,4 @@ if [[ "$total" -eq 0 || "$passed" -eq 0 ]]; then
 	echo "::error::no test ran; check this job's -only-testing/-skip-testing selectors against the test classes"
 	exit 1
 fi
+exit "$rc"

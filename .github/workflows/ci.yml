@@ -3,37 +3,37 @@
 # fetched), so the real-corpus tests skip by name and scripts/check.sh says how
 # many; that is expected. See CLAUDE.md, "Build and test".
 #
-# The job ids below are also their check names (no `name:` override, no
+# The required jobs' ids are also their check names (no `name:` override, no
 # matrix): required status checks match `gate`, `vuln` and `secrets` by name,
 # so renaming a job silently drops it from the requirement. `swift` (the Swift
-# client core on a Mac), `ios` and `ios-ui` (the app on a Mac; `ios-ui` runs the
-# two longest UI test classes beside `ios`), `ios-tools` (the iOS project, token
-# and release-script checks on a Mac), `web` (the website) and
+# client core on a Mac), `ios-build` (the app built once for testing), `ios`
+# (three UI test shards on that build), `ios-tools` (HasalaKit, the iOS
+# project, token and release-script checks on a Mac), `web` (the website) and
 # `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
 #
-# Path-aware on pull requests, failing closed: the first job, `changes`, lists
-# the files the pull request changes, and `gate`, `vuln`, `swift`, `ios`, `ios-ui`,
-# `ios-tools`, `web` and `nixos-vm` are skipped only when every one of them is on that job's list of
-# paths it does not read. Any other path runs the job, a path nobody
-# anticipated included. `secrets` always runs. Jobs are skipped with a
-# job-level `if:`, never a workflow-level `paths:` filter: a skipped job still
-# reports its check, as "skipped", which a required check counts as passing,
-# whereas a workflow that never starts leaves its required checks pending
-# forever. If `changes` does not succeed, every job runs. A push to main runs
-# every job except the Mac ones (`swift`, `ios`, `ios-ui`, `ios-tools`), which
-# are path-aware there too, against the commit main was at before the push: the
-# pull request already ran them on exactly what merged (main requires a branch
-# to be up to date), so a push that does not touch their paths skips them. A
-# manual run (workflow_dispatch) runs every job. The weekly govulncheck of main
-# is a separate workflow, vuln-weekly.yml, so that its run never records checks
-# on main's head.
+# Path-aware, failing closed: the first job, `changes`, lists the files the
+# pull request (or the push to main) changes, and `gate`, `vuln`, `swift`,
+# `ios-build`, `ios`, `ios-tools`, `web` and `nixos-vm` are skipped only when
+# every one of them is on that job's list of paths it does not read. Any other
+# path runs the job, a path nobody anticipated included. `secrets` always runs.
+# Jobs are skipped with a job-level `if:`, never a workflow-level `paths:`
+# filter: a skipped job still reports its check, as "skipped", which a required
+# check counts as passing, whereas a workflow that never starts leaves its
+# required checks pending forever. If `changes` does not succeed, every job
+# runs. A push to main is path-aware the same way, against the commit main was
+# at before the push: the pull request already ran every job on exactly what
+# merged (main requires a branch to be up to date), so a push that does not
+# touch a job's paths skips it. A manual run (workflow_dispatch) runs every
+# job. The weekly govulncheck of main is a separate workflow, vuln-weekly.yml,
+# so that its run never records checks on main's head.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 #
 # Caches (actions/cache): Go's module and build caches in `gate` (`vuln` reads
-# them), and SwiftPM's repository cache in `swift`, `ios` and `ios-ui`. Each is keyed on the
-# files that pin its contents (flake.lock pins Go; go.sum and Package.resolved
-# the dependencies) and saved only when that exact key was missing. Scoping is
+# them), Bun's package cache in `gate` and `web`, and SwiftPM's repository
+# cache in `swift` and `ios-build`. Each is keyed on the files that pin its
+# contents (flake.lock pins Go; go.sum, bun.lock and Package.resolved the
+# dependencies) and saved only when that exact key was missing. Scoping is
 # what keeps a cache trustworthy: a pull request's run saves only into its own
 # scope and reads main's, never another pull request's, and main reads only its
 # own. Go's build cache is content-addressed (an entry is reused only for
@@ -64,9 +64,10 @@ defaults:
 
 jobs:
   # Which jobs the pull request needs, as outputs `gate` (read by gate and
-  # vuln), `swift`, `ios`, `web` and `nixos_vm`, each "true" or "false". A push
-  # to main computes only `swift` and `ios` (from the push's `before` commit to
-  # its head) and sets the rest to "true"; any other event, or a push whose
+  # vuln), `swift`, `ios` (read by ios-build, ios and ios-tools),
+  # `ios_scripts` (the devShell step of ios-tools), `web` and `nixos_vm`, each
+  # "true" or "false". A push to main computes them the same way, from the
+  # push's `before` commit to its head; any other event, or a push whose
   # `before` cannot be fetched (a new branch, a force push), sets all of them to
   # "true". The checkout of a pull request is its merge
   # commit (refs/pull/N/merge) and depth 2 fetches both parents, so
@@ -82,6 +83,7 @@ jobs:
       gate: ${{ steps.areas.outputs.gate }}
       swift: ${{ steps.areas.outputs.swift }}
       ios: ${{ steps.areas.outputs.ios }}
+      ios_scripts: ${{ steps.areas.outputs.ios_scripts }}
       web: ${{ steps.areas.outputs.web }}
       nixos_vm: ${{ steps.areas.outputs.nixos_vm }}
     steps:
@@ -103,19 +105,17 @@ jobs:
               base=HEAD^1
               ;;
             push)
-              # Only the Mac jobs are path-aware on main; everything else runs.
               # A `before` that is all zeros (a new branch) or that this clone
               # cannot fetch (a force push dropped it) runs every job.
               if [[ ! "$BEFORE" =~ ^[0-9a-f]{40}$ || "$BEFORE" =~ ^0+$ ]] ||
                 ! git fetch --no-tags --depth=1 origin "$BEFORE"; then
-                all_true gate swift ios web nixos_vm
+                all_true gate swift ios ios_scripts web nixos_vm
                 exit 0
               fi
               base="$BEFORE"
-              all_true gate web nixos_vm
               ;;
             *)
-              all_true gate swift ios web nixos_vm
+              all_true gate swift ios ios_scripts web nixos_vm
               exit 0
               ;;
           esac
@@ -151,21 +151,20 @@ jobs:
           # are) and any go.mod, go.sum, go.work or go.work.sum. check.sh also
           # runs the HasalaCore lints over ios/, but `secrets` runs them too.
           # infra/ is read (nix flake check evaluates and builds its checks).
-          # On a push to main only swift and ios are computed (the rest were set
-          # to "true" above); a pull request computes all five.
-          pr() { [[ "$EVENT" == pull_request ]]; }
-          pr && skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
+          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
           # swift reads ios/ and conformance/ only.
           skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
-          # ios, ios-ui and ios-tools read ios/, design/ (the Paper tokens the app is generated
-          # from) and the flake (which pins its XcodeGen).
+          # ios-build, ios and ios-tools read ios/, design/ (the Paper tokens
+          # the app is generated from) and the flake (which pins its XcodeGen).
           skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$'
+          # ios-tools' devShell step reads ios/scripts/ and the flake only.
+          skip_unless ios_scripts "$none|^(docs|web|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^ios/scripts/'
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
-          pr && skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
+          skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
           # nixos-vm reads infra/ (the module and the VM test), server/ (the
           # hasalad it boots) and the flake (cloudflared, PostgreSQL and the
           # nixpkgs it builds them from).
-          if pr; then skip_unless nixos_vm "$none|^(docs|web|ios|conformance|reference|scripts)/|^\.gitleaks\.toml$"; fi
+          skip_unless nixos_vm "$none|^(docs|web|ios|conformance|reference|scripts)/|^\.gitleaks\.toml$"
 
   # A skipped required job reports "skipped", which passes. Each job below is
   # skipped only when `changes` succeeded and said "false".
@@ -238,6 +237,13 @@ jobs:
 
       - name: Build the devShell
         run: nix develop --command true
+
+      - name: Bun package cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-gate-${{ runner.os }}-${{ hashFiles('reference/ledgerd-client/bun.lock') }}
+          restore-keys: bun-gate-${{ runner.os }}-
 
       - name: Install the reference client's dependencies
         run: nix develop --command bash -c 'cd reference/ledgerd-client && bun install --frozen-lockfile'
@@ -380,15 +386,16 @@ jobs:
           nix shell --inputs-from . nixpkgs#gitleaks --command
           gitleaks git --config .gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner .
 
-  # The iOS checks that need neither the app build nor a simulator: token
-  # generator freshness, the project against ios/project.yml, the release-script
-  # tests (with the system's tools and again inside the Nix devShell, where GNU
-  # coreutils come first on PATH) and shellcheck. On a runner of its own beside
-  # `ios`, so they no longer add to the app's build and test time. Skipped
-  # exactly when `ios` is. Nothing is signed for distribution here (the script
-  # tests sign a synthetic app ad hoc) and no Apple credential exists in CI;
-  # archives, signing and uploads happen only on the owner's Mac
-  # (ios/scripts/archive.sh, ios/scripts/upload.sh). Not a required check.
+  # The iOS checks that need neither the app build nor a simulator: the
+  # HasalaKit package tests (macOS, the newest Xcode), token generator
+  # freshness, the project against ios/project.yml, the release-script tests
+  # (with the system's tools, and again inside the Nix devShell, where GNU
+  # coreutils come first on PATH, when ios/scripts/ or the flake changed) and
+  # shellcheck. On a runner of its own beside `ios-build`. Skipped exactly when
+  # `ios-build` is. Nothing is signed for distribution here (the script tests
+  # sign a synthetic app ad hoc) and no Apple credential exists in CI; archives,
+  # signing and uploads happen only on the owner's Mac (ios/scripts/archive.sh,
+  # ios/scripts/upload.sh). Not a required check.
   ios-tools:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
@@ -405,6 +412,9 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
           swift --version
+
+      - name: HasalaKit tests (macOS)
+        run: swift test --package-path ios/HasalaKit
 
       - name: Design tokens are generated from design/tokens/paper-tokens.json
         run: swift ios/tools/tokens/generate.swift --check
@@ -440,8 +450,10 @@ jobs:
         run: ios/scripts/tests/run.sh
 
       # The owner's shell is the devShell (.envrc: use flake), where GNU stat and
-      # date come first on PATH; the scripts must work there too.
+      # date come first on PATH; the scripts must work there too. Only when
+      # `changes` says ios/scripts/ or the flake changed, or did not succeed.
       - name: Release script tests in the Nix devShell (GNU coreutils first)
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.ios_scripts != 'false' }}
         run: ios/scripts/tests/devshell_test.sh
 
       - name: shellcheck the iOS scripts
@@ -449,67 +461,12 @@ jobs:
           nix shell --inputs-from . nixpkgs#shellcheck --command
           shellcheck -S warning ios/scripts/*.sh ios/scripts/tests/*.sh
 
-  # The iOS app (ios/): the HasalaKit package tests on macOS, then a simulator
-  # build with the unit tests and every UI test class but the two that `ios-ui`
-  # runs on a runner of its own. `ios-tools` runs the project, token and
-  # release-script checks. Nothing is signed (CODE_SIGNING_ALLOWED=NO).
-  # Not a required check.
+  # The app built once for testing (ci-simulator-test.sh --build-only), for the
+  # `ios` shards to test without building. The products go to the next jobs as
+  # a tar, which keeps their file modes and symlinks; the artifact lives a day.
+  # It picks the simulator as the shards do, on the same runner image, so the
+  # build matches the simulator they test on. Not a required check.
   # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
-  ios:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
-    runs-on: macos-26
-    # The build, the unit tests and every UI class but two, serially: over an hour on a
-    # slow macos-26 runner (one run was stopped at 60 minutes mid-way through the UI tests).
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Select the newest Xcode
-        run: |
-          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
-          swift --version
-
-      - name: HasalaKit tests (macOS)
-        run: swift test --package-path ios/HasalaKit
-
-      # The SwiftPM clones xcodebuild resolves the project's packages from (see
-      # "Caches" above).
-      - name: SwiftPM repository cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/Library/Caches/org.swift.swiftpm/repositories
-          key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-
-      # The unit tests and every UI test class except the two `ios-ui` runs:
-      # -skip-testing names those two, so a class added later runs here. The
-      # script fails a run that executed no test.
-      - name: Build and test in the simulator (unsigned)
-        run: >-
-          ios/scripts/ci-simulator-test.sh "$RUNNER_TEMP/Hasala.xcresult"
-          -skip-testing:HasalaUITests/CoreScreensTests
-          -skip-testing:HasalaUITests/SmokeTests
-
-      - name: Keep the test report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ios-xcresult
-          path: ${{ runner.temp }}/Hasala.xcresult
-          retention-days: 7
-          if-no-files-found: ignore
-
-  # The app built once for testing, for `ios-ui` to test without building
-  # (ci-simulator-test.sh --build-only). The products go to the next job as a
-  # tar, which keeps their file modes and symlinks; the artifact lives a day.
-  # It picks the simulator as the test jobs do, on the same runner image, so
-  # the build matches the simulator they test on. Skipped exactly when `ios`
-  # is. Not a required check.
   ios-build:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
@@ -526,6 +483,8 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
+      # The SwiftPM clones xcodebuild resolves the project's packages from (see
+      # "Caches" above).
       - name: SwiftPM repository cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -549,20 +508,60 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # The two longest UI test classes, CoreScreensTests and SmokeTests (about 23 of
-  # the UI tests' 34 minutes), on a runner of their own beside `ios`, which skips
-  # exactly these two. It tests `ios-build`'s products without building
-  # (ci-simulator-test.sh --from-build). Each class still runs serially on one
-  # simulator. The unit tests (HasalaTests, seconds) run here too, first, as
-  # they do before the UI tests in `ios`: their host app is the simulator's
-  # first launch, so no UI test is (a UI test that was once timed out launching
-  # the app on a freshly booted simulator). Runs only when `ios-build`
-  # succeeded. Not a required check.
-  ios-ui:
+  # The unit tests and the UI tests of `ios-build`'s products, without building
+  # (ci-simulator-test.sh --from-build), in three shards of about 40 minutes
+  # each, on three runners side by side. Shards 1 and 2 name their classes;
+  # shard 3 skips those, so a class added later runs there. Each shard runs
+  # the unit tests (HasalaTests, seconds) first: their host app is the
+  # simulator's first launch, so no UI test is (a UI test that was once timed
+  # out launching the app on a freshly booted simulator). A failed test runs
+  # once more; one that passes then is a warning, one that fails twice fails
+  # the shard. Runs only when `ios-build` succeeded. Not a required check.
+  ios:
     needs: [changes, ios-build]
-    if: ${{ !cancelled() && needs.ios-build.result == 'success' }}
+    if: ${{ !cancelled() && needs.ios-build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    name: ios (${{ matrix.shard }})
     runs-on: macos-26
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - shard: 1
+            selectors: >-
+              -only-testing:HasalaTests
+              -only-testing:HasalaUITests/PlanUITests
+              -only-testing:HasalaUITests/MailboxUITests
+              -only-testing:HasalaUITests/ProfileUITests
+              -only-testing:HasalaUITests/HomePeriodTests
+              -only-testing:HasalaUITests/SetupUITests
+              -only-testing:HasalaUITests/ReleaseSurfaceHomeTests
+          - shard: 2
+            selectors: >-
+              -only-testing:HasalaTests
+              -only-testing:HasalaUITests/CoreScreensTests
+              -only-testing:HasalaUITests/SignInSecurityUITests
+              -only-testing:HasalaUITests/SmokeTests
+              -only-testing:HasalaUITests/HomeWidgetsEditTests
+              -only-testing:HasalaUITests/ReleaseSurfaceProfileTests
+              -only-testing:HasalaUITests/TabRoundTripTests
+              -only-testing:HasalaUITests/ReleaseSurfaceInsightsTests
+          - shard: 3
+            selectors: >-
+              -skip-testing:HasalaUITests/PlanUITests
+              -skip-testing:HasalaUITests/MailboxUITests
+              -skip-testing:HasalaUITests/ProfileUITests
+              -skip-testing:HasalaUITests/HomePeriodTests
+              -skip-testing:HasalaUITests/SetupUITests
+              -skip-testing:HasalaUITests/ReleaseSurfaceHomeTests
+              -skip-testing:HasalaUITests/CoreScreensTests
+              -skip-testing:HasalaUITests/SignInSecurityUITests
+              -skip-testing:HasalaUITests/SmokeTests
+              -skip-testing:HasalaUITests/HomeWidgetsEditTests
+              -skip-testing:HasalaUITests/ReleaseSurfaceProfileTests
+              -skip-testing:HasalaUITests/TabRoundTripTests
+              -skip-testing:HasalaUITests/ReleaseSurfaceInsightsTests
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -585,18 +584,18 @@ jobs:
           mkdir -p "$RUNNER_TEMP/dd"
           tar -C "$RUNNER_TEMP/dd" -xf "$RUNNER_TEMP/ios-products.tar"
 
-      - name: Test CoreScreensTests and SmokeTests in the simulator (unsigned, no build)
-        run: >-
-          ios/scripts/ci-simulator-test.sh --from-build "$RUNNER_TEMP/dd" "$RUNNER_TEMP/Hasala.xcresult"
-          -only-testing:HasalaTests
-          -only-testing:HasalaUITests/CoreScreensTests
-          -only-testing:HasalaUITests/SmokeTests
+      - name: Test shard ${{ matrix.shard }} in the simulator (unsigned, no build)
+        env:
+          SELECTORS: ${{ matrix.selectors }}
+        run: |
+          read -r -a selectors <<<"$SELECTORS"
+          ios/scripts/ci-simulator-test.sh --from-build "$RUNNER_TEMP/dd" "$RUNNER_TEMP/Hasala.xcresult" "${selectors[@]}"
 
       - name: Keep the test report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ios-ui-xcresult
+          name: ios-xcresult-${{ matrix.shard }}
           path: ${{ runner.temp }}/Hasala.xcresult
           retention-days: 7
           if-no-files-found: ignore
@@ -677,6 +676,13 @@ jobs:
           use-flakehub: false
           use-gha-cache: true
           diagnostic-endpoint: ""
+
+      - name: Bun package cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-web-${{ runner.os }}-${{ hashFiles('web/bun.lock', 'web/lighthouse/bun.lock') }}
+          restore-keys: bun-web-${{ runner.os }}-
 
       - name: Install the site's dependencies
         run: >-

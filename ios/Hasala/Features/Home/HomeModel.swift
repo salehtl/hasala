@@ -66,10 +66,7 @@ final class HomeViewModel: HomeModel {
   var hidden: Bool { app.amountsHidden }
 
   var bell: Bell {
-    let mail = Self.mailItem(app.mailOffer, mailboxes: app.mailbox?.mailboxes ?? [])
-    return Bell(
-      needsALook: app.snapshot.notifications.needsALook + [mail].compactMap { $0 },
-      earlier: feed?.earlier(now: app.store.now) ?? [])
+    Bell(needsALook: app.needsALook, earlier: feed?.earlier(now: app.store.now) ?? [])
   }
 
   /// Mail's row (plan B4.3: the offer is the bell's mail row and the Profile card). It has no
@@ -174,6 +171,15 @@ final class HomeViewModel: HomeModel {
     return BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id) || id.hasPrefix(Self.categoryPrefix)
       || id.hasPrefix(Self.projectPrefix)
   }
+}
+
+extension AppModel {
+  var needsALook: [NotificationItem] {
+    thisMonthSnapshot.notifications.needsALook
+      + [HomeViewModel.mailItem(mailOffer, mailboxes: mailbox?.mailboxes ?? [])].compactMap { $0 }
+  }
+
+  var bellCount: Int { needsALook.count }
 }
 
 /// Notifications Hasala sent before (Paper "Earlier"). The app keeps no notification history
