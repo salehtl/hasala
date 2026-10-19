@@ -120,6 +120,70 @@ final class ProjectsUITests: XCTestCase {
   }
 
   @MainActor
+  private func activityWithTalabatInJapan(arguments: [String] = [], searching: Bool = false) -> XCUIApplication {
+    let app = launch(scenario: "maya", motion: "off", arguments: arguments)
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: uiWait))
+    if searching {
+      let search = app.searchFields["Search transactions"]
+      XCTAssertTrue(search.waitForExistence(timeout: uiWait))
+      type("Talabat\n", into: search)
+      XCTAssertTrue(el(app, "txn.talabat").waitForExistence(timeout: uiWait))
+      XCTAssertTrue(dragUntilHittable(app, el(app, "txn.talabat")))
+    } else {
+      for id in ["activity.startReview", "bill.dewa", "txn.talabat"] {
+        XCTAssertTrue(reveal(app, el(app, id)), "could not reach \(id)")
+      }
+    }
+    let talabat = el(app, "txn.talabat")
+    XCTAssertFalse(talabat.label.contains("project"), talabat.label)
+    talabat.tap()
+    let project = el(app, "txn.project")
+    XCTAssertTrue(project.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, project))
+    project.tap()
+    tap(app, "txnProject.japan")
+    XCTAssertTrue(el(app, "txn.project").waitForLabel("Project, Japan trip"))
+    tap(app, "txn.close")
+    return app
+  }
+
+  @MainActor
+  func testActivityRowsShowTheirProject() throws {
+    let app = activityWithTalabatInJapan()
+    let talabat = el(app, "txn.talabat")
+    XCTAssertTrue(talabat.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, talabat))
+    XCTAssertTrue(talabat.label.contains("Japan trip project"), talabat.label)
+    attach(app, "Activity · Project chip")
+    try audit(app)
+
+    let search = app.searchFields["Search transactions"]
+    for _ in 0..<10 where !(search.exists && search.isHittable) { app.swipeDown() }
+    XCTAssertTrue(search.waitForExistence(timeout: uiWait))
+    type("Emirates\n", into: search)
+    let emirates = el(app, "txn.emirates")
+    XCTAssertTrue(emirates.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(emirates.label.hasSuffix("Japan trip project") || emirates.label.contains("Japan trip project, "),
+                  emirates.label)
+    attach(app, "Activity · Search · Project chip")
+  }
+
+  @MainActor
+  func testActivityProjectChipAtLargeText() throws {
+    let large = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+    let app = activityWithTalabatInJapan(arguments: large, searching: true)
+    let talabat = el(app, "txn.talabat")
+    XCTAssertTrue(talabat.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(dragUntilHittable(app, talabat))
+    XCTAssertTrue(scroll(app, toShow: talabat))
+    XCTAssertTrue(talabat.label.contains("Japan trip project"), talabat.label)
+    attach(app, "AX3 · Activity · Project chip")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
   func testProjectsAtLargeText() throws {
     let large = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
     let app = launchPlan(arguments: large)

@@ -527,7 +527,8 @@ public extension PlanEngine {
       .map { t, minor in
         MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c.glyph, hue: c.hue,
-          detail: "\(t.postedAt.date.short) · \(t.postedAt.time)", amount: .aed(abs(minor)), isIncome: minor < 0)
+          detail: "\(t.postedAt.date.short) · \(t.postedAt.time)", amount: .aed(abs(minor)), isIncome: minor < 0,
+          project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) })
       }
   }
 

@@ -237,7 +237,8 @@ public enum ActivityEngine {
       id: t.id, merchant: t.title, glyph: glyph, hue: t.inReview ? .other : (c?.hue ?? .other), detail: detail,
       amount: t.amount, isIncome: t.direction == .in,
       monogram: (t.inReview || c == nil) ? String(t.merchant.prefix(1)).uppercased() : nil,
-      toReview: t.inReview, reviewReason: t.activeReviewReason
+      toReview: t.inReview, reviewReason: t.activeReviewReason,
+      project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) }
     )
   }
 
