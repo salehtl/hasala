@@ -68,6 +68,7 @@ var IDs = []string{
 	"enbd.transfer.v1",
 	"enbd.alert.v1",
 	"adib.alert.v1",
+	"adib.account.v1",
 }
 
 // Seed returns the published seed set.

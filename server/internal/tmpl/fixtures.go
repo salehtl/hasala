@@ -34,6 +34,7 @@ var SeedTemplateFiles = []string{
 	"enbd.alert.v1.json",
 	"enbd.transfer.v1.json",
 	"adib.alert.v1.json",
+	"adib.account.v1.json",
 }
 
 // TemplateFixture is one committed template conformance file.

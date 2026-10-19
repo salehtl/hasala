@@ -1,7 +1,7 @@
 # salehtl/hasala-fixtures: the private real-mail fixtures this commit expects.
 # Written by scripts/private-fixtures-lock.sh write; checked by scripts/check.sh
 # when HASALA_PRIVATE_FIXTURES is set. Do not edit by hand.
-commit 6e737b217d7552a0395dea5cfdd983c18b0fa3aa
+commit 92979870d9ace879cb612eaef0045bb6fdfdcbf2
 e44a95198ce56c9e766ef228ef9a90007a218f2121bbdef4ec38f28cf795aafa  conformance/normalizer/apple-forward-dib-01.json
 c066cd81b25b6625de3570e7bf78dcd52df1b8f4305cdf57435323318a9b46ed  conformance/normalizer/apple-forward-dib-02.json
 805a183bedcb6fcdfb6d9f216c5e91a94a4640677c06ca2258974424d388a745  conformance/normalizer/apple-forward-enbd-alert.json
@@ -40,10 +40,16 @@ abd62022f2917c32481a360a01238badf30e9609fd426d8b2fb2ace8a3580477  conformance/no
 892fa888df7bff09e2c5d6a897b7d96c03328ec26d7b67d363832d7885624a43  conformance/normalizer/mislabelled-utf8-actually-windows-1256.json
 0a7a9b77a8b2e215b5214cece7eedf6bd61a582cb12d68e45c37c6c420399aba  conformance/normalizer/quoted-forward-recovers-no-headers.json
 e5f193c6b68c6659487d8bb2d5090b588b2fb00733b7cfa78ac0a181025dff9c  conformance/normalizer/us-ascii-plain.json
+88d05ccefca3acd705bfa8318214a15b847f36416fbfae31f2d0ca6ee6676c86  conformance/templates/corpus-adib.account.v1.json
+bf31d46103fa567f0f034dd0e3a46672cbbdc6823ca187319d29e901e8689cc7  conformance/templates/corpus-adib.alert.v1.json
 01db7d2c9359d897b8594336be706b28a9a47ae62d79ad423caf2e724a206d75  conformance/templates/corpus-dib.account.v1.json
 30c4f16c2f7417b8cab05d0a9217759cd29de6ef129ad07399becb2f4dc26321  conformance/templates/corpus-dib.card.v1.json
 79f02cd45e5be3dae843e3c3c3d21cc39aa1a9bd013d55257dc04d8dd24f521a  conformance/templates/corpus-enbd.alert.v1.json
 76f326458001b11c441bc33bc06f7b4905837592a1020526742eb90947a59a1e  conformance/templates/corpus-enbd.transfer.v1.json
+b3126250decf38f2b01df5c852710f31c3447402f0f6e698d2f8bd3ec5d12fd5  conformance/templates/eml/adib.account.v1/adib-credit-01.eml
+8897f6a92f37caab0e904937dabed88616cf38c598ecb62bdc8ea01f2d816f10  conformance/templates/eml/adib.account.v1/adib-debit-01.eml
+a4a8795aab48beb4e57259162a2fae4d4567ea56dde8d1880bae8c52271ddc24  conformance/templates/eml/adib.alert.v1/adib-purchase-01.eml
+34032de75598c5fe4115f7b5aa2d8408d2ba64697b72580c4a7f90e4ac8d87c6  conformance/templates/eml/adib.alert.v1/adib-purchase-forwarded-01.eml
 465f6f71b910181f7d5aa07a5287a9c546ee34d73161cf21870b27a18047c379  reference/ledgerd-client/test/e2e/exit-expect.json
 f3d86c1b2183d3128a9f9d467af602fc19787be88cc1ea1c7c6718a1e88cebd8  server/internal/origin/testdata/dib-dkim-unexpired.eml
 864c36cf78c62d23030094eaa6a455899c430154bfa682b589095b3b6cc7b8f0  server/internal/origin/testdata/enbd-proofpoint-p.eml

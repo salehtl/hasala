@@ -133,6 +133,10 @@ func TestWriteTemplateFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fromEML, err := emlTemplateIDs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Pass 1: which corpus ids each template is worth running, decided on the
 	// sender domain alone so nothing is decompressed twice.
@@ -152,7 +156,7 @@ func TestWriteTemplateFixtures(t *testing.T) {
 	wanted := map[int64]bool{}
 	picked := make([][]int64, len(defs))
 	for i := range defs {
-		if !templateFilter(defs[i].ID) {
+		if !templateFilter(defs[i].ID) || fromEML[defs[i].ID] {
 			continue
 		}
 		picked[i] = sampleEvenly(eligible[i], templateFixtureCap)
@@ -186,6 +190,10 @@ func TestWriteTemplateFixtures(t *testing.T) {
 	for i, d := range defs {
 		if !templateFilter(d.ID) {
 			t.Logf("%s: skipped, %s does not name it", d.ID, templateFilterEnv)
+			continue
+		}
+		if fromEML[d.ID] {
+			t.Logf("%s: skipped, its fixture is written from %s by TestWriteEMLTemplateFixtures", d.ID, EMLTemplateDir)
 			continue
 		}
 		f := TemplateFixture{
