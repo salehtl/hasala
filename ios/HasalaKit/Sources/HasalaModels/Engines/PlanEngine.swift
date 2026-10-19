@@ -58,13 +58,17 @@ public struct PlanProjectModel: Sendable, Hashable, Identifiable {
   /// "14–28 Dec · 65 days to go".
   public var dates: String
   /// "14–28 Dec".
-  public var range: String
+  public var range: String?
   /// "65 days to go", "under way", "finished".
-  public var when: String
-  public var left: Money
-  public var budget: Money
+  public var when: String?
+  public var left: Money?
+  public var budget: Money?
+  public var spent: Money
+  public var pending: Money
   public var progress: Permille
   public var countInPlan: Bool
+  public var complete: Bool
+  public var completedOn: LocalDate?
 }
 
 public struct PlanSnapshot: Sendable, Hashable {
@@ -218,17 +222,41 @@ public enum PlanEngine {
   }
 
   static func projectModel(_ p: Project, _ s: LedgerState, today: LocalDate) -> PlanProjectModel {
-    let spent = projectTxns(p, s).reduce(Int64(0)) { $0 + $1.amount.minor }
-    let toGo = today.days(until: p.starts)
-    let range = p.starts.month == p.ends.month
-      ? "\(p.starts.day)–\(p.ends.day) \(CivilCalendar.monthShortNames[p.ends.month - 1])"
-      : "\(p.starts.dayMonth)–\(p.ends.dayMonth)"
-    let when = toGo > 0 ? "\(toGo) days to go" : (today <= p.ends ? "under way" : "finished")
+    let txns = projectTxns(p, s)
+    let spent = txns.filter { !$0.needsReview }.reduce(Int64(0)) { $0 + projectMinor($1) }
+    let pending = txns.filter(\.needsReview).reduce(Int64(0)) { $0 + projectMinor($1) }
+    let range = projectRange(p)
+    let when = projectWhen(p, today: today)
     return PlanProjectModel(
-      id: p.id, name: p.name, glyph: p.glyph, dates: "\(range) · \(when)", range: range, when: when,
-      left: .aed(p.budget.minor - spent), budget: p.budget, progress: Permille.ratio(spent, of: p.budget.minor),
-      countInPlan: p.countInPlan
+      id: p.id, name: p.name, glyph: p.glyph, dates: [range, when].compactMap { $0 }.joined(separator: " · "),
+      range: range, when: when, left: p.budget.map { .aed($0.minor - spent) }, budget: p.budget,
+      spent: .aed(spent), pending: .aed(pending), progress: Permille.ratio(spent, of: p.budget?.minor ?? 0),
+      countInPlan: p.countInPlan, complete: p.complete, completedOn: p.completedOn
     )
+  }
+
+  static func projectMinor(_ t: Txn) -> Int64 { t.direction == .out ? t.amount.minor : -t.amount.minor }
+
+  static func projectRange(_ p: Project) -> String? {
+    switch (p.starts, p.ends) {
+    case let (s?, e?) where s == e: s.dayMonth
+    case let (s?, e?) where s.year == e.year && s.month == e.month:
+      "\(s.day)–\(e.day) \(CivilCalendar.monthShortNames[e.month - 1])"
+    case let (s?, e?): "\(s.dayMonth)–\(e.dayMonth)"
+    case let (s?, nil): "From \(s.dayMonth)"
+    case let (nil, e?): "Until \(e.dayMonth)"
+    case (nil, nil): nil
+    }
+  }
+
+  static func projectWhen(_ p: Project, today: LocalDate) -> String? {
+    if p.complete { return p.completedOn.map { "finished \($0.dayMonth)" } ?? "finished" }
+    if let s = p.starts, today.days(until: s) > 0 {
+      let n = today.days(until: s)
+      return n == 1 ? "1 day to go" : "\(n) days to go"
+    }
+    if let e = p.ends, today > e { return "ended" }
+    return p.starts == nil && p.ends == nil ? nil : "under way"
   }
 
   static func paymentDate(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> LocalDate? {
@@ -362,21 +390,49 @@ public struct ProjectCategoryRow: Sendable, Hashable, Identifiable {
 public struct ProjectDetail: Sendable, Hashable {
   public var id: ProjectID
   public var name: String
-  public var budget: Money
+  public var glyph: Glyph
+  public var budget: Money?
   public var spent: Money
-  public var left: Money
+  public var left: Money?
+  public var pending: Money
   public var progress: Permille
   /// "14–28 Dec".
-  public var range: String
+  public var range: String?
   /// "65 days to go".
-  public var when: String
+  public var when: String?
   public var countInPlan: Bool
+  public var complete: Bool
   /// "Trip spending stays out of October's budgets. It comes from the 12,000 you set aside."
   public var explainer: MoneyPhrase
   public var categories: [ProjectCategoryRow]
   /// The project's payments in the order they were made, as Paper lists them ("Mon 14 Sep ·
   /// Travel", then "Sat 19 Sep · Transport"): a project is one story, told from its start.
   public var transactions: [MiniTxnRow]
+  public var draft: ProjectDraft
+}
+
+public struct ProjectsList: Sendable, Hashable {
+  public var active: [PlanProjectModel]
+  public var completed: [PlanProjectModel]
+  public var isEmpty: Bool { active.isEmpty && completed.isEmpty }
+}
+
+public struct ProjectCandidateFilter: Sendable, Hashable {
+  public var from: LocalDate?
+  public var to: LocalDate?
+  public var merchant: String
+  public var category: CategoryID?
+
+  public init(from: LocalDate? = nil, to: LocalDate? = nil, merchant: String = "", category: CategoryID? = nil) {
+    self.from = from
+    self.to = to
+    self.merchant = merchant
+    self.category = category
+  }
+
+  public var narrowed: Bool {
+    from != nil || to != nil || !merchant.trimmingCharacters(in: .whitespaces).isEmpty || category != nil
+  }
 }
 
 public extension PlanEngine {
@@ -510,11 +566,9 @@ public extension PlanEngine {
     guard let p = s.project(id) else { return nil }
     let card = projectModel(p, s, today: now.date)
     let txns = projectTxns(p, s).sorted { $0.postedAt < $1.postedAt }
-    let spent = txns.reduce(Int64(0)) { $0 + $1.amount.minor }
-    // By category, the biggest first; each says what the money paid for.
     var order: [CategoryID] = []
     var byCategory: [CategoryID: [Txn]] = [:]
-    for t in txns {
+    for t in txns where !t.needsReview {
       let key = t.categoryID ?? ""
       if byCategory[key] == nil { order.append(key) }
       byCategory[key, default: []].append(t)
@@ -530,26 +584,62 @@ public extension PlanEngine {
       let detail = names.count <= 2 ? listed(names) : "\(names[0]), \(names[1]) and \(names.count - 2) more"
       return ProjectCategoryRow(
         id: key, name: c?.name ?? "Not sorted", glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other, detail: detail,
-        spent: .aed(ts.reduce(Int64(0)) { $0 + $1.amount.minor }))
+        spent: .aed(ts.reduce(Int64(0)) { $0 + projectMinor($1) }))
     }.sorted { $0.spent.minor > $1.spent.minor }
     let monthName = now.date.yearMonth.name
     let kind = spendingKind(p)
-    let explainer: MoneyPhrase = p.countInPlan
-      ? MoneyPhrase(stringLiteral: "\(kind) spending counts in \(monthName)'s budgets.")
-      : MoneyPhrase([
+    let explainer: MoneyPhrase
+    if p.countInPlan {
+      explainer = MoneyPhrase(stringLiteral: "\(kind) spending counts in \(monthName)'s budgets.")
+    } else if let budget = p.budget {
+      explainer = MoneyPhrase([
         .text("\(kind) spending stays out of \(monthName)'s budgets. It comes from the "),
-        .amount(p.budget, .compact, hidden: 3), .text(" you set aside."),
+        .amount(budget, .compact, hidden: 3), .text(" you set aside."),
       ])
+    } else {
+      explainer = MoneyPhrase(stringLiteral: "\(kind) spending stays out of \(monthName)'s budgets.")
+    }
     return ProjectDetail(
-      id: p.id, name: p.name, budget: p.budget, spent: .aed(spent), left: .aed(p.budget.minor - spent),
-      progress: Permille.ratio(spent, of: p.budget.minor), range: card.range, when: card.when,
-      countInPlan: p.countInPlan, explainer: explainer, categories: categories,
+      id: p.id, name: p.name, glyph: p.glyph, budget: p.budget, spent: card.spent, left: card.left,
+      pending: card.pending, progress: card.progress, range: card.range, when: card.when,
+      countInPlan: p.countInPlan, complete: p.complete, explainer: explainer, categories: categories,
       transactions: txns.map { t in
         let c = s.category(t.categoryID)
         return MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
-          detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount)
-      })
+          detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount,
+          isIncome: t.direction == .in, toReview: t.needsReview)
+      },
+      draft: p.draft)
+  }
+
+  static func projects(_ s: LedgerState, now: LocalDateTime) -> ProjectsList {
+    let all = s.projects.map { projectModel($0, s, today: now.date) }
+    let completed = all.filter(\.complete).sorted {
+      ($0.completedOn ?? LocalDate(1970, 1, 1)) > ($1.completedOn ?? LocalDate(1970, 1, 1))
+    }
+    return ProjectsList(active: all.filter { !$0.complete }, completed: completed)
+  }
+
+  static func projectCandidates(_ project: ProjectID, _ s: LedgerState, filter: ProjectCandidateFilter) -> [MiniTxnRow] {
+    let term = filter.merchant.trimmingCharacters(in: .whitespaces).lowercased()
+    return s.txns.filter { t in
+      guard t.projectID != project, !t.archived, !t.isTransfer, !t.isHeldCopy else { return false }
+      if let f = filter.from, t.postedAt.date < f { return false }
+      if let to = filter.to, t.postedAt.date > to { return false }
+      if let c = filter.category, t.categoryID != c, !t.splits.contains(where: { $0.categoryID == c }) { return false }
+      if !term.isEmpty, !t.title.lowercased().contains(term), !t.note.lowercased().contains(term) { return false }
+      return true
+    }
+    .sorted { $0.postedAt > $1.postedAt }
+    .map { t in
+      let c = s.category(t.categoryID)
+      let other = s.project(t.projectID).map { " · in \($0.name)" } ?? ""
+      return MiniTxnRow(
+        id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
+        detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? "") + other, amount: t.amount,
+        toReview: t.needsReview)
+    }
   }
 
   /// What a project's spending is called in its explainer: "Trip" for a trip (Paper's words on
@@ -559,9 +649,9 @@ public extension PlanEngine {
     p.glyph == .travel ? "Trip" : "Project"
   }
 
-  /// What a project spent: its payments out, not archived.
+  /// What a project spent: its payments, not archived and not transfers.
   static func projectTxns(_ p: Project, _ s: LedgerState) -> [Txn] {
-    s.txns.filter { $0.projectID == p.id && !$0.archived && $0.direction == .out }
+    s.txns.filter { $0.projectID == p.id && !$0.archived && !$0.isTransfer && !$0.isHeldCopy }
   }
 
   /// A bill's short name for a row's one fact: "AXA" for "AXA Insurance", "Rent" for

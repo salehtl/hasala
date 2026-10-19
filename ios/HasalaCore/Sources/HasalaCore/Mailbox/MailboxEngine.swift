@@ -144,10 +144,38 @@ public struct MailboxProgress: Sendable, Equatable {
 }
 
 public enum ConnectResult: Sendable, Equatable {
-  case connected(address: String?)
+  case connected(address: String?, anotherAddress: Bool = false, retired: MailboxRetireOutcome? = nil)
   case cancelled
+  case declined
   case failed(ConnectFailure)
 }
+
+public enum MailboxRetireOutcome: Sendable, Equatable {
+  case removed(Int?)
+  case failed
+}
+
+public struct MailboxSwitchQuestion: Sendable, Equatable {
+  public var oldAddress: String
+  public var newAddress: String
+  public var transactions: Int?
+  public var edited: Int
+  public var oldHasNoMailbox: Bool
+
+  public init(oldAddress: String, newAddress: String, transactions: Int?, edited: Int, oldHasNoMailbox: Bool) {
+    self.oldAddress = oldAddress
+    self.newAddress = newAddress
+    self.transactions = transactions
+    self.edited = edited
+    self.oldHasNoMailbox = oldHasNoMailbox
+  }
+}
+
+public enum MailboxSwitchChoice: Sendable, Equatable {
+  case keep, remove, cancel
+}
+
+public typealias MailboxSwitchConfirm = @Sendable (MailboxSwitchQuestion) async -> MailboxSwitchChoice
 
 public enum ConnectFailure: String, Sendable, Equatable {
   case notConfigured = "not_configured"
@@ -303,7 +331,8 @@ public actor MailboxEngine {
   /// Connect the provider's mailbox (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
   /// step-up `mailbox.link` over SHA-256(id_token) → `PUT /mailbox/link` → Keychain. A first
   /// connect then starts the scan over `backfillDays` (30, 90 or 365; §7.7); a reconnect or a
-  /// takeover resumes the normal cycle from the kept watermark.
+  /// takeover of the same address resumes the normal cycle from the kept watermark, and another
+  /// address is a first connect, as `replacing` is.
   ///
   /// `replacing`: the mailbox tables hold another provider's lane (the account switches
   /// provider). Only once the new link is made are they cleared, in the same commit as the new
@@ -314,15 +343,24 @@ public actor MailboxEngine {
     return gapDays <= 90 ? 90 : 365
   }
 
-  public func connect(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false) async
-    -> ConnectResult
-  {
-    await exclusive { await connectLocked(presenter: presenter, backfillDays: backfillDays, replacing: replacing) }
+  public func connect(
+    presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false,
+    confirm: MailboxSwitchConfirm? = nil
+  ) async -> ConnectResult {
+    let (result, plan) = await exclusive { () -> (ConnectResult, MailboxRetirePlan?) in
+      var plan: MailboxRetirePlan?
+      let r = await connectLocked(
+        presenter: presenter, backfillDays: backfillDays, replacing: replacing, confirm: confirm, retiring: &plan)
+      return (r, plan)
+    }
+    guard let plan, case .connected(let address, true, _) = result else { return result }
+    return .connected(address: address, anotherAddress: true, retired: await retire(plan))
   }
 
-  private func connectLocked(presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool) async
-    -> ConnectResult
-  {
+  private func connectLocked(
+    presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool, confirm: MailboxSwitchConfirm?,
+    retiring: inout MailboxRetirePlan?
+  ) async -> ConnectResult {
     let oauth = provider.oauth
     guard oauth.isConfigured else { return .failed(.notConfigured) }
     let nonce: String
@@ -367,6 +405,24 @@ public actor MailboxEngine {
     } catch {
       // Any other answer is the cycle's to handle (it halts with a reason the user sees).
     }
+    let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
+    let otherMailbox = stored.map { Self.isAnotherMailbox(linked: $0.address, signedIn: claims.email) } ?? false
+    let fresh = replacing || otherMailbox
+    if otherMailbox, let old = stored {
+      let plan = await ledger.retirePlan(grantID: self.grant(old), provider: provider.id.rawValue)
+      let noMailbox = old.phase == .halted && old.haltedOn == .noMailbox
+      let imported = plan.countKnown ? plan.total : nil
+      if !noMailbox || imported != 0 {
+        let question = MailboxSwitchQuestion(
+          oldAddress: old.address ?? "", newAddress: claims.email ?? "", transactions: imported, edited: plan.edited,
+          oldHasNoMailbox: noMailbox)
+        switch await confirm?(question) ?? .cancel {
+        case .cancel: return .declined
+        case .keep: break
+        case .remove: retiring = imported == 0 ? nil : plan
+        }
+      }
+    }
     let proof: JSONValue
     do { proof = try await stepUp.proof(kind: "mailbox.link", payloadHash: sha256(Data(idToken.utf8))) } catch {
       return .failed(.stepUpFailed)
@@ -381,14 +437,23 @@ public actor MailboxEngine {
     } catch {
       return .failed(.serverRefused)
     }
+    if otherMailbox {
+      var cleared = commitState(MailboxState())
+      cleared.clearAll = true
+      do { try await store.commit(cleared) } catch { return .failed(.keychain) }
+      await endLocalPush()
+      notBeforeMs = 0
+      quotaStrikes = 0
+    }
     do {
       try await tokens.install(grant: grant)
       try provider.installLink(link)
     } catch {
+      if otherMailbox { await abandonSwitch() }
       return .failed(.keychain)
     }
 
-    var s = replacing ? MailboxState() : ((try? await store.loadState()) ?? MailboxState())
+    var s = fresh ? MailboxState() : (stored ?? MailboxState())
     switch s.phase {
     case .scanning, .awaitingCards, .authoringBackfill, .active:
       break  // a re-link mid-setup (or while active) keeps its place
@@ -415,9 +480,24 @@ public actor MailboxEngine {
       }
     }
     var c = commitState(s)
-    c.clearAll = replacing
-    do { try await store.commit(c) } catch { return .failed(.keychain) }
-    return .connected(address: claims.email)
+    c.clearAll = fresh
+    do { try await store.commit(c) } catch {
+      if otherMailbox { await abandonSwitch() }
+      return .failed(.keychain)
+    }
+    return .connected(address: claims.email, anotherAddress: otherMailbox)
+  }
+
+  private func abandonSwitch() async {
+    await tokens.forget()
+    provider.forgetLink()
+  }
+
+  static func isAnotherMailbox(linked: String?, signedIn: String?) -> Bool {
+    guard let linked, let signedIn else { return false }
+    let old = MailboxEngineConfig.normalized(linked)
+    let new = MailboxEngineConfig.normalized(signedIn)
+    return !old.isEmpty && !new.isEmpty && old != new
   }
 
   /// Ends this provider's grant on this iPhone after another provider's link replaced it: stops
@@ -445,13 +525,20 @@ public actor MailboxEngine {
   public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
     guard await disconnect() else { return .failed }
     guard let plan else { return .disconnected }
+    switch await retire(plan) {
+    case .removed(let n): return .removed(n ?? 0)
+    case .failed: return .disconnectedRemoveFailed
+    }
+  }
+
+  public func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome {
     do throws(MailboxLedgerError) {
       try await ledger.authorRetire(plan)
     } catch {
-      return .disconnectedRemoveFailed
+      return .failed
     }
     _ = await ledger.flush()
-    return .removed(plan.total)
+    return .removed(plan.countKnown ? plan.total : nil)
   }
 
   public func disconnect() async -> Bool {

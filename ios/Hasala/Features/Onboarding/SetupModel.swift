@@ -378,11 +378,19 @@ final class SetupModel {
   /// The provider's sign-in, then the first scan; once connected, on to the scan without
   /// a second sign-in. (The connect screen's button runs the same coordinator.)
   func connectMail(_ provider: MailProviderKind) async {
+    await connectMail(provider, again: false)
+  }
+
+  private func connectMail(_ provider: MailProviderKind, again: Bool) async {
     if path.last != .connect(provider), path.last != .connectError(provider) {
       draft.provider = provider
       showEmailScreen(provider)
     }
-    await coordinator(provider).connect(provider)
+    if again {
+      await coordinator(provider).retry(provider)
+    } else {
+      await coordinator(provider).connect(provider)
+    }
     switch coordinators[provider]?.outcome {
     case .connected?: emailConnected(provider)
     case .failed?: connectFailed(provider)
@@ -393,7 +401,7 @@ final class SetupModel {
   /// "Continue with Google" on the error screen: on success the error screen gives way to
   /// the first scan.
   func retryConnect(_ provider: MailProviderKind) async {
-    await connectMail(provider)
+    await connectMail(provider, again: true)
   }
 
   /// The connect screen's own button connected, or its "Continue" was tapped once it had.
@@ -413,6 +421,7 @@ final class SetupModel {
     } else {
       go(scanTask != nil ? .scan : .income)
     }
+    if let line = coordinators[provider]?.takeRemovalFailure() { failure = .failed(line) }
   }
 
   /// A connect that didn't happen: the two the design draws a screen for (an admin's
@@ -428,7 +437,7 @@ final class SetupModel {
   /// The failures with a screen of their own (Paper P2.9 row 2).
   static func showsErrorScreen(_ f: MailConnectFailure) -> Bool {
     switch f {
-    case .adminApprovalNeeded, .cancelled: true
+    case .adminApprovalNeeded, .cancelled, .noMailbox: true
     default: false
     }
   }

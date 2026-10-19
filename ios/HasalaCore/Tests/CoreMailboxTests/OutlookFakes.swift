@@ -70,6 +70,7 @@ struct OutlookRig {
   let clock = ManualClock(OutlookRig.t0)
   let keychain = MemoryMailRefreshTokenStore()
   let link = MemoryOutlookLinkStore()
+  let stepUps = StepUpLog()
   let provider: OutlookProvider
   let tokens: RefreshingMailTokenProvider
   let engine: MailboxEngine
@@ -103,14 +104,14 @@ struct OutlookRig {
     tokens = RefreshingMailTokenProvider(oauth: oauth, store: keychain, clock: clock)
     engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: "00000000-0000-4000-8000-000000000001"), provider: provider, tokens: tokens,
-      store: store, ledger: ledger, server: server, stepUp: FakeStepUp(), categorizer: categorizer,
+      store: store, ledger: ledger, server: server, stepUp: FakeStepUp(log: stepUps), categorizer: categorizer,
       templates: BundledTemplates.load().templates, clock: clock, random: CountingRandom(),
       sleep: { ms in clock.advance(ms) })
     graph.nowMs = { clock.nowMs() }
   }
 
-  func connect(days: Int = 90) async -> ConnectResult {
-    await engine.connect(presenter: OutlookPresenter(graph: graph), backfillDays: days)
+  func connect(days: Int = 90, confirm: MailboxSwitchConfirm? = nil) async -> ConnectResult {
+    await engine.connect(presenter: OutlookPresenter(graph: graph), backfillDays: days, confirm: confirm)
   }
 
   /// Connect, then the first scan authors what it finds: the engine ends `active`.

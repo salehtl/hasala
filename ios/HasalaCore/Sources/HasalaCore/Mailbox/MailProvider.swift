@@ -19,6 +19,8 @@ import Foundation
 public enum MailProviderID: String, Sendable, Hashable, CaseIterable {
   case gmail
   case outlook
+
+  public var prefersEphemeralSession: Bool { self == .outlook }
 }
 
 public protocol MailProvider: Sendable {
@@ -142,7 +144,7 @@ public protocol MailOAuthClient: Sendable {
 }
 
 /// The browser half, implemented by the app (ASWebAuthenticationSession with
-/// `prefersEphemeralWebBrowserSession = false` and `callback: .customScheme(callbackScheme)`).
+/// `callback: .customScheme(callbackScheme)`; ephemeral per `MailProviderID.prefersEphemeralSession`).
 public protocol MailAuthSessionPresenter: Sendable {
   /// Shows the provider's consent page for `url` and returns the callback URL; throws
   /// `MailOAuthError.cancelled` when the user closes the sheet.

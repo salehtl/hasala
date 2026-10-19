@@ -29,7 +29,8 @@ struct ConnectMailPage: View {
     self.app = app
     self.provider = provider
     let context = Self.context(provider, offer: app.mailOffer)
-    _coordinator = State(initialValue: app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: context) })
+    let handed = MailConnectCoordinator.handed(provider)
+    _coordinator = State(initialValue: handed ?? app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: context) })
     _banks = State(initialValue: app.mailbox?.chosenBanks() ?? [])
   }
 
@@ -71,7 +72,10 @@ struct ConnectMailPage: View {
   /// screen, whose button shows the sign-in running.
   private func retry(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) {
     coordinator.reset()
-    Task { await run(coordinator, mailbox) }
+    Task {
+      await coordinator.retry(provider)
+      if case .connected(let id)? = coordinator.outcome { connected(id, mailbox, coordinator.context) }
+    }
   }
 
   private func run(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) async {
@@ -101,14 +105,14 @@ struct ConnectMailPage: View {
   /// read again. That holds when Bank alerts is made new in this screen's place, too.
   private func connected(_ id: String, _ mailbox: MailboxConnecting, _ context: MailConnectCoordinator.Context) {
     if context == .addMailbox {
-      app.say(MailCopy.added(provider))
+      app.say(coordinator?.addedLine ?? MailCopy.added(provider))
       MailboxMoment.hand(.added(mailboxID: id))
       Task {
         guard await mailbox.linkState() == .scanning else { return }
         for await _ in mailbox.firstScan() {}
       }
     } else {
-      app.say(MailCopy.signedInAgain(provider))
+      app.say(coordinator?.signedInAgainLine ?? MailCopy.signedInAgain(provider))
       MailboxMoment.hand(.signedInAgain(mailboxID: id))
     }
     if let i = app.router.profile.lastIndex(of: .bankAlerts) {

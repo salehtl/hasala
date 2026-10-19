@@ -108,6 +108,135 @@ final class MailboxUITests: XCTestCase {
     assertMailboxAdded(app, "gmail-2")
   }
 
+  @MainActor
+  func testOutlookWithNoMailbox() throws {
+    var app = launch(scenario: nil, screen: "mail.add.errorNoMailbox")
+    XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 15))
+    XCTAssertTrue(says(app, "This Microsoft account has no Outlook mailbox."))
+    XCTAssertTrue(says(app, "such as you@outlook.com or you@hotmail.com"))
+    let other = el(app, "mail.error.retry")
+    XCTAssertEqual(other.label, "Use another Microsoft account")
+    XCTAssertEqual(el(app, "mail.error.chooseDifferent").label, "Alerts go somewhere else? Choose a different email")
+    attach(app, "Microsoft account has no mailbox")
+    try audit(app)
+    other.tap()
+    assertMailboxAdded(app, "outlook-1")
+
+    app = launch(scenario: nil, screen: "mail.add.errorNoMailbox", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.error.retry").waitForExistence(timeout: 15))
+    attach(app, "Microsoft account has no mailbox · AX3")
+    try audit(app, atLargeText: true)
+    tap(app, "mail.error.chooseDifferent")
+    XCTAssertTrue(el(app, "mail.choose.outlook").waitForExistence(timeout: uiWait), "the providers did not come back")
+  }
+
+  @MainActor
+  func testGmailWithNoMailbox() throws {
+    var app = launch(scenario: nil, screen: "mail.add.errorNoMailboxGmail")
+    XCTAssertTrue(app.staticTexts["Gmail isn't connected."].waitForExistence(timeout: 15))
+    XCTAssertTrue(says(app, "This Google account has no Gmail. Sign in with the account your bank alerts go to."))
+    let other = el(app, "mail.error.retry")
+    XCTAssertEqual(other.label, "Use another Google account")
+    XCTAssertEqual(el(app, "mail.error.chooseDifferent").label, "Alerts go somewhere else? Choose a different email")
+    attach(app, "Google account has no Gmail")
+    try audit(app)
+    other.tap()
+    assertMailboxAdded(app, "gmail-1")
+
+    app = launch(scenario: nil, screen: "mail.add.errorNoMailboxGmail", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mail.error.retry").waitForExistence(timeout: 15))
+    attach(app, "Google account has no Gmail · AX3")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testSignInAgainFromTheHeroWithNoMailbox() throws {
+    let app = launch(scenario: nil, screen: "bankAlerts.signInNoMailbox")
+    let button = el(app, "bankAlerts.signInAgain")
+    XCTAssertTrue(button.waitForExistence(timeout: 15))
+    button.tap()
+    XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 10))
+    XCTAssertTrue(says(app, "This Microsoft account has no Outlook mailbox."))
+    let other = el(app, "mail.error.retry")
+    XCTAssertEqual(other.label, "Use another Microsoft account")
+    attach(app, "Sign in again · Microsoft account has no mailbox")
+    try audit(app)
+    other.tap()
+    XCTAssertTrue(app.staticTexts["Outlook connected again. Catching up from the last check."]
+      .waitForExistence(timeout: 10))
+    let status = el(app, "bankAlerts.status")
+    XCTAssertTrue(status.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(status.waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+  }
+
+  @MainActor
+  func testSignInAgainWithAnotherAddressAsksAndKeeps() throws {
+    var app = launch(scenario: nil, screen: "bankAlerts.signInOtherAddress")
+    let button = el(app, "bankAlerts.signInAgain")
+    XCTAssertTrue(button.waitForExistence(timeout: 15))
+    button.tap()
+    let alert = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(alert.waitForExistence(timeout: 10), "the switch was not asked first")
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label BEGINSWITH %@", "Hasala reads maya.k@example.com. Switch to maya.other@example.com?"))
+      .firstMatch.exists)
+    XCTAssertTrue(alert.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "maya.k@example.com brought in 12 transactions.")).firstMatch.exists)
+    XCTAssertTrue(alert.buttons["Switch, remove them"].firstMatch.exists)
+    attach(app, "Sign in again · another address")
+    alert.buttons["Try again"].firstMatch.tap()
+    XCTAssertTrue(alert.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "bankAlerts.status").label.contains("Sign in again"), "Try again changed the mailbox")
+    XCTAssertTrue(button.exists)
+    button.tap()
+    XCTAssertTrue(alert.waitForExistence(timeout: 10))
+    alert.buttons["Switch, keep the 12 transactions"].firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["Now reading maya.other@example.com."].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["Outlook connected again. Catching up from the last check."].exists)
+    XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+    try audit(app)
+
+    app = launch(scenario: nil, screen: "bankAlerts.signInOtherAddress", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "bankAlerts.signInAgain").waitForExistence(timeout: 15))
+    try audit(app, atLargeText: true)
+    el(app, "bankAlerts.signInAgain").tap()
+    let large = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(large.waitForExistence(timeout: 10))
+    attach(app, "Sign in again · another address · AX3")
+    large.buttons["Switch, keep the 12 transactions"].firstMatch.tap()
+    XCTAssertTrue(el(app, "bankAlerts.status").waitForLabel(containing: "Working"), "the hero still asks for a sign-in")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testSignInAgainWithAnotherAddressCanRemoveTheOldTransactions() throws {
+    var app = launch(scenario: nil, screen: "mail.detailSignInOtherAddress")
+    let signIn = el(app, "mailbox.signInAgain")
+    XCTAssertTrue(signIn.waitForExistence(timeout: 15))
+    try audit(app)
+    signIn.tap()
+    let alert = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(alert.waitForExistence(timeout: 10), "the switch was not asked first")
+    XCTAssertTrue(alert.buttons["Switch, keep the 12 transactions"].firstMatch.exists)
+    attach(app, "Mailbox · another address")
+    alert.buttons["Switch, remove them"].firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["Now reading maya.other@example.com. 12 transactions removed."]
+      .waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: 10), "the page did not turn connected")
+    attach(app, "Mailbox · another address · removed")
+    try audit(app)
+
+    app = launch(scenario: nil, screen: "mail.detailSignInOtherAddress", arguments: Self.largeText)
+    XCTAssertTrue(el(app, "mailbox.signInAgain").waitForExistence(timeout: 15))
+    try audit(app, atLargeText: true)
+    el(app, "mailbox.signInAgain").tap()
+    let large = app.alerts["You signed in as maya.other@example.com."]
+    XCTAssertTrue(large.waitForExistence(timeout: 10))
+    large.buttons["Switch, remove them"].firstMatch.tap()
+    XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: 10), "the page did not turn connected")
+    try audit(app, atLargeText: true)
+  }
+
   /// Microsoft ended access to Outlook: Bank alerts' hero says so and carries "Continue
   /// with Microsoft"; signed in again, the hero says it works.
   @MainActor

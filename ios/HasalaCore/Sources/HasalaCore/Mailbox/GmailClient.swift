@@ -61,6 +61,7 @@ public struct GmailClient: Sendable {
       // of asking the user to reconnect. Every other 403 (insufficientPermissions, forbidden)
       // stays 403.
       if res.status == 403, Self.isRateLimit(errorBody: res.body) { throw .status(429, op: op) }
+      if res.status == 400, Self.isMailServiceNotEnabled(errorBody: res.body) { throw .noMailbox }
       throw .status(res.status, op: op)
     }
     if res.body.isEmpty { return JSONObject() }
@@ -163,6 +164,20 @@ public struct GmailClient: Sendable {
     return reasons.contains { rateLimitReasons.contains($0.lowercased()) }
   }
 
+  static let mailServiceNotEnabled = "Mail service not enabled"
+
+  public static func isMailServiceNotEnabled(errorBody: Data) -> Bool {
+    guard !errorBody.isEmpty, let e = (try? JSONParser.parse([UInt8](errorBody)))?["error"] else { return false }
+    var messages: [String] = []
+    var precondition = e["status"]?.stringValue == "FAILED_PRECONDITION"
+    if let m = e["message"]?.stringValue { messages.append(m) }
+    for x in e["errors"]?.arrayValue ?? [] {
+      if x["reason"]?.stringValue == "failedPrecondition" { precondition = true }
+      if let m = x["message"]?.stringValue { messages.append(m) }
+    }
+    return precondition && messages.contains(mailServiceNotEnabled)
+  }
+
   /// Gmail sends int64s as decimal strings; accept a JSON number too.
   static func decimal(_ v: JSONValue?) -> String {
     if let s = v?.stringValue { return s }
@@ -188,6 +203,10 @@ extension GmailClient: MailSource {
   public func metadata(id: String) async throws(MailAPIError) -> MailMessageMetadata { try await messageMetadata(id: id) }
 
   public func raw(id: String) async throws(MailAPIError) -> MailRawMessage { try await messageRaw(id: id) }
+
+  public func checkMailbox() async throws(MailAPIError) {
+    _ = try await get("/profile", [("fields", "historyId")], op: "mailbox")
+  }
 
   /// `users.watch` on the server's Pub/Sub topic; nil without one.
   public func subscribe(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {

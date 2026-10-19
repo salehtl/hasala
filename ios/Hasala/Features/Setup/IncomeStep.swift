@@ -49,6 +49,8 @@ struct IncomeStep: View {
         .onKeyPress(phases: .down, action: typed)
       PaydayPicker(choice: $model.paydayChoice, next: model.nextPayday)
         .padding(.top, 8)
+      SetupFailureBanner(failure: model.failure)
+        .padding(.horizontal, HSpacing.insetPage)
     }
     // Room for the pill under the strip, without moving the block off Paper's centre.
     .padding(.vertical, 22)

@@ -256,17 +256,23 @@ public struct NetWorthWidget: Sendable, Hashable, Codable {
 }
 
 public struct ProjectWidget: Sendable, Hashable, Codable {
+  public enum Unit: String, Sendable, Hashable, Codable {
+    case left, over, spent
+  }
+
   public var name: String
   public var glyph: Glyph
   public var left: Money
+  public var unit: Unit
   /// "of 12,000 · flies 14 Dec".
   public var caption: MoneyPhrase
-  public var progress: Permille
+  public var progress: Permille?
 
-  public init(name: String, glyph: Glyph, left: Money, caption: MoneyPhrase, progress: Permille) {
+  public init(name: String, glyph: Glyph, left: Money, unit: Unit = .left, caption: MoneyPhrase, progress: Permille?) {
     self.name = name
     self.glyph = glyph
     self.left = left
+    self.unit = unit
     self.caption = caption
     self.progress = progress
   }

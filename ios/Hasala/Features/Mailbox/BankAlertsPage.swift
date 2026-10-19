@@ -210,6 +210,7 @@ struct BankAlertsPage: View {
     .background(hero.hue.perceptualGradient, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bankAlerts.hero")
+    .mailSwitchQuestion(signIn)
   }
 
   /// The provider's sign-in for that mailbox, from here (no read-only screen: the person
@@ -221,8 +222,11 @@ struct BankAlertsPage: View {
     signIn = attempt
     Task {
       await attempt.connect(provider)
-      if case .connected? = attempt.outcome {
-        app.say(MailCopy.signedInAgain(provider))
+      if attempt.failedWithNoMailbox {
+        signIn = nil
+        MailConnectCoordinator.hand(attempt, to: app.router)
+      } else if let line = attempt.signedInAgainLine {
+        app.say(line)
         signIn = nil
         // The hero turns to Working; the haptic once it has.
         try? await Task.sleep(for: policy.settleDelay(.stateSwap))

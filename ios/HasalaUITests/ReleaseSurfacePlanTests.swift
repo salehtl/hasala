@@ -1,9 +1,9 @@
 import XCTest
 
-/// Plan on the Release surface: Assign only, no Auto-assign or New project; a budget row opens
+/// Plan on the Release surface: Assign and New project, no Auto-assign; a budget row opens
 /// its month with Change budget (also in More) and Move money in and no "Add a rule"; the
-/// budget sheet has no "Match September"; the project states "Count in monthly plan" and
-/// offers nothing it can't do.
+/// budget sheet has no "Match September"; the project's switch, Add transactions and Mark
+/// complete all work.
 final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
   @MainActor
   func testPlanShowsOnlyWhatWorks() throws {
@@ -13,7 +13,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Plan")
     assertNoPlaceholders(app, "Plan")
     assertPersonalAccountsOnly(app, "Plan")
-    assertNoButtons(app, ["Auto-assign", "New project"], "Plan")
+    assertNoButtons(app, ["Auto-assign"], "Plan")
     XCTAssertTrue(app.buttons["plan.assign"].exists)
     try audit(app)
 
@@ -46,18 +46,40 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     assertPresent(app, ["plan.rule.r-talabat"], "Plan › Dining")
     back(app)
 
-    // The project: a status, not a switch, and no actions that don't exist yet.
     let project = app.buttons["plan.project.japan"]
     XCTAssertTrue(reveal(app, project))
+    assertPresent(app, ["plan.newProject", "plan.allProjects"], "Plan")
     project.tap()
     let setting = el(app, "project.countInPlan")
     XCTAssertTrue(setting.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(setting.value as? String, "Off")
-    XCTAssertEqual(app.switches.count, 0)
+    XCTAssertEqual(setting.value as? String, "0")
     assertNoPlaceholders(app, "Plan › Japan trip")
-    assertNoButtons(app, ["Add transactions", "Mark complete"], "Plan › Japan trip")
-    assertAbsent(app, ["project.addTransactions", "project.markComplete"], "Plan › Japan trip")
+    XCTAssertTrue(reveal(app, el(app, "project.markComplete")))
+    assertPresent(app, ["project.addTransactions", "project.markComplete"], "Plan › Japan trip")
     try audit(app)
+    tap(app, "plan.more")
+    XCTAssertTrue(app.buttons["Edit project"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.buttons["Remove project"].exists)
+    assertNoPlaceholders(app, "Plan › Japan trip › More")
+    app.buttons["Edit project"].tap()
+    XCTAssertTrue(el(app, "projectEditor.name").waitForExistence(timeout: uiWait))
+    assertNoPlaceholders(app, "Plan › Japan trip › Edit project")
+    tap(app, "projectEditor.close")
+    XCTAssertTrue(el(app, "project.addTransactions").waitForExistence(timeout: uiWait))
+    tap(app, "project.addTransactions", opening: "projectAdd.merchant")
+    assertNoPlaceholders(app, "Plan › Japan trip › Add transactions")
+    try audit(app)
+    back(app)
+    back(app)
+    let all = el(app, "plan.allProjects")
+    XCTAssertTrue(reveal(app, all))
+    all.tap()
+    XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
+    assertNoPlaceholders(app, "Plan › Projects")
+    try audit(app)
+    tap(app, "projects.new", opening: "projectEditor.name")
+    assertNoPlaceholders(app, "Plan › New project")
+    try audit(app, overSheet: true)
   }
 
   /// Waits until `element` stops moving (a sheet settling into its detent), at most 5 s.

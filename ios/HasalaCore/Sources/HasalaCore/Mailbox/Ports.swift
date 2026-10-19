@@ -40,13 +40,15 @@ public struct MailboxRetirePlan: Sendable, Equatable {
   public var legacy: Bool
   public var total: Int
   public var edited: Int
+  public var countKnown: Bool
 
-  public init(grantID: String, provider: String, legacy: Bool, total: Int, edited: Int) {
+  public init(grantID: String, provider: String, legacy: Bool, total: Int, edited: Int, countKnown: Bool = true) {
     self.grantID = grantID
     self.provider = provider
     self.legacy = legacy
     self.total = total
     self.edited = edited
+    self.countKnown = countKnown
   }
 }
 
