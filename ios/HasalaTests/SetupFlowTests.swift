@@ -31,10 +31,10 @@ struct SetupFlowTests: AccountSuite {
     let m = model(s) { finished = true }
     #expect(m.step == .bank)
     m.toggle(.dib)
-    #expect(m.orderedBanks == [.enbd])
+    #expect(m.orderedBanks == [.enbd, .adib])
     m.toggle(.dib)
     await m.continueWithBanks()
-    #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib])
+    #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib, .adib])
     #expect(m.step == .mail)
     // Two providers and none chosen yet: "Choose your email" over the bank step.
     #expect(m.connectable == [.gmail, .outlook])

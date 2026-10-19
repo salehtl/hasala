@@ -300,3 +300,72 @@ struct HomeWidgetEngineTests {
     #expect(MoneyFormat.string(-pace.rows[1].left.minor, style: .rounded) == "898")
   }
 }
+
+@Suite("Home hero · not counted")
+struct HomeNotCountedTests {
+  let now = MayaLedger.now
+  let september = YearMonth(2026, 9)
+
+  func ended(_ s: LedgerState) -> SpendHero {
+    HomeEngine.endedHero(s, month: september, plan: PlanEngine.snapshot(s, now: LocalDateTime(2026, 9, 30, 23, 59)))
+  }
+
+  func live(_ s: LedgerState) -> SpendHero {
+    HomeEngine.hero(s, now: now, plan: PlanEngine.snapshot(s, now: now))
+  }
+
+  func withSecondProject(countInPlan: Bool) -> LedgerState {
+    var s = MayaLedger.state
+    s.projects.append(Project(id: "move", name: "Moving", glyph: .flag, budget: nil, starts: nil, ends: nil,
+                              countInPlan: countInPlan))
+    let i = s.txns.firstIndex { $0.id == "carrefour" }!
+    s.txns[i].projectID = "move"
+    return s
+  }
+
+  @Test func noProjectSpendInThePeriodShowsNoLine() {
+    #expect(live(MayaLedger.state).notCounted == nil)
+    #expect(HomeEngine.snapshot(MayaLedger.state, now: now).hero.notCounted == nil)
+  }
+
+  @Test func oneProjectNamesItAndOpensIt() throws {
+    let line = try #require(ended(MayaLedger.state).notCounted)
+    #expect(line.amount == .aed(4_860_00))
+    #expect(line.projects == 1)
+    #expect(line.projectID == "japan")
+    #expect(line.line.rendered(hidden: false) == "Not counted: AED 4,860.00 on Japan trip")
+    #expect(line.line.rendered(hidden: true) == "Not counted: AED ••• on Japan trip")
+    let snapshot = HomeEngine.snapshot(MayaLedger.state, now: now, period: .month(september))
+    #expect(snapshot.hero.notCounted == line)
+  }
+
+  @Test func twoProjectsCountThem() throws {
+    var s = withSecondProject(countInPlan: false)
+    let i = s.txns.firstIndex { $0.id == "emirates" }!
+    s.txns[i].postedAt = LocalDateTime(2026, 10, 2, 10, 0)
+    let line = try #require(live(s).notCounted)
+    #expect(line.amount == .aed(4_120_00 + 342_15))
+    #expect(line.projects == 2)
+    #expect(line.projectID == nil)
+    #expect(line.line.rendered(hidden: false) == "Not counted: AED 4,462.15 on 2 projects")
+  }
+
+  @Test func aProjectThatCountsIsLeftOut() throws {
+    let counted = withSecondProject(countInPlan: true)
+    #expect(live(counted).notCounted == nil)
+    let carved = withSecondProject(countInPlan: false)
+    let line = try #require(live(carved).notCounted)
+    #expect(line.amount == .aed(342_15))
+    #expect(line.projectID == "move")
+    #expect(live(carved).spent.minor + 342_15 == live(counted).spent.minor)
+  }
+
+  @Test func aRangeAddsUpEveryMonth() throws {
+    let s = withSecondProject(countInPlan: false)
+    let range = Period(YearMonth(2026, 8), YearMonth(2026, 10))
+    let line = try #require(HomeEngine.snapshot(s, now: now, period: range).hero.notCounted)
+    #expect(line.amount == .aed(4_860_00 + 342_15))
+    #expect(line.projects == 2)
+    #expect(line.line.rendered(hidden: false) == "Not counted: AED 5,202.15 on 2 projects")
+  }
+}

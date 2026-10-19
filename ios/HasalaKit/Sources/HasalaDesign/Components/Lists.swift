@@ -124,13 +124,15 @@ public struct HListRow: View {
   let supporting: Supporting?
   let trailing: Trailing
   let hidden: Bool
+  let project: String?
   @Environment(\.dynamicTypeSize) private var typeSize
 
   /// `titleColor` is `listRowAction` for an action row ("Add a rule") and `listRowDestructive`
   /// for a destructive one ("Archive", in its own card, last).
   public init(leading: Leading = .none, title: String, supporting: Supporting? = nil, trailing: Trailing = .none,
-              titleColor: Color = HColor.listRowTitle, hidden: Bool = false)
+              titleColor: Color = HColor.listRowTitle, hidden: Bool = false, project: String? = nil)
   {
+    self.project = project
     self.leading = leading
     self.title = title
     self.supporting = supporting
@@ -193,7 +195,15 @@ public struct HListRow: View {
   private var text: some View {
     VStack(alignment: .leading, spacing: 2) {
       Text(title).hType(.rowTitle).foregroundStyle(titleColor).singleLineAtDefaultTextSize()
-      if let supporting { SupportingLine(supporting, hidden: hidden) }
+      if let supporting {
+        if let project {
+          ProjectChipFlow(project) { SupportingLine(supporting, hidden: hidden) }
+        } else {
+          SupportingLine(supporting, hidden: hidden)
+        }
+      } else if let project {
+        ProjectChip(project)
+      }
     }
   }
 
@@ -231,6 +241,7 @@ public struct HListRow: View {
   private var spokenLabel: String {
     var parts = [title]
     if let supporting { parts.append(supporting.spoken(hidden: hidden)) }
+    if let project { parts.append(ProjectChip.spoken(project)) }
     return parts.joined(separator: ", ")
   }
 
@@ -517,7 +528,70 @@ public struct TransactionRow: View {
       title: row.merchant,
       supporting: row.toReview ? .status(row.detail, Self.tone(row.reviewReason)) : .text(row.detail),
       trailing: .amount(row.amount, in: row.isIncome),
-      hidden: hidden)
+      hidden: hidden,
+      project: row.project?.name)
+  }
+}
+
+public struct ProjectChip: View {
+  let name: String
+  @Environment(\.dynamicTypeSize) private var typeSize
+  @ScaledMetric(relativeTo: .caption) private var height: CGFloat = 20
+
+  public init(_ name: String) {
+    self.name = name
+  }
+
+  public static func spoken(_ name: String) -> String { "\(name) project" }
+
+  public var body: some View {
+    let large = typeSize.isAccessibilitySize
+    HStack(spacing: large ? 8 : 4) {
+      HIconView(.project, size: large ? 26 : 12, color: HColor.huePeachInk, strokeWidth: large ? 2 : 2.4)
+      Text(name).hType(.caption1).foregroundStyle(HColor.huePeachInk)
+        .lineLimit(large ? nil : 1).truncationMode(.tail)
+        .fixedSize(horizontal: false, vertical: large)
+    }
+    .padding(.leading, large ? 10 : 5)
+    .padding(.trailing, large ? 16 : 8)
+    .padding(.vertical, large ? 4 : 0)
+    .frame(minHeight: large ? nil : height)
+    .background(HColor.bucketProjectStart, in: Capsule())
+    .frame(maxWidth: large ? nil : 140, alignment: .leading)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(Self.spoken(name))
+  }
+}
+
+public struct ProjectChipFlow<Detail: View>: View {
+  let project: String
+  let detail: Detail
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  public init(_ project: String, @ViewBuilder detail: () -> Detail) {
+    self.project = project
+    self.detail = detail()
+  }
+
+  public var body: some View {
+    if typeSize.isAccessibilitySize {
+      stacked(spacing: 8)
+    } else {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .center, spacing: 6) {
+          detail
+          ProjectChip(project)
+        }
+        stacked(spacing: 4)
+      }
+    }
+  }
+
+  private func stacked(spacing: CGFloat) -> some View {
+    VStack(alignment: .leading, spacing: spacing) {
+      detail
+      ProjectChip(project)
+    }
   }
 }
 

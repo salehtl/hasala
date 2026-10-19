@@ -23,6 +23,21 @@ struct HomeModelTests {
     #expect(app.tab == .activity)
   }
 
+  @Test func notCountedOpensTheProjectOrTheProjects() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let home = HomeViewModel(app: app)
+    app.period = .month(YearMonth(2026, 9))
+    let line = try #require(home.snapshot.hero.notCounted)
+    home.openNotCounted(line)
+    #expect(app.tab == .plan)
+    #expect(app.router.plan == [.project("japan")])
+    app.tab = .home
+    app.router.plan = []
+    home.openNotCounted(SpendHero.NotCounted(amount: .aed(5_600_00), projects: 2, projectID: nil, line: ""))
+    #expect(app.tab == .plan)
+    #expect(app.router.plan == [.projects])
+  }
+
   /// The snapshot is computed once per ledger change (`AppModel`'s memo): reading it again
   /// returns the same value without a new engine pass, and a change gives a new one.
   @Test func theSnapshotIsMemoisedByRevision() {

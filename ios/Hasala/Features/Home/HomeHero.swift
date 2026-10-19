@@ -25,6 +25,7 @@ struct HomeHero: View {
   let insights: (() -> Void)?
   /// "Set your plan" with no plan yet: the Plan tab.
   let setPlan: () -> Void
+  let openNotCounted: (SpendHero.NotCounted) -> Void
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,7 +60,12 @@ struct HomeHero: View {
         verdictLine
           .opacity(phase.verdictVisible ? 1 : 0)
       }
-      tiles
+      VStack(alignment: .leading, spacing: typeSize.isAccessibilitySize ? 8 : 2) {
+        tiles
+        if let line = hero.notCounted {
+          NotCountedLine(line: line, hidden: hidden) { openNotCounted(line) }
+        }
+      }
       if let note = hero.note {
         Text(note.rendered(hidden: hidden)).hType(.subheadline).foregroundStyle(HColor.textOnWashSecondary)
           .accessibilityLabel(note.spoken(hidden: hidden))
@@ -205,6 +211,57 @@ private struct HeroFigureLine: View {
     MoneyText(amount, figure: .display, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 38,
               hiddenTracking: 3, color: HColor.textPrimary)
       .padding(.vertical, hidden ? 0 : -trim)
+  }
+}
+
+private struct NotCountedLine: View {
+  let line: SpendHero.NotCounted
+  let hidden: Bool
+  let action: () -> Void
+
+  @Environment(\.dynamicTypeSize) private var typeSize
+  @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 20
+
+  var body: some View {
+    Button(action: action) {
+      if typeSize.isAccessibilitySize {
+        HStack(alignment: .top, spacing: 12) {
+          mark(32, glyph: 18, stroke: 2.2)
+            .frame(height: lane)
+          text
+        }
+        .padding(.vertical, 10)
+      } else {
+        HStack(spacing: 8) {
+          mark(20, glyph: 12, stroke: 2.4)
+          text
+          HIconView(.chevronRight, size: 14, color: HColor.iconTertiary, strokeWidth: 2.4)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum, alignment: .leading)
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(line.line.spoken(hidden: hidden))
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("home.hero.notCounted")
+  }
+
+  private var text: some View {
+    Text(line.line.rendered(hidden: hidden))
+      .hType(.subheadline)
+      .foregroundStyle(HColor.textOnWashSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func mark(_ side: CGFloat, glyph: CGFloat, stroke: CGFloat) -> some View {
+    Circle()
+      .fill(Hue.peach.perceptualGradient)
+      .frame(width: side, height: side)
+      .overlay { HIconView(.project, size: glyph, color: Hue.peach.ink, strokeWidth: stroke) }
+      .accessibilityHidden(true)
   }
 }
 

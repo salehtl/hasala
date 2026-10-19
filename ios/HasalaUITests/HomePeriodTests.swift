@@ -51,6 +51,43 @@ final class HomePeriodTests: XCTestCase {
   }
 
   @MainActor
+  func testNotCountedNamesTheProjectAndOpensIt() throws {
+    let app = launch(scenario: "maya", motion: "off")
+    XCTAssertTrue(el(app, "home.hero.left").waitForLabel("AED 11,115.62"))
+    XCTAssertFalse(el(app, "home.hero.notCounted").exists)
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    let line = app.buttons["home.hero.notCounted"]
+    XCTAssertTrue(line.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(line.label, "Not counted: AED 4,860.00 on Japan trip")
+    attach(app, "Home · September · Not counted")
+    try audit(app)
+    line.tap()
+    XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(app.tabBars.firstMatch.buttons["Plan"].isSelected, true)
+  }
+
+  @MainActor
+  func testNotCountedAtLargeTextSizes() throws {
+    let app = launch(
+      scenario: "maya", motion: "off",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    let line = app.buttons["home.hero.notCounted"]
+    XCTAssertTrue(line.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, line))
+    XCTAssertEqual(line.label, "Not counted: AED 4,860.00 on Japan trip")
+    attach(app, "AX3 · Home · Not counted")
+    try audit(app, atLargeText: true)
+    line.tap()
+    XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
   func testHomesRangeScopesActivityAndReview() throws {
     let app = launch(scenario: "mayaRange", motion: "off")
     tap(app, "home.period", opening: "period.sheet")

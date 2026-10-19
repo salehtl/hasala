@@ -36,6 +36,7 @@ struct OnboardingStoreTests: AccountSuite {
     let setup = store.setupModel(displayName: "Maya", facts: facts)
     setup.incomeText = "25000"
     setup.toggle(.dib)
+    setup.toggle(.adib)
     for _ in 0..<3 {
       _ = AccountRootView(session: session, onboarding: store, setupFacts: facts) { EmptyView() }
       _ = store.setupModel(displayName: session.account.profile?.displayName ?? "", facts: facts)
