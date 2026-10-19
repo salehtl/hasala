@@ -20,6 +20,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   case firstDays
   case mayaCopy
   case mayaRange
+  case mayaSamePurchase
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -51,6 +52,17 @@ public enum Scenario: String, Sendable, CaseIterable {
       copy.heldCopy = HeldCopy(of: "starbucks", fromOtherInbox: true)
       copy.isNewMerchant = false
       s.txns.append(copy)
+    }
+    if self == .mayaSamePurchase {
+      s.txns.append(
+        Txn(id: "amazon-usd", merchant: "Amazon", amount: Money(minor: 25_00, currency: "USD"), homeMinor: 91_81,
+            postedAt: MayaLedger.oct(7, 20, 15), accountID: "dib", categoryID: "shopping", categorySource: .dictionary,
+            provenance: MayaLedger.alert(MayaLedger.dib, "20:15", "AMAZON")))
+      s.txns.append(
+        Txn(id: "amazon-aed", merchant: "Amazon", amount: .aed(93_00), postedAt: MayaLedger.oct(9, 8, 0), accountID: "dib",
+            categoryID: "shopping", categorySource: .dictionary,
+            provenance: MayaLedger.alert(MayaLedger.dib, "08:00", "AMAZON MKTPLACE"),
+            samePurchase: SamePurchaseMatch(of: "amazon-usd")))
     }
     if self == .mayaRange {
       s.txns += MayaHistory.rangeReview

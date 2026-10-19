@@ -66,6 +66,9 @@
       Screen("review.copy", scenario: "mayaCopy", prepare: { graph in
         startDeck(graph, at: "starbucks-copy") { _ in }
       }),
+      Screen("review.samePurchase", scenario: "mayaSamePurchase", prepare: { graph in
+        startDeck(graph, at: "amazon-aed") { _ in }
+      }),
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
       // Search · Ready.

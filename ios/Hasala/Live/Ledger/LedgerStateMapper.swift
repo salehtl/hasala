@@ -239,7 +239,7 @@ nonisolated enum LedgerStateMapper {
   static func samePurchaseRow(_ row: TxnRow) -> SamePurchase.Row {
     SamePurchase.Row(
       id: row.id, live: row.supersededBy == nil, unparsed: row.unparsed, archived: row.archived != nil,
-      manual: row.entryMethod == "manual" || row.provenance == "user", amountMinor: row.amountMinor, currency: row.currency,
+      manual: row.entryMethod == "manual", amountMinor: row.amountMinor, currency: row.currency,
       amountHomeMinor: row.amountHomeMinor, direction: row.direction, bank: row.bank, last4: row.last4,
       postedMs: row.postedMs, merchantKey: row.merchantKey, possibleDuplicateOf: row.possibleDuplicateOf,
       duplicateDisposition: row.duplicateDisposition, heldCopy: row.heldCopy)

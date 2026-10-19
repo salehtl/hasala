@@ -308,7 +308,8 @@ public enum ReviewEngine {
 
   public static func samePurchaseLine(_ t: Txn, _ s: LedgerState) -> String? {
     guard let match = t.samePurchase, let f = s.txn(match.of) else { return nil }
-    let amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount.minor))"
+    var amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount.minor))"
+    if let home = f.homeMinor { amount += " (about \(Money.home) \(MoneyFormat.string(home)))" }
     var line = "Same purchase as \(amount) at \(f.title) on \(f.postedAt.date.short)?"
     if match.merchantMissing { line += " This alert has no merchant." }
     return line
