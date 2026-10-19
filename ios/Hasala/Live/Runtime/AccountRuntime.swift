@@ -115,7 +115,8 @@ final class AccountRuntime {
 
   /// Plain-language words for a halt a reconnect alone doesn't fix.
   var haltMessage: String? {
-    store.mailboxHalt == .noMailbox ? LiveMailboxConnecting.message(.noMailbox) : nil
+    guard store.mailboxHalt == .noMailbox, let provider = activeProvider else { return nil }
+    return LiveMailboxConnecting.message(.noMailbox, provider: provider)
   }
 
   /// "Use sample data" is offered on a review account whose ledger holds no
@@ -204,7 +205,7 @@ final class AccountRuntime {
       lanes[p] = MailboxLane(
         provider: p, build: build, secrets: env.secrets, userID: context.userID, persistence: persistence,
         ledger: mailboxLedger, server: mailboxServer, stepUp: stepUp, categorizer: categorizer,
-        presenter: WebAuthenticationPresenter())
+        presenter: WebAuthenticationPresenter(for: p))
     }
     let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
     let store = LiveLedgerStore(

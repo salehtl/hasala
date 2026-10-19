@@ -65,6 +65,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   public var omitRefreshToken = false
   public var pageSize = 100
   public var watchExpirationMs: Int64 = 0
+  public var noMailbox = false
   /// When true every transport call fails (`HTTPExchangeError.offline`).
   public var offline = false
   /// Asked before every Gmail API request with its path: a status answers it with Google's
@@ -159,6 +160,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     guard path.hasPrefix(base) else { return json(404, ["error": .string("not_found")]) }
     let sub = String(path.dropFirst(base.count))
     func q(_ n: String) -> String? { query.first { $0.0 == n }?.1 }
+    if lock.withLock({ noMailbox }) { return Self.noMailboxResponse() }
     switch (request.method, sub) {
     case (.get, "/profile"):
       return json(200, ["historyId": .string(lock.withLock { historyID })])
@@ -195,6 +197,13 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   }
 
   // MARK: Internals
+
+  public static let noMailboxBody =
+    #"{"error":{"code":400,"message":"Mail service not enabled","errors":[{"message":"Mail service not enabled","domain":"global","reason":"failedPrecondition"}],"status":"FAILED_PRECONDITION"}}"#
+
+  static func noMailboxResponse() -> HTTPResponse {
+    HTTPResponse(status: 400, body: Data(noMailboxBody.utf8), headers: [("Content-Type", "application/json")])
+  }
 
   func token(_ form: [(String, String)]) -> HTTPResponse {
     func f(_ n: String) -> String { form.first { $0.0 == n }?.1 ?? "" }

@@ -181,7 +181,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
 
   /// Reading Gmail, Bank alerts offers "Use another email": Outlook's sign-in asks first
   /// ("Change your email?", main's "This replaces your Gmail connection."). Cancel keeps
-  /// Gmail; "Use Outlook" leaves one mailbox, Outlook's.
+  /// Gmail; "Use Outlook, keep the 42 transactions" leaves one mailbox, Outlook's.
   @MainActor
   func testSwitchFromGmailToOutlook() throws {
     let app = bankAlerts("gmailLinked")
@@ -210,7 +210,8 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(connect.exists, "Cancel left the Outlook screen")
     connect.tap()
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    alert.buttons["Use Outlook"].firstMatch.tap()
+    XCTAssertTrue(alert.buttons["Use Outlook, remove them"].firstMatch.exists)
+    alert.buttons["Use Outlook, keep the 42 transactions"].firstMatch.tap()
     assertMailboxAdded(app, "outlook-1")
     XCTAssertFalse(el(app, "bankAlerts.mailbox.gmail-1").exists, "Gmail is still read beside Outlook")
     assertPersonalAccountsOnly(app, "Bank alerts")

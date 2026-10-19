@@ -78,6 +78,7 @@ struct MailboxDetailPage: View {
     } message: {
       if let m = mailbox { Text(MailCopy.disconnectMessage(m.provider)) }
     }
+    .mailSwitchQuestion(signIn)
     // Signed in again: the motion policy's success, once.
     .hHaptic(.success, trigger: signedIn) { old, new in new > old }
     #if HASALA_MOCKS
@@ -252,8 +253,11 @@ struct MailboxDetailPage: View {
     let policy = motion
     Task {
       await signIn.connect(provider)
-      if case .connected? = signIn.outcome {
-        app.say(MailCopy.signedInAgain(provider))
+      if signIn.failedWithNoMailbox {
+        MailConnectCoordinator.hand(signIn, to: app.router)
+        self.signIn = app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: .signInAgain(mailboxID: mailboxID)) }
+      } else if let line = signIn.signedInAgainLine {
+        app.say(line)
         signIn.reset()
         // The page turns into the working layout; the haptic once it has.
         try? await Task.sleep(for: policy.settleDelay(.stateSwap))

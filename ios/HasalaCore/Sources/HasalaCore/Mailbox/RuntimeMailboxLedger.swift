@@ -105,7 +105,9 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   public func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan {
     let legacy = ((try? reader.otherMailboxCount(grantID: grantID, provider: provider)) ?? 1) == 0
-    let counts = (try? reader.mailboxImports(grantID: grantID, provider: provider, legacy: legacy)) ?? MailboxImportCounts(total: 0, edited: 0)
+    guard let counts = try? reader.mailboxImports(grantID: grantID, provider: provider, legacy: legacy) else {
+      return MailboxRetirePlan(grantID: grantID, provider: provider, legacy: legacy, total: 0, edited: 0, countKnown: false)
+    }
     return MailboxRetirePlan(grantID: grantID, provider: provider, legacy: legacy, total: counts.total, edited: counts.edited)
   }
 

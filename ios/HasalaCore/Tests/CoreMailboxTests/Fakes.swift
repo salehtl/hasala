@@ -74,7 +74,12 @@ actor FakeLedger: MailboxLedger {
   func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan {
     plans[grantID] ?? MailboxRetirePlan(grantID: grantID, provider: provider, legacy: true, total: 0, edited: 0)
   }
-  func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) { retired.append(plan) }
+  var retireFails = false
+  func setRetireFails(_ v: Bool) { retireFails = v }
+  func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) {
+    if retireFails { throw MailboxLedgerError("enqueue") }
+    retired.append(plan)
+  }
   func flush() async -> FlushOutcome {
     flushes += 1
     if let n = accountFullAfter, flushes > n { return .accountFull }
@@ -130,9 +135,18 @@ actor FakeServer: MailboxServer {
   }
 }
 
+final class StepUpLog: @unchecked Sendable {
+  private let lock = NSLock()
+  private var seen: [String] = []
+  func record(_ kind: String) { lock.withLock { seen.append(kind) } }
+  var kinds: [String] { lock.withLock { seen } }
+}
+
 struct FakeStepUp: MailboxStepUp {
   var fail = false
+  var log: StepUpLog?
   func proof(kind: String, payloadHash: Data?) async throws(MailboxStepUpError) -> JSONValue {
+    log?.record(kind)
     if fail { throw .cancelled }
     return .object(JSONObject([("kind", .string(kind)), ("p", .string(payloadHash.map { Hex.encode($0) } ?? ""))]))
   }
@@ -189,6 +203,7 @@ struct Rig {
   let server = FakeServer()
   let clock = ManualClock(Rig.t0)
   let keychain = MemoryGmailRefreshTokenStore()
+  let stepUps = StepUpLog()
   let engine: MailboxEngine
   let tokens: RefreshingGmailTokenProvider
 
@@ -222,7 +237,7 @@ struct Rig {
     let clock = self.clock
     engine = MailboxEngine(
       config: c, oauth: oauth, tokens: tokens, gmailHTTP: gmail, store: store, ledger: ledger, server: server,
-      stepUp: FakeStepUp(fail: stepUpFails), categorizer: categorizer, templates: BundledTemplates.load().templates,
+      stepUp: FakeStepUp(fail: stepUpFails, log: stepUps), categorizer: categorizer, templates: BundledTemplates.load().templates,
       clock: clock, random: CountingRandom(), sleep: { ms in clock.advance(ms) })
     gmail.watchExpirationMs = Rig.t0 + 7 * 86_400_000
   }

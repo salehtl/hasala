@@ -1,5 +1,6 @@
 import HasalaModels
 import Observation
+import UIKit
 
 /// One connect attempt, for setup's email step, Add a mailbox and Sign in again (plan
 /// B4.3): it runs the provider's sign-in through `MailboxConnecting` and says how it went.
@@ -43,34 +44,118 @@ final class MailConnectCoordinator {
   private(set) var outcome: Outcome?
   /// The provider of the last attempt (the error screens name it).
   private(set) var provider: MailProviderKind?
+  private(set) var replacing = false
+  private(set) var removingOld = false
+  private(set) var linked: MailLinked?
+  private(set) var question: MailSwitchQuestion?
+  @ObservationIgnored private var answering: CheckedContinuation<MailSwitchChoice, Never>?
+  @ObservationIgnored private(set) var presenters = 0
+  @ObservationIgnored private var resigning: NSObjectProtocol?
+
+  var nowReading: String? { linked?.nowReading }
 
   init(mailbox: MailboxConnecting, context: Context) {
     self.mailbox = mailbox
     self.context = context
+    resigning = NotificationCenter.default.addObserver(
+      forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.leftForeground() }
+    }
+  }
+
+  isolated deinit {
+    if let resigning { NotificationCenter.default.removeObserver(resigning) }
+  }
+
+  func attachPresenter() {
+    presenters += 1
+  }
+
+  func detachPresenter() {
+    presenters = max(0, presenters - 1)
+    if presenters == 0 { answer(.cancel) }
+  }
+
+  func leftForeground() {
+    if question != nil { answer(.cancel) }
   }
 
   /// Runs the sign-in (or the sign-in again). A second tap while one runs does nothing.
   /// `replacing`: the person confirmed that this connect replaces the account's link to
   /// another provider ("Change your email?"; one link held, `.replace`).
-  func connect(_ provider: MailProviderKind, replacing: Bool = false) async {
+  func connect(_ provider: MailProviderKind, replacing: Bool = false, removingOld: Bool = false) async {
     guard !busy else { return }
     busy = true
     defer { busy = false }
     outcome = nil
+    linked = nil
     self.provider = provider
+    self.replacing = replacing
+    self.removingOld = replacing && removingOld
+    let ask: MailSwitchAsk = { [weak self] question in await self?.ask(question) ?? .cancel }
     do {
       if case .signInAgain(let id) = context {
-        try await mailbox.signInAgain(id)
+        let made = try await mailbox.signInAgain(id, ask: ask)
+        linked = made
         outcome = .connected(mailboxID: id)
       } else {
-        outcome = .connected(mailboxID: try await mailbox.connect(provider, replacing: replacing))
+        let made = try await mailbox.connect(provider, replacing: replacing, removingOld: self.removingOld, ask: ask)
+        linked = made
+        outcome = .connected(mailboxID: made.mailboxID)
       }
     } catch .cancelled where provider == .gmail {
       // The person closed Google's sheet: nothing to say (today's behaviour).
       outcome = nil
+    } catch .switchDeclined {
+      outcome = nil
     } catch {
       outcome = .failed(error)
     }
+  }
+
+  func retry(_ provider: MailProviderKind) async {
+    let same = self.provider == provider
+    await connect(provider, replacing: same && replacing, removingOld: same && removingOld)
+  }
+
+  func ask(_ question: MailSwitchQuestion) async -> MailSwitchChoice {
+    answer(.cancel)
+    guard presenters > 0, UIApplication.shared.applicationState != .background else { return .cancel }
+    return await withCheckedContinuation { continuation in
+      answering = continuation
+      self.question = question
+    }
+  }
+
+  func answer(_ choice: MailSwitchChoice) {
+    question = nil
+    let waiting = answering
+    answering = nil
+    waiting?.resume(returning: choice)
+  }
+
+  private static var pendingHand: MailConnectCoordinator?
+
+  static func hand(_ coordinator: MailConnectCoordinator, to router: AppRouter) {
+    guard router.sheet == .profile, let provider = coordinator.provider else { return }
+    pendingHand = coordinator
+    router.profile.append(.connectMail(provider))
+  }
+
+  static func handed(_ provider: MailProviderKind) -> MailConnectCoordinator? {
+    guard let c = pendingHand, c.provider == provider else { return nil }
+    pendingHand = nil
+    return c
+  }
+
+  static func release() {
+    pendingHand = nil
+  }
+
+  var failedWithNoMailbox: Bool {
+    if case .failed(.noMailbox)? = outcome { return true }
+    return false
   }
 
   /// The mailbox a connect of `provider` here would replace, which the screen confirms
@@ -90,6 +175,24 @@ final class MailConnectCoordinator {
   /// Back to before the attempt ("Try again", "Choose a different email").
   func reset() {
     outcome = nil
+    linked = nil
+  }
+
+  var signedInAgainLine: String? {
+    guard case .connected? = outcome, let provider else { return nil }
+    return MailCopy.signedInAgain(provider, nowReading: nowReading, removal: linked?.removal)
+  }
+
+  func takeRemovalFailure() -> String? {
+    guard case .failed? = linked?.removal, let line = addedLine else { return nil }
+    linked?.removal = nil
+    return line
+  }
+
+  var addedLine: String? {
+    guard case .connected? = outcome, let provider else { return nil }
+    if let address = nowReading { return MailCopy.signedInAgain(provider, nowReading: address, removal: linked?.removal) }
+    return MailCopy.added(provider, removal: linked?.removal)
   }
 
   // MARK: What the screens show
@@ -138,9 +241,9 @@ final class MailConnectCoordinator {
   /// didn't finish for any provider but Google (whose closed sheet says nothing).
   static func hasScreen(_ failure: MailConnectFailure, provider: MailProviderKind) -> Bool {
     switch failure {
-    case .adminApprovalNeeded: true
+    case .adminApprovalNeeded, .noMailbox: true
     case .cancelled: provider != .gmail
-    case .alreadyConnected, .takenByOtherIPhone, .offline, .failed: false
+    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
     }
   }
 }

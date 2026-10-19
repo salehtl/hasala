@@ -35,6 +35,8 @@ enum MailConnectFailure: Error, Equatable {
   /// iPhone."; that iPhone may read a different provider than the one asked for).
   case takenByOtherIPhone
   case offline
+  case noMailbox(MailProviderKind)
+  case switchDeclined
   /// Anything else, with its content-free copy.
   case failed(String)
 
@@ -42,12 +44,22 @@ enum MailConnectFailure: Error, Equatable {
   /// sign-in the person closed is not an error).
   func message(for provider: MailProviderKind) -> String? {
     switch self {
-    case .cancelled: nil
+    case .cancelled, .switchDeclined: nil
     case .adminApprovalNeeded: "Your organisation needs to approve Hasala."
     case .alreadyConnected(let address): "\(address) is already connected."
     case .takenByOtherIPhone: "Your email is read on your other iPhone."
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
+    case .noMailbox(let account): Self.noMailboxLine(account)
     case .failed(let message): message
+    }
+  }
+
+  static func noMailboxLine(_ provider: MailProviderKind) -> String {
+    switch provider {
+    case .outlook:
+      "This Microsoft account has no Outlook mailbox. Sign in with the account your bank alerts go to, such as you@outlook.com or you@hotmail.com."
+    case .gmail:
+      "This Google account has no Gmail. Sign in with the account your bank alerts go to."
     }
   }
 }
@@ -106,10 +118,10 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// replaced only when `replacing` says the person confirmed it; otherwise that connect
   /// fails and the link stays. While the link is `heldElsewhere`, `replacing` says the
   /// person confirmed taking it over.
-  @discardableResult
-  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String
+  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure)
+  func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked
   /// Stops reading the mailbox and forgets its sign-in.
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure)
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact?
@@ -125,6 +137,40 @@ protocol MailboxConnecting: AnyObject, Observable {
 struct MailboxDisconnectImpact: Equatable, Sendable {
   var transactions: Int
   var edited: Int
+}
+
+struct MailSwitchQuestion: Equatable, Sendable {
+  var provider: MailProviderKind
+  var oldAddress: String
+  var newAddress: String
+  var impact: MailboxDisconnectImpact?
+  var oldHasNoMailbox = false
+  var countUnknown = false
+
+  var offersRemove: Bool { impact != nil || countUnknown }
+}
+
+enum MailSwitchChoice: Equatable, Sendable {
+  case keep, remove, cancel
+}
+
+typealias MailSwitchAsk = @MainActor @Sendable (MailSwitchQuestion) async -> MailSwitchChoice
+
+enum MailSwitchRemoval: Equatable, Sendable {
+  case removed(Int?)
+  case failed(from: String)
+}
+
+struct MailLinked: Equatable, Sendable {
+  var mailboxID: String
+  var nowReading: String?
+  var removal: MailSwitchRemoval?
+
+  init(mailboxID: String, nowReading: String? = nil, removal: MailSwitchRemoval? = nil) {
+    self.mailboxID = mailboxID
+    self.nowReading = nowReading
+    self.removal = removal
+  }
 }
 
 struct MailImport: Equatable, Sendable {
@@ -180,6 +226,16 @@ extension MailboxConnecting {
   @discardableResult
   func connect(_ provider: MailProviderKind) async throws(MailConnectFailure) -> String {
     try await connect(provider, replacing: false)
+  }
+
+  @discardableResult
+  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
+    try await connect(provider, replacing: replacing, removingOld: false, ask: { _ in .cancel }).mailboxID
+  }
+
+  @discardableResult
+  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) -> MailLinked {
+    try await signInAgain(mailboxID, ask: { _ in .cancel })
   }
 
   /// Whether this build holds one mailbox at a time, so a connect of another provider

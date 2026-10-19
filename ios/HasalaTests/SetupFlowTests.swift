@@ -142,6 +142,52 @@ struct SetupFlowTests: AccountSuite {
     #expect(other.path == [.connect(.gmail)] && !other.choosingEmail)
   }
 
+  @Test func aMicrosoftAccountWithNoMailboxHasItsScreenInSetup() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.outlookNoMailbox = true
+    let m = model(s)
+    await m.continueWithBanks()
+    m.pickProvider(.outlook)
+    await m.connectMail(.outlook)
+    #expect(m.path == [.connect(.outlook), .connectError(.outlook)])
+    #expect(m.connectFailure(.outlook) == .noMailbox(.outlook))
+    await m.retryConnect(.outlook)
+    #expect(m.path == [.connect(.outlook), .scan] && m.facts.mailbox == .scanning)
+    #expect(lane.connectCalls == 2)
+  }
+
+  @Test func aRetryInSetupKeepsAConfirmedSwitch() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.outlookNoMailbox = true
+    let m = model(s)
+    await m.continueWithBanks()
+    m.pickProvider(.outlook)
+    await m.coordinator(.outlook).connect(.outlook, replacing: true)
+    m.connectFailed(.outlook)
+    #expect(m.path == [.connect(.outlook), .connectError(.outlook)])
+    await m.retryConnect(.outlook)
+    #expect(lane.replacingCalls == [true, true])
+    #expect(m.path == [.connect(.outlook), .scan])
+  }
+
+  @Test func aRemoveThatFailedDuringASwitchInSetupIsSaid() async throws {
+    let lane = MockMailbox(mailboxes: [MockMailbox.gmail])
+    lane.connectDelay = .zero
+    lane.step = .milliseconds(1)
+    lane.holdOneLink()
+    lane.switchRemoveFails = true
+    let m = model(services(with: lane))
+    await m.continueWithBanks()
+    m.pickProvider(.outlook)
+    await m.coordinator(.outlook).connect(.outlook, replacing: true, removingOld: true)
+    m.continueFromEmail(.outlook)
+    #expect(m.failure == .failed(
+      "Outlook connected. Checking for alerts. The transactions from maya@example.com couldn't be removed. They stay."))
+    #expect(m.coordinator(.outlook).takeRemovalFailure() == nil)
+  }
+
   /// A closed Google sign-in is not an error: the screen stays as it was.
   @Test func aClosedGoogleSignInChangesNothing() async throws {
     let mailbox = CountingMailbox(MockMailbox())
@@ -430,11 +476,15 @@ final class CountingMailbox: MailboxConnecting {
   var offersSampleData: Bool { base.offersSampleData }
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }
-  func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
+  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
+  {
     if cancelGmail, provider == .gmail { throw .cancelled }
-    return try await base.connect(provider, replacing: replacing)
+    return try await base.connect(provider, replacing: replacing, removingOld: removingOld, ask: ask)
   }
-  func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) { try await base.signInAgain(mailboxID) }
+  func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
+    try await base.signInAgain(mailboxID, ask: ask)
+  }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
   }

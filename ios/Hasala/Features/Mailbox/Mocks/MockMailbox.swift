@@ -38,12 +38,18 @@
     var outlookAdmin = false
     /// An Outlook sign-in is closed, or its permissions declined.
     var outlookCancelled = false
+    var outlookNoMailbox = false
+    var gmailNoMailbox = false
+    var signInAgainReads: String?
+    var switchRemoveFails = false
+    private(set) var questions: [MailSwitchQuestion] = []
     /// Every connect finds the mailbox already connected.
     var alreadyConnected = false
     /// Every connect finds no network.
     var offline = false
     /// Each `connect` call, whatever its outcome (tests: no second sign-in on Back).
     private(set) var connectCalls = 0
+    private(set) var replacingCalls: [Bool] = []
     /// Each `signInAgain` call.
     private(set) var signInCalls = 0
     private(set) var sampleLoaded = false
@@ -122,9 +128,12 @@
       return mailboxes.contains { $0.state == .connected || $0.state == .needsSignIn } ? .linked : .unlinked
     }
 
-    @discardableResult
-    func connect(_ provider: MailProviderKind, replacing: Bool) async throws(MailConnectFailure) -> String {
+    func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+      async throws(MailConnectFailure) -> MailLinked
+    {
       connectCalls += 1
+      replacingCalls.append(replacing)
+      var removal: MailSwitchRemoval?
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
       if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
@@ -136,9 +145,8 @@
         let live = mailboxes.filter { $0.state != .disconnected }
         if let i = mailboxes.firstIndex(where: { $0.provider == provider && $0.state == .needsSignIn }) {
           // The same provider's broken link: a new sign-in, as live's connect is then.
-          mailboxes[i].state = .connected
-          mailboxes[i].meta = "Checked just now"
-          return mailboxes[i].id
+          try failNoMailbox(provider)
+          return try await readAgain(mailboxes[i].id, ask: ask)
         }
         if let same = live.first(where: { $0.provider == provider }) {
           throw .alreadyConnected(address: same.address)
@@ -147,9 +155,12 @@
           guard replacing else {
             throw .failed("Disconnect \(other.provider.appName) first, then connect \(provider.appName).")
           }
+          try failNoMailbox(provider)
           mailboxes.removeAll { $0.id == other.id }
+          if removingOld { removal = remove(other.id, old: other.address) }
         }
       }
+      try failNoMailbox(provider)
       guard !alreadyConnected, let address = nextAddress(provider) else {
         throw .alreadyConnected(address: provider == .gmail ? Self.gmailAddress : Self.outlookAddress)
       }
@@ -160,7 +171,7 @@
         mailboxes[i].meta = "Checking now"
         mailboxes[i].banks = banks.map(\.name)
         mailboxes[i].connectedOn = "10 Oct"
-        return mailboxes[i].id
+        return MailLinked(mailboxID: mailboxes[i].id, removal: removal)
       }
       let n = mailboxes.filter { $0.provider == provider }.count + 1
       let id = "\(provider.rawValue)-\(n)"
@@ -168,19 +179,67 @@
         id: id, provider: provider, address: address, state: .syncing, meta: "Checking now",
         accountKind: provider == .outlook ? "Personal Microsoft" : nil,
         banks: banks.map(\.name), connectedOn: "10 Oct"))
-      return id
+      return MailLinked(mailboxID: id, removal: removal)
     }
 
-    func signInAgain(_ mailboxID: String) async throws(MailConnectFailure) {
+    private func remove(_ id: String, old: String) -> MailSwitchRemoval? {
+      guard let impact = imported[id], impact.transactions > 0 else { return nil }
+      if switchRemoveFails { return .failed(from: old) }
+      removed.append(id)
+      imported[id] = nil
+      return .removed(impact.transactions)
+    }
+
+    private func readAgain(_ id: String, ask: MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
+      guard let i = mailboxes.firstIndex(where: { $0.id == id }) else { throw .failed("That mailbox is gone.") }
+      let old = mailboxes[i]
+      var removal: MailSwitchRemoval?
+      if let address = signInAgainReads, address != old.address {
+        let impact = imported[id].flatMap { $0.transactions > 0 ? $0 : nil }
+        let noMailbox = old.note != nil
+        if !noMailbox || impact != nil {
+          let question = MailSwitchQuestion(
+            provider: old.provider, oldAddress: old.address, newAddress: address, impact: impact,
+            oldHasNoMailbox: noMailbox)
+          questions.append(question)
+          switch await ask(question) {
+          case .cancel: throw .switchDeclined
+          case .keep: imported[id] = nil
+          case .remove: removal = remove(id, old: old.address)
+          }
+        }
+        imported[id] = nil
+      }
+      guard let j = mailboxes.firstIndex(where: { $0.id == id }) else { throw .failed("That mailbox is gone.") }
+      mailboxes[j].state = .connected
+      mailboxes[j].meta = "Checked just now"
+      mailboxes[j].lastChecked = "Sat 10 Oct, 13:40"
+      guard let address = signInAgainReads, address != old.address else { return MailLinked(mailboxID: id) }
+      mailboxes[j].address = address
+      return MailLinked(mailboxID: id, nowReading: address, removal: removal)
+    }
+
+    private func failNoMailbox(_ provider: MailProviderKind) throws(MailConnectFailure) {
+      switch provider {
+      case .outlook where outlookNoMailbox:
+        outlookNoMailbox = false
+      case .gmail where gmailNoMailbox:
+        gmailNoMailbox = false
+      default:
+        return
+      }
+      throw .noMailbox(provider)
+    }
+
+    func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
       signInCalls += 1
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
       guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { throw .failed("That mailbox is gone.") }
       if mailboxes[i].provider == .outlook, outlookCancelled { throw .cancelled }
+      try failNoMailbox(mailboxes[i].provider)
       // It picks up where it stopped: connected, checking from the last check.
-      mailboxes[i].state = .connected
-      mailboxes[i].meta = "Checked just now"
-      mailboxes[i].lastChecked = "Sat 10 Oct, 13:40"
+      return try await readAgain(mailboxID, ask: ask)
     }
 
     var imported: [String: MailboxDisconnectImpact] = [
