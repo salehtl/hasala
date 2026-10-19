@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { closeSync, openSync, readSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * A literal NUL byte in a source file makes both `grep` and `git` classify that
@@ -28,7 +29,7 @@ import { closeSync, openSync, readSync } from "node:fs";
  */
 
 /** Repo root, resolved from this file rather than from the runner's cwd. */
-const root = new URL("../../../../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../../../../", import.meta.url));
 
 /**
  * The trees a NUL is a defect in. Everything here is hand-written source.

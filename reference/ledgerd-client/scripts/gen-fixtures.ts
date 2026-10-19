@@ -231,11 +231,23 @@ export interface Built {
   files: BuiltFixture[];
 }
 
+const GZIP_OS_OFFSET = 9;
+const GZIP_OS_UNIX = 0x03;
+
+function withUnixGzipOS(bytes: Uint8Array): Uint8Array {
+  const gz = sealedRegion(bytes).start + 4;
+  if (bytes[gz] !== 0x1f || bytes[gz + 1] !== 0x8b) {
+    throw new Error("sealed payload does not start with a gzip header");
+  }
+  bytes[gz + GZIP_OS_OFFSET] = GZIP_OS_UNIX;
+  return bytes;
+}
+
 /** Derives the whole fixture set in memory. Called by the writer and the check. */
 export function build(): Built {
   const files: BuiltFixture[] = [];
   const fixtures = specs().map((s) => {
-    const bytes = sealBlob(s.envelope, s.plaintext);
+    const bytes = withUnixGzipOS(sealBlob(s.envelope, s.plaintext));
     // Re-open every fixture before writing it. Without this the generator will
     // happily emit blobs it cannot itself read — under a deliberate
     // little-endian mutation it wrote three of them, and the failure surfaced
