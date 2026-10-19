@@ -118,10 +118,11 @@
      else html's), and fixed strips at the screen edges (.edge-top and
      .edge-bottom, Base.astro). So every full-bleed block declares the solid
      colour of its top and bottom edge as --edge-t and --edge-b (white unless
-     it says otherwise), scripts/edges.ts sets --edge-top and --edge-bottom
-     from the blocks under the screen edges as the page scrolls, and html's
-     background is --edge-top. Body's background colour stays transparent
-     (it paints white as an image) so Safari reads html's. Without JavaScript
+     it says otherwise), html's background is --edge-top, and as the page
+     scrolls scripts/edges.ts sets html's background colour and the strips'
+     --edge-top and --edge-bottom from the blocks under the screen edges.
+     Body's background colour stays transparent (it paints white as an
+     image) so Safari reads html's. Without JavaScript
      they stay at the page's top colour (html[data-edge], from Base's edge
      prop) and white. The washes' end stops as solid colours: */
   --edge-sky: #d3e6ff; /* --wash-hero, --wash-sky, --wash-invite */
@@ -540,9 +541,18 @@ table {
   white-space: nowrap;
   transition:
     background-color var(--t-hover-out) var(--ease-out-soft),
-    box-shadow var(--t-hover-out) var(--ease-out-soft),
     transform var(--t-hover-out) var(--ease-out-soft),
     color var(--t-hover-out) var(--ease-out-soft);
+}
+.btn--glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: rgb(20 38 89 / 6%) 0 10px 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-hover-out) var(--ease-out-soft);
 }
 .btn--lg {
   --btn-h: 60px;
@@ -591,7 +601,10 @@ table {
   }
   .btn--glass:hover {
     background: var(--white);
-    box-shadow: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(0 0 0 / 8%) 0 0 0 0.5px, rgb(20 38 89 / 12%) 0 10px 24px;
+  }
+  .btn--glass:hover::after {
+    opacity: 1;
+    transition-duration: var(--t-hover-in);
   }
   .btn--subtle:hover {
     background: var(--accent-subtle-pressed);
@@ -618,7 +631,6 @@ table {
 .btn--primary:active {
   background: var(--blue-800);
   transform: scale(0.97);
-  box-shadow: rgb(255 255 255 / 25%) 0 1px 0 inset, rgb(54 91 235 / 24%) 0 4px 10px;
 }
 .btn--nav.btn--primary {
   box-shadow: none;
@@ -649,7 +661,7 @@ table {
   border-radius: 50%;
   background: rgb(255 255 255 / 18%);
   color: var(--white);
-  transition: background var(--t-hover-out), color var(--t-hover-out), box-shadow var(--t-hover-out);
+  transition: color var(--t-hover-out);
 }
 .btn__disc .icon {
   transition: translate var(--t-hover-out) var(--ease-out-soft);
