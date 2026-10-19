@@ -589,7 +589,7 @@ struct BankAlertsBankRow: View {
   var body: some View {
     ReflowingRow(spacing: HSpacing.listRowGap) {
       HStack(spacing: HSpacing.listRowGap) {
-        BankPlate(initials: bank.monogram, hue: bank == .enbd ? .sky : .sand)
+        BankPlate(initials: bank.monogram, hue: bank == .enbd ? .sky : bank == .adib ? .lilac : .sand)
         VStack(alignment: .leading, spacing: 2) {
           Text(bank.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
           Text(detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)

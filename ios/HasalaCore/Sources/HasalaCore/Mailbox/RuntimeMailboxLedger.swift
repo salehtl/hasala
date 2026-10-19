@@ -27,7 +27,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   public let authoring: MailboxAuthoring
 
   /// Display names for accounts created from a card ("<Bank> ···<last4>", 03b §4.2 table).
-  public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB"]
+  public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB"]
 
   /// `authoring` must be the one given to `LedgerMailboxPersistence`, built
   /// with `MailboxAuthoring(observer:)` so it shares the observer's stamps.
