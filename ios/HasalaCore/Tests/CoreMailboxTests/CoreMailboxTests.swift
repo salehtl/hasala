@@ -34,10 +34,15 @@ import Testing
       "redirect_uri=com.googleusercontent.apps.synthetic-client:/oauth2redirect", "response_type=code",
       "scope=openid email https://www.googleapis.com/auth/gmail.readonly",
       "code_challenge=\(PKCE.challenge(verifier: a.codeVerifier))", "code_challenge_method=S256", "state=\(a.state)",
-      "nonce=the-nonce", "prompt=consent", "access_type=offline",
+      "nonce=the-nonce", "prompt=select_account consent", "access_type=offline",
     ])
     // Spaces are %20, never '+', so Google reads the scope list as three scopes.
     #expect(a.url.absoluteString.contains("scope=openid%20email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly"))
+  }
+
+  @Test func onlyMicrosoftPrefersAPrivateSignInSession() {
+    #expect(MailProviderID.outlook.prefersEphemeralSession)
+    #expect(!MailProviderID.gmail.prefersEphemeralSession)
   }
 
   @Test func unconfiguredBuildRefusesToStart() {
