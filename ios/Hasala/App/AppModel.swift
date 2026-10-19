@@ -267,6 +267,7 @@ final class AppModel {
     case .splitDoesNotAddUp: "The split doesn't add up"
     case .insufficientFunds: "There isn't enough to move"
     case .invalidAmount: "Enter an amount"
+    case .invalidProject: "Check the project's name, amount and dates"
     }
   }
 

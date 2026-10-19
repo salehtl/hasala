@@ -50,10 +50,19 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
     // Widgets without a detail screen are not buttons; the others go somewhere.
-    for id in ["widget.netWorth", "widget.project.japan", "widget.goal.emergency"] {
+    for id in ["widget.netWorth", "widget.goal.emergency"] {
       XCTAssertTrue(el(app, id).exists, "\(id) is missing")
       XCTAssertFalse(app.buttons[id].exists, "\(id) is a button with nowhere to go")
     }
+    let japan = app.buttons["widget.project.japan"]
+    XCTAssertTrue(reveal(app, japan))
+    attach(app, "Release · Home project widget")
+    japan.tap()
+    XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
+    assertNoPlaceholders(app, "Project")
+    back(app)
+    app.tabBars.firstMatch.buttons["Home"].tap()
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
     let nextBill = app.buttons["widget.nextBill"]
     XCTAssertTrue(reveal(app, nextBill))
     attach(app, "Release · Home widgets")

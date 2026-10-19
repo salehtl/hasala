@@ -57,7 +57,11 @@ struct ActivityReviewModelTests {
     deck.pick("lulu", .need)
     #expect(deck.picking?.choice == .need && deck.picking?.card.id == "lulu")
     #expect(deck.options(for: .need, card: "lulu").first?.id == "groceries")
-    #expect(deck.projects.map(\.name) == ["Japan trip"])
+    #expect(deck.projects(for: "lulu").map(\.name) == ["Japan trip"])
+    #expect(deck.projects(for: "lulu").map(\.suggested) == [false])
+    app.perform(.saveProject("eid", ProjectDraft(name: "Eid", starts: LocalDate(2026, 10, 1), ends: LocalDate(2026, 10, 9))))
+    #expect(deck.projects(for: "lulu").map(\.name) == ["Eid", "Japan trip"])
+    #expect(deck.projects(for: "lulu").map(\.suggested) == [true, false])
     deck.picking = nil
     #expect(deck.sort("lulu", into: "groceries", alwaysUse: true, project: nil))
     #expect(deck.filedAnnouncement("Need") == "Filed as Need. 2 of 6.")
@@ -218,7 +222,7 @@ struct ActivityReviewModelTests {
     #expect(txn.merchantName == "Lulu Hypermarket")
     #expect(txn.categoryGroups.map(\.bucket) == [.needs, .wants, .savings, .other])
     let rules = app.store.state.rules.count
-    txn.choose("groceries", alwaysUse: true, project: nil)
+    txn.choose("groceries", alwaysUse: true)
     #expect(txn.detail?.needsReview == false && txn.detail?.category?.id == "groceries")
     #expect(app.store.state.rules.count == rules + 1)
     #expect(app.reviewCount == 5)

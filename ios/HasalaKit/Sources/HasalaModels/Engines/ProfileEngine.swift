@@ -17,10 +17,7 @@ public struct ProfileSnapshot: Sendable, Hashable {
   public var newBills: Int
   /// "18 categories · 23 rules".
   public var categoriesAndRules: String
-  /// "Japan trip · 7,140.00 left".
-  public var projects: MoneyPhrase?
-  /// The project the Projects row opens.
-  public var projectID: ProjectID?
+  public var projects: MoneyPhrase
   public var signIn: SignInMethod
   public var prefs: DevicePrefs
   /// "← Want · Need →".
@@ -52,8 +49,7 @@ public enum ProfileEngine {
     let tracked = s.bills.filter { $0.state == .tracked }.count
     let found = s.billCandidates.count
     let categories = s.categories.filter { !$0.archived }.count
-    let plan = PlanEngine.snapshot(s, now: now)
-    let project = plan.projects.first
+    let activeProjects = s.projects.filter { !$0.complete }.count
     let right = s.prefs.swipeNeedOnRight
     return ProfileSnapshot(
       displayName: s.profile.displayName,
@@ -67,13 +63,16 @@ public enum ProfileEngine {
       bills: "\(tracked) tracked" + (found > 0 ? " · \(found) new found" : ""),
       newBills: found,
       categoriesAndRules: "\(categories) categories · \(s.rules.count) rule\(s.rules.count == 1 ? "" : "s")",
-      projects: project.map { MoneyPhrase([.text("\($0.name) · "), .amount($0.left), .text(" left")]) },
-      projectID: project?.id,
+      projects: projectsLine(activeProjects),
       signIn: s.profile.signIn,
       prefs: s.prefs,
       swipeSummary: right ? "← Want · Need →" : "← Need · Want →",
       swipeSpoken: right ? "Swipe left for Want, right for Need" : "Swipe left for Need, right for Want"
     )
+  }
+
+  static func projectsLine(_ active: Int) -> MoneyPhrase {
+    MoneyPhrase(stringLiteral: active > 0 ? "\(active) active" : "None active")
   }
 
   /// Rules, most used first, with match counts over every transaction.

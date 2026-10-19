@@ -90,6 +90,8 @@ struct MainView: View {
         WidgetGallerySheet(app: app)
       case .widgetConfig(let kind, let entry):
         WidgetConfigSheet(app: app, kind: kind, entry: entry)
+      case .project(let id):
+        ProjectEditorSheet(app: app, project: id)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

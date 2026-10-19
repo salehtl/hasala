@@ -23,12 +23,12 @@ protocol ReviewDeckModel: AnyObject, Observable {
   var sorted: [SortedLine] { get }
   var hidden: Bool { get }
   var needOnRight: Bool { get }
-  var projects: [(id: ProjectID, name: String)] { get }
   /// The pick sheet that is up, if any. Setting nil closes it without sorting.
   var picking: ReviewPick? { get set }
   /// All caught up celebrates once a session (motion policy: a rare moment may delight).
   var celebrated: Bool { get set }
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption]
+  func projects(for card: TxnID) -> [ProjectChoice]
   /// A swipe or a pill sent the card one way: ask which category.
   func pick(_ card: TxnID, _ choice: ReviewChoice)
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
@@ -79,8 +79,10 @@ final class ReviewViewModel: ReviewDeckModel {
   var hidden: Bool { app.amountsHidden }
   var needOnRight: Bool { app.store.state.prefs.swipeNeedOnRight }
 
-  var projects: [(id: ProjectID, name: String)] {
-    app.store.state.projects.filter { !$0.complete }.map { ($0.id, $0.name) }
+  func projects(for card: TxnID) -> [ProjectChoice] {
+    let s = app.store.state
+    guard let date = s.txn(card)?.postedAt.date else { return [] }
+    return ReviewEngine.projectChoices(s, on: date)
   }
 
   /// Sorted in this session and not undone since.

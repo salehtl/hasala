@@ -105,7 +105,7 @@ struct ProfileModelTests {
     #expect(profile.snapshot.newBills == 0)
     app.toggleAmountsHidden()
     #expect(profile.hidden)
-    #expect(profile.snapshot.projects?.rendered(hidden: profile.hidden) == "Japan trip · •••• left")
+    #expect(profile.snapshot.projects.rendered(hidden: profile.hidden) == "1 active")
   }
 
   /// Bills' view model: one bill's page, and what stopping it does.

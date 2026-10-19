@@ -15,8 +15,8 @@ protocol PlanModel: AnyObject, Observable {
   func open(_ category: CategoryID)
   /// Pushes the project (Plan · Japan trip).
   func open(project: ProjectID)
-  /// Debug only: there is no way to make a project yet.
   func newProject()
+  func openProjects()
 }
 
 @MainActor
@@ -43,9 +43,8 @@ final class PlanViewModel: PlanModel {
   // Debug only: a Release build doesn't show the button (`BuildSurface`).
   func autoAssign() { app.say("Auto-assign isn't in this build yet", icon: .wand) }
 
-  // TODO(spec 12 §5): "New project" needs a project-creating edit (plan D.2).
-  // Debug only: a Release build doesn't show the link (`BuildSurface`).
-  func newProject() { app.say("New projects aren't in this build yet", icon: .project) }
+  func newProject() { app.editProject(nil) }
+  func openProjects() { app.router.plan.append(.projects) }
 }
 
 // MARK: - Plan · Dining
@@ -101,9 +100,11 @@ protocol ProjectDetailModel: AnyObject, Observable {
   var detail: ProjectDetail? { get }
   var hidden: Bool { get }
   func open(_ txn: TxnID)
-  /// Debug only: no edit adds transactions to a project or completes one yet (plan D.2).
   func addTransactions()
-  func markComplete()
+  func setCountInPlan(_ on: Bool)
+  func setComplete(_ done: Bool)
+  func edit()
+  func remove()
 }
 
 @MainActor
@@ -125,8 +126,17 @@ final class ProjectDetailViewModel: ProjectDetailModel {
   var hidden: Bool { app.amountsHidden }
 
   func open(_ txn: TxnID) { app.open(txn) }
-  func addTransactions() { app.say("Adding transactions to a project isn't in this build yet", icon: .project) }
-  func markComplete() { app.say("Completing a project isn't in this build yet", icon: .project) }
+  func addTransactions() { app.addToProject(project) }
+  func setCountInPlan(_ on: Bool) { app.perform(.setProjectCountInPlan(project, on)) }
+  func setComplete(_ done: Bool) { app.perform(.completeProject(project, done)) }
+  func edit() { app.editProject(project) }
+
+  func remove() {
+    let name = app.store.state.project(project)?.name ?? "Project"
+    guard app.perform(.removeProject(project)) else { return }
+    app.say("\(name) removed")
+    app.leaveProject(project)
+  }
 }
 
 // MARK: - The budget sheet and Move money

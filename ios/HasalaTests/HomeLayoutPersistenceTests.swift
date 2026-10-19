@@ -96,6 +96,11 @@ struct HomeLayoutPersistenceTests {
     #expect(app.router.plan == [.category("dining")])
     #expect(home.widgetOpens("categoryWatch.dining"))
     #expect(!home.widgetOpens("spentSoFar"))
+    app.tab = .home
+    #expect(home.openWidget("project.japan") == nil)
+    #expect(app.tab == .plan)
+    #expect(app.router.plan == [.project("japan")])
+    #expect(home.widgetOpens("project.japan"))
     _ = home.openWidget("toReview")
     #expect(app.cover == .review)
   }
