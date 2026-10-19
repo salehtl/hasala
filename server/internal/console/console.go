@@ -6,7 +6,7 @@
 // email it causes is a queued mail_log row that serve's worker sends.
 //
 // Not built yet (TODO for full parity, spec 07 §8.7–§8.8): entry detail and
-// deletion, the TestFlight screens, banks and the broadcast, the account list
+// deletion, the TestFlight screens, the broadcast, the account list
 // and its actions, reveal and retry in the email log, the audit screen and
 // the Prometheus metrics (/metrics is a 404; /healthz is served, health.go).
 package console
@@ -86,6 +86,7 @@ func (c *Console) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", c.page(c.dashboard))
 	mux.HandleFunc("GET /invites", c.page(c.invitesPage))
 	mux.HandleFunc("GET /mail", c.page(c.mailPage))
+	mux.HandleFunc("GET /banks", c.page(c.banksPage))
 	mux.HandleFunc("GET /static/console.css", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := assets.ReadFile("static/console.css")
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -95,6 +96,8 @@ func (c *Console) Handler() http.Handler {
 	mux.HandleFunc("POST /invites/mint", c.action("invite.mint", "invite", c.mint))
 	mux.HandleFunc("POST /invites/{id}/revoke", c.action("invite.revoke", "invite", c.revoke))
 	mux.HandleFunc("POST /invites/{id}/resend", c.action("invite.resend", "invite", c.resend))
+	mux.HandleFunc("POST /banks/{id}/status", c.action("bank.status", "bank", c.bankStatus))
+	mux.HandleFunc("POST /banks/add", c.action("bank.add", "bank", c.bankAdd))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	return headers(c.identify(mux))
 }
@@ -220,6 +223,11 @@ type view struct {
 	Mail    []mailRow
 	Counts  map[string]int
 	MintTok string
+
+	Banks    []bankRow
+	Others   []otherRow
+	Statuses []statusOption
+	AddTok   string
 }
 
 type entryRow struct {

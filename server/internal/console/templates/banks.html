@@ -1,0 +1,30 @@
+{{define "banks.html"}}{{template "head" .}}
+<h1>Bank requests</h1>
+<p>Requested → Collecting samples → Template in progress → Supported, or Declined. The app shows each requester the state. Mark a bank Supported only after the TestFlight build with its templates is out: that emails every account and confirmed or invited waitlist entry that asked for it, once.</p>
+<table>
+<tr><th>Bank</th><th>State</th><th>App</th><th>Waitlist</th><th>Web</th><th>Told</th><th>Sender domains</th><th>Last request</th><th>Change</th></tr>
+{{range .Banks}}<tr><td>{{.Name}}<br><small>{{.Slug}}</small></td><td>{{.Label}}<br><small>since {{.Changed}}</small></td>
+<td>{{.App}}</td><td>{{.Waitlist}}</td><td>{{.Web}}</td><td>{{.Notified}}</td>
+<td>{{range .Domains}}{{.Domain}} ({{.N}})<br>{{else}}-{{end}}</td><td>{{.Last}}</td>
+<td><form method="post" action="/banks/{{.Slug}}/status"><input type="hidden" name="csrf" value="{{.StatusTok}}">
+<select name="status" aria-label="State">{{$cur := .Status}}{{range $.Statuses}}<option value="{{.Value}}"{{if eq .Value $cur}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+<input name="note" maxlength="500" value="{{.Note}}" aria-label="Note" placeholder="Note">
+{{if eq .Status "supported"}}<label><input type="checkbox" name="notify"> Tell new requesters</label>{{end}}
+<button>Save</button></form></td></tr>
+{{else}}<tr><td colspan="9">No banks.</td></tr>{{end}}
+</table>
+<h2>Typed bank names</h2>
+<p>Names people typed that match no bank. Add one to the list to track it: its requests and waitlist entries move to the new bank.</p>
+<table>
+<tr><th>Name</th><th>Key</th><th>App</th><th>Waitlist</th><th>Web</th><th>Last request</th><th>Add to the list</th></tr>
+{{range .Others}}<tr><td>{{.Text}}</td><td>{{.Key}}</td><td>{{.App}}</td><td>{{.Waitlist}}</td><td>{{.Web}}</td><td>{{.Last}}</td>
+<td><form method="post" action="/banks/add"><input type="hidden" name="csrf" value="{{$.AddTok}}"><input type="hidden" name="key" value="{{.Key}}">
+<input name="slug" required pattern="[a-z0-9]([a-z0-9\-]{0,30}[a-z0-9])?" aria-label="Slug" placeholder="slug">
+<input name="name" required maxlength="64" value="{{.Text}}" aria-label="Name"><button>Add</button></form></td></tr>
+{{else}}<tr><td colspan="7">No typed names.</td></tr>{{end}}
+</table>
+<h2>Add a bank</h2>
+<form method="post" action="/banks/add"><input type="hidden" name="csrf" value="{{.AddTok}}">
+<input name="slug" required pattern="[a-z0-9]([a-z0-9\-]{0,30}[a-z0-9])?" aria-label="Slug" placeholder="slug">
+<input name="name" required maxlength="64" aria-label="Name" placeholder="Name"><button>Add</button></form>
+{{template "foot" .}}{{end}}
