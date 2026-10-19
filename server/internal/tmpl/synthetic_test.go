@@ -279,6 +279,59 @@ func syntheticADIB(t *testing.T) syntheticGroup {
 	}
 }
 
+func syntheticADIBAccount(t *testing.T) syntheticGroup {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "adib.account.v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := func(amount, verb, acct string) string {
+		return "Debit Transaction Alert\nDear Customer,\n" + amount + " was " + verb + " your account " + acct +
+			". Your available account balance is AED 1,234.56\nYours Sincerely,\nAbu Dhabi Islamic Bank\n"
+	}
+	const debit, credit = "debited from", "credited to"
+	return syntheticGroup{
+		file:       "synthetic-adib-account.json",
+		template:   "adib.account.v1",
+		definition: string(b),
+		cases: []syntheticCase{
+			{"debit", "the shape of the ADIB debit alert seen so far", "Debit Transaction Alert",
+				line("AED 41.25", debit, "*456")},
+			{"credit", "the credit branch, and on_match setting direction", "Credit Transaction Alert",
+				line("AED 41.25", credit, "*456")},
+			{"balance-is-not-the-amount", "the amount must sit right before the verb, so the balance figure " +
+				"later on the line is never read as the amount", "Debit Transaction Alert",
+				line("AED 9.99", debit, "*456")},
+			{"thousands-separator", "the [0-9,]{0,24} run", "Debit Transaction Alert",
+				line("AED 12,750.00", debit, "*456")},
+			{"foreign-currency", "the ccy group wins over default_currency", "Debit Transaction Alert",
+				line("USD 25.00", debit, "*456")},
+			{"foreign-currency-no-space", "the currency-adjacent pattern runs first, as in enbd.alert.v1",
+				"Credit Transaction Alert", line("USD25.00", credit, "*456")},
+			{"no-currency-prefix", "the ccy group does not participate; default_currency applies",
+				"Debit Transaction Alert", line("41.25", debit, "*456")},
+			{"four-digit-account", "last4 keeps the last four of up to eight digits", "Debit Transaction Alert",
+				line("AED 41.25", debit, "*4567")},
+			{"account-without-star", "the star is optional", "Credit Transaction Alert",
+				line("AED 41.25", credit, "456")},
+			{"newline-separated", "a line break where a space was", "Debit Transaction Alert",
+				"AED 41.25\nwas debited from your account\n*456. Your available account balance is AED 1.00\n"},
+			{"debit-then-credit", "first entry wins: the debit entry runs first", "Debit Transaction Alert",
+				"AED 1.00 was debited from your account *456. AED 2.00 was credited to your account *456. " +
+					"Your available account balance is AED 1.00\n"},
+			{"purchase-alert-body", "the OTHER ADIB format: adib.alert.v1 owns it, and it lacks this " +
+				"template's gate literal, so the two cannot both match one message", "Purchase Transaction Alert",
+				"Transaction of AED 73.40 debited from your a/c *123 at SAMPLE STORE DUBAI AE. Avl Bal is AED 1.00\n"},
+			{"neither-verb", "no amount entry produces a value: the required-field gate fires", "Debit Transaction Alert",
+				line("AED 41.25", "reserved on", "*456")},
+			{"amount-without-decimals", "conversion failure, not a zero amount", "Debit Transaction Alert",
+				line("AED 41", debit, "*456")},
+			{"amount-longer-than-the-bound", "33 digits before the point; the run is bounded at {0,24}",
+				"Debit Transaction Alert", line("AED 1,234,567,890,123,456,789,012,345.67", debit, "*456")},
+		},
+	}
+}
+
 // dates: the three layouts and every semantic Go's time.Parse decides for us.
 // Mirrors TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce, but as a
 // fixture the TypeScript executor is checked against rather than a Go-only test.
@@ -608,6 +661,7 @@ func syntheticGroups(t *testing.T) []syntheticGroup {
 		syntheticENBD(t),
 		syntheticENBDTransfer(t),
 		syntheticADIB(t),
+		syntheticADIBAccount(t),
 		syntheticDates(),
 		syntheticAmounts(),
 		syntheticTextAndLast4(),
