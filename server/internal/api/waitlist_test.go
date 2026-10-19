@@ -394,6 +394,8 @@ func TestBankRequests(t *testing.T) {
 		return
 	}
 	wantStatus(t, r.post("/api/v1/bank-requests", `{"bank":"enbd","source":"web"}`, nil), http.StatusAccepted)
+	wantStatus(t, r.post("/api/v1/bank-requests", `{"bank":"adib","source":"web"}`, nil), http.StatusAccepted)
+	wantStatus(t, r.post("/api/v1/bank-requests", `{"bank":"other","otherBank":"Abu Dhabi Islamic Bank","source":"web"}`, nil), http.StatusAccepted)
 	if count() != 0 {
 		t.Fatal("a supported bank was stored")
 	}

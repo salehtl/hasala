@@ -43,6 +43,7 @@ export const SITE = {
 export const BANKS = [
   { value: 'dib', name: 'Dubai Islamic Bank', short: 'DIB' },
   { value: 'enbd', name: 'Emirates NBD', short: 'ENBD' },
+  { value: 'adib', name: 'Abu Dhabi Islamic Bank', short: 'ADIB' },
 ] as const;
 
 /**

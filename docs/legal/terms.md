@@ -1,7 +1,7 @@
 ---
 title: "Beta Terms of Use"
 description: "The terms for using the invite-only Hasala beta: what to expect, what we ask of you, and the limits of what we can promise."
-lastUpdated: 2026-10-16
+lastUpdated: 2026-10-19
 status: "final"
 plainWords: "Hasala is an early, invite-only beta. It's free while the beta runs, it may have bugs or change, and it isn't financial advice. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
 ---
@@ -30,7 +30,7 @@ Hasala is unfinished. During the beta:
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
 - we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll tell you in the app or by email at least 7 days before, so that you can export your data first.
 
-Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). At launch it supports alerts from Dubai Islamic Bank (DIB) and Emirates NBD.
+Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). It supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
 
 ### Price
 

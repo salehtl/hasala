@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-16
+lastUpdated: 2026-10-19
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. A forgotten password needs your 12 words or an iPhone that's still signed in. You can delete your account in the app at any time."
 ---
@@ -20,7 +20,7 @@ To leave the waitlist, use **Leave the list** in any email we sent you. It delet
 
 ### Which banks work?
 
-At launch, Hasala reads alerts from Dubai Islamic Bank (DIB) and Emirates NBD. If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
+Hasala reads alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB). If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
 
 ### Does Hasala need my bank password?
 
@@ -98,7 +98,7 @@ Open Gmail or Outlook and confirm the alerts are arriving there, directly from y
 
 ### 3. Check your bank is supported
 
-Hasala reads alerts from DIB and Emirates NBD. Alerts from other banks are not read yet. If your bank changed the address its alerts come from, tell us so we can update Hasala.
+Hasala reads alerts from DIB, Emirates NBD and ADIB. Alerts from other banks are not read yet. If your bank changed the address its alerts come from, tell us so we can update Hasala.
 
 ### 4. Let Hasala run in the background
 

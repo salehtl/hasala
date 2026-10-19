@@ -20,7 +20,7 @@ import { onPage } from './page';
 import { bankText, postJson, renderTurnstile, waitText, type ApiAnswer } from './api';
 
 type State = 'default' | 'focus' | 'error' | 'success';
-const BANK_NAMES: Record<string, string> = { dib: 'Dubai Islamic Bank', enbd: 'Emirates NBD', other: 'Another bank' };
+const BANK_NAMES: Record<string, string> = { dib: 'Dubai Islamic Bank', enbd: 'Emirates NBD', adib: 'Abu Dhabi Islamic Bank', other: 'Another bank' };
 
 const MSG = {
   emailEmpty: 'Enter your email so we can send the invite.',
