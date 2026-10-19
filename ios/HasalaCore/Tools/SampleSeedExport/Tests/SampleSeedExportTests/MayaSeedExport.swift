@@ -285,8 +285,9 @@ enum MayaSeed {
       op(
         .projectDefined, setupAt, entity: ("project", "@project:\(p.id)"),
         [
-          ("name", .string(p.name)), ("starts_on", .string(wire(p.starts))), ("ends_on", .string(wire(p.ends))),
-          ("budget_minor", .string(String(p.budget.minor))), ("count_in_plan", .bool(p.countInPlan)),
+          ("name", .string(p.name)), ("starts_on", p.starts.map { .string(wire($0)) } ?? .null),
+          ("ends_on", p.ends.map { .string(wire($0)) } ?? .null),
+          ("budget_minor", p.budget.map { .string(String($0.minor)) } ?? .null), ("count_in_plan", .bool(p.countInPlan)),
           ("status", .string("active")), ("icon", .string(icon(p.glyph))),
         ])
     }

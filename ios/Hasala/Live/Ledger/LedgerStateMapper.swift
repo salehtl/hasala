@@ -103,12 +103,12 @@ nonisolated enum LedgerStateMapper {
           categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday), nextDue: next))
     }
 
-    let projects: [HasalaModels.Project] = try r.projects().compactMap { id, p in
-      guard let starts = p.startsOn.flatMap(CivilDate.init(wire:)).map(local) else { return nil }
-      let ends = p.endsOn.flatMap(CivilDate.init(wire:)).map(local) ?? starts
-      return HasalaModels.Project(
-        id: id, name: p.name, glyph: glyph(p.icon ?? "flag"), budget: .aed(p.budgetMinor ?? 0), starts: starts,
-        ends: ends, countInPlan: p.countInPlan, complete: p.status == "completed",
+    let projects: [HasalaModels.Project] = try r.projects().map { id, p in
+      HasalaModels.Project(
+        id: id, name: p.name, glyph: glyph(p.icon ?? "flag"), budget: p.budgetMinor.map { .aed($0) },
+        starts: p.startsOn.flatMap(CivilDate.init(wire:)).map(local),
+        ends: p.endsOn.flatMap(CivilDate.init(wire:)).map(local), countInPlan: p.countInPlan,
+        complete: p.status == "completed", completedOn: p.completedOn.flatMap(CivilDate.init(wire:)).map(local),
         startVerb: p.icon == "plane" ? "flies" : "starts")
     }
 
@@ -171,6 +171,10 @@ nonisolated enum LedgerStateMapper {
   ]
 
   static func glyph(_ icon: String) -> Glyph { glyphs[icon] ?? .tag }
+
+  static func icon(_ glyph: Glyph) -> String {
+    glyphs.filter { $0.value == glyph }.map(\.key).sorted().first ?? "flag"
+  }
 
   // MARK: Accounts
 

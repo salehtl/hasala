@@ -125,11 +125,9 @@ struct ProfileSheet: View {
           MoneyThingRow(plate: HuePlate(hue: .lilac, icon: .tag), title: "Categories and rules",
                         detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
         }
-        if let projects = snap.projects, let project = snap.projectID {
-          row(.project(project), id: "profile.projects") {
-            MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: projects,
-                          hidden: model.hidden)
-          }
+        row(.projects, id: "profile.projects") {
+          MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: snap.projects,
+                        hidden: model.hidden)
         }
       }
     }
@@ -272,6 +270,12 @@ private struct ProfilePage: View {
       BillDetailView(app: app, bill: id)
     case .project(let id):
       ProjectDetailView(app: app, project: id)
+    case .projects:
+      ProjectsListView(app: app)
+    case .addToProject(let id):
+      ProjectAddTransactionsView(app: app, project: id)
+    case .editProject(let id):
+      ProjectEditorView(app: app, project: id)
     case .rules:
       RulesPage(app: app, model: model)
     case .notifications:

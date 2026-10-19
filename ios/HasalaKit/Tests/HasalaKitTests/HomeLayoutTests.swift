@@ -94,6 +94,52 @@ struct HomeLayoutTests {
     #expect(HomeEngine.options(.goal, s, now: now).map(\.config) == [.goal("emergency")])
   }
 
+  func projectWidget(_ project: Project, spending: Int64? = nil) throws -> ProjectWidget {
+    var ledger = s
+    ledger.projects.append(project)
+    if let spending {
+      let i = try #require(ledger.txns.firstIndex { $0.direction == .out && !$0.needsReview && $0.projectID == nil })
+      ledger.txns[i].amount = .aed(spending)
+      ledger.txns[i].projectID = project.id
+    }
+    let layout = HomeLayout([entry(.project, .project(project.id))])
+    let item = try #require(HomeEngine.canvas(layout, ledger, now: now).first)
+    guard case .project(let widget)? = item.widget else {
+      Issue.record("\(project.id) has no project widget")
+      throw CancellationError()
+    }
+    return widget
+  }
+
+  @Test func aProjectWithinBudgetReadsLeft() throws {
+    let w = try projectWidget(try #require(s.projects.first { $0.id == "japan" }))
+    #expect(w.unit == .left)
+    #expect(w.left == .aed(7_140_00))
+    #expect(w.progress == Permille.ratio(4_860_00, of: 12_000_00))
+    #expect(w.caption.rendered(hidden: false).hasPrefix("of 12,000"))
+  }
+
+  @Test func aProjectOverBudgetReadsOverWithAPositiveAmount() throws {
+    let p = Project(id: "tiny", name: "Tiny", glyph: .flag, budget: .aed(100_00), starts: nil, ends: nil)
+    let w = try projectWidget(p, spending: 350_00)
+    #expect(w.unit == .over)
+    #expect(w.left == .aed(250_00))
+    #expect((w.progress?.value ?? 0) >= 1000)
+  }
+
+  @Test func aProjectWithNoBudgetReadsSpentAndHasNoProgress() throws {
+    let p = Project(id: "move", name: "Moving", glyph: .flag, budget: nil, starts: nil, ends: nil)
+    let w = try projectWidget(p, spending: 350_00)
+    #expect(w.unit == .spent)
+    #expect(w.left == .aed(350_00))
+    #expect(w.progress == nil)
+    #expect(w.caption.parts.isEmpty)
+    let dated = Project(id: "dated", name: "Dated", glyph: .flag, budget: nil, starts: LocalDate(2026, 12, 14), ends: nil)
+    let d = try projectWidget(dated)
+    #expect(d.unit == .spent && d.left == .aed(0) && d.progress == nil)
+    #expect(d.caption.rendered(hidden: false) == "\(dated.startVerb) 14 Dec")
+  }
+
   @Test func aWidgetWithoutItsDataWaits() {
     var gone = s
     gone.projects = []

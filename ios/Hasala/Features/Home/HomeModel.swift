@@ -149,21 +149,24 @@ final class HomeViewModel: HomeModel {
         app.router.plan = [.category(String(id.dropFirst(Self.categoryPrefix.count)))]
         return nil
       }
-      // TODO(spec 04 §16.1 "Project detail", §16.2 P4): a project or goal opens its detail;
-      // until then Debug opens Plan, where both live.
       app.tab = .plan
+      if id.hasPrefix(Self.projectPrefix) {
+        app.router.plan = [.project(String(id.dropFirst(Self.projectPrefix.count)))]
+      }
       return nil
     }
   }
 
   static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."
+  static let projectPrefix = HomeWidgetKind.project.rawValue + "."
 
-  /// The widgets with a built destination: Plan, a category, Activity, Bills and the review deck.
+  /// The widgets with a built destination: Plan, a category, a project, Activity, Bills and the review deck.
   static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "nextBill", "comingUp", "toReview"]
 
   func widgetOpens(_ id: String) -> Bool {
     if id == "spentSoFar" { return false }
     return BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id) || id.hasPrefix(Self.categoryPrefix)
+      || id.hasPrefix(Self.projectPrefix)
   }
 }
 
