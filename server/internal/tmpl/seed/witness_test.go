@@ -32,6 +32,7 @@ func TestWhichSeedTemplatesCanWitnessTheirOwnDecode(t *testing.T) {
 		"dib.account.v1":   false,
 		"enbd.alert.v1":    false,
 		"enbd.transfer.v1": false,
+		"adib.alert.v1":    false,
 	}
 	seen := map[string]bool{}
 	for _, d := range Seed() {
