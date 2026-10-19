@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 // The write surface and the read seam every screen view model uses (spec 04 §15.1:
@@ -28,6 +29,12 @@ public enum LedgerEdit: Sendable, Hashable {
   case resolveCopy(TxnID, merge: Bool)
   /// Review "Skip for now": device-local until the next local midnight (no op).
   case skipReview(TxnID)
+
+  case saveProject(ProjectID, ProjectDraft)
+  case setProjectCountInPlan(ProjectID, Bool)
+  case completeProject(ProjectID, Bool)
+  case removeProject(ProjectID)
+  case assignProject([TxnID], ProjectID?)
 
   // Plan (03a §3.2, §3.3).
   /// `budget_set`.
@@ -76,6 +83,7 @@ public enum ActionError: Error, Sendable, Hashable {
   /// Not enough money in the source to move.
   case insufficientFunds
   case invalidAmount
+  case invalidProject
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit
@@ -93,8 +101,10 @@ public protocol LedgerStore: AnyObject, Observable {
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken?
   /// Reverts the edit behind `token` (03c §3.8 "Undo (toast)": inverse ops).
   func undo(_ token: UndoToken)
+  func newProjectID() -> ProjectID
 }
 
 public extension LedgerStore {
   var month: YearMonth { now.date.yearMonth }
+  func newProjectID() -> ProjectID { "p-" + UUID().uuidString.lowercased() }
 }

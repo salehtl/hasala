@@ -149,6 +149,26 @@ public struct CategoryOption: Sendable, Hashable, Identifiable {
   }
 }
 
+public struct ProjectChoice: Sendable, Hashable, Identifiable {
+  public var id: ProjectID
+  public var name: String
+  public var glyph: Glyph
+  public var suggested: Bool
+
+  public init(_ p: Project, suggested: Bool) {
+    id = p.id
+    name = p.name
+    glyph = p.glyph
+    self.suggested = suggested
+  }
+}
+
+extension Project {
+  public func covers(_ d: LocalDate) -> Bool {
+    (starts.map { d >= $0 } ?? true) && (ends.map { d <= $0 } ?? true)
+  }
+}
+
 public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var id: TxnID
   public var merchant: String
@@ -295,6 +315,11 @@ public enum ReviewEngine {
     let excluded = s.categories.filter { $0.kind == .excluded && !$0.archived }
     let income = txn?.direction == .in ? s.categories.filter { $0.kind == .income && !$0.archived } : []
     return (income + excluded).map(CategoryOption.init)
+  }
+
+  public static func projectChoices(_ s: LedgerState, on date: LocalDate) -> [ProjectChoice] {
+    let ranked = s.projects.filter(\.isOpen).map { ProjectChoice($0, suggested: $0.covers(date)) }
+    return ranked.filter(\.suggested) + ranked.filter { !$0.suggested }
   }
 
   /// The line for All caught up once `txn` is sorted into `category`.

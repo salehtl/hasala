@@ -322,9 +322,11 @@ public enum HomeEngine {
       }
     case .project:
       return s.projects.filter { p in !p.complete && plan.projects.contains { $0.id == p.id } }.map { p in
-        let left = plan.projects.first { $0.id == p.id }?.left ?? p.budget
+        let m = plan.projects.first { $0.id == p.id }
+        let detail = m?.left.map { MoneyPhrase([.amount($0, .rounded, hidden: 3), .text(" left")]) }
+          ?? MoneyPhrase([.amount(m?.spent ?? .aed(0), .rounded, hidden: 3), .text(" spent")])
         return HomeWidgetOption(config: .project(p.id), title: p.name,
-                                detail: MoneyPhrase([.amount(left, .rounded, hidden: 3), .text(" left")]),
+                                detail: detail,
                                 section: "Projects", glyph: p.glyph, hue: .peach)
       }
     case .goal:
@@ -367,12 +369,23 @@ public enum HomeEngine {
 
   static func projectWidget(_ p: Project, plan: PlanSnapshot) -> ProjectWidget? {
     guard !p.complete, let m = plan.projects.first(where: { $0.id == p.id }) else { return nil }
+    var caption: [MoneyPhrase.Part] = m.budget.map { [.text("of "), .amount($0, .rounded, hidden: 4)] } ?? []
+    if let starts = p.starts {
+      caption.append(.text("\(caption.isEmpty ? "" : " · ")\(p.startVerb) \(starts.dayMonth)"))
+    }
+    let unit: ProjectWidget.Unit
+    let figure: Money
+    if let left = m.left {
+      unit = left.minor < 0 ? .over : .left
+      figure = left.minor < 0 ? Money(minor: -left.minor, currency: left.currency) : left
+    } else {
+      unit = .spent
+      figure = m.spent
+    }
     return ProjectWidget(
-      name: p.name, glyph: p.glyph, left: m.left,
-      caption: MoneyPhrase([
-        .text("of "), .amount(p.budget, .rounded, hidden: 4), .text(" · \(p.startVerb) \(p.starts.dayMonth)"),
-      ]),
-      progress: m.progress
+      name: p.name, glyph: p.glyph, left: figure, unit: unit,
+      caption: MoneyPhrase(caption),
+      progress: m.budget == nil ? nil : m.progress
     )
   }
 

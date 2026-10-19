@@ -79,6 +79,21 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     el(app, "profile.close").tap()
   }
 
+  @MainActor
+  func testProjectsRowOpensTheProjectsList() throws {
+    let app = launchRelease()
+    app.buttons["header.profile"].firstMatch.tap()
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "profile.projects").label.contains("1 active"))
+    tap(app, "profile.projects", opening: "projects.new")
+    attach(app, "Release · Profile › Projects")
+    assertNoPlaceholders(app, "Profile › Projects")
+    assertPresent(app, ["projects.new"], "Profile › Projects")
+    try audit(app)
+    back(app)
+    XCTAssertTrue(el(app, "profile.projects").waitForExistence(timeout: uiWait))
+  }
+
   /// With no mailbox the card says so, and it is still the way to Bank alerts, where
   /// connecting starts (the card itself offers no second button).
   @MainActor

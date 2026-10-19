@@ -7,15 +7,14 @@ import SwiftUI
 // saves one edit and pops back to the sheet.
 
 /// Choose a category (Paper 5PR-0): the transaction, a search field, the suggestion, "Always
-/// use X for M" with its switch and "Add to a project", every category as choice chips by
-/// bucket, and Save in a bar that floats over the list.
+/// use X for M" with its switch, every category as choice chips by bucket, and Save in a bar
+/// that floats over the list.
 struct CategoryPickerView: View {
   let model: any TransactionModel
   let done: () -> Void
 
   @State private var selected: CategoryID?
   @State private var alwaysUse = true
-  @State private var project: ProjectID?
   @State private var query = ""
 
   var body: some View {
@@ -36,7 +35,7 @@ struct CategoryPickerView: View {
     .background(HColor.sheetSurfaceLarge)
     .safeAreaInset(edge: .bottom, spacing: 0) {
       Button("Save") {
-        if let selected { model.choose(selected, alwaysUse: alwaysUse, project: project) }
+        if let selected { model.choose(selected, alwaysUse: alwaysUse) }
         done()
       }
       .buttonStyle(.pill(.primary, fill: true))
@@ -88,7 +87,7 @@ struct CategoryPickerView: View {
     .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
   }
 
-  /// "Always use Groceries for Lulu Hypermarket" with the switch; "Add to a project".
+  /// "Always use Groceries for Lulu Hypermarket" with the switch.
   private var ruleCard: some View {
     let merchant = model.merchantName
     return VStack(spacing: 0) {
@@ -109,28 +108,6 @@ struct CategoryPickerView: View {
       .padding(.vertical, 14)
       .padding(.horizontal, 16)
       .accessibilityIdentifier("picker.alwaysUse")
-      if !model.projects.isEmpty {
-        HDivider(inset: .icon52)
-        Menu {
-          Picker("Add to a project", selection: $project) {
-            Text("None").tag(ProjectID?.none)
-            ForEach(model.projects, id: \.id) { Text($0.name).tag(ProjectID?.some($0.id)) }
-          }
-        } label: {
-          HStack(spacing: 14) {
-            HIconView(.project, size: 22, color: HColor.iconPrimary)
-            Text("Add to a project").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-              .frame(maxWidth: .infinity, alignment: .leading)
-            Text(model.projects.first { $0.id == project }?.name ?? "None")
-              .hType(.subheadline).foregroundStyle(HColor.textSecondary)
-            HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
-          }
-          .padding(.horizontal, 16)
-          .frame(minHeight: 52)
-          .contentShape(Rectangle())
-        }
-        .accessibilityIdentifier("picker.project")
-      }
     }
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }

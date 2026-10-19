@@ -30,6 +30,8 @@ enum PlanRoute: Hashable {
   case category(CategoryID)
   /// Plan · Japan trip (project detail).
   case project(ProjectID)
+  case projects
+  case addToProject(ProjectID)
 }
 
 /// Pushed inside the Activity tab.
@@ -40,7 +42,7 @@ enum ActivityRoute: Hashable {
 
 /// Pushed inside the transaction sheet (one sheet at a time: its editors push, never stack).
 enum TransactionRoute: Hashable {
-  case category, note, rename, split
+  case category, note, rename, split, project
   case reviewReason(TxnReviewReason)
 }
 
@@ -61,6 +63,9 @@ enum ProfileRoute: Hashable {
   /// Categories and rules.
   case rules
   case project(ProjectID)
+  case projects
+  case addToProject(ProjectID)
+  case editProject(ProjectID?)
   /// Sign-in & security.
   case security
   case notifications
@@ -80,6 +85,7 @@ enum SheetRoute: Hashable, Identifiable {
   case period
   case widgetGallery
   case widgetConfig(HomeWidgetKind, entry: String?)
+  case project(ProjectID?)
 
   var id: String {
     switch self {
@@ -91,6 +97,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .period: "period"
     case .widgetGallery: "widgetGallery"
     case .widgetConfig(let kind, let entry): "widgetConfig.\(kind.rawValue).\(entry ?? "new")"
+    case .project(let id): "project.\(id ?? "new")"
     }
   }
 }
