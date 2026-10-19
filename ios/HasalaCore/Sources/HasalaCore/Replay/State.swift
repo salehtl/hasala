@@ -125,6 +125,10 @@ public struct Txn: Sendable, Equatable, Codable {
   /// `"ingest"` or `"user"`, from the writer, never the payload.
   public var provenance: String
   public var amountHomeMinor: Int64?
+  public enum HomeSource: String, Sendable, Equatable, Codable {
+    case identity, rate, stated
+  }
+  public var homeSource: HomeSource? = nil
   public var splits: [Split]
   public var supersededBy: String?
   public var possibleDuplicateOf: String?

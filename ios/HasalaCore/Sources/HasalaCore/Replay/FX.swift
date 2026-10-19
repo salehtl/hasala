@@ -6,6 +6,7 @@
 // `convert` is `(amount * rate + 500000) / 1000000` in `Int128` (half-up,
 // operands positive). A result outside Int64 cannot be stored: the row stays
 // null and pending, and the fold records `money_overflow` (03c §1.3).
+import HasalaText
 import OrderedCollections
 
 public enum FX {
@@ -52,13 +53,20 @@ extension State {
     if case .some(.some(let rate)) = rates[t.currency] {
       if let home = FX.convert(t.amountMinor, rate) {
         txns[id]!.amountHomeMinor = home
+        txns[id]!.homeSource = rateSource(t.currency)
         clearPending(txns[id]!)
         return
       }
       anomaly(seq, "money_overflow", "\(id): the home amount does not fit int64")
     }
     txns[id]!.amountHomeMinor = nil
+    txns[id]!.homeSource = nil
     markPending(txns[id]!)
+  }
+
+  private func rateSource(_ ccy: String) -> Txn.HomeSource {
+    if let home = homeCurrency, utf8Equal(home, ccy) { return .identity }
+    return .rate
   }
 
   private mutating func backfill(_ ccy: String, _ micro: Int64, seq: Int64) {
@@ -69,6 +77,7 @@ extension State {
       guard let t = txns[id] else { continue }
       if let home = FX.convert(t.amountMinor, micro) {
         txns[id]!.amountHomeMinor = home
+        txns[id]!.homeSource = rateSource(ccy)
       } else {
         anomaly(seq, "money_overflow", "\(id): the home amount does not fit int64")
         still.append(id)

@@ -102,7 +102,7 @@ public enum FoldCanary {
 /// The fold snapshot (spec 04 §5.3): the whole state, delivery bookkeeping and
 /// `maxAuthored` included, with every map's insertion order.
 public struct StateSnapshot: Sendable, Codable, Equatable {
-  public static let currentFormat = 1
+  public static let currentFormat = 2
   public var formatVersion: Int
   public var foldPrint: String
   public var state: State

@@ -38,6 +38,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var provenance: String
   public var entryMethod: String?
   public var amountHomeMinor: Int64?
+  public var homeSource: Txn.HomeSource?
   public var split: Bool
   public var supersededBy: String?
   public var possibleDuplicateOf: String?
@@ -86,6 +87,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     provenance = r["provenance"]
     entryMethod = r["entry_method"]
     amountHomeMinor = r["amount_home_minor"]
+    homeSource = (r["home_source"] as String?).flatMap(Txn.HomeSource.init(rawValue:))
     split = r["split"]
     supersededBy = r["superseded_by"]
     possibleDuplicateOf = r["possible_duplicate_of"]
