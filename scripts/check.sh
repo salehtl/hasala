@@ -372,6 +372,14 @@ bun run --bun typecheck
 bun test --reporter=junit --reporter-outfile="$JUNIT"
 bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
 
+step "assist worker (infra/assist)"
+cd "$ROOT/infra/assist"
+if [[ ! -d node_modules ]]; then
+	bun install --frozen-lockfile
+fi
+bun run --bun typecheck
+bun test
+
 # --- 6. conformance suites ------------------------------------------------------------
 # Every fixture set under conformance/, with the executors that must agree on
 # it: "set|go packages (in server/)|bun test files (in reference/ledgerd-client/)".
@@ -500,10 +508,10 @@ if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, conformance; real corpus included)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, assist worker, conformance; real corpus included)"
 	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, conformance)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, assist worker, conformance)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
 	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
 fi
