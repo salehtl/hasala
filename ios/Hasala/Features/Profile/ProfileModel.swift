@@ -38,7 +38,6 @@ final class ProfileViewModel: ProfileModel {
     return s.txns.sorted { $0.postedAt > $1.postedAt }.map { ExportRow($0, s) }
   }
 
-  // TODO(spec 04 §11, §16.2 X3): the toggle drives AppLockController (Face ID + grace).
   func setFaceIDLock(_ on: Bool) { app.perform(.setFaceIDLock(on)) }
 
   // TODO(spec 04 §9.3): asking for notification permission and the planner (§9.2).
