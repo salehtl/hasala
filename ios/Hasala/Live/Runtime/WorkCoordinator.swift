@@ -136,6 +136,7 @@ actor WorkCoordinator {
 
   private let stages: Stages
   private var inFlight: Task<Outcome, Never>?
+  private var current: Trigger?
   private var rerun: Trigger?
   private var rerunLimit = RerunLimit.unasked
   /// The callers waiting, by id, with the run each waits on.
@@ -183,8 +184,10 @@ actor WorkCoordinator {
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {
-      if rerun == nil || trigger.strength > (rerun?.strength ?? 0) { rerun = trigger }
-      rerunLimit = rerunLimit.widened(by: deadline)
+      if !Self.joins(trigger, running: current, queued: rerun) {
+        if rerun == nil || trigger.strength > (rerun?.strength ?? 0) { rerun = trigger }
+        rerunLimit = rerunLimit.widened(by: deadline)
+      }
       task = t
     } else {
       task = Task { await self.loop(trigger, deadline: deadline) }
@@ -199,6 +202,10 @@ actor WorkCoordinator {
     let waited = waiters.removeValue(forKey: id)
     if Task.isCancelled, let waited { cancelIfUnwatched(waited) }
     return out
+  }
+
+  static func joins(_ trigger: Trigger, running: Trigger?, queued: Trigger?) -> Bool {
+    trigger == .refresh && [running, queued].contains { $0?.mailbox != nil }
   }
 
   /// A caller was cancelled: when nobody else waits on its run, the run is cancelled.
@@ -223,11 +230,13 @@ actor WorkCoordinator {
     rerun = nil
     rerunLimit = .unasked
     inFlight = nil
+    current = nil
     return out
   }
 
   private func once(_ trigger: Trigger, deadline: ContinuousClock.Instant?) async -> Outcome {
     runs += 1
+    current = trigger
     var out = Outcome()
     // The sync engine runs in a task of its own, so a cancellation can't reach it; the
     // run stops waiting for it instead (it finishes, or stops at its deadline).

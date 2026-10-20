@@ -296,6 +296,70 @@ final class SmokeTests: XCTestCase {
   }
 
   @MainActor
+  func testAPullOnActivityEndsAtOnceAndTheListComesBackToTheTop() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaRefreshDelay", "10000"])
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    let pill = el(app, "activity.period")
+    XCTAssertTrue(pill.waitForExistence(timeout: uiWait))
+    waitForStill(app)
+    let rest = top(app, pill)
+    attach(app, "Refresh · Activity · 0 at rest")
+    pull(app)
+    let status = el(app, "sync.status")
+    let sawStatus = status.waitForExistence(timeout: 2)
+    let backWhileSyncing = waitUntil(2) { abs(top(app, pill) - rest) < 1 } && status.exists
+    attach(app, "Refresh · Activity · 1 back at the top while updating")
+    _ = status.waitForNonExistence(timeout: 15)
+    waitForStill(app)
+    attach(app, "Refresh · Activity · 2 after the update")
+    XCTAssertTrue(sawStatus, "no Updating line")
+    XCTAssertTrue(backWhileSyncing, "the content did not spring back while the sync ran")
+    XCTAssertEqual(top(app, pill), rest, accuracy: 1, "the list stayed offset after the refresh")
+  }
+
+  @MainActor
+  func testAPullOnEveryTabReturnsToTheTop() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaRefreshDelay", "8000", "-HasalaPullHold", "5000"])
+    let tabs = [("Home", "home.period"), ("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"),
+                ("Activity", "activity.period")]
+    for (tab, anchor) in tabs {
+      app.tabBars.firstMatch.buttons[tab].tap()
+      let mark = el(app, anchor)
+      XCTAssertTrue(mark.waitForExistence(timeout: uiWait), tab)
+      waitForStill(app)
+      let rest = top(app, mark)
+      pull(app)
+      attach(app, "Refresh · \(tab) · updating")
+      _ = el(app, "sync.status").waitForNonExistence(timeout: 15)
+      waitForStill(app)
+      XCTAssertEqual(top(app, mark), rest, accuracy: 1, "\(tab) stayed offset after the refresh")
+    }
+  }
+
+  @MainActor
+  private func top(_ app: XCUIApplication, _ mark: XCUIElement) -> CGFloat {
+    let search = app.searchFields.firstMatch
+    return mark.frame.minY - (search.exists ? search.frame.maxY : 0)
+  }
+
+  @MainActor
+  private func pull(_ app: XCUIApplication) {
+    let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+    let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+    from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+  }
+
+  @MainActor
+  private func waitUntil(_ timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+    let deadline = Date(timeIntervalSinceNow: timeout)
+    while Date() < deadline {
+      if condition() { return true }
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    }
+    return condition()
+  }
+
+  @MainActor
   func testHiddenScenarioStartsHidden() throws {
     let app = launch(scenario: "mayaHidden")
     let hero = el(app, "home.hero.left")

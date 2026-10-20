@@ -40,15 +40,26 @@ struct TabScreen<Header: View, Content: View>: View {
       VStack(alignment: .leading, spacing: spacing) {
         if let title {
           VStack(alignment: .leading, spacing: titleGap) {
-            Text(title)
-              .hType(.largeTitle)
-              .foregroundStyle(HColor.textPrimary)
-              .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .center, spacing: 8) {
+              Text(title)
+                .hType(.largeTitle)
+                .foregroundStyle(HColor.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+              Spacer(minLength: 0)
+              SyncStatus(syncing: app.sync.isSyncing)
+            }
             header()
           }
           .padding(.horizontal, HSpacing.insetPage)
         }
         content()
+      }
+      .overlay(alignment: .topTrailing) {
+        if title == nil {
+          SyncStatus(syncing: app.sync.isSyncing)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .padding(.trailing, HSpacing.insetPage)
+        }
       }
       .padding(.top, 20)
       .padding(.bottom, HSpacing.scrollContentBottom)
@@ -57,7 +68,8 @@ struct TabScreen<Header: View, Content: View>: View {
     // The wash starts at the top of the screen, behind the bar, and scrolls away with the
     // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
     .washBehind(wash)
-    .refreshable { [app] in await app.refresh() }
+    .settlesAfterRefresh()
+    .refreshable { [app] in await app.pull() }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
     .navigationBarTitleDisplayMode(.inline)
@@ -74,6 +86,78 @@ struct TabScreen<Header: View, Content: View>: View {
       )
     }
     .overlay(alignment: .bottom) { ToastHost(app: app) }
+  }
+}
+
+nonisolated enum RefreshSettle {
+  static func isStuck(contentOffset: CGFloat, insetTop: CGFloat) -> Bool {
+    contentOffset < -insetTop - 0.5
+  }
+}
+
+private struct SettlesAfterRefresh: ViewModifier {
+  @State private var position = ScrollPosition(edge: .top)
+  @State private var stuck = false
+  @State private var phase = ScrollPhase.idle
+  @State private var settling = false
+  @Environment(\.hMotion) private var policy
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  func body(content: Content) -> some View {
+    content
+      .scrollPosition($position)
+      .onScrollGeometryChange(for: Bool.self) { geo in
+        RefreshSettle.isStuck(contentOffset: geo.contentOffset.y, insetTop: geo.contentInsets.top)
+      } action: { _, value in
+        stuck = value
+        if !value { settling = false }
+        settle()
+      }
+      .onScrollPhaseChange { _, value in
+        phase = value
+        settle()
+      }
+  }
+
+  private func settle() {
+    guard stuck, phase == .idle, !settling else { return }
+    settling = true
+    let still = policy.isStill || reduceMotion
+    Task { @MainActor in
+      guard stuck, phase == .idle else {
+        settling = false
+        return
+      }
+      withAnimation(still ? nil : HMotion.easeOutSoft(HMotion.sheetContent)) {
+        position.scrollTo(edge: .top)
+      }
+    }
+  }
+}
+
+extension View {
+  fileprivate func settlesAfterRefresh() -> some View {
+    modifier(SettlesAfterRefresh())
+  }
+}
+
+struct SyncStatus: View {
+  let syncing: Bool
+
+  var body: some View {
+    ZStack(alignment: .trailing) {
+      if syncing {
+        HStack(spacing: 6) {
+          ProgressView().controlSize(.mini)
+          Text("Updating…").hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(SyncActivity.startedMessage)
+        .accessibilityIdentifier("sync.status")
+        .hTransition(.fade)
+      }
+    }
+    .hAnimation(.fade, value: syncing)
   }
 }
 

@@ -180,8 +180,22 @@ struct LaunchView: View {
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
           layouts: mockLayouts(arguments)),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments))
+      if let delay = milliseconds(after: refreshDelayArgument, in: arguments) {
+        graph.app.refreshWork = { try? await Task.sleep(for: delay) }
+      }
+      if let hold = milliseconds(after: pullHoldArgument, in: arguments) { graph.app.sync.hold = hold }
       launch?.open(graph)
       return graph
+    }
+
+    static let refreshDelayArgument = "-HasalaRefreshDelay"
+    static let pullHoldArgument = "-HasalaPullHold"
+
+    static func milliseconds(after argument: String, in arguments: [String]) -> Duration? {
+      guard let i = arguments.firstIndex(of: argument), i + 1 < arguments.count,
+        let ms = Int(arguments[i + 1]), ms > 0
+      else { return nil }
+      return .milliseconds(ms)
     }
 
     static let keepLayoutArgument = "-HasalaKeepHomeLayout"
