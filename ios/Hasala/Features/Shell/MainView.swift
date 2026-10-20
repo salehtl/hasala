@@ -92,6 +92,8 @@ struct MainView: View {
         WidgetConfigSheet(app: app, kind: kind, entry: entry)
       case .project(let id):
         ProjectEditorSheet(app: app, project: id)
+      case .addTransaction:
+        AddTransactionHost(app: app)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

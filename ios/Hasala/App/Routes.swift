@@ -88,6 +88,7 @@ enum SheetRoute: Hashable, Identifiable {
   case widgetGallery
   case widgetConfig(HomeWidgetKind, entry: String?)
   case project(ProjectID?)
+  case addTransaction
 
   var id: String {
     switch self {
@@ -100,6 +101,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .widgetGallery: "widgetGallery"
     case .widgetConfig(let kind, let entry): "widgetConfig.\(kind.rawValue).\(entry ?? "new")"
     case .project(let id): "project.\(id ?? "new")"
+    case .addTransaction: "addTransaction"
     }
   }
 }

@@ -227,6 +227,12 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     func name(_ c: CategoryID) -> String { s.category(c)?.name ?? "Uncategorized" }
 
     switch edit {
+    case .addTransaction(let d):
+      if let refusal = d.refusal { throw refusal }
+      if let c = d.categoryID, s.category(c) == nil { throw .notFound }
+      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
+      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())"))
+      return (nil, [])
     case .categorize(let id, let c, _, let project):
       guard s.category(c) != nil else { throw .notFound }
       let i = try index(id)
