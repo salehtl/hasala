@@ -46,6 +46,7 @@ final class AccountRuntime {
   /// Review demo account, whose ledger is sample data. Until an answer arrives, every
   /// run asks again (an offline launch must not hide "Use sample data" for good).
   private(set) var reviewAccount = false
+  @ObservationIgnored private(set) var closed = false
   /// The last `GET /account` answer, when one arrived.
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
@@ -136,7 +137,7 @@ final class AccountRuntime {
   /// Reads the mailbox lane's state again (after a connect, the first scan or the cards
   /// step), so Home and Profile follow it before the next run.
   func refreshMailbox() async {
-    guard let lane else { return }
+    guard !closed, let lane else { return }
     store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs())
     await store.reload()
     await checkServerLink()
@@ -364,8 +365,10 @@ final class AccountRuntime {
 
   /// Stops the runtime's work: no more runs and no background work.
   func close() async {
+    closed = true
     stopFollowingImports()
     await coordinator.close()
+    for lane in lanes.values { await lane.close() }
   }
 
   func followImports() async {

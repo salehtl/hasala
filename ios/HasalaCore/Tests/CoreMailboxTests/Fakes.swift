@@ -110,6 +110,12 @@ actor FakeServer: MailboxServer {
     if offline { throw .offline }
     return link
   }
+  var linkProvider: MailProviderID?
+  func setLinkProvider(_ p: MailProviderID?) { linkProvider = p }
+  func linkStatus(provider: MailProviderID) async throws(MailboxServerError) -> MailboxLinkStatus {
+    if let linkProvider, linkProvider != provider { throw .otherProvider }
+    return try await linkStatus()
+  }
   func linkChallenge() async throws(MailboxServerError) -> String { nonce }
   func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
     -> MailboxLinkResult
