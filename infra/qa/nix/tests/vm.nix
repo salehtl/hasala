@@ -377,7 +377,7 @@ in
           machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
 
       with subtest("AT-V9: hasala-admin runs each mode in a sandbox, as root only"):
-          for mode in ["invite", "account", "email", "purge-user", "verify", "version", "migrate"]:
+          for mode in ["invite", "waitlist", "account", "email", "purge-user", "verify", "version", "migrate"]:
               machine.succeed(f"hasala-admin {mode} --help")
           machine.succeed("hasala-admin version | grep '^hasalad ' >/dev/null")
           code = machine.succeed("hasala-admin invite mint --note vm-note-text 2>/dev/null").strip()

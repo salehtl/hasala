@@ -359,6 +359,7 @@ let
   # modes this hasalad has; 02 §18.3's later modes join as they are built.
   adminModes = {
     invite = "hasala";
+    waitlist = "hasala";
     account = "hasala";
     email = "hasala";
     purge-user = "hasala";
@@ -689,7 +690,7 @@ in
     listen.address = mkOption {
       type = types.str;
       default = "127.0.0.1";
-      description = "API bind address. Asserted to be loopback (M1): cloudflared is the only ingress.";
+      description = "API bind address. Asserted to be 127.0.0.1 (M1): cloudflared is the only ingress.";
     };
     listen.port = portOption 8471 "API port.";
     metrics.port = portOption 9471 "Prometheus metrics port, always on 127.0.0.1.";
@@ -1001,10 +1002,9 @@ in
           };
         in
         [
-          (a "M1" (lib.elem cfg.listen.address [
-            "127.0.0.1"
-            "::1"
-          ]) "listen.address must be 127.0.0.1 or ::1; cloudflared is the only ingress.")
+          (a "M1" (
+            cfg.listen.address == "127.0.0.1"
+          ) "listen.address must be 127.0.0.1: cloudflared and the health probe reach the API there.")
           (a "M2" (distinct hasalaPorts) "listen.port, metrics.port and tunnel.metricsPort must differ.")
           (a "M3" (
             !lib.any (p: lib.elem p firewallPorts) hasalaPorts
