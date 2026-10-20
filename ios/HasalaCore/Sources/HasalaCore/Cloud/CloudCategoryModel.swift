@@ -1,7 +1,7 @@
 import CoreCategorize
 import Foundation
 
-public struct CloudCategoryModel: CategoryModel {
+public struct CloudCategoryModel: GradedCategoryModel {
   public static let defaultTag = "cf-clef/1"
   public static let subjectLimit = 128
   public static let suggestThreshold = (minimum: 0.6, margin: 0.2)

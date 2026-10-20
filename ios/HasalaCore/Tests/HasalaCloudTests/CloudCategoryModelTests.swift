@@ -275,3 +275,11 @@ struct CloudAutoFileTests {
     #expect(CloudCategoryModel.autoFileThreshold == (minimum: 0.8, margin: 0.4))
   }
 }
+
+@Test func cloudModelIsGraded() {
+  let model: any CategoryModel = CloudCategoryModel(
+    baseURL: URL(string: "https://assist.hasala.app")!, clientVersion: "1.0.0", isEnabled: { true }, isAutoFileEnabled: { true },
+    exchange: URLSessionCloudExchange())
+  #expect(model is any GradedCategoryModel)
+  #expect(ModelTier.mayAutoFile(modelTag: model.modelTag))
+}
