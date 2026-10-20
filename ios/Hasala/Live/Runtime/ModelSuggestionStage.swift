@@ -12,14 +12,15 @@ struct ModelSuggestionStage: Sendable {
   let dictionary: MerchantDictionary
   let onDevice: any CategoryModel
   let cloud: (any CategoryModel)?
+  let onDeviceAlone: Bool
   let nowMs: @Sendable () -> Int64
 
   static func runs(_ trigger: WorkCoordinator.Trigger) -> Bool {
     trigger == .launch || trigger == .foreground || trigger == .refresh
   }
 
-  static func stages(onDevice: any CategoryModel, cloud: (any CategoryModel)?) -> [ModelStage] {
-    guard let cloud, cloud.availability() == .available else { return [.onDevice(onDevice)] }
+  static func stages(onDevice: any CategoryModel, cloud: (any CategoryModel)?, onDeviceAlone: Bool) -> [ModelStage] {
+    guard let cloud, cloud.availability() == .available else { return onDeviceAlone ? [.onDevice(onDevice)] : [] }
     return [.cloud(cloud), .onDevice(onDevice)]
   }
 
@@ -35,7 +36,8 @@ struct ModelSuggestionStage: Sendable {
           id: $0.id, patterns: $0.patterns, match: $0.match, category: $0.category, priority: $0.priority, enabled: $0.enabled,
           removed: $0.removed)
       }
-      let stages = Self.stages(onDevice: onDevice, cloud: cloud)
+      let stages = Self.stages(onDevice: onDevice, cloud: cloud, onDeviceAlone: onDeviceAlone)
+      guard !stages.isEmpty else { return false }
       let blobs = try await ModelSuggestionSweep.run(
         rows: try reader.sweepRows(), categorizer: Categorizer(rules: rules, dictionary: dictionary, categories: taxonomy),
         allowed: ModelTier.allowed(taxonomy.ordered), stages: stages, context: .foreground, cache: cache, now: nowMs,

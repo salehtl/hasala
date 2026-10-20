@@ -229,6 +229,7 @@ final class AccountRuntime {
         baseURL: build.assistBaseURL, clientVersion: build.marketingVersion,
         isEnabled: MerchantSuggestionsSetting.isEnabledReader,
         isAutoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader),
+      onDeviceAlone: BuildSurface.showsUnfinished,
       nowMs: { context.clock.nowMs() })
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(

@@ -169,7 +169,9 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
   today. The row keeps `needs_review`, so it never counts in a total until the person
   confirms it.
 - Order (decision D1): with Merchant suggestions on, Clef first, then Apple's model for
-  Latin subjects that Clef couldn't answer. With it off, Apple's model only.
+  Latin subjects that Clef couldn't answer. With it off, a Release build runs no model,
+  as before this feature (the beta doesn't use Apple's model on its own; the setup
+  screens say so). A Debug build runs Apple's model alone, for development.
 - Failures map onto `ModelFailure` (`timeout`, `rateLimited`, `busy`, `other`). A failure
   leaves the row in review, as today.
 
@@ -225,7 +227,7 @@ stricter gate **files** the row instead of only suggesting it.
 
 ## The switches
 
-- Profile › Privacy › **Cloud suggestions**, with two switches: **Merchant suggestions**
+- Profile › **Cloud suggestions**, with two switches: **Merchant suggestions**
   and **Alert reading help**. Both off by default, on every device separately (they're
   device settings, like Hide amounts, and never sync).
 - Turning one on shows one screen first: what is sent, an example of a request, that
@@ -358,7 +360,7 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, Apple's model only. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer. |
+| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, no model in Release (unchanged beta behaviour) and Apple's model alone in Debug. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer. |
 | D2 | Offer custom category names to Clef? | **Decided:** not in v1. Revisit with a per-category "may be sent" mark. |
 | D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | **Decided:** rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
 | D4 | Allow "Don't ask again" for Alert reading help? | Deferred with Clairic. No in v1. Each alert is shown and confirmed. |
@@ -394,12 +396,12 @@ changes what is sent where. Set `lastUpdated` to the ship date.
 
 > ## Cloud suggestions
 >
-> Cloud suggestions are off unless you turn them on, on each iPhone, under Profile ›
-> Privacy › Cloud suggestions. There are two, and you can turn each on or off at any time.
+> Cloud suggestions are off unless you turn them on, on each iPhone, under
+> Profile › Cloud suggestions. There are two, and you can turn each on or off at any time.
 >
-> **Merchant suggestions.** When Hasala can't sort a payment with your rules, its merchant
-> list or Apple's on-device model, it can ask Cloudflare's AI service to suggest a
-> category. It sends the merchant name as it appears in the alert, for example
+> **Merchant suggestions.** When Hasala can't sort a payment with your rules or its
+> merchant list, it asks Cloudflare's AI service to suggest a category. Apple's on-device
+> model is used when Cloudflare can't help. It sends the merchant name as it appears in the alert, for example
 > "CAFE EXAMPLE JBR", and Hasala's built-in category names. It doesn't send the amount,
 > the date, your card, your bank, your own category names or anything about your account.
 > Each merchant is sent on its own. The suggestion is marked "Suggested by Cloudflare AI",
