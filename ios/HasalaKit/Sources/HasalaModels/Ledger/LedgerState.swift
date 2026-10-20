@@ -132,13 +132,17 @@ public struct Provenance: Sendable, Hashable, Codable {
 public struct SplitLine: Sendable, Hashable, Codable, Identifiable {
   public var id: Int
   public var categoryID: CategoryID
-  public var amount: Money
+  public var amount: Money {
+    didSet { homeMinor = Money.homeMinor(of: amount) }
+  }
+  public var homeMinor: Int64?
   public var note: String
 
-  public init(id: Int, categoryID: CategoryID, amount: Money, note: String = "") {
+  public init(id: Int, categoryID: CategoryID, amount: Money, homeMinor: Int64?? = nil, note: String = "") {
     self.id = id
     self.categoryID = categoryID
     self.amount = amount
+    self.homeMinor = homeMinor ?? Money.homeMinor(of: amount)
     self.note = note
   }
 }
@@ -186,7 +190,10 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// A place the bank adds ("DIFC"), shown after the merchant.
   public var place: String?
   /// Always positive; `direction` carries the sign.
-  public var amount: Money
+  public var amount: Money {
+    didSet { homeMinor = Money.homeMinor(of: amount) }
+  }
+  public var homeMinor: Int64?
   public var direction: Direction
   public var postedAt: LocalDateTime
   public var accountID: AccountID?
@@ -216,7 +223,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var reviewReason: TxnReviewReason?
 
   public init(
-    id: TxnID, merchant: String, place: String? = nil, amount: Money, direction: Direction = .out,
+    id: TxnID, merchant: String, place: String? = nil, amount: Money, homeMinor: Int64?? = nil, direction: Direction = .out,
     postedAt: LocalDateTime, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
@@ -229,6 +236,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.merchant = merchant
     self.place = place
     self.amount = amount
+    self.homeMinor = homeMinor ?? Money.homeMinor(of: amount)
     self.direction = direction
     self.postedAt = postedAt
     self.accountID = accountID
@@ -267,10 +275,12 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// The money lines this transaction contributes to budgets: its splits, or itself.
   /// Refunds count against their category's spending; money in otherwise does not.
   public var lines: [(category: CategoryID, minor: Int64)] {
-    if !splits.isEmpty { return splits.map { ($0.categoryID, $0.amount.minor) } }
+    if !splits.isEmpty { return splits.map { ($0.categoryID, $0.homeMinor ?? 0) } }
     guard let c = categoryID else { return [] }
-    return [(c, direction == .out ? amount.minor : -amount.minor)]
+    return [(c, homeSigned ?? 0)]
   }
+
+  public var homeSigned: Int64? { homeMinor.map { direction == .out ? $0 : -$0 } }
 
   /// Counts in budgets this month: sorted, not archived, not a transfer.
   public var countsInPlan: Bool { !needsReview && !archived && !isTransfer && !isHeldCopy }

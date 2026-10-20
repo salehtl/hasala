@@ -87,7 +87,7 @@ nonisolated enum LedgerStateMapper {
 
     // Bills, then each active income source as an income "bill" (Bills › Income).
     var bills: [HasalaModels.Bill] = []
-    let paidAmount = Dictionary(txns.map { ($0.id, $0.amount) }, uniquingKeysWith: { a, _ in a })
+    let paidAmount = Dictionary(txns.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     for (id, b) in try r.bills() {
       if let mapped = bill(id: id, b, resolutions: resolutions.filter { $0.bill == id }, today: c.today,
                            taxonomy: taxonomy, paidAmount: paidAmount)
@@ -205,7 +205,7 @@ nonisolated enum LedgerStateMapper {
     if row.split {
       splits = try r.parts(row.id).map {
         SplitLine(id: $0.idx, categoryID: $0.category, amount: Money(minor: $0.amountMinor, currency: row.currency),
-                  note: $0.note ?? "")
+                  homeMinor: .some($0.amountHomeMinor), note: $0.note ?? "")
       }
     }
     let source: HasalaModels.CategorySource? =
@@ -223,7 +223,7 @@ nonisolated enum LedgerStateMapper {
       : nil
     return HasalaModels.Txn(
       id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),
-      direction: row.direction == "credit" ? .in : .out, postedAt: at, accountID: row.effectiveAccountID,
+      homeMinor: .some(row.amountHomeMinor), direction: row.direction == "credit" ? .in : .out, postedAt: at, accountID: row.effectiveAccountID,
       categoryID: row.category, categorySource: source, needsReview: row.needsReview, isNewMerchant: row.isNewMerchant,
       suggestion: nil, note: row.note ?? "", splits: splits,
       isRefund: row.category == "refunds" || row.refundState != nil,
@@ -245,7 +245,7 @@ nonisolated enum LedgerStateMapper {
 
   static func bill(
     id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], today: LocalDate, taxonomy: TaxonomyView,
-    paidAmount: [String: Money]
+    paidAmount: [String: HasalaModels.Txn]
   ) -> HasalaModels.Bill? {
     guard b.direction == "debit", let anchor = CivilDate(wire: b.anchor).map(local),
       let start = CivilDate(wire: b.start).map(local)
@@ -268,7 +268,9 @@ nonisolated enum LedgerStateMapper {
     // A fixed bill whose latest payment was outside its tolerance shows the new price.
     var amount = Money(minor: b.amountMinor, currency: b.currency)
     var priceChangeFrom: Money?
-    if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn, let charged = paidAmount[txn] {
+    if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn,
+      let charged = paidAmount[txn].flatMap({ charged($0, in: b.currency) })
+    {
       let tolerance = b.amountMinor * (b.toleranceBp ?? 0) / 10_000
       if abs(charged.minor - b.amountMinor) > tolerance {
         priceChangeFrom = amount
@@ -281,6 +283,11 @@ nonisolated enum LedgerStateMapper {
       approximate: b.amountMode == "variable", isIncome: false, usualDay: anchor.day, nextDue: next,
       accountID: b.account, state: b.status == "active" ? .tracked : .dismissed, priceChangeFrom: priceChangeFrom,
       history: history)
+  }
+
+  static func charged(_ t: HasalaModels.Txn, in currency: String) -> Money? {
+    if t.amount.currency == currency { return t.amount }
+    return currency == Money.home ? t.homeMinor.map(Money.aed) : nil
   }
 
   /// The due dates of a bill from `start` to `horizon`, stepping from `anchor` (03b §3.4):

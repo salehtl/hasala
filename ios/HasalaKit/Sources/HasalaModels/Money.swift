@@ -17,6 +17,10 @@ public struct Money: Sendable, Hashable, Codable {
   /// `Money.aed(7_417_55)`: the literal is written in fils.
   public static func aed(_ minor: Int64) -> Money { Money(minor: minor, currency: "AED") }
 
+  public static let home = "AED"
+
+  public static func homeMinor(of m: Money) -> Int64? { m.currency == home ? m.minor : nil }
+
   public var isZero: Bool { minor == 0 }
   public var isNegative: Bool { minor < 0 }
 }

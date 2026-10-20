@@ -89,7 +89,12 @@ struct LiveLedgerMapperTests {
 
   /// The seed's blobs, through the observer's gate (a review account, an empty ledger).
   static func seed(_ a: Account) async throws -> [AuthoredBlob] {
-    try await a.observer.sampleBatches(account: AccountInfo(user_id: user.string, review_account: true))
+    let batches = try await a.observer.sampleBatches(account: AccountInfo(user_id: user.string, review_account: true))
+    let opening = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      o.setHomeCurrency("AED")
+      try o.setRate(currency: "USD", rateMicro: 3_672_500)
+    }
+    return batches + [opening].compactMap { $0 }
   }
 
   static func context() -> LedgerStateMapper.Context {

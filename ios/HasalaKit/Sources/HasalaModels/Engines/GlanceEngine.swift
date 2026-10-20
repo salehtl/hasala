@@ -117,7 +117,7 @@ public enum GlanceEngine {
 
   static func toReview(_ s: LedgerState, now: LocalDateTime) -> ToReviewWidget {
     let queue = ReviewEngine.queue(s, in: .month(now.date.yearMonth))
-    let notCounted = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let notCounted = queue.filter { $0.direction == .out }.reduce(Int64(0)) { $0 + ($1.homeMinor ?? 0) }
     return ToReviewWidget(count: queue.count, notCounted: .aed(notCounted))
   }
 }

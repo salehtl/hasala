@@ -418,7 +418,7 @@ public enum HomeEngine {
   static func todayWidget(_ s: LedgerState, now: LocalDateTime) -> TodayWidget {
     let today = s.txns.filter { $0.postedAt.date == now.date && $0.countsInPlan }
       .sorted { $0.postedAt > $1.postedAt }
-    let todayTotal = today.reduce(Int64(0)) { $0 + ($1.direction == .out ? $1.amount.minor : -$1.amount.minor) }
+    let todayTotal = today.reduce(Int64(0)) { $0 + ($1.homeSigned ?? 0) }
     return TodayWidget(
       summary: MoneyPhrase([
         .text("\(today.count) transaction\(today.count == 1 ? "" : "s") · "), .amount(.aed(todayTotal), .rounded, hidden: 3),

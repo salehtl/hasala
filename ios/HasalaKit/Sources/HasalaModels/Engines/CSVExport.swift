@@ -21,7 +21,7 @@ public struct ExportRow: Sendable, Hashable {
   public init(_ t: Txn, _ s: LedgerState) {
     date = t.postedAt.date
     description = t.provenance?.rawMerchant ?? t.merchant
-    amount = .aed(t.direction == .out ? -t.amount.minor : t.amount.minor)
+    amount = Money(minor: t.direction == .out ? -t.amount.minor : t.amount.minor, currency: t.amount.currency)
     direction = t.direction
     category = s.category(t.categoryID)?.name ?? ""
     merchant = t.title

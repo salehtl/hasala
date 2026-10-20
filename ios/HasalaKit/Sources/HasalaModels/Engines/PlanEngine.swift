@@ -235,7 +235,7 @@ public enum PlanEngine {
     )
   }
 
-  static func projectMinor(_ t: Txn) -> Int64 { t.direction == .out ? t.amount.minor : -t.amount.minor }
+  static func projectMinor(_ t: Txn) -> Int64 { t.homeSigned ?? 0 }
 
   static func projectRange(_ p: Project) -> String? {
     switch (p.starts, p.ends) {

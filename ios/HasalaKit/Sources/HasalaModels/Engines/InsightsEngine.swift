@@ -51,10 +51,9 @@ public enum InsightsEngine {
       }
       for (i, part) in spentParts(t, in: s).enumerated() { line(i, part.category, .spent, part.minor) }
       let carvedOut = s.project(t.projectID).map { !$0.countInPlan } ?? false
-      let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
       let parts: [(category: CategoryID, minor: Int64, signed: Int64)] = t.splits.isEmpty
-        ? (t.categoryID.map { [($0, t.amount.minor, signed)] } ?? [])
-        : t.splits.map { ($0.categoryID, $0.amount.minor, $0.amount.minor) }
+        ? (t.categoryID.flatMap { c in t.homeMinor.map { [(c, $0, t.homeSigned ?? $0)] } } ?? [])
+        : t.splits.compactMap { sp in sp.homeMinor.map { (sp.categoryID, $0, $0) } }
       for (i, part) in parts.enumerated() {
         guard let c = s.category(part.category) else { continue }
         if c.kind == .income, t.direction == .in {
