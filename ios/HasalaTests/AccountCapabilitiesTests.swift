@@ -22,10 +22,11 @@ struct AccountCapabilitiesTests {
     #expect(AccountCapabilities.all.isSuperset(of: .beta))
     #expect(AccountCapabilities.beta.isDisjoint(with: hidden))
     #expect(AccountCapabilities.beta.union(hidden) == .all)
-    #expect(AccountCapabilities.all.rawValue.nonzeroBitCount == 20)
+    #expect(AccountCapabilities.all.rawValue.nonzeroBitCount == 21)
     // Someone who lost their passkey can get back in (and then delete the account).
     #expect(AccountCapabilities.beta.isSuperset(of: [.recoverAccess, .deleteAccount]))
     #expect(AccountCapabilities.beta.contains(.addPasskey))
+    #expect(AccountCapabilities.beta.contains(.changeName))
   }
 
   /// Sign-in & security points to support when the beta hides an action, and doesn't offer

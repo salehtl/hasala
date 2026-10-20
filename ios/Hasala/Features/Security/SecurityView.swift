@@ -10,13 +10,16 @@ import SwiftUI
 /// "Are you sure?" where it can't be undone (native alerts), then "Confirm it's you".
 struct SecurityView: View {
   let session: AccountSession
+  let app: AppModel
+  @Environment(AppLockController.self) private var lock: AppLockController?
   @State private var model: SecurityModel
   @State private var alert: PendingAlert?
   @State private var deleting = false
   @State private var lockingDown = false
 
-  init(session: AccountSession) {
+  init(session: AccountSession, app: AppModel) {
     self.session = session
+    self.app = app
     _model = State(initialValue: SecurityModel(session: session))
   }
 
@@ -59,6 +62,7 @@ struct SecurityView: View {
               : "Add one and Face ID signs you in. On a new iPhone your 12 words still unlock your data.") { passkeys(s) }
           }
           section("Password", footer: passwordFooter(s)) { passwordCard(s) }
+          if let lock { AppLockSecuritySection(app: app, lock: lock) }
           section("Devices") { devices(s) }
           section("Recovery phrase", footer: phraseFooter(s)) { phrase(s) }
           footerActions(s)

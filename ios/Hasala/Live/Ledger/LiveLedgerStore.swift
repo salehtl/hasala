@@ -156,6 +156,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     case .skipReview(let id): prefs.skip(id, on: now.date)
     case .setNotifications(let level): prefs.update { $0.notifications = level }
     case .setFaceIDLock(let on): prefs.update { $0.faceIDLock = on }
+    case .setDisplayName(let name): profile.displayName = name
     default: break
     }
     state = s
@@ -419,6 +420,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       return (nil, [])
     case .setFaceIDLock(let on):
       s.prefs.faceIDLock = on
+      return (nil, [])
+    case .setDisplayName(let name):
+      s.profile.displayName = name
       return (nil, [])
     }
   }

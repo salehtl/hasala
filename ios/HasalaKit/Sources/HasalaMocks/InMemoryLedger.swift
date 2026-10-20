@@ -254,6 +254,9 @@ public final class InMemoryLedger: LedgerStore {
     case .setFaceIDLock(let on):
       s.prefs.faceIDLock = on
       title = nil
+    case .setDisplayName(let name):
+      s.profile.displayName = name
+      title = nil
     }
 
     state = s

@@ -5,12 +5,14 @@
   struct MockAppLock {
     static let argument = "-HasalaAppLock"
     static let graceArgument = "-HasalaAppLockGrace"
+    static let issueArgument = "-HasalaAppLockIssue"
 
     var armed = false
     var available = true
     var system = false
     var checks: [LockCheck] = []
     var grace: Duration = AppLockController.grace
+    var issue: BiometryIssue?
 
     init() {}
 
@@ -26,6 +28,14 @@
           checks = value.split(separator: ",").compactMap { Self.check(String($0)) }
         }
       }
+      if let i = arguments.firstIndex(of: Self.issueArgument), i + 1 < arguments.count {
+        switch arguments[i + 1] {
+        case "notEnrolled": issue = .notEnrolled
+        case "denied": issue = .denied
+        case "lockedOut": issue = .lockedOut
+        default: break
+        }
+      }
       if let i = arguments.firstIndex(of: Self.graceArgument), i + 1 < arguments.count,
         let seconds = Int(arguments[i + 1])
       {
@@ -38,8 +48,11 @@
       let available = available
       let armed = armed
       let system = system
+      let issue = issue
       return AppLockController(
-        makeContext: { system ? SystemLockContext() as any LockContext : MockLockContext(available: available, script: script) },
+        makeContext: {
+          system ? SystemLockContext() as any LockContext : MockLockContext(available: available, issue: issue, script: script)
+        },
         isEnabled: { armed && store.state.prefs.faceIDLock }, grace: grace)
     }
 
@@ -61,9 +74,11 @@
 
   struct MockLockContext: LockContext {
     let available: Bool
+    var issue: BiometryIssue?
     let script: MockAppLock.Script
 
     var biometry: LockBiometry { .faceID }
+    var biometryIssue: BiometryIssue? { issue }
     func canEvaluate() -> Bool { available }
 
     func evaluate(reason: String) async -> LockCheck {
