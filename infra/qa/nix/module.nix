@@ -286,26 +286,32 @@ let
     ];
     text = ''
       # §5.8: an age-encrypted custom-format dump plus the purge ledger, then
-      # retention. The plaintext dump exists only under $RUNTIME_DIRECTORY
-      # (tmpfs, 0700) and is removed on every exit.
+      # retention. The plaintext dump is never written to a file: pg_dump
+      # streams into age, and a copy of the stream goes through a FIFO to
+      # pg_restore --list, whose TOC (no data) is the only thing kept under
+      # $RUNTIME_DIRECTORY (tmpfs, 0700). Both are removed on every exit.
       tag="''${1:-daily}"
       case "$tag" in daily | premigrate) ;; *) echo "hasala-backup: unknown tag $tag" >&2; exit 2 ;; esac
       ts="$(date -u +%Y%m%dT%H%M%SZ)"
       dir=${lib.escapeShellArg cfg.backup.dir}
       out="$dir/hasala-$tag-$ts.dump.age"
+      led="$dir/hasala-ledger-$ts.tar.age"
       work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
-      trap 'rm -rf "$work"' EXIT
+      trap 'rm -rf "$work"; rm -f "$out.part" "$led.part"' EXIT
+      mkfifo -m 0600 "$work/stream"
+      { pg_restore --list > "$work/toc"; cat > /dev/null; } < "$work/stream" &
+      toc_pid=$!
       pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
-        --format=custom --compress=zstd:6 --no-password --file="$work/db.dump"
-      pg_restore --list "$work/db.dump" > "$work/toc"
+        --format=custom --compress=zstd:6 --no-password \
+        | tee "$work/stream" \
+        | age ${ageRecipientFlags} -o "$out.part"
+      wait "$toc_pid"
       if [ "$tag" = daily ]; then grep -q ' TABLE DATA public op_log ' "$work/toc"; fi
-      age ${ageRecipientFlags} -o "$out.part" "$work/db.dump"
       sync "$out.part"
       mv "$out.part" "$out"
       ( cd "$dir" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
       # The purge ledger and the log generation (§5.8.1), read through the
       # hasala-ledger group; never written here.
-      led="$dir/hasala-ledger-$ts.tar.age"
       # A file that does not exist yet is left out; one that exists but cannot
       # be read fails the backup (pipefail), never an empty ledger copy.
       files=()
@@ -353,6 +359,7 @@ let
   # modes this hasalad has; 02 §18.3's later modes join as they are built.
   adminModes = {
     invite = "hasala";
+    waitlist = "hasala";
     account = "hasala";
     email = "hasala";
     purge-user = "hasala";
@@ -683,7 +690,7 @@ in
     listen.address = mkOption {
       type = types.str;
       default = "127.0.0.1";
-      description = "API bind address. Asserted to be loopback (M1): cloudflared is the only ingress.";
+      description = "API bind address. Asserted to be 127.0.0.1 (M1): cloudflared is the only ingress.";
     };
     listen.port = portOption 8471 "API port.";
     metrics.port = portOption 9471 "Prometheus metrics port, always on 127.0.0.1.";
@@ -995,10 +1002,9 @@ in
           };
         in
         [
-          (a "M1" (lib.elem cfg.listen.address [
-            "127.0.0.1"
-            "::1"
-          ]) "listen.address must be 127.0.0.1 or ::1; cloudflared is the only ingress.")
+          (a "M1" (
+            cfg.listen.address == "127.0.0.1"
+          ) "listen.address must be 127.0.0.1: cloudflared and the health probe reach the API there.")
           (a "M2" (distinct hasalaPorts) "listen.port, metrics.port and tunnel.metricsPort must differ.")
           (a "M3" (
             !lib.any (p: lib.elem p firewallPorts) hasalaPorts
