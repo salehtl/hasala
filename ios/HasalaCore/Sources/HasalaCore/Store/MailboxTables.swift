@@ -212,7 +212,27 @@ public final class MailboxTableStore: Sendable {
     ) WITHOUT ROWID
     """,
     "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID",
+    "CREATE TABLE mailbox_parsing (message_id TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID",
   ]
+
+  public func isParsing(_ messageID: String) throws -> Bool {
+    try db.read { db in
+      try Bool.fetchOne(db, sql: "SELECT 1 FROM mailbox_parsing WHERE message_id = ?", arguments: [messageID]) ?? false
+    }
+  }
+
+  public func markParsing(_ messageID: String, at: Int64) throws {
+    try db.write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO mailbox_parsing (message_id, at) VALUES (?, ?)", arguments: [messageID, at])
+    }
+  }
+
+  public func clearParsing(_ messageID: String) throws {
+    try db.write { db in
+      try db.execute(sql: "DELETE FROM mailbox_parsing WHERE message_id = ?", arguments: [messageID])
+    }
+  }
 
   public func senderAddresses() throws -> [String] {
     try db.read { db in try String.fetchAll(db, sql: "SELECT address FROM mailbox_sender_address ORDER BY at, address") }
@@ -320,7 +340,9 @@ public final class MailboxTableStore: Sendable {
   public func commit(_ w: MailboxWrite) throws {
     try db.write { db in
       if w.clearAll {
-        for t in ["mailbox_accounted", "mailbox_set_aside", "mailbox_unreadable", "mailbox_staging", "bank_health"] {
+        for t in [
+          "mailbox_accounted", "mailbox_set_aside", "mailbox_unreadable", "mailbox_staging", "bank_health", "mailbox_parsing",
+        ] {
           try db.execute(sql: "DELETE FROM \(t)")
         }
       }

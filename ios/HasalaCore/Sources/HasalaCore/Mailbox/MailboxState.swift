@@ -147,6 +147,9 @@ public protocol MailboxPersistence: Sendable {
   func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow]
   func senderAddresses() async throws(MailboxPersistenceError) -> [String]
   func addSenderAddress(_ address: String) async throws(MailboxPersistenceError)
+  func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool
+  func markParsing(_ messageID: String) async throws(MailboxPersistenceError)
+  func clearParsing(_ messageID: String) async throws(MailboxPersistenceError)
 }
 
 /// The reference `MailboxPersistence`: the semantics a GRDB implementation must keep, in memory.
@@ -167,6 +170,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public static let unreadableRing = 1_000
 
   public private(set) var addresses: [String] = []
+  public private(set) var parsing: Set<String> = []
 
   public init(state: MailboxState = MailboxState()) { self.state = state }
 
@@ -177,6 +181,12 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   }
 
   public func setFailNextCommit(_ v: Bool) { failNextCommit = v }
+
+  public func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool { parsing.contains(messageID) }
+
+  public func markParsing(_ messageID: String) async throws(MailboxPersistenceError) { parsing.insert(messageID) }
+
+  public func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { parsing.remove(messageID) }
 
   public func loadState() async throws(MailboxPersistenceError) -> MailboxState { state }
 
@@ -202,6 +212,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       unreadable = []
       staging = [:]
       health = [:]
+      parsing = []
     }
     enqueued.append(contentsOf: c.drafts)
     for a in c.accounted { accountedRows[a.messageID] = a }
