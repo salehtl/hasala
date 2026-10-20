@@ -132,13 +132,17 @@ public struct Provenance: Sendable, Hashable, Codable {
 public struct SplitLine: Sendable, Hashable, Codable, Identifiable {
   public var id: Int
   public var categoryID: CategoryID
-  public var amount: Money
+  public var amount: Money {
+    didSet { homeMinor = Money.homeMinor(of: amount) }
+  }
+  public var homeMinor: Int64?
   public var note: String
 
-  public init(id: Int, categoryID: CategoryID, amount: Money, note: String = "") {
+  public init(id: Int, categoryID: CategoryID, amount: Money, homeMinor: Int64?? = nil, note: String = "") {
     self.id = id
     self.categoryID = categoryID
     self.amount = amount
+    self.homeMinor = homeMinor ?? Money.homeMinor(of: amount)
     self.note = note
   }
 }
@@ -146,11 +150,13 @@ public struct SplitLine: Sendable, Hashable, Codable, Identifiable {
 public enum TxnReviewReason: String, Sendable, Hashable, Codable {
   case probableCopy = "probable_copy"
   case senderUnverified = "sender_unverified"
+  case samePurchase = "same_purchase"
 
   public var label: String {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .senderUnverified: "Couldn't verify sender"
+    case .samePurchase: "Same purchase?"
     }
   }
 
@@ -158,6 +164,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .senderUnverified: "Couldn't verify the sender"
+    case .samePurchase: "Same purchase?"
     }
   }
 
@@ -165,6 +172,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     switch self {
     case .probableCopy: "It matches one you already have. Merge it, or keep both."
     case .senderUnverified: "Check this matches your bank app before you sort it."
+    case .samePurchase: "It may be the AED charge for a purchase you already have. Count it once, or keep both."
     }
   }
 }
@@ -179,6 +187,20 @@ public struct HeldCopy: Sendable, Hashable, Codable {
   }
 }
 
+public enum HomeSource: String, Sendable, Hashable, Codable {
+  case identity, rate, stated
+}
+
+public struct SamePurchaseMatch: Sendable, Hashable, Codable {
+  public var of: TxnID
+  public var merchantMissing: Bool
+
+  public init(of: TxnID, merchantMissing: Bool = false) {
+    self.of = of
+    self.merchantMissing = merchantMissing
+  }
+}
+
 public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var id: TxnID
   /// The display name ("Carrefour"); a rename changes this (03c §3.6).
@@ -186,7 +208,16 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// A place the bank adds ("DIFC"), shown after the merchant.
   public var place: String?
   /// Always positive; `direction` carries the sign.
-  public var amount: Money
+  public var amount: Money {
+    didSet {
+      homeMinor = Money.homeMinor(of: amount)
+      homeSource = Money.homeSource(of: amount)
+      homeRateMicro = nil
+    }
+  }
+  public var homeMinor: Int64?
+  public var homeSource: HomeSource?
+  public var homeRateMicro: Int64?
   public var direction: Direction
   public var postedAt: LocalDateTime
   public var accountID: AccountID?
@@ -213,22 +244,28 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// behind them.
   public var mailboxMessageID: String?
   public var heldCopy: HeldCopy?
+  public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
 
   public init(
-    id: TxnID, merchant: String, place: String? = nil, amount: Money, direction: Direction = .out,
+    id: TxnID, merchant: String, place: String? = nil, amount: Money, homeMinor: Int64?? = nil,
+    homeSource: HomeSource?? = nil, homeRateMicro: Int64? = nil, direction: Direction = .out,
     postedAt: LocalDateTime, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
     isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
     provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil,
     heldCopy: HeldCopy? = nil,
+    samePurchase: SamePurchaseMatch? = nil,
     reviewReason: TxnReviewReason? = nil
   ) {
     self.id = id
     self.merchant = merchant
     self.place = place
     self.amount = amount
+    self.homeMinor = homeMinor ?? Money.homeMinor(of: amount)
+    self.homeSource = self.homeMinor == nil ? nil : (homeSource ?? Money.homeSource(of: amount))
+    self.homeRateMicro = self.homeSource == .rate ? homeRateMicro : nil
     self.direction = direction
     self.postedAt = postedAt
     self.accountID = accountID
@@ -248,6 +285,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.detailOverride = detailOverride
     self.mailboxMessageID = mailboxMessageID
     self.heldCopy = heldCopy
+    self.samePurchase = samePurchase
     self.reviewReason = reviewReason
   }
 
@@ -257,7 +295,11 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// A row of the App Review sample (its message id is `sample-<n>`; Gmail ids are hex).
   public var isSample: Bool { mailboxMessageID?.hasPrefix("sample-") == true }
 
-  public var activeReviewReason: TxnReviewReason? { isHeldCopy ? .probableCopy : (needsReview ? reviewReason : nil) }
+  public var activeReviewReason: TxnReviewReason? {
+    if isHeldCopy { return .probableCopy }
+    if samePurchase != nil { return .samePurchase }
+    return needsReview ? reviewReason : nil
+  }
 
   public var senderUnverified: Bool { activeReviewReason == .senderUnverified }
 
@@ -267,10 +309,16 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// The money lines this transaction contributes to budgets: its splits, or itself.
   /// Refunds count against their category's spending; money in otherwise does not.
   public var lines: [(category: CategoryID, minor: Int64)] {
-    if !splits.isEmpty { return splits.map { ($0.categoryID, $0.amount.minor) } }
+    if !splits.isEmpty { return splits.map { ($0.categoryID, $0.homeMinor ?? 0) } }
     guard let c = categoryID else { return [] }
-    return [(c, direction == .out ? amount.minor : -amount.minor)]
+    return [(c, homeSigned ?? 0)]
   }
+
+  public var homeSigned: Int64? { homeMinor.map { direction == .out ? $0 : -$0 } }
+
+  public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
+
+  public var isNotCounted: Bool { homeMinor == nil }
 
   /// Counts in budgets this month: sorted, not archived, not a transfer.
   public var countsInPlan: Bool { !needsReview && !archived && !isTransfer && !isHeldCopy }

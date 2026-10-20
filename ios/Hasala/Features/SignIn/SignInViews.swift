@@ -628,18 +628,18 @@ struct HonestEndScreen: View {
   }
 
   /// What another signed-in device can do, only as far as it's true. Paper's line needs a
-  /// build that adds passkeys; without one, only a passkey account's device shows the words
-  /// (S-41), and a password-only account's can't show them at all (Sign-in & security says
-  /// so). Signed out, the method may not be known: the line holds for either.
+  /// build that adds passkeys and a passkey account; otherwise only a passkey account's
+  /// device shows the words (S-41), and a password account's can't show them at all (a
+  /// passkey it adds holds no keys). Signed out, the method may not be known: the line holds
+  /// for either.
   static func otherDevice(addsPasskeys: Bool, method: SignInMethod?) -> String {
-    if addsPasskeys {
-      return "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
-    }
     switch method {
-    case .passkey:
-      return "An iPhone with Hasala open can show your words in Sign-in & security, after Face ID."
     case .password:
       return "It can't show your words: on an account without a passkey they can't be shown again."
+    case .passkey where addsPasskeys:
+      return "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
+    case .passkey:
+      return "An iPhone with Hasala open can show your words in Sign-in & security, after Face ID."
     case nil:
       return "An iPhone where your passkey works can show your words in Sign-in & security, after Face ID."
     }

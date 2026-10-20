@@ -56,9 +56,6 @@ final class SetupModel {
   private(set) var facts: OnboardingStep.Facts
   private(set) var draft = SetupDraft()
 
-  // Bank
-  var bankRequest = ""
-
   // Your email
   /// "Choose your email" is up: a sheet over the step it was asked from (plan decision 5).
   var choosingEmail = false
@@ -285,17 +282,9 @@ final class SetupModel {
     go(.income)
   }
 
-  func sendBankRequest() async {
-    let name = bankRequest.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty else { return }
-    do {
-      try await services.setup.requestBank(String(name.prefix(80)))
-      draft.bankRequestSent = true
-      bankRequest = ""
-    } catch {
-      failure = error
-    }
-  }
+  var bankRequests: SetupAuthoring { services.setup }
+
+  func noteBankRequestSent() { draft.bankRequestSent = true }
 
   // MARK: Your email (step 2)
 

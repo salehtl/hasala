@@ -56,7 +56,7 @@ struct SecurityView: View {
           if s.hasPasskey || can(.addPasskey) {
             section("Passkeys", footer: s.hasPasskey
               ? "A passkey signs you in and unlocks your data. iCloud Keychain keeps it on all your Apple devices."
-              : "Add one and Face ID signs you in, and unlocks your data on a new iPhone.") { passkeys(s) }
+              : "Add one and Face ID signs you in. On a new iPhone your 12 words still unlock your data.") { passkeys(s) }
           }
           section("Password", footer: passwordFooter(s)) { passwordCard(s) }
           section("Devices") { devices(s) }

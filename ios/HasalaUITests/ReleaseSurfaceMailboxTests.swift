@@ -270,4 +270,29 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     save.tap()
     XCTAssertTrue(el(app, "bankAlerts.bank.dib").waitForExistence(timeout: uiWait), "DIB was not added back")
   }
+
+  @MainActor
+  func testAskForABankThatIsNotListed() throws {
+    let app = bankAlerts("gmailLinked")
+    XCTAssertTrue(el(app, "bankAlerts.bank.enbd").waitForExistence(timeout: uiWait))
+    tap(app, "bankAlerts.requestBank")
+    let look = el(app, "requestBank.look")
+    XCTAssertTrue(look.waitForExistence(timeout: uiWait), "My bank isn't listed did not open")
+    assertText(app, "nothing is sent unless you tap Ask", "Ask for your bank")
+    attach(app, "Release · Ask for your bank")
+    try audit(app)
+    look.tap()
+    let hint = el(app, "requestBank.hint.fab")
+    XCTAssertTrue(hint.waitForExistence(timeout: uiWait), "the mail check found nothing")
+    assertText(app, "Email from bankfab.com", "Ask for your bank")
+    hint.tap()
+    XCTAssertTrue(el(app, "requestedBank.fab").waitForExistence(timeout: uiWait), "the request is not listed")
+    tap(app, "requestBank.name")
+    app.typeText("Some Bank")
+    tap(app, "requestBank.send")
+    XCTAssertTrue(el(app, "requestedBank.other:Some Bank").waitForExistence(timeout: uiWait), "the typed bank is not listed")
+    try audit(app)
+    tap(app, "requestBank.done")
+    XCTAssertTrue(el(app, "requestedBank.fab").waitForExistence(timeout: uiWait), "Bank alerts does not show the request")
+  }
 }

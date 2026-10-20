@@ -271,6 +271,63 @@ extension FakeServer {
     return APIResponse(status: 204)
   }
 
+  // MARK: Passkey add (#10, #11)
+
+  func passkeyAddBegin(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
+    guard let b = Self.decode(r, PasskeyAddBeginRequest.self), let n = try? Base64.decodeURL(b.step_up.nonce) else {
+      return Self.error(400, "bad_request")
+    }
+    guard let w = sess.writerID, let user = state.withLock({ $0.users[sess.userID] }), user.writers[w.string]?.revoked == nil
+    else { return Self.error(403, "writer_unbound") }
+    if let refusal = consumeStepUp(b.step_up, token: token, sess: sess, action: "passkey.add", tuple: []) {
+      return refusal
+    }
+    let challenge = nonce()
+    let id = self.token()
+    let existing = state.withLock { s in
+      s.addCeremonies[id] = (sess.userID, challenge, n)
+      return s.credentials.values.filter { $0.userID == sess.userID }.map(\.id)
+    }
+    let options = WireCreationOptions(
+      CreationOptions(
+        challenge: challenge, rpID: Self.rpID, userID: sess.userID.raw, userName: "Hasala", excludeCredentialIDs: existing))
+    return Self.ok(PasskeyAddBeginResponse(ceremony_id: id, options: options))
+  }
+
+  func passkeyAddFinish(_ r: APIRequest, sess: Session) -> APIResponse {
+    guard let b = Self.decode(r, PasskeyAddFinishRequest.self),
+      let cer = state.withLock({ s in s.addCeremonies.removeValue(forKey: b.ceremony_id) }), cer.user == sess.userID
+    else { return Self.error(403, "passkey_rejected") }
+    guard let cred = verifyRegistration(b.credential, challenge: cer.challenge),
+      let cdRaw = try? Base64.decodeURL(b.credential.response.clientDataJSON),
+      let attRaw = b.credential.response.attestationObject.flatMap({ try? Base64.decodeURL($0) })
+    else { return Self.error(403, "passkey_rejected") }
+    var wrap: Data?
+    if let p = b.prf_wrap {
+      guard let id = try? Base64.decodeURL(p.credential_id), id == cred.id, let w = try? Base64.decode(p.wrap),
+        p.wrap_version == 1
+      else { return Self.error(400, "bad_request", "prf_wrap") }
+      wrap = w
+    }
+    guard let w = sess.writerID, let user = state.withLock({ $0.users[sess.userID] }), let writer = user.writers[w.string],
+      writer.revoked == nil
+    else { return Self.error(403, "writer_unbound") }
+    guard let sig = try? Base64.decode(b.dwk_sig),
+      let msg = try? SigningMessage.passkeyAdd(
+        nonce: cer.nonce, clientDataJSON: cdRaw, attestationObject: attRaw, prfWrap: wrap),
+      Ed25519.verify(publicKey: writer.dwk, signature: sig, message: msg)
+    else { return Self.error(400, "bad_signature") }
+    let idB64 = Base64.encodeURL(cred.id)
+    state.withLock { s in
+      s.credentials[cred.id] = Credential(
+        id: cred.id, userID: sess.userID, publicKey: cred.key, attestationHash: cred.attHash, signCount: 0)
+      if let p = b.prf_wrap {
+        s.users[sess.userID]?.wraps[idB64] = .init(credential_id: idB64, wrap: p.wrap, wrap_version: 1)
+      }
+    }
+    return Self.ok(PasskeyAddResponse(credential_id: idB64), status: 201)
+  }
+
   // MARK: Bootstrap (#18) and writers (#24)
 
   func bootstrap(_ r: APIRequest, token: String, sess: Session) -> APIResponse {

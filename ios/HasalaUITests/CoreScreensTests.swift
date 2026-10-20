@@ -126,6 +126,20 @@ final class CoreScreensTests: XCTestCase {
     attach(app, "Review · Copy merged")
   }
 
+  @MainActor
+  func testReviewDeckAsksSamePurchase() throws {
+    let app = launch(scenario: "mayaSamePurchase", screen: "review.samePurchase")
+    let line = element(app, "review.copy")
+    XCTAssertTrue(line.waitForExistence(timeout: 15))
+    XCTAssertEqual(line.label, "Same purchase as USD 25.00 (about AED 91.81) at Amazon on Wed 7 Oct?")
+    XCTAssertTrue(element(app, "review.reason.same_purchase").exists)
+    XCTAssertTrue(element(app, "review.same").exists && element(app, "review.keepBoth").exists)
+    attach(app, "Review · Same purchase")
+    try audit(app)
+    element(app, "review.same").tap()
+    XCTAssertTrue(line.waitForNonExistence(timeout: uiWait), "the card stayed on the deck")
+  }
+
   /// Review from the Review tab: Transfer by a drag up and the pick sheet, Undo, the pill,
   /// skip, Use for the rest, then All caught up and "See activity".
   @MainActor

@@ -29,6 +29,7 @@ const MaxOtherKeys = 1000
 type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // Text is bank_text(x): trimmed, whitespace collapsed, 1–64 runes, each a
@@ -149,9 +150,12 @@ func nullable(s string) any {
 // signed-in account (source app, once per bank per account). A supported
 // catalog bank is not stored. A new free-text key past MaxOtherKeys is
 // ErrListFull.
-func Record(ctx context.Context, q Querier, c Choice, userID *uuid.UUID, now time.Time) error {
+func Record(ctx context.Context, q Querier, c Choice, userID *uuid.UUID, senderDomain string, now time.Time) error {
 	if c.Slug == "" && c.OtherKey == "" {
 		return ErrBadBank // a vote needs a name
+	}
+	if senderDomain != "" && userID == nil {
+		return ErrBadDomain
 	}
 	if c.Supported {
 		return nil
@@ -173,10 +177,15 @@ func Record(ctx context.Context, q Querier, c Choice, userID *uuid.UUID, now tim
 	if userID != nil {
 		source = "app"
 	}
+	conflict := `ON CONFLICT DO NOTHING`
+	if senderDomain != "" {
+		conflict = `ON CONFLICT (user_id, (coalesce(bank_slug, 'other:' || other_key))) WHERE user_id IS NOT NULL
+		 DO UPDATE SET sender_domain = coalesce(bank_requests.sender_domain, EXCLUDED.sender_domain)`
+	}
 	_, err := q.Exec(ctx,
-		`INSERT INTO bank_requests (bank_slug, other_key, other_text, source, user_id, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
-		nullable(c.Slug), nullable(c.OtherKey), nullable(c.OtherText), source, userID, now)
+		`INSERT INTO bank_requests (bank_slug, other_key, other_text, source, user_id, sender_domain, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7) `+conflict,
+		nullable(c.Slug), nullable(c.OtherKey), nullable(c.OtherText), source, userID, nullable(senderDomain), now)
 	if err != nil {
 		return fmt.Errorf("banks: record: %w", err)
 	}

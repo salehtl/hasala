@@ -16,7 +16,7 @@ struct AccountCapabilitiesTests {
 
   @Test func betaIsTheAgreedSubset() {
     let hidden: AccountCapabilities = [
-      .resetPassword, .recoverWithPassword, .rotatePhrase, .addPasskey, .changeEmail, .freeze,
+      .resetPassword, .recoverWithPassword, .rotatePhrase, .changeEmail, .freeze,
       .removePasskey, .changePassword, .removeDevice, .removeThisIPhone,
     ]
     #expect(AccountCapabilities.all.isSuperset(of: .beta))
@@ -25,6 +25,7 @@ struct AccountCapabilitiesTests {
     #expect(AccountCapabilities.all.rawValue.nonzeroBitCount == 20)
     // Someone who lost their passkey can get back in (and then delete the account).
     #expect(AccountCapabilities.beta.isSuperset(of: [.recoverAccess, .deleteAccount]))
+    #expect(AccountCapabilities.beta.contains(.addPasskey))
   }
 
   /// Sign-in & security points to support when the beta hides an action, and doesn't offer

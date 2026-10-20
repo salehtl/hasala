@@ -100,7 +100,7 @@ public struct HListRow: View {
 
   public enum Trailing {
     /// An amount: 16/22 bold, tabular, no currency; money in gets "+" and green.
-    case amount(Money, in: Bool = false)
+    case amount(Money, in: Bool = false, approx: Bool = false)
     /// A value in 15/20 secondary ("AED", "Important only").
     case value(String)
     /// A chevron: a tap goes somewhere.
@@ -209,9 +209,9 @@ public struct HListRow: View {
 
   @ViewBuilder private var trailingView: some View {
     switch trailing {
-    case .amount(let money, let isIn):
+    case .amount(let money, let isIn, let approx):
       MoneyText(money, figure: .row, hidden: hidden, hiddenGlyphs: 3, color: isIn ? HColor.moneyIn : HColor.moneyOut,
-                sign: isIn ? .income : .none)
+                sign: isIn ? .income : .none, approx: approx)
         .fixedSize()
     case .value(let v):
       Text(v).hType(.subheadline).foregroundStyle(HColor.listRowSupporting)
@@ -247,8 +247,8 @@ public struct HListRow: View {
 
   private var spokenValue: String {
     switch trailing {
-    case .amount(let m, let isIn):
-      hidden ? "Amount hidden" : (isIn ? "plus " : "") + "\(m.currency) \(MoneyFormat.string(m.minor))"
+    case .amount(let m, let isIn, let approx):
+      hidden ? "Amount hidden" : (approx ? "about " : "") + (isIn ? "plus " : "") + "\(m.currency) \(MoneyFormat.string(m.minor))"
     case .value(let v), .valueChevron(let v): v
     case .badge(let n): n > 0 ? "\(n) new" : ""
     case .status(let pill): pill.text
@@ -512,7 +512,7 @@ public struct TransactionRow: View {
   static func tone(_ reason: TxnReviewReason?) -> StatusTone {
     switch reason {
     case .senderUnverified: .warning
-    case .probableCopy: .accent
+    case .probableCopy, .samePurchase: .accent
     case nil: .accent
     }
   }
@@ -527,7 +527,7 @@ public struct TransactionRow: View {
       leading: row.monogram.map { .monogram($0) } ?? .disc(row.hue, row.glyph.icon),
       title: row.merchant,
       supporting: row.toReview ? .status(row.detail, Self.tone(row.reviewReason)) : .text(row.detail),
-      trailing: .amount(row.amount, in: row.isIncome),
+      trailing: row.notCounted ? .value("Not counted") : .amount(row.amount, in: row.isIncome, approx: row.estimate),
       hidden: hidden,
       project: row.project?.name)
   }

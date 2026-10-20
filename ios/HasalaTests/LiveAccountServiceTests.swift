@@ -51,6 +51,7 @@ struct LiveAccountServiceTests {
     // Recovery to a new passkey: someone who lost theirs gets back in and can delete.
     #expect(a.capabilities.contains(.recoverAccess))
     #expect(a.capabilities.contains(.deleteAccount))
+    #expect(a.capabilities.contains(.addPasskey))
     // Sign-in & security has no "Remove this iPhone" row, so the beta doesn't claim it.
     #expect(!a.capabilities.contains(.removeThisIPhone))
   }

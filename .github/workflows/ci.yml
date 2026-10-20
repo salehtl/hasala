@@ -161,10 +161,10 @@ jobs:
           skip_unless ios_scripts "$none|^(docs|web|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^ios/scripts/'
           # web reads web/ and docs/legal/, and its Bun comes from the flake.
           skip_unless web "$none|^(docs|ios|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$" '^docs/legal/'
-          # nixos-vm reads infra/ (the module and the VM test), server/ (the
+          # nixos-vm reads infra/qa/ (the module and the VM test), server/ (the
           # hasalad it boots) and the flake (cloudflared, PostgreSQL and the
           # nixpkgs it builds them from).
-          skip_unless nixos_vm "$none|^(docs|web|ios|conformance|reference|scripts)/|^\.gitleaks\.toml$"
+          skip_unless nixos_vm "$none|^(docs|web|ios|conformance|reference|scripts|infra/assist)/|^\.gitleaks\.toml$"
 
   # A skipped required job reports "skipped", which passes. Each job below is
   # skipped only when `changes` succeeded and said "false".
@@ -242,11 +242,11 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
-          key: bun-gate-${{ runner.os }}-${{ hashFiles('reference/ledgerd-client/bun.lock') }}
+          key: bun-gate-${{ runner.os }}-${{ hashFiles('reference/ledgerd-client/bun.lock', 'infra/assist/bun.lock') }}
           restore-keys: bun-gate-${{ runner.os }}-
 
       - name: Install the reference client's dependencies
-        run: nix develop --command bash -c 'cd reference/ledgerd-client && bun install --frozen-lockfile'
+        run: nix develop --command bash -c 'cd reference/ledgerd-client && bun install --frozen-lockfile && cd ../../infra/assist && bun install --frozen-lockfile'
 
       # Modules and compiled packages of server/ and server/oracle/ (see
       # "Caches" above): without it check.sh compiles every dependency first.
