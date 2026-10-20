@@ -285,12 +285,17 @@ button later, to keep the cost bounded.
     `unknown` answers in the cache.
   - One request per distinct merchant string. Answers are kept in memory for the run, so
     rows that load later with the same merchant are filed from the same answer without a
-    second request. `unknown` answers go to the FM cache as before.
+    second request. `unknown` answers go to the FM cache as before. A name whose request
+    timed out or failed for a passing reason is asked again on a later pass, at most 3
+    times; a name that hit a 429 or 503 does not use up a try. An answer never files a row
+    whose merchant also appears on a row that may not leave the phone.
   - At most 10 requests a pass (`ModelTier.Context.firstImport`: 10 calls, 30 s, 6 s per
-    call), passes at least 30 s apart, so one iPhone sends at most 20 a minute, under the
+    call; a context-overflow retry counts as a request), passes at least 30 s apart, also
+    when new rows wake the sort, so one iPhone sends at most 20 a minute, under the
     Worker's `PER_IP` 30 per 60 s. At most 400 requests in all per device (2 to 4 US
     cents at the measured and estimated costs), counted across relaunches.
-  - Caps: a 429 waits 1, 3 and 10 minutes, then the sort ends. A 503 (the gateway's
+  - Caps: a 429 waits 1, 3 and 10 minutes; a fourth 429 with no good pass between ends
+    the sort, and a pass with no 429 starts the waits again from 1 minute. A 503 (the gateway's
     spend limit, or the model gone), a refusal, or the switch going off ends it at once.
     Rows simply stay in review.
   - It runs only while the app is in the foreground, off the main actor, and never holds
@@ -303,7 +308,8 @@ button later, to keep the cost bounded.
     gate, so they never author over each other, and the foreground sweep pauses while the
     first-import sort is active. If the app is killed, the next launch resumes from the
     saved start time and request count; filed rows are no longer eligible, and cached
-    names are not asked again.
+    names are not asked again. A pass that fails after its requests (the cache, the
+    re-read or the commit) still keeps its answers and its request count.
 - What leaves the phone is unchanged: one canonical merchant string and the built-in
   categories per request, from card-payment alerts only.
 

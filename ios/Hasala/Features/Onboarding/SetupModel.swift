@@ -571,7 +571,7 @@ final class SetupModel {
   var cloudSortOn: Bool { draft.cloudSortDecision == .on || services.cloudSort?.isOn == true }
 
   func turnOnCloudSort() {
-    if !cloudSortOn { services.cloudSort?.turnOn() }
+    if draft.cloudSortDecision != .on { services.cloudSort?.turnOn() }
     draft.cloudSortDecision = .on
     go(.notifications)
   }

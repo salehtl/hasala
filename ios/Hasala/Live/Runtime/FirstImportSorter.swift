@@ -82,24 +82,29 @@ actor FirstImportSorter {
     var memo = FirstImportSort.Memo(requests: saved.requests)
     var backoffs = 0
     var failures = 0
+    var last: ContinuousClock.Instant?
     while !Task.isCancelled {
       guard let s = store.state() else { return }
       if FirstImportSort.expired(startedMs: s.startedMs, nowMs: nowMs()) { return store.end() }
       guard await appActive() else {
-        await wake.wait(Self.idleWait, sleep: sleep)
+        await idle(since: last)
         continue
       }
       let started = ContinuousClock.now
-      guard let p = await pass(memo) else {
+      last = started
+      let result = await pass(memo)
+      if let result {
+        memo = result.memo
+        store.record(memo.requests)
+      }
+      guard let p = result, !p.failed else {
         failures += 1
         if failures >= Self.maxFailures { return store.end() }
-        await wake.wait(Self.idleWait, sleep: sleep)
+        await idle(since: started)
         continue
       }
       passes += 1
       failures = 0
-      memo = p.memo
-      store.record(memo.requests)
       if Task.isCancelled { return }
       let decided = FirstImportSort.next(after: p, importRunning: await importRunning(), backoffs: backoffs)
       backoffs = decided.backoffs
@@ -108,11 +113,18 @@ actor FirstImportSorter {
         let left = Duration.milliseconds(afterMs) - (ContinuousClock.now - started)
         if left > .zero { await sleep(left) }
       case .waitForRows:
-        await wake.wait(Self.idleWait, sleep: sleep)
+        await idle(since: started)
       case .done:
         return store.end()
       }
     }
+  }
+
+  private func idle(since last: ContinuousClock.Instant?) async {
+    await wake.wait(Self.idleWait, sleep: sleep)
+    guard let last, !Task.isCancelled else { return }
+    let left = Duration.milliseconds(FirstImportSort.passSpacingMs) - (ContinuousClock.now - last)
+    if left > .zero { await sleep(left) }
   }
 }
 

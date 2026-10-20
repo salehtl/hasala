@@ -65,6 +65,22 @@ struct GravatarTests {
     #expect(Gravatar.session().configuration.httpCookieStorage == nil)
   }
 
+  @Test func theRequestCarriesOnlyNeutralHeaders() async throws {
+    let subject = loader()
+    _ = await subject.picture(email: "a@example.com", pixels: 72)
+    let sent = try #require(GravatarStubProtocol.requests.first)
+    let headers = sent.allHTTPHeaderFields ?? [:]
+    #expect(headers["User-Agent"] == "Mozilla/5.0")
+    #expect(headers["Accept-Language"] == "*")
+    #expect(headers["Accept"] == "image/*")
+    #expect(headers["Cookie"] == nil && headers["Authorization"] == nil)
+    #expect(Set(headers.keys) == ["User-Agent", "Accept", "Accept-Language"])
+    let named = headers.values.contains { v in ["hasala", "cfnetwork", "darwin", "ios"].contains { v.lowercased().contains($0) } }
+    #expect(!named)
+    #expect(URLComponents(url: try #require(sent.url), resolvingAgainstBaseURL: false)?.queryItems?.map(\.name) == ["s", "d"])
+    #expect(Gravatar.session().configuration.httpAdditionalHeaders as? [String: String] == Gravatar.headers)
+  }
+
   @Test func foundPictureIsReturned() async {
     let subject = loader()
     let data = await subject.picture(email: "a@example.com", pixels: 72)

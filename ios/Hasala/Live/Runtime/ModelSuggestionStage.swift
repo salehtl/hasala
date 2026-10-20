@@ -62,8 +62,14 @@ struct ModelSuggestionStage: Sendable {
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), stamps: observer.stamps,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-        _ = try await commit(r.blobs)
+        do {
+          _ = try await commit(r.blobs)
+        } catch {
+          return .failed(r.pass.memo)
+        }
         return r.pass
+      } catch let e as FirstImportSort.Interrupted {
+        return .failed(e.memo)
       } catch {
         return nil
       }

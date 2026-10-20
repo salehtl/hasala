@@ -85,8 +85,9 @@
     private(set) var isOn = false
     private(set) var turnOnCalls = 0
 
-    init(offered: Bool = ProcessInfo.processInfo.arguments.contains(MockCloudSort.argument)) {
+    init(offered: Bool = ProcessInfo.processInfo.arguments.contains(MockCloudSort.argument), on: Bool = false) {
       isOffered = offered
+      isOn = on
     }
 
     func turnOn() {

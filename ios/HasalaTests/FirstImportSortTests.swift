@@ -119,6 +119,81 @@ struct FirstImportSorterTests {
     for (got, want) in zip(sleeps.all, expected) { #expect(got <= want && got > want - .seconds(1)) }
   }
 
+  @Test func aGoodPassResetsTheRateLimitBackoff() async {
+    let saved = Saved()
+    let limited: (pending: Int, calls: Int, stop: FirstImportSort.Stop?) = (3, 1, .rateLimited)
+    let script = Script([limited, limited, limited, (3, 1, nil), limited, limited, limited, (0, 1, nil)])
+    let sleeps = Sleeps()
+    let s = sorter(script, saved, sleeps: sleeps)
+    await s.start()
+    await s.finished()
+    #expect(script.passes == 8 && saved.endCount == 1)
+    let backoff = FirstImportSort.backoffMs.map { Duration.milliseconds($0) }
+    let expected = backoff + [.milliseconds(FirstImportSort.passSpacingMs)] + backoff
+    #expect(sleeps.all.count == expected.count)
+    for (got, want) in zip(sleeps.all, expected) { #expect(got <= want && got > want - .seconds(1)) }
+  }
+
+  @Test func newRowsDuringAPassStillWaitOutThePassSpacing() async {
+    let saved = Saved()
+    let script = Script([(0, 2, nil), (0, 0, nil)])
+    let log = Mutex<[String]>([])
+    let spacing = Mutex<[Duration]>([])
+    let importing = Mutex(true)
+    let holder = Mutex<FirstImportSorter?>(nil)
+    let s = FirstImportSorter(
+      pass: { m in
+        log.withLock { $0.append("pass") }
+        let p = await script.run(m)
+        if let me = holder.withLock({ $0 }) { await me.nudge() }
+        return p
+      }, store: saved.store, nowMs: { 2_000 }, appActive: { true },
+      importRunning: {
+        importing.withLock { v in
+          defer { v = false }
+          return v
+        }
+      },
+      sleep: { d in
+        if d == FirstImportSorter.idleWait {
+          try? await Task.sleep(for: .seconds(30))
+          return
+        }
+        log.withLock { $0.append("sleep") }
+        spacing.withLock { $0.append(d) }
+      })
+    holder.withLock { $0 = s }
+    await s.start()
+    await s.finished()
+    #expect(log.withLock { $0 } == ["pass", "sleep", "pass"])
+    let waited = spacing.withLock { $0 }
+    #expect(waited.count == 1)
+    #expect(waited.allSatisfy { $0 > .seconds(29) && $0 <= .milliseconds(FirstImportSort.passSpacingMs) })
+    #expect(saved.endCount == 1)
+  }
+
+  @Test func aPassThatFailsAfterItsRequestsKeepsItsMemo() async {
+    let saved = Saved(requests: 4)
+    let seen = Mutex<[Int]>([])
+    let s = FirstImportSorter(
+      pass: { m in
+        let n = seen.withLock { v in
+          v.append(m.requests)
+          return v.count
+        }
+        var next = m
+        next.requests += 3
+        if n == 1 { return .failed(next) }
+        return FirstImportSort.Pass(suggestions: [], memo: next, pending: 0, calls: 3, stop: nil)
+      }, store: saved.store, nowMs: { 2_000 }, appActive: { true }, importRunning: { true }, sleep: Sleeps().sleep)
+    await s.start()
+    for _ in 0..<400 where seen.withLock({ $0.count }) < 2 { try? await Task.sleep(for: .milliseconds(5)) }
+    await s.stop()
+    #expect(Array(seen.withLock { $0 }.prefix(2)) == [4, 7])
+    #expect((saved.requests ?? 0) >= 10)
+    #expect(await s.passes >= 1)
+  }
+
   @Test(arguments: [FirstImportSort.Stop.capped, .refused, .off, .budgetSpent])
   func aCapOrRefusalStopsAtOnce(_ stop: FirstImportSort.Stop) async {
     let saved = Saved()
@@ -318,6 +393,18 @@ struct SetupCloudSortTests: AccountSuite {
     #expect(m.path.last == .sort && m.cloudSortOn)
     m.turnOnCloudSort()
     #expect(cloud.turnOnCalls == 1 && m.path.last == .notifications)
+  }
+
+  @Test func turningOnWhenBothSwitchesAreAlreadyOnStillStartsTheSort() async {
+    let cloud = MockCloudSort(offered: true, on: true)
+    let (m, _) = await reachResult(cloud)
+    m.afterResult()
+    #expect(m.path.last == .sort && m.cloudSortOn)
+    m.turnOnCloudSort()
+    #expect(cloud.turnOnCalls == 1 && m.path.last == .notifications)
+    m.back()
+    m.turnOnCloudSort()
+    #expect(cloud.turnOnCalls == 1)
   }
 
   @Test func notNowLeavesBothSwitchesOff() async {

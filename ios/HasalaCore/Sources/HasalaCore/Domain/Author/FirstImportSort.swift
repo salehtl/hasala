@@ -6,6 +6,7 @@ public enum FirstImportSort {
   public static let maxRequests = 400
   public static let backoffMs: [Int64] = [60_000, 180_000, 600_000]
   public static let lifetimeMs: Int64 = 3 * 86_400_000
+  public static let maxTries = 3
 
   public struct Answer: Sendable, Equatable {
     public let category: String
@@ -22,11 +23,16 @@ public enum FirstImportSort {
   public struct Memo: Sendable, Equatable {
     public var asked: Set<String> = []
     public var answers: [String: Answer] = [:]
+    public var tries: [String: Int] = [:]
     public var requests: Int
 
     public init(requests: Int = 0) {
       self.requests = requests
     }
+  }
+
+  public struct Interrupted: Error, Sendable {
+    public let memo: Memo
   }
 
   public enum Stop: String, Sendable, Equatable {
@@ -39,13 +45,21 @@ public enum FirstImportSort {
     public var pending: Int
     public var calls: Int
     public var stop: Stop?
+    public var failed: Bool
 
-    public init(suggestions: [ModelSuggestionSweep.Suggestion], memo: Memo, pending: Int, calls: Int, stop: Stop?) {
+    public init(
+      suggestions: [ModelSuggestionSweep.Suggestion], memo: Memo, pending: Int, calls: Int, stop: Stop?, failed: Bool = false
+    ) {
       self.suggestions = suggestions
       self.memo = memo
       self.pending = pending
       self.calls = calls
       self.stop = stop
+      self.failed = failed
+    }
+
+    public static func failed(_ memo: Memo) -> Pass {
+      Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: nil, failed: true)
     }
   }
 
@@ -58,6 +72,7 @@ public enum FirstImportSort {
   public struct Plan: Sendable, Equatable {
     public let queued: [Queued]
     public let pending: [String]
+    public let blocked: Set<String>
 
     public struct Queued: Sendable, Equatable {
       public let row: SweepRow
@@ -94,7 +109,7 @@ public enum FirstImportSort {
       guard try !isCached(s) else { continue }
       pending.append(s)
     }
-    return Plan(queued: queued, pending: pending)
+    return Plan(queued: queued, pending: pending, blocked: blocked)
   }
 
   public static func pass(
@@ -120,18 +135,31 @@ public enum FirstImportSort {
         let batch = Array(work.pending.prefix(min(ModelTier.Context.firstImport.budget.calls, left)))
         let r = await ModelTier.run(
           subjects: batch, stages: [.cloud(cloud)], allowed: allowed, context: .firstImport, now: now, callTimeout: callTimeout)
-        try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
-        calls = r.asked.count
+        calls = r.requests
         memo.requests += calls
-        for a in r.asked { memo.asked.insert(a.subject) }
+        let settled = Set(r.suggestions.map(\.subject) + r.unknown.map(\.subject))
+        let halted = r.stoppedBy[tag] == nil ? nil : r.asked.last?.subject
+        for a in r.asked {
+          if settled.contains(a.subject) {
+            memo.asked.insert(a.subject)
+          } else if a.subject != halted {
+            memo.tries[a.subject, default: 0] += 1
+            if memo.tries[a.subject, default: 0] >= maxTries { memo.asked.insert(a.subject) }
+          }
+        }
         for s in r.suggestions {
           memo.answers[s.subject] = Answer(category: s.category, modelTag: s.modelTag, autoFile: s.autoFile)
         }
         if let f = r.stoppedBy[tag] { stop = Self.stop(for: f) }
+        do {
+          try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
+        } catch {
+          throw Interrupted(memo: memo)
+        }
       }
     }
     let suggestions = work.queued.compactMap { q -> ModelSuggestionSweep.Suggestion? in
-      guard let a = memo.answers[q.subject], let v = q.row.version else { return nil }
+      guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version else { return nil }
       return ModelSuggestionSweep.Suggestion(
         txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile)
     }
@@ -148,13 +176,17 @@ public enum FirstImportSort {
       rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
       callTimeout: callTimeout)
     guard !p.suggestions.isEmpty else { return ([], p) }
-    try Task.checkCancellation()
-    let fresh = try await reread()
-    let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
-      let blobs = try ModelSuggestionSweep.author(p.suggestions, current: fresh.rows, context: fresh.context.raised(to: floor))
-      return (blobs, blobs.last?.lastAuthoredMs)
+    do {
+      try Task.checkCancellation()
+      let fresh = try await reread()
+      let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
+        let blobs = try ModelSuggestionSweep.author(p.suggestions, current: fresh.rows, context: fresh.context.raised(to: floor))
+        return (blobs, blobs.last?.lastAuthoredMs)
+      }
+      return (blobs, p)
+    } catch {
+      throw Interrupted(memo: p.memo)
     }
-    return (blobs, p)
   }
 
   public static func next(after p: Pass, importRunning: Bool, backoffs: Int) -> (next: Next, backoffs: Int) {
@@ -165,8 +197,8 @@ public enum FirstImportSort {
     case let stop?:
       return (.done(stop), backoffs)
     case nil:
-      if p.pending > 0 { return (.pass(afterMs: passSpacingMs), backoffs) }
-      return (importRunning ? .waitForRows : .done(nil), backoffs)
+      if p.pending > 0 { return (.pass(afterMs: passSpacingMs), 0) }
+      return (importRunning ? .waitForRows : .done(nil), 0)
     }
   }
 }

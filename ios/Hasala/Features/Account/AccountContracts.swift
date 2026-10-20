@@ -272,7 +272,6 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   static let changePassword = AccountCapabilities(rawValue: 1 << 17)
   /// Remove another device from the account's roster.
   static let removeDevice = AccountCapabilities(rawValue: 1 << 18)
-  /// Change the name the account is called by.
   static let changeName = AccountCapabilities(rawValue: 1 << 20)
 
   /// Every action above. The default for services that don't say (the Debug mocks).
@@ -406,10 +405,6 @@ protocol AccountService: AnyObject {
   /// `password/reset/approve` is sent.
   func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure)
 
-  // MARK: Name
-
-  /// `PUT account/display-name`: the name the server holds and the app shows. Returns the
-  /// name as saved (spaces folded). No step-up: a name is not a credential.
   func updateDisplayName(_ name: String) async throws(AuthFailure) -> String
 }
 

@@ -8,10 +8,11 @@ import SwiftUI
 /// sort" and the deck count the same transactions. With more than one month waiting, the list
 /// runs the newest month first, each under its month.
 ///
-/// Start opens the deck at the oldest card; a row opens it at that row's card and reads on
-/// down the list. "Use N suggestions" is Debug only, and the "couldn't read" card opens only
-/// in Debug: the first would be several edits in one gesture and the second needs Add a
-/// transaction, neither of which exists yet (plan D.2).
+/// Start opens the deck at the top of the list, the newest month's oldest card, and reads on
+/// in the list's order; a row opens it at that row's card and reads on down the list. "Use N
+/// suggestions" is Debug only, and the "couldn't read" card opens only in Debug: the first
+/// would be several edits in one gesture and the second needs Add a transaction, neither of
+/// which exists yet (plan D.2).
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.dynamicTypeSize) private var typeSize

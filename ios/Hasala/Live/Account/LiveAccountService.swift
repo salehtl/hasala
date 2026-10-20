@@ -401,8 +401,6 @@ final class LiveAccountService: AccountService {
     profile = AccountProfile(displayName: b.display_name ?? "", email: b.email_norm, method: profile?.method ?? .passkey)
   }
 
-  // MARK: Name
-
   func updateDisplayName(_ name: String) async throws(AuthFailure) -> String {
     guard let valid = AccountFields.displayName(name) else { throw .badName }
     guard let token = try? env.secrets.session()?.token else { throw .refused }
