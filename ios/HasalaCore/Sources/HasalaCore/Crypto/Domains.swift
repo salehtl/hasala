@@ -1,8 +1,8 @@
-// The domain-string registry (spec 01 §3): one constant per row, D01-D42, in
+// The domain-string registry (spec 01 §3): one constant per row, D01-D43, in
 // order. `allCases` is the registry that AT-X3 compares with Go's
 // `keyproto/domains.go` and with `conformance/crypto-v3/manifest.json`.
 //
-// D27-D30 and D41 are used only by the server; they are listed so the namespace
+// D27-D30, D41 and D43 are used only by the server; they are listed so the namespace
 // stays collision-free and the Swift tests can reproduce A19 and A19-K. No
 // `ledger-*` string and no op-spec `hasala/v1/*` hash string belongs here.
 import Foundation
@@ -50,6 +50,7 @@ public enum Domain: String, CaseIterable, Sendable {
   case emailChange = "hasala/v1/email-change"  // D40
   case serverAuthKeyID = "hasala/v1/server/auth-key-id"  // D41
   case deviceFreeze = "hasala/v1/device-freeze"  // D42
+  case serverInviteMint = "hasala/v1/server/invite-mint"  // D43
 
   /// The ASCII bytes of the string (no terminator).
   public var bytes: Data { Data(rawValue.utf8) }

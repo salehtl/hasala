@@ -94,6 +94,7 @@ var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 
 const (
 	leaseFor     = 2 * time.Minute
 	sendTimeout  = 20 * time.Second
+	renderFor    = 30 * time.Second
 	pollEvery    = 30 * time.Second
 	maxAttempts  = 10
 	notifyChan   = "hasala_mail"
@@ -562,6 +563,8 @@ func (q *Queue) render(ctx context.Context, row Row) (mail.Message, error) {
 	if !ok {
 		return mail.Message{}, fmt.Errorf("%w %q", ErrNoRenderer, row.Kind)
 	}
+	ctx, cancel := context.WithTimeout(ctx, renderFor)
+	defer cancel()
 	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
 	if err != nil {
 		return mail.Message{}, err

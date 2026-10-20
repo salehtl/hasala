@@ -170,6 +170,10 @@
     {
       "id": "D42",
       "string": "hasala/v1/device-freeze"
+    },
+    {
+      "id": "D43",
+      "string": "hasala/v1/server/invite-mint"
     }
   ],
   "files": [

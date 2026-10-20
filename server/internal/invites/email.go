@@ -6,7 +6,10 @@ package invites
 // only their hashes are.
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -99,6 +102,11 @@ type Renderer struct {
 	// ManualTestFlight selects the email's "we'll add you ourselves" step:
 	// true until the App Store Connect automation exists (spec 07 §7).
 	ManualTestFlight bool
+	Minter           Minter
+}
+
+type Minter interface {
+	InviteSecrets(inviteID uuid.UUID, mailID int64) (code, link []byte)
 }
 
 // ErrStale is a queued invite email whose invite is no longer sendable.
@@ -111,13 +119,15 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		return mail.Message{}, ErrStale
 	}
 	var (
-		tag   []byte
-		entry *uuid.UUID
-		state string
+		tag, codeHash, linkHash []byte
+		entry                   *uuid.UUID
+		state                   string
+		expires                 *time.Time
 	)
 	err := tx.QueryRow(ctx,
-		`SELECT email_tag, waitlist_entry_id, state FROM invite_codes WHERE id = $1 FOR UPDATE`, *row.InviteID).
-		Scan(&tag, &entry, &state)
+		`SELECT email_tag, waitlist_entry_id, state, code_hash, link_key_hash, expires_at
+		   FROM invite_codes WHERE id = $1 FOR UPDATE`, *row.InviteID).
+		Scan(&tag, &entry, &state, &codeHash, &linkHash, &expires)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && state != "queued" && state != "active") {
 		return mail.Message{}, ErrStale
 	}
@@ -127,23 +137,22 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 	if len(tag) != 32 {
 		return mail.Message{}, errors.New("invites: the invite has no email_tag yet")
 	}
-	code, err := NewCode()
+	code, linkKey, newLinkHash, err := r.secrets(*row.InviteID, row.ID)
 	if err != nil {
 		return mail.Message{}, err
 	}
-	_, linkKey, linkHash, err := NewLinkKey()
-	if err != nil {
-		return mail.Message{}, err
-	}
-	var expires time.Time
-	if err := tx.QueryRow(ctx,
-		`UPDATE invite_codes SET state = 'active', code_hash = $2, link_key_hash = $3, minted_at = now(),
-		        expires_at = now() + ttl, mint_count = mint_count + 1
-		  WHERE id = $1 RETURNING expires_at`, *row.InviteID, CodeHash(code), linkHash).Scan(&expires); err != nil {
-		return mail.Message{}, fmt.Errorf("invites: mint for email: %w", err)
+	reuse := r.Minter != nil && state == "active" && expires != nil &&
+		bytes.Equal(codeHash, CodeHash(code)) && bytes.Equal(linkHash, newLinkHash)
+	if !reuse {
+		if err := tx.QueryRow(ctx,
+			`UPDATE invite_codes SET state = 'active', code_hash = $2, link_key_hash = $3, minted_at = now(),
+			        expires_at = now() + ttl, mint_count = mint_count + 1
+			  WHERE id = $1 RETURNING expires_at`, *row.InviteID, CodeHash(code), newLinkHash).Scan(&expires); err != nil {
+			return mail.Message{}, fmt.Errorf("invites: mint for email: %w", err)
+		}
 	}
 	c := mailq.Content{Email: row.Recipient, Code: Display(code), InviteURL: Link(r.WebBase, code, linkKey),
-		FallbackText: FallbackText(r.WebBase, code), Until: mailq.Date(expires), ManualTestFlight: r.ManualTestFlight}
+		FallbackText: FallbackText(r.WebBase, code), Until: mailq.Date(*expires), ManualTestFlight: r.ManualTestFlight}
 	if entry != nil {
 		leave, err := waitlist.LeaveURL(ctx, tx, r.WebBase, *entry)
 		if err != nil {
@@ -159,6 +168,22 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		return mail.Message{}, err
 	}
 	return mail.Message{To: row.Recipient, Subject: out.Subject, Text: out.Text, HTML: out.HTML}, nil
+}
+
+func (r Renderer) secrets(inviteID uuid.UUID, mailID int64) (code, linkKey string, linkHash []byte, err error) {
+	if r.Minter == nil {
+		if code, err = NewCode(); err != nil {
+			return "", "", nil, err
+		}
+		_, linkKey, linkHash, err = NewLinkKey()
+		return code, linkKey, linkHash, err
+	}
+	rawCode, rawLink := r.Minter.InviteSecrets(inviteID, mailID)
+	if len(rawCode) != codeBytes || len(rawLink) != LinkKeyBytes {
+		return "", "", nil, errors.New("invites: the minter returned the wrong sizes")
+	}
+	sum := sha256.Sum256(rawLink)
+	return alphabet.EncodeToString(rawCode), base64.RawURLEncoding.EncodeToString(rawLink), sum[:], nil
 }
 
 // Resend re-queues an active or queued invite's email (C9): the worker

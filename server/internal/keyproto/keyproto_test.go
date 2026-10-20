@@ -18,10 +18,10 @@ import (
 
 const writer = "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 
-func TestRegistryHas42DistinctStringsInIDOrder(t *testing.T) {
+func TestRegistryHas43DistinctStringsInIDOrder(t *testing.T) {
 	r := Registry()
-	if len(r) != 42 {
-		t.Fatalf("%d strings, want 42", len(r))
+	if len(r) != 43 {
+		t.Fatalf("%d strings, want 43", len(r))
 	}
 	seen := map[string]bool{}
 	for i, d := range r {
