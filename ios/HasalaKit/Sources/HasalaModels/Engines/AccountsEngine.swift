@@ -33,6 +33,7 @@ public struct NetWorthChart: Sendable, Hashable {
 
 public struct AccountsSnapshot: Sendable, Hashable {
   public var netWorth: Money
+  public var netWorthMark: TotalMark?
   /// The change since the start of this month; nil when the ledger has no history for it.
   public var monthChange: Money?
   /// Nil when the ledger has no history (live has none yet: check-ins only set balances).
@@ -40,6 +41,7 @@ public struct AccountsSnapshot: Sendable, Hashable {
   /// Counts in your plan.
   public var everyday: [AccountRowModel]
   public var everydayTotal: Money
+  public var everydayMark: TotalMark?
   /// Counts in net worth, not in your plan.
   public var tracking: [AccountRowModel]
   /// How many accounts there are.
@@ -55,12 +57,16 @@ public enum AccountsEngine {
     let everyday = zip(s.accounts, rows).filter { $0.0.inPlan }.map(\.1)
     let tracking = zip(s.accounts, rows).filter { !$0.0.inPlan }.map(\.1)
     let history = s.netWorth.spark.isEmpty ? nil : s.netWorth
+    let netWorth = s.homeTotal(s.accounts.map(\.balance))
+    let everydayTotal = s.homeTotal(s.accounts.filter(\.inPlan).map(\.balance))
     return AccountsSnapshot(
-      netWorth: .aed(Money.homeTotal(s.accounts.map(\.balance))),
+      netWorth: netWorth.money,
+      netWorthMark: netWorth.mark,
       monthChange: history?.monthChange,
       chart: history.map { NetWorthChart(points: Array($0.spark.suffix(12)), months: months(ending: now.date.yearMonth)) },
       everyday: everyday,
-      everydayTotal: .aed(Money.homeTotal(s.accounts.filter(\.inPlan).map(\.balance))),
+      everydayTotal: everydayTotal.money,
+      everydayMark: everydayTotal.mark,
       tracking: tracking,
       count: s.accounts.count,
       hasBalances: s.accounts.contains { !$0.balance.isZero }

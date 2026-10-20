@@ -115,7 +115,8 @@ public enum GlanceEngine {
         late: isLate, amount: b.amount, isIncome: b.isIncome
       )
     }
-    return ComingUpWidget(days: comingUpDays, total: .aed(Money.homeTotal(out.map(\.amount))), rows: Array(rows))
+    let total = s.homeTotal(out.map(\.amount))
+    return ComingUpWidget(days: comingUpDays, total: total.money, rows: Array(rows), mark: total.mark)
   }
 
   static func toReview(_ s: LedgerState, now: LocalDateTime) -> ToReviewWidget {

@@ -124,10 +124,16 @@ public struct ComingUpWidgetView: View {
           .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 8)
         MoneyText(model.total, figure: .widgetRowTotal, unit: .widgetRowUnit, style: .rounded, hidden: hidden,
-                  hiddenGlyphs: 6, color: HColor.textPrimary, unitColor: HColor.textSecondary, unitGap: 4)
+                  hiddenGlyphs: 6, color: HColor.textPrimary, unitColor: HColor.textSecondary, unitGap: 4,
+                  approx: model.mark?.estimate ?? false)
           .fixedSize()
       }
-      .padding(.bottom, 6)
+      .padding(.bottom, model.mark?.caption == nil ? 6 : 0)
+      if let caption = model.mark?.caption {
+        Text(caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .trailing)
+          .padding(.bottom, 6)
+      }
       ForEach(model.rows) { row in
         ComingUpRowView(row: row, hidden: hidden)
       }

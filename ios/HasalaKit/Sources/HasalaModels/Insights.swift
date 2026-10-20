@@ -327,13 +327,15 @@ public struct InsightsReport: Sendable, Hashable, Identifiable {
   public var value: Value
   public var caption: String
   public var opens: Bool
+  public var mark: TotalMark?
 
-  public init(kind: Kind, title: String, value: Value, caption: String, opens: Bool) {
+  public init(kind: Kind, title: String, value: Value, caption: String, opens: Bool, mark: TotalMark? = nil) {
     self.kind = kind
     self.title = title
     self.value = value
     self.caption = caption
     self.opens = opens
+    self.mark = mark
   }
 }
 

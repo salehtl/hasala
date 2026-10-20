@@ -88,11 +88,13 @@ public struct ComingUpWidget: Sendable, Hashable, Codable {
   public var days: Int
   public var total: Money
   public var rows: [ComingUpRow]
+  public var mark: TotalMark?
 
-  public init(days: Int, total: Money, rows: [ComingUpRow]) {
+  public init(days: Int, total: Money, rows: [ComingUpRow], mark: TotalMark? = nil) {
     self.days = days
     self.total = total
     self.rows = rows
+    self.mark = mark
   }
 
   public var title: String { "Coming up · \(days) days" }

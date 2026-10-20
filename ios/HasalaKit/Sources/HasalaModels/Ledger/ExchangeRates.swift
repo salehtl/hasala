@@ -98,7 +98,13 @@ public enum ExchangeRates {
       if r.rateMicro == nil { missing.append(row) } else { rates.append(row) }
     }
     for (ccy, n) in counts where !seen.contains(ccy) {
+      seen.insert(ccy)
       missing.append(Row(currency: ccy, rateMicro: nil, peg: pegs[ccy], notCounted: n))
+    }
+    let amounts = s.accounts.map(\.balance) + s.bills.filter { $0.state == .tracked }.map(\.amount)
+    for m in amounts where m.currency != Money.home && !m.isZero && !seen.contains(m.currency) {
+      seen.insert(m.currency)
+      missing.append(Row(currency: m.currency, rateMicro: nil, peg: pegs[m.currency], notCounted: 0))
     }
     rates.sort { $0.currency < $1.currency }
     missing.sort { ($0.notCounted, $1.currency) > ($1.notCounted, $0.currency) }

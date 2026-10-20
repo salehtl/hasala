@@ -241,10 +241,10 @@ public enum HomeEngine {
     for t in s.txns where t.billID != nil && Spending.includes(t, in: s) && t.postedAt.date.yearMonth == month {
       for line in t.lines where onTheBar(line.category) { paid += line.minor }
     }
-    let toCome = Money.homeTotal(s.bills.filter {
+    let toCome = s.homeTotal(s.bills.filter {
       $0.state == .tracked && !$0.isIncome && $0.nextDue.yearMonth <= month && onTheBar($0.categoryID)
     }.map(\.amount))
-    return (paid, toCome)
+    return (paid, toCome.minor)
   }
 
   static func heroTiles(needs: Int64, wants: Int64, saved: Int64) -> [HeroTile] {
@@ -381,13 +381,14 @@ public enum HomeEngine {
 
   static func netWorthWidget(_ s: LedgerState) -> NetWorthWidget? {
     guard !s.accounts.isEmpty else { return nil }
-    let total = Money.homeTotal(s.accounts.map(\.balance))
+    let total = s.homeTotal(s.accounts.map(\.balance))
     return NetWorthWidget(
-      total: .aed(total),
+      total: total.money,
       change: MoneyPhrase([
         .signedMoney(s.netWorth.monthChange, style: .rounded, hiddenGlyphs: 3), .text(" this month"),
       ]),
-      spark: s.netWorth.spark.map(Permille.init)
+      spark: s.netWorth.spark.map(Permille.init),
+      mark: total.mark
     )
   }
 

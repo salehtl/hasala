@@ -54,14 +54,14 @@ struct MoneyTotalsTests {
     #expect(row.notCounted)
   }
 
-  @Test func foreignBalancesAndBillsStayOutOfHomeTotals() {
+  @Test func foreignBalancesAndBillsWithNoRateStayOutOfHomeTotals() {
     var s = MayaLedger.state
     let base = AccountsEngine.snapshot(s, now: now)
     let comingUp = glance(s).comingUp!.total
-    s.accounts.append(Account(id: "usd", name: "US account", shortName: "US", kind: .current,
-                              balance: Money(minor: 1_000_00, currency: "USD")))
-    s.bills.append(Bill(id: "usd-bill", name: "Cloud", kind: "Subscription", categoryID: "dining",
-                        amount: Money(minor: 10_00, currency: "USD"), usualDay: 12, nextDue: LocalDate(2026, 10, 12)))
+    s.accounts.append(Account(id: "eur", name: "EU account", shortName: "EU", kind: .current,
+                              balance: Money(minor: 1_000_00, currency: "EUR")))
+    s.bills.append(Bill(id: "eur-bill", name: "Cloud", kind: "Subscription", categoryID: "dining",
+                        amount: Money(minor: 10_00, currency: "EUR"), usualDay: 12, nextDue: LocalDate(2026, 10, 12)))
     let after = AccountsEngine.snapshot(s, now: now)
     #expect(after.netWorth == base.netWorth)
     #expect(after.everydayTotal == base.everydayTotal)

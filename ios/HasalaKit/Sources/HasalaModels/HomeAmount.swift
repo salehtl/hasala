@@ -58,9 +58,72 @@ extension Spending {
   }
 }
 
+public struct TotalMark: Sendable, Hashable, Codable {
+  public var estimate: Bool
+  public var leftOut: [String: Int]
+
+  public init(estimate: Bool = false, leftOut: [String: Int] = [:]) {
+    self.estimate = estimate
+    self.leftOut = leftOut
+  }
+
+  public var leftOutCount: Int { leftOut.values.reduce(0, +) }
+
+  public var currency: String? { leftOut.count == 1 ? leftOut.keys.first : nil }
+
+  public var line: String? {
+    let n = leftOutCount
+    guard n > 0 else { return nil }
+    return currency.map { "Not counted: \(n) in \($0)" } ?? "Not counted: \(n) with no rate"
+  }
+
+  public var caption: String? {
+    let n = leftOutCount
+    return n > 0 ? "\(n) not counted" : nil
+  }
+}
+
+public struct HomeTotal: Sendable, Hashable {
+  public var minor: Int64
+  public var mark: TotalMark?
+
+  public init(minor: Int64, mark: TotalMark? = nil) {
+    self.minor = minor
+    self.mark = mark
+  }
+
+  public var money: Money { .aed(minor) }
+  public var estimate: Bool { mark?.estimate ?? false }
+  public var leftOutCount: Int { mark?.leftOutCount ?? 0 }
+}
+
 extension Money {
-  public static func homeTotal(_ ms: some Sequence<Money>) -> Int64 {
-    ms.reduce(Int64(0)) { $0 + (homeMinor(of: $1) ?? 0) }
+  public static func homeTotal(_ ms: some Sequence<Money>, rates: [CurrencyRate]) -> HomeTotal {
+    var minor: Int64 = 0
+    var estimate = false
+    var leftOut: [String: Int] = [:]
+    for m in ms {
+      if let home = homeMinor(of: m) {
+        minor += home
+      } else if m.isZero {
+        continue
+      } else if let home = converted(m, rates: rates) {
+        minor += home
+        estimate = true
+      } else {
+        leftOut[m.currency, default: 0] += 1
+      }
+    }
+    let mark = estimate || !leftOut.isEmpty ? TotalMark(estimate: estimate, leftOut: leftOut) : nil
+    return HomeTotal(minor: minor, mark: mark)
+  }
+
+  static func converted(_ m: Money, rates: [CurrencyRate]) -> Int64? {
+    guard let rate = rates.first(where: { $0.currency == m.currency })?.rateMicro,
+      let magnitude = Int64(exactly: m.minor.magnitude),
+      let home = ExchangeRates.convert(magnitude, rate)
+    else { return nil }
+    return m.isNegative ? -home : home
   }
 
   public static func apportion(home: Int64?, parts: [Int64]) -> [Int64]? {
@@ -79,5 +142,11 @@ extension Money {
       previous = here
     }
     return out
+  }
+}
+
+extension LedgerState {
+  public func homeTotal(_ ms: some Sequence<Money>) -> HomeTotal {
+    Money.homeTotal(ms, rates: rates)
   }
 }
