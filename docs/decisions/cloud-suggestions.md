@@ -1,9 +1,15 @@
 # Cloud suggestions: opt-in Clef and Clairic (design)
 
-**Status: PROPOSED (2026-10-20). The spike is done ([results](#spike-results-2026-10-20)).
-Needs the owner's decisions in [Decisions for the owner](#decisions-for-the-owner) before
-work starts.** Nothing here is built. The privacy policy must not describe this feature until it ships (see
-[Privacy policy changes](#privacy-policy-changes)).
+**Status: Merchant suggestions (Clef) DECIDED and in progress (2026-10-20). Alert reading
+help (Clairic) DEFERRED.** The spike is done ([results](#spike-results-2026-10-20)). The
+owner approved Merchant suggestions with the recommended answers to D1-D3 and D6 (see
+[Decisions for the owner](#decisions-for-the-owner)). The Clairic sections stay in this
+file for later reference; nothing for Clairic is built.
+
+Before a tester who isn't a developer can turn Merchant suggestions on, these must be
+done: Cloudflare's written confirmation of check 2, a security review of the Worker with
+all findings closed, and the privacy-policy change with 30 days' notice. Until then the
+policy must not describe the feature (see [Privacy policy changes](#privacy-policy-changes)).
 
 Every example in this file is synthetic. No real mail, merchant, amount or name was used.
 
@@ -14,7 +20,7 @@ Two optional features, both **off by default**, each with its own switch:
 | Feature | Model | What leaves the phone | Where it plugs in | What it may do |
 |---|---|---|---|---|
 | **Merchant suggestions** | Clef (`@cf/cloudflare/clef`) | One canonical merchant string per request, plus the built-in category list | A second `CategoryModel` behind the existing model tier (`Categorize/ModelTier.swift`) | Suggest a category. Never files a row (`ModelTier.autoConfirm = false` stays). |
-| **Alert reading help** | Clairic (`@cf/cloudflare/clairic`) | The body text of **one** bank alert, redacted on the phone, shown to the person first | The review sheet for an alert no template could read (the empty review shape, `ParsedMail.fields == nil`) | Pre-fill the sheet's fields. The person saves them; the op is an ordinary user edit. |
+| **Alert reading help** (deferred) | Clairic (`@cf/cloudflare/clairic`) | The body text of **one** bank alert, redacted on the phone, shown to the person first | The review sheet for an alert no template could read (the empty review shape, `ParsedMail.fields == nil`) | Pre-fill the sheet's fields. The person saves them; the op is an ordinary user edit. |
 
 The requests go from the phone to a new Worker, `assist.hasala.app`, which holds the
 Workers AI binding. The Worker has no account identity, stores nothing, and logs nothing.
@@ -332,16 +338,20 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Clef for every subject, or only where Apple's model can't answer? | Only where Apple's model can't: less data leaves the phone. |
-| D2 | Offer custom category names to Clef? | Not in v1. Revisit with a per-category "may be sent" mark. |
-| D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | Rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
-| D4 | Allow "Don't ask again" for Alert reading help? | No in v1. Each alert is shown and confirmed. |
-| D5 | Ship a preview model (Clairic) in the QA beta? | Yes for QA only, behind its own switch, with the fallback tested. |
-| D6 | Amend the 2026-10-11 decisions in CLAUDE.md? | Yes: "The server is blind" stays for hasalad; add that opt-in cloud suggestions may send a merchant string, or a redacted alert the person approved, to Cloudflare Workers AI through an identity-free Worker that keeps nothing. "Categorization occurs on the device" gains the cloud step after Apple's model. |
+| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided:** only where Apple's model can't (non-Latin subjects, Apple's model unavailable, or its answer `unknown`). Less data leaves the phone. |
+| D2 | Offer custom category names to Clef? | **Decided:** not in v1. Revisit with a per-category "may be sent" mark. |
+| D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | **Decided:** rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
+| D4 | Allow "Don't ask again" for Alert reading help? | Deferred with Clairic. No in v1. Each alert is shown and confirmed. |
+| D5 | Ship a preview model (Clairic) in the QA beta? | **Decided:** no. Clairic is deferred; it may first be used as a build-time tool that drafts bank templates from synthetic alerts. |
+| D6 | Amend the 2026-10-11 decisions in CLAUDE.md? | **Decided, done for Merchant suggestions only:** "The server is blind" stays for hasalad; add that opt-in cloud suggestions may send a merchant string, or a redacted alert the person approved, to Cloudflare Workers AI through an identity-free Worker that keeps nothing. "Categorization occurs on the device" gains the cloud step after Apple's model. |
 
 ## Privacy policy changes
 
-Do these in the same pull request that ships the feature, not before, and give the
+While Clairic is deferred, drop every Alert reading help part from the text below (the
+second bullet of the new section, the alert words in the short version, Limited Use and
+the provider row).
+
+Do these in the same pull request that ships the feature to testers, not before, and give the
 30 days' notice the policy promises ("Changes to this policy"), because this materially
 changes what is sent where. Set `lastUpdated` to the ship date.
 

@@ -514,6 +514,15 @@ the approval of the owner for that deployment.
   the UAE merchant dictionary in the app, then Apple Foundation Models (only
   for merchants in Latin script; it cannot read Arabic), then the review
   queue.
+- **Merchant suggestions (2026-10-20) are the one exception.** They are opt-in
+  and off by default, and each device has its own switch. When the steps
+  above give no category, the phone can send one merchant string and the
+  built-in category names to Clef (Workers AI). The phone calls the
+  `infra/assist/` Worker directly. That Worker has no account identity and
+  stores and logs nothing. hasalad never sees these requests. A suggestion
+  never files a row (`needs_review` stays true). Do not send other data
+  through this path: no amount, date, card, bank, custom category name or
+  email. Refer to `docs/decisions/cloud-suggestions.md`.
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
   invite codes; a WebAuthn step-up for each operation that changes auth,
   keys or mailboxes.
