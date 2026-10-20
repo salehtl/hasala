@@ -102,12 +102,12 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Sign-in & security")
     assertNoPlaceholders(app, "Sign-in & security")
     assertPersonalAccountsOnly(app, "Sign-in & security")
-    assertAbsent(app, ["security.changeEmail", "security.addPasskey", "security.removePasskey.pk-1",
+    assertAbsent(app, ["security.changeEmail", "security.removePasskey.pk-1",
                        "security.removePasskey.pk-2", "security.removeDevice.ios-other", "security.newWords",
                        "security.freeze", "security.lockdown", "security.setPassword", "security.changePassword",
                        "security.removePassword"],
                  "Sign-in & security")
-    assertPresent(app, ["security.viewPhrase", "security.signOut", "security.signOutEverywhere", "security.delete",
+    assertPresent(app, ["security.addPasskey", "security.viewPhrase", "security.signOut", "security.signOutEverywhere", "security.delete",
                         "security.support", "security.support.web"], "Sign-in & security")
     try audit(app)
 

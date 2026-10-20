@@ -58,6 +58,20 @@ public struct AuthClient: Sendable {
     try await api.call(.post, "/api/v1/auth/password/login/finish", json: r)
   }
 
+  // MARK: Passkey add (#10, #11)
+
+  public func passkeyAddBegin(_ r: PasskeyAddBeginRequest, bearer: String) async throws(APIError)
+    -> PasskeyAddBeginResponse
+  {
+    try await api.call(.post, "/api/v1/auth/passkey/add/begin", json: r, bearer: bearer)
+  }
+
+  public func passkeyAddFinish(_ r: PasskeyAddFinishRequest, bearer: String) async throws(APIError)
+    -> PasskeyAddResponse
+  {
+    try await api.call(.post, "/api/v1/auth/passkey/add/finish", json: r, bearer: bearer)
+  }
+
   // MARK: Session (#9, #14, #15)
 
   public func stepUpBegin(_ r: StepUpBeginRequest, bearer: String) async throws(APIError) -> StepUpBeginResponse {
