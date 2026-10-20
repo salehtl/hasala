@@ -70,7 +70,7 @@ run() {
 	local name="$1" start rc=0
 	shift
 	start=$SECONDS
-	"$@" >"$LOG/out" 2>&1 || rc=$?
+	("$@") >"$LOG/out" 2>&1 || rc=$?
 	if [[ $rc -eq 0 ]]; then
 		printf 'PASS  %s (%ss)\n' "$name" "$((SECONDS - start))"
 		PASSED=$((PASSED + 1))
