@@ -86,33 +86,57 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 0)
   }
 
-  @Test func theQueueFollowsTheChosenPeriod() {
+  @Test func theQueueIgnoresTheChosenPeriod() {
     var state = MayaLedger.state
     state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
                           postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
     let app = AppModel(store: InMemoryLedger(state: state))
-    #expect(app.reviewWindow == .month(YearMonth(2026, 10)))
-    #expect(app.reviewCount == 6)
-    #expect(!ReviewViewModel(app: app).cards.contains { $0.id == "sep-shop" })
+    #expect(app.reviewCount == 7)
+    #expect(ReviewViewModel(app: app).cards.last?.id == "sep-shop")
     app.period = .month(YearMonth(2026, 9))
-    #expect(app.reviewWindow == .month(YearMonth(2026, 9)))
-    #expect(app.reviewCount == 1)
+    #expect(app.reviewCount == 7)
     let deck = ReviewViewModel(app: app)
-    #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
+    #expect(deck.total == 7 && deck.cards.map(\.id).suffix(1) == ["sep-shop"])
     deck.sort("sep-shop", into: "groceries", alwaysUse: false, project: nil)
-    #expect(deck.cards.isEmpty && app.reviewCount == 0)
+    #expect(deck.cards.count == 6 && app.reviewCount == 6)
     #expect(deck.sorted.map(\.merchant) == ["Corner Shop"])
     app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
     #expect(app.reviewCount == 6)
-    #expect(ReviewTabView.emptyLine(.month(YearMonth(2026, 9))) == "Nothing in September 2026 needs a look.")
-    #expect(ReviewTabView.emptyLine(app.period) == "Nothing in Aug – Oct 2026 needs a look.")
+    #expect(ReviewTabView.emptyLine == "New transactions Hasala can't sort on its own show up here.")
+    #expect(ReviewTabView.orderLine(months: 1) == "Oldest first")
+    #expect(ReviewTabView.orderLine(months: 2) == "Newest month first")
   }
 
-  @Test func aPeriodChosenInActivityScopesHomeAndReview() throws {
+  @Test func theBellTheBadgeTheTabAndTheDeckAgreeInAPastMonth() throws {
+    var state = MayaHistory.state
+    for i in 0..<5 {
+      state.txns.append(Txn(id: "jun-\(i)", merchant: "Corner Shop", amount: .aed(10_00 + Int64(i)),
+                            postedAt: LocalDateTime(2026, 6, 3 + i, 18, 0), accountID: "dib"))
+    }
+    let app = AppModel(store: InMemoryLedger(state: state))
+    app.period = .month(YearMonth(2026, 8))
+    let bell = try #require(app.needsALook.first { $0.id == "review" })
+    #expect(bell.title == "11 transactions to sort")
+    #expect(app.reviewCount == 11)
+    #expect(ReviewTabView.countLine(ReviewEngine.cards(app.store.state).count) == "11 to sort · about 2 minutes")
+    let home = HomeViewModel(app: app)
+    let after = home.openNotification(bell.destination)
+    #expect(app.tab == .review)
+    after?()
+    #expect(app.cover == .review)
+    let deck = ReviewViewModel(app: app)
+    #expect(deck.total == 11 && deck.position == 1)
+    #expect(deck.cards.prefix(6).map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
+    #expect(deck.cards.suffix(5).map(\.id) == (0..<5).map { "jun-\($0)" })
+    let months = ReviewEngine.months(deck.cards, now: app.store.now)
+    #expect(months.map(\.title) == ["This month", "June"])
+  }
+
+  @Test func aPeriodChosenInActivityScopesHomeButNotReview() throws {
     let app = AppModel(store: InMemoryLedger(state: Scenario.mayaRange.state))
     let activity = ActivityViewModel(app: app)
     #expect(activity.snapshot.isThisMonth && app.snapshot.isThisMonth)
-    #expect(app.reviewCount == 6)
+    #expect(app.reviewCount == 9)
     activity.choosePeriod()
     #expect(app.sheet == .period)
     let range = Period(YearMonth(2026, 8), YearMonth(2026, 10))
@@ -121,7 +145,6 @@ struct ActivityReviewModelTests {
     #expect(activity.snapshot.period == range && !activity.snapshot.isThisMonth)
     #expect(activity.snapshot.days.contains { $0.date.yearMonth == YearMonth(2026, 8) })
     #expect(app.snapshot.period == range)
-    #expect(app.reviewWindow == ReviewWindow(range))
     #expect(app.reviewCount == 9)
     let review = try #require(app.snapshot.aboutNow.first { $0.id == "review" })
     #expect(review.detail.rendered(hidden: false) == "9 waiting")
@@ -129,11 +152,10 @@ struct ActivityReviewModelTests {
     #expect(Set(deck.cards.map(\.id)).isSuperset(of: ["aug-corner-shop", "sep-steam", "aug-talabat-copy"]))
     #expect(deck.cards.first { $0.id == "sep-steam" }?.senderUnverified == true)
     #expect(deck.cards.first { $0.id == "aug-talabat-copy" }?.reviewReason == .probableCopy)
-    #expect(ReviewTabView.emptyLine(app.period) == "Nothing in Aug – Oct 2026 needs a look.")
     #expect(app.thisMonthSnapshot.isThisMonth)
     activity.backToThisMonth()
     #expect(app.period == .month(MayaLedger.october))
-    #expect(activity.snapshot.isThisMonth && app.snapshot.isThisMonth && app.reviewCount == 6)
+    #expect(activity.snapshot.isThisMonth && app.snapshot.isThisMonth && app.reviewCount == 9)
   }
 
   /// The Review tab's line under the title, about ten seconds a card.

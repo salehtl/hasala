@@ -10,9 +10,9 @@
 public enum NotificationDestination: Sendable, Hashable {
   /// The review deck, over the Review tab.
   case review
-  /// One bill (Bills · AXA Insurance).
+  /// One bill (Bills · AXA Insurance): one that may be late, or a new price to accept or check.
   case bill(BillID)
-  /// Bills · Coming up and found (a found bill, a new price to accept or check).
+  /// Bills · Coming up and found (a found bill).
   case bills
   /// A category's detail in Plan ("Groceries is running fast").
   case category(CategoryID)
@@ -77,7 +77,7 @@ public enum NotificationsEngine {
     // Transactions to sort: one item for the whole queue (the Review tab counts them one by one).
     let review = ActivityEngine.reviewSummary(s, now: now)
     if review.count > 0 {
-      let newest = s.txns.filter(\.inReview).map(\.postedAt.date).max() ?? today
+      let newest = ReviewEngine.queue(s).map(\.postedAt.date).max() ?? today
       dated.append((newest, NotificationItem(
         id: "review", disc: .hue(.sky, .review),
         title: "\(review.count) transaction\(review.count == 1 ? "" : "s") to sort",
@@ -101,7 +101,7 @@ public enum NotificationsEngine {
       )))
     }
 
-    // A tracked bill charged outside its usual amount: accept the new price or check it, in Bills.
+    // A tracked bill charged outside its usual amount: accept the new price or check it, on the bill.
     for b in tracked {
       guard let usual = b.priceChangeFrom else { continue }
       let charged = b.history.first ?? today
@@ -112,7 +112,7 @@ public enum NotificationsEngine {
         line: MoneyPhrase([
           .amount(b.amount, hidden: 3), .text(" from "), .amount(usual, hidden: 3), .text(" · accept or check"),
         ]),
-        when: when(charged, today: today), destination: .bills
+        when: when(charged, today: today), destination: .bill(b.id)
       )))
     }
 

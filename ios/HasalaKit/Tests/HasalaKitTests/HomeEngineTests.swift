@@ -210,7 +210,7 @@ struct NotificationsEngineTests {
     ])
     #expect(n.needsALook.map(\.when) == ["Today", "Thu", "Thu", "Mon"])
     #expect(n.needsALook.map(\.status) == [nil, .error, nil, nil])
-    #expect(n.needsALook.map(\.destination) == [.review, .bill("axa"), .bills, .bills])
+    #expect(n.needsALook.map(\.destination) == [.review, .bill("axa"), .bills, .bill("du")])
   }
 
   @Test func hiddenAmountsAreThreeDots() {

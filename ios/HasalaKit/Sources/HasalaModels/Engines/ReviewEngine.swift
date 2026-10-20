@@ -187,6 +187,14 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var suggestedBy: String? = nil
   public var copyLine: String? = nil
   public var samePurchase: Bool = false
+  public var month: YearMonth? = nil
+}
+
+public struct ReviewMonth: Sendable, Hashable, Identifiable {
+  public var month: YearMonth
+  public var title: String
+  public var cards: [ReviewCardModel]
+  public var id: YearMonth { month }
 }
 
 /// One line of the All caught up list.
@@ -266,10 +274,33 @@ extension ReviewCardModel {
 }
 
 public enum ReviewEngine {
-  /// The queue, oldest first, without today's skips.
+  /// The queue without today's skips, whatever the period: the newest month first, oldest
+  /// first within a month.
   public static func queue(_ s: LedgerState, in window: ReviewWindow = .all) -> [Txn] {
     s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && !s.skippedReview.contains($0.id) }
-      .sorted { $0.postedAt < $1.postedAt }
+      .sorted {
+        let a = $0.postedAt.date.yearMonth, b = $1.postedAt.date.yearMonth
+        return a == b ? $0.postedAt < $1.postedAt : b < a
+      }
+  }
+
+  public static func months(_ cards: [ReviewCardModel], now: LocalDateTime) -> [ReviewMonth] {
+    var out: [ReviewMonth] = []
+    for card in cards {
+      let m = card.month ?? now.date.yearMonth
+      if out.last?.month == m {
+        out[out.count - 1].cards.append(card)
+      } else {
+        out.append(ReviewMonth(month: m, title: monthTitle(m, now: now), cards: [card]))
+      }
+    }
+    return out
+  }
+
+  public static func monthTitle(_ m: YearMonth, now: LocalDateTime) -> String {
+    let today = now.date.yearMonth
+    if m == today { return "This month" }
+    return m.year == today.year ? m.name : m.title
   }
 
   public static func cards(_ s: LedgerState, in window: ReviewWindow = .all) -> [ReviewCardModel] {
@@ -298,6 +329,7 @@ public enum ReviewEngine {
     card.copyLine = copyLine(t, s) ?? samePurchaseLine(t, s)
     if card.suggestion != nil { card.suggestedBy = t.categorySource?.suggestionLabel(needsReview: t.needsReview) }
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
+    card.month = d.yearMonth
     return card
   }
 

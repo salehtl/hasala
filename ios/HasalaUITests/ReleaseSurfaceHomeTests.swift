@@ -30,7 +30,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // The bell counts what needs a look and opens it.
     let bell = app.buttons["header.notifications"].firstMatch
     XCTAssertTrue(bell.exists, "Home has no bell")
-    XCTAssertEqual(bell.label, "Notifications, 4 new")
+    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
     bell.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     assertText(app, "Needs a look", "Notifications")
@@ -41,11 +41,10 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Notifications")
     attach(app, "Release · Notifications")
     try audit(app)
-    // A row opens its screen: du's new price is in Bills.
+    // A row opens its screen: du's new price opens du, with Accept new amount.
     tap(app, "bell.row.price.du")
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
-    assertNoPlaceholders(app, "Recurring")
-    assertAbsent(app, ["bills.allSchedules"], "Recurring")
+    XCTAssertTrue(el(app, "bills.detail.accept").waitForExistence(timeout: uiWait))
+    assertNoPlaceholders(app, "du")
     back(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
@@ -127,7 +126,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
-      XCTAssertEqual(bell.label, "Notifications, 4 new")
+      XCTAssertEqual(bell.label, "Notifications, 4 need a look")
       attach(app, "Release · Bell · \(tab)")
     }
     assertPresent(app, ["header.add"], "Activity")
@@ -155,7 +154,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // No mailbox: the bell's last row asks to connect it and opens Bank alerts in Profile.
     app = launchRelease("gmailSkipped")
     let bell = app.buttons["header.notifications"].firstMatch
-    XCTAssertEqual(bell.label, "Notifications, 5 new")
+    XCTAssertEqual(bell.label, "Notifications, 5 need a look")
     bell.tap()
     tap(app, "bell.row.mail.connect")
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 10), "Bank alerts did not open")

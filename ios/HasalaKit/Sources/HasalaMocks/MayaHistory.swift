@@ -15,7 +15,6 @@ public enum MayaHistory {
     s.netWorth = NetWorthHistory()
     s.bills = []
     s.billCandidates = []
-    s.unreadNotifications = 0
     s.txns = [
       Txn(id: "fd-spinneys", merchant: "Spinneys", amount: .aed(338_50), postedAt: LocalDateTime(2026, 10, 2, 18, 10),
           accountID: "enbd", categoryID: "groceries", categorySource: .dictionary),

@@ -25,13 +25,13 @@ public enum HomeEngine {
       return HomeSnapshot(
         header: header, hero: h, notifications: notifications,
         widgets: [.budgetPace(budgetPace(plan, label: "Ended \(month.lastDay.dayMonth)"))],
-        period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
+        period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now))
     }
     var h = rangeHero(s, period: p, now: now)
     h.approx = Spending.hasEstimate(s, in: p)
     return HomeSnapshot(
       header: header, hero: h, notifications: notifications, widgets: [],
-      period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
+      period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now))
   }
 
   // MARK: - The hero
@@ -192,7 +192,7 @@ public enum HomeEngine {
     return MoneyPhrase([.text("\(c.name) "), .amount(.aed(spent), hidden: 3), .text(" · your top want")])
   }
 
-  static func aboutNow(_ s: LedgerState, now: LocalDateTime, review: ReviewWindow) -> [AboutNowRow] {
+  static func aboutNow(_ s: LedgerState, now: LocalDateTime) -> [AboutNowRow] {
     var rows: [AboutNowRow] = []
     if let next = nextBill(s, now: now) {
       let n = now.date.days(until: next.nextDue)
@@ -202,7 +202,7 @@ public enum HomeEngine {
         detail: MoneyPhrase([.text(next.approximate ? "~" : ""), .amount(next.amount, hidden: 3), .text(" · \(when)")]),
         destination: .bills))
     }
-    let waiting = ReviewEngine.queue(s, in: review).count
+    let waiting = ReviewEngine.queue(s).count
     if waiting > 0 {
       rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(waiting) waiting")]), destination: .review))
     }

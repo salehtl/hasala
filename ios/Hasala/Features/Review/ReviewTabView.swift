@@ -3,9 +3,10 @@ import HasalaModels
 import SwiftUI
 
 /// Review · Tab · To sort (Paper NPV-0): the root of the Review tab, the queue Hasala
-/// couldn't sort and the card that starts the swipe deck. Its queue covers `AppModel.reviewWindow`
-/// (Home's period, this month unless another is chosen), and the tab's badge counts the same transactions
-/// (`AppModel.reviewCount`).
+/// couldn't sort and the card that starts the swipe deck. The queue is a to-do list, so it
+/// ignores the period: the tab's badge (`AppModel.reviewCount`), the bell's "N transactions to
+/// sort" and the deck count the same transactions. With more than one month waiting, the list
+/// runs the newest month first, each under its month.
 ///
 /// Start opens the deck at the oldest card; a row opens it at that row's card and reads on
 /// down the list. "Use N suggestions" is Debug only, and the "couldn't read" card opens only
@@ -21,7 +22,7 @@ struct ReviewTabView: View {
 
   var body: some View {
     NavigationStack {
-      let cards = ReviewEngine.cards(app.store.state, in: app.reviewWindow)
+      let cards = ReviewEngine.cards(app.store.state)
       TabScreen(app: app, title: "Review", extra: .none, spacing: 24, titleGap: 4) {
         Text(Self.countLine(cards.count))
           .hType(.subheadline)
@@ -51,8 +52,10 @@ struct ReviewTabView: View {
     return "\(n) to sort · " + (minutes == 1 ? "about a minute" : "about \(minutes) minutes")
   }
 
-  static func emptyLine(_ period: Period) -> String {
-    "Nothing in \(period.title) needs a look."
+  static let emptyLine = "New transactions Hasala can't sort on its own show up here."
+
+  static func orderLine(months: Int) -> String {
+    months > 1 ? "Newest month first" : "Oldest first"
   }
 
   // MARK: Start card
@@ -126,25 +129,36 @@ struct ReviewTabView: View {
 
   // MARK: To sort
 
-  /// "To sort", oldest first: each row opens the deck at its own card.
+  /// "To sort", oldest first within a month (Paper writes "Newest first"): each row opens the
+  /// deck at its own card.
   private func list(_ cards: [ReviewCardModel]) -> some View {
-    VStack(alignment: .leading, spacing: 4) {
+    let months = ReviewEngine.months(cards, now: app.store.now)
+    return VStack(alignment: .leading, spacing: 4) {
       HStack(alignment: .firstTextBaseline) {
         Text("To sort").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        // The queue runs oldest first, so nothing waits longest (Paper writes "Newest first").
-        Text("Oldest first").hType(.footnote).foregroundStyle(HColor.textSecondary)
+        Text(Self.orderLine(months: months.count)).hType(.footnote).foregroundStyle(HColor.textSecondary)
       }
       .padding(.bottom, 4)
-      ForEach(cards) { card in
-        Button { ReviewEntry.open(app, at: card.id) } label: { row(card) }
-          .buttonStyle(HRowPressStyle())
-          .accessibilityElement(children: .ignore)
-          .accessibilityLabel(spoken(card))
-          .accessibilityHint("Opens the deck at this one")
-          .accessibilityAddTraits(.isButton)
-          .accessibilityIdentifier("review.tab.row.\(card.id)")
+      ForEach(months) { month in
+        if months.count > 1 {
+          Text(month.title)
+            .hType(.footnote.weight(.semibold))
+            .foregroundStyle(HColor.textSecondary)
+            .padding(.top, 10)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("review.tab.month.\(month.month)")
+        }
+        ForEach(month.cards) { card in
+          Button { ReviewEntry.open(app, at: card.id) } label: { row(card) }
+            .buttonStyle(HRowPressStyle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spoken(card))
+            .accessibilityHint("Opens the deck at this one")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("review.tab.row.\(card.id)")
+        }
       }
     }
     .padding(.top, 14)
@@ -205,7 +219,7 @@ struct ReviewTabView: View {
         .accessibilityHidden(true)
       Text("Nothing to sort").hType(HType.title3).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      Text(Self.emptyLine(app.period))
+      Text(Self.emptyLine)
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
