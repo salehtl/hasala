@@ -105,9 +105,10 @@ type Dispatcher struct {
 	Stats  Stats
 
 	queue chan job
-	mu    sync.Mutex // guards th and pausedUntil
-	th    *throttle
-	pause time.Time
+	mu       sync.Mutex // guards th and pausedUntil
+	th       *throttle
+	pause    time.Time
+	envPause map[string]time.Time
 	wg    sync.WaitGroup
 }
 
@@ -238,7 +239,7 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 	}
 	for _, t := range ts {
 		d.mu.Lock()
-		paused := d.now().Before(d.pause)
+		paused := d.pausedFor(t)
 		var dec decision
 		if !paused {
 			dec = d.th.admit(t, j.r, d.now(), j.user)
@@ -264,18 +265,26 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 func (d *Dispatcher) Flush(ctx context.Context) {
 	d.mu.Lock()
 	owed, dropped := d.th.due(d.now())
-	paused := d.now().Before(d.pause)
+	paused := make([]bool, len(owed))
+	for i, w := range owed {
+		paused[i] = d.pausedFor(w.t)
+	}
 	d.mu.Unlock()
 	for _, r := range dropped {
 		d.Stats.Dropped[r].Add(1)
 	}
-	for _, w := range owed {
-		if paused || !d.stillRegistered(ctx, w) {
+	for i, w := range owed {
+		if paused[i] || !d.stillRegistered(ctx, w) {
 			d.Stats.Dropped[w.r].Add(1)
 			continue
 		}
 		d.send(ctx, w.t)
 	}
+}
+
+func (d *Dispatcher) pausedFor(t Target) bool {
+	now := d.now()
+	return now.Before(d.pause) || now.Before(d.envPause[t.Environment])
 }
 
 func (d *Dispatcher) stillRegistered(ctx context.Context, w trailing) bool {
@@ -328,6 +337,16 @@ func (d *Dispatcher) send(ctx context.Context, t Target) {
 		d.pause = d.now().Add(configPause)
 		d.mu.Unlock()
 		slog.Error("pushv2: APNs refused the provider token or topic; sending paused for 5 minutes")
+	case ResultEnvironment:
+		d.Stats.ConfigErrors.Add(1)
+		d.mu.Lock()
+		if d.envPause == nil {
+			d.envPause = map[string]time.Time{}
+		}
+		d.envPause[t.Environment] = d.now().Add(configPause)
+		d.mu.Unlock()
+		slog.Error("pushv2: APNs refused the provider token for one environment; that environment is paused for 5 minutes",
+			"environment", t.Environment)
 	default:
 		d.Stats.Transient.Add(1)
 		slog.Warn("pushv2: APNs send failed", "result", res.String())
