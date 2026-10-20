@@ -444,6 +444,41 @@ func genTamper(f Files, root string) error {
 			"setAside(opsUndecodable)", upload(r, accept), "the whole blob is set aside; none of its ops is applied")
 	}
 
+	{
+		unk := "ios-3d4e5f60-7182-4d9e-bfa0-2b3c4d5e6f70"
+		zeroHash := make([]byte, 32)
+		multi := "not in spec 01 §15.3: a page with more than one fault; the first failing step in the reader's order decides"
+		u := served(base, unk, 2, h1[:], wSeed)
+		cold := served(base, w, 2, h1[:], wSeed)
+		cold.Stream = "cold"
+		add("M01", "unknown writer at row 0, row shape fault at row 1", baseState(), []TamperRow{u, cold},
+			"tampered(unknownWriter)", nil, multi)
+		st := baseState()
+		st.OwnWriter, st.OwnHead = w, 1
+		add("M02", "own-writer conflict at row 0, unknown writer at row 1", st,
+			[]TamperRow{served(base, w, 2, h1[:], wSeed), u}, "tampered(ownChainConflict)", nil, multi)
+		add("M03", "chain break at row 0, unknown writer at row 1", baseState(),
+			[]TamperRow{served(base, w, 2, other, wSeed), u}, "tampered(unknownWriter)", nil, multi)
+		a := served(base, TamperW2, 1, zeroHash, nil)
+		b := served(base, w, 2, h1[:], nil)
+		c := served(base, TamperW2, 2, a.BlobHash, TamperRSeed)
+		add("M04", "W2's last row is badly signed, W's last row comes first and is unsigned", baseState(),
+			[]TamperRow{a, b, c}, "tampered(headUnsigned)", nil, multi+"; writers are checked in the order of their last row")
+		st = baseState()
+		one1 := int64(1)
+		st.Roster[w] = rosterRow{Pubkey: pub(wSeed), Live: false, FinalCounter: &one1, FinalHead: h1[:]}
+		add("M05", "revoked W with pinned (1, h1): an unsigned row at counter 2", st,
+			one(served(base, w, 2, h1[:], nil)), "tampered(afterRevocation)", nil, multi+"; the pin is checked before the head signature")
+		add("M06", "revoked R with pinned (0, 0^32): a row at counter 1 signed by another writer's DWK", baseState(),
+			one(served(base, TamperR, 1, zeroHash, wSeed)), "tampered(afterRevocation)", nil, multi)
+		add("M07", "W unsigned at row 0, revoked R past its pin at row 1", baseState(),
+			[]TamperRow{b, served(base, TamperR, 1, zeroHash, TamperRSeed)}, "tampered(headUnsigned)", nil, multi)
+		add("M08", "revoked R past its pin at row 0, W unsigned at row 1", baseState(),
+			[]TamperRow{served(base, TamperR, 1, zeroHash, TamperRSeed), b}, "tampered(afterRevocation)", nil, multi)
+		r := mutate(epoch(blob.MaxEpoch + 1))
+		add("M09", "epoch → 2^31, above the largest epoch", baseState(), one(r), "tampered(badHeader)", nil, "")
+	}
+
 	// Run the reference reader and require the table's outcome.
 	for i := range cases {
 		c := &cases[i]
