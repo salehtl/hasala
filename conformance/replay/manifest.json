@@ -331,6 +331,12 @@
       "note": "22:00-04:00 is the next UTC day; the matching row is on that day."
     },
     {
+      "file": "fold-fingerprint-merchant-is-byte-exact.json",
+      "name": "fingerprint-merchant-is-byte-exact",
+      "group": "fold",
+      "note": "An NFC and an NFD spelling of one merchant are two fingerprints; only the byte-identical spelling matches."
+    },
+    {
       "file": "fold-unparsed-row-materializes.json",
       "name": "unparsed-row-materializes",
       "group": "fold",

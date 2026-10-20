@@ -156,8 +156,11 @@ it is not sure, it runs the job.
   `private-fixtures.lock`. Only the iOS jobs read `design/`.
 - `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
   all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
-  in those directories. A change in `infra/` starts them.
-- `swift` reads only `ios/` and `conformance/`.
+  in those directories, and the bundled templates
+  (`ios/HasalaCore/Sources/HasalaCore/Resources/templates/`). A change in
+  `infra/` starts them.
+- `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`
+  and `reference/ledgerd-client/src/norm/charset-tables.ts`.
 - `ios-build`, `ios` and `ios-tools` read only `ios/`, `design/` and the
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
   flake (output `ios_scripts`).

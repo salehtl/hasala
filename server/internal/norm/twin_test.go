@@ -399,7 +399,7 @@ func buildCharsetTablesTS() string {
 
 	// The RFC 2047 word path, classified against htmlindex alone.
 	wordSingle := map[string]int{}
-	var wordUnsupported []entry
+	var wordUnsupported, wordPassthrough []entry
 	for _, e := range entries {
 		k, tab, note := resolveWordCharsetLabel(e.label)
 		switch k {
@@ -407,6 +407,8 @@ func buildCharsetTablesTS() string {
 			wordSingle[e.label] = tableKeyOf(tab)
 		case kindUnsupported:
 			wordUnsupported = append(wordUnsupported, entry{e.label, k, nil, note})
+		case kindPassthrough:
+			wordPassthrough = append(wordPassthrough, entry{e.label, k, nil, note})
 		}
 	}
 	b.WriteString("/**\n * Labels for the RFC 2047 encoded-word path, which resolves through\n * htmlindex ALONE — the word decoder is wired straight to it, not to the\n * four-step chain the body path uses. The two differ: \"ansi_x3.110-1983\" is an\n * ISO-8859-1 alias for a body and unknown to a word, and every ianaindex-only\n * name behaves the same way.\n *\n * mime.WordDecoder handles utf-8, iso-8859-1 and us-ascii itself, BEFORE this\n * map is reached, and its iso-8859-1 is true Latin-1 while its us-ascii emits\n * one U+FFFD per high byte. Those three are handled in mime.ts, not here.\n */\nconst WORD_SINGLE_BYTE: Readonly<Record<string, number>> = {\n")
@@ -424,8 +426,14 @@ func buildCharsetTablesTS() string {
 		fmt.Fprintf(&b, "  %q, // %s\n", e.label, e.note)
 	}
 	b.WriteString("];\n\n")
+	b.WriteString("const WORD_PASSTHROUGH: readonly string[] = [\n")
+	for _, e := range wordPassthrough {
+		fmt.Fprintf(&b, "  %q, // %s\n", e.label, e.note)
+	}
+	b.WriteString("];\n\n")
 
 	b.WriteString(`const WORD_UNSUPPORTED_SET = new Set(WORD_UNSUPPORTED);
+const WORD_PASSTHROUGH_SET = new Set(WORD_PASSTHROUGH);
 
 /**
  * Classifies a charset named by an RFC 2047 encoded word.
@@ -438,6 +446,7 @@ func buildCharsetTablesTS() string {
 export function classifyWordCharset(label: string): { kind: CharsetKind; table?: string } {
   const low = label.toLowerCase();
   if (WORD_UNSUPPORTED_SET.has(low)) return { kind: "unsupported" };
+  if (WORD_PASSTHROUGH_SET.has(low)) return { kind: "passthrough" };
   const idx = WORD_SINGLE_BYTE[low];
   if (idx !== undefined) return { kind: "single-byte", table: TABLES[idx]! };
   return { kind: "unresolved" };
@@ -612,6 +621,8 @@ func edgeInputs() []struct{ Name, Class, Note, Raw string } {
 		{"hdr-rfc2047-latin1-word", "headers", "mime.WordDecoder handles iso-8859-1 itself, as TRUE Latin-1", "From: a@b.c\r\nSubject: =?iso-8859-1?Q?a=E9b?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 		{"hdr-rfc2047-windows-1256-word", "headers", "an encoded word in a legacy charset goes through the same registry", "From: a@b.c\r\nSubject: =?windows-1256?B?x+HZ0cjt?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 		{"hdr-rfc2047-us-ascii-high-byte", "headers", "the us-ascii branch of mime.WordDecoder emits ONE U+FFFD PER BYTE, not per maximal subpart", "From: a@b.c\r\nSubject: =?us-ascii?B?YcO/Yg==?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
+		{"hdr-rfc2047-utf8-alias-word-decoded", "headers", "htmlindex resolves utf8 and unicode-1-1-utf-8 to UTF-8, so the word decodes; each word is decoded on its own", "From: a@b.c\r\nSubject: =?utf8?B?Q2Fmw6k=?= =?UNICODE-1-1-UTF-8?Q?_=C3=A9?= =?utf8?B?w6g=?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
+		{"hdr-rfc2047-utf8-alias-split-sequence", "headers", "an alias word is decoded alone, so a sequence split across two words becomes U+FFFD, where two utf-8 words join their bytes", "From: a@b.c\r\nSubject: =?utf8?B?ww==?= =?utf8?B?qQ==?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 		{"hdr-rfc2047-unknown-charset-kept-raw", "headers", "an undecodable word leaves the whole field at its raw value", "From: a@b.c\r\nSubject: =?x-nope?B?QUJD?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 		{"hdr-rfc2047-body-only-alias-kept-raw", "headers", "THE TWO REGISTRIES DIFFER. ansi_x3.110-1983 is an ISO-8859-1 alias for a BODY (a go-message quirk) and is unknown to a WORD, because the word decoder is wired to htmlindex alone. Decoding it here would be a divergence", "From: a@b.c\r\nSubject: =?ansi_x3.110-1983?B?QUJD?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},
 		{"hdr-rfc2047-ianaindex-only-name-kept-raw", "headers", "same shape: ibm037 resolves for a body and not for a word", "From: a@b.c\r\nSubject: =?ibm037?B?QUJD?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"},

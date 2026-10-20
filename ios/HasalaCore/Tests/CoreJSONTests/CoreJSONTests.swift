@@ -66,6 +66,15 @@ struct ParserTests {
     #expect(try parse(#""\u0000""#) == .string("\u{0}"))
   }
 
+  @Test("refuseLoneSurrogates refuses either half alone and still reads a pair")
+  func refuseLoneSurrogates() throws {
+    func strict(_ s: String) throws -> JSONValue { try JSONParser.parse(Array(s.utf8), refuseLoneSurrogates: true) }
+    #expect(try strict(#""😀""#) == .string("\u{1F600}"))
+    for s in [#""\uD800""#, #""\uDC00x""#, #""\uD800A""#, #"{"\uDBFF":1}"#] {
+      #expect(throws: JSONParseError.self, "\(s)") { try strict(s) }
+    }
+  }
+
   @Test("bytes: one BOM stripped, invalid UTF-8 replaced inside strings, refused outside")
   func bytes() throws {
     #expect(try JSONParser.parse([0xef, 0xbb, 0xbf] + Array("{}".utf8)) == .object(JSONObject()))

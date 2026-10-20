@@ -377,6 +377,8 @@ func syntheticDates() syntheticGroup {
 		{"iso-8601", "a shape neither layout covers, and one Date.parse would happily accept", "", "2026-06-05T00:00:00Z"},
 		{"us-order", "06-05-2026 is 6 May under DD-MM-YYYY, not 5 June", "", "06-05-2026"},
 		{"tab-separated-first-token", "the fallback splits on U+0020 only, so a tab is not a separator", "", "07/Jan/2026\tgarbage"},
+		{"double-space-before-time", "a layout space is exactly one U+0020, so only the first token parses", "", "07/Jan/2026  03:14 PM"},
+		{"double-space-before-marker", "the same rule before the AM/PM marker", "", "07/Jan/2026 03:14  PM"},
 	}
 	g := syntheticGroup{file: "synthetic-dates.json", template: "synth.dates", definition: def}
 	for _, c := range texts {

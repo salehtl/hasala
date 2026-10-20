@@ -738,8 +738,10 @@ func convertDate(text string, layouts []string) (time.Time, bool) {
 //   - Trailing text is an error, which is what makes the whole-string attempt
 //     genuinely whole-string and the first-token fallback necessary.
 func parseLayout(text, layout string) (time.Time, bool) {
-	if t, err := time.Parse(layout, text); err == nil {
-		return t, true
+	if !strings.Contains(text, "  ") {
+		if t, err := time.Parse(layout, text); err == nil {
+			return t, true
+		}
 	}
 	// The first U+0020 specifically, not "any whitespace": one code point that
 	// both languages find the same way.
