@@ -498,6 +498,25 @@ let day: Int64 = 86_400_000
     if case .failure(let e) = await rig.engine.importSender("x@gmail.com") { #expect(e == .forwarder) } else { Issue.record("forwarder accepted") }
   }
 
+  @Test func probeSendersListsIdsOnly() async {
+    let rig = Rig()
+    #expect(await rig.engine.probeSenders(["newbank.example"]) == .notReading)
+    await rig.connectAndActivate()
+    let raw = SyntheticMail.rfc822(
+      from: "Alerts <alerts@newbank.example>", subject: "Notice", body: "Hello", dateMs: Rig.t0 - 3 * day,
+      authDomain: "newbank.example")
+    rig.gmail.add(FakeGmail.Message(id: "nb1", raw: raw, internalDateMs: Rig.t0 - 3 * day, from: "Alerts <alerts@newbank.example>"))
+    let before = rig.gmail.requests.count
+    let accounted = await rig.accountedCount()
+    let r = await rig.engine.probeSenders(["NewBank.example", "other.example", "bad domain", "newbank.example"])
+    #expect(r == .found(["newbank.example"]))
+    let made = rig.gmail.requests.dropFirst(before)
+    #expect(made.count == 2)
+    #expect(made.allSatisfy { $0.path.hasSuffix("/messages") })
+    #expect(await rig.ledger.authoredTrust.isEmpty)
+    #expect(await rig.accountedCount() == accounted)
+  }
+
   @Test func viewEmailShowsNormalizedTextOnly() async {
     let rig = Rig()
     await rig.connectAndActivate()

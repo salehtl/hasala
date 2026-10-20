@@ -175,14 +175,14 @@ enum ReviewReasonStyle {
   static func ink(_ reason: TxnReviewReason) -> Color {
     switch reason {
     case .senderUnverified: HColor.statusWarningForeground
-    case .probableCopy: HColor.statusInfoForeground
+    case .probableCopy, .samePurchase: HColor.statusInfoForeground
     }
   }
 
   static func surface(_ reason: TxnReviewReason) -> Color {
     switch reason {
     case .senderUnverified: HColor.statusWarningSurface
-    case .probableCopy: HColor.reviewSuggestionSurface
+    case .probableCopy, .samePurchase: HColor.reviewSuggestionSurface
     }
   }
 
@@ -190,13 +190,14 @@ enum ReviewReasonStyle {
     switch reason {
     case .senderUnverified: .shield
     case .probableCopy: .envelope
+    case .samePurchase: .globe
     }
   }
 
   static func chip(_ reason: TxnReviewReason) -> InfoChip.Style {
     switch reason {
     case .senderUnverified: .warningReason
-    case .probableCopy: .reason
+    case .probableCopy, .samePurchase: .reason
     }
   }
 }
@@ -295,6 +296,8 @@ struct ReviewReasonInfo: View {
       "Your mailbox couldn't confirm that this email came from your bank. It may still be real, so check it before you sort it."
     case .probableCopy:
       "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
+    case .samePurchase:
+      "Your bank sent an alert in another currency, then this one in AED a few days later on the same card. It's often the same purchase. Until you choose, both count in your totals."
     }
   }
 
@@ -308,6 +311,11 @@ struct ReviewReasonInfo: View {
       ]
     case .probableCopy:
       ["Merge it if it's the same payment.", "Keep both if you really paid twice."]
+    case .samePurchase:
+      [
+        "If it's the same purchase, the original keeps this AED amount and this alert moves to Archived.",
+        "Keep both if they're two different purchases.",
+      ]
     }
   }
 
@@ -324,6 +332,13 @@ struct ReviewReasonInfo: View {
       Button("Merge") { merge() }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("reason.merge")
+      Button("Keep both") { keepBoth() }
+        .buttonStyle(.pill(.secondary, fill: true))
+        .accessibilityIdentifier("reason.keepBoth")
+    case .samePurchase:
+      Button("Same purchase") { merge() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("reason.same")
       Button("Keep both") { keepBoth() }
         .buttonStyle(.pill(.secondary, fill: true))
         .accessibilityIdentifier("reason.keepBoth")

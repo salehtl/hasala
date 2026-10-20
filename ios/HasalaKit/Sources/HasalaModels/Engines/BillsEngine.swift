@@ -214,7 +214,7 @@ public enum BillsEngine {
     return BillsSnapshot(
       next14: .aed(next14), incomeLine: incomeLine, income: income, needsALook: attention, found: found,
       upcoming: upcoming, range: range, tracked: tracked.count, recentlyPaid: paidRows,
-      paidThisMonth: .aed(paid.reduce(0) { $0 + $1.amount.minor }), tags: tags
+      paidThisMonth: .aed(paid.reduce(0) { $0 + ($1.homeMinor ?? 0) }), tags: tags
     )
   }
 

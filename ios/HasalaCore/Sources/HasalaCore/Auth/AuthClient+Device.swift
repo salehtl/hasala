@@ -43,12 +43,50 @@ public struct APNsDevicesResponse: Codable, Sendable, Hashable {
 public struct BankRequestBody: Codable, Sendable, Hashable {
   public var bank: String
   public var otherBank: String?
+  public var senderDomain: String?
   public var source: String
 
-  public init(bank: String, otherBank: String?) {
+  public init(bank: String, otherBank: String?, senderDomain: String? = nil) {
     self.bank = bank
     self.otherBank = otherBank
+    self.senderDomain = senderDomain
     source = "app"
+  }
+}
+
+public struct BankRequestState: Codable, Sendable, Hashable {
+  public var bank: String
+  public var name: String
+  public var state: String
+  public var requestedAt: String
+
+  public init(bank: String, name: String, state: String, requestedAt: String) {
+    self.bank = bank
+    self.name = name
+    self.state = state
+    self.requestedAt = requestedAt
+  }
+}
+
+public struct BankCatalogEntry: Codable, Sendable, Hashable {
+  public var bank: String
+  public var name: String
+  public var state: String
+
+  public init(bank: String, name: String, state: String) {
+    self.bank = bank
+    self.name = name
+    self.state = state
+  }
+}
+
+public struct BankRequestsList: Codable, Sendable, Hashable {
+  public var requests: [BankRequestState]
+  public var catalog: [BankCatalogEntry]
+
+  public init(requests: [BankRequestState], catalog: [BankCatalogEntry]) {
+    self.requests = requests
+    self.catalog = catalog
   }
 }
 
@@ -92,10 +130,16 @@ extension AuthClient {
   /// catalogue slug, or `"other"` with `otherBank` set. `202`; `400 bad_bank`;
   /// `429 rate_limited` or `bank_list_full`.
   @discardableResult
-  public func bankRequest(bank: String, otherBank: String? = nil, bearer: String) async throws(APIError)
-    -> BankRequestResponse
+  public func bankRequest(bank: String, otherBank: String? = nil, senderDomain: String? = nil, bearer: String)
+    async throws(APIError) -> BankRequestResponse
   {
-    try await api.call(.post, "/api/v1/bank-requests", json: BankRequestBody(bank: bank, otherBank: otherBank), bearer: bearer)
+    try await api.call(
+      .post, "/api/v1/bank-requests",
+      json: BankRequestBody(bank: bank, otherBank: otherBank, senderDomain: senderDomain), bearer: bearer)
+  }
+
+  public func bankRequests(bearer: String) async throws(APIError) -> BankRequestsList {
+    try await api.call(.get, "/api/v1/bank-requests", bearer: bearer)
   }
 
   /// `PUT /account/display-name {display_name}` (#76). `204`; `400 bad_name`.

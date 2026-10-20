@@ -27,6 +27,9 @@ struct BankAlertsPage: View {
   /// haptic's trigger: a count, so the same mailbox twice plays twice).
   @State private var successes = 0
   @State private var changingBanks = false
+  @State private var requestingBank = false
+  @State private var bankRequests: [RequestedBank] = []
+  @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.hMotion) private var motion
 
   init(app: AppModel) {
@@ -74,6 +77,10 @@ struct BankAlertsPage: View {
     .sheet(isPresented: $changingBanks) {
       ManageBanksSheet(current: lane?.chosenBanks() ?? []) { app.say("Banks updated") }
     }
+    .sheet(isPresented: $requestingBank, onDismiss: { Task { await loadBankRequests() } }) {
+      RequestBankSheet(setup: session?.services.setup, prober: lane as? OtherBankProbing) { _ in app.say("Request sent") }
+    }
+    .task { await loadBankRequests() }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
     // A mailbox connected or signed in again: the motion policy's success, once each.
     .hHaptic(.success, trigger: successes) { old, new in new > old }
@@ -387,9 +394,19 @@ struct BankAlertsPage: View {
             title: banks.isEmpty ? "Choose your banks" : "Change banks", identifier: "bankAlerts.changeBanks",
             glyph: banks.isEmpty ? PaperGlyph.plus : PaperGlyph.pencil
           ) { changingBanks = true }
+          if session != nil {
+            HDivider(inset: .disc68)
+            MailActionRow(title: "My bank isn't listed", identifier: "bankAlerts.requestBank") { requestingBank = true }
+          }
         }
+        if !bankRequests.isEmpty { RequestedBanksCard(requests: bankRequests).padding(.top, 12) }
       }
     }
+  }
+
+  private func loadBankRequests() async {
+    guard let setup = session?.services.setup, let s = try? await setup.bankRequests() else { return }
+    bankRequests = s.requests
   }
 
   /// When a bank's alerts last arrived (Paper 1NS8: "Last email 4 min ago", "Last email 2 h

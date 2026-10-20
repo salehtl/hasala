@@ -77,6 +77,7 @@ public struct DayGroup: Sendable, Hashable, Identifiable {
   public var title: String
   public var total: Money
   public var rows: [MiniTxnRow]
+  public var approx: Bool = false
 }
 
 /// The summary card on a category filter ("Activity · Filtered").
@@ -86,6 +87,7 @@ public struct FilterSummary: Sendable, Hashable {
   public var hue: Hue
   public var count: Int
   public var total: Money
+  public var approx: Bool = false
   public var progress: Permille
   public var today: Permille
   public var verdict: Verdict
@@ -163,7 +165,7 @@ public enum ActivityEngine {
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime, in window: ReviewWindow = .all) -> ReviewSummary {
     let queue = s.txns.filter { $0.inReview && window.contains($0.postedAt.date) }
-    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + ($1.homeMinor ?? 0) }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
   }
@@ -199,13 +201,14 @@ public enum ActivityEngine {
     for t in txns {
       let d = t.postedAt.date
       let row = row(t, s)
-      let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
+      let signed = t.homeSigned ?? 0
       if let i = index[d] {
         groups[i].rows.append(row)
         groups[i].total.minor += signed
+        if t.isEstimate { groups[i].approx = true }
       } else {
         index[d] = groups.count
-        groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row]))
+        groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row], approx: t.isEstimate))
       }
     }
     return groups
@@ -233,13 +236,15 @@ public enum ActivityEngine {
       detail = "\(c?.name ?? "Uncategorized") · \(t.detailOverride ?? t.postedAt.time)"
     }
     let glyph = t.isTransfer ? Glyph.transfer : (c?.glyph ?? .review)
-    return MiniTxnRow(
+    var r = MiniTxnRow(
       id: t.id, merchant: t.title, glyph: glyph, hue: t.inReview ? .other : (c?.hue ?? .other), detail: detail,
       amount: t.amount, isIncome: t.direction == .in,
       monogram: (t.inReview || c == nil) ? String(t.merchant.prefix(1)).uppercased() : nil,
       toReview: t.inReview, reviewReason: t.activeReviewReason,
       project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) }
     )
+    r.showHome(t)
+    return r
   }
 
   /// A row of a category's list: the day takes the category's place ("Sat 10 Oct · 13:20").
@@ -305,8 +310,9 @@ public enum ActivityEngine {
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)
     let pct = budget > 0 ? total * 100 / budget : 0
+    let approx = txns.contains { t in t.isEstimate && t.countsInPlan && t.lines.contains { $0.category == c } }
     return FilterSummary(
-      title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
+      title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), approx: approx, progress: Permille.ratio(total, of: budget),
       today: Pace.monthGone(day: day, days: days), verdict: verdict,
       caption: MoneyPhrase([
         .text("\(pct)% of \(cat.name)\(cat.name.hasSuffix("s") ? "'" : "'s") "), .amount(.aed(budget), .compact),

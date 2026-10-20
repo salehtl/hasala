@@ -35,10 +35,11 @@ public enum Spending {
     if !t.splits.isEmpty {
       return t.splits.compactMap { sp in
         let c = s.category(sp.categoryID)
-        return counts(c) ? (c, sp.amount.minor) : nil
+        guard counts(c), let home = sp.homeMinor else { return nil }
+        return (c, home)
       }
     }
-    let signed = t.direction == .out ? t.amount.minor : -t.amount.minor
+    guard let signed = t.homeSigned else { return [] }
     guard let c = s.category(t.categoryID) else {
       return t.direction == .out || t.isRefund ? [(nil, signed)] : []
     }

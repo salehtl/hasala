@@ -44,6 +44,7 @@ var appRoutes = []struct{ method, path string }{
 	{"PUT", "/api/v1/push/apns"},
 	{"DELETE", "/api/v1/push/apns"},
 	{"POST", "/api/v1/bank-requests"},
+	{"GET", "/api/v1/bank-requests"},
 }
 
 func TestTheAppsRoutesAreMounted(t *testing.T) {

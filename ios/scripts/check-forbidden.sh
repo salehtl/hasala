@@ -83,8 +83,17 @@ lint R8 Date "${B}Date(\\(\\)|\\.now$E)" "${NOT_ADAPTERS[@]}"
 lint R8 UUID "${B}UUID\\(\\)" "${NOT_ADAPTERS[@]}"
 lint R8 SystemRandomNumberGenerator "${B}SystemRandomNumberGenerator$E" "${NOT_ADAPTERS[@]}"
 
+IOS="$(cd "$SRC/../../.." && pwd)"
+while IFS= read -r hit; do
+	[[ -n "$hit" ]] || continue
+	echo "check-forbidden: ios/$(echo "$hit" | cut -d: -f1-2): D1 forbids MinorExponent outside HasalaCore/Sources/HasalaCore/Money/ (amounts are hundredths at schema v4)" >&2
+	fail=1
+done < <(cd "$IOS" && find . \( -path ./HasalaCore/Sources/HasalaCore/Money -o -path ./HasalaCore/Tests -o -path ./HasalaKit/Tests \
+	-o -path ./HasalaTests -o -path ./HasalaUITests -o -name .build -o -name DerivedData \) -prune -o -name '*.swift' -type f -print0 |
+	xargs -0 grep -nE -- "${B}MinorExponent$E" /dev/null | sed "s|^\./||" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+
 if [[ "$fail" != 0 ]]; then
 	echo "check-forbidden: FAILED" >&2
 	exit 1
 fi
-echo "check-forbidden: ok (R2, R3, R7, R8 over Sources/HasalaCore)"
+echo "check-forbidden: ok (R2, R3, R7, R8 over Sources/HasalaCore, D1 over ios/)"

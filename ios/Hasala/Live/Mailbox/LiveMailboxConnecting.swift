@@ -18,7 +18,7 @@ import Observation
 /// person confirmed it (`connect(_:replacing:)`). The lane's status gives the one row.
 @MainActor
 @Observable
-final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
+final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, OtherBankProbing {
   @ObservationIgnored private let runtime: @MainActor () -> AccountRuntime?
   /// The providers this build has a client for, listed before an account opens ("Who can
   /// see what" and the stories run before any runtime exists).
@@ -126,6 +126,16 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting {
   func chosenBanks() -> [SupportedBank] {
     guard let rt = runtime() else { return [] }
     return Self.banks(trusted: BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:]))
+  }
+
+  func probeOtherBanks(_ candidates: [BankCandidate]) async -> OtherBankProbe {
+    guard let lane = runtime()?.lane else { return .notReading }
+    switch await lane.probeSenders(candidates.flatMap(\.domains)) {
+    case .found(let domains): return .found(OtherBankProbe.hints(found: domains, in: candidates))
+    case .notReading: return .notReading
+    case .reconnectRequired: return .signInAgain
+    case .offline: return .offline
+    }
   }
 
   func linkState() async -> OnboardingStep.Facts.Mailbox {

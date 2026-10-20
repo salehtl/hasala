@@ -382,8 +382,9 @@ func dateOf(t *time.Time) string {
 	return mailq.Date(*t)
 }
 
-// Register installs the waitlist's three renderers on q.
+// Register installs the waitlist's renderers on q.
 func (s *Service) Register(q *mailq.Queue) {
+	q.Register("bank_supported", mailq.RenderFunc(s.renderBankSupported))
 	why := "You're getting this because someone asked for a Hasala invite for this address at hasala.app."
 	q.Register("waitlist", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
 		if row.EntryID == nil {
@@ -440,4 +441,41 @@ func (s *Service) Register(q *mailq.Queue) {
 			Why: why})
 		return toMessage(row, r), err
 	}))
+}
+
+func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
+	if row.BankSlug == nil {
+		return mail.Message{}, ErrStale
+	}
+	var bank, status string
+	if err := tx.QueryRow(ctx, `SELECT name, status FROM banks WHERE slug = $1`, *row.BankSlug).
+		Scan(&bank, &status); err != nil || status != "supported" {
+		return mail.Message{}, ErrStale
+	}
+	if row.UserID != nil {
+		var name string
+		if err := tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id = $1 AND email_norm = $2`,
+			*row.UserID, row.Recipient).Scan(&name); err != nil {
+			return mail.Message{}, ErrStale
+		}
+		r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Greeting: mailq.Greeting(name),
+			Email: row.Recipient, BankName: bank, AccountAudience: true,
+			Why: "You're getting this because you asked for " + bank + " in Hasala."})
+		return toMessage(row, r), err
+	}
+	if row.EntryID == nil {
+		return mail.Message{}, ErrStale
+	}
+	v, err := readEntry(ctx, tx, *row.EntryID)
+	if err != nil || (v.state != "confirmed" && v.state != "invited") {
+		return mail.Message{}, ErrStale
+	}
+	leave, err := LeaveURL(ctx, tx, s.WebBase, *row.EntryID)
+	if err != nil {
+		return mail.Message{}, err
+	}
+	r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Email: row.Recipient, BankName: bank,
+		LeaveURL: leave,
+		Why:      "You're getting this because someone asked for a Hasala invite for this address at hasala.app."})
+	return toMessage(row, r), err
 }

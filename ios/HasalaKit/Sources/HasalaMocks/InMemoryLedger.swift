@@ -117,6 +117,19 @@ public final class InMemoryLedger: LedgerStore {
         s.txns[i].heldCopy = nil
         title = "Kept both"
       }
+    case .resolveSamePurchase(let id, let same):
+      guard let a = s.txn(id), let match = a.samePurchase, let f = s.txn(match.of) else { throw .notFound }
+      try editTxn(id) { t in
+        t.samePurchase = nil
+        if same {
+          t.archived = true
+          t.note = SamePurchaseText.note(f.amount)
+        }
+      }
+      if same {
+        try editTxn(f.id) { $0.homeMinor = a.amount.minor }
+      }
+      title = same ? "Counted once" : "Kept both"
     case .skipReview(let id):
       s.skippedReview.insert(id)
       title = nil
@@ -288,6 +301,8 @@ public final class InMemoryLedger: LedgerStore {
     field(\.projectID)
     field(\.note)
     field(\.archived)
+    field(\.homeMinor)
+    field(\.samePurchase)
   }
 
   /// Element by element: an element still as the edit left it goes back to how it was

@@ -136,9 +136,10 @@ public enum AskEngine {
     let found = s.txns.filter { matches($0, f, s) }.sorted { $0.postedAt > $1.postedAt }
     let isIncome = f.direction == .in || (f.direction == nil && !found.isEmpty && found.allSatisfy { $0.direction == .in })
     let total: Int64 = found.reduce(0) { sum, t in
-      if isIncome { return t.direction == .in && !t.isRefund ? sum + t.amount.minor : sum }
+      guard let home = t.homeMinor else { return sum }
+      if isIncome { return t.direction == .in && !t.isRefund ? sum + home : sum }
       if t.isTransfer { return sum }
-      return t.direction == .out ? sum + t.amount.minor : (t.isRefund ? sum - t.amount.minor : sum)
+      return t.direction == .out ? sum + home : (t.isRefund ? sum - home : sum)
     }
     let rows = found.map { t in
       var r = ActivityEngine.row(t, s)
@@ -158,8 +159,8 @@ public enum AskEngine {
     if t.archived { return false }
     if let d = f.direction, t.direction != d || t.isTransfer { return false }
     if let p = f.period, t.postedAt.date < p.from || t.postedAt.date > p.through { return false }
-    if let lo = f.minimumFils, t.amount.minor < lo { return false }
-    if let hi = f.maximumFils, t.amount.minor > hi { return false }
+    if let lo = f.minimumFils, (t.homeMinor ?? .min) < lo { return false }
+    if let hi = f.maximumFils, (t.homeMinor ?? .max) > hi { return false }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) { return false }
     if !f.merchants.isEmpty {
       let hay = [t.title, t.provenance?.rawMerchant ?? ""].joined(separator: "\n").lowercased()

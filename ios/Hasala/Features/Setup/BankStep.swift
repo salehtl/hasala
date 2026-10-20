@@ -49,12 +49,8 @@ struct BankStep: View {
       .disabled(model.chosenBanks.isEmpty)
       .accessibilityIdentifier("bank.continue")
     }
-    .alert("Which bank do you use?", isPresented: $telling) {
-      TextField("Bank name", text: $model.bankRequest)
-      Button("Send") { Task { await model.sendBankRequest() } }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("We'll tell the developer which bank to add next. We send only the bank's name.")
+    .sheet(isPresented: $telling) {
+      RequestBankSheet(setup: model.bankRequests, prober: nil) { _ in model.noteBankRequestSent() }
     }
   }
 

@@ -162,6 +162,7 @@ public struct SpendHero: Sendable, Hashable {
   public var bars: [HeroMonthBar]
   public var note: MoneyPhrase?
   public var notCounted: NotCounted?
+  public var approx: Bool = false
 
   public struct NotCounted: Sendable, Hashable {
     public var amount: Money
@@ -327,6 +328,8 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   public var toReview: Bool
   public var reviewReason: TxnReviewReason?
   public var project: Project?
+  public var estimate: Bool = false
+  public var notCounted: Bool = false
 
   public struct Project: Sendable, Hashable, Codable {
     public var id: ProjectID

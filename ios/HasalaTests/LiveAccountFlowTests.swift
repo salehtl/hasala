@@ -32,10 +32,10 @@ struct LiveAccountFlowTests {
     let env: AccountEnvironment
     var binding: AccountBinding? { try? env.secrets.binding() }
 
-    init(_ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore()) {
+    init(_ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore(), passkeys: (any PasskeyProvider)? = nil) {
       env = AccountEnvironment(
         client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
-        approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+        approvalKeys: SoftDAK(), passkeys: passkeys, clock: SystemClock(), random: SystemRandom(),
         apiBase: "https://api.hasala.app", accountsDirectory: nil)
     }
 
@@ -246,6 +246,83 @@ struct LiveAccountFlowTests {
     #expect(try a.env.secrets.session() == nil)
   }
 
+  @Test func aPasswordAccountAddsAPasskeyFromSecurity() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, passkeys: StubPasskeys())
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    #expect(m.state?.hasPasskey == false)
+    await m.request(.addPasskey)
+    #expect(m.confirming == .perform(.addPasskey))
+    #expect(m.confirmFactor == .password)
+    m.confirmPassword = Self.password
+    await m.confirm()
+    #expect(m.failure == nil)
+    #expect(m.confirming == nil)
+    #expect(server.lastStepUpAction == "passkey.add")
+    #expect(server.passkeysAdded == 1)
+    #expect(server.wrapsStored == 0)
+    #expect(await account.usesPasskey())
+    await m.load()
+    #expect(m.state?.hasPasskey == true)
+  }
+
+  @Test func welcomeBackWrapsTheNewPasskeyWithTheWords() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server, passkeys: StubPasskeys())
+    let account = b.relaunched()
+    #expect(try await account.signInWithPassword(email: "maya@example.com", password: Self.password)
+      == .needsUnlock(passkeyCanUnlock: false))
+    var opened = false
+    let m = UnlockModel(account: account, passkeyCanUnlock: false) { opened = true }
+    m.phraseText = words.joined(separator: " ")
+    await m.unlockWithWords()
+    #expect(m.unlocked)
+    #expect(m.offersPasskey)
+    m.addingPasskey = true
+    m.confirmPassword = Self.password
+    await m.addPasskey()
+    #expect(m.failure == nil)
+    #expect(!m.offersPasskey)
+    #expect(server.lastStepUpAction == "passkey.add")
+    #expect(server.passkeysAdded == 1)
+    #expect(server.wrapsStored == 1)
+    m.openApp()
+    #expect(opened)
+  }
+
+  @Test func theWordsBodyGoesWhenWelcomeBackEnds() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server, passkeys: StubPasskeys())
+    let account = b.relaunched()
+    _ = try await account.signInWithPassword(email: "maya@example.com", password: Self.password)
+    let m = UnlockModel(account: account, passkeyCanUnlock: false) {}
+    m.phraseText = words.joined(separator: " ")
+    await m.unlockWithWords()
+    #expect(m.offersPasskey)
+    m.openApp()
+    try await account.perform(.addPasskey, password: Self.password)
+    #expect(server.passkeysAdded == 1)
+    #expect(server.wrapsStored == 0)
+  }
+
+  @Test func aWrongPasswordAddsNoPasskey() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, passkeys: StubPasskeys())
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    await #expect(throws: AuthFailure.stepUpFailed) {
+      try await account.perform(.addPasskey, password: "not my password at all")
+    }
+    #expect(server.passkeysAdded == 0)
+    #expect(!(await account.usesPasskey()))
+  }
+
   @Test func signOutEverywhereSignsThisIPhoneOutToo() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
@@ -345,6 +422,20 @@ nonisolated final class SoftDAK: ApprovalKeySigner, Sendable {
 }
 
 /// `02` §7's password-account routes in memory, in `02`'s JSON shapes.
+nonisolated final class StubPasskeys: PasskeyProvider, @unchecked Sendable {
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    let id = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+    let clientData = Data(#"{"type":"webauthn.create","challenge":"\#(Base64.encodeURL(options.challenge))"}"#.utf8)
+    return RawRegistration(
+      credentialID: id, rawClientDataJSON: clientData, rawAttestationObject: Data([0xa0]),
+      prfFirst: prfSalt.map { _ in SecureBytes(copying: Data((0..<32).map { _ in UInt8.random(in: 0...255) })) })
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    throw .noCredential
+  }
+}
+
 nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   struct User {
     var id: String
@@ -356,6 +447,8 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var frozenBy: String?
     var freezeTriggerAt: String?
     var deleted = false
+    var passkeys: [String] = []
+    var wraps: [[String: Any]] = []
   }
 
   struct State {
@@ -369,6 +462,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var offline = false
     var deleted = 0
     var lastStepUpAction: String?
+    var addCeremonies: [String: String] = [:]
     var reviewAccounts = false
     /// #66 calls, refused ones included.
     var unfreezeCalls = 0
@@ -397,6 +491,8 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var lastCode: String? { state.withLock { $0.lastCode } }
   var deletedAccounts: Int { state.withLock { $0.deleted } }
   var lastStepUpAction: String? { state.withLock { $0.lastStepUpAction } }
+  var passkeysAdded: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.passkeys.count } } }
+  var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
   var operatorFreezesBeforeUnfreeze: Bool {
     get { state.withLock { $0.operatorFreezesBeforeUnfreeze } }
@@ -503,13 +599,13 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     case "GET /api/v1/account":
       return ok([
         "user_id": u.id, "status": "active", "has_keys": true, "email": u.email, "display_name": u.name,
-        "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": false,
+        "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": !u.passkeys.isEmpty,
         "frozen": u.frozenBy != nil, "frozen_by": opt(u.frozenBy), "freeze_trigger_at": opt(u.freezeTriggerAt),
         "restricted": u.frozenBy != nil,
         "review_account": s.reviewAccounts,
       ])
     case "GET /api/v1/keys": return ok(u.keys)
-    case "GET /api/v1/keys/wraps": return ok(["wraps": [Any]()])
+    case "GET /api/v1/keys/wraps": return ok(["wraps": u.wraps])
     case "POST /api/v1/writers/challenge":
       let n = bytes(32)
       s.writerNonces.insert(n)
@@ -540,6 +636,35 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       guard let c = try? StepUp.challenge(nonce: n, action: action, paramsHash: ph) else { return error(400, "bad_request") }
       s.lastStepUpAction = action
       return ok(["nonce": Base64.encodeURL(n), "challenge": Base64.encodeURL(c)])
+    case "POST /api/v1/auth/passkey/add/begin":
+      guard let su = b["step_up"] as? [String: Any], let proof = su["proof"] as? [String: Any],
+        s.lastStepUpAction == "passkey.add", sess.writer != nil
+      else { return error(403, "step_up_required") }
+      if proof["kind"] as? String == "device" {
+        guard let v = (proof["verifier"] as? String).flatMap({ try? Base64.decode($0) }),
+          Data(SHA256.hash(data: v)) == u.verifierHash
+        else { return error(403, "step_up_failed") }
+      }
+      let id = token()
+      s.addCeremonies[id] = u.id
+      return ok([
+        "ceremony_id": id,
+        "options": [
+          "publicKey": [
+            "challenge": Base64.encodeURL(bytes(32)), "rp": ["id": "hasala.app", "name": "Hasala"],
+            "user": ["id": Base64.encodeURL(bytes(32)), "name": "Hasala", "displayName": "Hasala"],
+            "excludeCredentials": u.passkeys.map { ["type": "public-key", "id": $0] },
+          ]
+        ],
+      ])
+    case "POST /api/v1/auth/passkey/add/finish":
+      guard let id = b["ceremony_id"] as? String, s.addCeremonies.removeValue(forKey: id) == u.id,
+        let credential = b["credential"] as? [String: Any], let rawID = credential["rawId"] as? String,
+        b["dwk_sig"] is String
+      else { return error(403, "passkey_rejected") }
+      s.users[u.id]?.passkeys.append(rawID)
+      if let w = b["prf_wrap"] as? [String: Any] { s.users[u.id]?.wraps.append(w) }
+      return ok(["credential_id": rawID], status: 201)
     case "POST /api/v1/auth/logout":
       s.sessions[bearer]?.revoked = true
       return APIResponse(status: 204)

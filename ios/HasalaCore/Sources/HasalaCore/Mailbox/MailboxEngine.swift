@@ -1020,6 +1020,36 @@ public actor MailboxEngine {
       })
   }
 
+  public func probeSenders(_ domains: [String], days: Int = 180) async -> SenderProbeResult {
+    let wanted = domains.map { $0.lowercased() }.filter(BankDomains.isQuerySafe)
+    return await exclusive {
+      let state = (try? await store.loadState()) ?? MailboxState()
+      switch state.phase {
+      case .otherDevice, .unlinked: return .notReading
+      case .reconnectRequired: return .reconnectRequired
+      default: break
+      }
+      let token: AccessToken
+      do throws(MailAuthError) { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
+        return .reconnectRequired
+      } catch {
+        return .offline
+      }
+      let source = source(token)
+      let since = max(0, (clock.nowMs() - Int64(days) * 86_400_000) / 1000)
+      var found: [String] = []
+      for domain in wanted where !found.contains(domain) {
+        do throws(MailAPIError) {
+          if !(try await source.list(senders: [domain], since: since, pageToken: nil)).ids.isEmpty { found.append(domain) }
+        } catch let e {
+          if let s = e.status, s == 401 || s == 403 { return .reconnectRequired }
+          return .offline
+        }
+      }
+      return .found(found)
+    }
+  }
+
   // MARK: - View the email (§7.8)
 
   /// Re-fetches one message by id and returns its normalized text (never HTML; raw mail is

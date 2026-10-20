@@ -15,8 +15,8 @@ import Foundation
 /// `capabilities` is `.beta`: what this TestFlight build carries out end to end, access
 /// recovery (C4) to a new passkey included. Not in this build (they throw
 /// `.notInThisBuild`, and the screens hide them): forgot password (C9), recovery to a
-/// new password, the approving iPhone, phrase rotation, adding a passkey,
-/// email change, and the other passkey, password and device changes. Removing this
+/// new password, the approving iPhone, phrase rotation, email change, and the other
+/// passkey, password and device changes. Removing this
 /// iPhone works but isn't offered: Sign-in & security has no row for it yet.
 ///
 /// One account per iPhone: while this iPhone holds an account's data (its binding),
@@ -50,6 +50,7 @@ final class LiveAccountService: AccountService {
   private var signIn: SignInResult?
   /// Access recovery between `recover/begin` and `recover/finish` (the words' entropy).
   private var recovery: Recovery?
+  private var unlockBody: KeyBody?
 
   /// Reads nothing: the Keychain may be read only once the fresh-install purge is done
   /// (spec 04 §4.4, R-03). The gate calls `loadProfile()` then.
@@ -319,9 +320,16 @@ final class LiveAccountService: AccountService {
       enrolled = try await Enrolment.enrolWriter(
         env, userID: user, body: body, emailNorm: signIn?.emailNorm, serverSalt: signIn?.serverSalt)
       refreshProfile()
+      endUnlockOffer()
+      if profile?.method == .password { unlockBody = try? KeyBody(amk: body.amk, aakSeed: body.aakSeed) }
     } catch {
       throw Self.map(error)
     }
+  }
+
+  func endUnlockOffer() {
+    unlockBody?.wipe()
+    unlockBody = nil
   }
 
   // MARK: Relaunch with a session (spec 04 §6.5)
@@ -597,7 +605,12 @@ final class LiveAccountService: AccountService {
           if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw AuthFailure.frozenByOperator }
           throw error
         }
-      case .addPasskey, .removePasskey, .setPassword, .changePassword, .removePassword, .removeDevice:
+      case .addPasskey:
+        _ = try await AccountPasskeys.add(env, binding: b, factor: factor, body: unlockBody, reason: action.explainer)
+        endUnlockOffer()
+        if let p = profile { profile = AccountProfile(displayName: p.displayName, email: p.email, method: .passkey) }
+        methodConfirmed = profile != nil
+      case .removePasskey, .setPassword, .changePassword, .removePassword, .removeDevice:
         throw AuthFailure.notInThisBuild
       }
     } catch let e as AuthFailure {
@@ -675,6 +688,7 @@ final class LiveAccountService: AccountService {
   }
 
   private func clearSignedIn() {
+    endUnlockOffer()
     signIn = nil
     enrolled = nil
     profile = nil
@@ -709,6 +723,7 @@ final class LiveAccountService: AccountService {
 
   func signOut() async {
     await AccountSignIn.signOut(env)
+    endUnlockOffer()
     signIn = nil
     await hooks.left()
   }

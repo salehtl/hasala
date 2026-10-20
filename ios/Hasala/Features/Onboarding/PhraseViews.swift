@@ -170,16 +170,14 @@ struct AccountReadyView: View {
   private var passkey: Bool { profile?.method != .password }
 
   /// Where the words can be seen again, said only as far as this build can do it: Sign-in &
-  /// security shows them after Face ID, so a password account first adds a passkey (Debug's
-  /// `.all`); without that it can't (the beta). No line is longer than Paper's, so the
-  /// screen still fits above the dock.
+  /// security shows them after Face ID with a passkey that holds the keys. A passkey added
+  /// later on this iPhone signs in but holds no keys, so a password account can't. No line
+  /// is longer than Paper's, so the screen still fits above the dock.
   private var subtitle: String {
     let keep = "Keep the paper safe, away from this iPhone."
     guard capabilities.contains(.viewPhrase) else { return "\(keep) It's the only copy of your words." }
     if passkey { return "\(keep) You can see the words again in Profile after Face ID." }
-    return capabilities.contains(.addPasskey)
-      ? "\(keep) Add Face ID in Profile to see the words again."
-      : "\(keep) Your words can't be shown again on this account."
+    return "\(keep) Your words can't be shown again on this account."
   }
 
   var body: some View {

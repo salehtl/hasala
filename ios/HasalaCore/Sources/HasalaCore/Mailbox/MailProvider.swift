@@ -277,3 +277,10 @@ public protocol MailSource: Sendable {
 extension MailSource {
   public func checkMailbox() async throws(MailAPIError) {}
 }
+
+public enum SenderProbeResult: Sendable, Equatable {
+  case found([String])
+  case notReading
+  case reconnectRequired
+  case offline
+}

@@ -585,3 +585,39 @@ public struct DeleteAccountRequest: Codable, Sendable, Hashable {
     self.sig = sig
   }
 }
+
+public struct PasskeyAddBeginRequest: Codable, Sendable, Hashable {
+  public let step_up: StepUpJSON
+
+  public init(step_up: StepUpJSON) { self.step_up = step_up }
+}
+
+public struct PasskeyAddBeginResponse: Codable, Sendable, Hashable {
+  public let ceremony_id: String
+  public let options: WireCreationOptions
+
+  public init(ceremony_id: String, options: WireCreationOptions) {
+    self.ceremony_id = ceremony_id
+    self.options = options
+  }
+}
+
+public struct PasskeyAddFinishRequest: Codable, Sendable, Hashable {
+  public let ceremony_id: String
+  public let credential: PublicKeyCredentialJSON
+  public let prf_wrap: BootstrapPRFWrapJSON?
+  public let dwk_sig: String
+
+  public init(ceremonyID: String, credential: PublicKeyCredentialJSON, prfWrap: BootstrapPRFWrapJSON?, dwkSigB64: String) {
+    ceremony_id = ceremonyID
+    self.credential = credential
+    prf_wrap = prfWrap
+    dwk_sig = dwkSigB64
+  }
+}
+
+public struct PasskeyAddResponse: Codable, Sendable, Hashable {
+  public let credential_id: String
+
+  public init(credential_id: String) { self.credential_id = credential_id }
+}

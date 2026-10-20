@@ -35,6 +35,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   @discardableResult func useSuggestion(_ card: TxnID) -> Bool
   func skip(_ card: TxnID)
   @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
+  @discardableResult func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool
   @discardableResult func archive(_ card: TxnID) -> Bool
   func close(goToActivity: Bool)
 }
@@ -113,6 +114,7 @@ final class ReviewViewModel: ReviewDeckModel {
   func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
     let rulesBefore = app.store.state.rules.count
     if app.store.state.txn(card)?.isHeldCopy == true { _ = app.perform(.resolveCopy(card, merge: false)) }
+    if app.store.state.txn(card)?.samePurchase != nil { _ = app.perform(.resolveSamePurchase(card, same: false)) }
     guard app.perform(.categorize(card, category, learnRule: alwaysUse, project: project)) else { return false }
     record(card, learnedRule: app.store.state.rules.count > rulesBefore)
     return true
@@ -130,6 +132,9 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { app.perform(.resolveCopy(card, merge: merge)) }
+
+  @discardableResult
+  func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool { app.perform(.resolveSamePurchase(card, same: same)) }
 
   @discardableResult
   func archive(_ card: TxnID) -> Bool { app.perform(.archive(card, true)) }

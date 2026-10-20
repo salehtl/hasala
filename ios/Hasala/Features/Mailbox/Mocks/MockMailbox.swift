@@ -15,7 +15,7 @@
   /// also has the one alert Paper shows it couldn't read ("Needs a look", Debug).
   @MainActor
   @Observable
-  final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting {
+  final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting, OtherBankProbing {
     /// A mailbox of a provider this build can't connect can't exist either, so the
     /// scenario's go. The Release surface keeps both, as the live build's client ids do.
     var connectable: [MailProviderKind] = MailProviderKind.allCases {
@@ -305,6 +305,12 @@
     func loadSampleData() async throws(SetupFailure) {
       try? await Task.sleep(for: .milliseconds(300))
       sampleLoaded = true
+    }
+
+    func probeOtherBanks(_ candidates: [BankCandidate]) async -> OtherBankProbe {
+      guard mailboxes.contains(where: { $0.state == .connected }) else { return .notReading }
+      try? await Task.sleep(for: .milliseconds(300))
+      return .found(candidates.filter { $0.slug == "fab" }.map { BankHint(candidate: $0, domain: $0.domains[0]) })
     }
 
     // MARK: BankAlertsReporting (Paper 1NS8's numbers)

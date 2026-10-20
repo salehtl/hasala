@@ -148,7 +148,10 @@ final class UnlockModel {
     }
   }
 
-  func openApp() { onUnlocked() }
+  func openApp() {
+    account.endUnlockOffer()
+    onUnlocked()
+  }
 }
 
 struct UnlockView: View {

@@ -235,7 +235,7 @@ public enum PlanEngine {
     )
   }
 
-  static func projectMinor(_ t: Txn) -> Int64 { t.direction == .out ? t.amount.minor : -t.amount.minor }
+  static func projectMinor(_ t: Txn) -> Int64 { t.homeSigned ?? 0 }
 
   static func projectRange(_ p: Project) -> String? {
     switch (p.starts, p.ends) {
@@ -525,10 +525,12 @@ public extension PlanEngine {
     lines(c.id, s, month: month)
       .sorted { $0.txn.postedAt > $1.txn.postedAt }
       .map { t, minor in
-        MiniTxnRow(
+        var r = MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c.glyph, hue: c.hue,
           detail: "\(t.postedAt.date.short) · \(t.postedAt.time)", amount: .aed(abs(minor)), isIncome: minor < 0,
           project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) })
+        r.showHome(t, amount: !t.isNotCounted)
+        return r
       }
   }
 
@@ -606,10 +608,12 @@ public extension PlanEngine {
       countInPlan: p.countInPlan, complete: p.complete, explainer: explainer, categories: categories,
       transactions: txns.map { t in
         let c = s.category(t.categoryID)
-        return MiniTxnRow(
+        var r = MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
           detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? ""), amount: t.amount,
           isIncome: t.direction == .in, toReview: t.needsReview)
+        r.showHome(t)
+        return r
       },
       draft: p.draft)
   }
@@ -636,10 +640,12 @@ public extension PlanEngine {
     .map { t in
       let c = s.category(t.categoryID)
       let other = s.project(t.projectID).map { " · in \($0.name)" } ?? ""
-      return MiniTxnRow(
+      var r = MiniTxnRow(
         id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
         detail: "\(t.postedAt.date.short)" + (c.map { " · \($0.name)" } ?? "") + other, amount: t.amount,
         toReview: t.needsReview)
+      r.showHome(t)
+      return r
     }
   }
 

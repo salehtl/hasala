@@ -36,6 +36,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case move(from: String?, to: String?, month: YearMonth, amount: Money)
     case occurrence(bill: String, due: LocalDate)
     case projectState(project: String, status: String, completedOn: String?, countInPlan: Bool)
+    case samePurchase(foreign: String, previousHome: Int64, home: String, previousNote: String)
+    case samePurchaseDeclined(home: String)
   }
 
   enum Failure: Error, Equatable {
@@ -88,6 +90,19 @@ nonisolated struct LedgerEditAuthor: Sendable {
       guard let other = row.copyOf else { throw Failure.notFound }
       try await build { a throws(AuthorError) in
         a.resolveCopy(txnID: id, parentVersion: row.version, otherTxnID: other, decision: merge ? .merge : .keepBoth)
+      }
+    case .resolveSamePurchase(let id, let same):
+      let row = try txn(id)
+      guard let f = before.txn(id)?.samePurchase?.of else { throw Failure.notFound }
+      let foreign = try txn(f)
+      try await build { a throws(AuthorError) in
+        if same {
+          a.confirmSamePurchase(
+            foreignID: f, foreignVersion: foreign.version, homeID: id, homeAmountMinor: row.amountMinor,
+            foreignMinor: foreign.amountMinor, foreignCurrency: foreign.currency)
+        } else {
+          a.declineSamePurchase(homeID: id, homeVersion: row.version, foreignID: f)
+        }
       }
     case .archive(let id, let archived):
       _ = try txn(id)
@@ -200,6 +215,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
+      case .samePurchase(let t, _, _, _), .samePurchaseDeclined(let t): rows[t] = try txn(t)
       default: break
       }
     }
@@ -239,6 +255,12 @@ nonisolated struct LedgerEditAuthor: Sendable {
           d.completedOn = completedOn.flatMap(CivilDate.init(wire:))
           d.countInPlan = countInPlan
           try a.defineProject(id: id, parentVersion: p.version, d)
+        case .samePurchase(let f, let previous, let home, let note):
+          guard let row = rows[f] else { continue }
+          a.undoSamePurchase(foreignID: f, foreignVersion: row.version, previousHomeMinor: previous, homeID: home, previousNote: note)
+        case .samePurchaseDeclined(let home):
+          guard let row = rows[home] else { continue }
+          a.undoDeclineSamePurchase(homeID: home, homeVersion: row.version)
         }
       }
     }
