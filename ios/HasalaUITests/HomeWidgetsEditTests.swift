@@ -19,6 +19,21 @@ final class HomeWidgetsEditTests: XCTestCase {
   }
 
   @MainActor
+  func testGalleryStaysInsideTheSheetWidth() throws {
+    for scenario in ["maya", "mayaHidden"] {
+      let app = launch(scenario: scenario, screen: "home.gallery", motion: "off")
+      let sheet = el(app, "gallery.sheet")
+      XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
+      let cell = el(app, "gallery.spentSoFar")
+      XCTAssertTrue(cell.waitForExistence(timeout: uiWait))
+      XCTAssertEqual(cell.frame.minX, 20, accuracy: 0.01, "\(scenario): the gallery is wider than its sheet")
+      let wide = el(app, "gallery.budgetPace")
+      XCTAssertEqual(wide.frame.width, sheet.frame.width - 40, accuracy: 0.01, "\(scenario): a wide widget overflows")
+      app.terminate()
+    }
+  }
+
+  @MainActor
   func testEditRemoveAddReorderAndRelaunch() throws {
     var app = launch(scenario: "maya", motion: "off")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))

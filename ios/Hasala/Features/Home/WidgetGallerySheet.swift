@@ -42,6 +42,7 @@ struct WidgetGallerySheet: View {
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 21)
         .padding(.bottom, 40)
+        .containerRelativeFrame(.horizontal)
       }
       .scrollBounceBehavior(.basedOnSize)
       .background(HColor.sheetSurfaceLarge)
@@ -219,6 +220,7 @@ struct WidgetConfigPage: View {
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 21)
       .padding(.bottom, 40)
+      .containerRelativeFrame(.horizontal)
     }
     .scrollBounceBehavior(.basedOnSize)
     .background(HColor.sheetSurfaceLarge)
