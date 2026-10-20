@@ -136,6 +136,10 @@ let
       "M1"
       (hasala { listen.address = "0.0.0.0"; })
     ];
+    "listen.address ::1" = [
+      "M1"
+      (hasala { listen.address = "::1"; })
+    ];
     "listen.port = metrics.port" = [
       "M2"
       (hasala { listen.port = 9471; })
