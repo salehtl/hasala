@@ -58,14 +58,16 @@ extension State {
       steps += 1
     }
     let unparsed = txns[id]!.unparsed
+    var applied: [String] = []
     for (field, value) in values {
       if unparsed && !Self.annotationAllowedOnUnparsed(field) {
         anomaly(e.seq, "unsupported_edit_field", "\(e.op.opID): \(field) cannot be set on an unparsed transaction")
         continue
       }
       txns[id]!.annotations[field] = Keyed(value, opID: e.op.opID)
+      applied.append(field)
     }
-    forwardToMergeWinner(id)
+    forwardAnnotations(id, fields: applied, seq: e.seq)
   }
 
   mutating func applyMerchantNamed(_ e: LogEntry) throws(PayloadError) {

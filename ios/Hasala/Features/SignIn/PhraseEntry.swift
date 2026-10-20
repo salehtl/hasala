@@ -84,7 +84,6 @@ struct PhraseEntryState: Equatable {
     return out
   }
 
-  /// What each cell draws: the words, or dots in place of each word while masked.
   func drawn(masked: Bool) -> [String] {
     masked ? words.map { _ in "•••••" } : words
   }

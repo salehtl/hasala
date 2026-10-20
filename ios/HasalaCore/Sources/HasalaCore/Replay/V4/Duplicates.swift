@@ -121,10 +121,52 @@ extension State {
     }
   }
 
-  mutating func forwardToMergeWinner(_ id: String) {
-    guard let t = txns[id], t.retiredBy == nil, t.supersededBy == nil, let w = t.mergedInto, txns[w]?.isLive == true
-    else { return }
+  func mergeWinner(_ id: String) -> String? {
+    guard let t = txns[id], t.retiredBy == nil, t.supersededBy == nil, let w = t.mergedInto,
+      let winner = txns[w], winner.isLive, !winner.unparsed
+    else { return nil }
+    return w
+  }
+
+  mutating func forwardCategory(_ id: String, seq: Int64) {
+    guard let w = mergeWinner(id), let t = txns[id] else { return }
     carryUserEdits(from: id, to: w)
+    let winner = txns[w]!
+    if !sameText(winner.category, t.category) || winner.needsReview != t.needsReview {
+      anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w), which keeps its own category")
+    }
+  }
+
+  mutating func forwardSplit(_ id: String, seq: Int64) {
+    guard let w = mergeWinner(id), let t = txns[id] else { return }
+    carryUserEdits(from: id, to: w)
+    if txns[w]!.splits != t.splits {
+      anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w), which keeps its own split")
+    }
+  }
+
+  mutating func forwardAnnotations(_ id: String, fields: [String], seq: Int64) {
+    guard let w = mergeWinner(id), let t = txns[id] else { return }
+    for f in fields {
+      if txns[w]!.annotations[f] == nil {
+        txns[w]!.annotations[f] = t.annotations[f]
+      } else if txns[w]!.annotations[f]?.value != t.annotations[f]?.value {
+        anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w), which keeps its own \(f)")
+      }
+    }
+  }
+
+  func sameText(_ a: String?, _ b: String?) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case (let x?, let y?): return utf8Equal(x, y)
+    default: return false
+    }
+  }
+
+  mutating func flagEditOfMergedCopy(_ id: String, seq: Int64) {
+    guard let w = mergeWinner(id) else { return }
+    anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w): its edit stays on the merged copy")
   }
 
   mutating func unmergeRow(_ id: String, seq: Int64) -> Bool {

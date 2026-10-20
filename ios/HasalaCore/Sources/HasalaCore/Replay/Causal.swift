@@ -378,13 +378,13 @@ extension State {
         txns[id]!.categorySource = category == nil ? CategorySource.none : .user
       }
       setNeedsReview(id, needsReview, seq: seq)
-      forwardToMergeWinner(id)
+      forwardCategory(id, seq: seq)
     case .split(let parts, _):
       txns[id]!.splits = parts
-      forwardToMergeWinner(id)
+      forwardSplit(id, seq: seq)
     case .edit(let p):
       applyTxnEdit(id, p, e)
-      forwardToMergeWinner(id)
+      flagEditOfMergedCopy(id, seq: seq)
     case .disposition(let other, let disposition):
       guard let notice = txns[id]!.possibleDuplicateOf, utf8Equal(notice, other) else {
         anomaly(

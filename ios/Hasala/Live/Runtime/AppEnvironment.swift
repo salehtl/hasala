@@ -77,7 +77,8 @@ final class AppEnvironment {
     if defaults.string(forKey: InstallCheck.installIDKey) != nil { return .done }
     return InstallCheck.run(
       protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable, defaults: defaults, keychain: keychain,
-      groups: [keychainGroup, sharedKeychainGroup], widgetsDirectory: nil)
+      groups: [keychainGroup, sharedKeychainGroup], widgetsDirectory: nil,
+      apiHost: BuildInfo.apiBaseURL().host() ?? "api.hasala.app")
   }
 
   /// "Remove this iPhone's data" from a wall (§4.7 row 2, without the server's writer

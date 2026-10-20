@@ -202,9 +202,13 @@ import Testing
     #expect(await rig.engine.status().unreadable == 120)
   }
 
-  @Test func anUnknownSignedInIdentityCountsAsAnotherMailbox() {
-    #expect(MailboxEngine.isAnotherMailbox(linked: "a@example.com", signedIn: nil))
-    #expect(MailboxEngine.isAnotherMailbox(linked: "a@example.com", signedIn: " "))
+  @Test func anUnknownSignedInIdentityIsRefusedNotTreatedAsASwitch() {
+    #expect(!MailboxEngine.isAnotherMailbox(linked: "a@example.com", signedIn: nil))
+    #expect(!MailboxEngine.isAnotherMailbox(linked: "a@example.com", signedIn: " "))
+    #expect(MailboxEngine.identityUnknown(linked: "a@example.com", signedIn: nil))
+    #expect(MailboxEngine.identityUnknown(linked: "a@example.com", signedIn: " "))
+    #expect(!MailboxEngine.identityUnknown(linked: nil, signedIn: nil))
+    #expect(!MailboxEngine.identityUnknown(linked: "a@example.com", signedIn: "a@example.com"))
     #expect(!MailboxEngine.isAnotherMailbox(linked: nil, signedIn: "a@example.com"))
     #expect(!MailboxEngine.isAnotherMailbox(linked: "A@example.com", signedIn: "a@example.com"))
     #expect(MailboxEngine.isAnotherMailbox(linked: "a@example.com", signedIn: "b@example.com"))

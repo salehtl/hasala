@@ -28,7 +28,6 @@ final class AppModel {
     var actionTitle: String?
     /// The edit the toast's "Undo" takes back.
     var undo: UndoToken?
-    /// Edits made with it, taken back after it, the latest first.
     var earlier: [UndoToken] = []
   }
 
@@ -220,8 +219,6 @@ final class AppModel {
     perform([edit])
   }
 
-  /// Applies edits in order as one gesture: the last one's toast takes them all back.
-  /// Stops at the first refusal.
   @discardableResult
   func perform(_ edits: [LedgerEdit]) -> Bool {
     var tokens: [UndoToken] = []
@@ -229,6 +226,7 @@ final class AppModel {
       do {
         if let token = try store.apply(edit) { tokens.append(token) }
       } catch {
+        for token in tokens.reversed() { store.undo(token) }
         show(Toast(disc: .note(.info), title: Self.message(for: error)))
         return false
       }
@@ -239,7 +237,6 @@ final class AppModel {
     return true
   }
 
-  /// An edit the toast confirmed could not be saved: the ledger shows it as it was.
   func writeFailed() {
     show(Toast(disc: .note(.info), title: "That change didn't save", subtitle: "Try it again"))
   }

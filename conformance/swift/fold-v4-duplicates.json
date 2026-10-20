@@ -4257,7 +4257,13 @@
       "expect": {
         "error": null,
         "state": {
-          "anomalies": [],
+          "anomalies": [
+            {
+              "at_seq": "4",
+              "detail": "",
+              "kind": "unsupported_edit_field"
+            }
+          ],
           "banks": [],
           "budgetMonthlyTotal": null,
           "budgetSplit": null,
@@ -4431,8 +4437,10 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "2ad46d19f484cc2a47538a46f7ae5ebef267ecc8bbeca643f743539840650db4",
-        "anomaly_kinds": []
+        "state_sha256": "20a0f91e8952eb8d71f1e9c4d62c3d87ba36e8dbd90079bb80b916401f930ad6",
+        "anomaly_kinds": [
+          "unsupported_edit_field"
+        ]
       }
     },
     {

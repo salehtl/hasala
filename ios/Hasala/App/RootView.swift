@@ -93,7 +93,7 @@ struct LiveRootView: View {
 }
 
 struct SnapshotCover: View {
-  static func covers(_ phase: ScenePhase) -> Bool { phase == .background }
+  static func covers(_ phase: ScenePhase) -> Bool { phase != .active }
 
   var body: some View {
     Image("HasalaWordmark")

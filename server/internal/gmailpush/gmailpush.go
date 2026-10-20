@@ -229,8 +229,6 @@ type Waker interface {
 	WakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r pushv2.Reason)
 }
 
-// QueueingWaker is a Waker that reports whether a wake was queued, as
-// *pushv2.Dispatcher does.
 type QueueingWaker interface {
 	TryWakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r pushv2.Reason) bool
 }

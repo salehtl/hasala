@@ -73,6 +73,21 @@ func assertEntryGone(t *testing.T, pool *pgxpool.Pool, entry uuid.UUID, addr str
 	}
 }
 
+func assertEntryConfirmed(t *testing.T, pool *pgxpool.Pool, entry uuid.UUID, addr string) {
+	t.Helper()
+	var (
+		state string
+		email *string
+	)
+	if err := pool.QueryRow(bg, `SELECT state, email_norm FROM waitlist_entries WHERE id = $1`, entry).
+		Scan(&state, &email); err != nil {
+		t.Fatal(err)
+	}
+	if state != "confirmed" || email == nil || *email != addr {
+		t.Fatalf("entry %s %v, want confirmed with its address", state, email)
+	}
+}
+
 func assertEntryInvited(t *testing.T, pool *pgxpool.Pool, entry uuid.UUID, addr string) {
 	t.Helper()
 	var (
@@ -88,14 +103,15 @@ func assertEntryInvited(t *testing.T, pool *pgxpool.Pool, entry uuid.UUID, addr 
 	}
 }
 
-func TestAnUnsentInviteEmailRevokesTheInviteAndDropsTheEntry(t *testing.T) {
+func TestAnUnsentInviteEmailRevokesTheInvite(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		err    error
 		status string
+		back   bool
 	}{
-		{"bounced", mail.ErrBounced, "bounced"},
-		{"failed permanently", mail.ErrPermanent, "failed"},
+		{"bounced", mail.ErrBounced, "bounced", false},
+		{"failed permanently", mail.ErrPermanent, "failed", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			pool := pgtest.New(t)
@@ -107,6 +123,10 @@ func TestAnUnsentInviteEmailRevokesTheInviteAndDropsTheEntry(t *testing.T) {
 			}
 			if s := inviteState(t, pool, invite); s != "revoked" {
 				t.Fatalf("invite %s, want revoked", s)
+			}
+			if c.back {
+				assertEntryConfirmed(t, pool, entry, addr)
+				return
 			}
 			assertEntryGone(t, pool, entry, addr)
 			var (
@@ -158,7 +178,7 @@ func TestTheMailSweepOfAQueuedInviteEmailRevokesTheInvite(t *testing.T) {
 	if s := inviteState(t, pool, invite); s != "revoked" {
 		t.Fatalf("invite %s, want revoked", s)
 	}
-	assertEntryGone(t, pool, entry, addr)
+	assertEntryConfirmed(t, pool, entry, addr)
 }
 
 func TestTheInviteSweepCatchesAStaleQueuedInvite(t *testing.T) {
@@ -193,7 +213,7 @@ func TestTheInviteSweepCatchesAStaleQueuedInvite(t *testing.T) {
 			if s := inviteState(t, pool, invite); s != "revoked" {
 				t.Fatalf("invite %s, want revoked", s)
 			}
-			assertEntryGone(t, pool, entry, addr)
+			assertEntryConfirmed(t, pool, entry, addr)
 		})
 	}
 }

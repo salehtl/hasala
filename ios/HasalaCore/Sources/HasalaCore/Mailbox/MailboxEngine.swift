@@ -421,6 +421,9 @@ public actor MailboxEngine {
       // Any other answer is the cycle's to handle (it halts with a reason the user sees).
     }
     let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
+    if let stored, Self.identityUnknown(linked: stored.address, signedIn: claims.email) {
+      return .failed(.permissionMissing)
+    }
     let otherMailbox = stored.map { Self.isAnotherMailbox(linked: $0.address, signedIn: claims.email) } ?? false
     let fresh = replacing || otherMailbox
     if otherMailbox, let old = stored {
@@ -514,11 +517,13 @@ public actor MailboxEngine {
   }
 
   static func isAnotherMailbox(linked: String?, signedIn: String?) -> Bool {
-    guard let linked else { return false }
-    let old = MailboxEngineConfig.normalized(linked)
-    guard !old.isEmpty else { return false }
+    let old = MailboxEngineConfig.normalized(linked ?? "")
     let new = MailboxEngineConfig.normalized(signedIn ?? "")
-    return new.isEmpty || old != new
+    return !old.isEmpty && !new.isEmpty && old != new
+  }
+
+  static func identityUnknown(linked: String?, signedIn: String?) -> Bool {
+    !MailboxEngineConfig.normalized(linked ?? "").isEmpty && MailboxEngineConfig.normalized(signedIn ?? "").isEmpty
   }
 
   /// Ends this provider's grant on this iPhone after another provider's link replaced it: stops

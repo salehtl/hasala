@@ -66,6 +66,19 @@ func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string
 	if state != "invited" || open {
 		return true, nil
 	}
+	var bounced bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND status = 'bounced')`, id).Scan(&bounced); err != nil {
+		return false, fmt.Errorf("invites: read the unsent invite's bounce: %w", err)
+	}
+	if !bounced {
+		if _, err := tx.Exec(ctx,
+			`UPDATE waitlist_entries SET state = 'confirmed', invited_at = NULL, updated_at = now() WHERE id = $1`,
+			*entry); err != nil {
+			return false, fmt.Errorf("invites: put the unsent invite's entry back on the list: %w", err)
+		}
+		return true, nil
+	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE mail_log SET waitlist_entry_id = NULL, recipient = NULL
 		  WHERE waitlist_entry_id = $1 AND kind = 'invite' AND final_at IS NOT NULL`, *entry); err != nil {
