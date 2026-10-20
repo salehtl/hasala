@@ -65,7 +65,7 @@ public enum ModelTier {
   public static func mayAutoFile(modelTag: String) -> Bool { modelTag.hasPrefix(autoFilePrefix) }
 
   public enum Context: Sendable {
-    case foreground, processing, refresh
+    case foreground, processing, refresh, firstImport
 
     /// (max calls, phase budget ms, per-call ms) of 03c §8.6.3.
     public var budget: (calls: Int, phaseMs: Int64, callMs: Int64) {
@@ -73,6 +73,7 @@ public enum ModelTier {
       case .foreground: (40, 20_000, 6_000)
       case .processing: (200, 120_000, 6_000)
       case .refresh: (0, 0, 0)
+      case .firstImport: (10, 30_000, 6_000)
       }
     }
   }

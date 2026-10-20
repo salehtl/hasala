@@ -84,6 +84,14 @@ struct CloudSuggestionsSection: View {
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 4)
+      if consent.isOn, MerchantSuggestionsSetting.firstImport() != nil {
+        Text("Sorting your first import now, a few merchant names at a time. Turning Merchant suggestions off stops it.")
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+          .accessibilityIdentifier("profile.merchantFirstImport")
+      }
     }
     .sheet(item: Bindable(consent).asking) { ask in
       switch ask {
@@ -102,6 +110,9 @@ struct CloudConsentContent {
   let lead: String
   let points: [(icon: HIcon, title: String, text: String)]
 
+  static let cloudflareSees =
+    "Your IP address, as with any internet request. The service doesn't record it, and doesn't store or log what you send. Cloudflare's terms say it doesn't keep what you send or use it to train models. Like any website it runs, Cloudflare keeps basic request records, such as the time and the country."
+
   static let suggestions = CloudConsentContent(
     id: "merchantSuggestions",
     title: "Merchant suggestions",
@@ -111,8 +122,7 @@ struct CloudConsentContent {
        "The merchant name as it appears in the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D}, and Hasala's built-in category names."),
       (.eyeSlash, "What's not sent",
        "The amount, date, card or bank, your own category names, or anything about your account."),
-      (.cloud, "What Cloudflare sees",
-       "Your IP address, as with any internet request. The service doesn't record it, and doesn't store or log what you send. Cloudflare's terms say it doesn't keep what you send or use it to train models. Like any website it runs, Cloudflare keeps basic request records, such as the time and the country."),
+      (.cloud, "What Cloudflare sees", cloudflareSees),
       (.check, "You stay in charge",
        "Suggestions are marked and don't count in your totals until you confirm them. You can turn this off at any time."),
     ])

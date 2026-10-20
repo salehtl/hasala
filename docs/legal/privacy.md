@@ -284,11 +284,13 @@ By default, notifications don't show amounts or merchants. For example, you'll s
 
 ## Cloud suggestions
 
-Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions. There are two switches, and you can turn each on or off at any time.
+Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort your first import. There are two switches, and you can turn each on or off at any time.
 
 **Merchant suggestions.** When Hasala can't sort a payment with your rules or its merchant list, it asks Cloudflare's AI service to suggest a category. Apple's on-device model is used when Cloudflare can't help. It sends the merchant name as it appears in the alert, for example "CAFE EXAMPLE JBR", and Hasala's built-in category names. It doesn't send the amount, the date, your card, your bank, your own category names or anything about your account. Each merchant is sent on its own. The suggestion is marked "Suggested by Cloudflare AI", and it doesn't count in your totals until you confirm it.
 
 **Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments count in your totals straight away and are marked "Sorted by Cloudflare AI". You can change any of them. It sends nothing more than Merchant suggestions does.
+
+**Sorting your first import.** When you set up Hasala, it can offer to sort the transactions it has just imported. If you choose Turn on, both switches turn on, and Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. If you choose Not now, both stay off. You can change either in Profile › Cloud suggestions at any time.
 
 **What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address; the service uses it only to limit abuse, in memory, and doesn't record it. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say it doesn't keep it or use it to train its models. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records don't include the merchant name or the category names. We never see these requests.
 

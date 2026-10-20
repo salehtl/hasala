@@ -13,6 +13,7 @@ enum SetupRoute: Hashable {
   case income
   case plan
   case result
+  case sort
   case notifications
   case done
 }
