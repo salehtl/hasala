@@ -93,7 +93,7 @@ final class BootController {
       account: account, mailbox: LiveMailboxConnecting(
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
-      hasPasscode: env.hasPasscode)
+      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }))
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
@@ -223,6 +223,7 @@ final class BootController {
     Task { await LiveAccountService.retryPendingLogout(env) }
     guard let rt = runtime else { return }
     Task { await rt.coordinator.run(.foreground) }
+    Task { await rt.firstImport.nudge() }
   }
 
   private func openRuntimeIfNeeded() {

@@ -24,6 +24,7 @@ struct SetupFlowView: View {
           case .income: IncomeStep(model: model)
           case .plan: PlanStep(model: model)
           case .result: ResultStep(model: model)
+          case .sort: SortStep(model: model)
           case .notifications: NotificationsStep(model: model)
           case .done: DoneStep(model: model)
           }

@@ -22,6 +22,9 @@
       Screen("setup.plan", scenario: "setupEmail") { await setUp($0, to: .plan, scanStep: .milliseconds(450)) },
       // The import done by the time the result shows: "268 transactions, sorted."
       Screen("setup.result", scenario: "setupEmail") { await setUp($0, to: .result, scanStep: .milliseconds(5)) },
+      Screen("setup.sort", scenario: "setupEmail", drive: { await setUp($0, to: .sort, scanStep: .milliseconds(450)) }) { graph in
+        (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
+      },
       Screen("setup.notifications", scenario: "setupEmail") {
         await setUp($0, to: .notifications, scanStep: .milliseconds(5))
       },
@@ -59,6 +62,8 @@
       await model.savePlan()
       guard stop != .result else { return }
       model.afterResult()
+      guard stop != .sort else { return }
+      if model.path.last == .sort { model.cloudSortNotNow() }
       guard stop != .notifications else { return }
       model.notNow()
     }

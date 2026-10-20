@@ -254,11 +254,66 @@ stricter gate **files** the row instead of only suggesting it.
   label and the per-device switch are the mitigations. Watch for wrong auto-sorts in the
   beta, and raise the gate if testers report them.
 
+### Sorting the first import (owner decision, 2026-10-20)
+
+The first scan imports about 90 days of alerts. What rules and the dictionary don't
+place waits in Review, often a long list. Setup offers to sort that first import with
+Merchant suggestions and Sort automatically. It is offered only in setup, never as a bulk
+button later, to keep the cost bounded.
+
+- Where: one setup screen, **Sort the rest with Cloudflare AI?** (`SetupRoute.sort`,
+  `Features/Setup/SortStep.swift`), after the result step and before notifications. It
+  shows only when the first scan ran in this setup (not for sample data, a skipped
+  email or manual entry) and the build has the Worker's URL (`BuildSurface`).
+- The screen says what is sent (the merchant name, with an example, and the built-in
+  category names, each name once), what is not sent, what Cloudflare sees (the same
+  text as the Profile sheet), what gets filed, and that both switches can be changed in
+  Profile. **Turn on** and **Not now** are two pill buttons of the same size. Not now
+  leaves both switches off, as before.
+- Turn on maps exactly onto the two switches: Merchant suggestions on, Sort automatically
+  on (`MerchantSuggestionsSetting.turnOnForFirstImport`). Profile › Cloud suggestions
+  shows them, and a note while the first-import sort runs. Turning Merchant suggestions
+  off there ends it at once. Turning Sort automatically off keeps sending, but nothing
+  more is filed without review. Turning the switches on in Profile later does not start
+  a first-import sort.
+- The sort (`CoreDomain/FirstImportSort`, run by `FirstImportSorter` in the app):
+  - Rules and the dictionary still go first: it reads the same model queue as the
+    foreground sweep (`Sweep.plan`), with the same eligibility (a debit with no category,
+    source not user or held) and the same card-template allowlist (`cloudTemplates`).
+  - Clef only. It never runs Apple's model, so the D1 order holds: once it ends, the
+    foreground sweep runs Clef and then Apple's model, as before, and finds the Clef
+    `unknown` answers in the cache.
+  - One request per distinct merchant string. Answers are kept in memory for the run, so
+    rows that load later with the same merchant are filed from the same answer without a
+    second request. `unknown` answers go to the FM cache as before.
+  - At most 10 requests a pass (`ModelTier.Context.firstImport`: 10 calls, 30 s, 6 s per
+    call), passes at least 30 s apart, so one iPhone sends at most 20 a minute, under the
+    Worker's `PER_IP` 30 per 60 s. At most 400 requests in all per device (2 to 4 US
+    cents at the measured and estimated costs), counted across relaunches.
+  - Caps: a 429 waits 1, 3 and 10 minutes, then the sort ends. A 503 (the gateway's
+    spend limit, or the model gone), a refusal, or the switch going off ends it at once.
+    Rows simply stay in review.
+  - It runs only while the app is in the foreground, off the main actor, and never holds
+    up the import or a screen. New rows from the import wake it. It ends when nothing is
+    left to ask and the import has finished, when a cap ends it, or three days after it
+    started.
+  - Idempotent: it re-reads the rows before authoring and authors only rows still
+    eligible at the same version, as the foreground sweep does. A row the person edited
+    meanwhile is left alone. The foreground sweep and the first-import sort share one
+    gate, so they never author over each other, and the foreground sweep pauses while the
+    first-import sort is active. If the app is killed, the next launch resumes from the
+    saved start time and request count; filed rows are no longer eligible, and cached
+    names are not asked again.
+- What leaves the phone is unchanged: one canonical merchant string and the built-in
+  categories per request, from card-payment alerts only.
+
 ## The switches
 
 - Profile › **Cloud suggestions**, with two switches: **Merchant suggestions**
   and **Alert reading help**. Both off by default, on every device separately (they're
-  device settings, like Hide amounts, and never sync).
+  device settings, like Hide amounts, and never sync). Setup's first-import screen is
+  the one other place that turns Merchant suggestions and Sort automatically on (see
+  [Sorting the first import](#sorting-the-first-import-owner-decision-2026-10-20)).
 - Turning one on shows one screen first: what is sent, an example of a request, that
   Cloudflare answers and keeps nothing, that the IP address is visible to Cloudflare, and
   that turning it off stops it at once. The switch turns on only from that screen's

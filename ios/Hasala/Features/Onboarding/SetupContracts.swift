@@ -129,6 +129,13 @@ protocol SetupAuthoring: AnyObject {
   func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure)
 }
 
+@MainActor
+protocol CloudSortOffering: AnyObject {
+  var isOffered: Bool { get }
+  var isOn: Bool { get }
+  func turnOn()
+}
+
 /// Notification permission (spec 04 §9.3). Notifications are generic by default (PO-7).
 @MainActor
 protocol NotificationPermissionAsking: AnyObject {

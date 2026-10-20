@@ -43,6 +43,9 @@ struct DoneStep: View {
       let p = model.plan
       lines.append("\(model.today.yearMonth.name) plan ready, starting at \(p.needsPercent)/\(p.wantsPercent)/\(p.savingsPercent)")
     }
+    if model.cloudSortOn {
+      lines.append("Merchants Hasala doesn't know go to Cloudflare AI")
+    }
     lines.append("Synced, end-to-end encrypted")
     lines.append(model.showDetails ? "Lock Screen shows amounts and merchants" : "Lock Screen shows no amounts or names")
     return lines

@@ -101,7 +101,10 @@ private struct SortBreakdownCard: View {
         }
       }
       Rectangle().fill(HColor.borderSubtle).frame(height: 1).accessibilityHidden(true)
-      Text("From now on your own rules go first. Nothing was sent to an AI service.")
+      Text(
+        MerchantSuggestionsSetting.isEnabled()
+          ? "From now on your own rules go first. Merchant names the list can't place go to Cloudflare's AI."
+          : "From now on your own rules go first. Nothing was sent to an AI service.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
