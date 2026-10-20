@@ -15,11 +15,13 @@
 // Match blocks are each other's complement:
 //
 //	dib.card.v1     body_contains:     ["إشعار مشتريات"]
-//	dib.account.v1  body_not_contains: ["إشعار مشتريات"]
+//	dib.account.v1  body_not_contains: ["إشعار مشتريات", ...]
 //
-// The pair is total and disjoint by construction: every DIB message reaches
-// exactly one of them, which is what makes them equivalent to the branch rather
-// than merely similar to it.
+// The pair is disjoint by construction, which is what makes them equivalent to
+// the branch rather than merely similar to it. DIB's transfer notices, which v1
+// never read, have their own templates (dib.transfer.v1 in Arabic,
+// dib.money-transfer.v1 in English); dib.account.v1 excludes them, and a
+// notice whose status is not completed reaches no template.
 //
 // # The Arabic anchors are copied, never typed
 //
@@ -65,6 +67,8 @@ var files embed.FS
 var IDs = []string{
 	"dib.card.v1",
 	"dib.account.v1",
+	"dib.transfer.v1",
+	"dib.money-transfer.v1",
 	"enbd.transfer.v1",
 	"enbd.alert.v1",
 	"adib.alert.v1",

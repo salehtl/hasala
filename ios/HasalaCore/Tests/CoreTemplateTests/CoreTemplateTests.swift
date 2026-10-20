@@ -339,7 +339,11 @@ struct BundledTemplateTests {
   func bundle() throws {
     let r = BundledTemplates.load()
     #expect(r.skipped == [])
-    #expect(r.templates.map(\.definition.id) == ["adib.account.v1", "adib.alert.v1", "dib.account.v1", "dib.card.v1", "enbd.alert.v1", "enbd.transfer.v1"])
+    #expect(
+      r.templates.map(\.definition.id) == [
+        "adib.account.v1", "adib.alert.v1", "dib.account.v1", "dib.card.v1", "dib.money-transfer.v1", "dib.transfer.v1",
+        "enbd.alert.v1", "enbd.transfer.v1",
+      ])
     let seed = repoRoot().appendingPathComponent("server/internal/tmpl/seed")
     let seedFiles = try FileManager.default.contentsOfDirectory(atPath: seed.path).filter { $0.hasSuffix(".json") }.sorted()
     #expect(seedFiles == TemplatesManifest.entries.map(\.file))

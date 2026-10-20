@@ -17,6 +17,9 @@
       "body_contains": [
         "إشعار تحويل الأموال",
         "الحالة\nتمت بنجاح"
+      ],
+      "body_not_contains": [
+        "إشعار مشتريات"
       ]
     },
     "default_currency": "AED",
@@ -27,7 +30,7 @@
         "type": "amount",
         "source": "body",
         "patterns": [
-          "المبلغ\\n(?:\\(يشمل [0-9]{1,2}% ضريبة القيمة المضافة\\)\\n)?(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})(?:[^0-9]|$)"
+          "المبلغ\\n(?:\\(يشمل [0-9]% ضريبة القيمة المضافة\\)\\n)?(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})(?:[^0-9]|$)"
         ]
       },
       {
@@ -53,7 +56,7 @@
         "field": "merchant",
         "type": "const",
         "source": "body",
-        "value": "DIB OWN ACCOUNTS TRANSFER",
+        "value": "DIB OWN ACCOUNT TRANSFER",
         "patterns": [
           "بين حساباتك"
         ]
@@ -104,7 +107,7 @@
         "currency": "AED",
         "direction": "debit",
         "posted_at": "2026-06-05T00:00:00Z",
-        "merchant": "DIB OWN ACCOUNTS TRANSFER",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
         "last4": "2301",
         "is_transfer": true,
         "empty_groups": []
@@ -158,7 +161,7 @@
         "currency": "AED",
         "direction": "debit",
         "posted_at": "2026-06-05T00:00:00Z",
-        "merchant": "DIB OWN ACCOUNTS TRANSFER",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
         "last4": "2301",
         "is_transfer": true,
         "empty_groups": []
@@ -201,6 +204,78 @@
       }
     },
     {
+      "name": "dib.transfer.v1/rendered-within-dib",
+      "source": "SYNTHETIC: the layout a mail app renders: no VAT line, no account-name line and no reference line between the details",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2K3Ys9in2KjYp9iqINii2K7YsdmJINiv2KfYrtmEINin2YTYqNmG2YMg2KjYqtin2LHZitiuIDE0LTAzLTIwMzEgMDY6Mjkg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDMxNDEuNTkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTk4N1hYWFgwMQrYp9mE2YkKMDAxLTAwMC02NTRYWFhYMDMK2KfZhNit2KfZhNipCtiq2YXYqiDYqNmG2KzYp9itCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "314159",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2031-03-14T00:00:00Z",
+        "merchant": "DIB TRANSFER",
+        "last4": "8701",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.transfer.v1/rendered-own-accounts",
+      "source": "SYNTHETIC: the rendered layout between the customer's own accounts",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjYqtin2LHZitiuIDE0LTAzLTIwMzEgMDY6Mjkg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDMxNDEuNTkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTk4N1hYWFgwMQrYp9mE2YkKMDAxLTAwMC02NTRYWFhYMDMK2KfZhNit2KfZhNipCtiq2YXYqiDYqNmG2KzYp9itCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "314159",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2031-03-14T00:00:00Z",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
+        "last4": "8701",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.transfer.v1/rendered-other-uae-bank",
+      "source": "SYNTHETIC: the rendered layout to another UAE bank",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2KjZhtmDINii2K7YsSDYr9in2K7ZhCDYp9mE2K/ZiNmE2Kkg2KjYqtin2LHZitiuIDE0LTAzLTIwMzEgMDY6Mjkg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDMxNDEuNTkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTk4N1hYWFgwMQrYp9mE2YkKQUUwMDAwMDAwMDAwMDAwMDAwMDAwMDIK2KfZhNio2YbZgyDYp9mE2YXYs9iq2YHZitivCnNhbXBsZSBiYW5rIHVhZQrYp9mE2K3Yp9mE2KkK2KrZhdiqINio2YbYrNin2K0K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "314159",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2031-03-14T00:00:00Z",
+        "merchant": "sample bank uae",
+        "last4": "8701",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.transfer.v1/rendered-pending",
+      "source": "SYNTHETIC: a pending notice in the rendered layout is not gated in either",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2K3Ys9in2KjYp9iqINii2K7YsdmJINiv2KfYrtmEINin2YTYqNmG2YMg2KjYqtin2LHZitiuIDE0LTAzLTIwMzEgMDY6Mjkg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDMxNDEuNTkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTk4N1hYWFgwMQrYp9mE2YkKMDAxLTAwMC02NTRYWFhYMDMK2KfZhNit2KfZhNipCtmC2YrYryDYp9mE2KPZhtiq2LjYp9ixCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
       "name": "dib.transfer.v1/foreign-currency",
       "source": "SYNTHETIC: the ccy group wins over default_currency",
       "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
@@ -220,7 +295,7 @@
     },
     {
       "name": "dib.transfer.v1/pending",
-      "source": "SYNTHETIC: a pending notice is not gated in: the transfer is not done, and the completed notice for the same transfer follows",
+      "source": "SYNTHETIC: a pending notice is not gated in: the transfer is not done yet, so it stays in review",
       "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
       "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2KjZhtmDINii2K7YsSDYr9in2K7ZhCDYp9mE2K/ZiNmE2Kkg2KjYqtin2LHZitiuIDIwMjYtMDYtMDUgMTE6MTI6MTMg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKKNmK2LTZhdmEIDUlINi22LHZitio2Kkg2KfZhNmC2YrZhdipINin2YTZhdi22KfZgdipKQpBRUQgNDMyMS4wOQrZhdmGINit2LPYp9ioCjAwMS0wMDAtMTIzWFhYWDAxCltGcm9tIEFjY291bnQgRlJNXQrYp9mE2YkKQUUwMDAwMDAwMDAwMDAwMDAwMDAwMDEK2KfZhNio2YbZgyDYp9mE2YXYs9iq2YHZitivCnNhbXBsZSBiYW5rIHVhZQrYp9mE2K3Yp9mE2KkK2YLZitivINin2YTYo9mG2KrYuNin2LEK2KfZhNix2YLZhSDYp9mE2YXYsdis2LnZigpbUmVmZXJlbmNlIE51bWJlcl0K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
       "expect": {
@@ -266,7 +341,7 @@
         "currency": "AED",
         "direction": "debit",
         "posted_at": "",
-        "merchant": "DIB OWN ACCOUNTS TRANSFER",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
         "last4": "2301",
         "is_transfer": true,
         "empty_groups": []
@@ -284,7 +359,7 @@
         "currency": "",
         "direction": "debit",
         "posted_at": "2026-06-05T00:00:00Z",
-        "merchant": "DIB OWN ACCOUNTS TRANSFER",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
         "last4": "2301",
         "is_transfer": true,
         "empty_groups": []

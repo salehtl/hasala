@@ -740,15 +740,20 @@ func between(s, before, after string) (string, bool) {
 }
 
 // TestDIBSeedsPartitionEveryDIBMessage pins the property that makes two
-// templates equivalent to v1's one `isCard` branch: the Match blocks are
-// complements, so no DIB message can reach both and none can reach neither.
+// templates equivalent to v1's one `isCard` branch: card requires the literal
+// account excludes, so no DIB message can reach both. Every other pair of DIB
+// templates is disjoint the same way, by construction.
 //
 // The gate's `ambiguous` counter would catch a real message hitting both, but
 // only if the corpus happens to contain one. This holds with no corpus at all.
 func TestDIBSeedsPartitionEveryDIBMessage(t *testing.T) {
-	defs := Seed()
+	var dib []tmpl.Definition
 	var card, account tmpl.Definition
-	for _, d := range defs {
+	for _, d := range Seed() {
+		if d.Bank != "dib" {
+			continue
+		}
+		dib = append(dib, d)
 		switch d.ID {
 		case "dib.card.v1":
 			card = d
@@ -756,16 +761,34 @@ func TestDIBSeedsPartitionEveryDIBMessage(t *testing.T) {
 			account = d
 		}
 	}
-	if len(card.Match.BodyContains) != 1 || len(account.Match.BodyNotContains) != 1 {
-		t.Fatalf("the DIB pair is no longer one body_contains against one body_not_contains: %+v / %+v",
+	if len(dib) != 4 {
+		t.Fatalf("%d DIB seeds; this test names the card, account and two transfer-notice templates", len(dib))
+	}
+	if len(card.Match.BodyContains) != 1 || len(card.Match.BodyNotContains) != 0 || len(account.Match.BodyContains) != 0 {
+		t.Fatalf("the DIB pair is no longer one body_contains against body_not_contains: %+v / %+v",
 			card.Match, account.Match)
 	}
-	if card.Match.BodyContains[0] != account.Match.BodyNotContains[0] {
-		t.Errorf("the DIB pair no longer partitions: card requires %q, account excludes %q",
-			card.Match.BodyContains[0], account.Match.BodyNotContains[0])
+	excludes := func(a, b tmpl.Definition) bool {
+		for _, want := range a.Match.BodyContains {
+			for _, not := range b.Match.BodyNotContains {
+				if want == not {
+					return true
+				}
+			}
+		}
+		return false
 	}
-	if len(card.Match.BodyNotContains) != 0 || len(account.Match.BodyContains) != 0 {
-		t.Error("a second content gate on either DIB template breaks the partition")
+	if !excludes(card, account) {
+		t.Errorf("the DIB pair no longer partitions: card requires %q, account excludes %q",
+			card.Match.BodyContains, account.Match.BodyNotContains)
+	}
+	for i := range dib {
+		for j := i + 1; j < len(dib); j++ {
+			if !excludes(dib[i], dib[j]) && !excludes(dib[j], dib[i]) {
+				t.Errorf("%s and %s can claim the same message: neither requires a literal the other excludes",
+					dib[i].ID, dib[j].ID)
+			}
+		}
 	}
 }
 

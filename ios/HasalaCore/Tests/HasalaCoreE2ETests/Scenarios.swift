@@ -244,6 +244,83 @@ enum Scenarios {
     #expect(try a.reader.activity(limit: 1_000).count + (try a.reader.review(lanes: ReviewLane.allCases).filter(\.unparsed).count) == count)
   }
 
+  static func dibTransferNotices(_ a: Runtime, _ b: Runtime, clock: any CoreTime.Clock) async throws {
+    let day: Int64 = 86_400_000
+    let now = clock.nowMs()
+    try await a.bootstrap()
+    #expect(await a.run(.authored).stop == nil)
+    let gmail = FakeGmail()
+    let t1 = now - day
+    gmail.add(SyntheticMail.dibTransferNotice(id: "t1", day: dibDay(t1), dateMs: t1))
+    gmail.add(SyntheticMail.dibDebitAlert(id: "x1", day: dibDay(t1 + 180_000), dateMs: t1 + 180_000))
+    let t2 = now - day / 2
+    gmail.add(SyntheticMail.dibTransferNotice(id: "t2", amount: "2718.28", day: dibDay(t2), dateMs: t2))
+    gmail.add(
+      SyntheticMail.dibTransferNotice(id: "t3", amount: "1414.21", day: dibDay(t2 + 60_000), status: "قيد التنفيذ", dateMs: t2 + 60_000))
+    let (engine, ledger) = mailbox(a, gmail: gmail, clock: clock)
+    try await ledger.authorSenderTrust(domain: "dib.ae", trusted: true)
+    guard case .connected = await engine.connect(presenter: ConsentPresenter(gmail: gmail), backfillDays: 30) else {
+      Issue.record("connect")
+      return
+    }
+    let done = await engine.runCycle(trigger: .launch)
+    #expect(done.ops == 4 && done.haltedOn == nil, "\(done)")
+
+    #expect(await b.run(.launch).stop == nil)
+    let rows = try b.reader.activity(limit: 50)
+    let notice = try #require(rows.first { $0.mailboxMessageID == "t1" })
+    let alert = try #require(rows.first { $0.mailboxMessageID == "x1" })
+    #expect(notice.direction == "debit" && notice.amountMinor == 314_159 && alert.amountMinor == 314_159)
+    let held = [notice, alert].filter(\.heldCopy)
+    #expect(held.count == 1 && held.first?.copyOf == [notice, alert].first { !$0.heldCopy }?.id)
+    let other = try #require(rows.first { $0.mailboxMessageID == "t2" })
+    #expect(!other.heldCopy && other.direction == "debit" && other.amountMinor == 271_828)
+    #expect(try b.reader.review(lanes: [.copy]).map(\.id) == held.map(\.id))
+    #expect(try b.reader.review(lanes: ReviewLane.allCases).contains { $0.mailboxMessageID == "t3" && $0.unparsed })
+    #expect(try await a.state().serialized() == b.state().serialized())
+  }
+
+  static func realDIBMail(_ a: Runtime, clock: any CoreTime.Clock, root: URL) async throws {
+    let dir = root.appendingPathComponent("server/internal/origin/testdata", isDirectory: true)
+    let manifest = try JSONParser.parse([UInt8](try Data(contentsOf: dir.appendingPathComponent("manifest.json"))))
+    try await a.bootstrap()
+    #expect(await a.run(.authored).stop == nil)
+    let gmail = FakeGmail()
+    var added = 0
+    for f in manifest["fixtures"]?.arrayValue ?? [] where f["dkim_d"]?.stringValue == "dib.ae" {
+      guard let name = f["file"]?.stringValue, let received = f["received_at"]?.stringValue else { continue }
+      let ms = try parseInstantMs(received)
+      guard ms >= clock.nowMs() - 89 * 86_400_000 else { continue }
+      let raw = [UInt8](try Data(contentsOf: dir.appendingPathComponent(name)))
+      let lines = String(decoding: raw.prefix(64 * 1024), as: UTF8.self)
+        .split(omittingEmptySubsequences: false, whereSeparator: { $0.isNewline })
+      let header = lines.prefix { !$0.isEmpty }
+      let from = header.first { $0.lowercased().hasPrefix("from:") }
+        .map { String($0.dropFirst(5)).trimmingCharacters(in: .whitespaces) } ?? ""
+      gmail.add(FakeGmail.Message(id: name, raw: raw, internalDateMs: ms, from: from))
+      added += 1
+    }
+    #expect(added >= 3)
+    let (engine, ledger) = mailbox(a, gmail: gmail, clock: clock)
+    try await ledger.authorSenderTrust(domain: "dib.ae", trusted: true)
+    guard case .connected = await engine.connect(presenter: ConsentPresenter(gmail: gmail), backfillDays: 90) else {
+      Issue.record("connect")
+      return
+    }
+    let done = await engine.runCycle(trigger: .launch)
+    #expect(done.ops == added && done.haltedOn == nil, "\(done)")
+    let rows = try a.reader.activity(limit: 50)
+    #expect(rows.count == added)
+    let held = rows.filter(\.heldCopy)
+    #expect(held.count == 1)
+    let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+    for h in held {
+      let other = try #require(h.copyOf.flatMap { byID[$0] })
+      #expect(h.amountMinor == other.amountMinor && h.direction == "debit" && other.direction == "debit")
+      #expect(h.mailboxMessageID != other.mailboxMessageID)
+    }
+  }
+
   static func gmailToReplay(_ a: Runtime, _ b: Runtime, clock: any CoreTime.Clock) async throws {
     let day: Int64 = 86_400_000
     let now = clock.nowMs()
