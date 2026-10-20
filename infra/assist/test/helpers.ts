@@ -23,7 +23,7 @@ export const BODY = {
 
 export interface Fakes {
   env: Env;
-  aiCalls: { model: string; input: unknown }[];
+  aiCalls: { model: string; input: unknown; options: unknown }[];
   limitCalls: { binding: string; key: string }[];
 }
 
@@ -34,14 +34,15 @@ export function fakes(
     perIp?: boolean;
     global?: boolean;
     refused?: string;
+    gateway?: string;
   } = {},
 ): Fakes {
   const aiCalls: Fakes["aiCalls"] = [];
   const limitCalls: Fakes["limitCalls"] = [];
   const env: Env = {
     AI: {
-      async run(model, input) {
-        aiCalls.push({ model, input });
+      async run(model, input, options) {
+        aiCalls.push({ model, input, options });
         if (opts.aiThrows) throw new Error("model down");
         return opts.answer === undefined ? OK_ANSWER : opts.answer;
       },
@@ -59,6 +60,7 @@ export function fakes(
       },
     },
     REFUSED_CLIENTS: opts.refused ?? "",
+    AI_GATEWAY: opts.gateway ?? "hasala-assist",
   };
   return { env, aiCalls, limitCalls };
 }

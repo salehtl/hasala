@@ -44,8 +44,11 @@ The body is at most 8 KiB (8192 bytes). A larger body gets 413.
 - A string with a lone UTF-16 surrogate, or a body that is not valid UTF-8,
   gets 400.
 
-The Worker calls `env.AI.run("@cf/cloudflare/clef", body)` once and waits for
-the answer. It does not use the queue, batches or AI Gateway. The body:
+The Worker calls `env.AI.run("@cf/cloudflare/clef", body, options)` once and
+waits for the answer. It does not use the queue or batches. `options` is always
+`{ gateway: { id: <AI_GATEWAY>, skipCache: true, collectLog: false } }`: the
+call goes through the AI Gateway named by the `AI_GATEWAY` variable, with its
+cache and its log off for this request (refer to "Spend cap" below). The body:
 
 ```json
 {
@@ -94,10 +97,11 @@ Errors are `{"error": "<code>"}`:
 | 413 | `too_large` | The body is larger than 8 KiB. |
 | 429 | `rate_limited` | The global limit or the per-IP limit, or a limiter error. |
 | 502 | `bad_model_answer` | The model answer has no category, a `choice` outside the request, or no `probabilities`. |
-| 503 | `model_unavailable` | The AI call threw. |
+| 503 | `model_unavailable` | The AI call threw (also when the gateway refuses it because the spend limit is reached), or `AI_GATEWAY` is empty. |
 
 The checks occur in this sequence: path, method, `Hasala-Client`,
-`REFUSED_CLIENTS`, content type, size, body, `PER_IP`, `GLOBAL`, the model.
+`REFUSED_CLIENTS`, content type, size, body, `PER_IP`, `GLOBAL`, `AI_GATEWAY`,
+the model.
 Only a valid request uses a rate-limit token. A request that `PER_IP` refuses
 does not use a `GLOBAL` token.
 
@@ -112,8 +116,8 @@ It is empty by default. Use it to stop a build that sends bad requests.
 `wrangler.jsonc` has only these bindings: `AI`, the rate limiters `PER_IP`
 (30 per 60 s, keyed on the `cf-connecting-ip` address for IPv4 and on its
 /64 for IPv6) and `GLOBAL` (600 per 60 s, key
-`global`), and the variable `REFUSED_CLIENTS`. The limits apply per Cloudflare
-location. The Worker never logs or returns the IP address.
+`global`), and the variables `REFUSED_CLIENTS` and `AI_GATEWAY`. The limits
+apply per Cloudflare location. The Worker never logs or returns the IP address.
 
 Observability and Logpush are off. `workers.dev` and preview URLs are off.
 
@@ -123,9 +127,38 @@ Observability and Logpush are off. `workers.dev` and preview URLs are off.
   Analytics Engine, service bindings, tail consumers, Hyperdrive, Workflows,
   an `env` override, or any other binding.
 - `logpush` is not `false`, or `observability.enabled` is not `false`.
-- `gateway` occurs in `wrangler.jsonc` or in `src/`.
+- `gateway` occurs in `wrangler.jsonc` other than in the variable
+  `"AI_GATEWAY": "hasala-assist"`.
+- `gateway` occurs in `src/` other than in the exact allowed lines: the
+  `AI_GATEWAY` variable, the empty-id check and the options
+  `{ gateway: { id: gatewayId, skipCache: true, collectLog: false } }`.
+- `src/` has `cacheTtl`, `cacheKey`, `metadata`, `eventId`, a `cf-aig-` header,
+  `collectLog: true`, `skipCache: false` or the gateway id `"default"`.
 - `src/` has a `console.` call, `queueRequest`, `batch`, an outbound `fetch`,
   or the Cache API.
+
+## Spend cap
+
+The rate limits count per Cloudflare location, so they do not cap the total
+cost. The cap is the AI Gateway `hasala-assist` (`AI_GATEWAY`): a spend limit
+on that gateway makes it refuse each request until the window resets. The
+binding then throws, and the Worker answers 503 `model_unavailable`. The app
+treats 503 as busy and stops the cloud stage of that sweep. The cap is
+account-wide and fails closed. It is an estimate from token counts, and a burst
+of concurrent requests can go a little over it.
+
+The gateway is allowed only with its logs off and its cache off:
+
+- Each request sends `collectLog: false` and `skipCache: true`. The request
+  value has priority over the gateway setting, thus a gateway with logs on
+  still keeps no log of these requests.
+- The gateway setting is also off (refer to "Deployment"), so that nothing
+  else that uses the gateway keeps a log.
+- Do not use the gateway id `default`. Cloudflare makes that gateway on the
+  first request, with logs on.
+
+The gateway analytics keep counts, tokens, cost and errors for each model. They
+do not keep the merchant name, the categories or the answer.
 
 ## Tests
 
@@ -151,6 +184,21 @@ Before the first deployment:
    must have Workers Scripts edit and Workers Routes edit on `hasala.app`.
 3. Confirm the Workers AI data-usage terms for Clef in the dashboard. Do this
    before a tester who is not a developer uses cloud suggestions.
+4. Make the AI Gateway before the deployment. Without it, each model call
+   fails and the Worker answers 503.
+   1. In the dashboard: AI > AI Gateway > Create gateway. Name it
+      `hasala-assist` (the value of `AI_GATEWAY`).
+   2. In its Settings: turn off Logs (collect logs), turn off Cache, and keep
+      Authenticated Gateway off (the Worker binding needs no token).
+   3. In its Settings: set Workers AI billing to Unified billing, so that spend
+      limits count Workers AI requests.
+   4. In Settings > Spend limits: add one rule with no dimensions (all
+      traffic), for example $5 per day, fixed window. Spend limits count only
+      models with known pricing: after the deployment, send one request and
+      confirm that the gateway analytics show a cost for
+      `@cf/cloudflare/clef`. To test the cap, set the limit to $0.01, send
+      requests until the Worker answers 503, then set it back.
+   5. Optional: keep the Workers AI billing alert as a second warning.
 
 Deploy from the devShell. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
 come from the environment. Do not put them in a file in this repository.

@@ -9,7 +9,7 @@ import {
 } from "./contract";
 
 export interface AiBinding {
-  run(model: string, input: unknown): Promise<unknown>;
+  run(model: string, input: unknown, options: { gateway: { id: string; skipCache: true; collectLog: false } }): Promise<unknown>;
 }
 
 export interface RateLimiter {
@@ -21,6 +21,7 @@ export interface Env {
   PER_IP: RateLimiter;
   GLOBAL: RateLimiter;
   REFUSED_CLIENTS?: string;
+  AI_GATEWAY?: string;
 }
 
 const PATH = "/v1/category";
@@ -137,9 +138,12 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (!(await allowed(env.PER_IP, ipKey(request.headers.get("cf-connecting-ip"))))) return error(429, "rate_limited");
   if (!(await allowed(env.GLOBAL, "global"))) return error(429, "rate_limited");
 
+  const gatewayId = (env.AI_GATEWAY ?? "").trim();
+  if (gatewayId === "") return error(503, "model_unavailable");
+
   let result: unknown;
   try {
-    result = await env.AI.run(MODEL, clefBody(suggestion));
+    result = await env.AI.run(MODEL, clefBody(suggestion), { gateway: { id: gatewayId, skipCache: true, collectLog: false } });
   } catch {
     return error(503, "model_unavailable");
   }

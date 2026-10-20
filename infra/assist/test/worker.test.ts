@@ -293,6 +293,54 @@ describe("errors", () => {
   });
 });
 
+describe("AI Gateway", () => {
+  test("every model call goes through the configured gateway with logging and cache off", async () => {
+    const f = fakes();
+    const r = await call(f, request(BODY));
+    expect(r.status).toBe(200);
+    expect(f.aiCalls.length).toBe(1);
+    expect(f.aiCalls[0]!.options).toEqual({ gateway: { id: "hasala-assist", skipCache: true, collectLog: false } });
+  });
+  test("the gateway id is trimmed", async () => {
+    const f = fakes({ gateway: "  other-gw \n" });
+    await call(f, request(BODY));
+    expect(f.aiCalls[0]!.options).toEqual({ gateway: { id: "other-gw", skipCache: true, collectLog: false } });
+  });
+  test("a missing or blank gateway id is 503 and the model is not called", async () => {
+    for (const gateway of ["", "   "]) {
+      const f = fakes({ gateway });
+      const r = await call(f, request(BODY));
+      expect(r.status).toBe(503);
+      expect(r.body).toEqual({ error: "model_unavailable" });
+      expect(f.aiCalls.length).toBe(0);
+    }
+    const f = fakes();
+    delete f.env.AI_GATEWAY;
+    const r = await call(f, request(BODY));
+    expect(r.status).toBe(503);
+    expect(f.aiCalls.length).toBe(0);
+  });
+  test("a gateway refusal (spend limit reached) is 503", async () => {
+    const f = fakes();
+    f.env.AI = {
+      async run() {
+        throw new Error("AiError: 429: spend limit exceeded");
+      },
+    };
+    const r = await call(f, request(BODY));
+    expect(r.status).toBe(503);
+    expect(r.body).toEqual({ error: "model_unavailable" });
+  });
+  test("a request that a rate limit refuses never reaches the gateway", async () => {
+    for (const opts of [{ perIp: false }, { global: false }]) {
+      const f = fakes(opts);
+      const r = await call(f, request(BODY));
+      expect(r.status).toBe(429);
+      expect(f.aiCalls.length).toBe(0);
+    }
+  });
+});
+
 describe("refused clients", () => {
   test("an exact listed version is 403", async () => {
     const f = fakes({ refused: "ios/1.2.0, ios/1.4.0" });

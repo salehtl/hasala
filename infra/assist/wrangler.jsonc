@@ -13,5 +13,5 @@
     { "name": "PER_IP", "namespace_id": "41201", "simple": { "limit": 30, "period": 60 } },
     { "name": "GLOBAL", "namespace_id": "41202", "simple": { "limit": 600, "period": 60 } }
   ],
-  "vars": { "REFUSED_CLIENTS": "" }
+  "vars": { "REFUSED_CLIENTS": "", "AI_GATEWAY": "hasala-assist" }
 }
