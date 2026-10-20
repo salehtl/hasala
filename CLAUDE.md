@@ -100,14 +100,11 @@ CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
 push to `main`. You can also start it manually (`workflow_dispatch`). CI does
 not have the private fixtures.
 
-The last job, `ci-ok`, needs all jobs except the `ios` shards and
-`ios-main-red`: `changes`, `gate`, `vuln`, `secrets`, `swift`, `ios-build`,
-`ios-tools`, `web` and `nixos-vm`. It always runs. It fails if one of these
-jobs failed or was cancelled. It passes when each one succeeded or was
-skipped. `ci-ok` is the required check that the ruleset must name. On an
-older push to `main`, a Mac job that a newer push cancelled makes `ci-ok`
-fail. Until the owner changes the ruleset, the ruleset names these three
-jobs:
+The last job, `ci-ok`, needs only the fast jobs: `changes`, `gate`, `vuln`
+and `secrets`. It always runs. It fails if one of these jobs failed or was
+cancelled. It passes when each one succeeded or was skipped. `ci-ok` is the
+required check that the ruleset must name. Until the owner changes the
+ruleset, the ruleset names these three jobs:
 
 - `gate`: first `nix flake check --no-build`, then a build of each check
   except `qa-vm`, then `scripts/check.sh` in the devShell. In CI,
@@ -120,14 +117,15 @@ jobs:
   then gitleaks on the full history.
 
 Do not change these job names or the name `ci-ok`. The required status
-checks find the jobs by their names. When `ci-ok` is the only required check,
-add each new job to its `needs`.
+checks find the jobs by their names. Add a new job to the `needs` of `ci-ok`
+only when it is fast and it must stop a merge. Do not add the slow jobs
+(the Mac jobs, `web` and `nixos-vm`).
 
-These jobs are not required checks by name, but `ci-ok` needs them: `swift`
-(HasalaCore on a Mac), `ios-build` and `ios-tools` (the app on a Mac, refer
-to "The iOS app" below), `web` (the website, refer to "Website") and
-`nixos-vm` (it builds `checks.x86_64-linux.qa-vm` with KVM). The `ios` shards
-are not required and `ci-ok` does not need them.
+These jobs are slow. They are not required, and `ci-ok` does not need them,
+thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-build`,
+`ios` and `ios-tools` (the app on a Mac, refer to "The iOS app" below), `web`
+(the website, refer to "Website") and `nixos-vm` (it builds
+`checks.x86_64-linux.qa-vm` with KVM).
 
 At most five Mac jobs run at the same time in one run (the account limit).
 
@@ -362,8 +360,8 @@ CI for iOS:
   `ios/scripts/tests/run.sh` and shellcheck on `ios/scripts`. It runs
   `ios/scripts/tests/devshell_test.sh` only when `ios/scripts/` or the flake
   changed.
-- `ios-build`, `ios` and `ios-tools` are not required checks, but `ci-ok`
-  needs `ios-build` and `ios-tools`. CI skips them on the same paths. On
+- `ios-build`, `ios` and `ios-tools` are not required checks, and `ci-ok`
+  does not need them. CI skips them on the same paths. On
   `main`, `ios-main-red` keeps the `ci-main-red` issue (refer to "CI").
   `ios` runs only when `ios-build` succeeded.
 

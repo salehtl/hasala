@@ -910,7 +910,7 @@ jobs:
           retention-days: 14
 
   ci-ok:
-    needs: [changes, gate, nixos-vm, vuln, secrets, ios-tools, ios-build, swift, web]
+    needs: [changes, gate, vuln, secrets]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
