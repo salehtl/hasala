@@ -727,7 +727,7 @@ struct CardsPage: View {
                   secondaryTitle: "Remind me", hidden: hidden, onPrimary: {}, onSecondary: {})
         BriefCard(hue: .sky, icon: .monitor, label: "To review", status: StatusPill("2 new today", tone: .accent),
                   figure: .count(6, unit: "to sort"), title: "Sort new transactions",
-                  body: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" isn't in your plan yet")]),
+                  body: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" still to check")]),
                   primaryTitle: "Start", secondaryTitle: "Later", secondaryWidth: 88, poster: .tall120,
                   width: HContainer.briefCard, hidden: hidden, onPrimary: {}, onSecondary: {})
       }

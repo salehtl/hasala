@@ -110,7 +110,7 @@ public struct ToReviewWidget: Sendable, Hashable, Codable {
   public var caption: MoneyPhrase {
     count == 0
       ? "Nothing to sort"
-      : MoneyPhrase([.amount(notCounted, .rounded, hidden: 3), .text(" not counted yet")])
+      : MoneyPhrase([.amount(notCounted, .rounded, hidden: 3), .text(" still to check")])
   }
 }
 

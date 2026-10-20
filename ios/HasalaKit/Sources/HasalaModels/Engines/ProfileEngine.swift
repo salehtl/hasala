@@ -45,7 +45,7 @@ public struct RuleRowModel: Sendable, Hashable, Identifiable {
 
 public enum ProfileEngine {
   public static func snapshot(_ s: LedgerState, now: LocalDateTime) -> ProfileSnapshot {
-    let netWorth = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
+    let netWorth = Money.homeTotal(s.accounts.map(\.balance))
     let tracked = s.bills.filter { $0.state == .tracked }.count
     let found = s.billCandidates.count
     let categories = s.categories.filter { !$0.archived }.count

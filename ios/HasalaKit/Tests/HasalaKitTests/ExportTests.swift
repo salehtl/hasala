@@ -27,8 +27,8 @@ struct CSVExportTests {
     let s = MayaLedger.state
     let rows = s.txns.filter { $0.id == "carrefour" }.map { ExportRow($0, s) }
     let csv = CSVExport.csv(rows)
-    #expect(csv == "Date,Description,Amount,Currency,Direction,Category,Merchant,Note,Project,Account\r\n"
-      + "2026-10-09,CARREFOUR MALL OF EMIRATES,-342.15,AED,Spending,Groceries,Carrefour,,,Emirates NBD ···4412\r\n")
+    #expect(csv == "Date,Description,Amount,Currency,AED amount,Direction,Category,Merchant,Note,Project,Account\r\n"
+      + "2026-10-09,CARREFOUR MALL OF EMIRATES,-342.15,AED,-342.15,Spending,Groceries,Carrefour,,,Emirates NBD ···4412\r\n")
     #expect(CSVExport.fileName(MayaLedger.now.date) == "hasala-2026-10-10.csv")
   }
 }

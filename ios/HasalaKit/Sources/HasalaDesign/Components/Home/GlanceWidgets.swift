@@ -47,7 +47,7 @@ public struct SpentSoFarWidgetView: View {
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 0) {
           MoneyText(model.spent, figure: .widget, style: .rounded, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 24,
-                    color: HColor.widgetOnInverse)
+                    color: HColor.widgetOnInverse, sign: model.spent.isNegative ? .debt : .none)
           HStack(spacing: 6) {
             Circle().fill(model.verdict.onInkColor).frame(width: 7, height: 7)
             Text(model.caption.rendered(hidden: hidden)).privacySensitive()

@@ -53,7 +53,7 @@ public enum InsightsEngine {
       let carvedOut = s.project(t.projectID).map { !$0.countInPlan } ?? false
       let parts: [(category: CategoryID, minor: Int64, signed: Int64)] = t.splits.isEmpty
         ? (t.categoryID.flatMap { c in t.homeMinor.map { [(c, $0, t.homeSigned ?? $0)] } } ?? [])
-        : t.splits.compactMap { sp in sp.homeMinor.map { (sp.categoryID, $0, $0) } }
+        : t.splits.compactMap { sp in sp.homeMinor.map { (sp.categoryID, $0, t.signed($0)) } }
       for (i, part) in parts.enumerated() {
         guard let c = s.category(part.category) else { continue }
         if c.kind == .income, t.direction == .in {
@@ -418,7 +418,7 @@ public enum InsightsEngine {
       netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .missing, caption: "Needs a check-in",
                                 opens: false)
     } else {
-      let total = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
+      let total = Money.homeTotal(s.accounts.map(\.balance))
       let change = s.netWorth.monthChange.minor
       if ctx.isCurrent {
         let caption: String

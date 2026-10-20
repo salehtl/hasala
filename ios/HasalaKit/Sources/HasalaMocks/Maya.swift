@@ -118,7 +118,7 @@ public enum Maya {
   static let notifications = NotificationsSnapshot(needsALook: [
     NotificationItem(
       id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
-      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" isn't in your plan yet")]),
+      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" still to check")]),
       when: "Today", destination: .review),
     NotificationItem(
       id: "bill.axa", disc: .hue(.sand, .insurance), title: "AXA Insurance may be late",
@@ -172,10 +172,12 @@ public enum Maya {
       ])
     )),
     .today(TodayWidget(
-      summary: MoneyPhrase([.text("2 transactions · "), .amount(.aed(91_50), .rounded, hidden: 3)]),
+      summary: MoneyPhrase([.text("4 transactions · "), .amount(.aed(189_49), .rounded, hidden: 3)]),
       rows: [
         MiniTxnRow(id: "t.talabat", merchant: "Talabat", glyph: .dining, hue: .lilac,
                    detail: "Dining · 13:20", amount: .aed(64_50)),
+        MiniTxnRow(id: "t.steam", merchant: "Steam", glyph: .review, hue: .other,
+                   detail: "Uncategorized · 11:02", amount: .aed(59_49)),
         MiniTxnRow(id: "t.starbucks", merchant: "Starbucks", glyph: .dining, hue: .lilac,
                    detail: "Dining · 09:05 · DIFC", amount: .aed(27_00)),
       ]
