@@ -1,0 +1,47 @@
+name: Weekly full CI
+
+on:
+  schedule:
+    - cron: "41 3 * * 0"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/ci-weekly.yml
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cache-usage:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      LIMIT: "8589934592"
+    steps:
+      - name: Actions cache usage is at most 8 GB
+        run: |
+          set -euo pipefail
+          usage="$(gh api "repos/$REPO/actions/cache/usage")"
+          bytes="$(jq -r '.active_caches_size_in_bytes' <<<"$usage")"
+          count="$(jq -r '.active_caches_count' <<<"$usage")"
+          echo "$count cache entries, $((bytes / 1048576)) MiB of $((LIMIT / 1048576)) MiB allowed"
+          if ((bytes > LIMIT)); then
+            echo "::error::the Actions cache uses $((bytes / 1048576)) MiB, over 8 GB; GitHub evicts above 10 GB"
+            exit 1
+          fi
+
+  ci:
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      actions: write
+      contents: read
+      issues: write
