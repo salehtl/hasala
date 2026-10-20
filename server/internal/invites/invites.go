@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Sizes and defaults.
@@ -337,10 +338,15 @@ func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID 
 	return r, nil
 }
 
-// Sweep runs spec 07 §2.11's invite sweeps: expiry (an expired invite's entry
-// goes back to confirmed), forget (30 days after closing, the tag, note and
+// Sweep runs spec 07 §2.11's invite sweeps: unsent (a queued invite with no
+// email left to send is revoked), expiry (an expired invite's entry goes back
+// to confirmed), forget (30 days after closing, the tag, note and
 // link key go) and delete. It reports what it did.
-func Sweep(ctx context.Context, q Querier) (string, error) {
+func Sweep(ctx context.Context, q *pgxpool.Pool) (string, error) {
+	unsent, err := sweepUnsent(ctx, q)
+	if err != nil {
+		return "", err
+	}
 	tag, err := q.Exec(ctx, `
 		WITH expired AS (
 		  UPDATE invite_codes SET state = 'expired', closed_at = now()
@@ -364,9 +370,9 @@ func Sweep(ctx context.Context, q Querier) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invites: delete sweep: %w", err)
 	}
-	if back+forgot.RowsAffected()+deleted.RowsAffected() == 0 {
+	if unsent+back+forgot.RowsAffected()+deleted.RowsAffected() == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("%d entries back to the list, %d invites forgotten, %d deleted",
-		back, forgot.RowsAffected(), deleted.RowsAffected()), nil
+	return fmt.Sprintf("%d unsent invites revoked, %d entries back to the list, %d invites forgotten, %d deleted",
+		unsent, back, forgot.RowsAffected(), deleted.RowsAffected()), nil
 }

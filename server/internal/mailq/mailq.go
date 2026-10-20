@@ -162,6 +162,7 @@ type Queue struct {
 	// that names an account (spec 02 §14.7: the account's address is marked
 	// undeliverable). It makes no network call.
 	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
+	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) error
 
 	renderers map[string]Renderer
 	stopped   atomic.Bool
@@ -594,6 +595,7 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 		sql  string
 		args = []any{id, lease}
 	)
+	unsent := false
 	redact := "recipient"
 	if kind == "deleted" {
 		redact = "NULL"
@@ -607,6 +609,7 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3,
 		        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, clip("bounced"))
+		unsent = true
 	case errors.Is(sendErr, mail.ErrAuth) && !oneShot:
 		q.stopped.Store(true)
 		slog.Error("mailq: the email provider refused the credentials; sending stopped on every lane until restart")
@@ -630,6 +633,7 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 			sql = `UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, error = $3,
 			        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 			args = append(args, clip(sendErr.Error()))
+			unsent = true
 		}
 		if errors.Is(sendErr, mail.ErrAuth) {
 			q.stopped.Store(true)
@@ -637,10 +641,15 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 	}
 	bounced := errors.Is(sendErr, mail.ErrBounced) && row != nil && row.UserID != nil && q.Bounced != nil
 	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) error {
-		if !bounced {
-			return nil
+		if bounced {
+			if err := q.Bounced(ctx, tx, *row); err != nil {
+				return err
+			}
 		}
-		return q.Bounced(ctx, tx, *row)
+		if unsent && row != nil && q.Unsent != nil {
+			return q.Unsent(ctx, tx, *row)
+		}
+		return nil
 	}); err != nil {
 		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
 	}
@@ -675,10 +684,40 @@ func (q *Queue) Sweep(ctx context.Context) (string, error) {
 	if ret <= 0 {
 		ret = 30 * 24 * time.Hour
 	}
-	del, err := q.Pool.Exec(ctx,
-		`DELETE FROM mail_log WHERE created_at < now() - $1::interval AND status <> 'sending'`,
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return "", err
+	}
+	defer pgtx.Rollback(ctx, tx)
+	rows, err := tx.Query(ctx,
+		`DELETE FROM mail_log WHERE created_at < now() - $1::interval AND status <> 'sending'
+		 RETURNING id, kind, status, user_id, waitlist_entry_id, invite_id`,
 		fmt.Sprintf("%d seconds", int64(ret/time.Second)))
 	if err != nil {
+		return "", fmt.Errorf("mailq: retention: %w", err)
+	}
+	type gone struct {
+		row    Row
+		status string
+	}
+	deleted, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (gone, error) {
+		var g gone
+		return g, r.Scan(&g.row.ID, &g.row.Kind, &g.status, &g.row.UserID, &g.row.EntryID, &g.row.InviteID)
+	})
+	if err != nil {
+		return "", fmt.Errorf("mailq: retention: %w", err)
+	}
+	if q.Unsent != nil {
+		for _, g := range deleted {
+			if g.status != string(StatusQueued) {
+				continue
+			}
+			if err := q.Unsent(ctx, tx, g.row); err != nil {
+				return "", fmt.Errorf("mailq: retention: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("mailq: retention: %w", err)
 	}
 	red, err := q.Pool.Exec(ctx,
@@ -694,9 +733,10 @@ func (q *Queue) Sweep(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("mailq: deleted bound: %w", err)
 	}
-	if del.RowsAffected()+red.RowsAffected()+bound.RowsAffected() == 0 {
+	del := int64(len(deleted))
+	if del+red.RowsAffected()+bound.RowsAffected() == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("%d deleted, %d redacted, %d bounded", del.RowsAffected(), red.RowsAffected(),
+	return fmt.Sprintf("%d deleted, %d redacted, %d bounded", del, red.RowsAffected(),
 		bound.RowsAffected()), nil
 }
