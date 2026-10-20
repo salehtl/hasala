@@ -213,7 +213,7 @@ nonisolated enum LedgerStateMapper {
       switch row.categorySource {
       case "rule": .rule(pattern: row.categorySourceRef.flatMap { ruleByID[$0]?.patterns.first } ?? "")
       case "dictionary": .dictionary
-      case "model": .model
+      case "model": .model(tag: row.categorySourceRef)
       case "user", "held": .user
       default: nil
       }

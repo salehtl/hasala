@@ -108,9 +108,24 @@ public enum Direction: String, Sendable, Hashable, Codable {
 public enum CategorySource: Sendable, Hashable, Codable {
   case rule(pattern: String)
   case dictionary
-  case model
+  case model(tag: String?)
   case user
   case manual
+
+  public static let cloudflareModelPrefix = "cf-clef/"
+  public static let appleModelPrefix = "apple-fm/"
+
+  public static func suggestionLabel(modelTag tag: String?, needsReview: Bool = true) -> String {
+    guard let tag else { return "Suggested on this iPhone" }
+    if tag.hasPrefix(cloudflareModelPrefix) { return needsReview ? "Suggested by Cloudflare AI" : "Sorted by Cloudflare AI" }
+    if tag.hasPrefix(appleModelPrefix) { return "Suggested on this iPhone" }
+    return "Suggested"
+  }
+
+  public func suggestionLabel(needsReview: Bool = true) -> String? {
+    if case .model(let tag) = self { return Self.suggestionLabel(modelTag: tag, needsReview: needsReview) }
+    return nil
+  }
 }
 
 /// The bank alert a transaction was read from (spec 04 §7; never the email itself).

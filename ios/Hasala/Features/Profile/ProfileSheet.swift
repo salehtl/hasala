@@ -48,6 +48,7 @@ struct ProfileSheet: View {
           BankAlertsCard(summary: summary) { push(.bankAlerts) }
           money
           settings
+          if BuildSurface.showsCloudSuggestions { CloudSuggestionsSection() }
           footer
         }
         .padding(.horizontal, HSpacing.sheetPadding)

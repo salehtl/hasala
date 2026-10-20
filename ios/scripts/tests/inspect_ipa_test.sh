@@ -59,7 +59,7 @@ cp "$ios/HasalaCore/Sources/HasalaCore/Resources/sample/maya-v1.json" "$seed_dir
 for kv in "CFBundleExecutable string Hasala" "CFBundleIdentifier string app.hasala.ios" \
 	"CFBundleVersion string $build" "CFBundleShortVersionString string $marketing" \
 	"HasalaGitCommit string $commit" "ITSAppUsesNonExemptEncryption bool false" \
-	"HasalaAPIBaseURL string https://api.hasala.app"; do
+	"HasalaAPIBaseURL string https://api.hasala.app" "HasalaAssistBaseURL string https://assist.hasala.app"; do
 	/usr/libexec/PlistBuddy -c "Add :$kv" "$tpl/Info.plist" >/dev/null
 done
 /usr/bin/plutil -convert binary1 "$tpl/Info.plist"
@@ -225,6 +225,30 @@ app="$(variant api-missing)"
 seal api-missing
 inspect api-missing 40
 only_failed "I12 HasalaAPIBaseURL is https://api.hasala.app"
+
+app="$(variant assist-staging)"
+/usr/bin/plutil -replace HasalaAssistBaseURL -string "https://staging-assist.hasala.app" "$app/Info.plist"
+seal assist-staging
+inspect assist-staging 40
+only_failed "I12 HasalaAssistBaseURL is https://assist.hasala.app"
+
+app="$(variant assist-devhost)"
+/usr/bin/plutil -replace HasalaAssistBaseURL -string "http://localhost:8787" "$app/Info.plist"
+seal assist-devhost
+inspect assist-devhost 40
+only_failed "I12 no dev hosts in any file" "I12 HasalaAssistBaseURL is https://assist.hasala.app"
+
+app="$(variant assist-empty)"
+/usr/bin/plutil -replace HasalaAssistBaseURL -string "" "$app/Info.plist"
+seal assist-empty
+inspect assist-empty 40
+only_failed "I12 HasalaAssistBaseURL is https://assist.hasala.app"
+
+app="$(variant assist-missing)"
+/usr/bin/plutil -remove HasalaAssistBaseURL "$app/Info.plist"
+seal assist-missing
+inspect assist-missing 40
+only_failed "I12 HasalaAssistBaseURL is https://assist.hasala.app"
 
 # --- I7: secrets in binary files ----------------------------------------------------------
 app="$(variant secret-plist)"
