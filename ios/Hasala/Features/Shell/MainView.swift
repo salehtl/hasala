@@ -129,7 +129,7 @@ struct MainView: View {
 }
 
 /// The transaction sheet keeps one view model while it is up.
-private struct TransactionHost: View {
+struct TransactionHost: View {
   let app: AppModel
   @State private var model: TransactionViewModel
 

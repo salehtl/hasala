@@ -14,6 +14,7 @@ struct SearchView: View {
   /// The field is up and focused when Search opens (Paper "Search · Ready": keyboard up).
   @State private var searching = false
   @State private var ask = AskSearchModel()
+  @State private var opened: OpenedTransaction?
   @Environment(\.dismiss) private var dismiss
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
@@ -65,6 +66,9 @@ struct SearchView: View {
         await ask.run(query.trimmedSpaces, app.store.state, now: app.store.now)
       }
     }
+    .sheet(item: $opened, onDismiss: { app.router.transaction = [] }) { txn in
+      TransactionHost(app: app, id: txn.id)
+    }
     .onAppear {
       searching = true
       #if HASALA_MOCKS
@@ -74,6 +78,11 @@ struct SearchView: View {
         }
       #endif
     }
+  }
+
+  private func open(_ id: TxnID) {
+    app.router.transaction = []
+    opened = OpenedTransaction(id: id)
   }
 
   // MARK: Ready
@@ -177,7 +186,7 @@ struct SearchView: View {
                 if i > 0 { HDivider(inset: .disc68) }
                 Button {
                   SearchHistory.shared.add(q)
-                  app.open(row.id)
+                  open(row.id)
                 } label: {
                   resultRow(row, q, detail: row.detail)
                 }
@@ -350,7 +359,7 @@ struct SearchView: View {
             if i > 0 { HDivider(inset: .disc68) }
             Button {
               SearchHistory.shared.add(q)
-              app.open(row.id)
+              open(row.id)
             } label: {
               resultRow(row, "", detail: row.detail)
             }
@@ -463,6 +472,10 @@ struct SearchView: View {
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("search.none")
   }
+}
+
+private struct OpenedTransaction: Identifiable {
+  let id: TxnID
 }
 
 /// What a typed query finds in the ledger, across months: the transactions (newest first),

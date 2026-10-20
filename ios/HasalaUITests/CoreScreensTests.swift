@@ -397,6 +397,11 @@ final class CoreScreensTests: XCTestCase {
     result.tap()
     XCTAssertTrue(element(app, "txn.merchant").waitForLabel("Carrefour"))
     element(app, "txn.close").tap()
+    XCTAssertTrue(element(app, "txn.merchant").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(result.waitForExistence(timeout: uiWait), "closing the transaction lost the results")
+    XCTAssertEqual(field.value as? String, "carre")
+    XCTAssertTrue(element(app, "search.top").exists)
+    attach(app, "Search · Results after a transaction")
   }
 
   /// The caught-up scenario has nothing to review: no To review card, no Start, no deck.
