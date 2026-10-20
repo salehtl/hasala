@@ -90,10 +90,11 @@ func runPurgeUser(env *runEnv, args []string) error {
 	// goodbye email is queued like the API's, and serve's worker sends it
 	// (spec 02 §15.4).
 	rep, err := purge.PurgeWith(ctx, pool, target, purge.Options{Goodbye: true})
-	printPurgeReport(env, rep)
 	if err != nil {
+		fmt.Fprintln(env.stderr, "purge-user: the purge did not complete: nothing was deleted and no email was queued")
 		return fmt.Errorf("purge-user: %w", err)
 	}
+	printPurgeReport(env, rep)
 	if len(rep.Users) == 0 {
 		fmt.Fprintln(env.stdout, "no such account; nothing was deleted")
 	}

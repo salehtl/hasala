@@ -549,6 +549,9 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 		return rep, fmt.Errorf("purge: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE`, users); err != nil {
+		return rep, fmt.Errorf("purge: lock the accounts: %w", err)
+	}
 
 	// Counted BEFORE the delete, because after it there is nothing to count.
 	for _, r := range c.UserScoped {
