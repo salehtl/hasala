@@ -581,6 +581,7 @@ public actor MailboxEngine {
           break
         }
       } catch .otherProvider {
+        if case .holder(isThisDevice: true, _)? = try? await server.linkStatus() { return .failed }
         return await leaveLink(&state)
       } catch {
         return .failed

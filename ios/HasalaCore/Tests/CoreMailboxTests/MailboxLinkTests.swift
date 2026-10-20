@@ -127,6 +127,17 @@ import Testing
     #expect(await rig.state().phase == .otherDevice)
   }
 
+  @Test func disconnectLeavesAnotherProvidersLinkThisIPhoneHoldsAlone() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    await rig.server.setLinkProvider(.outlook)
+    let before = await rig.state()
+    #expect(await rig.engine.disconnect(removing: nil) == .failed)
+    #expect(await rig.server.deletes == 0)
+    #expect(try rig.keychain.read() != nil)
+    #expect(await rig.state() == before)
+  }
+
   @Test func disconnectOnTheHolderStillEndsTheLink() async throws {
     let rig = Rig()
     await rig.connectAndActivate()
