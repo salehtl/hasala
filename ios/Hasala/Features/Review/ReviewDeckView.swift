@@ -878,10 +878,19 @@ struct ReviewCardView<Actions: View>: View {
     return layout {
       HStack(spacing: 12) {
         CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: .s32)
-        Text("Looks like \(s.name)")
-          .hType(.subheadline.weight(.semibold))
-          .foregroundStyle(HColor.textPrimary)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Looks like \(s.name)")
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(HColor.textPrimary)
+          if let by = card.suggestedBy {
+            Text(by)
+              .hType(.footnote)
+              .foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("review.suggestedBy")
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .accessibilityElement(children: .combine)
       Button("Use", action: use)
@@ -949,7 +958,10 @@ struct ReviewCardView<Actions: View>: View {
     }
     if card.isNewMerchant { line += " New merchant." }
     if let raw = card.rawMerchant { line += " Bank text: \(raw)." }
-    if card.copyLine == nil, let s = card.suggestion { line += " Looks like \(s.name)." }
+    if card.copyLine == nil, let s = card.suggestion {
+      line += " Looks like \(s.name)."
+      if card.reviewReason == nil, let by = card.suggestedBy { line += " \(by)." }
+    }
     return line
   }
 }

@@ -25,6 +25,7 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 | `web/` | The hasala.app website: Astro and Bun, static output. Refer to "Website" below. |
 | `design/` | The logo and exported assets. They are not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | The QA deployment as code. `nix/module.nix` is `nixosModules.hasala` (`services.hasala`). It contains: a PostgreSQL 17 for Hasala only, on a unix socket; the migrations; `hasalad serve` and `hasalad console` on loopback; the tunnel; and encrypted backups. `cloudflared/` contains the ingress golden file, the lint and the fixtures. `nix/tests/` contains the eval check and the VM check. `HOST-PR.md` is the change on the host side (placeholders only). Do not put host names, addresses, accounts or credentials here. |
+| `infra/assist/` | The `hasala-assist` Cloudflare Worker (TypeScript, Bun). The app sends it one merchant name and gets a Clef category suggestion (opt-in cloud suggestions). It stores nothing and logs nothing. Its fence test fails on a storage binding, a `console.` call or AI Gateway. `scripts/check.sh` runs its typecheck and tests. Refer to `infra/assist/README.md`. |
 | `docs/` | `docs/legal/` contains the privacy policy, the terms, the security page and the support page. The website shows them (`status: "final"`). If a page has an `[[OWNER: ...]]` note, set it to `status: "draft"` again. The Hasala architecture and decisions will also go in `docs/`. They are not in this tree yet. The ledgerd design history (plans, specs, task reports, reviews) is in a private archive. It is not part of this repository. Code comments that refer to it say "ledgerd design archive". |
 
 ## Build and test
@@ -161,7 +162,8 @@ it is not sure, it runs the job.
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
   flake (output `ios_scripts`).
 - `web` reads only `web/`, `docs/legal/` and the flake.
-- `nixos-vm` reads only `infra/`, `server/` and the flake.
+- `nixos-vm` reads only `infra/` (except `infra/assist/`), `server/` and the
+  flake.
 - A change in `.github/` starts all jobs. `secrets` always runs.
 - If `changes` does not succeed, all jobs run.
 - A manual run starts all jobs.
@@ -576,6 +578,20 @@ the approval of the owner for that deployment.
   the UAE merchant dictionary in the app, then Apple Foundation Models (only
   for merchants in Latin script; it cannot read Arabic), then the review
   queue.
+- **Merchant suggestions (2026-10-20) are the one exception.** They are opt-in
+  and off by default, and each device has its own switch. With the switch on,
+  when rules and the dictionary give no category, the phone sends one
+  merchant string and the built-in category names to Clef (Workers AI)
+  first. Apple's model is the fallback. The phone calls the
+  `infra/assist/` Worker directly. That Worker has no account identity and
+  stores and logs nothing. hasalad never sees these requests. A suggestion
+  does not file a row (`needs_review` stays true). There is one exception:
+  "Sort automatically", a second opt-in. With it, a Clef answer at or above
+  the auto-file threshold (0.8, margin 0.4) files the row with
+  `needs_review: false`. Apple's model never files a row
+  (`ModelTier.autoConfirm = false`). Do not send other data
+  through this path: no amount, date, card, bank, custom category name or
+  email. Refer to `docs/decisions/cloud-suggestions.md`.
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
   invite codes; a WebAuthn step-up for each operation that changes auth,
   keys or mailboxes.

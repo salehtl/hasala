@@ -25,6 +25,7 @@ set -euo pipefail
 # I12: the API endpoint a release talks to, exactly: Info.plist's HasalaAPIBaseURL,
 # which Xcode fills in from HASALA_API_BASE_URL (ios/Config/Shared.xcconfig).
 RELEASE_API_BASE_URL=https://api.hasala.app
+RELEASE_ASSIST_BASE_URL=https://assist.hasala.app
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=release-common.sh
@@ -341,6 +342,7 @@ check "I10 icon compiled" icon_compiled
 check "I11 minos 26.0" minos_26
 check "I12 no dev hosts in any file, in any case" in_no_file_i "localhost|127\.0\.0\.1|sandbox\.push|mode=developer"
 check "I12 HasalaAPIBaseURL is $RELEASE_API_BASE_URL" is "$info" HasalaAPIBaseURL "$RELEASE_API_BASE_URL"
+check "I12 HasalaAssistBaseURL is $RELEASE_ASSIST_BASE_URL" is "$info" HasalaAssistBaseURL "$RELEASE_ASSIST_BASE_URL"
 # Release links no HasalaMocks (spec 04 §1.4): no mock module, scenario, persona or Debug
 # launch hook (the screen and motion arguments, plan B6). The launch arguments are short
 # Swift literals, which an inline use keeps out of the bytes (see in_no_file), so the

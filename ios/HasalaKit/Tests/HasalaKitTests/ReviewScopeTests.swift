@@ -85,10 +85,10 @@ struct ReviewScopeTests {
   @Test func aModelPickStandsUnlessItWasFlagged() {
     var picked = unsorted("picked", LocalDateTime(2026, 9, 12, 10, 0))
     picked.categoryID = "groceries"
-    picked.categorySource = .model
+    picked.categorySource = .model(tag: "apple-fm/1")
     var flagged = unsorted("flagged", LocalDateTime(2026, 9, 13, 10, 0))
     flagged.categoryID = "groceries"
-    flagged.categorySource = .model
+    flagged.categorySource = .model(tag: "cf-clef/1")
     flagged.needsReview = true
     let s = ledger([picked, flagged])
     #expect(!picked.inReview && flagged.inReview)

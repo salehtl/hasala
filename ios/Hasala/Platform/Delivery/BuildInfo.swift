@@ -26,6 +26,7 @@ nonisolated public struct BuildInfo: Sendable, Equatable {
   /// `HasalaOutlookRedirectScheme`: `msauth.app.hasala.ios`; deliberately not registered in
   /// CFBundleURLTypes (inspect-ipa.sh I4), like Google's.
   public let outlookRedirectScheme: String
+  public let assistBaseURL: URL?
 
   public enum Problem: Error, Equatable {
     case missing(String)
@@ -55,6 +56,18 @@ nonisolated public struct BuildInfo: Sendable, Equatable {
     gmailPubSubTopic = try string("HasalaGmailPubSubTopic")
     outlookClientID = try string("HasalaOutlookClientID")
     outlookRedirectScheme = try string("HasalaOutlookRedirectScheme")
+    assistBaseURL = Self.assistURL(info["HasalaAssistBaseURL"])
+  }
+
+  public static func assistURL(_ value: Any?) -> URL? {
+    guard let raw = (value as? String)?.trimmingCharacters(in: .whitespaces), !raw.isEmpty, !raw.hasPrefix("$("),
+      let url = URL(string: raw), url.scheme?.lowercased() == "https", let host = url.host(), !host.isEmpty
+    else { return nil }
+    return url
+  }
+
+  public static func assistBaseURL() -> URL? {
+    current.assistBaseURL
   }
 
   /// This build's values. A missing or malformed key is a build defect, so it traps.

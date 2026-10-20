@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 5
+  public static let version = 6
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
@@ -292,7 +292,7 @@ public enum ProjectionSchema {
              ELSE -l.home_minor
            END AS signed_home_minor,
            CASE WHEN t.needs_review = 0
-                 AND l.category_source <> 'model'
+                 AND (l.category_source <> 'model' OR substr(t.category_source_ref, 1, 8) = 'cf-clef/')
                  AND (t.possible_duplicate_of IS NULL OR t.duplicate_disposition = 'different')
                 THEN 1 ELSE 0 END AS confirmed,
            CASE WHEN p.id IS NOT NULL AND p.count_in_plan = 0 THEN 0 ELSE 1 END AS in_plan
