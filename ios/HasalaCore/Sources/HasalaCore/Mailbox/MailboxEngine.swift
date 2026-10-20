@@ -1405,7 +1405,7 @@ public actor MailboxEngine {
       }
       let parsed = MessageDisposer.parse(
         raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
-        bankDomains: run.trusted, trusted: run.trusted, recipient: run.address, spam: raw.spam,
+        bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
         analyze: { provider.analyzeAuthResults($0) })
       switch parsed {
       case .setAside(let domain):

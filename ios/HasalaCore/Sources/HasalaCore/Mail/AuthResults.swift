@@ -74,10 +74,12 @@ public enum AuthResults {
     public let verdict: Verdict
     /// The DKIM `header.d` of the passing verdict, else the DMARC `header.from`; lower case.
     public let domain: String?
+    public let signature: String?
 
-    public init(verdict: Verdict, domain: String?) {
+    public init(verdict: Verdict, domain: String?, signature: String? = nil) {
       self.verdict = verdict
       self.domain = domain
+      self.signature = signature
     }
   }
 
@@ -134,7 +136,8 @@ public enum AuthResults {
       })
     else { return untrusted(.fail) }
     let domain = domainProp(dkimPass, "header.d")
-    return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
+    let b = dkimPass.props.last { $0.key.utf8.elementsEqual("header.b".utf8) }.map { string(jsTrim(Array($0.value.unicodeScalars))) }
+    return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain, signature: (b?.isEmpty ?? true) ? nil : b)
   }
 
   // MARK: - Outlook.com

@@ -334,16 +334,25 @@ public enum SyntheticMail {
   /// `arTopmost` false puts a foreign A-R above Gmail's (verdict `not_topmost`).
   public static func rfc822(
     from: String, subject: String, body: String, dateMs: Int64, authDomain: String?, arTopmost: Bool = true,
-    dkimPass: Bool = true, to: String = defaultTo
+    dkimPass: Bool = true, to: String? = defaultTo, signedHeaders: String = "From:To:Subject"
   ) -> [UInt8] {
     var h: [String] = []
     if let d = authDomain {
       if !arTopmost { h.append("Authentication-Results: relay.example.net; dkim=pass header.d=\(d)") }
-      let verdict = dkimPass ? "dkim=pass header.d=\(d); dmarc=pass header.from=\(d); spf=pass" : "dkim=fail header.d=\(d); spf=fail"
+      let verdict =
+        dkimPass
+        ? "dkim=pass header.d=\(d) header.s=synthetic header.b=c3ludGhl; dmarc=pass header.from=\(d); spf=pass"
+        : "dkim=fail header.d=\(d); spf=fail"
       h.append("Authentication-Results: mx.google.com; \(verdict)")
     }
+    h.append("Delivered-To: \(defaultTo)")
+    if let d = authDomain {
+      h.append("DKIM-Signature: v=1; a=rsa-sha256; d=\(d); s=synthetic;\r\n\th=\(signedHeaders); bh=c3ludGhldGlj;\r\n\tb=c3ludGhldGljc2lnbmF0dXJl")
+    }
+    h.append("From: \(from)")
+    if let to { h.append("To: \(to)") }
     h += [
-      "Delivered-To: \(defaultTo)", "From: \(from)", "To: \(to)", "Subject: \(subject)",
+      "Subject: \(subject)",
       "Message-ID: <\(dateMs).synthetic@example.invalid>", "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=\"utf-8\"", "Content-Transfer-Encoding: 8bit",
     ]
@@ -354,14 +363,14 @@ public enum SyntheticMail {
   public static func dibCard(
     id: String, amount: String = "250.00", day: String = "05-06-2026", merchant: String = "SYNTHETIC GROCER DUBAI",
     last4: String = "1234", dateMs: Int64, authDomain: String? = "dib.ae", fromDomain: String = "dib.ae",
-    arTopmost: Bool = true, to: String = defaultTo
+    arTopmost: Bool = true, to: String? = defaultTo, signedHeaders: String = "From:To:Subject"
   ) -> FakeGmail.Message {
     let body = "إشعار مشتريات\nالمبلغ\nAED \(amount)\nبتاريخ \(day)\nالدفع الى\n\(merchant)\nرقم البطاقة\nXXXX\(last4)"
     let from = "DIB Alerts <alerts@\(fromDomain)>"
     return FakeGmail.Message(
       id: id,
       raw: rfc822(from: from, subject: "Card transaction", body: body, dateMs: dateMs, authDomain: authDomain, arTopmost: arTopmost,
-        to: to),
+        to: to, signedHeaders: signedHeaders),
       internalDateMs: dateMs, from: from)
   }
 

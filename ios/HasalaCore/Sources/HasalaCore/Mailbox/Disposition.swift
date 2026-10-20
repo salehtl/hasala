@@ -11,10 +11,10 @@
 //      shown), or becomes an op: filed, prefilled-for-review, or the EMPTY review shape.
 //   2. Filing without review needs every gate: Gmail's A-R verdict `pass`, the VERIFIED domain in
 //      the trusted set T, a template hit with a usable amount, a card not marked "not mine", not
-//      forwarded, addressed (To or Cc) to the linked mailbox, and not in Spam. Anything less is
-//      `needs_review: true`. A card the ledger doesn't know (`unknown`) files like a known one:
-//      setup has no cards step, and what an alert says about the card is up to each bank, so
-//      filing never depends on it. The gate still records it.
+//      forwarded, not in Spam, and a recipient check that is not a mismatch. Anything less is
+//      `needs_review: true`. When a DKIM-signed To or Cc names the linked mailbox, a card the
+//      ledger doesn't know (`unknown`) files like a known one: setup has no cards step. When the
+//      To or Cc naming it is unsigned, or there is none, only a known card files.
 import CoreJSON
 import CoreMail
 import CoreNorm
@@ -71,7 +71,7 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   /// The empty shape's day (canonical instant of local midnight), always set.
   public var dayPostedAt: String
   public var headerIDHash: String? = nil
-  public var recipientMatched: Bool? = nil
+  public var recipient: RecipientCheck? = nil
   public var spam: Bool? = nil
 }
 
@@ -137,8 +137,8 @@ public enum MessageDisposer {
   /// `analyze` is the provider's Authentication-Results rule (`MailProvider.analyzeAuthResults`).
   public static func parse(
     raw: [UInt8], messageID: String, internalDateMs: Int64, topLevelFrom: String,
-    templates: [CompiledTemplate], bankDomains: [String], trusted: [String], recipient: String?, spam: Bool,
-    analyze: (String) -> AuthResults.Analysis
+    templates: [CompiledTemplate], bankDomains: [String], trusted: [String], provider: MailProviderID,
+    linkedAddress: String?, spam: Bool, analyze: (String) -> AuthResults.Analysis
   ) -> Parse {
     let headers = MailHeaders.headerBlock(rawMessage: raw)
     let analysis = analyze(headers)
@@ -164,7 +164,8 @@ public enum MessageDisposer {
       fields: nil, dayPostedAt: day)
     mail.ingestID = ingestID(raw)
     mail.headerIDHash = MessageIDEvidence.hash(headers: headers)
-    mail.recipientMatched = MailRecipients.names(recipient, headers: headers)
+    mail.recipient = MailRecipients.check(
+      linked: linkedAddress, headers: headers, provider: provider, signingDomain: verified, signature: analysis.signature)
     mail.spam = spam
 
     guard let norm else { return .mail(mail) }
@@ -221,7 +222,9 @@ public enum MessageDisposer {
     }
     let filesItself =
       m.gates.ar == AuthResults.Reason.pass.rawValue && m.gates.senderTrusted && !m.gates.forwarded
-      && card != "not_mine" && m.recipientMatched == true && m.spam == false
+      && m.spam == false
+      && (m.recipient == .confirmed || (m.recipient == .unconfirmed && card == "known"))
+      && card != "not_mine"
     let decision = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
 
     var p = JSONObject([

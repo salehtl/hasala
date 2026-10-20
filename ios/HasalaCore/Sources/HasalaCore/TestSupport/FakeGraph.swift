@@ -404,6 +404,9 @@ public enum SyntheticOutlookMail {
       h.append("X-MS-Exchange-Organization-AuthAs: Anonymous")
       h.append("X-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com")
     }
+    if let d = authDomain {
+      h.append("DKIM-Signature: v=1; a=rsa-sha256; d=\(d); s=synthetic; h=From:To:Subject; bh=c3ludGhldGlj; b=c3ludGhldGljc2lnbmF0dXJl")
+    }
     h += [
       "From: \(from)", "To: \(defaultTo)", "Subject: \(subject)", "Message-ID: <\(dateMs).synthetic@example.invalid>",
       "MIME-Version: 1.0", "Content-Type: text/plain; charset=\"utf-8\"", "Content-Transfer-Encoding: 8bit",

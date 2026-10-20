@@ -634,7 +634,7 @@ let day: Int64 = 86_400_000
       guard
         case .mail(let p) = MessageDisposer.parse(
           raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
-          bankDomains: trusted, trusted: trusted, recipient: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
+          bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
       else { throw CancellationError() }
       c.stage.append(p)
     }
