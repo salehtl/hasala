@@ -410,9 +410,13 @@ func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
 			} else {
 				slog.Error("console: action", "action", name, "err", err.Error())
 			}
-			_ = pgx.BeginFunc(context.WithoutCancel(r.Context()), c.Pool, func(tx pgx.Tx) error {
-				return audit(r.Context(), tx, actor, "console."+name, kind, target, result, code, addr)
-			})
+			actx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), auditFor)
+			if aerr := pgx.BeginFunc(actx, c.Pool, func(tx pgx.Tx) error {
+				return audit(actx, tx, actor, "console."+name, kind, target, result, code, addr)
+			}); aerr != nil {
+				slog.Error("console: audit a failed action", "action", name, "err", aerr.Error())
+			}
+			cancel()
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusConflict)
 			_, _ = w.Write([]byte(say))
@@ -427,6 +431,8 @@ func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
 		http.Redirect(w, r, back+"?done="+name, http.StatusSeeOther)
 	}
 }
+
+const auditFor = 10 * time.Second
 
 func audit(ctx context.Context, tx pgx.Tx, actor, action, kind, target, result, code, addr string) error {
 	var errCode, ip any
