@@ -115,7 +115,7 @@ It is empty by default. Use it to stop a build that sends bad requests.
 
 `wrangler.jsonc` has only these bindings: `AI`, the rate limiters `PER_IP`
 (30 per 60 s, keyed on the `cf-connecting-ip` address for IPv4 and on its
-/64 for IPv6) and `GLOBAL` (600 per 60 s, key
+/64 for IPv6) and `GLOBAL` (60 per 60 s, key
 `global`), and the variables `REFUSED_CLIENTS` and `AI_GATEWAY`. The limits
 apply per Cloudflare location. The Worker never logs or returns the IP address.
 
@@ -159,6 +159,17 @@ The gateway is allowed only with its logs off and its cache off:
 
 The gateway analytics keep counts, tokens, cost and errors for each model. They
 do not keep the merchant name, the categories or the answer.
+
+## Emergency stop
+
+When spend spikes, remove the `assist.hasala.app` custom domain (or route) from
+the `hasala-assist` Worker in the Cloudflare dashboard (Workers & Pages >
+`hasala-assist` > Settings > Domains & Routes). Every request then fails, and
+the phones fall back to Apple's model or to review, so no rows are lost. To
+restore the service, add the custom domain again, or run `bun run deploy`.
+
+`REFUSED_CLIENTS` does not stop abuse. It only stops an honest build that sends
+bad requests, because any caller can forge the `Hasala-Client` header.
 
 ## Tests
 

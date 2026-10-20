@@ -101,7 +101,9 @@ answers per subject, so a subject is asked about once per device.
 - Abuse control in v1: a per-IP rate limit in the Worker (Cloudflare's rate-limiting
   binding, held in memory at the edge, not stored by us) and a global daily request cap
   that fails closed. See decision D3 for the stronger option (Privacy Pass tokens).
-- As built: the per-IP limit is keyed on the IPv4 address or the IPv6 /64, and it is
+- As built: `PER_IP` allows 30 requests per 60 s and `GLOBAL` 60 per 60 s (2026-10-20,
+  down from 600). One phone's foreground sweep can send up to 40 requests, so `PER_IP`
+  stays at 30. The per-IP limit is keyed on the IPv4 address or the IPv6 /64, and it is
   checked before the global limit, so a refused request does not use a global token. Both
   limits count per Cloudflare location, so the global limit is not an account-wide or daily
   cap.
