@@ -21,12 +21,23 @@ struct RootView: View {
   /// The motion policy (plan B1.2) is set here once, above the gate, the shell and their
   /// sheets, so every part of the design system reads the same Reduce Motion answer.
   @Environment(\.scenePhase) private var scenePhase
+  @State private var shield = ShieldWindow()
+
+  private var lock: AppLockController {
+    #if HASALA_MOCKS
+      mock?.lock ?? .live
+    #else
+      .live
+    #endif
+  }
 
   var body: some View {
     content
-      .overlay {
-        if SnapshotCover.covers(scenePhase) { SnapshotCover() }
-      }
+      .environment(lock)
+      .background { WindowSceneReader { shield.install(in: $0, lock: lock) } }
+      .onChange(of: scenePhase, initial: true) { _, phase in lock.scenePhaseChanged(phase) }
+      .onChange(of: lock.showsShield) { shield.update(lock) }
+      .onChange(of: lock.isLocked) { shield.update(lock) }
   }
 
   @ViewBuilder private var content: some View {
@@ -137,11 +148,13 @@ struct LaunchView: View {
     /// Where setup resumes in this scenario.
     let setupFacts: OnboardingStep.Facts
     let widgets: WidgetPublisher
+    let lock: AppLockController
 
-    init(app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts) {
+    init(app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts, lock: MockAppLock = MockAppLock()) {
       self.app = app
       self.session = session
       self.setupFacts = setupFacts
+      self.lock = lock.controller(store: app.store)
       widgets = WidgetPublisher(app: app)
       onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
@@ -160,7 +173,7 @@ struct LaunchView: View {
           store: InMemoryLedger(state: scenario.state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
           layouts: mockLayouts(arguments)),
-        session: session, setupFacts: AuthScenario.setupFacts(for: auth))
+        session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments))
       launch?.open(graph)
       return graph
     }

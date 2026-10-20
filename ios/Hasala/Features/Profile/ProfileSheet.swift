@@ -13,7 +13,7 @@ import SwiftUI
 /// as it was.
 ///
 /// A Release build shows only rows that work (`BuildSurface`): the settings with nothing
-/// behind them yet (Notifications, Face ID lock) are left out, Accounts shows once the
+/// behind them yet (Notifications) are left out, the app lock shows where it can lock, Accounts shows once the
 /// ledger has balances, and account actions follow `capabilities`.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
@@ -24,6 +24,7 @@ struct ProfileSheet: View {
   @Environment(\.dismiss) private var dismiss
   /// Present once the account gate runs; sign out, delete and Sign-in & security need it.
   @Environment(AccountSession.self) private var session: AccountSession?
+  @Environment(AppLockController.self) private var lock: AppLockController?
 
   private var unfinished: Bool { BuildSurface.showsUnfinished }
 
@@ -165,14 +166,19 @@ struct ProfileSheet: View {
         row(.exchangeRates, id: "profile.currency") {
           SettingRow(icon: .globe, title: "Currency", trailing: Self.currencyTrailing(app.store.state))
         }
-        // TODO(spec 04 §9, §11): local notifications and the Face ID lock are not in this
-        // build, so a Release build doesn't offer their settings yet.
+        // TODO(spec 04 §9): local notifications are not in this build, so a Release build
+        // doesn't offer their settings yet.
         if unfinished {
           row(.notifications, id: "profile.notifications") {
             SettingRow(icon: .bell, title: "Notifications", trailing: .value(snap.prefs.notifications.label))
           }
-          SettingSwitchRow(icon: .faceID, title: "Face ID lock",
-                           isOn: Binding(get: { snap.prefs.faceIDLock }, set: { model.setFaceIDLock($0) }))
+        }
+        if let lock, lock.isAvailable {
+          SettingSwitchRow(icon: lock.biometry.icon, title: lock.biometry.lockTitle,
+                           isOn: Binding(get: { snap.prefs.faceIDLock }, set: { on in
+                             Task { if await lock.confirmChange(to: on) { model.setFaceIDLock(on) } }
+                           }))
+            .disabled(lock.busy)
             .accessibilityIdentifier("profile.faceID")
         }
         // Hasala is light only for now (spec 04 §14.9), so the row states it.

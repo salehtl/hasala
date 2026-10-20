@@ -433,8 +433,8 @@ final class DevicePrefsStore {
     self.defaults = defaults
   }
 
-  /// The Face ID lock is off until the app lock exists (§4.5 `appLock.enabled` defaults to
-  /// false; nothing locks the app in this build, so the toggle must not read as on).
+  /// The app lock is off until it is turned on in Profile (§4.5 `appLock.enabled`
+  /// defaults to false).
   var prefs: DevicePrefs {
     guard let d = defaults.data(forKey: Self.prefsKey), let p = try? JSONDecoder().decode(DevicePrefs.self, from: d) else {
       return DevicePrefs(faceIDLock: false)
