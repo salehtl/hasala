@@ -132,11 +132,12 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 		hash, salt   []byte
 		nonce        []byte
 		oldID, newID uuid.UUID
+		begunAt      time.Time
 	)
 	err := a.Pool.QueryRow(ctx,
-		`SELECT new_email_norm, new_in_use, new_password_hash, new_password_salt, change_nonce, code_old_id, code_new_id
+		`SELECT new_email_norm, new_in_use, new_password_hash, new_password_salt, change_nonce, code_old_id, code_new_id, created_at
 		   FROM email_change_ceremonies WHERE id = $1 AND user_id = $2 AND consumed_at IS NULL AND expires_at > $3`,
-		changeID, session.UserID, now).Scan(&newAddr, &inUse, &hash, &salt, &nonce, &oldID, &newID)
+		changeID, session.UserID, now).Scan(&newAddr, &inUse, &hash, &salt, &nonce, &oldID, &newID, &begunAt)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && inUse) {
 		return fmt.Errorf("%w: no change to finish", ErrCodeRejected)
 	}
@@ -198,6 +199,9 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	}
 	if st.frozen() {
 		return ErrAccountFrozen
+	}
+	if st.hasPassword() != (hash != nil) || (st.PasswordSetAt != nil && st.PasswordSetAt.After(begunAt)) {
+		return fmt.Errorf("%w: the password changed meanwhile", ErrCodeRejected)
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE users SET email_norm = $2, email_verified_at = $3, email_undeliverable_at = NULL,
