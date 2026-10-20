@@ -3,6 +3,8 @@ import Foundation
 import HasalaDesign
 
 nonisolated enum Gravatar {
+  static let headers = ["User-Agent": "Mozilla/5.0", "Accept": "image/*", "Accept-Language": "*"]
+
   static func hash(email: String) -> String {
     let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     return SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -24,6 +26,7 @@ nonisolated enum Gravatar {
     guard let url = url(email: email, pixels: pixels) else { return nil }
     var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
     request.httpShouldHandleCookies = false
+    for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
     return request
   }
 
@@ -34,6 +37,7 @@ nonisolated enum Gravatar {
     configuration.urlCache = nil
     configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
     configuration.waitsForConnectivity = false
+    configuration.httpAdditionalHeaders = headers
     return URLSession(configuration: configuration)
   }
 }
