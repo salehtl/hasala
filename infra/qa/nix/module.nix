@@ -11,6 +11,7 @@
 #   hasala-db-setup           roles and database, idempotent (infra/qa/db/setup.sql)
 #   hasala-backup-premigrate  an encrypted dump before a migration that has work to do
 #   hasala-migrate            `hasalad migrate` as hasala_migrate, before every start
+#   hasala-purge-replay       `hasalad purge-user --replay-ledger`, after every migrate
 #   hasalad                   `hasalad serve` on 127.0.0.1 (the API)
 #   hasala-console            `hasalad console` on 127.0.0.1, its own OS user (spec 07)
 #   cloudflared-hasala        the tunnel; the only path in from the internet
@@ -53,6 +54,7 @@ let
   dataDir = "${pgRoot}/${pgMajor}";
   socketDir = "/run/hasala-postgresql";
   ledgerDir = "/var/lib/hasala-ledger";
+  maintenanceLock = "/run/hasala-maintenance.lock";
 
   runtimeDSN = "host=${socketDir} dbname=hasala user=hasala_runtime";
   migrateDSN = "host=${socketDir} dbname=hasala user=hasala_migrate";
@@ -273,6 +275,7 @@ let
   };
 
   # ------------------------------------------------------------------- backups
+  offsiteFilter = "--filter '- *.part' --filter '+ hasala-*.age*' --filter '- *'";
   ageRecipientFlags = concatStringsSep " " (map (r: "-r ${r}") cfg.backup.ageRecipients);
   backupScript = pkgs.writeShellApplication {
     name = "hasala-backup";
@@ -283,6 +286,7 @@ let
       pkgs.findutils
       pkgs.gnugrep
       pkgs.gnutar
+      pkgs.util-linux
     ];
     text = ''
       # §5.8: an age-encrypted custom-format dump plus the purge ledger, then
@@ -295,7 +299,9 @@ let
       ts="$(date -u +%Y%m%dT%H%M%SZ)"
       dir=${lib.escapeShellArg cfg.backup.dir}
       out="$dir/hasala-$tag-$ts.dump.age"
-      led="$dir/hasala-ledger-$ts.tar.age"
+      led="$dir/hasala-ledger-$tag-$ts.tar.age"
+      exec 9< ${maintenanceLock}
+      flock 9
       work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
       trap 'rm -rf "$work"; rm -f "$out.part" "$led.part"' EXIT
       mkfifo -m 0600 "$work/stream"
@@ -312,12 +318,11 @@ let
       ( cd "$dir" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
       # The purge ledger and the log generation (§5.8.1), read through the
       # hasala-ledger group; never written here.
-      # A file that does not exist yet is left out; one that exists but cannot
-      # be read fails the backup (pipefail), never an empty ledger copy.
-      files=()
-      for f in purged generation; do
-        if [ -e ${ledgerDir}/"$f" ]; then files+=("$f"); fi
-      done
+      # A missing purge ledger, or one that cannot be read, fails the backup
+      # (pipefail), never an empty ledger copy.
+      [ -f ${ledgerDir}/purged ] || { echo "hasala-backup: ${ledgerDir}/purged is missing" >&2; exit 1; }
+      files=(purged)
+      if [ -e ${ledgerDir}/generation ]; then files+=(generation); fi
       tar -C ${ledgerDir} -cf - -T /dev/null "''${files[@]}" \
         | age ${ageRecipientFlags} -o "$led.part"
       sync "$led.part"
@@ -622,9 +627,32 @@ let
     _: vh:
     reachesConsole (vh.extraConfig or null)
     || lib.any (
-      loc: reachesConsole (loc.proxyPass or null) || reachesConsole (loc.extraConfig or null)
+      loc:
+      reachesConsole (loc.proxyPass or null)
+      || reachesConsole (loc.uwsgiPass or null)
+      || reachesConsole (loc.extraConfig or null)
     ) (lib.attrValues (vh.locations or { }))
   ) config.services.nginx.virtualHosts;
+  nginxGlobalReachesConsole = lib.any (o: reachesConsole (config.services.nginx.${o} or null)) [
+    "config"
+    "prependConfig"
+    "eventsConfig"
+    "commonHttpConfig"
+    "httpConfig"
+    "appendHttpConfig"
+    "streamConfig"
+    "appendConfig"
+  ];
+  authOff = text: text != null && builtins.match ".*auth_request[[:space:]]+off.*" text != null;
+  locationGated =
+    loc:
+    lib.hasInfix "auth_request /auth;" (loc.extraConfig or "") && !authOff (loc.extraConfig or null);
+  vhostGated =
+    vh:
+    !authOff (vh.extraConfig or null)
+    && lib.all locationGated (
+      lib.attrValues (lib.filterAttrs (n: _: n != "/auth") (vh.locations or { }))
+    );
 
   limitOption =
     default: description:
@@ -1142,12 +1170,14 @@ in
                   names = lib.attrNames nginxConsoleVhosts;
                   vh = nginxConsoleVhosts.${lib.head names};
                 in
-                lib.length names == 1
+                !nginxGlobalReachesConsole
+                && lib.length names == 1
                 && lib.elem (lib.head names) (config.services.nginx.tailscaleAuth.virtualHosts or [ ])
-                && lib.hasInfix "auth_request /auth;" (vh.locations."/".extraConfig or "")
+                && vh.locations ? "/"
+                && vhostGated vh
               )
             )
-            "exactly one nginx virtual host may proxy to the console, it must be in services.nginx.tailscaleAuth.virtualHosts, and its / location must run auth_request /auth."
+            "exactly one nginx virtual host may proxy to the console, it must be in services.nginx.tailscaleAuth.virtualHosts, every location of it other than /auth must run auth_request /auth (never auth_request off), and no http, stream or top-level nginx config may name the console port."
           )
           (a "M20"
             (
@@ -1252,10 +1282,22 @@ in
       };
 
       # §5.8.1: setgid, so every file in it keeps the hasala-ledger group.
-      systemd.tmpfiles.settings.hasala-ledger.${ledgerDir}.d = {
-        user = "hasala";
-        group = "hasala-ledger";
-        mode = "2770";
+      systemd.tmpfiles.settings.hasala-ledger = {
+        ${ledgerDir}.d = {
+          user = "hasala";
+          group = "hasala-ledger";
+          mode = "2770";
+        };
+        "${ledgerDir}/purged".f = {
+          user = "hasala";
+          group = "hasala-ledger";
+          mode = "0640";
+        };
+      };
+      systemd.tmpfiles.settings.hasala-maintenance.${maintenanceLock}.f = {
+        user = "root";
+        group = "hasala-db";
+        mode = "0440";
       };
 
       environment.systemPackages = [ hasalaAdmin ];
@@ -1366,7 +1408,41 @@ in
           User = "hasala-migrate";
           Group = "hasala-migrate";
           SupplementaryGroups = [ "hasala-db" ];
-          ExecStart = "${hasalad} migrate";
+          ExecStart = "${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${hasalad} migrate";
+          PrivateNetwork = true;
+          RestrictAddressFamilies = [ "AF_UNIX" ];
+          IPAddressDeny = "any";
+          TimeoutStartSec = "10min";
+        };
+      };
+
+      systemd.services.hasala-purge-replay = {
+        description = "Hasala purge ledger replay (spec 02 §15.5)";
+        requires = [
+          "hasala-migrate.service"
+          "hasala-postgresql.service"
+        ];
+        after = [
+          "hasala-migrate.service"
+          "hasala-postgresql.service"
+        ];
+        partOf = [ "hasala.target" ];
+        onFailure = cfg.monitoring.onFailure;
+        environment = {
+          HASALA_PG_DSN = runtimeDSN;
+          HASALA_PURGE_LEDGER_PATH = "${ledgerDir}/purged";
+          TZ = "UTC";
+        };
+        serviceConfig = hardening // {
+          Type = "oneshot";
+          User = "hasala";
+          Group = "hasala";
+          SupplementaryGroups = [
+            "hasala-db"
+            "hasala-ledger"
+          ];
+          ExecStart = "${hasalad} purge-user --replay-ledger";
+          ReadWritePaths = [ ledgerDir ];
           PrivateNetwork = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
           IPAddressDeny = "any";
@@ -1381,10 +1457,12 @@ in
         partOf = [ "hasala.target" ];
         requires = [
           "hasala-migrate.service"
+          "hasala-purge-replay.service"
           "hasala-postgresql.service"
         ];
         after = [
           "hasala-migrate.service"
+          "hasala-purge-replay.service"
           "hasala-postgresql.service"
           "network-online.target"
         ];
@@ -1489,10 +1567,12 @@ in
         partOf = [ "hasala.target" ];
         requires = [
           "hasala-migrate.service"
+          "hasala-purge-replay.service"
           "hasala-postgresql.service"
         ];
         after = [
           "hasala-migrate.service"
+          "hasala-purge-replay.service"
           "hasala-postgresql.service"
           "network-online.target"
         ];
@@ -1626,7 +1706,9 @@ in
           echo "hasala-backup-premigrate: $n pending migration(s), dumping first"
           exec ${lib.getExe backupScript} premigrate
         '';
-        serviceConfig = backupServiceConfig;
+        serviceConfig = backupServiceConfig // {
+          RuntimeDirectory = "hasala-backup-premigrate";
+        };
       };
 
       systemd.services.hasala-backup-check = {
@@ -1683,12 +1765,20 @@ in
           LoadCredential = [ "rclone.conf:${cfg.backup.offsite.rcloneConfigFile}" ];
           RuntimeDirectory = "hasala-backup-offsite";
           ReadOnlyPaths = [ cfg.backup.dir ];
-          ExecStart = concatStringsSep " " [
-            (lib.getExe pkgs.rclone)
-            "copy --immutable --max-age 48h --include 'hasala-*.age*'"
-            "--config %d/rclone.conf --cache-dir %t/hasala-backup-offsite"
-            (lib.escapeShellArg cfg.backup.dir)
-            (lib.escapeShellArg cfg.backup.offsite.remote)
+          ExecStart = [
+            (concatStringsSep " " [
+              (lib.getExe pkgs.rclone)
+              "copy --immutable --max-age 48h ${offsiteFilter}"
+              "--config %d/rclone.conf --cache-dir %t/hasala-backup-offsite"
+              (lib.escapeShellArg cfg.backup.dir)
+              (lib.escapeShellArg cfg.backup.offsite.remote)
+            ])
+            (concatStringsSep " " [
+              (lib.getExe pkgs.rclone)
+              "delete --min-age ${toString cfg.backup.retentionDays}d ${offsiteFilter}"
+              "--config %d/rclone.conf --cache-dir %t/hasala-backup-offsite"
+              (lib.escapeShellArg cfg.backup.offsite.remote)
+            ])
           ];
           RestrictAddressFamilies = [
             "AF_INET"

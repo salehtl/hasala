@@ -5,7 +5,7 @@
 //	serve                                   the API (runtime role)
 //	migrate [--status | --pending] [--to N] apply the embedded migrations (schema owner)
 //	verify structural|usage [--user U] [--repair] [--json]
-//	purge-user <uuid> --confirm <uuid> [--dry-run]
+//	purge-user <uuid> --confirm <uuid> [--dry-run] | --replay-ledger
 //	invite mint [--note T] [--ttl D] [--review | --email A] | list | revoke <id>
 //	account review <uuid> on|off --confirm <uuid>
 //	waitlist                                counts by state and bank

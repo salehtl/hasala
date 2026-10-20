@@ -52,6 +52,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/purge"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -160,6 +161,9 @@ func (s *Server) purgeAccount(w http.ResponseWriter, r *http.Request, userID uui
 	opts := purge.Options{Goodbye: true, Now: s.now}
 	if s.Accounts != nil && s.Accounts.Keys != nil {
 		opts.Tagger = s.Accounts.Keys
+	}
+	if s.PurgeLedger != "" {
+		opts.Record = func(ids []uuid.UUID) error { return purgeledger.Append(s.PurgeLedger, ids, s.now()) }
 	}
 	rep, err := purge.PurgeWith(r.Context(), s.Pool, userID, opts)
 	if err != nil {

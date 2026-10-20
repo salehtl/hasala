@@ -182,6 +182,19 @@ requires the pre-migration dump, a missing backup disk also stops `hasalad`
 and the console from starting, even with nothing pending: deliberate, fail
 closed, and alerted through `onFailure`.
 
+The off-site unit copies the new backups and then deletes each off-site copy
+that is `backup.retentionDays` days old (29 by default). Thus the rclone
+credentials need permission to list, write and delete objects in the bucket
+(for R2: "Object Read & Write" on that bucket only). Do not add a bucket lock
+rule that keeps objects longer than 29 days: the privacy policy promises 30
+days at most, and `hasala-backup-check` fails when an off-site copy is 30 days
+old.
+
+Before `hasalad` and the console start, `hasala-purge-replay` purges again each
+account in the purge ledger (`/var/lib/hasala-ledger/purged`). Thus a restore
+from a backup cannot bring a deleted account back. Refer to
+`docs/runbooks/restore.md`.
+
 Every secret option is a **string** path (the `config.sops.secrets.….path`
 above), never a Nix path literal: M22 refuses any value under the Nix store,
 where a secret would be world-readable.
@@ -247,6 +260,7 @@ ss -ltnH | grep -E ':(8471|9471|9472)\b'                     # 127.0.0.1 only
 ss -ltnpH | grep postgres                                    # nothing: no TCP
 sudo hasala-admin version
 sudo systemctl start hasala-backup && ls -l <backup dir>     # a .dump.age, .sha256 and ledger .tar.age
+systemctl show -P Result hasala-purge-replay                 # success
 # From outside the host (any network):
 curl -s -o /dev/null -w '%{http_code}\n' https://api.hasala.app/api/v1/healthz      # 200
 for p in / /admin/ /metrics /debug/pprof/ /api/v1/console; do

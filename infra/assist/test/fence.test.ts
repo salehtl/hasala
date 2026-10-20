@@ -128,7 +128,8 @@ describe("wrangler.jsonc fence", () => {
     expect(config.ratelimits.map((r: any) => r.name).sort()).toEqual(["GLOBAL", "PER_IP"]);
     const byName = Object.fromEntries(config.ratelimits.map((r: any) => [r.name, r]));
     expect(byName.PER_IP.simple).toEqual({ limit: 30, period: 60 });
-    expect(byName.GLOBAL.simple).toEqual({ limit: 60, period: 60 });
+    expect(byName.GLOBAL.simple).toEqual({ limit: 600, period: 60 });
+    expect(byName.GLOBAL.simple.limit).toBeGreaterThanOrEqual(20 * byName.PER_IP.simple.limit);
     expect(byName.PER_IP.namespace_id).not.toBe(byName.GLOBAL.namespace_id);
     expect(config.vars).toEqual({ REFUSED_CLIENTS: "", AI_GATEWAY: "hasala-assist" });
     const allowedTop = new Set([
