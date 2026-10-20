@@ -425,7 +425,10 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		return
 	}
 
-	seqs, err := s.Appender.AppendClient(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
+	seqs, stored, err := s.Appender.AppendClientStored(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
+	if !stored {
+		s.SyncUploadBytes.RefundN(userID.String(), float64(uploadBytes))
+	}
 	if err != nil {
 		s.writeAppendErr(w, r, userID, err)
 		return

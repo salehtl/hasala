@@ -122,6 +122,28 @@ func (l *Limiter) AllowN(key string, n float64) bool {
 	return take(b, l.rate, l.burst, now, n)
 }
 
+func (l *Limiter) RefundN(key string, n float64) {
+	if l == nil {
+		return
+	}
+	if n < 1 {
+		n = 1
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[key]
+	if !ok {
+		b = &l.fallback
+		if b.last.IsZero() {
+			return
+		}
+	}
+	b.tokens += n
+	if b.tokens > l.burst {
+		b.tokens = l.burst
+	}
+}
+
 func take(b *bucket, rate, burst float64, now time.Time, n float64) bool {
 	if b.last.IsZero() {
 		b.tokens, b.last = burst, now
