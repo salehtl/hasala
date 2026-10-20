@@ -1006,6 +1006,14 @@ in
       ];
       description = "InaccessiblePaths= of every Hasala unit. A host appends its neighbours' state.";
     };
+    hardening.distrustedCARoots = mkOption {
+      type = types.listOf types.str;
+      default = [
+        "Comodo AAA Services root"
+        "emSign ECC Root CA - G3"
+      ];
+      description = "Root certificates, by their label in the system CA bundle, that the host stops trusting (security.pki.caCertificateBlacklist; system-wide). A CA distrust stopgap until the pinned nixpkgs ships the fixed CA bundle.";
+    };
 
     limits = {
       hasaladMemoryHigh = limitOption "512M" "hasalad MemoryHigh=.";
@@ -1301,6 +1309,7 @@ in
       };
 
       environment.systemPackages = [ hasalaAdmin ];
+      security.pki.caCertificateBlacklist = cfg.hardening.distrustedCARoots;
 
       # ----------------------------------------------------------- §5.3.6
       systemd.services.hasala-postgresql = {

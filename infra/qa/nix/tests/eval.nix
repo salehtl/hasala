@@ -951,7 +951,11 @@ let
       &&
         fullSys.config.systemd.tmpfiles.settings.hasala-maintenance."/run/hasala-maintenance.lock".f.group
         == "hasala-db"
-    ) "AT-E3 migrations must hold the maintenance lock";
+    ) "AT-E3 migrations must hold the maintenance lock"
+    ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) [
+      "Comodo AAA Services root"
+      "emSign ECC Root CA - G3"
+    ]) "AT-E3 the CA distrust stopgap is missing";
 
   errors = negativeErrors ++ typeErrorErrors ++ positiveErrors ++ envErrors ++ retentionErrors;
 

@@ -190,6 +190,12 @@ rule that keeps objects longer than 29 days: the privacy policy promises 30
 days at most, and `hasala-backup-check` fails when an off-site copy is 30 days
 old.
 
+The module also sets `security.pki.caCertificateBlacklist` from
+`hardening.distrustedCARoots` (a CA distrust stopgap). This applies to the
+whole host: each program that reads the system CA bundle stops trusting those
+roots. The hosts that Hasala calls do not chain to them. Remove the stopgap
+(set the option to `[ ]`) when the pinned nixpkgs ships the fixed CA bundle.
+
 Before `hasalad` and the console start, `hasala-purge-replay` purges again each
 account in the purge ledger (`/var/lib/hasala-ledger/purged`). Thus a restore
 from a backup cannot bring a deleted account back. Refer to

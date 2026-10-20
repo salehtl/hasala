@@ -434,6 +434,15 @@ in
           assert left == "0", left
           machine.fail(f"journalctl -u hasala-purge-replay -o cat | grep {gone}")
 
+      with subtest("AT-V10d: the system CA bundle no longer trusts the distrusted roots"):
+          bundle = "/etc/ssl/certs/ca-certificates.crt"
+          first = lambda name: machine.succeed(
+              f"awk -v n='{name}' 'p {{ print; exit }} $0 == n {{ p = 1 }}' {bundle}"
+          ).strip()
+          for name in ["Comodo AAA Services root", "emSign ECC Root CA - G3"]:
+              assert first(name) != "-----BEGIN CERTIFICATE-----", name
+          assert first("USERTrust RSA Certification Authority") == "-----BEGIN CERTIFICATE-----"
+
       with subtest("AT-V10b: a dump larger than the backup MemoryMax streams to disk"):
           machine.succeed(
               as_user(
