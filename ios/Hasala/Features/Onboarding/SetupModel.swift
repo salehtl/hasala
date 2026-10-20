@@ -265,7 +265,11 @@ final class SetupModel {
       busy = true
       defer { busy = false }
       do {
-        try await services.setup.chooseBanks(banks)
+        if draft.authored.banks == nil {
+          try await services.setup.chooseBanks(banks)
+        } else {
+          try await services.setup.setBanks(banks)
+        }
         draft.authored.banks = banks
       } catch {
         failure = error
