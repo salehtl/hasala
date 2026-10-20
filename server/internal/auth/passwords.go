@@ -98,9 +98,8 @@ func passwordPause(n int) time.Duration {
 }
 
 // recordPasswordFailure is a wrong S against a real password, committed alone:
-// password_failures rises (and with it the unbound pause), and for a bound
-// attempt so does the writer's password-writer count.
-func recordPasswordFailure(ctx context.Context, q queryExecer, userID uuid.UUID, boundWriter string, now time.Time) error {
+// password_failures rises (and with it the unbound pause).
+func recordPasswordFailure(ctx context.Context, q queryExecer, userID uuid.UUID, now time.Time) error {
 	var n int
 	if err := q.QueryRow(ctx,
 		`UPDATE users SET password_failures = password_failures + 1 WHERE id = $1 RETURNING password_failures`, userID).Scan(&n); err != nil {
@@ -111,23 +110,25 @@ func recordPasswordFailure(ctx context.Context, q queryExecer, userID uuid.UUID,
 			return fmt.Errorf("auth: pause passwords: %w", err)
 		}
 	}
-	if boundWriter != "" {
-		if _, err := bumpCounter(ctx, q, "password-writer", writerCounterKey(userID, boundWriter), passwordWriterWindow, now); err != nil {
-			return err
-		}
+	return nil
+}
+
+func writerPasswordAttempt(ctx context.Context, q queryExecer, userID uuid.UUID, writerID string, now time.Time) error {
+	n, err := bumpCounter(ctx, q, "password-writer", writerCounterKey(userID, writerID), passwordWriterWindow, now)
+	if err != nil {
+		return err
+	}
+	if n > passwordWriterFailMax {
+		return fmt.Errorf("%w: this device's password attempts", ErrRateLimited)
 	}
 	return nil
 }
 
-// writerPasswordBudget refuses a bound attempt whose writer already failed
-// five times this hour (read before the work, counted only on failure).
-func writerPasswordBudget(ctx context.Context, q queryExecer, userID uuid.UUID, writerID string, now time.Time) error {
-	n, err := readCounter(ctx, q, "password-writer", writerCounterKey(userID, writerID), passwordWriterWindow, now)
-	if err != nil {
-		return err
-	}
-	if n >= passwordWriterFailMax {
-		return fmt.Errorf("%w: this device's password attempts", ErrRateLimited)
+func refundWriterPasswordAttempt(ctx context.Context, q queryExecer, userID uuid.UUID, writerID string, now time.Time) error {
+	if _, err := q.Exec(ctx,
+		`UPDATE rate_counters SET count = count - 1 WHERE scope = 'password-writer' AND key = $1 AND window_start = $2 AND count > 0`,
+		writerCounterKey(userID, writerID), now.UTC().Truncate(passwordWriterWindow)); err != nil {
+		return fmt.Errorf("auth: rate counter password-writer: %w", err)
 	}
 	return nil
 }

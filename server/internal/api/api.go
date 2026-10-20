@@ -175,9 +175,10 @@ const (
 	// differ by blob size, not by request count. Neither stops an attacker who
 	// stays inside the rate; the per-account ceiling (internal/budget) and the
 	// headroom fuse exist beside them for that.
-	syncRate    = 2.0 // requests/second sustained, for pool fairness
-	syncBurst   = 20
-	syncMaxKeys = 4096
+	syncRate             = 2.0 // requests/second sustained, for pool fairness
+	syncBurst            = 20
+	syncMaxKeys          = 4096
+	maxConcurrentUploads = 2
 
 	syncByteBurst   = 64 << 20             // 64 MiB of burst
 	syncByteRate    = (256 << 20) / 86400. // 256 MiB/day sustained, in bytes/second
@@ -224,7 +225,7 @@ type Server struct {
 	// PullPerUser is spec 02's pull-user; pulls also hold one of
 	// maxConcurrentPulls slots per account while they run.
 	PullPerUser *Limiter
-	pulls       pullSlots
+	pulls       accountSlots
 	// PasskeyPerIP and PasskeyGlobal bound all the passkey routes, including
 	// the ones that require a session — the limiter runs before the session is
 	// resolved, so omitting the credential is not a way around it.
@@ -233,6 +234,7 @@ type Server struct {
 	// SyncPerUser and SyncUploadBytes are POST /api/v1/sync's pair.
 	SyncPerUser     *Limiter
 	SyncUploadBytes *Limiter
+	uploads         accountSlots
 	// MetaPerIP is GET /api/v1/meta's meta-ip.
 	MetaPerIP *Limiter
 	// The account routes' limiters (spec 02 §16.2). Sign-in uses PasskeyPerIP

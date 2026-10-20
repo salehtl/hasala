@@ -106,6 +106,22 @@ struct InstallCheckTests {
     #expect(api.count == 1)
   }
 
+  @Test("a session left by an earlier install survives the purge only as a pending logout")
+  func strandedSession() throws {
+    let api = InMemoryKeychainAPI()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = Secrets(store: k, apiHost: "api.example.test")
+    try secrets.writeSession(SessionRecord(token: "old-token", userID: "user-1", expiresAt: 4_000_000_000, tag: "0011223344556677"))
+    try k.write(.accountBinding, Data("b".utf8))
+    let d = defaults()
+    #expect(InstallCheck.run(
+      protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil,
+      apiHost: "api.example.test") == .done)
+    let kept = try secrets.session()
+    #expect(kept?.token == "old-token" && kept?.pending_logout == true)
+    #expect(try k.read(.accountBinding) == nil)
+  }
+
   @Test("a failed delete leaves installID unset, so the next launch retries")
   func retries() throws {
     let api = InMemoryKeychainAPI()

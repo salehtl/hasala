@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
@@ -93,6 +94,81 @@ func TestPasswordSignInFailuresAreUniformAndCostOnePBKDF2(t *testing.T) {
 	}
 	if _, err := f.acct.PasswordLoginBegin(bgctx, "not-an-address"); !errors.Is(err, ErrBadEmail) {
 		t.Fatalf("a bad address: %v", err)
+	}
+}
+
+func TestConcurrentBoundPasswordAttemptsStayWithinTheWritersBudget(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	wrong := append([]byte(nil), m.s...)
+	wrong[0] ^= 1
+	const n = 8
+	finish := make([]func() error, n)
+	for i := range finish {
+		b, err := f.acct.PasswordLoginBegin(bgctx, m.addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg, _ := keyproto.SessionBindMessage(b.Nonce, m.device.WriterID)
+		d := &DeviceBinding{WriterID: m.device.WriterID, Sig: ed25519.Sign(m.device.DWK, msg)}
+		finish[i] = func() error {
+			_, err := f.acct.PasswordLoginFinish(bgctx, b.CeremonyID, wrong, d)
+			return err
+		}
+	}
+	g := authkeys.NewGate(1, 2*n, 30*time.Second)
+	hold, err := g.Acquire(bgctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.acct.Gate = g
+	errs := make(chan error, n)
+	for _, fn := range finish {
+		go func() { errs <- fn() }()
+	}
+	limited, rejected := 0, 0
+	deadline := time.After(2 * time.Second)
+	collect := func(err error) {
+		switch {
+		case errors.Is(err, ErrRateLimited):
+			limited++
+		case errors.Is(err, ErrPasswordRejected):
+			rejected++
+		default:
+			t.Errorf("an attempt: %v", err)
+		}
+	}
+wait:
+	for limited+rejected < n {
+		select {
+		case err := <-errs:
+			collect(err)
+		case <-deadline:
+			break wait
+		}
+	}
+	hold()
+	for limited+rejected < n {
+		collect(<-errs)
+	}
+	if rejected > passwordWriterFailMax {
+		t.Fatalf("%d bound attempts reached the password check, want at most %d", rejected, passwordWriterFailMax)
+	}
+	if got := f.count(`SELECT password_failures FROM users WHERE id = $1`, m.user.UserID); got > passwordWriterFailMax {
+		t.Fatalf("%d failures recorded, want at most %d", got, passwordWriterFailMax)
+	}
+}
+
+func TestABoundPasswordSuccessGivesItsAttemptBack(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	for i := 0; i < 2*passwordWriterFailMax; i++ {
+		if _, err := m.loginPassword(m.s, m.device); err != nil {
+			t.Fatalf("bound success %d: %v", i+1, err)
+		}
+	}
+	if got := f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'password-writer'`); got != 0 {
+		t.Fatalf("the writer's counter is %d after only successes, want 0", got)
 	}
 }
 
@@ -313,6 +389,32 @@ func TestC8ResetsThePasswordWithTheDAKAndAnEmailedCode(t *testing.T) {
 	}
 	if _, err := f.acct.ResetBegin(bgctx, m.addr); err != nil {
 		t.Fatalf("C9's begin after a C8 burn: %v", err)
+	}
+}
+
+func TestC8CodeChecksAreCountedLikeEveryOtherCode(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	newS := f.stretch(m.addr, "an entirely new password")
+	vh := sumBytes(newS)
+	i := m.info()
+	ph, _ := keyproto.ParamsHash(keyproto.ActionPasswordReset, vh)
+	b, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionPasswordReset, ph[:], keyproto.ProofDeviceCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ := keyproto.DeviceStepUpMessage(b.Challenge, m.device.WriterID)
+	su := &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "device_code", WriterID: m.device.WriterID,
+		Sig: m.device.SignDAK(t, msg), Code: f.lastCode(m.addr)}}
+	before := f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'code-verify-email'`)
+	if _, err := f.pool.Exec(bgctx, `UPDATE email_codes SET attempts = $1 WHERE ceremony_kind = 'step_up'`, codeMaxAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
+		t.Fatalf("the right C8 code with no attempt left: %v", err)
+	}
+	if got := f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'code-verify-email'`); got != before+1 {
+		t.Fatalf("code-verify-email is %d after a C8 check, want %d", got, before+1)
 	}
 }
 

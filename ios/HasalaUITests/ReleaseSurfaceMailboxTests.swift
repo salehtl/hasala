@@ -28,8 +28,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bankAlerts.status").label.contains("Not connected"))
     assertNoPlaceholders(app, "Bank alerts")
     assertPersonalAccountsOnly(app, "Bank alerts")
-    // Debug's parts with no screen behind them yet.
-    assertAbsent(app, ["bankAlerts.unreadable"], "Bank alerts")
+    XCTAssertFalse(app.buttons["bankAlerts.unreadable"].exists, "Bank alerts opens the unreadable mail")
     assertNoText(app, ["when new mail arrives"], "Bank alerts")
     attach(app, "Release · Bank alerts · no mailbox")
     try audit(app)

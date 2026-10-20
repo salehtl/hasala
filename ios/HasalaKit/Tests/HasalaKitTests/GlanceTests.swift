@@ -34,7 +34,7 @@ struct GlanceEngineTests {
     #expect(w.netWorth != nil)
     #expect(w.projects.first?.name == "Japan trip")
     #expect(w.goals.first?.name == "Emergency fund")
-    #expect(w.today?.rows.count == 2)
+    #expect(w.today?.rows.count == 3)
     #expect(!w.categories.isEmpty)
     #expect(w.lockScreenDetails == false)
     #expect(w.lockShowsAmounts == false)
@@ -62,7 +62,7 @@ struct GlanceEngineTests {
   @Test func toReviewCountsTheDeck() throws {
     let r = try #require(snapshot().toReview)
     #expect(r.count == 6)
-    #expect(r.caption.rendered(hidden: false) == "827 not counted yet")
+    #expect(r.caption.rendered(hidden: false) == "827 still to check")
     #expect(ToReviewWidget(count: 0, notCounted: .aed(0)).caption.rendered(hidden: false) == "Nothing to sort")
   }
 

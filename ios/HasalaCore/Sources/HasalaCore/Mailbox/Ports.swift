@@ -111,6 +111,7 @@ public enum MailboxServerError: Error, Sendable, Equatable {
   /// 409 `no_watch_topic` from route 36: the server relays no wakes for the link's provider (its
   /// push settings in `meta` are null) and records no watch.
   case noWatchTopic
+  case otherProvider
   /// Any other refusal (status and the server's content-free code).
   case refused(Int, String)
 }
@@ -131,6 +132,13 @@ public protocol MailboxServer: Sendable {
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError)
   /// `GET /api/v1/meta` → where the server relays `provider`'s push (`.none`: it relays none).
   func pushConfig(provider: MailProviderID) async throws(MailboxServerError) -> MailboxPushConfig
+  func linkStatus(provider: MailProviderID) async throws(MailboxServerError) -> MailboxLinkStatus
+}
+
+extension MailboxServer {
+  public func linkStatus(provider: MailProviderID) async throws(MailboxServerError) -> MailboxLinkStatus {
+    try await linkStatus()
+  }
 }
 
 public enum MailboxStepUpError: Error, Sendable, Equatable {

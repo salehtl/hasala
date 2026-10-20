@@ -50,6 +50,7 @@ public struct MailboxEngineConfig: Sendable {
   public var maxMessageBytes = MailboxLimits.maxMessageBytes
   public var stagingCap = 5_000
   public var holderCheckIntervalMs: Int64 = 10 * 60_000
+  public var accountFullRetryMs: Int64 = 15 * 60_000
   /// Authoring stops this long before the deadline (§3).
   public var authoringMarginMs: Int64 = 5_000
   public var backfillBatch = 200
@@ -68,6 +69,7 @@ public struct MailboxEngineConfig: Sendable {
   public var watchRenewWindowMs: Int64 = 3 * 86_400_000
   public var maxListPages = 100
   public var importMaxPages = 5
+  public var messageStrikeLimit = 3
   /// The Gmail API base of the `oauth:gmailHTTP:` initializer's `GmailProvider`.
   public var gmailBase = GmailClient.defaultBase
 
@@ -256,6 +258,8 @@ public actor MailboxEngine {
   private var notBeforeMs: Int64 = 0
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
   private var firstScanRunning = false
+  public private(set) var stopped = false
+  private var strikes: [String: Int] = [:]
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
@@ -326,6 +330,16 @@ public actor MailboxEngine {
     return await body()
   }
 
+  public func stop() async {
+    stopped = true
+    await acquire()
+    release()
+  }
+
+  public func resume() {
+    stopped = false
+  }
+
   // MARK: - Connect, disconnect
 
   /// Connect the provider's mailbox (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
@@ -347,6 +361,7 @@ public actor MailboxEngine {
     presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false,
     confirm: MailboxSwitchConfirm? = nil
   ) async -> ConnectResult {
+    stopped = false
     let (result, plan) = await exclusive { () -> (ConnectResult, MailboxRetirePlan?) in
       var plan: MailboxRetirePlan?
       let r = await connectLocked(
@@ -406,6 +421,9 @@ public actor MailboxEngine {
       // Any other answer is the cycle's to handle (it halts with a reason the user sees).
     }
     let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
+    if let stored, Self.identityUnknown(linked: stored.address, signedIn: claims.email) {
+      return .failed(.permissionMissing)
+    }
     let otherMailbox = stored.map { Self.isAnotherMailbox(linked: $0.address, signedIn: claims.email) } ?? false
     let fresh = replacing || otherMailbox
     if otherMailbox, let old = stored {
@@ -441,9 +459,14 @@ public actor MailboxEngine {
       var cleared = commitState(MailboxState())
       cleared.clearAll = true
       do { try await store.commit(cleared) } catch { return .failed(.keychain) }
-      await endLocalPush()
+      if let token = try? await tokens.accessToken(forceRefresh: false) {
+        try? await source(token).stop()
+      }
+      _ = await tokens.revokeAndForget(keepOnFailure: false)
+      provider.forgetLink()
       notBeforeMs = 0
       quotaStrikes = 0
+      strikes = [:]
     }
     do {
       try await tokens.install(grant: grant)
@@ -494,10 +517,13 @@ public actor MailboxEngine {
   }
 
   static func isAnotherMailbox(linked: String?, signedIn: String?) -> Bool {
-    guard let linked, let signedIn else { return false }
-    let old = MailboxEngineConfig.normalized(linked)
-    let new = MailboxEngineConfig.normalized(signedIn)
+    let old = MailboxEngineConfig.normalized(linked ?? "")
+    let new = MailboxEngineConfig.normalized(signedIn ?? "")
     return !old.isEmpty && !new.isEmpty && old != new
+  }
+
+  static func identityUnknown(linked: String?, signedIn: String?) -> Bool {
+    !MailboxEngineConfig.normalized(linked ?? "").isEmpty && MailboxEngineConfig.normalized(signedIn ?? "").isEmpty
   }
 
   /// Ends this provider's grant on this iPhone after another provider's link replaced it: stops
@@ -575,6 +601,7 @@ public actor MailboxEngine {
 
   private func cycleLocked(trigger: MailboxTrigger, deadlineMs: Int64?) async -> CycleReport {
     var report = CycleReport()
+    if stopped { return report }
     guard var state = try? await store.loadState() else {
       report.haltedOn = .offline
       return report
@@ -587,7 +614,7 @@ public actor MailboxEngine {
       return report
     }
     if state.phase == .halted {
-      guard trigger == .retry else {
+      guard trigger == .retry || resumesAfterAccountFull(state, trigger) else {
         report.haltedOn = state.haltedOn
         return report
       }
@@ -619,7 +646,7 @@ public actor MailboxEngine {
       || now - (state.lastHolderCheckAtMs ?? 0) >= config.holderCheckIntervalMs
     {
       do {
-        switch try await server.linkStatus() {
+        switch try await server.linkStatus(provider: provider.id) {
         case .noLink:
           await endLocalPush()
           return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
@@ -635,6 +662,9 @@ public actor MailboxEngine {
           state.lastHolderCheckAtMs = now
           if let watch, state.watchExpiresAtMs == nil { state.watchExpiresAtMs = watch }
         }
+      } catch .otherProvider {
+        stopped = true
+        return report
       } catch {
         report.haltedOn = .offline
         return report
@@ -701,7 +731,7 @@ public actor MailboxEngine {
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state))
+    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
     let cut: Bool
     do {
       cut = try await listAndProcess(
@@ -762,7 +792,7 @@ public actor MailboxEngine {
     }
     let days = Int64(state.backfillDays ?? 90)
     let since = max(0, (started - days * 86_400_000) / 1000)
-    var run = Run(trusted: trusted, cards: [:], grant: grant(state))
+    var run = Run(trusted: trusted, cards: [:], grant: grant(state), address: state.address)
     run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
     do {
@@ -834,7 +864,7 @@ public actor MailboxEngine {
       // column records the cap): ids only, and the accounted set skips everything already done.
       let days = Int64(state.backfillDays ?? 90)
       let since = max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
-      var run = Run(trusted: trusted, cards: cards, grant: grant(state))
+      var run = Run(trusted: trusted, cards: cards, grant: grant(state), address: state.address)
       do {
         let cut = try await listAndProcess(
           source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
@@ -941,7 +971,7 @@ public actor MailboxEngine {
     var reports: [CycleReport] = []
     var stalls = 0
     for _ in 0..<maxCycles {
-      if Task.isCancelled { break }
+      if Task.isCancelled || stopped { break }
       let r = await runCycle(trigger: .refresh)
       reports.append(r)
       guard r.phase == .scanning || r.phase == .authoringBackfill else { break }
@@ -964,6 +994,7 @@ public actor MailboxEngine {
         // triggers: the setup board says the import goes on in the background.
         guard wait <= config.firstScanStallWaitsMs.last ?? 0 else { return reports }
         await sleep(wait)
+        if Task.isCancelled || stopped { return reports }
       default:
         return reports
       }
@@ -993,31 +1024,49 @@ public actor MailboxEngine {
           return report
         }
         guard state.phase == .active else { return report }  // the scan or next cycle lists it
-        let token: AccessToken
-        do { token = try await tokens.accessToken(forceRefresh: false) } catch {
-          report.haltedOn = .reconnectRequired
-          return report
-        }
-        let source = source(token)
-        var trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
-        if !trusted.contains(domain) { trusted.append(domain) }
-        let days = Int64(state.backfillDays ?? 90)
-        let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
-        var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state))
-        do {
-          let (ids, _) = try await list(source, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
-          report.listed = ids.count
-          _ = try await process(source, ids: ids, mode: .author, run: &run, report: &report, deadlineMs: nil)
-        } catch let e as MailAPIError {
-          return await mailFailure(e, &state, report)
-        } catch {
-          report.haltedOn = .offline
-          return report
-        }
-        if await ledger.flush() == .accountFull { return await halt(&state, .accountFull, report) }
-        report.completed = true
-        return report
+        return await importLocked([domain], &state, report)
       })
+  }
+
+  public func backfill(senders: [String]) async -> CycleReport {
+    let domains = senders.map { $0.lowercased() }.filter(BankDomains.isQuerySafe)
+    return await exclusive {
+      var report = CycleReport()
+      guard !stopped, !domains.isEmpty, var state = try? await store.loadState() else { return report }
+      report.phase = state.phase
+      guard state.phase == .active else { return report }
+      return await importLocked(domains, &state, report)
+    }
+  }
+
+  private func importLocked(_ domains: [String], _ state: inout MailboxState, _ report: CycleReport) async
+    -> CycleReport
+  {
+    var report = report
+    let token: AccessToken
+    do { token = try await tokens.accessToken(forceRefresh: false) } catch {
+      report.haltedOn = .reconnectRequired
+      return report
+    }
+    let source = source(token)
+    var trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
+    for d in domains where !trusted.contains(d) { trusted.append(d) }
+    let days = Int64(state.backfillDays ?? 90)
+    let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
+    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
+    do {
+      let (ids, _) = try await list(source, domains: domains, sinceSec: since, maxPages: config.importMaxPages)
+      report.listed = ids.count
+      _ = try await process(source, ids: ids, mode: .author, run: &run, report: &report, deadlineMs: nil)
+    } catch let e as MailAPIError {
+      return await mailFailure(e, &state, report)
+    } catch {
+      report.haltedOn = .offline
+      return report
+    }
+    if await ledger.flush() == .accountFull { return await halt(&state, .accountFull, report) }
+    report.completed = true
+    return report
   }
 
   public func probeSenders(_ domains: [String], days: Int = 180) async -> SenderProbeResult {
@@ -1070,7 +1119,7 @@ public actor MailboxEngine {
       }
       let raw: MailRawMessage
       do throws(MailAPIError) { raw = try await source(token).raw(id: messageID) } catch let e {
-        if let s = e.status, s == 404 || s == 410 || s < 400 { return .gone }
+        if let s = e.status, s == 404 || s == 410 { return .gone }
         if let s = e.status, s == 401 || s == 403 { return .reconnectRequired }
         return .offline
       }
@@ -1129,6 +1178,7 @@ public actor MailboxEngine {
     var trusted: [String]
     var cards: [CardKey: CardState]
     var grant: String
+    var address: String?
     var width = 6
     var stagingFull = false
     var saw429 = false
@@ -1151,7 +1201,7 @@ public actor MailboxEngine {
   /// Whether a run must stop at this boundary: the BGTask expired (cancellation) or the
   /// deadline's authoring margin is reached.
   func shouldStop(_ deadlineMs: Int64?) -> Bool {
-    if Task.isCancelled { return true }
+    if Task.isCancelled || stopped { return true }
     if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { return true }
     return false
   }
@@ -1221,7 +1271,7 @@ public actor MailboxEngine {
       var token: String?
       var pages = 0
       repeat {
-        if Task.isCancelled { return (ids, false) }
+        if Task.isCancelled || stopped { return (ids, false) }
         let page = try await source.list(senders: group, since: sinceSec, pageToken: token)
         for id in page.ids where seen.insert(id).inserted { ids.append(id) }
         token = page.nextPageToken
@@ -1243,7 +1293,7 @@ public actor MailboxEngine {
     let todo = all.filter { !accounted.contains($0) && !projected.contains($0) }
     var i = 0
     let split = run.firstPass.isEmpty ? todo.count : (todo.firstIndex { !run.firstPass.contains($0) } ?? todo.count)
-    run.width = max(1, min(config.downloadWidth, provider.maxDownloadWidth))
+    if !run.saw429 { run.width = max(1, min(config.downloadWidth, provider.maxDownloadWidth)) }
     let skipped = all.count - todo.count
     let base = run.pagedBase ?? 0
     defer { if run.pagedBase != nil { run.pagedBase = base + all.count } }
@@ -1333,7 +1383,7 @@ public actor MailboxEngine {
           if s == 429 { rateLimited = true }
           // The provider named its pause: a quick retry would only count against it again.
           if case .throttled = e { return .failure(e) }
-          let transient = e == .offline || s == 429 || (s ?? 0) >= 500
+          let transient = e == .offline || s == 429 || (s ?? 0) >= 500 || (s ?? 400) < 400
           let waits = s == 429 ? rateBackoff : backoff
           if !transient || n >= waits.count { return .failure(e) }
           await sleep(waits[n])
@@ -1343,7 +1393,7 @@ public actor MailboxEngine {
     }
     func gone(_ e: MailAPIError) -> Bool {
       guard let s = e.status else { return false }
-      return s == 404 || s == 410 || s < 400
+      return s == 404 || s == 410
     }
 
     func done(_ f: Fetched) -> FetchResult { FetchResult(fetched: f, rateLimited: rateLimited) }
@@ -1371,8 +1421,17 @@ public actor MailboxEngine {
     let at = clock.nowMs()
     var c = MailboxCommit()
     switch f {
-    case .failed(_, let error):
-      throw error
+    case .failed(let id, let error):
+      guard let reason = Self.unreadableAfterStrikes(error) else { throw error }
+      let n = (strikes[id] ?? 0) + 1
+      if n < config.messageStrikeLimit {
+        strikes[id] = n
+        throw error
+      }
+      strikes[id] = nil
+      report.unreadable += 1
+      c.unreadable.append(UnreadableRecord(messageID: id, reason: reason, domain: nil, internalDateMs: nil, atMs: at))
+      c.accounted.append(AccountedRecord(messageID: id, outcome: .unreadable, internalDateMs: at, atMs: at))
     case .gone(let id):
       report.unreadable += 1
       c.unreadable.append(UnreadableRecord(messageID: id, reason: .gone, domain: nil, internalDateMs: nil, atMs: at))
@@ -1404,7 +1463,8 @@ public actor MailboxEngine {
       }
       let parsed = MessageDisposer.parse(
         raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
-        bankDomains: run.trusted, trusted: run.trusted, analyze: { provider.analyzeAuthResults($0) })
+        bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
+        analyze: { provider.analyzeAuthResults($0) })
       switch parsed {
       case .setAside(let domain):
         report.setAside += 1
@@ -1431,6 +1491,13 @@ public actor MailboxEngine {
       }
     }
     try await store.commit(c)
+  }
+
+  static func unreadableAfterStrikes(_ e: MailAPIError) -> UnreadableReason? {
+    guard case .status(let s, _) = e else { return nil }
+    if s < 400 { return .undecodable }
+    if s == 401 || s == 404 || s == 410 || s == 429 || s >= 500 { return nil }
+    return .refused
   }
 
   func renewWatch(_ source: any MailSource, _ state: inout MailboxState, now: Int64) async {
@@ -1519,6 +1586,12 @@ public actor MailboxEngine {
     state.haltedOn = code
     report.haltedOn = code
     return await finish(&state, report)
+  }
+
+  func resumesAfterAccountFull(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
+    guard state.haltedOn == .accountFull else { return false }
+    if trigger == .launch || trigger == .foreground || trigger == .refresh { return true }
+    return clock.nowMs() - (state.lastCycleAtMs ?? 0) >= config.accountFullRetryMs
   }
 
   func halt(_ state: inout MailboxState, _ code: MailboxHaltCode, _ report: CycleReport) async -> CycleReport {

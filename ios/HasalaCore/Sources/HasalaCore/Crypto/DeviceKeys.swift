@@ -83,42 +83,35 @@ public enum HeadCheck {
     }
   }
 
-  /// Checks a page. Writers are checked in the order they first appear.
+  /// Checks a page. Writers are checked in the order of their last row in the
+  /// page (the order of Go's reference reader): the revocation pin first, then
+  /// the head signature.
   public static func verify(userID: UserID, rows: [Row], roster: [WriterID: RosterWriter]) throws(ReaderHardStop) {
     if let f = firstFailure(userID: userID, rows: rows, roster: roster) { throw .tampered(f.reason) }
   }
 
   /// The first failing row (its index in `rows`) and why, or `nil`. A missing or
-  /// bad signature is reported at the writer's head row; a row past a revoked
-  /// writer's pinned head at that row.
+  /// bad signature is reported at the writer's last row in the page; a row past
+  /// a revoked writer's pinned head at that row.
   public static func firstFailure(userID: UserID, rows: [Row], roster: [WriterID: RosterWriter])
     -> (index: Int, reason: TamperReason)?
   {
-    var order: [WriterID] = []
-    var head: [WriterID: Int] = [:]
-    for (i, r) in rows.enumerated() {
-      guard let h = head[r.writerID] else {
-        order.append(r.writerID)
-        head[r.writerID] = i
-        continue
-      }
-      if r.counter >= rows[h].counter { head[r.writerID] = i }
-    }
-    for w in order {
-      let i = head[w]!
+    var last: [WriterID: Int] = [:]
+    for (i, r) in rows.enumerated() { last[r.writerID] = i }
+    for (w, i) in last.sorted(by: { $0.value < $1.value }) {
       guard let entry = roster[w] else { return (i, .unknownWriter) }
-      let top = rows[i]
-      guard let sig = top.headSig else { return (i, .headUnsigned) }
-      let message = SigningMessage.head(userID: userID, counter: top.counter, blobHash: top.blobHash, writerID: w)
-      guard Ed25519.verify(publicKey: entry.dwkPublicKey, signature: sig, message: message) else {
-        return (i, .headInvalid)
-      }
       if let pin = entry.revokedAt {
         for (j, r) in rows.enumerated() where r.writerID == w {
           if r.counter > pin.counter || (r.counter == pin.counter && r.blobHash != pin.hash) {
             return (j, .afterRevocation)
           }
         }
+      }
+      let top = rows[i]
+      guard let sig = top.headSig else { return (i, .headUnsigned) }
+      let message = SigningMessage.head(userID: userID, counter: top.counter, blobHash: top.blobHash, writerID: w)
+      guard Ed25519.verify(publicKey: entry.dwkPublicKey, signature: sig, message: message) else {
+        return (i, .headInvalid)
       }
     }
     return nil

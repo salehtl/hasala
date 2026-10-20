@@ -409,6 +409,32 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.phrase?.words == words)
   }
 
+  @Test func passwordBackAndCreateAgainKeepsThePhrase() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .password
+    await m.continueWithMethod()
+    m.newPassword = "copper lantern quietly 42"
+    m.confirmPassword = "copper lantern quietly 42"
+    m.submitPassword()
+    #expect(m.path.last == .phraseIntro)
+    let words = m.phrase?.words
+    #expect(words != nil && account.phrasesMade == 1)
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .password)
+    m.submitPassword()
+    #expect(m.path.last == .phraseIntro)
+    #expect(m.phrase?.words == words)
+    #expect(account.phrasesMade == 1)
+  }
+
   /// A wrong code keeps its six digits on screen until the person types again; five wrong
   /// codes use the code up ("Send a new code"), and a new code starts clean.
   @Test func aWrongCodeStaysUntilTypingAgain() async {
@@ -583,6 +609,7 @@ final class CountingAccount: AccountService {
   let mock: MockAccountService
   private(set) var signupsBegun = 0
   private(set) var passkeysSaved = 0
+  private(set) var phrasesMade = 0
 
   init(_ mock: MockAccountService = MockAccountService()) {
     mock.delay = .zero
@@ -606,7 +633,10 @@ final class CountingAccount: AccountService {
     passkeysSaved += 1
     try await mock.registerPasskey(ticket)
   }
-  func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase { try mock.makeRecoveryPhrase() }
+  func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
+    phrasesMade += 1
+    return try mock.makeRecoveryPhrase()
+  }
   func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
     async throws(AuthFailure) -> AccountProfile
   { try await mock.finishAccount(ticket, credential: credential, phrase: phrase) }

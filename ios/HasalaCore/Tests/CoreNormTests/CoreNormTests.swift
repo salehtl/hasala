@@ -369,3 +369,39 @@ struct CharsetTablesFreshnessTests {
     #expect(Self.list(Self.block(lines, "WORD_UNSUPPORTED")) == CharsetTables.wordUnsupported)
   }
 }
+
+@Suite("multipart depth cap")
+struct MultipartDepthTests {
+  static func nested(_ depth: Int, leaf: String) -> [UInt8] {
+    var s = "From: Synthetic <alerts@example.invalid>\r\nSubject: Nested\r\nMIME-Version: 1.0\r\n"
+    s += "Content-Type: multipart/mixed; boundary=\"n-0-x\"\r\n\r\n"
+    for i in 0..<(depth - 1) {
+      s += "--n-\(i)-x\r\nContent-Type: multipart/mixed; boundary=\"n-\(i + 1)-x\"\r\n\r\n"
+    }
+    s += "--n-\(depth - 1)-x\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(leaf)\r\n--n-\(depth - 1)-x--"
+    for i in (0..<(depth - 1)).reversed() { s += "\r\n--n-\(i)-x--" }
+    s += "\r\n"
+    return Array(s.utf8)
+  }
+
+  @Test("a message at the cap still reads its leaf")
+  func atCap() throws {
+    let r = try Normalizer.normalize(
+      version: 1, raw: Self.nested(Normalizer.maxMultipartDepth, leaf: "deep leaf"), receivedAtMs: 0)
+    #expect(r.text == "deep leaf" && r.partUsed == .plain)
+  }
+
+  @Test("one level past the cap is refused")
+  func pastCap() {
+    #expect(throws: NormalizeError.tooDeep) {
+      try Normalizer.normalize(version: 1, raw: Self.nested(Normalizer.maxMultipartDepth + 1, leaf: "x"), receivedAtMs: 0)
+    }
+  }
+
+  @Test("thousands of levels are refused without exhausting the stack")
+  func veryDeep() {
+    #expect(throws: NormalizeError.tooDeep) {
+      try Normalizer.normalize(version: 1, raw: Self.nested(5000, leaf: "x"), receivedAtMs: 0)
+    }
+  }
+}

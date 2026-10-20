@@ -255,6 +255,23 @@ struct SetupFlowTests: AccountSuite {
     #expect(setup.savePlanCalls == 2 && setup.plan?.savingsPercent == 10)  // a real change is sent
   }
 
+  @Test func untickingABankAfterBackRemovesIt() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let setup = try #require(s.setup as? MockSetupAuthoring)
+    let m = model(s)
+    m.toggle(.adib)
+    #expect(m.orderedBanks == [.enbd, .dib])
+    await m.continueWithBanks()
+    #expect(setup.banks == [.enbd, .dib] && setup.chooseBanksCalls == 1 && setup.setBanksCalls == 0)
+    m.pickProvider(.gmail)
+    m.back()
+    #expect(m.path.isEmpty)
+    m.toggle(.dib)
+    await m.continueWithBanks()
+    #expect(setup.banks == [.enbd])
+    #expect(setup.chooseBanksCalls == 1 && setup.setBanksCalls == 1)
+  }
+
   /// A remembered provider skips the chooser; one provider in the build never shows it.
   @Test func aRememberedProviderOrTheOnlyOneSkipsTheChooser() async throws {
     let m = model(services(MockAccountService(existing: .passkey, signedIn: true)))

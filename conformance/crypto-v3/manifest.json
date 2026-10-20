@@ -170,6 +170,10 @@
     {
       "id": "D42",
       "string": "hasala/v1/device-freeze"
+    },
+    {
+      "id": "D43",
+      "string": "hasala/v1/server/invite-mint"
     }
   ],
   "files": [
@@ -247,7 +251,7 @@
     },
     {
       "path": "tamper.json",
-      "sha256": "41d6aee31d5a599fb1dff9f5dcaca5fc0aeb707127aceb9184f67c4eaa02cd20"
+      "sha256": "67af15bf86e66078e1532eebf03cac890b823999a22e506f04f3186241feb335"
     },
     {
       "path": "wraps.json",

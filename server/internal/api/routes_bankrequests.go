@@ -94,6 +94,10 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_request", "bank")
 		return
 	}
+	if !s.turnstileOK(r, form.TurnstileToken, "bank_request") {
+		s.answerPublic(w, r, isForm, http.StatusForbidden, nil, "turnstile_failed", "bank")
+		return
+	}
 	s.recordBankRequest(w, r, isForm, form.Bank, form.OtherBank, "", nil)
 }
 

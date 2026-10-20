@@ -54,7 +54,10 @@ func admit(t *testing.T, g *Gate, userID uuid.UUID, resource string, delta int64
 	}
 	defer tx.Rollback(bg)
 	if err := g.Admit(bg, tx, userID, resource, delta); err != nil {
-		return err
+		if rerr := tx.Rollback(bg); rerr != nil {
+			t.Fatal(rerr)
+		}
+		return g.RecordRefusal(bg, err)
 	}
 	if err := tx.Commit(bg); err != nil {
 		t.Fatal(err)
@@ -362,5 +365,52 @@ func TestConcurrentAdmitsForOneAccountAreSerialized(t *testing.T) {
 	}
 	if got := usage(t, g, u, ResourceOplogHotBytes); got != n*10 {
 		t.Fatalf("usage after %d concurrent +10 admits = %d, want %d", n, got, n*10)
+	}
+}
+
+func TestAdmitRefusesWithoutTouchingThePoolAndRecordRefusalCountsAfterRollback(t *testing.T) {
+	pool := pgtest.New(t)
+	setDefaultLimit(t, pool, 10)
+	u := newUser(t, pool)
+
+	cfg := pool.Config()
+	cfg.MaxConns = 1
+	cfg.MinConns = 0
+	one, err := pgxpool.NewWithConfig(bg, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer one.Close()
+	g := New(one)
+
+	ctx, cancel := context.WithTimeout(bg, 3*time.Second)
+	defer cancel()
+	tx, err := one.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := g.Admit(ctx, tx, u, ResourceOplogHotBytes, 11)
+	if !errors.Is(refused, ErrRefused) {
+		t.Fatalf("got %v, want ErrRefused", refused)
+	}
+	if got := refusals(t, pool, u); len(got) != 0 {
+		t.Fatalf("Admit wrote a receipt while the caller's transaction was open: %v", got)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	err = g.RecordRefusal(ctx, refused)
+	if err != refused {
+		t.Fatalf("RecordRefusal = %v, want the refusal itself", err)
+	}
+	if got := refusals(t, pool, u); got[ResourceOplogHotBytes] != 1 {
+		t.Fatalf("account_refusals = %v, want {%s: 1}", got, ResourceOplogHotBytes)
+	}
+	other := errors.New("not a refusal")
+	if err := g.RecordRefusal(ctx, other); err != other {
+		t.Fatalf("RecordRefusal(non-refusal) = %v, want it unchanged", err)
+	}
+	if got := refusals(t, pool, u); got[ResourceOplogHotBytes] != 1 {
+		t.Fatalf("a non-refusal was counted: %v", got)
 	}
 }

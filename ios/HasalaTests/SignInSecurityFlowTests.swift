@@ -403,4 +403,11 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(m.approved)
     #expect(account.approvedResets == ["reset-1"])
   }
+
+  @Test func maskedTheEntryGridDrawsDotsForEachWord() {
+    let state = PhraseEntryState("absurd avoid sci")
+    #expect(state.drawn(masked: false) == ["absurd", "avoid", "sci"])
+    #expect(state.drawn(masked: true) == ["•••••", "•••••", "•••••"])
+    #expect(PhraseEntryState("").drawn(masked: true).isEmpty)
+  }
 }

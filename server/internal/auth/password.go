@@ -220,13 +220,18 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 		if n > passwordEmailLimit {
 			return SignedIn{}, fmt.Errorf("%w: password attempts for this address", ErrRateLimited)
 		}
-	} else if err := writerPasswordBudget(ctx, a.Pool, *userID, boundWriter, now); err != nil {
+	} else if err := writerPasswordAttempt(ctx, a.Pool, *userID, boundWriter, now); err != nil {
 		return SignedIn{}, err
 	}
 	// 4. The gate, before the ceremony is spent: a busy server (503) spends
 	// nothing, and the retry can use the same ceremony.
 	release, err := a.Gate.Acquire(ctx)
 	if err != nil {
+		if boundWriter != "" {
+			if rerr := refundWriterPasswordAttempt(ctx, a.Pool, *userID, boundWriter, now); rerr != nil {
+				return SignedIn{}, rerr
+			}
+		}
 		return SignedIn{}, gateErr(err)
 	}
 	defer release()
@@ -259,7 +264,7 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 	}
 	if !ok {
 		if compare {
-			if err := recordPasswordFailure(ctx, a.Pool, st.ID, boundWriter, now); err != nil {
+			if err := recordPasswordFailure(ctx, a.Pool, st.ID, now); err != nil {
 				return SignedIn{}, err
 			}
 		} else if _, err := a.Pool.Exec(ctx,
@@ -280,6 +285,11 @@ func (a *Accounts) PasswordLoginFinish(ctx context.Context, ceremonyID string, v
 	}
 	if _, err := tx.Exec(ctx, `UPDATE users SET password_failures = 0, password_paused_until = NULL WHERE id = $1`, st.ID); err != nil {
 		return SignedIn{}, err
+	}
+	if boundWriter != "" {
+		if err := refundWriterPasswordAttempt(ctx, tx, st.ID, boundWriter, now); err != nil {
+			return SignedIn{}, err
+		}
 	}
 	out, err := a.signInTx(ctx, tx, st, MintedPasswordLogin, MethodPassword, nil, boundWriter)
 	if err != nil {

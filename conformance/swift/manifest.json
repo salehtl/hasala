@@ -44,7 +44,8 @@
     "hasala/v1/reset-finish",
     "hasala/v1/email-change",
     "hasala/v1/server/auth-key-id",
-    "hasala/v1/device-freeze"
+    "hasala/v1/device-freeze",
+    "hasala/v1/server/invite-mint"
   ],
   "files": [
     "op-manifest-v4.json",

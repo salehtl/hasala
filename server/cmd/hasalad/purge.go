@@ -56,11 +56,26 @@ func runPurgeUser(env *runEnv, args []string) error {
 		if len(c.Unclassified) != 0 {
 			return fmt.Errorf("purge-user: a real purge would REFUSE: unclassified relations %v", c.Unclassified)
 		}
+		if err := purge.CheckCascades(ctx, pool, c.UserScoped); err != nil {
+			return fmt.Errorf("purge-user: a real purge would REFUSE: %w", err)
+		}
 		total := 0
 		for _, r := range c.UserScoped {
 			var n int
 			if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+r.SQL()+` WHERE user_id = $1`, target).Scan(&n); err != nil {
 				return fmt.Errorf("purge-user: count %s: %w", r, err)
+			}
+			if n > 0 && r.Kind == 'm' {
+				var canRefresh bool
+				if err := pool.QueryRow(ctx,
+					`SELECT pg_has_role(current_user, c.relowner, 'USAGE') OR has_table_privilege(current_user, c.oid, 'MAINTAIN')
+					   FROM pg_class c WHERE c.oid = $1::regclass`, r.SQL()).Scan(&canRefresh); err != nil {
+					return fmt.Errorf("purge-user: read %s: %w", r, err)
+				}
+				if !canRefresh {
+					return fmt.Errorf("purge-user: a real purge would REFUSE: materialized view %s holds %d rows "+
+						"of the account and this role cannot refresh it", r, n)
+				}
 			}
 			if n > 0 {
 				fmt.Fprintf(env.stdout, "  %-40s %d\n", r, n)

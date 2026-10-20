@@ -1,8 +1,8 @@
-/// A short line of copy that may carry amounts, e.g. "AED 827.28 isn't in your plan yet".
+/// A short line of copy that may carry amounts, e.g. "AED 827.28 still to check".
 ///
 /// Amounts stay `Money` until the moment the line is drawn, so Hide amounts can
-/// replace exactly the figures and leave the words (Paper "Home · Amounts hidden": "AED •••• isn't
-/// in your plan yet", "•••• of •••• · Jan").
+/// replace exactly the figures and leave the words (Paper "Home · Amounts hidden": "AED ••••
+/// still to check", "•••• of •••• · Jan").
 public struct MoneyPhrase: Sendable, Hashable, Codable, ExpressibleByStringLiteral {
   public enum Part: Sendable, Hashable, Codable {
     case text(String)

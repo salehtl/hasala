@@ -7,6 +7,7 @@ package api
 // account; the difference is only which email the worker sends later.
 
 import (
+	"context"
 	"errors"
 	"io"
 	"mime"
@@ -17,6 +18,7 @@ import (
 	"sync/atomic"
 
 	"github.com/salehtl/hasala/server/internal/banks"
+	"github.com/salehtl/hasala/server/internal/turnstile"
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
@@ -53,8 +55,30 @@ type WebOptions struct {
 
 	WaitlistIP, WaitlistGlobal, LinkIP, BankIP, BankGlobal, BankUser, PreflightIP *Limiter
 
+	Turnstile         TokenVerifier
+	TurnstileRequired bool
+
 	// Outcomes counts waitlist_submit's outcome words and the honeypot.
 	Honeypot, Submitted atomic.Int64
+}
+
+type TokenVerifier interface {
+	Verify(ctx context.Context, token, action string) error
+}
+
+func (s *Server) turnstileOK(r *http.Request, token, action string) bool {
+	o := s.Web
+	if o.Turnstile == nil {
+		return !o.TurnstileRequired
+	}
+	if token == "" && !o.TurnstileRequired {
+		return true
+	}
+	err := o.Turnstile.Verify(r.Context(), token, action)
+	if err != nil && !errors.Is(err, turnstile.ErrRefused) {
+		s.logf("api: turnstile: %v", err)
+	}
+	return err == nil
 }
 
 func (s *Server) mountWaitlist(mux *http.ServeMux) {
@@ -270,8 +294,10 @@ func (s *Server) handleWaitlistSubmit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
-	// TODO(full parity): Turnstile (spec 07 §5.10) is optional and off until
-	// the owner adds a site key; it is not built yet.
+	if !s.turnstileOK(r, form.TurnstileToken, "waitlist") {
+		s.answerPublic(w, r, isForm, http.StatusForbidden, nil, "turnstile_failed", "")
+		return
+	}
 	if _, err := o.Waitlist.Submit(r.Context(), email, choice); err != nil {
 		if errors.Is(err, waitlist.ErrFull) {
 			s.answerPublic(w, r, isForm, http.StatusTooManyRequests, nil, "waitlist_full", "")

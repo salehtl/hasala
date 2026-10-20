@@ -399,3 +399,24 @@ func TestTheLogSweepRedactsAndExpiresRows(t *testing.T) {
 		t.Fatalf("rows left after the retention: %v (want only the one being sent, %d)", left, sending)
 	}
 }
+
+func TestRenderEndsBeforeTheLease(t *testing.T) {
+	pool := pgtest.New(t)
+	q := New(pool, &mail.Fake{}, fixedTagger{})
+	var left time.Duration
+	q.Register("test", RenderFunc(func(ctx context.Context, _ pgx.Tx, _ Row) (mail.Message, error) {
+		d, ok := ctx.Deadline()
+		if !ok {
+			return mail.Message{}, errors.New("no deadline")
+		}
+		left = time.Until(d)
+		return mail.Message{Subject: "s", Text: "t"}, nil
+	}))
+	enqueue(t, pool, q, Enqueue{Kind: "test", To: "lease@example.com"})
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if left <= 0 || left+sendTimeout >= leaseFor {
+		t.Fatalf("render has %s, the lease is %s", left, leaseFor)
+	}
+}

@@ -63,7 +63,7 @@ public struct LockSpentRingView: View {
     if let model {
       if showsAmounts {
         VStack(spacing: 0) {
-          Text(MoneyFormat.short(model.spent.minor)).privacySensitive().hFigure(.lockRingValue)
+          Text(minus(model.spent) + MoneyFormat.short(model.spent.minor)).privacySensitive().hFigure(.lockRingValue)
             .foregroundStyle(Color.white)
           Text("spent").hType(.lockRingCaption).foregroundStyle(lockSecondary)
         }
@@ -93,7 +93,7 @@ public struct LockSpentRingView: View {
   private var spoken: String {
     guard let model else { return "Spent so far, your first bank alert will fill this in" }
     if showsAmounts {
-      return "Spent so far, AED \(MoneyFormat.string(model.spent.minor, style: .rounded)), \(model.verdictWord)"
+      return "Spent so far, \(model.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(model.spent.minor, style: .rounded)), \(model.verdictWord)"
     }
     return "Spent so far, \(model.verdictWord)"
   }
@@ -136,7 +136,7 @@ public struct LockSpentRectView: View {
       }
       if let model {
         if showsAmounts {
-          Text("\(MoneyFormat.string(model.spent.minor, style: .rounded)) spent").privacySensitive()
+          Text("\(minus(model.spent))\(MoneyFormat.string(model.spent.minor, style: .rounded)) spent").privacySensitive()
             .hFigure(.lockValue).foregroundStyle(Color.white).lineLimit(1)
           Text([model.verdictWord, model.billNamed].compactMap { $0 }.joined(separator: " · ")).privacySensitive()
             .hType(.lockCaption).foregroundStyle(lockSecondary).lineLimit(1)
@@ -176,3 +176,5 @@ public struct LockReviewCircleView: View {
     .accessibilityLabel(model.map { "To review, \($0.count) to sort" } ?? "To review")
   }
 }
+
+private func minus(_ m: Money) -> String { m.isNegative ? "\u{2212}" : "" }

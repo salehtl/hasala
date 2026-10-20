@@ -20,6 +20,7 @@ import (
 	"crypto/pbkdf2"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -73,6 +74,7 @@ type Keys struct {
 	current int
 	kCode   []byte
 	kTag    []byte
+	kInvite []byte
 
 	SaltKeyID string         // key_id(salt_key)
 	AuthKeyID map[int]string // generation → key_id(auth_key_g)
@@ -122,6 +124,9 @@ func New(saltKey []byte, authKeys map[int][]byte, current int) (*Keys, error) {
 	if k.kTag, err = subkey(cur, keyproto.DomainServerEmailTag); err != nil {
 		return nil, err
 	}
+	if k.kInvite, err = subkey(cur, keyproto.DomainServerInviteMint); err != nil {
+		return nil, err
+	}
 	return k, nil
 }
 
@@ -156,6 +161,17 @@ func (k *Keys) PasswordSalt(emailNorm string) []byte {
 // EmailTag is HMAC(K_tag, utf8(email_norm)).
 func (k *Keys) EmailTag(emailNorm string) []byte {
 	return mac(k.kTag, []byte(emailNorm))
+}
+
+func (k *Keys) InviteSecrets(inviteID uuid.UUID, mailID int64) (code, link []byte) {
+	return inviteSecrets(k.kInvite, inviteID, mailID)
+}
+
+func inviteSecrets(key []byte, inviteID uuid.UUID, mailID int64) (code, link []byte) {
+	id := binary.BigEndian.AppendUint64(nil, uint64(mailID))
+	code = mac(key, []byte("code"), []byte{0}, inviteID[:], id)[:15]
+	link = mac(key, []byte("link"), []byte{0}, inviteID[:], id)
+	return code, link
 }
 
 // CodeMAC is HMAC(K_code, utf8(purpose) ‖ 00 ‖ uuid_raw(code_id) ‖ email_tag

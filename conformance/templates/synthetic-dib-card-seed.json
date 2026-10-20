@@ -1,0 +1,182 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.card.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.card.v1",
+    "version": 2,
+    "bank": "dib",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "dib.ae"
+      ],
+      "body_contains": [
+        "إشعار مشتريات"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "body",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "المبلغ\\n(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})(?:[^0-9]|$)"
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          "بتاريخ (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4})"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          "الدفع الى\\n(?P<v>[^\\n]+)"
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          "رقم البطاقة\\n(?P<v>[^ \\n]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction",
+      "date"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.card.v1/aed",
+      "source": "SYNTHETIC: the published seed reads a two-decimal AED amount",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYp9mE2YXYqNmE2LoKQUVEIDI1MC4wMArYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNgrYp9mE2K/Zgdi5INin2YTZiQpTSE9QCtix2YLZhSDYp9mE2KjYt9in2YLYqQpYWFhYMTIzNA==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "25000",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SHOP",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card.v1/aed-at-end-of-body",
+      "source": "SYNTHETIC: the trailing context also accepts the end of the text",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNgrYp9mE2YXYqNmE2LoKQUVEIDI1MC4wMA==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "25000",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card.v1/kwd-three-decimals",
+      "source": "SYNTHETIC: the seed refuses a third decimal instead of reading 12.34",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYp9mE2YXYqNmE2LoKS1dEIDEyLjM0NQrYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNgrYp9mE2K/Zgdi5INin2YTZiQpTSE9QCtix2YLZhSDYp9mE2KjYt9in2YLYqQpYWFhYMTIzNA==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SHOP",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card.v1/aed-three-decimals",
+      "source": "SYNTHETIC: the third decimal is refused whatever the currency",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYp9mE2YXYqNmE2LoKQUVEIDEyLjM0NQrYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNgrYp9mE2K/Zgdi5INin2YTZiQpTSE9QCtix2YLZhSDYp9mE2KjYt9in2YLYqQpYWFhYMTIzNA==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SHOP",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card.v1/kwd-two-decimals",
+      "source": "SYNTHETIC: KWD has exponent 3, so the executor refuses the amount",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYp9mE2YXYqNmE2LoKS1dEIDEyLjM0Ctio2KrYp9ix2YrYriAwNS0wNi0yMDI2Ctin2YTYr9mB2Lkg2KfZhNmJClNIT1AK2LHZgtmFINin2YTYqNi32KfZgtipClhYWFgxMjM0",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SHOP",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card.v1/jpy",
+      "source": "SYNTHETIC: JPY has exponent 0, so the executor refuses the amount",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYp9mE2YXYqNmE2LoKSlBZIDEsMjAwLjAwCtio2KrYp9ix2YrYriAwNS0wNi0yMDI2Ctin2YTYr9mB2Lkg2KfZhNmJClNIT1AK2LHZgtmFINin2YTYqNi32KfZgtipClhYWFgxMjM0",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SHOP",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

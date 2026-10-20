@@ -269,7 +269,8 @@ func deleteCredentialTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, creden
 // close.
 //
 //	credential_id = $2                                  the feature
-//	OR (credential_id IS NULL AND <not the caller>)      the unattributable
+//	OR (credential_id IS NULL AND <not the caller>       the unattributable
+//	    AND minted by a passkey ceremony)
 //
 // It runs in the CALLER'S transaction, so the credential's removal and the loss
 // of the access it granted commit together. A sweep issued afterwards would
@@ -288,9 +289,10 @@ func revokeCredentialSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 	credID, keepHash []byte, now time.Time) (int64, error) {
 	// The one predicate, in the one place. $1 user, $2 credential, $3 the
 	// caller's own token hash.
-	const doomed = `user_id = $1
+	doomed := `user_id = $1
 	                  AND (credential_id = $2::bytea
-	                       OR (credential_id IS NULL AND token_hash IS DISTINCT FROM $3::bytea))`
+	                       OR (credential_id IS NULL AND token_hash IS DISTINCT FROM $3::bytea
+	                           AND minted_by IN ('` + MintedRegister + `', '` + MintedLogin + `', '` + MintedRecover + `')))`
 
 	tag, err := tx.Exec(ctx,
 		`UPDATE sessions SET revoked_at = $4, revoked_reason = 'others' WHERE revoked_at IS NULL AND `+doomed,

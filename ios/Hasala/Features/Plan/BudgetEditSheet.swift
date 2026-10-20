@@ -305,6 +305,6 @@ struct BudgetEditSheet: View {
   }
 
   private func set(_ minor: Int64) {
-    draft = PlanAmountField.text(for: max(0, minor))
+    draft = PlanAmountField.text(for: AmountEntry.clamped(minor))
   }
 }

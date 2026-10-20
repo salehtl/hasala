@@ -193,10 +193,10 @@ public struct Opener: Sendable {
     if b[0] > FrameV3.version { return .hardStop(.updateRequired) }
     guard b[0] == FrameV3.version, let h = FrameV3.parseHeader(b) else { return .hardStop(.tampered(.legacyFrame)) }
     // R4: the aad_len bound and the epoch.
-    guard h.aadLength + 67 <= n, h.epoch >= 1 else { return .hardStop(.tampered(.badHeader)) }
+    guard h.aadLength + 67 <= n, FrameV3.isValidEpoch(h.epoch) else { return .hardStop(.tampered(.badHeader)) }
     if h.epoch > epochHWM {
       guard let serverEpoch else { return .refreshEpoch(h.epoch) }
-      guard serverEpoch >= h.epoch, FrameV3.isValidEpoch(h.epoch) else { return .hardStop(.tampered(.epochInvalid)) }
+      guard serverEpoch >= h.epoch else { return .hardStop(.tampered(.epochInvalid)) }
     }
     // R5: the embedded AAD is the expected position, compared in constant time.
     let layout = FrameV3.Layout(aadLength: h.aadLength, frameLength: n)

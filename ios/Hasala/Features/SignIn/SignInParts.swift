@@ -504,5 +504,8 @@ struct ProgressCelebrationScreen<Cards: View, Foot: View>: View {
 /// drawn at all (spec 04 §6.7, "shown means drawn").
 @MainActor
 func screenIsCaptured() -> Bool {
-  UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.contains { $0.screen.isCaptured }
+  #if DEBUG
+    if ProcessInfo.processInfo.arguments.contains("-HasalaScreenCaptured") { return true }
+  #endif
+  return UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.contains { $0.screen.isCaptured }
 }
