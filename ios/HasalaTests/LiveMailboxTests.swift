@@ -23,7 +23,7 @@ struct LiveMailboxTests {
     }
     #expect(offer(.unlinked) == .connect)
     #expect(offer(.reconnectRequired) == Self.signInAgain)
-    #expect(offer(.halted) == Self.signInAgain)
+    #expect(offer(.halted) == nil)
     // The first import runs on its own: nothing to offer while it does.
     for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill, .active, .otherDevice] {
       #expect(offer(phase) == nil)
@@ -38,7 +38,9 @@ struct LiveMailboxTests {
     #expect(offer(.unlinked, link: .holder(isThisDevice: true, watchExpiresAtMs: nil)) == .connect)
     #expect(offer(.reconnectRequired, link: nil) == Self.signInAgain)
     // Only a halt a new Google sign-in fixes is offered a new sign-in.
-    #expect(offer(.halted, halt: .gmail) == Self.signInAgain)
+    #expect(offer(.halted, halt: .gmail) == nil)
+    #expect(offer(.halted, halt: nil) == nil)
+    #expect(offer(.halted, halt: .reconnectRequired) == Self.signInAgain)
     #expect(offer(.halted, halt: .accountFull) == nil)
     #expect(offer(.halted, halt: .templatesUnavailable) == nil)
     // A Microsoft account with no mailbox: another account's sign-in fixes it (main's rule).
@@ -257,7 +259,7 @@ struct LiveMailboxTests {
     let lane = LiveMailboxConnecting(runtime: { nil }, buildProviders: [.gmail, .outlook])
     #expect(lane.connectable == [.gmail, .outlook])  // no runtime open yet: the build's
     #expect(LiveMailboxConnecting(runtime: { nil }).connectable.isEmpty)
-    #expect(lane.capabilities == [.connect, .signInAgain, .disconnect, .replace])
+    #expect(lane.capabilities == [.connect, .signInAgain, .disconnect, .replace, .tryAgain])
     #expect(!lane.capabilities.contains(.addSecond) && lane.holdsOneLink)
     #expect(lane.mailboxes.isEmpty && lane.offer == nil && lane.linkedProvider == nil)
   }
@@ -315,7 +317,8 @@ struct LiveMailboxTests {
     #expect(row(.active)?.state == .connected && row(.active)?.meta == "Checked 4 min ago")
     #expect(row(.active)?.banks == ["DIB"] && row(.active)?.id == "gmail")
     #expect(row(.reconnectRequired)?.state == .needsSignIn)
-    #expect(row(.halted, halt: .gmail)?.state == .needsSignIn)
+    #expect(row(.halted, halt: .gmail)?.state == .connected)
+    #expect(row(.halted, halt: nil)?.state == .connected)
     #expect(row(.halted, halt: .accountFull)?.state == .connected && row(.halted, halt: .accountFull)?.note != nil)
     #expect(row(.otherDevice)?.note == "Read on your other iPhone")
     // Read on the other iPhone: no Disconnect and no switch from here.
@@ -329,7 +332,7 @@ struct LiveMailboxTests {
       provider: .outlook, nowMs: now
     ).first
     #expect(haltedOutlook?.note == MailConnectFailure.noMailboxLine(.outlook))
-    #expect(row(.halted, halt: .gmail)?.note == nil)
+    #expect(row(.halted, halt: .gmail)?.note == "Reading your bank alerts stopped.")
     // An Outlook lane's row: its id and provider, a personal Microsoft account.
     let outlook = LiveMailboxConnecting.mailboxes(
       phase: .active, halt: nil, address: "maya.k@example.com", lastSuccessAtMs: nil, bankDomains: [],
@@ -371,21 +374,27 @@ struct LiveMailboxTests {
   /// "needs you".) Another iPhone reading the mailbox is still working.
   @Test func aHaltedLaneIsNotWorking() {
     let now: Int64 = 10_000_000_000
-    func summary(_ phase: MailboxPhase, halt: MailboxHaltCode?, health: MailboxHealth.Status) -> MailboxesSummary {
+    func summary(
+      _ phase: MailboxPhase, halt: MailboxHaltCode?, health: MailboxHealth.Status, provider: MailProviderKind = .gmail
+    ) -> MailboxesSummary {
       let rows = LiveMailboxConnecting.mailboxes(
         phase: phase, halt: halt, address: "maya@example.com", lastSuccessAtMs: now - 4 * 60_000,
-        bankDomains: ["dib.ae"], nowMs: now)
+        bankDomains: ["dib.ae"], provider: provider, nowMs: now)
       return MailboxesSummary(
         rows, health: MailboxHealth(status: health, lastEmail: "4 min ago", banks: "DIB"),
-        offer: LiveMailboxConnecting.offer(phase: phase, halt: halt, sampleLoaded: false, serverLink: .noLink))
+        offer: LiveMailboxConnecting.offer(
+          phase: phase, halt: halt, sampleLoaded: false, serverLink: .noLink, provider: provider))
     }
-    for halt in [MailboxHaltCode.accountFull, .templatesUnavailable] {
-      let s = summary(.halted, halt: halt, health: .reconnect)
-      #expect(s.title == "Bank alerts stopped" && s.detail == "Hasala stopped reading maya@example.com.")
-      #expect(s.hue == .sand && s.needsYou)
+    for provider in [MailProviderKind.gmail, .outlook] {
+      for halt in [MailboxHaltCode.accountFull, .templatesUnavailable, .gmail, nil] {
+        let s = summary(.halted, halt: halt, health: .reconnect, provider: provider)
+        #expect(s.title == "Bank alerts stopped" && s.detail == "Hasala stopped reading maya@example.com.")
+        #expect(s.hue == .sand && s.needsYou)
+        #expect(!s.detail.contains("ended"))
+      }
     }
-    let fixable = summary(.halted, halt: .gmail, health: .reconnect)
-    #expect(fixable.title == "Sign in again" && fixable.needsYou)
+    let reconnect = summary(.reconnectRequired, halt: .reconnectRequired, health: .reconnect, provider: .outlook)
+    #expect(reconnect.title == "Sign in again" && reconnect.detail == "Microsoft ended access to maya@example.com.")
     // No mailbox on that Microsoft account: the summary says so, not that access ended.
     let noMailbox = summary(.halted, halt: .noMailbox, health: .reconnect)
     #expect(noMailbox.title == "Sign in again" && noMailbox.detail == MailConnectFailure.noMailboxLine(.gmail))

@@ -41,6 +41,13 @@ struct WorkCoordinatorTests {
     #expect(log.all == ["sync.launch", "mail.launch", "committed"])
   }
 
+  @Test func tryAgainRunsTheMailCycleAsARetry() async {
+    let log = Log()
+    _ = await Self.coordinator(log).run(.retryMail)
+    #expect(log.all == ["sync.refresh", "mail.retry", "committed"])
+    #expect(WorkCoordinator.Trigger.retryMail.strength > WorkCoordinator.Trigger.refresh.strength)
+  }
+
   @Test func anAuthoredRunReadsNoMail() async {
     let log = Log()
     _ = await Self.coordinator(log).run(.authored)

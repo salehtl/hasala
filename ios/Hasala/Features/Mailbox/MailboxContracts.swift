@@ -78,8 +78,9 @@ struct MailboxCapabilities: OptionSet, Sendable {
   /// that link, once the person confirms it ("Change your email?"). Live holds one link
   /// per account, and the server swaps it in one step.
   static let replace = MailboxCapabilities(rawValue: 1 << 4)
+  static let tryAgain = MailboxCapabilities(rawValue: 1 << 5)
 
-  static let all: MailboxCapabilities = [.connect, .signInAgain, .disconnect, .addSecond]
+  static let all: MailboxCapabilities = [.connect, .signInAgain, .disconnect, .addSecond, .tryAgain]
 }
 
 /// The mailboxes, their connect and the first scan, implemented by the live mail lane and
@@ -123,6 +124,7 @@ protocol MailboxConnecting: AnyObject, Observable {
     async throws(MailConnectFailure) -> MailLinked
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
   func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked
+  func tryAgain(_ mailboxID: String) async
   /// Stops reading the mailbox and forgets its sign-in.
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure)
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact?

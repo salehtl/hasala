@@ -98,6 +98,18 @@ struct MailboxDetailPage: View {
       }
     }
     .accessibilityIdentifier("mailbox.card")
+    if let note = m.note, m.state == .connected, !m.readElsewhere {
+      VStack(alignment: .leading, spacing: 10) {
+        InlineStatus(tone: .warning, text: note, size: .regular)
+        if app.mailbox?.capabilities.contains(.tryAgain) == true {
+          Button("Try again") { Task { await tryAgain(m) } }
+            .buttonStyle(.pill(.primary, size: .large, fill: true, loading: busy))
+            .disabled(busy)
+            .accessibilityIdentifier("mailbox.tryAgain")
+        }
+      }
+      .padding(.horizontal, 16)
+    }
     banksCard(m, title: "Banks in this mailbox")
     disconnect(m, footnote: m.state == .disconnected ? nil : Self.disconnectFootnote(m.provider))
     if m.state == .disconnected {
@@ -105,6 +117,13 @@ struct MailboxDetailPage: View {
         .hType(.footnote).foregroundStyle(HColor.textSecondary)
         .padding(.horizontal, 16)
     }
+  }
+
+  private func tryAgain(_ m: MailboxSnapshot) async {
+    guard let mailbox = app.mailbox, !busy else { return }
+    busy = true
+    await mailbox.tryAgain(m.id)
+    busy = false
   }
 
   // MARK: Needs sign-in (1O3N)

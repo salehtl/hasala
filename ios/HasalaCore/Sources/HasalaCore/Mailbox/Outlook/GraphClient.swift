@@ -1,8 +1,8 @@
 // The Microsoft Graph mail surface the Outlook lane uses (docs/decisions/outlook-mailbox.md;
 // the Outlook plan's shared contract), narrowed by PO G like the Gmail client:
 //
-//   GET    /me/messages              ALWAYS with a sender `$filter` (`endswith` on the From
-//                                    address, two clauses per trusted domain) and a received-time
+//   GET    /me/messages              ALWAYS with a sender `$filter` (`eq` on the From address,
+//                                    one clause per known bank address) and a received-time
 //                                    bound; ids, received time and From only (§1)
 //   GET    /me/messages/{id}         id, received time and From, for a listed id the run has not
 //                                    seen in its listing
@@ -145,7 +145,7 @@ final class GraphListingCache: @unchecked Sendable {
 
 public struct GraphClient: Sendable {
   public static let defaultBase = "https://graph.microsoft.com/v1.0"
-  /// At most this many domains (two `endswith` clauses each) per listing (§1, check L4).
+  /// At most this many domains per listing (§1, check L4).
   public static let maxDomainsPerList = 20
   /// now + 6 d 23 h: inside Graph's 10,080-minute cap for messages, with an hour of slack for
   /// clocks (the contract).
@@ -160,13 +160,16 @@ public struct GraphClient: Sendable {
   let base: String
   let link: any OutlookLinkStore
   let nowMs: @Sendable () -> Int64
+  let knownSenders: [String]
   let cache = GraphListingCache()
+  static let log = CoreLog(category: "CoreMailbox")
 
   public init(
     http: any HTTPExchange, accessToken: String, link: any OutlookLinkStore, base: String = GraphClient.defaultBase,
-    nowMs: @escaping @Sendable () -> Int64
+    knownSenders: [String] = OutlookSenders.known, nowMs: @escaping @Sendable () -> Int64
   ) {
     self.http = http
+    self.knownSenders = knownSenders
     self.accessToken = accessToken
     self.link = link
     self.base = base
@@ -209,6 +212,7 @@ public struct GraphClient: Sendable {
   /// A non-2xx answer as the engine's error. Reads only `error.code` and `Retry-After`.
   public static func failure(_ res: HTTPResponse, op: String) -> MailAPIError {
     let code = (try? JSONParser.parse([UInt8](res.body)))?["error"]?["code"]?.stringValue
+    log.notice("graph.failure", .count("status", res.status), .redacted("code", code ?? ""))
     if code == noMailboxCode { return .noMailbox }
     if res.status == 429 || res.status == 503,
       let ra = res.header("Retry-After").flatMap({ Int64($0.trimmingCharacters(in: .whitespaces)) }), ra >= 0
@@ -221,13 +225,11 @@ public struct GraphClient: Sendable {
 
   // MARK: Listing (§1)
 
-  /// `$filter`: `receivedDateTime ge <since> and (endswith(…,'@d') or endswith(…,'.d') …)`, with
-  /// the two clauses per domain matching exactly `BankDomains.isMember`. No `$orderby` (so no
+  /// `$filter`: `receivedDateTime ge <since> and (from/emailAddress/address eq '<a>' or …)`, one
+  /// clause per known address (Outlook.com refuses `endswith` on messages). No `$orderby` (so no
   /// `InefficientFilter`): the engine pages to the end before its watermark moves.
-  public static func listQuery(_ group: [String], sinceSec: Int64, top: Int = pageSize) -> [(String, String)] {
-    let clauses = group.flatMap { d in
-      ["@\(d)", ".\(d)"].map { "endswith(from/emailAddress/address,'\($0)')" }
-    }
+  public static func listQuery(_ addresses: [String], sinceSec: Int64, top: Int = pageSize) -> [(String, String)] {
+    let clauses = addresses.map { "from/emailAddress/address eq '\($0)'" }
     let filter = "receivedDateTime ge \(isoSeconds(sinceSec)) and (\(clauses.joined(separator: " or ")))"
     return [("$filter", filter), ("$select", "id,receivedDateTime,from"), ("$top", String(top))]
   }
@@ -246,6 +248,9 @@ public struct GraphClient: Sendable {
   {
     guard !senders.isEmpty, senders.count <= Self.maxDomainsPerList, senders.allSatisfy(BankDomains.isQuerySafe)
     else { throw .unfilteredListing }
+    let addresses = OutlookSenders.addresses(for: senders, known: knownSenders)
+    guard !addresses.isEmpty else { return MailListPage(ids: [], nextPageToken: nil) }
+    let wanted = Set(addresses.map { $0.lowercased() })
     let o: JSONObject
     if let pageToken {
       guard pageToken.hasPrefix(base + "/me/messages?"), let u = URL(string: pageToken) else {
@@ -254,9 +259,9 @@ public struct GraphClient: Sendable {
       o = try await object(.get, u, op: "list")
     } else {
       do {
-        o = try await object(.get, url("/me/messages", Self.listQuery(senders, sinceSec: sinceSec)), op: "list")
+        o = try await object(.get, url("/me/messages", Self.listQuery(addresses, sinceSec: sinceSec)), op: "list")
       } catch .status(504, _) {
-        o = try await object(.get, url("/me/messages", Self.listQuery(senders, sinceSec: sinceSec, top: 50)), op: "list")
+        o = try await object(.get, url("/me/messages", Self.listQuery(addresses, sinceSec: sinceSec, top: 50)), op: "list")
       }
     }
     var ids: [String] = []
@@ -266,7 +271,8 @@ public struct GraphClient: Sendable {
       let address = m["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
       let received = m["receivedDateTime"]?.stringValue.flatMap { try? parseInstantMs($0) }
       // §1b: Graph applied the filter, or the whole page is dropped unread.
-      guard BankDomains.isMember(BankDomains.domainOf(address), of: senders), let received,
+      guard wanted.contains(address.lowercased()), BankDomains.isMember(BankDomains.domainOf(address), of: senders),
+        let received,
         received >= sinceSec * 1000
       else { throw .filterNotApplied }
       ids.append(id)
