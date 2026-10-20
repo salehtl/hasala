@@ -590,3 +590,36 @@ which may rebuild the headers differently. Keep every real `.eml` in the private
 
 Until items 5, 6 and 8 are closed, the Outlook lane sends every message to review
 (`outlookTrustProven = false`).
+
+## Results (WP0)
+
+**Status: NOT RUN.** Fill this section from the redacted output of the tools in
+[the runbook](outlook-trust-runbook.md). Paste only what they print: file indices, From
+domains, header forms and counts, `dmarc` / `compauth` / `reason`, verdicts. Never paste a
+subject, body, amount, address local part, message id or date. The `.eml` files stay
+outside this repository.
+
+Mailbox: a personal Outlook.com test account (address not recorded here). Date of the run:
+`<YYYY-MM-DD>`. Checker commit: `<sha>`.
+
+| Check | Input | Result | Evidence (redacted) |
+|---|---|---|---|
+| C1 one Microsoft-form A-R, topmost | `genuine/`, `<n>` alerts from `<bank domains>` | `<PASS / FAIL>` | `C1 … <n>/<n>` |
+| C2 one `AuthAs: Anonymous`, one `AuthSource …prod.outlook.com` | `genuine/` | `<PASS / FAIL>` | `C2 …`; positions: `authas@<above/below>`, `authsource@<above/below>`, `order=<…>` |
+| C3 spoof probe untrusted | `spoof/`, `<n>` probes | `<PASS / FAIL>` | `C3 …`; forms `<…>`; forged `AuthAs`/`AuthSource` `<kept / removed>`; forged A-Rs `<kept / removed / renamed>`; EOP A-R `ms_index=<n>` |
+| C3 copied alerts untrusted | `copied/`, `<n>` messages | `<PASS / FAIL>` | `C3 …`; verdicts `<no_eop …>` |
+| C4 `$value` order = `internetMessageHeaders` order | Debug app, `<n>` alerts | `<PASS / FAIL>` | `order_match=<yes/no>`, `rcv0=<same/differs>`; Outlook on the web source `<same / differs>` |
+| C5 Junk and auto-forwarded alerts | `genuine/junk/`, `genuine/forwarded/` | `<PASS / FAIL>` | `C5 …`; Junk `scl=<n> dmarc=<…> compauth=<…> reason=<…>`; forwarded `dmarc=<…> compauth=<…> reason=<…>` |
+| C6 oracle over every export | all folders | `<PASS / FAIL>` | `C6 …` (genuine) and `C6 … untrusted half` |
+| C7 no second Microsoft-form A-R | `genuine/` | `<PASS / FAIL>` | `C7 …`; senders on Microsoft 365: `<none / domains>` |
+| L1–L7 listing | Debug app | `<…>` | `<…>` |
+| I1–I3 identity | Debug app | `<…>` | `<…>` |
+
+UNVERIFIED items closed by this run: `<5, 6, 8, …>`. Amendments to §3, if any: `<none /
+the change and its new vectors>`.
+
+### Turning the gate on
+
+Only when C1–C7 all show PASS above, in its own commit that changes nothing else:
+
+`ios: trust Outlook verdicts (outlookTrustProven = true); WP0 results in docs/decisions/outlook-mailbox.md#results-wp0`

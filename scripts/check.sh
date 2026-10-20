@@ -131,7 +131,8 @@ leaked="$(
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		find reference/ledgerd-client/test/e2e -type f -name '*.json' || true
-	} 2>/dev/null | sort
+		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true
+	} 2>/dev/null | sort -u
 )"
 if [[ -n "$leaked" ]]; then
 	echo "check: real-mail fixtures are back in the public tree; they belong in salehtl/hasala-fixtures:" >&2
