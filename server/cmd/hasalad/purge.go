@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/purge"
@@ -56,11 +58,26 @@ func runPurgeUser(env *runEnv, args []string) error {
 		if len(c.Unclassified) != 0 {
 			return fmt.Errorf("purge-user: a real purge would REFUSE: unclassified relations %v", c.Unclassified)
 		}
+		if err := dryRunCascades(ctx, pool, c.UserScoped); err != nil {
+			return err
+		}
 		total := 0
 		for _, r := range c.UserScoped {
 			var n int
 			if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+r.SQL()+` WHERE user_id = $1`, target).Scan(&n); err != nil {
 				return fmt.Errorf("purge-user: count %s: %w", r, err)
+			}
+			if n > 0 && r.Kind == 'm' {
+				var canRefresh bool
+				if err := pool.QueryRow(ctx,
+					`SELECT pg_has_role(current_user, c.relowner, 'USAGE') OR has_table_privilege(current_user, c.oid, 'MAINTAIN')
+					   FROM pg_class c WHERE c.oid = $1::regclass`, r.SQL()).Scan(&canRefresh); err != nil {
+					return fmt.Errorf("purge-user: read %s: %w", r, err)
+				}
+				if !canRefresh {
+					return fmt.Errorf("purge-user: a real purge would REFUSE: materialized view %s holds %d rows "+
+						"of the account and this role cannot refresh it", r, n)
+				}
 			}
 			if n > 0 {
 				fmt.Fprintf(env.stdout, "  %-40s %d\n", r, n)
@@ -83,6 +100,44 @@ func runPurgeUser(env *runEnv, args []string) error {
 		fmt.Fprintln(env.stdout, "no such account; nothing was deleted")
 	}
 	return nil
+}
+
+func dryRunCascades(ctx context.Context, pool *pgxpool.Pool, rels []purge.Relation) error {
+	rows, err := pool.Query(ctx, `
+		SELECT ns.nspname || '.' || cl.relname, con.confdeltype::text
+		  FROM pg_constraint con
+		  JOIN pg_class cl ON cl.oid = con.conrelid
+		  JOIN pg_namespace ns ON ns.oid = cl.relnamespace
+		 WHERE con.contype = 'f'
+		   AND con.confrelid = 'public.users'::regclass
+		   AND con.confdeltype <> 'c'
+		   AND EXISTS (
+		       SELECT 1 FROM pg_attribute a
+		        WHERE a.attrelid = con.conrelid
+		          AND a.attnum = ANY (con.conkey)
+		          AND a.attname = 'user_id')
+		 ORDER BY 1, 2`)
+	if err != nil {
+		return fmt.Errorf("purge-user: read foreign-key actions: %w", err)
+	}
+	defer rows.Close()
+	names := map[string]string{"a": "NO ACTION", "r": "RESTRICT", "n": "SET NULL", "d": "SET DEFAULT"}
+	for rows.Next() {
+		var rel, action string
+		if err := rows.Scan(&rel, &action); err != nil {
+			return fmt.Errorf("purge-user: read foreign-key actions: %w", err)
+		}
+		if !slices.ContainsFunc(rels, func(r purge.Relation) bool { return r.String() == rel }) {
+			continue
+		}
+		name, ok := names[action]
+		if !ok {
+			name = fmt.Sprintf("confdeltype %q", action)
+		}
+		return fmt.Errorf("purge-user: a real purge would REFUSE: %s.user_id references users ON DELETE %s, not CASCADE",
+			rel, name)
+	}
+	return rows.Err()
 }
 
 func printPurgeReport(env *runEnv, rep purge.Report) {

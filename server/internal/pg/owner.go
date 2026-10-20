@@ -23,6 +23,20 @@ const (
 // migration file.
 const SealedFunctionMD5 = "cecad4a55664c960ee9e1e301a76c30d"
 
+type SealedConstraint struct {
+	Name string
+	Def  string
+}
+
+var SealedConstraints = []SealedConstraint{
+	{"op_log_blob_is_sealed", "CHECK (hasala_frame_is_sealed(blob))"},
+	{"op_log_aad_matches_position", "CHECK (\nCASE\n    WHEN (octet_length(blob) < 7) THEN false\n" +
+		"    ELSE (SUBSTRING(blob FROM 8 FOR ((get_byte(blob, 5) * 256) + get_byte(blob, 6))) = " +
+		"convert_to((((((((user_id)::text || '|'::text) || stream) || '|'::text) || writer_id) || '|'::text) || " +
+		"(writer_counter)::text), 'UTF8'::name))\nEND)"},
+	{"op_log_stream_is_hot", "CHECK ((stream = 'hot'::text))"},
+}
+
 // RefusalError is a failed startup check. Code names the check (O1…O8) so the
 // one ERROR line an operator sees says which rule refused; cmd/hasalad exits 2
 // on it.
@@ -107,17 +121,21 @@ func CheckServing(ctx context.Context, pool *pgxpool.Pool, warn func(string)) er
 		warn(fmt.Sprintf("the database is at migration %d, ahead of this binary's %d (expand-only rollback)", applied, latest))
 	}
 	// O5
-	for _, name := range []string{"op_log_blob_is_sealed", "op_log_aad_matches_position", "op_log_stream_is_hot"} {
+	for _, want := range SealedConstraints {
 		var validated *bool
-		err := pool.QueryRow(ctx, `SELECT c.convalidated FROM pg_constraint c
+		var def *string
+		err := pool.QueryRow(ctx, `SELECT c.convalidated, pg_get_constraintdef(c.oid) FROM pg_constraint c
 			 JOIN pg_class t ON t.oid = c.conrelid
-			WHERE c.conname = $1 AND t.relname = 'op_log'
-			  AND t.relnamespace = 'public'::regnamespace`, name).Scan(&validated)
+			WHERE c.conname = $1 AND c.contype = 'c' AND t.relname = 'op_log'
+			  AND t.relnamespace = 'public'::regnamespace`, want.Name).Scan(&validated, &def)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (validated == nil || !*validated)) {
-			return refuse("O5", "op_log constraint %s is missing or NOT VALID", name)
+			return refuse("O5", "op_log constraint %s is missing or NOT VALID", want.Name)
 		}
 		if err != nil {
-			return fmt.Errorf("pg: read constraint %s: %w", name, err)
+			return fmt.Errorf("pg: read constraint %s: %w", want.Name, err)
+		}
+		if def == nil || *def != want.Def {
+			return refuse("O5", "op_log constraint %s has been replaced with a different definition", want.Name)
 		}
 	}
 	// O6
