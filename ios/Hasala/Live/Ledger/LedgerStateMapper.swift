@@ -70,6 +70,7 @@ nonisolated enum LedgerStateMapper {
       txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
     }
     markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
+    let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map(unreadMail)
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
@@ -133,7 +134,14 @@ nonisolated enum LedgerStateMapper {
       categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
       netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
-      rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) })
+      rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
+      unreadMail: unreadMail)
+  }
+
+  static func unreadMail(_ row: TxnRow) -> UnreadMail {
+    UnreadMail(
+      id: row.id, provider: row.sourceProvider.flatMap(MailProviderKind.init(rawValue:)),
+      receivedOn: CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1))
   }
 
   /// The transactions whose digest is among the skipped cards'.

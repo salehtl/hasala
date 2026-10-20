@@ -13,10 +13,14 @@ final class AddTransactionModel {
   var categoryID: CategoryID?
   var postedAt: Date
   var accountID: AccountID?
+  let resolvedMail: TxnID?
 
-  init(app: AppModel) {
+  init(app: AppModel, resolving mail: TxnID? = nil) {
     self.app = app
-    postedAt = AddTransactionDates.date(app.store.now)
+    let unread = mail.flatMap { id in app.store.state.unreadMail.first { $0.id == id } }
+    resolvedMail = unread?.id
+    postedAt = AddTransactionDates.date(
+      unread.map { LocalDateTime(date: $0.receivedOn, hour: 0, minute: 0) } ?? app.store.now)
     accountID = app.store.state.accounts.first { $0.inPlan }?.id
   }
 
@@ -54,7 +58,11 @@ final class AddTransactionModel {
 
   @discardableResult
   func save() -> Bool {
-    guard let d = draft, app.perform(.addTransaction(d)) else { return false }
+    guard let d = draft else { return false }
+    var edits: [LedgerEdit] = []
+    if let resolvedMail { edits.append(.archive(resolvedMail, true)) }
+    edits.append(.addTransaction(d))
+    guard app.perform(edits) else { return false }
     app.sheet = nil
     app.say("Added \(d.trimmedMerchant)")
     return true

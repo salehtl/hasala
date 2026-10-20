@@ -35,6 +35,10 @@
       }),
       // Review · Tab · To sort (6) (NPV-0).
       Screen("review", scenario: "maya", prepare: shell(.review)),
+      Screen("review.unread", scenario: "mayaUnreadMail", prepare: shell(.review)),
+      Screen("review.unread.list", scenario: "mayaUnreadMail", prepare: shell(.review, review: [.unreadMail])),
+      Screen("review.unread.add", scenario: "mayaUnreadMail",
+             prepare: shell(.review, sheet: .addFromEmail("unread-gmail"), review: [.unreadMail])),
       Screen("review.range", scenario: "maya", prepare: { graph in
         graph.app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
         shell(.review)(graph)

@@ -18,6 +18,7 @@ public enum NotificationDestination: Sendable, Hashable {
   case category(CategoryID)
   /// Profile › Bank alerts (connect, sign in again, a quiet bank).
   case bankAlerts
+  case unreadMail
 }
 
 /// One row of the Notifications sheet (page 15 §15.2 NotificationRow): a 40 disc in the item's
@@ -83,6 +84,14 @@ public enum NotificationsEngine {
         title: "\(review.count) transaction\(review.count == 1 ? "" : "s") to sort",
         line: MoneyPhrase([.text("AED "), .amount(review.unplanned, hidden: 3), .text(" still to check")]),
         when: when(newest, today: today), destination: .review
+      )))
+    }
+
+    let unread = ReviewEngine.unreadMail(s)
+    if let newest = unread.first {
+      dated.append((newest.receivedOn, NotificationItem(
+        id: "unread", disc: .neutral(.envelope), title: ReviewEngine.unreadLine(unread.count),
+        line: "Add each one by hand or dismiss it", when: when(newest.receivedOn, today: today), destination: .unreadMail
       )))
     }
 

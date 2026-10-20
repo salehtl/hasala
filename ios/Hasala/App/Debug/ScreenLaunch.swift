@@ -122,7 +122,7 @@
     static func shell(
       _ tab: AppTab, home: [HomeRoute] = [], plan: [PlanRoute] = [], activity: [ActivityRoute] = [],
       sheet: SheetRoute? = nil, cover: CoverRoute? = nil, profile: [ProfileRoute] = [],
-      transaction: [TransactionRoute] = []
+      transaction: [TransactionRoute] = [], review: [ReviewRoute] = []
     ) -> @MainActor (MockGraph) -> Void {
       { graph in
         let router = graph.app.router
@@ -130,6 +130,7 @@
         router.home = home
         router.plan = plan
         router.activity = activity
+        router.review = review
         if sheet != nil || cover != nil {
           router.pendingLaunch = PendingLaunch(sheet: sheet, cover: cover, profile: profile, transaction: transaction)
         }

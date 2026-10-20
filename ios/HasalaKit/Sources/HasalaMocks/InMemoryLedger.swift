@@ -26,6 +26,7 @@ public final class InMemoryLedger: LedgerStore {
     var candidates: (before: [BillCandidate], after: [BillCandidate])?
     var rules: (before: [Rule], after: [Rule])?
     var projects: (before: [Project], after: [Project])?
+    var unread: (before: [UnreadMail], after: [UnreadMail])?
   }
 
   private var undoRecords: [Int: UndoRecord] = [:]
@@ -44,6 +45,7 @@ public final class InMemoryLedger: LedgerStore {
     var touched = Set<TxnID>()
     var touchedPlan = false, touchedBills = false, touchedCandidates = false, touchedRules = false
     var touchedProjects = false
+    var touchedUnread = false
     let title: String?
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
@@ -113,8 +115,14 @@ public final class InMemoryLedger: LedgerStore {
       }
       title = lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories"
     case .archive(let id, let archived):
-      try editTxn(id) { $0.archived = archived }
-      title = archived ? "Archived" : "Restored"
+      if archived, s.unreadMail.contains(where: { $0.id == id }) {
+        touchedUnread = true
+        s.unreadMail.removeAll { $0.id == id }
+        title = "Dismissed"
+      } else {
+        try editTxn(id) { $0.archived = archived }
+        title = archived ? "Archived" : "Restored"
+      }
     case .resolveCopy(let id, let merge):
       guard let i = s.txns.firstIndex(where: { $0.id == id }), s.txns[i].isHeldCopy else { throw .notFound }
       touched.insert(id)
@@ -272,6 +280,7 @@ public final class InMemoryLedger: LedgerStore {
     if touchedCandidates { record.candidates = (before.billCandidates, s.billCandidates) }
     if touchedRules { record.rules = (before.rules, s.rules) }
     if touchedProjects { record.projects = (before.projects, s.projects) }
+    if touchedUnread { record.unread = (before.unreadMail, s.unreadMail) }
     let token = UndoToken(id: nextToken, title: title)
     nextToken += 1
     undoRecords[token.id] = record
@@ -294,6 +303,7 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.candidates { Self.revertElements(&s.billCandidates, before: old, after: new) }
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
+    if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
     state = s
     revision += 1
   }

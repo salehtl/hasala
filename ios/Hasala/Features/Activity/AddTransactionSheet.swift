@@ -6,9 +6,9 @@ struct AddTransactionHost: View {
   let app: AppModel
   @State private var model: AddTransactionModel
 
-  init(app: AppModel) {
+  init(app: AppModel, resolving mail: TxnID? = nil) {
     self.app = app
-    _model = State(initialValue: AddTransactionModel(app: app))
+    _model = State(initialValue: AddTransactionModel(app: app, resolving: mail))
   }
 
   var body: some View { AddTransactionSheet(model: model) }

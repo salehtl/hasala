@@ -98,6 +98,8 @@ struct MainView: View {
         ProjectEditorSheet(app: app, project: id)
       case .addTransaction:
         AddTransactionHost(app: app)
+      case .addFromEmail(let id):
+        AddTransactionHost(app: app, resolving: id)
       // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
       case .search:
         SearchView(app: app)
