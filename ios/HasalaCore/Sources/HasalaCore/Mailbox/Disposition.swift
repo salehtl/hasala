@@ -308,8 +308,9 @@ public enum MessageDisposer {
   }
 
   /// 03c §1.5: the template renders the bank's zoneless UAE wall clock with a `Z`. With a time:
-  /// `wall − 4 h`, precision "time". A bare date D: local midnight, `(D−1)T20:00:00.000Z`,
-  /// precision "day". No body date (`date_from: "email"`): Gmail's internalDate, already UTC.
+  /// `wall − 4 h`, precision "time". A bare date D: Gmail's internalDate when it falls on D
+  /// locally, precision "time"; otherwise local midnight, `(D−1)T20:00:00.000Z`, precision "day".
+  /// No body date (`date_from: "email"`): Gmail's internalDate, already UTC.
   static func postedAt(_ x: Extraction, template t: CompiledTemplate, internalDateMs: Int64) -> (String, String)? {
     if x.postedAt.isEmpty {
       guard let s = Instant.iso(internalDateMs) else { return nil }
@@ -324,9 +325,11 @@ public enum MessageDisposer {
     let dayOnly = !timed.contains(true) || (isMidnight && timed.contains(false))
     if dayOnly {
       // The wall value's own civil date D (it is a zoneless wall clock, so no offset applies).
-      guard let d = CivilDate(daysSinceEpoch: Civil.floorDiv(wallMs, Civil.msPerDay)),
-        let s = Instant.iso(LocalClock.startOfDay(d))
-      else { return nil }
+      guard let d = CivilDate(daysSinceEpoch: Civil.floorDiv(wallMs, Civil.msPerDay)) else { return nil }
+      if LocalClock.localDate(internalDateMs) == d, let s = Instant.iso(internalDateMs) {
+        return (s, "time")
+      }
+      guard let s = Instant.iso(LocalClock.startOfDay(d)) else { return nil }
       return (s, "day")
     }
     guard let s = Instant.iso(wallMs - LocalClock.offsetMs) else { return nil }

@@ -220,6 +220,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var homeRateMicro: Int64?
   public var direction: Direction
   public var postedAt: LocalDateTime
+  public var postedTimeKnown: Bool
   public var accountID: AccountID?
   public var categoryID: CategoryID?
   public var categorySource: CategorySource?
@@ -247,10 +248,16 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
 
+  public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
+
+  public func joined(_ lead: String, _ tail: String?, separator: String = " · ") -> String {
+    tail.map { "\(lead)\(separator)\($0)" } ?? lead
+  }
+
   public init(
     id: TxnID, merchant: String, place: String? = nil, amount: Money, homeMinor: Int64?? = nil,
     homeSource: HomeSource?? = nil, homeRateMicro: Int64? = nil, direction: Direction = .out,
-    postedAt: LocalDateTime, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
+    postedAt: LocalDateTime, postedTimeKnown: Bool = true, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
     isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
@@ -268,6 +275,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.homeRateMicro = self.homeSource == .rate ? homeRateMicro : nil
     self.direction = direction
     self.postedAt = postedAt
+    self.postedTimeKnown = postedTimeKnown
     self.accountID = accountID
     self.categoryID = categoryID
     self.categorySource = categorySource

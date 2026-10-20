@@ -72,7 +72,7 @@ public enum TransactionEngine {
   public static func detail(_ id: TxnID, _ s: LedgerState, now: LocalDateTime) -> TransactionDetail? {
     guard let t = s.txn(id) else { return nil }
     let c = s.category(t.categoryID)
-    var meta = "\(t.postedAt.date.short), \(t.postedAt.time)"
+    var meta = t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
 
     var pace: EmbeddedPace?

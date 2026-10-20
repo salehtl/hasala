@@ -435,7 +435,7 @@ public enum HomeEngine {
       ]),
       rows: today.prefix(3).map { t in
         let c = s.category(t.categoryID)
-        let detail = "\(c?.name ?? "Uncategorized") · \(t.postedAt.time)" + (t.place.map { " · \($0)" } ?? "")
+        let detail = t.joined(c?.name ?? "Uncategorized", t.postedTime) + (t.place.map { " · \($0)" } ?? "")
         var r = MiniTxnRow(id: "t.\(t.id)", merchant: t.merchant, glyph: c?.glyph ?? .review, hue: c?.hue ?? .other,
                            detail: detail, amount: t.amount, isIncome: t.direction == .in)
         r.showHome(t)

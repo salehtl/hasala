@@ -203,6 +203,7 @@ nonisolated enum LedgerStateMapper {
     let date = CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1)
     let minutes = Int(((row.postedMs + LocalClock.offsetMs) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000)
     let at = LocalDateTime(date: date, hour: minutes / 60, minute: minutes % 60)
+    let timeKnown = row.postedPrecision != "day"
     var splits: [SplitLine] = []
     if row.split {
       splits = try r.parts(row.id).map {
@@ -221,13 +222,13 @@ nonisolated enum LedgerStateMapper {
     let provenance = row.entryMethod == "mailbox"
       ? Provenance(
         title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
-        readAt: "Read automatically at \(at.time)", rawMerchant: row.merchantRaw)
+        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw)
       : nil
     return HasalaModels.Txn(
       id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),
       homeMinor: .some(row.amountHomeMinor),
       homeSource: .some(row.homeSource.flatMap { HasalaModels.HomeSource(rawValue: $0.rawValue) }), homeRateMicro: row.homeRateMicro,
-      direction: row.direction == "credit" ? .in : .out, postedAt: at, accountID: row.effectiveAccountID,
+      direction: row.direction == "credit" ? .in : .out, postedAt: at, postedTimeKnown: timeKnown, accountID: row.effectiveAccountID,
       categoryID: row.category, categorySource: source, needsReview: row.needsReview, isNewMerchant: row.isNewMerchant,
       suggestion: nil, note: row.note ?? "", splits: splits,
       isRefund: row.category == "refunds" || row.refundState != nil,
