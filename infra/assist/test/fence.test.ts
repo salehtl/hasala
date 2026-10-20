@@ -116,8 +116,10 @@ describe("wrangler.jsonc fence", () => {
     expect(config.observability?.traces).toBeUndefined();
   });
 
-  test("no AI Gateway anywhere in the config", () => {
-    expect(/gateway/i.test(rawConfig)).toBe(false);
+  test("the only AI Gateway mention is the AI_GATEWAY var, and it names a dedicated gateway", () => {
+    expect(rawConfig.match(/gateway/gi)).toEqual(["GATEWAY"]);
+    expect(rawConfig).toContain('"AI_GATEWAY": "hasala-assist"');
+    expect(config.vars.AI_GATEWAY).toBe("hasala-assist");
   });
 
   test("the bindings are exactly AI, PER_IP, GLOBAL and REFUSED_CLIENTS", () => {
@@ -126,9 +128,9 @@ describe("wrangler.jsonc fence", () => {
     expect(config.ratelimits.map((r: any) => r.name).sort()).toEqual(["GLOBAL", "PER_IP"]);
     const byName = Object.fromEntries(config.ratelimits.map((r: any) => [r.name, r]));
     expect(byName.PER_IP.simple).toEqual({ limit: 30, period: 60 });
-    expect(byName.GLOBAL.simple).toEqual({ limit: 600, period: 60 });
+    expect(byName.GLOBAL.simple).toEqual({ limit: 60, period: 60 });
     expect(byName.PER_IP.namespace_id).not.toBe(byName.GLOBAL.namespace_id);
-    expect(config.vars).toEqual({ REFUSED_CLIENTS: "" });
+    expect(config.vars).toEqual({ REFUSED_CLIENTS: "", AI_GATEWAY: "hasala-assist" });
     const allowedTop = new Set([
       "$schema",
       "name",
@@ -153,6 +155,14 @@ describe("wrangler.jsonc fence", () => {
   });
 });
 
+const GATEWAY_ALLOWED = [
+  "options: { gateway: { id: string; skipCache: true; collectLog: false } }",
+  "AI_GATEWAY?: string;",
+  'const gatewayId = (env.AI_GATEWAY ?? "").trim();',
+  'if (gatewayId === "") return error(503, "model_unavailable");',
+  "{ gateway: { id: gatewayId, skipCache: true, collectLog: false } }",
+];
+
 describe("source fence", () => {
   const sources = files(join(ROOT, "src")).map((p) => ({ p, text: readFileSync(p, "utf8") }));
 
@@ -164,11 +174,41 @@ describe("source fence", () => {
     for (const { p, text } of sources) expect(`${p}: ${/\bconsole\s*\./.test(text)}`).toBe(`${p}: false`);
   });
 
-  test("no queueRequest, batch or AI Gateway", () => {
+  test("no queueRequest or batch", () => {
     for (const { p, text } of sources) {
       expect(`${p}: ${/queueRequest/.test(text)}`).toBe(`${p}: false`);
-      expect(`${p}: ${/gateway/i.test(text)}`).toBe(`${p}: false`);
       expect(`${p}: ${/\bbatch\b/i.test(text)}`).toBe(`${p}: false`);
+    }
+  });
+
+  test("AI Gateway only in the allowed form: id from AI_GATEWAY, cache off, logging off", () => {
+    const index = join(ROOT, "src", "index.ts");
+    for (const { p, text } of sources) {
+      let rest = text;
+      if (p === index) {
+        for (const allowed of GATEWAY_ALLOWED) {
+          expect(`${allowed}: ${text.split(allowed).length - 1}`).toBe(`${allowed}: 1`);
+          rest = rest.split(allowed).join("");
+        }
+      }
+      expect(`${p}: ${/gateway/i.test(rest)}`).toBe(`${p}: false`);
+      for (const re of [/\bcacheTtl\b/, /\bcacheKey\b/, /\bmetadata\b/, /\beventId\b/, /cf-aig-/i, /\bcollectLog\s*:\s*true\b/, /\bskipCache\s*:\s*false\b/, /\bdefault"/]) {
+        expect(`${p}: ${re} ${re.test(text)}`).toBe(`${p}: ${re} false`);
+      }
+    }
+    expect(sources.some(({ p }) => p === index)).toBe(true);
+  });
+
+  test("the AI_GATEWAY check rejects a gateway mention outside the allowed form", () => {
+    const bad = [
+      '{ gateway: { id: gatewayId, skipCache: true, collectLog: true } }',
+      '{ gateway: { id: "default", skipCache: true, collectLog: false } }',
+      '{ gateway: { id: gatewayId } }',
+    ];
+    for (const b of bad) {
+      let rest = b;
+      for (const allowed of GATEWAY_ALLOWED) rest = rest.split(allowed).join("");
+      expect(/gateway/i.test(rest)).toBe(true);
     }
   });
 
