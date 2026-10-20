@@ -130,7 +130,7 @@ final class AccountRuntime {
   var mailOffer: MailOffer? {
     guard let lane, store.loaded, let phase = store.mailboxPhase else { return nil }
     return LiveMailboxConnecting.offer(
-      phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample, serverLink: serverLink,
+      phase: phase, halt: store.mailboxHalt, sampleLoaded: store.holdsSample || reviewAccount, serverLink: serverLink,
       provider: lane.provider)
   }
 

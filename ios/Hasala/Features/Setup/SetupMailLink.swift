@@ -45,6 +45,7 @@ final class SetupMailLink: MailboxConnecting {
   var linkedProvider: MailProviderKind? { base.linkedProvider }
   var heldElsewhere: MailProviderKind? { base.heldElsewhere }
   var offersSampleData: Bool { base.offersSampleData }
+  var connectRefused: Bool { base.connectRefused }
   var importing: MailImport? { base.importing }
 
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
