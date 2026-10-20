@@ -22,6 +22,7 @@ struct MainHeader: ToolbarContent {
   let extra: Extra
   let unread: Int
   let avatarInitial: String
+  let avatarEmail: String?
   let onToggleAmounts: () -> Void
   let onExtra: () -> Void
   let onNotifications: () -> Void
@@ -59,7 +60,7 @@ struct MainHeader: ToolbarContent {
     }
     .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .topBarTrailing) {
-      GlassAvatarButton(initial: avatarInitial, label: "Your profile", action: onProfile)
+      GlassAvatarButton(initial: avatarInitial, email: avatarEmail, label: "Your profile", action: onProfile)
         .accessibilityIdentifier("header.profile")
     }
     .sharedBackgroundVisibility(.hidden)

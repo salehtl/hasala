@@ -77,18 +77,20 @@ public struct GlassIconButton: View {
 /// opens Your profile from the Home header.
 public struct GlassAvatarButton: View {
   let initial: String
+  let email: String?
   let label: String
   let action: () -> Void
 
-  public init(initial: String, label: String = "Profile", action: @escaping () -> Void) {
+  public init(initial: String, email: String? = nil, label: String = "Profile", action: @escaping () -> Void) {
     self.initial = initial
+    self.email = email
     self.label = label
     self.action = action
   }
 
   public var body: some View {
     Button(action: action) {
-      AvatarDisc(initial: initial, size: 36)
+      AvatarDisc(initial: initial, size: 36, email: email)
         .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
         .hGlass(in: Circle())
         .contentShape(Circle())
