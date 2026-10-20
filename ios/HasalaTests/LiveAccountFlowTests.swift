@@ -207,6 +207,56 @@ struct LiveAccountFlowTests {
     #expect(await account.freezeInfo() == nil)
   }
 
+  @Test func aNewIPhoneSignedInToAFrozenAccountUnfreezesWithItsPasskey() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    server.freezeAll(byOperator: false)
+    let b = Phone(server, passkeys: AssertingPasskeys())
+    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    #expect(await signIn(b) == .frozen(info))
+    #expect(b.binding == nil)
+
+    let session = AccountSession(services: services(b.relaunched()), phase: .frozen(info))
+    #expect(!session.canLeaveFrozen)
+    session.leaveFrozen()
+    #expect(session.phase == .frozen(info))
+
+    await #expect(throws: AuthFailure.noDeviceKey) { try await session.unfreeze(password: Self.password) }
+    #expect(server.unfreezeCalls == 0)
+    try await session.unfreeze(password: nil)
+    #expect(server.unfreezeCalls == 1)
+    #expect(server.lastStepUpAction == "account.unfreeze")
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+  }
+
+  @Test func signingOutOnTheFrozenWallEndsTheSession() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    server.freezeAll(byOperator: false)
+    let b = Phone(server)
+    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    #expect(await signIn(b) == .frozen(info))
+    let session = AccountSession(services: services(b.relaunched()), phase: .frozen(info))
+    await session.signOut()
+    #expect(session.phase == .signedOut)
+    #expect(try b.env.secrets.session() == nil)
+  }
+
+  @Test func securityStateAfterARelaunchNeedsTheServerToKnowTheMethod() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    account.loadProfile()
+    server.offline = true
+    await #expect(throws: AuthFailure.offline) { _ = try await account.securityState() }
+    server.offline = false
+    let state = try await account.securityState()
+    #expect(state.passkeys.isEmpty)
+    #expect(state.passwordChanged == "Set")
+  }
+
   @Test func offlineAtLaunchWaitsWithRetry() async throws {
     let server = MiniHasalad(invite: Self.invite)
     _ = try await signUp(Phone(server), server)
@@ -418,6 +468,19 @@ nonisolated final class SoftDAK: ApprovalKeySigner, Sendable {
       throw .missing
     }
     return sig.rawRepresentation
+  }
+}
+
+nonisolated final class AssertingPasskeys: PasskeyProvider, @unchecked Sendable {
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    throw .noCredential
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    RawAssertion(
+      credentialID: Data(repeating: 7, count: 16),
+      rawClientDataJSON: Data(#"{"type":"webauthn.get","challenge":"\#(Base64.encodeURL(challenge))"}"#.utf8),
+      authenticatorData: Data(repeating: 0, count: 37), signature: Data([0x30]), userHandle: nil, prfFirst: nil)
   }
 }
 

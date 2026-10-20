@@ -372,12 +372,19 @@ extension State {
     switch payload {
     case .categorize(let category, let needsReview, let source):
       txns[id]!.category = category
-      if let source { txns[id]!.categorySource = source }
+      if let source {
+        txns[id]!.categorySource = source
+      } else if txns[id]!.categorySource != nil {
+        txns[id]!.categorySource = category == nil ? CategorySource.none : .user
+      }
       setNeedsReview(id, needsReview, seq: seq)
+      forwardToMergeWinner(id)
     case .split(let parts, _):
       txns[id]!.splits = parts
+      forwardToMergeWinner(id)
     case .edit(let p):
       applyTxnEdit(id, p, e)
+      forwardToMergeWinner(id)
     case .disposition(let other, let disposition):
       guard let notice = txns[id]!.possibleDuplicateOf, utf8Equal(notice, other) else {
         anomaly(
@@ -421,7 +428,7 @@ extension State {
       anomaly(seq, "unsupported_edit_field", "\(id): amount_minor cannot change while the transaction is split into \(t.splits.count) parts")
       return
     }
-    let live = t.supersededBy == nil
+    let live = t.isLive
     if live { clearPending(t) }
     if let a = p.amountMinor { txns[id]!.amountMinor = a }
     if let c = p.currency { txns[id]!.currency = c }
@@ -455,7 +462,7 @@ extension State {
         txns[id]!.amountHomeMinor = home
         txns[id]!.homeSource = home == nil ? nil : .stated
         txns[id]!.homeRateMicro = nil
-        if txns[id]!.supersededBy == nil {
+        if txns[id]!.isLive {
           if home == nil { markPending(txns[id]!) } else { clearPending(txns[id]!) }
         }
       }
@@ -466,7 +473,7 @@ extension State {
     }
     let t = txns[id]!
     let after = fingerprint(t)
-    if !utf8Equal(after, before) && t.supersededBy == nil {
+    if !utf8Equal(after, before) && t.isLive {
       unindexFingerprint(before, id)
       txns[id]!.possibleDuplicateOf = nil
       txns[id]!.duplicateDisposition = nil

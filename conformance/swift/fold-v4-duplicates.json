@@ -3421,6 +3421,1335 @@
         "state_sha256": "a046cc4c96e1853bee4f97238006d2974779ad60efd1d38023d1dd1f0ddbd74a",
         "anomaly_kinds": []
       }
+    },
+    {
+      "name": "merge-retire-keep-both",
+      "group": "fold_v4",
+      "note": "One device merges the held copy, then removes its mailbox, which retires it; another device, offline, chose Keep both on the same copy. The late keep_both is refused with duplicate_disposition_mismatch, and the retired row stays out of the live indexes.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-merge-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "merge"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "mailbox_retired",
+              "op_id": "op-retire-b",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "provider": "gmail",
+                "legacy": false
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-keep-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "keep_both"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "5",
+              "detail": "",
+              "kind": "duplicate_disposition_mismatch"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "5"
+          },
+          "forks": [
+            {
+              "at_seq": "5",
+              "entity": {
+                "id": "01JC0000000000000000000002",
+                "kind": "txn"
+              },
+              "loser_op": "op-merge-2",
+              "winner_op": "op-keep-2"
+            }
+          ],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-keep-2",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "mailboxRetirements": [
+            {
+              "at_seq": "4",
+              "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+              "legacy": false,
+              "op_id": "op-retire-b",
+              "provider": "gmail",
+              "txn_ids": [
+                "01JC0000000000000000000002"
+              ]
+            }
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "merge_kind": "user",
+                "merge_op": "op-merge-2",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "retired_by": "op-retire-b",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "f8b480a30375ff9b698a3c31202c908e7248923389efade0b2fb4c66ed46ff77",
+        "anomaly_kinds": [
+          "duplicate_disposition_mismatch"
+        ]
+      }
+    },
+    {
+      "name": "edit-on-merged-copy-forwards",
+      "group": "fold_v4",
+      "note": "Another device, offline, sorted and noted the copy that became an alias: the sort and the note reach the canonical row, which had neither.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:30.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-sort-2",
+              "authored_at": "2026-10-01T09:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "groceries",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-note-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "note": "Team lunch"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byDedupeKey": [
+            [
+              "mid:5d41402abc4b2a76b9719d911017c592",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790845200000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-sort-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "kind": "certain",
+                    "mailbox_message_id": "msg-2",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000002"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-2",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": "groceries",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "annotations": [
+                  [
+                    "note",
+                    {
+                      "op_id": "op-note-2",
+                      "value": "Team lunch"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": "groceries",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "merge_kind": "certain",
+                "merge_op": "op-ingest-2",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:30.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "f11c154a25cc33095f7572cfedd0688cac33119b46005d41009ca82aae073b5c",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "edit-on-merged-copy-keeps-the-canonical-sort",
+      "group": "fold_v4",
+      "note": "The canonical row was already sorted: a late sort of the alias stays on the alias, and the canonical row keeps its own.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:30.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-sort-1",
+              "authored_at": "2026-10-01T09:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-sort-2",
+              "authored_at": "2026-10-01T09:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "groceries",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byDedupeKey": [
+            [
+              "mid:5d41402abc4b2a76b9719d911017c592",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790845200000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sort-1",
+                "version": 2,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790845200000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-sort-2",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "kind": "certain",
+                    "mailbox_message_id": "msg-2",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000002"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": "transport",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": "groceries",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "merge_kind": "certain",
+                "merge_op": "op-ingest-2",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:30.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "2ad46d19f484cc2a47538a46f7ae5ebef267ecc8bbeca643f743539840650db4",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "legacy-categorize-on-v4-row",
+      "group": "fold_v4",
+      "note": "A below-v4 txn_categorized on a v4 row carries no source: the source follows the category (user when set, none when cleared).",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T12:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "ENOC 1043",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 3,
+              "type": "txn_categorized",
+              "op_id": "op-legacy-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "groceries",
+                "needs_review": false
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_categorized",
+              "op_id": "op-sort-2",
+              "authored_at": "2026-10-01T09:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "category": "transport",
+                "needs_review": false,
+                "source": {
+                  "kind": "user"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 3,
+              "type": "txn_categorized",
+              "op_id": "op-legacy-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 2,
+              "payload": {
+                "category": null,
+                "needs_review": false
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|ENOC 1043|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-legacy-1",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-legacy-2",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": "groceries",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "ENOC 1043",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T12:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "1648a65c9a644418ca1115c6173dd5feda2f69962080d36306aeaed3d42e0493",
+        "anomaly_kinds": []
+      }
     }
   ]
 }

@@ -238,6 +238,50 @@ struct SyncTests {
     #expect(await engine.run(.launch).stop == .needsSignIn)  // the session went with the writer
   }
 
+  @Test("account_full is a pause: it probes again on foreground, or after the pause, and the queue uploads")
+  func accountFullPause() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    let before = w.server.uploadCount
+    _ = await engine.run(.authored)
+    #expect(w.server.uploadCount == before)
+    #expect(await engine.status.latch == .accountFull)
+    _ = await engine.run(.foreground)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+
+    try enqueue(a, [op(2)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    let clock = try #require(a.clock as? FakeClock)
+    clock.advance(ms: SyncEngine.accountFullPauseMs)
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+
+    try enqueue(a, [op(3)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    _ = await SyncEngine(context: a).run(.silentPush)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+  }
+
+  @Test("ops authored while a flush runs are shown to the observer before they are sealed")
+  func observerSeesEachBatch() async throws {
+    let (_, a, _) = try await twoPhones()
+    let observer = AuthoringObserver(inner: try Runtime(a).observer, context: a)
+    try enqueue(a, [op(1)])
+    _ = await SyncEngine(context: a, observer: observer).run(.authored)
+    #expect(try a.store.pendingCount() == 0)
+    #expect(observer.seen.contains { $0.contains(op(2).opID) })
+  }
+
   @Test("triggers coalesce: concurrent runs make one upload")
   func coalescing() async throws {
     let (w, a, _) = try await twoPhones()
@@ -344,5 +388,36 @@ final class Recorder: Transport, @unchecked Sendable {
   func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
     if request.method == .post, request.path == "/api/v1/sync", let b = request.body { lock.withLock { bodies.append(b) } }
     return try await inner.send(request)
+  }
+}
+
+final class AuthoringObserver: PageObserver, @unchecked Sendable {
+  let inner: LedgerPageObserver
+  let context: SyncContext
+  private let lock = NSLock()
+  private var calls = 0
+  private var seenIDs: [Set<String>] = []
+
+  init(inner: LedgerPageObserver, context: SyncContext) {
+    self.inner = inner
+    self.context = context
+  }
+
+  var seen: [Set<String>] { lock.withLock { seenIDs } }
+
+  func fold(_ rows: [PulledRow]) async throws(SyncStop) -> FoldSnapshotChange { try await inner.fold(rows) }
+  func pageCommitted() async { await inner.pageCommitted() }
+  func pageAbandoned() async { await inner.pageAbandoned() }
+  func pullEnded() async { await inner.pullEnded() }
+
+  func willPush() async {
+    let pending = Set(((try? context.store.pendingOps()) ?? []).map(\.opID))
+    let n = lock.withLock {
+      calls += 1
+      seenIDs.append(pending)
+      return calls
+    }
+    if n == 2 { try? enqueue(context, [op(2)]) }
+    await inner.willPush()
   }
 }

@@ -50,6 +50,7 @@ public struct MailboxEngineConfig: Sendable {
   public var maxMessageBytes = MailboxLimits.maxMessageBytes
   public var stagingCap = 5_000
   public var holderCheckIntervalMs: Int64 = 10 * 60_000
+  public var accountFullRetryMs: Int64 = 15 * 60_000
   /// Authoring stops this long before the deadline (§3).
   public var authoringMarginMs: Int64 = 5_000
   public var backfillBatch = 200
@@ -587,7 +588,7 @@ public actor MailboxEngine {
       return report
     }
     if state.phase == .halted {
-      guard trigger == .retry else {
+      guard trigger == .retry || resumesAfterAccountFull(state, trigger) else {
         report.haltedOn = state.haltedOn
         return report
       }
@@ -1519,6 +1520,12 @@ public actor MailboxEngine {
     state.haltedOn = code
     report.haltedOn = code
     return await finish(&state, report)
+  }
+
+  func resumesAfterAccountFull(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
+    guard state.haltedOn == .accountFull else { return false }
+    if trigger == .launch || trigger == .foreground || trigger == .refresh { return true }
+    return clock.nowMs() - (state.lastCycleAtMs ?? 0) >= config.accountFullRetryMs
   }
 
   func halt(_ state: inout MailboxState, _ code: MailboxHaltCode, _ report: CycleReport) async -> CycleReport {

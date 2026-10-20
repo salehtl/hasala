@@ -65,6 +65,7 @@ extension State {
       }
       txns[id]!.annotations[field] = Keyed(value, opID: e.op.opID)
     }
+    forwardToMergeWinner(id)
   }
 
   mutating func applyMerchantNamed(_ e: LogEntry) throws(PayloadError) {
