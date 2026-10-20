@@ -307,6 +307,43 @@ struct CloudGuardTests {
     #expect(fresh.availability() == .available)
   }
 
+  @Test("a 403 is recorded once, and a recorded refusal keeps a new instance off without a request")
+  func recordedRefusal() async {
+    let stored = Mutex(false)
+    let writes = Mutex(0)
+    let record = CloudRefusalRecord(
+      isRecorded: { stored.withLock { $0 } },
+      record: {
+        stored.withLock { $0 = true }
+        writes.withLock { $0 += 1 }
+      })
+    let ex = StubExchange(status: 403, json: "{\"error\":\"client_refused\"}")
+    let first = CloudCategoryModel(
+      baseURL: base, clientVersion: "1.2.3", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex, refusal: record,
+      pause: {})
+    #expect(first.availability() == .available)
+    #expect(await first.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
+    #expect(await first.suggest(subject: "BOOKS EXAMPLE MALL", allowed: builtinAllowed) == .failed(.refused))
+    #expect(writes.withLock { $0 } == 1)
+    let next = CloudCategoryModel(
+      baseURL: base, clientVersion: "1.2.3", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex, refusal: record,
+      pause: {})
+    #expect(next.availability() == .notEligible)
+    #expect(await next.suggest(subject: "TAXI EXAMPLE DXB", allowed: builtinAllowed) == .failed(.refused))
+    #expect(ex.requests.count == 1)
+  }
+
+  @Test("400 and 413 are not recorded", arguments: [400, 413])
+  func notRecorded(code: Int) async {
+    let writes = Mutex(0)
+    let record = CloudRefusalRecord(isRecorded: { false }, record: { writes.withLock { $0 += 1 } })
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1.2.3", isEnabled: { true }, isAutoFileEnabled: { false },
+      exchange: StubExchange(status: code, json: "{}"), refusal: record, pause: {})
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
+    #expect(writes.withLock { $0 } == 0)
+  }
+
   @Test("400 and 413 do not turn the model off", arguments: [400, 413])
   func noLatch(code: Int) async {
     let ex = StubExchange(status: code, json: "{}")

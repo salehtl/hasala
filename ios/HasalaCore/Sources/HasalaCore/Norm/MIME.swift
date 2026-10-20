@@ -577,18 +577,31 @@ enum MIME {
   static func decodeWords(_ raw: [UInt8]) throws(MIMEFailure) -> String {
     let v = Array(trimExplicitBinary(raw[...]))
     if v.isEmpty { return "" }
-    let marker: [UInt8] = [0x3d, 0x3f]  // "=?"
-    guard let firstIdx = Bytes.index(of: marker, in: v) else { return NormText.decodeUTF8(v) }
+    guard let firstIdx = Bytes.index(of: [0x3d, 0x3f], in: v) else { return NormText.decodeUTF8(v) }
 
     var out: [UInt8] = Array(v[0..<firstIdx])
-    // `base` is where Go's remaining `header` slice starts; indices below are absolute into
-    // `v`, so advancing never copies the tail (copying made repeated failing words quadratic).
+    let n = v.count
+    var nextOpen = [Int](repeating: n, count: n + 1)
+    var nextQuestion = [Int](repeating: n, count: n + 1)
+    var nextClose = [Int](repeating: n, count: n + 1)
+    var k = n - 1
+    while k >= 0 {
+      let isQ = v[k] == 0x3f
+      let nextIsEq = k + 1 < n && v[k + 1] == 0x3d
+      let nextIsQ = k + 1 < n && v[k + 1] == 0x3f
+      nextOpen[k] = v[k] == 0x3d && nextIsQ ? k : nextOpen[k + 1]
+      nextQuestion[k] = isQ ? k : nextQuestion[k + 1]
+      nextClose[k] = isQ && nextIsEq ? k : nextClose[k + 1]
+      k -= 1
+    }
     var base = firstIdx
     var betweenWords = false
     while true {
-      guard let start = Bytes.index(of: marker, in: v, from: base) else { break }
+      let start = nextOpen[min(base, n)]
+      if start >= n { break }
       var cur = start + 2
-      guard let q = Bytes.index(of: 0x3f, in: v, from: cur) else { break }
+      let q = nextQuestion[min(cur, n)]
+      if q >= n { break }
       let charset = Array(v[cur..<q])
       cur = q + 1
       if v.count < cur + 4 { break }  // "Q??=".length
@@ -596,7 +609,8 @@ enum MIME {
       cur += 1
       if v[cur] != 0x3f { break }
       cur += 1
-      guard let j = Bytes.index(of: [0x3f, 0x3d], in: v, from: cur) else { break }
+      let j = nextClose[cur]
+      if j >= n { break }
       let text = v[cur..<j]
       let end = j + 2
 

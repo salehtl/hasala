@@ -123,6 +123,19 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     }
   }
 
+  public func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool {
+    try io { try tables.isParsing(messageID) }
+  }
+
+  public func markParsing(_ messageID: String) async throws(MailboxPersistenceError) {
+    let at = nowMs()
+    try io { try tables.markParsing(messageID, at: at) }
+  }
+
+  public func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) {
+    try io { try tables.clearParsing(messageID) }
+  }
+
   public func senderAddresses() async throws(MailboxPersistenceError) -> [String] {
     try io { try tables.senderAddresses() }
   }

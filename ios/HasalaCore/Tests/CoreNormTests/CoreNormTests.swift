@@ -405,3 +405,87 @@ struct MultipartDepthTests {
     }
   }
 }
+
+@Suite("RFC 2047 scan is linear")
+struct DecodeWordsLinearTests {
+  static func scanEachWordToEnd(_ raw: [UInt8]) throws(MIMEFailure) -> String {
+    let v = Array(MIME.trimExplicitBinary(raw[...]))
+    if v.isEmpty { return "" }
+    let marker: [UInt8] = [0x3d, 0x3f]
+    guard let firstIdx = Bytes.index(of: marker, in: v) else { return NormText.decodeUTF8(v) }
+    var out: [UInt8] = Array(v[0..<firstIdx])
+    var base = firstIdx
+    var betweenWords = false
+    while true {
+      guard let start = Bytes.index(of: marker, in: v, from: base) else { break }
+      var cur = start + 2
+      guard let q = Bytes.index(of: 0x3f, in: v, from: cur) else { break }
+      let charset = Array(v[cur..<q])
+      cur = q + 1
+      if v.count < cur + 4 { break }
+      let encoding = v[cur]
+      cur += 1
+      if v[cur] != 0x3f { break }
+      cur += 1
+      guard let j = Bytes.index(of: [0x3f, 0x3d], in: v, from: cur) else { break }
+      let text = v[cur..<j]
+      let content: [UInt8]?
+      switch encoding {
+      case 0x42, 0x62: content = MIME.bDecode(text)
+      case 0x51, 0x71: content = MIME.qDecode(text)
+      default: content = nil
+      }
+      guard let content else {
+        betweenWords = false
+        out.append(contentsOf: v[base..<(start + 2)])
+        base = start + 2
+        continue
+      }
+      if start > base && (!betweenWords || MIME.hasNonWhitespace(v[base..<start])) {
+        out.append(contentsOf: v[base..<start])
+      }
+      if Bytes.latin1Lower(charset) == Bytes.of("utf-8") {
+        out.append(contentsOf: content)
+      } else {
+        guard let converted = try MIME.convertWord(charset, content) else { return NormText.decodeUTF8(v) }
+        out.append(contentsOf: converted.utf8)
+      }
+      base = j + 2
+      betweenWords = true
+    }
+    out.append(contentsOf: v[base...])
+    return NormText.decodeUTF8(out)
+  }
+
+  static func outcome(_ f: ([UInt8]) throws(MIMEFailure) -> String, _ raw: [UInt8]) -> String {
+    do { return "ok:" + (try f(raw)) } catch { return "err:\(error)" }
+  }
+
+  @Test("random headers decode the same as a scan that searches from each word")
+  func sameOutput() {
+    let pieces = [
+      "=?", "?=", "?", "=", "utf-8", "iso-8859-1", "x-nope", "B", "Q", "b", "q", "QUJD", "YQ==", "=41", "=E9", "_",
+      " ", "\t", "a", "!", "\r\n",
+    ]
+    var rng = SystemRandomNumberGenerator()
+    for _ in 0..<20000 {
+      var s = ""
+      for _ in 0..<Int.random(in: 0...24, using: &rng) { s += pieces.randomElement(using: &rng)! }
+      let raw = utf8(s)
+      #expect(Self.outcome(MIME.decodeWords, raw) == Self.outcome(Self.scanEachWordToEnd, raw), "\(s)")
+    }
+  }
+
+  @Test(
+    "long headers of many encoded words decode fast",
+    arguments: [
+      "=?utf-8?Q?a?= ", "=?utf-8?X?", "=?utf-8?Q?=41", "=?utf-8?B?QUJD", "=?=?", "=?utf-8?B?", "=?a?b?c",
+    ])
+  func longHeader(_ unit: String) throws {
+    var s = ""
+    while s.utf8.count < 100_000 { s += unit }
+    let raw = utf8(s + "?=")
+    let elapsed = try ContinuousClock().measure { _ = try MIME.decodeWords(raw) }
+    #expect(elapsed < .seconds(1), "\(unit) took \(elapsed)")
+  }
+}

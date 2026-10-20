@@ -1,4 +1,5 @@
 import Foundation
+import HasalaCloud
 import HasalaMocks
 import HasalaModels
 import Testing
@@ -90,6 +91,40 @@ struct MerchantSuggestionsTests {
     #expect(!consent.autoSortOn)
     #expect(!consent.autoSortAvailable)
     #expect(!MerchantSuggestionsSetting.isAutoSortEnabled(d))
+  }
+
+  @Test func aRefusalLastsUntilTheAppVersionChanges() {
+    let name = "test.merchantSuggestions.\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: name)!
+    defer { d.removePersistentDomain(forName: name) }
+    let current = MerchantSuggestionsSetting.appVersion(marketing: "1.4", build: "261020.1")
+    #expect(current == "1.4 (261020.1)")
+    let record = MerchantSuggestionsSetting.refusal(version: current, suiteName: name)
+    #expect(!record.isRecorded())
+    record.record()
+    #expect(record.isRecorded())
+    #expect(MerchantSuggestionsSetting.isRefused(version: current, d))
+    #expect(MerchantSuggestionsSetting.refusal(version: current, suiteName: name).isRecorded())
+    let newBuild = MerchantSuggestionsSetting.appVersion(marketing: "1.4", build: "261021.1")
+    let newMarketing = MerchantSuggestionsSetting.appVersion(marketing: "1.5", build: "261020.1")
+    #expect(!MerchantSuggestionsSetting.refusal(version: newBuild, suiteName: name).isRecorded())
+    #expect(!MerchantSuggestionsSetting.refusal(version: newMarketing, suiteName: name).isRecorded())
+    MerchantSuggestionsSetting.setEnabled(true, d)
+    #expect(MerchantSuggestionsSetting.isEnabled(d))
+  }
+
+  @Test func aRecordedRefusalKeepsTheCloudModelOff() throws {
+    let name = "test.merchantSuggestions.\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: name)!
+    defer { d.removePersistentDomain(forName: name) }
+    let version = MerchantSuggestionsSetting.appVersion(marketing: "1.4", build: "261020.1")
+    MerchantSuggestionsSetting.recordRefusal(version: version, d)
+    let made = HasalaCloudFactory.makeCategoryModel(
+      baseURL: URL(string: "https://assist.example.test"), clientVersion: "1.4", isEnabled: { true },
+      isAutoFileEnabled: { false }, refusal: MerchantSuggestionsSetting.refusal(version: version, suiteName: name))
+    let model = try #require(made)
+    #expect(model.availability() == .notEligible)
+    #expect(ModelSuggestionStage.stages(onDevice: model, cloud: model, onDeviceAlone: false).isEmpty)
   }
 
   @Test func theAutoSortReaderRunsOffTheMainActor() async {

@@ -233,7 +233,9 @@ final class AccountRuntime {
       cloud: HasalaCloudFactory.makeCategoryModel(
         baseURL: build.assistBaseURL, clientVersion: build.marketingVersion,
         isEnabled: MerchantSuggestionsSetting.isEnabledReader,
-        isAutoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader),
+        isAutoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
+        refusal: MerchantSuggestionsSetting.refusal(
+          version: MerchantSuggestionsSetting.appVersion(marketing: build.marketingVersion, build: build.buildNumber))),
       onDeviceAlone: BuildSurface.showsUnfinished,
       nowMs: { context.clock.nowMs() })
     let coordinator = WorkCoordinator(

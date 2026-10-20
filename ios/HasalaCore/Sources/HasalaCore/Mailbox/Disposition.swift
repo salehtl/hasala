@@ -186,6 +186,16 @@ public enum MessageDisposer {
     return .mail(mail)
   }
 
+  public static func unparsed(raw: [UInt8], messageID: String, internalDateMs: Int64, spam: Bool) -> ParsedMail {
+    var mail = ParsedMail(
+      messageID: messageID, ingestID: ingestID(raw), internalDateMs: internalDateMs, bank: "", last4: "",
+      templateHasCardField: false,
+      gates: MailGates(ar: AuthResults.Reason.parseError.rawValue, senderTrusted: false, template: nil, forwarded: false),
+      fields: nil, dayPostedAt: dayInstant(internalDateMs))
+    mail.spam = spam
+    return mail
+  }
+
   /// The payload for a parsed message, with the card gate and the categorization applied.
   /// `provider` is `provenance.provider` (the mailbox the message came from).
   public static func finalize(
