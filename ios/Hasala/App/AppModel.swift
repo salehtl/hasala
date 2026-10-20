@@ -58,7 +58,12 @@ final class AppModel {
 
   /// Pull to refresh on Home and Activity: a sync and a Gmail check now, set by the live
   /// graph once the account is open. Nil (the Maya mock) ends the pull at once.
-  @ObservationIgnored var refreshWork: (@MainActor () async -> Void)?
+  var refreshWork: (@MainActor () async -> Void)? {
+    get { sync.work }
+    set { sync.work = newValue }
+  }
+
+  let sync = SyncActivity()
 
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
@@ -195,9 +200,12 @@ final class AppModel {
     set { sheet = newValue ? .profile : (sheet == .profile ? nil : sheet) }
   }
 
-  /// Pull to refresh: waits for the run, so the spinner shows until the screens reload.
   func refresh() async {
-    await refreshWork?()
+    await sync.start().value
+  }
+
+  func pull() async {
+    await sync.pull()
   }
 
   /// The header eye (Paper "Home · Amounts hidden"): hiding persists until it is toggled back; a
@@ -331,4 +339,55 @@ struct HomeMemoKey: Equatable {
 struct ReviewMemoKey: Hashable {
   var revision: Int
   var window: ReviewWindow
+}
+
+@MainActor
+@Observable
+final class SyncActivity {
+  static let pullHold: Duration = .milliseconds(450)
+  static let startedMessage = "Updating"
+  static let finishedMessage = "Updated"
+
+  private(set) var isSyncing = false
+  @ObservationIgnored var hold = SyncActivity.pullHold
+  @ObservationIgnored var work: (@MainActor () async -> Void)?
+  @ObservationIgnored var announce: @MainActor (String) -> Void = SyncActivity.announcePolitely
+  @ObservationIgnored private(set) var runs = 0
+  @ObservationIgnored private var running: Task<Void, Never>?
+
+  @discardableResult
+  func start() -> Task<Void, Never> {
+    if let running { return running }
+    runs += 1
+    isSyncing = true
+    announce(Self.startedMessage)
+    let work = work
+    let task = Task { [weak self] in
+      await work?()
+      self?.finish()
+    }
+    running = task
+    return task
+  }
+
+  func pull() async {
+    await pull(holding: hold)
+  }
+
+  func pull(holding hold: Duration) async {
+    let task = start()
+    await WorkCoordinator.wait(for: task, until: .now + hold, timedOut: (), cancelled: ())
+  }
+
+  private func finish() {
+    running = nil
+    isSyncing = false
+    announce(Self.finishedMessage)
+  }
+
+  static func announcePolitely(_ message: String) {
+    var text = AttributedString(message)
+    text.accessibilitySpeechAnnouncementPriority = .low
+    AccessibilityNotification.Announcement(text).post()
+  }
 }
