@@ -203,7 +203,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-gate-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-gate-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save: true
           gc-max-store-size: 6G
           purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           purge-prefixes: nix-${{ runner.os }}-gate-
@@ -318,7 +318,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-nixos-vm-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-nixos-vm-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save: true
           gc-max-store-size: 6G
           purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           purge-prefixes: nix-${{ runner.os }}-nixos-vm-
@@ -348,7 +348,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-vuln-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-vuln-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save: true
           gc-max-store-size: 6G
           purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           purge-prefixes: nix-${{ runner.os }}-vuln-
@@ -479,7 +479,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-ios-tools-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-ios-tools-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save: true
           gc-max-store-size: 4G
           purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           purge-prefixes: nix-${{ runner.os }}-ios-tools-
@@ -726,7 +726,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-web-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-web-
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save: true
           gc-max-store-size: 6G
           purge: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           purge-prefixes: nix-${{ runner.os }}-web-
