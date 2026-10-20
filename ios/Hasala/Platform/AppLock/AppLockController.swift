@@ -16,6 +16,15 @@ enum LockBiometry: Equatable, Sendable {
     }
   }
 
+  var name: String {
+    switch self {
+    case .faceID: "Face ID"
+    case .touchID: "Touch ID"
+    case .opticID: "Optic ID"
+    case .none: "passcode"
+    }
+  }
+
   var lockTitle: String {
     switch self {
     case .faceID: "Face ID lock"
@@ -53,16 +62,36 @@ enum LockCheck: Equatable, Sendable {
   }
 }
 
+enum BiometryIssue: Equatable, Sendable {
+  case notEnrolled, denied, lockedOut
+}
+
 protocol LockContext {
   var biometry: LockBiometry { get }
+  var biometryIssue: BiometryIssue? { get }
   func canEvaluate() -> Bool
   func evaluate(reason: String) async -> LockCheck
+}
+
+extension LockContext {
+  var biometryIssue: BiometryIssue? { nil }
 }
 
 final class SystemLockContext: LockContext {
   private let context = LAContext()
 
   var biometry: LockBiometry { LockBiometry(context.biometryType) }
+
+  var biometryIssue: BiometryIssue? {
+    var error: NSError?
+    if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) { return nil }
+    switch error.flatMap({ LAError.Code(rawValue: $0.code) }) {
+    case .biometryNotEnrolled: return .notEnrolled
+    case .biometryLockout: return .lockedOut
+    case .biometryNotAvailable: return context.biometryType == .none ? nil : .denied
+    default: return nil
+    }
+  }
 
   func canEvaluate() -> Bool {
     var error: NSError?
@@ -93,6 +122,7 @@ final class AppLockController {
   private(set) var failed = false
   private(set) var isAvailable = false
   private(set) var biometry: LockBiometry = .none
+  private(set) var biometryIssue: BiometryIssue?
 
   @ObservationIgnored private let makeContext: () -> any LockContext
   @ObservationIgnored private let isEnabled: () -> Bool
@@ -164,19 +194,25 @@ final class AppLockController {
   }
 
   func confirmChange(to on: Bool) async -> Bool {
-    guard !busy else { return false }
+    await requestChange(to: on) == .passed
+  }
+
+  func requestChange(to on: Bool) async -> LockCheck {
+    guard !busy else { return .cancelled }
     busy = true
     confirming = true
     let check = await makeContext().evaluate(
       reason: on ? "Turn on \(biometry.lockTitle) for Hasala." : "Turn off \(biometry.lockTitle) for Hasala.")
     busy = false
     confirming = false
-    return check == .passed
+    if check == .unavailable { refreshAvailability() }
+    return check
   }
 
-  private func refreshAvailability() {
+  func refreshAvailability() {
     let context = makeContext()
     isAvailable = context.canEvaluate()
+    biometryIssue = context.biometryIssue
     biometry = context.biometry
   }
 }

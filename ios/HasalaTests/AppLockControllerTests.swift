@@ -11,6 +11,7 @@ struct AppLockControllerTests {
   final class FakeLAContext: LockContext {
     var available = true
     var biometry: LockBiometry = .faceID
+    var biometryIssue: BiometryIssue?
     var checks: [LockCheck] = []
     var reasons: [String] = []
 

@@ -307,7 +307,7 @@ private struct ProfilePage: View {
     case .accounts:
       AccountsView(app: app)
     case .security:
-      if let session { SecurityView(session: session) }
+      if let session { SecurityView(session: session, app: app) }
     case .privacy:
       // The row is a link to hasala.app/privacy; nothing pushes this page any more.
       HelpPage()
