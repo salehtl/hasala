@@ -21,6 +21,8 @@ public struct Money: Sendable, Hashable, Codable {
 
   public static func homeMinor(of m: Money) -> Int64? { m.currency == home ? m.minor : nil }
 
+  public static func homeSource(of m: Money) -> HomeSource? { m.currency == home ? .identity : nil }
+
   public var isZero: Bool { minor == 0 }
   public var isNegative: Bool { minor < 0 }
 }

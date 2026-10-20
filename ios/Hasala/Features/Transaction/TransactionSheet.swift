@@ -127,14 +127,29 @@ struct TransactionSheet: View {
           .multilineTextAlignment(.center)
           .accessibilityAddTraits(.isHeader)
           .accessibilityIdentifier("txn.merchant")
-        MoneyText(d.amount, figure: .large, unit: .unit, hidden: model.hidden,
+        let home = d.home ?? HomeAmount(shown: d.amount)
+        MoneyText(home.shown, figure: .large, unit: .unit, hidden: model.hidden,
                   color: d.isIncome ? HColor.moneyIn : HColor.moneyOut,
                   unitColor: d.isIncome ? HColor.moneyIn : HColor.textPrimary, unitGap: 5,
-                  sign: d.isIncome ? .income : .none)
+                  sign: d.isIncome ? .income : .none, approx: home.estimate)
           .accessibilityIdentifier("txn.amount")
+        if home.notCounted {
+          Text("Not counted").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+            .accessibilityIdentifier("txn.notCounted")
+        } else if let o = home.original, !model.hidden {
+          Text("\(o.currency) \(MoneyFormat.string(o.minor))").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+            .accessibilityIdentifier("txn.original")
+        }
         Text(d.meta).hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .multilineTextAlignment(.center)
           .padding(.top, 2)
+        if let line = home.estimateLine {
+          Text(line).hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+            .accessibilityIdentifier("txn.estimate")
+        }
       }
       let tags = tags(d)
       if !tags.isEmpty {

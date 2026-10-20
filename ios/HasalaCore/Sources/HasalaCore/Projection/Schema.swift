@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 4
+  public static let version = 5
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
@@ -74,6 +74,8 @@ public enum ProjectionSchema {
       provenance            TEXT NOT NULL,
       entry_method          TEXT CHECK (entry_method IN ('mailbox','manual','import')),
       amount_home_minor     INTEGER,
+      home_source           TEXT CHECK (home_source IN ('identity','rate','stated')),
+      home_rate_micro       INTEGER,
       split                 INTEGER NOT NULL CHECK (split IN (0,1)),
       superseded_by         TEXT,
       successor_id          TEXT,
