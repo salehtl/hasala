@@ -85,7 +85,7 @@ func (e *runEnv) load(mode string, apply func(*config.Config)) (config.Config, e
 	}
 	cfg.Mode = mode
 	if unknown := config.UnknownEnvironment(e.environ); len(unknown) > 0 {
-		slog.Warn("hasalad: this build does not read these variables", "mode", mode, "names", strings.Join(unknown, ","))
+		fmt.Fprintf(e.stderr, "hasalad %s: warning: this build does not read %s\n", mode, strings.Join(unknown, ","))
 	}
 	if apply != nil {
 		apply(&cfg)
