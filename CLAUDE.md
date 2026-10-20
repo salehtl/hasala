@@ -517,9 +517,10 @@ the approval of the owner for that deployment.
   for merchants in Latin script; it cannot read Arabic), then the review
   queue.
 - **Merchant suggestions (2026-10-20) are the one exception.** They are opt-in
-  and off by default, and each device has its own switch. When the steps
-  above give no category, the phone can send one merchant string and the
-  built-in category names to Clef (Workers AI). The phone calls the
+  and off by default, and each device has its own switch. With the switch on,
+  when rules and the dictionary give no category, the phone sends one
+  merchant string and the built-in category names to Clef (Workers AI)
+  first. Apple's model is the fallback. The phone calls the
   `infra/assist/` Worker directly. That Worker has no account identity and
   stores and logs nothing. hasalad never sees these requests. A suggestion
   does not file a row (`needs_review` stays true). There is one exception:

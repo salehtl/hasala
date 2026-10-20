@@ -74,6 +74,7 @@ actor WorkCoordinator {
 
   typealias SyncStage = @Sendable (SyncTrigger, ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
   typealias MailboxStage = @Sendable (MailboxTrigger, Int64?) async -> CycleReport
+  typealias CategorizeStage = @Sendable (Trigger) async -> Bool
   typealias CommittedStage = @Sendable () async -> Void
   typealias StoppedStage = @Sendable (SyncStop) async -> Void
 
@@ -83,14 +84,19 @@ actor WorkCoordinator {
     var sync: @Sendable (_ trigger: SyncTrigger, _ deadline: ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
     /// The Gmail cycle; nil when the build has no Google client.
     var mailbox: (@Sendable (_ trigger: MailboxTrigger, _ deadlineMs: Int64?) async -> CycleReport)?
+    var categorize: CategorizeStage?
     /// After every run: the screens reload.
     var committed: @Sendable () async -> Void
     /// A stop only the account gate can act on.
     var stopped: @Sendable (_ stop: SyncStop) async -> Void
 
-    init(sync: @escaping SyncStage, mailbox: MailboxStage?, committed: @escaping CommittedStage, stopped: @escaping StoppedStage) {
+    init(
+      sync: @escaping SyncStage, mailbox: MailboxStage?, categorize: CategorizeStage? = nil, committed: @escaping CommittedStage,
+      stopped: @escaping StoppedStage
+    ) {
       self.sync = sync
       self.mailbox = mailbox
+      self.categorize = categorize
       self.committed = committed
       self.stopped = stopped
     }
@@ -237,6 +243,10 @@ actor WorkCoordinator {
       }
       let report = await mailbox(mt, deadlineMs)
       if report.ops > 0 { out.newData = true }
+    }
+    if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
+    if !closed, let categorize = stages.categorize, synced.stop.map(Self.tolerable) ?? true {
+      if await categorize(trigger) { out.newData = true }
     }
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     await stages.committed()

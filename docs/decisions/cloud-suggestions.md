@@ -168,9 +168,8 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
 - `modelTag` is `cf-clef/<version>`, written to `txn_categorized {source: model}` as
   today. The row keeps `needs_review`, so it never counts in a total until the person
   confirms it.
-- Order when both are available (decision D1): Apple's model first for Latin subjects;
-  Clef for subjects that fail the Latin gate, or when Apple's model is unavailable or
-  answers `.unknown`.
+- Order (decision D1): with Merchant suggestions on, Clef first, then Apple's model for
+  Latin subjects that Clef couldn't answer. With it off, Apple's model only.
 - Failures map onto `ModelFailure` (`timeout`, `rateLimited`, `busy`, `other`). A failure
   leaves the row in review, as today.
 
@@ -359,7 +358,7 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided:** only where Apple's model can't (non-Latin subjects, Apple's model unavailable, or its answer `unknown`). Less data leaves the phone. |
+| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, Apple's model only. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer. |
 | D2 | Offer custom category names to Clef? | **Decided:** not in v1. Revisit with a per-category "may be sent" mark. |
 | D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | **Decided:** rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
 | D4 | Allow "Don't ask again" for Alert reading help? | Deferred with Clairic. No in v1. Each alert is shown and confirmed. |

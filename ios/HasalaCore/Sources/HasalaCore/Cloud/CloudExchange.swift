@@ -36,6 +36,7 @@ public protocol CloudHTTPExchange: Sendable {
 
 public final class URLSessionCloudExchange: CloudHTTPExchange {
   let session: URLSession
+  public static let fixedHeaders = ["User-Agent": "Hasala", "Accept-Language": "en"]
 
   public init(timeout: TimeInterval = 10) {
     let c = URLSessionConfiguration.ephemeral
@@ -57,6 +58,7 @@ public final class URLSessionCloudExchange: CloudHTTPExchange {
     r.httpMethod = request.method
     r.httpShouldHandleCookies = false
     r.cachePolicy = .reloadIgnoringLocalCacheData
+    for (k, v) in Self.fixedHeaders { r.setValue(v, forHTTPHeaderField: k) }
     for (k, v) in request.headers { r.setValue(v, forHTTPHeaderField: k) }
     r.httpBody = request.body
     do {
