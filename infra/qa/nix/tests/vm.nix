@@ -423,7 +423,7 @@ in
           dump = machine.succeed(f"ls {BACKUP_DIR}/hasala-daily-*.dump.age").strip()
           assert int(machine.succeed(f"stat -c %s {dump}").strip()) > 40 * 1024 * 1024
           machine.succeed(
-              f"age -d -i /root/test-identity.txt {dump} | pg_restore --list | grep ' TABLE DATA public vm_bulk ' >/dev/null"
+              f"age -d -i /root/test-identity.txt {dump} | {{ pg_restore --list; cat > /dev/null; }} | grep ' TABLE DATA public vm_bulk ' >/dev/null"
           )
           machine.fail(f"ls {BACKUP_DIR} | grep '\\.part$'")
           machine.succeed("rm -rf /run/systemd/system.control/hasala-backup.service.d && systemctl daemon-reload")
