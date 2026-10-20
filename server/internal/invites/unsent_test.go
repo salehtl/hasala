@@ -130,7 +130,7 @@ func TestAnUnsentCLIInviteEmailRevokesTheInvite(t *testing.T) {
 	var invite uuid.UUID
 	if err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
 		var err error
-		invite, err = EnqueueEmailed(bg, tx, q, "cli@example.com", "", DefaultTTL)
+		invite, err = EnqueueEmailed(bg, tx, mailq.New(pool, nil, nil), "cli@example.com", "", DefaultTTL)
 		return err
 	}); err != nil {
 		t.Fatal(err)

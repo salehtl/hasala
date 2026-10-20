@@ -109,6 +109,8 @@ type Minter interface {
 	InviteSecrets(inviteID uuid.UUID, mailID int64) (code, link []byte)
 }
 
+var ErrAddressGone = errors.New("invites: the invite's email address is no longer kept; revoke it and mint a new invite")
+
 // ErrStale is a queued invite email whose invite is no longer sendable.
 var ErrStale = errors.New("invites: the invite is closed")
 
@@ -201,11 +203,14 @@ func Resend(ctx context.Context, tx pgx.Tx, q *mailq.Queue, id uuid.UUID) error 
 		                                ORDER BY m.id DESC LIMIT 1))
 		   FROM invite_codes i LEFT JOIN waitlist_entries e ON e.id = i.waitlist_entry_id
 		  WHERE i.id = $1 FOR UPDATE OF i`, id).Scan(&entry, &tag, &state, &to)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (state != "active" && state != "queued" || to == nil)) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && state != "active" && state != "queued") {
 		return ErrNoSuchInvite
 	}
 	if err != nil {
 		return err
+	}
+	if to == nil {
+		return ErrAddressGone
 	}
 	_, err = q.EnqueueTx(ctx, tx, mailq.Enqueue{Kind: "invite", Lane: mailq.LaneTransactional, To: *to, Tag: tag,
 		EntryID: entry, InviteID: &id})

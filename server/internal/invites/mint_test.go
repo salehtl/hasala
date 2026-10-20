@@ -116,3 +116,47 @@ func TestARetriedInviteEmailCarriesTheSameCode(t *testing.T) {
 		t.Fatalf("mint_count %d, want 2", n)
 	}
 }
+
+func TestResendRefusesACLIInviteWhoseAddressIsGone(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := unsentQueue(pool, fake)
+	var invite uuid.UUID
+	if err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
+		var err error
+		invite, err = EnqueueEmailed(bg, tx, mailq.New(pool, nil, nil), "later@example.com", "", MaxTTL)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	resend := func() error {
+		return pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error { return Resend(bg, tx, q, invite) })
+	}
+	if err := resend(); err != nil {
+		t.Fatalf("a resend within 7 days: %v", err)
+	}
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 2 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET final_at = now() - interval '8 days' WHERE invite_id = $1`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Sweep(bg); err != nil {
+		t.Fatal(err)
+	}
+	if err := resend(); !errors.Is(err, ErrAddressGone) {
+		t.Fatalf("resend after the address went: %v", err)
+	}
+	if s := inviteState(t, pool, invite); s != "active" {
+		t.Fatalf("invite %s, want active", s)
+	}
+	var queued int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1 AND status = 'queued'`, invite).
+		Scan(&queued); err != nil || queued != 0 {
+		t.Fatalf("%d queued rows, %v", queued, err)
+	}
+}
