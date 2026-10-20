@@ -203,6 +203,27 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
 - The fields are a pre-fill. Saving them is an ordinary user edit, so no new op kind and no
   change to the fold. The original empty review shape stays in the log as it is.
 
+### Sort automatically (owner decision, 2026-10-20)
+
+A second opt-in, under Merchant suggestions. With it on, a Clef answer that clears a
+stricter gate **files** the row instead of only suggesting it.
+
+- Gate: the chosen probability is ≥ 0.8 and leads the second by ≥ 0.4. In the spike
+  this answered 81 of 114 names (71%) with 81 right (100%). An answer that clears only
+  the 0.6 / 0.2 gate stays a suggestion in review.
+- Clef only. Apple's model gives no probabilities to grade, so its answers stay
+  suggestions (`ModelTier.autoConfirm = false` is unchanged). A cloud model declares that
+  it can grade by conforming to `GradedCategoryModel`.
+- The op is `txn_categorized {category, needs_review: false, source: model("cf-clef/1")}`.
+  The row counts in totals at once.
+- The row shows "Sorted by Cloudflare AI". Changing its category by hand makes it a user
+  decision, as today.
+- It can be on only while Merchant suggestions is on. Turning Merchant suggestions off
+  turns it off too.
+- Risk: a wrong auto-sort changes a budget without a review step. The stricter gate, the
+  label and the per-device switch are the mitigations. Watch for wrong auto-sorts in the
+  beta, and raise the gate if testers report them.
+
 ## The switches
 
 - Profile › Privacy › **Cloud suggestions**, with two switches: **Merchant suggestions**
@@ -384,6 +405,11 @@ changes what is sent where. Set `lastUpdated` to the ship date.
 > the date, your card, your bank, your own category names or anything about your account.
 > Each merchant is sent on its own. The suggestion is marked "Suggested by Cloudflare AI",
 > and it doesn't count in your totals until you confirm it.
+>
+> **Sort automatically.** If you also turn this on, Hasala files a payment in the
+> suggested category by itself when Cloudflare's AI service is very sure. Those payments
+> count in your totals straight away and are marked "Sorted by Cloudflare AI". You can
+> change any of them. It sends nothing more than Merchant suggestions does.
 >
 > **Alert reading help.** When Hasala can't read a bank alert, you can ask Cloudflare's AI
 > service to read it. Hasala first removes your name, card and account numbers, IBAN,

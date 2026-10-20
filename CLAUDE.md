@@ -520,7 +520,11 @@ the approval of the owner for that deployment.
   built-in category names to Clef (Workers AI). The phone calls the
   `infra/assist/` Worker directly. That Worker has no account identity and
   stores and logs nothing. hasalad never sees these requests. A suggestion
-  never files a row (`needs_review` stays true). Do not send other data
+  does not file a row (`needs_review` stays true). There is one exception:
+  "Sort automatically", a second opt-in. With it, a Clef answer at or above
+  the auto-file threshold (0.8, margin 0.4) files the row with
+  `needs_review: false`. Apple's model never files a row
+  (`ModelTier.autoConfirm = false`). Do not send other data
   through this path: no amount, date, card, bank, custom category name or
   email. Refer to `docs/decisions/cloud-suggestions.md`.
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
