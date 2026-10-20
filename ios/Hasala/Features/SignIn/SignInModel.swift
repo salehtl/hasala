@@ -239,10 +239,10 @@ final class SignInModel {
 
   // MARK: Recovery (C4): the words first, then the code
 
-  func submitRecoveryWords() async -> Bool {
+  func submitRecoveryWords(on route: WelcomeRoute = .recoverWords) async -> Bool {
     switch PhraseRules.validate(phraseText) {
     case .failure(let f):
-      fail(f, on: .recoverWords)
+      fail(f, on: route)
       return false
     case .success(let words):
       busy = true
@@ -255,10 +255,24 @@ final class SignInModel {
         clearFailure()
         return true
       } catch {
-        fail(error, on: .recoverWords)
+        fail(error, on: route)
         return false
       }
     }
+  }
+
+  func resendRecoveryCode() async -> Bool {
+    await submitRecoveryWords(on: .recoverCode)
+  }
+
+  func forgetRecovery() {
+    clearPastedPhrase(changeCount: pastedPhraseChangeCount)
+    pastedPhraseChangeCount = nil
+    phraseText = ""
+    recoverCode = ""
+    recovery = nil
+    recoverCodeSentAt = nil
+    verifiedRecoveryKind = nil
   }
 
   /// The six digits are only kept here: `recover/verify` needs the new way to sign in
@@ -294,9 +308,9 @@ final class SignInModel {
         try await account.verifyRecovery(recovery, code: recoverCode, kind: credential.method)
         verifiedRecoveryKind = credential.method
       } catch {
-        recoverCode = ""
         switch error {
         case .codeWrong, .codeExpired:
+          recoverCode = ""
           fail(error, on: .recoverCode)
           return .codeRejected
         default:

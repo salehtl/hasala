@@ -96,7 +96,7 @@ struct RecoverCodeView: View {
       failure: signIn.failure(on: .recoverCode), sentAt: signIn.recoverCodeSentAt,
       trailing: (title: "Change words", identifier: "code.changeWords", action: { store.signup.back() }),
       onSubmit: { if signIn.submitRecoveryCode() { store.signup.go(.recoverMethod) } },
-      onResend: { Task { _ = await signIn.submitRecoveryWords() } })
+      onResend: { Task { _ = await signIn.resendRecoveryCode() } })
   }
 }
 
