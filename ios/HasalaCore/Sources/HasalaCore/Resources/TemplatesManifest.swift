@@ -25,8 +25,10 @@ public enum TemplatesManifest {
   public static let entries: [Entry] = [
     Entry(file: "adib.account.v1.json", id: "adib.account.v1", version: 1, sha256: "4bd30c7ea5c8523cbb2c4b7c9573447b1aaa5a1615ab326ec9ec6e1bc2450b3e"),
     Entry(file: "adib.alert.v1.json", id: "adib.alert.v1", version: 1, sha256: "66afc2357dc1f50631ccf7d0a4f95fecb9fc45bbf2e7560d9adf435e4f193635"),
-    Entry(file: "dib.account.v1.json", id: "dib.account.v1", version: 2, sha256: "a2299720d88552650fcb786246bf0b344a43504ec86ac91d162ab934c86722c9"),
+    Entry(file: "dib.account.v1.json", id: "dib.account.v1", version: 3, sha256: "0f32deab961abe233455b1931c28c4975a1b4d235737d6fbcf3c9ab224b1a012"),
     Entry(file: "dib.card.v1.json", id: "dib.card.v1", version: 2, sha256: "b89d285841df67345346d1b89982fe079f3f606720deb1e0cc859e23373781d6"),
+    Entry(file: "dib.money-transfer.v1.json", id: "dib.money-transfer.v1", version: 1, sha256: "fee7d81b2c41c777acd9221afe13ffe7dc7c312a3326178a96fe2b0c52c4541b"),
+    Entry(file: "dib.transfer.v1.json", id: "dib.transfer.v1", version: 1, sha256: "00401b96e47fc1139db8feb62a8d6adf18a540410b13d2612aac360116efdf61"),
     Entry(file: "enbd.alert.v1.json", id: "enbd.alert.v1", version: 3, sha256: "0be29ccc0fd3202226ffec01f05ddd983406806a291793f10ffbd6606a89b545"),
     Entry(file: "enbd.transfer.v1.json", id: "enbd.transfer.v1", version: 2, sha256: "a2b40edf854224a0822a85b1a1401816ccf999240db1e005c10a931dff984a4d"),
   ]

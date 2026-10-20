@@ -17,6 +17,10 @@
       "body_contains": [
         "Money Transfer\n",
         "Status\nCredited to beneficiary"
+      ],
+      "body_not_contains": [
+        "إشعار مشتريات",
+        "إشعار تحويل الأموال"
       ]
     },
     "default_currency": "AED",
@@ -37,6 +41,12 @@
         "patterns": [
           "\\nBeneficiary Bank\\n(?P<v>[^\\n]+)"
         ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB TRANSFER"
       },
       {
         "field": "last4",
@@ -121,7 +131,7 @@
     },
     {
       "name": "dib.money-transfer.v1/no-beneficiary-bank",
-      "source": "SYNTHETIC: merchant is not required",
+      "source": "SYNTHETIC: without a beneficiary bank the merchant is the constant",
       "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
       "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMSwyMzQuNTYKRnJvbQpBRTAwMDAwMDAwMDAwMDBYWFhYWDEwMQpbRnJvbSBBY2NvdW50IEZSTV0KVG8KQUUwMDAwMDAwMDAwMDAwWFhYWFgwMDIKU3RhdHVzCkNyZWRpdGVkIHRvIGJlbmVmaWNpYXJ5ClJlZmVyZW5jZSBOdW1iZXIKW1JlZmVyZW5jZSBOdW1iZXJdCkJlc3QgUmVnYXJkcywKRHViYWkgSXNsYW1pYyBCYW5r",
       "expect": {
@@ -131,7 +141,7 @@
         "currency": "AED",
         "direction": "debit",
         "posted_at": "",
-        "merchant": "",
+        "merchant": "DIB TRANSFER",
         "last4": "0101",
         "is_transfer": true,
         "empty_groups": []

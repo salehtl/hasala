@@ -428,27 +428,48 @@ import Testing
     #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","card":"none","forwarded":false},"dedupe":{"message_id":"\#(mid)"}}"#)
   }
 
-  @Test func dibTransferNoticesAreTheEmptyReviewShape() throws {
-    let arabic =
-      "تحويل الأموال\nعزيزي المتعامل,\nإشعار تحويل الأموال الى بنك آخر داخل الدولة بتاريخ 05-06-2026 07:41 بالتفاصيل التالية.\n"
-      + "المبلغ\n(يشمل 5% ضريبة القيمة المضافة)\nAED 4321.09\nمن حساب\n001-000-123XXXX01\n[From Account FRM]\nالى\n"
-      + "AE000000000000000000001\nالبنك المستفيد\nsample bank uae\nالحالة\nتمت بنجاح\nالرقم المرجعي\n[Reference Number]"
+  @Test func dibTransferNoticesFileAsDebits() throws {
+    let arabic = try mail(SyntheticMail.dibTransferNotice(id: "n0", day: "29-05-2026", dateMs: Rig.t0))
+    #expect(arabic.bank == "dib" && arabic.gates.template == "dib.transfer.v1@1" && arabic.last4 == "8701")
+    let f = try #require(arabic.fields)
+    #expect(f.amountMinor == 314_159 && f.currency == "AED" && f.direction == "debit" && f.merchant == "DIB TRANSFER")
+    #expect(f.postedAt == "2026-05-28T20:26:40.000Z" && f.precision == "time" && f.isTransfer)
+    let d = MessageDisposer.finalize(arabic, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    #expect(!d.needsReview && d.payload["unparsed"] == .bool(false) && d.payload["direction"] == .string("debit"))
+    #expect(d.payload["amount_minor"] == .string("314159") && d.payload["is_transfer"] == nil)
+
     let english =
       "Money Transfer\nDear Customer,\nThis is to notify you that a Domestic Fund Transfer transaction has been initiated on "
       + "07-23-2026 11:12:13 with the following details.\nAmount\n1,234.56\nFrom\nAE0000000000000XXXXX101\n"
       + "[From Account FRM]\nTo\nAE0000000000000XXXXX002\nBeneficiary Bank\nSample Bank PJSC\nStatus\n"
       + "Credited to beneficiary\nReference Number\n[Reference Number]"
-    for (i, body) in [arabic, english].enumerated() {
-      let from = "DIB <notification@dib.ae>"
-      let m = FakeGmail.Message(
-        id: "n\(i)",
-        raw: SyntheticMail.rfc822(from: from, subject: "DIB Notification", body: body, dateMs: Rig.t0, authDomain: "dib.ae"),
-        internalDateMs: Rig.t0, from: from)
-      let p = try mail(m)
-      #expect(p.fields == nil && p.gates.template == nil && p.gates.senderTrusted)
-      let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
-      #expect(d.needsReview && d.payload["unparsed"] == .bool(true))
+    let from = "DIB <notification@dib.ae>"
+    let en = try mail(
+      FakeGmail.Message(
+        id: "n1", raw: SyntheticMail.rfc822(from: from, subject: "DIB Notification", body: english, dateMs: Rig.t0, authDomain: "dib.ae"),
+        internalDateMs: Rig.t0, from: from))
+    #expect(en.gates.template == "dib.money-transfer.v1@1")
+    #expect(en.fields?.amountMinor == 123_456 && en.fields?.direction == "debit" && en.fields?.merchant == "Sample Bank PJSC")
+    #expect(en.fields?.postedAt == "2026-05-28T20:26:40.000Z")
+
+    let forwarded = try mail(SyntheticMail.dibTransferNotice(id: "n2", day: "29-05-2026", dateMs: Rig.t0, to: "someone.else@example.net"))
+    #expect(forwarded.recipient == .mismatch && forwarded.fields?.direction == "debit")
+    #expect(MessageDisposer.finalize(forwarded, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer()).needsReview)
+
+    for status in ["قيد التنفيذ", "قيد الأنتظار"] {
+      let pending = try mail(SyntheticMail.dibTransferNotice(id: "n3", day: "29-05-2026", status: status, dateMs: Rig.t0))
+      #expect(pending.fields == nil && pending.gates.template == nil)
+      let empty = MessageDisposer.finalize(pending, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      #expect(empty.needsReview && empty.payload["unparsed"] == .bool(true))
     }
+  }
+
+  @Test func dibDebitAlertStillFilesAndANoticeIsNotACredit() throws {
+    let alert = try mail(SyntheticMail.dibDebitAlert(id: "a0", day: "29-05-2026", dateMs: Rig.t0))
+    #expect(alert.gates.template == "dib.account.v1@3")
+    #expect(alert.fields?.direction == "debit" && alert.fields?.amountMinor == 314_159 && alert.fields?.merchant == "MB FUND TRANSFER DEBIT")
+    let notice = try mail(SyntheticMail.dibTransferNotice(id: "a1", day: "29-05-2026", dateMs: Rig.t0))
+    #expect(notice.gates.template != "dib.account.v1@3" && notice.fields?.direction == "debit")
   }
 
   @Test func nonBankMailIsSetAside() {

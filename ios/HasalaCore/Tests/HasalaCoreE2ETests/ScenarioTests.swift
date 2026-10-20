@@ -46,6 +46,21 @@ struct ScenarioTests {
     try await Scenarios.gmailToReplay(a, b, clock: w.clock)
   }
 
+  @Test("a DIB transfer notice and its debit alert count once; a pending notice stays unread")
+  func dibTransferNotices() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await Scenarios.dibTransferNotices(a, b, clock: w.clock)
+  }
+
+  @Test(
+    "[real-corpus] the operator's real DIB mail as Gmail delivered it: a transfer notice and its alert count once",
+    .enabled(if: ProcessInfo.processInfo.environment["HASALA_PRIVATE_FIXTURES"].map { !$0.isEmpty } == true))
+  func realDIBMail() async throws {
+    let (w, a, _) = try await twoRuntimes()
+    let root = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["HASALA_PRIVATE_FIXTURES"]), isDirectory: true)
+    try await Scenarios.realDIBMail(a, clock: w.clock, root: root)
+  }
+
   @Test("a 500-alert, 90-day first scan reads, authors and uploads every alert")
   func gmailBackfill() async throws {
     let (w, a, _) = try await twoRuntimes()

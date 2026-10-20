@@ -10,6 +10,10 @@
     "body_contains": [
       "Money Transfer\n",
       "Status\nCredited to beneficiary"
+    ],
+    "body_not_contains": [
+      "إشعار مشتريات",
+      "إشعار تحويل الأموال"
     ]
   },
   "default_currency": "AED",
@@ -30,6 +34,12 @@
       "patterns": [
         "\\nBeneficiary Bank\\n(?P<v>[^\\n]+)"
       ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "DIB TRANSFER"
     },
     {
       "field": "last4",

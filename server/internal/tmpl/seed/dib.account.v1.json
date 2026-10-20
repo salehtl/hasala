@@ -1,6 +1,6 @@
 {
   "id": "dib.account.v1",
-  "version": 2,
+  "version": 3,
   "bank": "dib",
   "normalizer_version": 1,
   "match": {
@@ -8,7 +8,9 @@
       "dib.ae"
     ],
     "body_not_contains": [
-      "إشعار مشتريات"
+      "إشعار مشتريات",
+      "إشعار تحويل الأموال",
+      "Money Transfer\n"
     ]
   },
   "default_currency": "AED",
