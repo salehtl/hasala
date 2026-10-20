@@ -15,7 +15,9 @@
 //
 // Trust a verdict ONLY when exactly one Authentication-Results header has authserv-id
 // `mx.google.com`, it precedes every other Authentication-Results header, and it reports
-// `dkim=pass` with a `header.d` domain aligned with the domain of the one `From` field.
+// `dkim=pass` with a DKIM domain aligned with the domain of the one `From` field. The DKIM
+// domain is `header.d` when the method has one, else the domain of `header.i`: Gmail writes
+// `header.i=@<domain>`, never `header.d`.
 // `spf` and `dmarc` results are parsed like any other method but never trusted: DMARC can pass
 // on SPF alone, and SPF vouches for the envelope sender, not the From domain a bank's template
 // is keyed on. Everything else is
@@ -72,7 +74,7 @@ public enum AuthResults {
   /// The verdict and, only when trusted, the verified domain, from ONE reading of the bytes.
   public struct Analysis: Sendable, Equatable {
     public let verdict: Verdict
-    /// The DKIM `header.d` of the passing verdict, else the DMARC `header.from`; lower case.
+    /// Gmail: the DKIM domain of the passing verdict. Outlook: the DMARC `header.from`. Lower case.
     public let domain: String?
     public let signature: String?
 
@@ -132,10 +134,10 @@ public enum AuthResults {
     let fromDom = from.count == 1 ? string(fromDomain(from[0].value)) : ""
     guard
       let dkimPass = ar.methods.first(where: {
-        same($0.method, "dkim") && same($0.result, "pass") && dkimAligned(domainProp($0, "header.d"), fromDom)
+        same($0.method, "dkim") && same($0.result, "pass") && dkimAligned(dkimDomain($0), fromDom)
       })
     else { return untrusted(.fail) }
-    let domain = domainProp(dkimPass, "header.d")
+    let domain = dkimDomain(dkimPass)
     let b = dkimPass.props.last { $0.key.utf8.elementsEqual("header.b".utf8) }.map { string(jsTrim(Array($0.value.unicodeScalars))) }
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain, signature: (b?.isEmpty ?? true) ? nil : b)
   }
@@ -214,6 +216,11 @@ public enum AuthResults {
 
     // 8.
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
+  }
+
+  static func dkimDomain(_ spec: MethodSpec) -> String {
+    spec.props.contains { $0.key.utf8.elementsEqual("header.d".utf8) }
+      ? domainProp(spec, "header.d") : domainProp(spec, "header.i")
   }
 
   static func dkimAligned(_ d: String, _ from: String) -> Bool {

@@ -340,11 +340,12 @@ public enum SyntheticMail {
     var h: [String] = []
     if let d = authDomain {
       if !arTopmost { h.append("Authentication-Results: relay.example.net; dkim=pass header.d=\(d)") }
+      let spf = "spf=pass (google.com: domain of alerts@\(d) designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@\(d)"
       let verdict =
         dkimPass
-        ? "dkim=pass header.d=\(d) header.s=synthetic header.b=c3ludGhl; dmarc=pass header.from=\(d); spf=pass"
-        : "dkim=fail header.d=\(d); spf=fail"
-      h.append("Authentication-Results: mx.google.com; \(verdict)")
+        ? "dkim=pass header.i=@\(d) header.s=synthetic header.b=c3ludGhl;\r\n       \(spf);\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=\(d)"
+        : "dkim=fail header.i=@\(d) header.s=synthetic header.b=c3ludGhl;\r\n       spf=fail smtp.mailfrom=alerts@\(d)"
+      h.append("Authentication-Results: mx.google.com;\r\n       \(verdict)")
     }
     h.append("Delivered-To: \(defaultTo)")
     if let d = authDomain {

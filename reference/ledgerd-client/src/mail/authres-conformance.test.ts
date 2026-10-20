@@ -20,7 +20,7 @@ test("conformance/authres covers every reason and every group", () => {
   const reasons = new Set(doc.vectors.map((v) => v.expect.reason));
   expect([...reasons].sort()).toEqual(["fail", "multiple_ar", "no_ar", "no_eop", "not_topmost", "parse_error", "pass"]);
   const groups = new Set(doc.vectors.map((v) => v.group));
-  expect([...groups].sort()).toEqual(["bounds", "domain", "goldens", "outlook", "structure", "unicode_whitespace"]);
+  expect([...groups].sort()).toEqual(["bounds", "domain", "gmail_shape", "goldens", "outlook", "structure", "unicode_whitespace"]);
   // The outlook group is exactly the Outlook vectors, and it reaches every Outlook reason.
   for (const v of doc.vectors) expect(v.group === "outlook").toBe(v.provider === "outlook");
   const outlookReasons = new Set(doc.vectors.filter((v) => v.provider === "outlook").map((v) => v.expect.reason));

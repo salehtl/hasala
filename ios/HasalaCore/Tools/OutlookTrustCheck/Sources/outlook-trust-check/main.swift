@@ -22,7 +22,17 @@ do {
   fail("outlook-trust-check: cannot read the folder", code: 66)
 }
 
-let report = TrustCheck.run(inputs, expect: args.expect, domains: args.domains)
-FileHandle.standardOutput.write(Data("outlook-trust-check expect=\(args.expect.rawValue) files=\(inputs.count)\n".utf8))
+let report: Report
+let provider: String
+switch args.provider {
+case .outlook:
+  report = TrustCheck.run(inputs, expect: args.expect, domains: args.domains)
+  provider = ""
+case .gmail:
+  report = TrustCheck.runGmail(inputs, expect: args.expect, domains: args.domains)
+  provider = " provider=gmail"
+}
+FileHandle.standardOutput.write(
+  Data("outlook-trust-check\(provider) expect=\(args.expect.rawValue) files=\(inputs.count)\n".utf8))
 FileHandle.standardOutput.write(Data(report.text.utf8))
 exit(report.exitCode)

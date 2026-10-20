@@ -6,7 +6,8 @@ import Testing
 
 @testable import CoreMail
 
-private func block(_ lines: String...) -> String { lines.joined(separator: "\r\n") + "\r\n\r\n" }
+private func block(_ lines: [String]) -> String { lines.joined(separator: "\r\n") + "\r\n\r\n" }
+private func block(_ lines: String...) -> String { block(lines) }
 private func verdict(_ raw: String) -> (Bool, AuthResults.Reason) {
   let v = AuthResults.gmailVerdict(raw)
   return (v.trusted, v.reason)
@@ -90,17 +91,69 @@ struct AuthResultsTests {
     #expect(AuthResults.verifiedDomain(below) == "bank.example")
   }
 
-  @Test("dkim=fail with no dmarc pass, or dkim=pass with no d=, is fail")
+  @Test("dkim=fail with no dmarc pass, or dkim=pass with neither header.d nor header.i, is fail")
   func failures() {
     let fail = block(
       "Authentication-Results: mx.google.com;", "       dkim=fail header.d=bank.example;",
       "       dmarc=fail header.from=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(fail) == (false, .fail))
-    let noD = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: Bank <alerts@bank.example>")
-    #expect(verdict(noD) == (false, .fail))
-    #expect(AuthResults.verifiedDomain(noD) == nil)
+    let noID = block(
+      "Authentication-Results: mx.google.com; dkim=pass header.s=selector1 header.b=c3ludGhl", "From: Bank <alerts@bank.example>")
+    #expect(verdict(noID) == (false, .fail))
+    #expect(AuthResults.verifiedDomain(noID) == nil)
     let dmarcNoFrom = block("Authentication-Results: mx.google.com; dmarc=pass", "From: Bank <alerts@bank.example>")
     #expect(verdict(dmarcNoFrom) == (false, .fail))
+  }
+
+  static let gmailAR = [
+    "Authentication-Results: mx.google.com;",
+    "       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;",
+    "       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;",
+    "       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example",
+  ]
+
+  @Test("Gmail's own shape: dkim=pass header.i=@domain with no header.d is trusted when aligned")
+  func gmailShape() {
+    let raw = block(Self.gmailAR + ["From: Bank <alerts@bank.example>"])
+    #expect(verdict(raw) == (true, .pass))
+    let a = AuthResults.analyze(raw)
+    #expect(a.domain == "bank.example" && a.signature == "c3ludGhl")
+    let local = block("Authentication-Results: mx.google.com; dkim=pass header.i=alerts@Bank.Example", "From: <alerts@bank.example>")
+    #expect(AuthResults.verifiedDomain(local) == "bank.example")
+    let sub = block("Authentication-Results: mx.google.com; dkim=pass header.i=@mail.bank.example", "From: <alerts@bank.example>")
+    #expect(AuthResults.verifiedDomain(sub) == "mail.bank.example")
+    let parent = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: <alerts@mail.bank.example>")
+    #expect(AuthResults.verifiedDomain(parent) == "bank.example")
+    let second = block(
+      "Authentication-Results: mx.google.com; dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln;",
+      "       dkim=pass header.i=@bank.example header.s=s2 header.b=YmFua3Np", "From: Bank <alerts@bank.example>")
+    #expect(AuthResults.analyze(second) == AuthResults.Analysis(verdict: .init(trusted: true, reason: .pass), domain: "bank.example", signature: "YmFua3Np"))
+  }
+
+  @Test("near misses of Gmail's shape are fail, multiple_ar or not_topmost")
+  func gmailShapeNearMisses() {
+    let from = "From: Bank <alerts@bank.example>"
+    for ar in [
+      "Authentication-Results: mx.google.com; dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln; spf=pass smtp.mailfrom=bounce@bank.example; dmarc=pass header.from=bank.example",
+      "Authentication-Results: mx.google.com; dkim=fail header.i=@bank.example header.s=s1 header.b=c3ludGhl; spf=pass smtp.mailfrom=alerts@bank.example; dmarc=pass header.from=bank.example",
+      "Authentication-Results: mx.google.com; dkim=neutral (body hash did not verify) header.i=@bank.example header.s=s1 header.b=c3ludGhl; dmarc=fail header.from=bank.example",
+      "Authentication-Results: mx.google.com; dkim=pass header.i=@notbank.example",
+      "Authentication-Results: mx.google.com; dkim=pass header.i=@ank.example",
+      "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example.evil.example",
+      "Authentication-Results: mx.google.com; dkim=pass header.i=\"alerts@bank.example\"@evil.example",
+      "Authentication-Results: mx.google.com; dkim=pass header.i=@",
+      "Authentication-Results: mx.google.com; dkim=pass header.d=evil.example header.i=@bank.example",
+      "Authentication-Results: mx.google.com; dkim=pass header.d=localhost header.i=@bank.example",
+    ] {
+      #expect(verdict(block(ar, from)) == (false, .fail), "\(ar)")
+      #expect(AuthResults.verifiedDomain(block(ar, from)) == nil)
+    }
+    let lookAlike = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: <alerts@bank.example.evil.example>")
+    #expect(verdict(lookAlike) == (false, .fail))
+    #expect(verdict(block(Self.gmailAR)) == (false, .fail))
+    #expect(verdict(block(Self.gmailAR + [from, from])) == (false, .fail))
+    #expect(verdict(block([Self.gmailAR.joined(separator: "\r\n")] + Self.gmailAR + [from])) == (false, .multipleAR))
+    #expect(verdict(block(["Authentication-Results: relay.example; dkim=pass header.i=@bank.example"] + Self.gmailAR + [from])) == (false, .notTopmost))
   }
 
   @Test("folded values, CFWS comments (nested, holding ';') and quoted strings parse")

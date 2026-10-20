@@ -22,7 +22,9 @@
  * Trust a verdict ONLY when:
  *   - exactly one Authentication-Results header has authserv-id == mx.google.com,
  *   - it precedes every other Authentication-Results header, AND
- *   - it reports dkim=pass with a d= domain aligned with the one From domain.
+ *   - it reports dkim=pass with a DKIM domain aligned with the one From domain:
+ *     header.d when the method has one, else the domain of header.i (Gmail
+ *     writes header.i=@<domain>, never header.d).
  *
  * Everything else is untrusted with a specific reason:
  *   - no_ar       — no mx.google.com A-R present (drafts, Gmail's POP importer,
@@ -123,8 +125,8 @@ export function gmailVerdict(rawHeaders: string): ArVerdict {
 
 /**
  * verifiedDomain returns the domain the trusted mx.google.com verdict vouched
- * for — the dkim d= (header.d) when the verdict passed on DKIM, else the
- * dmarc header.from — for sender-list matching, or null.
+ * for — the DKIM domain of the aligned dkim=pass (Gmail) or the DMARC
+ * header.from (Outlook) — for sender-list matching, or null.
  *
  * It returns a domain ONLY when gmailVerdict trusts the message. Sender-list
  * matching happens exclusively on a trusted verdict, so an untrusted message
@@ -225,12 +227,12 @@ function analyze(rawHeaders: string): Analysis {
     const from = fields.filter((f) => fieldNameEquals(f.name, "from"));
     const fromDom = from.length === 1 ? fromDomain(from[0]!.value) : "";
     const dkimPass = ar.methods.find(
-      (m) => m.method === "dkim" && m.result === "pass" && dkimAligned(domainProp(m, "header.d"), fromDom),
+      (m) => m.method === "dkim" && m.result === "pass" && dkimAligned(dkimDomain(m), fromDom),
     );
     if (!dkimPass) {
       return untrusted("fail");
     }
-    const domain = domainProp(dkimPass, "header.d");
+    const domain = dkimDomain(dkimPass);
 
     return { verdict: { trusted: true, reason: "pass" }, domain };
   } catch {
@@ -366,6 +368,15 @@ function analyzeOutlook(rawHeaders: string): Analysis {
   }
 }
 
+function dkimDomain(m: MethodSpec): string {
+  return m.props.has("header.d") ? domainProp(m, "header.d") : domainProp(m, "header.i");
+}
+
+function dkimAligned(d: string, from: string): boolean {
+  if (d === "" || from === "") return false;
+  return from === d || from.endsWith("." + d) || (from.includes(".") && d.endsWith("." + from));
+}
+
 /**
  * fromDomain is the domain of a From value: the part after the last '@', cut
  * at '>', space, tab, CR, LF, '"' or ')', ASCII lower-cased, trailing dots
@@ -373,11 +384,6 @@ function analyzeOutlook(rawHeaders: string): Analysis {
  * `BankDomains.domainOf`, which the sender-trust match downstream uses on the
  * same From.
  */
-function dkimAligned(d: string, from: string): boolean {
-  if (d === "" || from === "") return false;
-  return from === d || from.endsWith("." + d) || (from.includes(".") && d.endsWith("." + from));
-}
-
 function fromDomain(value: string): string {
   const at = value.lastIndexOf("@");
   if (at < 0) return "";
@@ -515,8 +521,8 @@ function splitKV(token: string): { key: string; value: string } | null {
 }
 
 /**
- * domainProp reads a property expected to hold a domain (header.d, header.from),
- * strips a leading '@' (header.i-style local parts never reach here, but
+ * domainProp reads a property expected to hold a domain (header.d, header.i,
+ * header.from), keeps what follows the last '@' (header.i is an AUID, and
  * header.from can be a full address in the wild), lowercases it, and returns
  * "" if the result is not a plausible bare domain. Case folding matters because
  * DNS names are case-insensitive and this value is later compared against a

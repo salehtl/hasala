@@ -62,6 +62,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var copyDecision: String?
   public var heldCopy: Bool
   public var reviewReason: TxnGates.ReviewReason?
+  public var senderCheck: String?
 
   init(_ r: Row) {
     id = r["id"]
@@ -111,12 +112,27 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     copyOf = r["copy_of"]
     copyDecision = r["copy_decision"]
     heldCopy = r["held_copy"]
-    reviewReason = Self.reviewReason(gatesJSON: r["gates_json"])
+    let gates = Self.gates(r["gates_json"])
+    reviewReason = Self.reviewReason(gates)
+    senderCheck = Self.senderCheck(gates)
   }
 
-  static func reviewReason(gatesJSON: String?) -> TxnGates.ReviewReason? {
-    guard let gatesJSON, let gates = try? JSONParser.parse(text: gatesJSON) else { return nil }
+  static func gates(_ gatesJSON: String?) -> JSONValue? {
+    guard let gatesJSON else { return nil }
+    return try? JSONParser.parse(text: gatesJSON)
+  }
+
+  static func reviewReason(gatesJSON: String?) -> TxnGates.ReviewReason? { reviewReason(gates(gatesJSON)) }
+
+  static func reviewReason(_ gates: JSONValue?) -> TxnGates.ReviewReason? {
+    guard let gates else { return nil }
     return TxnGates(ar: gates["ar"]?.stringValue, sender: gates["sender"]?.stringValue).reviewReason
+  }
+
+  static func senderCheck(gatesJSON: String?) -> String? { senderCheck(gates(gatesJSON)) }
+
+  static func senderCheck(_ gates: JSONValue?) -> String? {
+    reviewReason(gates) == .senderUnverified ? gates?["ar"]?.stringValue : nil
   }
 
   static func template(gatesJSON: String?) -> String? {

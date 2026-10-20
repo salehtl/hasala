@@ -222,7 +222,8 @@ nonisolated enum LedgerStateMapper {
     let provenance = row.entryMethod == "mailbox"
       ? Provenance(
         title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
-        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw)
+        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw,
+        senderCheck: row.senderCheck)
       : nil
     return HasalaModels.Txn(
       id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),
