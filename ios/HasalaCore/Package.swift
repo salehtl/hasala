@@ -54,7 +54,7 @@ let libraries = [
   "CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain",
   "CoreStore", "CoreProjection",
   "CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals",
-  "HasalaModel", "HasalaKeychain", "CoreTestSupport", "CoreSoftAuth",
+  "HasalaModel", "HasalaKeychain", "CoreTestSupport", "CoreSoftAuth", "HasalaCloud",
 ]
 let unitTested = libraries.filter { $0 != "CoreResources" && $0 != "CoreTestSupport" }
 
@@ -134,6 +134,7 @@ let package = Package(
     // out of L0-L4, and lives here so its query logic runs under `swift test`.
     // Linked by the app only (its Platform layer); nothing in L0-L4 depends on it.
     core("HasalaKeychain", "Keychain", ["CorePrimitives", "CoreStore"]),
+    core("HasalaCloud", "Cloud", ["CoreCategorize"]),
 
     // The system-library module CoreTemplate reaches ICU through (Sources/HasalaICU: a module
     // map and the declarations of the few uregex_* functions used; no code).
