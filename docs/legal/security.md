@@ -1,7 +1,7 @@
 ---
 title: "Security"
 description: "How Hasala protects your data, what its design can and can't defend against, and how to report a security problem to security@hasala.app."
-lastUpdated: 2026-10-16
+lastUpdated: 2026-10-20
 status: "final"
 plainWords: "Hasala reads your bank alerts and seals your money data on your iPhone, so our server stores only data it can't open. Your recovery phrase and passkey are what unlock it. If you find a security problem, email security@hasala.app. We won't take legal action against good-faith research that follows this policy."
 ---
@@ -79,6 +79,7 @@ No design is perfect. These are the limits we know about and accept during the b
 - **An unlocked iPhone.** Anyone who can unlock your iPhone can open Hasala. Face ID lock hides Hasala until you unlock it. It doesn't change how your data is encrypted.
 - **A compromised server.** A server we no longer control can't read your sealed data. But it could stop or delay sync, or send fake notification text. That is why Hasala will never ask for your recovery phrase, your password or a code in a notification, an email, a phone call or on a website.
 - **Your password.** If you use one, your iPhone sends our server a scrambled form of it, never the password itself. Our server and Cloudflare see that scrambled form when you sign in. Someone holding it could sign in as you, though never unlock your data, or try to guess your password from it, which is slow by design. A passkey avoids this, which is why we recommend one.
+- **Cloud suggestions.** If you turn them on, the merchant names Hasala sends go to Cloudflare's AI service through a Hasala service on Cloudflare, so Cloudflare sees them, with your IP address. They carry no account or device identifier, and the service keeps nothing, but a merchant name still says where someone paid. They're off by default (see our [Privacy Policy](/privacy#cloud-suggestions)).
 - **The beta server itself.** The beta runs on hardware operated by the developer. A small number of trusted people have administrative access to it; because your financial data is end-to-end encrypted on your iPhone, they can't read it. What's stored there is sealed data plus the account details in our [Privacy Policy](/privacy#what-we-collect-and-why), which they can see. Encryption of the server's disks at rest is being added before the public launch.
 
 ## Reporting a vulnerability

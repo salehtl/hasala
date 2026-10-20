@@ -6,10 +6,12 @@ owner approved Merchant suggestions with the recommended answers to D1-D3 and D6
 [Decisions for the owner](#decisions-for-the-owner)). The Clairic sections stay in this
 file for later reference; nothing for Clairic is built.
 
-Before a tester who isn't a developer can turn Merchant suggestions on, these must be
-done: Cloudflare's written confirmation of check 2, a security review of the Worker with
-all findings closed, and the privacy-policy change with 30 days' notice. Until then the
-policy must not describe the feature (see [Privacy policy changes](#privacy-policy-changes)).
+The owner decided (2026-10-20): the Workers AI data usage page is enough for check 2, and
+no written confirmation from Cloudflare is needed. The policy states the claim as
+Cloudflare's terms and links that page. Because the feature is opt-in and off by default,
+the policy describes it from the day it ships, with no 30-day wait; testers are told in
+TestFlight's What to Test. A security review of the Worker and the client runs before
+the Worker is deployed (see [Privacy policy changes](#privacy-policy-changes)).
 
 Every example in this file is synthetic. No real mail, merchant, amount or name was used.
 
@@ -268,9 +270,8 @@ Each of these can change the design. Run them with synthetic data only.
    feature, or when the law requires it. The design already forbids all of these on the
    Worker, and its requests must be synchronous (no `queueRequest`). The gap: the page
    doesn't name Clef or Clairic, and both are Cloudflare's own models, while its
-   statements are about Workers AI in general. Ask Cloudflare to confirm in writing that
-   the terms cover these two models, including Clairic while it is in preview, before
-   shipping.
+   statements are about Workers AI in general. The owner accepted the page as it is
+   (2026-10-20); no written confirmation is asked for.
 3. **Clairic is in preview.** Its page says it may be withdrawn without notice. Alert
    reading help must degrade to today's empty review sheet when the model is gone. Decide
    whether a preview model is acceptable even for the QA beta (decision D5).
@@ -373,9 +374,9 @@ While Clairic is deferred, drop every Alert reading help part from the text belo
 second bullet of the new section, the alert words in the short version, Limited Use and
 the provider row).
 
-Do these in the same pull request that ships the feature to testers, not before, and give the
-30 days' notice the policy promises ("Changes to this policy"), because this materially
-changes what is sent where. Set `lastUpdated` to the ship date.
+Do these when the feature ships to testers. The feature is opt-in and off by default, so
+"Changes to this policy" lets the text take effect on the day it ships; tell testers in
+TestFlight's What to Test. Set `lastUpdated` to the ship date.
 
 **Front matter `plainWords`.** Replace the last sentence
 "We don't sell data, show ads or send anything to an AI service." with:
@@ -476,8 +477,7 @@ redacted alerts, the person chose to send.
 In order; each step is its own pull request.
 
 1. **Spike (no app change). DONE 2026-10-20**, see [Spike results](#spike-results-2026-10-20).
-   Still open from it: Cloudflare's written confirmation for check 2, and a run of
-   Apple's model on the same merchant set for D1.
+   Still open from it: a run of Apple's model on the same merchant set for D1.
 2. **Redaction.** `Redact` in HasalaCore: a pure function with synthetic vectors for each
    bank's format, including Arabic names and greetings, and the sanity checks.
 3. **The Worker** in `infra/assist/` (or `web/`'s sibling): two routes, the AI binding,
@@ -489,4 +489,4 @@ In order; each step is its own pull request.
 5. **Alert reading help.** The review-sheet button, preview, send and pre-fill, with the
    money conversion from span text.
 6. **Policy and decisions.** The privacy-policy and security-page text above, the CLAUDE.md
-   decision amendment (D6), and the 30-day notice to testers.
+   decision amendment (D6), and the note to testers in TestFlight.

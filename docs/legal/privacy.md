@@ -1,9 +1,9 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, and your rights under UAE law."
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-20
 status: "final"
-plainWords: "Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data, show ads or send anything to an AI service."
+plainWords: "Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
 
 ## Who we are
@@ -21,7 +21,7 @@ This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), th
 - **Your bank emails are read on your iPhone.** Hasala connects to your Gmail or Outlook mailbox with read-only access. Your iPhone fetches only messages from your banks' alert addresses. The emails themselves are never sent to our server.
 - **Your money data is sealed on your iPhone before it syncs.** Your transactions, amounts, merchants, categories, budgets, bills and rules are encrypted on your iPhone before they leave it. Our server can't read them.
 - **Our server still sees some things.** It sees your email address and name, that your account exists, details about your sign-in methods and devices, when you sync and how much sealed data you store, and a keyed hash of your Gmail or Outlook address with the timing of changes in your mailbox. From that timing it can tell roughly when, and how often, you get bank alerts, though not what they say. We list all of it below.
-- **No ads, no data sales, no AI services.** Hasala sorts transactions on your iPhone. Today, nothing is sent to an AI service. If we ever offer an optional, AI-powered feature, it will be off by default, explained before you turn it on, and you can turn it off at any time. Data from your Gmail or Outlook will never be used to train AI models (see [Limited Use](#limited-use) and [Outlook and Microsoft account data](#outlook-and-microsoft-account-data), below).
+- **No ads, no data sales. AI services only if you ask.** Hasala sorts transactions on your iPhone. If you turn on Cloud suggestions (off by default), Hasala can send a merchant name to Cloudflare's AI service for a suggested category. It isn't sent with your name, your account or anything that links it to you, and it isn't kept. Data from your Gmail or Outlook is never used to train AI models (see [Cloud suggestions](#cloud-suggestions), [Limited Use](#limited-use) and [Outlook and Microsoft account data](#outlook-and-microsoft-account-data), below).
 
 ## What stays on your iPhone
 
@@ -170,6 +170,7 @@ We use your data only to:
 - keep Hasala secure: stop abuse, investigate security problems and alert you to changes on your account;
 - send you emails about your account, such as verification, password, security and beta notices;
 - answer your messages;
+- give you Cloud suggestions, if you turn them on;
 - understand how the website is used, in totals (see [Cookies and analytics](#the-website)); and
 - meet our legal obligations.
 
@@ -178,7 +179,7 @@ We don't sell your data. We don't use it for advertising. We don't use it to dec
 Under the UAE Personal Data Protection Law, we rely on these grounds:
 
 - **Providing the service you asked for.** This covers running your account, sync and push.
-- **Your consent.** This covers connecting Gmail or Outlook. You give it in Hasala's email step and on Google's or Microsoft's permission screen, and you can withdraw it at any time.
+- **Your consent.** This covers connecting Gmail or Outlook. You give it in Hasala's email step and on Google's or Microsoft's permission screen, and you can withdraw it at any time. It also covers Cloud suggestions, which you turn on yourself and can turn off at any time.
 - **Keeping the service secure.** We have a legitimate interest in stopping abuse and protecting your account and other users' accounts.
 - **Understanding how the website is used.** We have a legitimate interest in counting visits to hasala.app, in totals that are never linked to you, to see which pages help people.
 - **Complying with the law.**
@@ -203,11 +204,11 @@ Hasala's use and transfer to any other app of information received from Google A
 In practice, for data Hasala receives from your Gmail:
 
 1. **Used only for features you can see.** We use it only to find your bank transactions and show them in Hasala, and to let you open the original alert.
-2. **No transfers, except as allowed.** We don't transfer it to anyone, except when needed to provide those features or to comply with the law. If Hasala were part of a merger, acquisition or sale of assets, we would transfer it only with your explicit consent, asked for first. In practice it isn't transferred at all. The raw emails stay on your iPhone, and the details drawn from them leave only as sealed data our server can't open.
+2. **No transfers, except as allowed.** We don't transfer it to anyone, except when needed to provide those features or to comply with the law. If Hasala were part of a merger, acquisition or sale of assets, we would transfer it only with your explicit consent, asked for first. If you turn on Cloud suggestions, a merchant name is sent to Cloudflare's AI service to give you a suggestion, and isn't kept. Otherwise it isn't transferred at all. The raw emails stay on your iPhone, and the details drawn from them leave only as sealed data our server can't open.
 3. **No ads.** We never use or transfer it to serve ads, including personalised, retargeted or interest-based ads.
 4. **No sales, no credit decisions.** We never sell it, and we never use it to decide whether you get credit or a loan.
 5. **No one reads your email.** We don't read it, and the design keeps it out of our reach. The only exception would be if you explicitly agreed to let us look at a specific email, for example to add support for your bank. Even then, you would choose the email and send it to us yourself.
-6. **No AI training.** We don't use it to develop, improve or train AI or machine learning models. Hasala's categorisation runs on your iPhone using Apple's on-device model, and nothing from your Gmail is sent to an AI service.
+6. **No AI training.** We don't use it to develop, improve or train AI or machine learning models, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say its AI service doesn't either. Hasala's categorisation runs on your iPhone using Apple's on-device model. Only if you turn on [Cloud suggestions](#cloud-suggestions) does Hasala send a merchant name to Cloudflare's AI service, for one answer.
 
 ### Keeping and deleting it
 
@@ -281,6 +282,18 @@ Hasala writes its notifications on your iPhone. Our server only sends a silent s
 
 By default, notifications don't show amounts or merchants. For example, you'll see "New transaction" and "Tap to see it in Hasala". You can turn on **Show amounts and merchants** in Settings › Notifications. If you do, amounts and merchants may appear on your Lock Screen.
 
+## Cloud suggestions
+
+Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions. There are two switches, and you can turn each on or off at any time.
+
+**Merchant suggestions.** When Hasala can't sort a payment with your rules or its merchant list, it asks Cloudflare's AI service to suggest a category. Apple's on-device model is used when Cloudflare can't help. It sends the merchant name as it appears in the alert, for example "CAFE EXAMPLE JBR", and Hasala's built-in category names. It doesn't send the amount, the date, your card, your bank, your own category names or anything about your account. Each merchant is sent on its own. The suggestion is marked "Suggested by Cloudflare AI", and it doesn't count in your totals until you confirm it.
+
+**Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments count in your totals straight away and are marked "Sorted by Cloudflare AI". You can change any of them. It sends nothing more than Merchant suggestions does.
+
+**What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address; the service uses it only to limit abuse, in memory, and doesn't record it. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say it doesn't keep it or use it to train its models. We never see these requests.
+
+**What we can't hide.** A merchant name can't be linked back to you from our request, but it still says where someone paid. If you'd rather nothing about your payments leaves your iPhone, leave Cloud suggestions off; everything else in Hasala works the same.
+
 ## Who else handles your data
 
 We use a small number of service providers. None of them can open your sealed data.
@@ -290,6 +303,7 @@ We use a small number of service providers. None of them can open your sealed da
 | **Cloudflare** | Network provider in front of our server, and host of the hasala.app website, where it also counts visits for us with Cloudflare Web Analytics. Encryption in transit ends at Cloudflare, which forwards requests to our server. | The requests between the app and our server, including your IP address, your email address and name when they are sent, and the sealed data. If you use a password, it also sees the scrambled form your iPhone sends when you sign in (see our [Security](/security#what-the-design-doesnt-protect-against) page). It also sees what you send through the website's forms, such as your email address and bank, and, when you visit the website, the pages you open, your IP address and your browser and device type. Web Analytics gives us only totals from these, never linked to you. Cloudflare cannot open the sealed data. |
 | **Cloudflare Email Service** | Delivers the emails we send from no-reply@hasala.app. | Your email address and the content of those emails, such as a verification code. |
 | **Cloudflare R2** | Stores the off-site copy of our encrypted server backups. | Encrypted backup files only. Cloudflare doesn't hold the key to open them. |
+| **Cloudflare Workers AI** | If you turn on Cloud suggestions: runs the AI model that suggests a category. | The merchant name, Hasala's built-in category names, and your IP address. No account or device identifier. [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say it answers and keeps nothing. |
 | **Google** | If you connect Gmail: hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Microsoft** | If you connect Outlook: hosts your Outlook mailbox and tells our server when a new message arrives in it. | Your mail, as it already does, and that you've given Hasala read-only access. Microsoft also sees your iPhone's IP address when it connects to Outlook, and our server's notification address. |
 | **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
@@ -327,6 +341,7 @@ Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. |
 | Bank requests from the app, with the bank's email address if you sent it | Until you delete your account. |
 | Email records | 30 days. We never keep what an email said. |
+| Cloud suggestions requests | Not kept. Our service answers each request and forgets it. |
 | Data on your iPhone | Until you delete your account or use Remove this iPhone. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |
 
 ## Deleting your account
@@ -374,7 +389,7 @@ Under the UAE Personal Data Protection Law (Federal Decree-Law No. 45 of 2021), 
 - **Erasure.** You can ask us to delete your data.
 - **Restriction.** You can ask us to limit how we use your data, for example while a dispute is settled.
 - **Objection and withdrawal of consent.** You can ask us to stop processing your data, and you can withdraw consent, such as access to your Gmail or Outlook, at any time.
-- **Automated decisions.** You can object to decisions based only on automated processing that have legal or similarly significant effects on you. Hasala makes no such decisions about you. Categorisation is a suggestion on your own iPhone, and you can change it.
+- **Automated decisions.** You can object to decisions based only on automated processing that have legal or similarly significant effects on you. Hasala makes no such decisions about you. Categorisation happens on your own iPhone, or with Cloud suggestions if you turn them on, and you can change any category.
 
 ### Because we can't open your data
 
@@ -392,7 +407,7 @@ Hasala is for adults. You must be at least 18 to use it. We don't knowingly coll
 
 ## Changes to this policy
 
-We'll update this policy when Hasala changes. The date at the top shows when it last changed. If a change materially affects how we use your data, we'll tell you in the app or by email at least 30 days before it takes effect.
+We'll update this policy when Hasala changes. The date at the top shows when it last changed. If a change materially affects how we use your data without you doing anything, we'll tell you in the app or by email at least 30 days before it takes effect. A new optional feature is different: it is off until you turn it on, it is explained before you do, and this policy describes it from the day it ships. It affects you only once you turn it on.
 
 ## Contact
 
