@@ -58,18 +58,27 @@ import CoreTime
 
 @Suite(.enabled(if: privateRoot != nil, "needs HASALA_PRIVATE_FIXTURES"))
 struct PrivateGmailDeliveredTests {
-  /// Real DIB alerts as Gmail delivered them (topmost mx.google.com Authentication-Results).
+  /// Real bank alerts as Gmail delivered them (topmost mx.google.com Authentication-Results).
   @Test func gmailDeliveredBankMailIsReadAndJudgedByTheVerdict() throws {
     let root = try #require(privateRoot).deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("server/internal/origin/testdata", isDirectory: true)
-    let files = try FileManager.default.contentsOfDirectory(atPath: root.path).filter {
-      $0.hasPrefix("gmail-forward-") && $0.hasSuffix(".eml")
-    }.sorted()
-    #expect(!files.isEmpty)
+    var files: [URL] = []
+    for dir in ["server/internal/origin/testdata", "conformance/templates/eml"] {
+      let base = root.appendingPathComponent(dir, isDirectory: true)
+      guard let walk = FileManager.default.enumerator(at: base, includingPropertiesForKeys: nil) else { continue }
+      for case let url as URL in walk where url.pathExtension == "eml" { files.append(url) }
+    }
+    let gmailDelivered = files.sorted { $0.path < $1.path }.filter { url in
+      guard let data = try? Data(contentsOf: url) else { return false }
+      let ar = MailHeaders.headerBlock(rawMessage: [UInt8](data)).split(whereSeparator: \.isNewline)
+        .first { $0.lowercased().hasPrefix("authentication-results:") }
+      return ar.map { $0.dropFirst("authentication-results:".count).trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("mx.google.com;") } ?? false
+    }
+    #expect(gmailDelivered.count >= 5, "\(gmailDelivered.count) Gmail-delivered .eml files")
     let templates = BundledTemplates.load().templates
-    let banks = ["dib.ae", "emiratesnbd.com"]
-    for f in files {
-      let raw = [UInt8](try Data(contentsOf: root.appendingPathComponent(f)))
+    let banks = ["adib.ae", "dib.ae", "emiratesnbd.com"]
+    for url in gmailDelivered {
+      let f = url.lastPathComponent
+      let raw = [UInt8](try Data(contentsOf: url))
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
         templates: templates, bankDomains: banks, trusted: banks, provider: .gmail, linkedAddress: nil, spam: false, analyze: AuthResults.analyze)
@@ -77,9 +86,9 @@ struct PrivateGmailDeliveredTests {
         Issue.record("\(f): set aside")
         continue
       }
+      #expect(m.gates.ar == "pass" && m.gates.senderTrusted, "\(f): \(m.gates.ar)")
       let d = MessageDisposer.finalize(m, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
-      // Filing needs a passing verdict for a trusted domain; anything else is review.
-      if !(m.gates.ar == "pass" && m.gates.senderTrusted) || m.gates.forwarded { #expect(d.needsReview, "\(f)") }
+      #expect(d.needsReview, "\(f)")
     }
   }
 }
@@ -136,7 +145,7 @@ private enum MailHeadersForTest {
   /// The top-level From header value.
   static func from(_ raw: [UInt8]) -> String {
     let text = String(decoding: raw.prefix(64 * 1024), as: UTF8.self)
-    for line in text.components(separatedBy: "\r\n") {
+    for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
       if line.isEmpty { break }
       if line.lowercased().hasPrefix("from:") { return String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces) }
     }

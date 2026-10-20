@@ -24,11 +24,16 @@ the committed file differs from what the generator writes, and runs in
 
 Trusted only when exactly one `Authentication-Results` field has authserv-id
 `mx.google.com`, it is the topmost `Authentication-Results` field, and it
-reports `dkim=pass` with a valid `header.d` domain aligned with the domain of
+reports `dkim=pass` with a valid DKIM domain aligned with the domain of
 the one `From` field: equal to it, a parent of it, or (when the From domain has
-at least two labels) a subdomain of it. `dmarc=pass` and `spf=pass` never trust
+at least two labels) a subdomain of it. The DKIM domain of a method is its
+`header.d` when the method has a `header.d` property (valid or not), else the
+domain of its `header.i`. Gmail writes `dkim=pass header.i=@<domain>
+header.s=<selector> header.b=<prefix>` and never `header.d`; RFC 6376 §6.1.1
+makes a verifier fail a signature whose `i=` is not the `d=` domain or a
+subdomain of it. `dmarc=pass` and `spf=pass` never trust
 on their own, because DMARC can pass on SPF alone. The verified domain is the
-first aligned passing DKIM `header.d`; a domain must be a lower-case LDH name
+first aligned passing DKIM domain; a domain must be a lower-case LDH name
 with at least two labels after stripping everything through the last `@`. The
 From domain is the text after its last `@`, cut at `>`, space, tab, CR, LF, `"`
 or `)`, ASCII lower-cased, trailing dots dropped. Anything else is untrusted
@@ -91,7 +96,7 @@ regenerate; every vector's expectation follows.
   "vectors": [
     {
       "name": "…",
-      "group": "goldens | structure | domain | bounds | unicode_whitespace | outlook",
+      "group": "goldens | structure | domain | gmail_shape | bounds | unicode_whitespace | outlook",
       "provider": "outlook (absent: gmail)",
       "note": "optional",
       "headers": "the header block",
@@ -119,11 +124,19 @@ regenerate; every vector's expectation follows.
 
 ## Groups
 
-The first five groups are Gmail's; `outlook` holds every Outlook.com vector.
+The first six groups are Gmail's; `outlook` holds every Outlook.com vector.
 
 - `goldens`: the twenty hand-written cases of `src/mail/authres.test.ts`.
 - `structure`: line endings, folding, field boundaries, quoting and comments.
 - `domain`: which domain is reported, and which are refused.
+- `gmail_shape`: the blocks Gmail itself writes (DKIM as `header.i=@<domain>`
+  with `header.s` and `header.b`, no `header.d`): a direct alert, an alert
+  another mailbox forwarded into Gmail (with ARC and the forwarder's own A-Rs
+  below), and the near misses that must stay untrusted: an ESP's signature with
+  SPF-aligned DMARC, a failed or broken signature, sibling, suffix and look-alike
+  domains, an AUID whose last `@` names another domain, a `header.d` that
+  decides over `header.i`, no or two `From` fields, and a copied or foreign A-R
+  above Gmail's.
 - `bounds`: the 256 KiB input limit and the 512-continuation-line limit, at and
   one past each. The blocks are ASCII, so UTF-16 units, scalars and UTF-8
   bytes give the same length.
