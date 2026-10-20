@@ -309,12 +309,24 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// The money lines this transaction contributes to budgets: its splits, or itself.
   /// Refunds count against their category's spending; money in otherwise does not.
   public var lines: [(category: CategoryID, minor: Int64)] {
-    if !splits.isEmpty { return splits.map { ($0.categoryID, $0.homeMinor ?? 0) } }
+    if !splits.isEmpty { return splits.map { ($0.categoryID, signed($0.homeMinor ?? 0)) } }
     guard let c = categoryID else { return [] }
     return [(c, homeSigned ?? 0)]
   }
 
-  public var homeSigned: Int64? { homeMinor.map { direction == .out ? $0 : -$0 } }
+  public var homeSigned: Int64? { homeMinor.map(signed) }
+
+  func signed(_ minor: Int64) -> Int64 { direction == .out ? minor : -minor }
+
+  public func apportioned(_ lines: [SplitLine]) -> [SplitLine] {
+    let shares = Money.apportion(home: homeMinor, parts: lines.map(\.amount.minor))
+    return lines.enumerated().map { i, l in
+      var line = l
+      line.amount = Money(minor: l.amount.minor, currency: amount.currency)
+      line.homeMinor = shares?[i]
+      return line
+    }
+  }
 
   public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
 

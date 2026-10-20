@@ -56,11 +56,11 @@ public enum AccountsEngine {
     let tracking = zip(s.accounts, rows).filter { !$0.0.inPlan }.map(\.1)
     let history = s.netWorth.spark.isEmpty ? nil : s.netWorth
     return AccountsSnapshot(
-      netWorth: .aed(s.accounts.reduce(0) { $0 + $1.balance.minor }),
+      netWorth: .aed(Money.homeTotal(s.accounts.map(\.balance))),
       monthChange: history?.monthChange,
       chart: history.map { NetWorthChart(points: Array($0.spark.suffix(12)), months: months(ending: now.date.yearMonth)) },
       everyday: everyday,
-      everydayTotal: .aed(s.accounts.filter(\.inPlan).reduce(0) { $0 + $1.balance.minor }),
+      everydayTotal: .aed(Money.homeTotal(s.accounts.filter(\.inPlan).map(\.balance))),
       tracking: tracking,
       count: s.accounts.count,
       hasBalances: s.accounts.contains { !$0.balance.isZero }

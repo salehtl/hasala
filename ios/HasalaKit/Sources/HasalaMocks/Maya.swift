@@ -172,10 +172,12 @@ public enum Maya {
       ])
     )),
     .today(TodayWidget(
-      summary: MoneyPhrase([.text("2 transactions · "), .amount(.aed(91_50), .rounded, hidden: 3)]),
+      summary: MoneyPhrase([.text("4 transactions · "), .amount(.aed(189_49), .rounded, hidden: 3)]),
       rows: [
         MiniTxnRow(id: "t.talabat", merchant: "Talabat", glyph: .dining, hue: .lilac,
                    detail: "Dining · 13:20", amount: .aed(64_50)),
+        MiniTxnRow(id: "t.steam", merchant: "Steam", glyph: .review, hue: .other,
+                   detail: "Uncategorized · 11:02", amount: .aed(59_49)),
         MiniTxnRow(id: "t.starbucks", merchant: "Starbucks", glyph: .dining, hue: .lilac,
                    detail: "Dining · 09:05 · DIFC", amount: .aed(27_00)),
       ]

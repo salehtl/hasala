@@ -75,12 +75,15 @@ public enum GlanceEngine {
     let day = now.date.day
     let days = now.date.yearMonth.days
     let gone = Pace.monthGone(day: day, days: days)
+    let month = now.date.yearMonth
     return plan.sections.filter { $0.bucket != .savings }.flatMap(\.rows).filter { $0.budget.minor > 0 }.map { row in
-      let left = row.budget.minor - row.spent.minor
+      let spent = Spending.spent(s, category: row.id, in: month)
+      let left = row.budget.minor - spent
+      let verdict = Pace.verdict(spent: spent, budget: row.budget.minor, day: day, days: days, paced: row.paced)
       return CategoryWatchWidget(
         id: row.id, name: row.name, glyph: row.glyph, hue: row.hue, left: .aed(left),
-        perDay: .aed(Pace.perDay(left: left, day: day, days: days) / 100 * 100), verdict: row.verdict,
-        progress: Permille.ratio(row.spent.minor, of: row.budget.minor), tick: row.paced ? gone : nil
+        perDay: .aed(Pace.perDay(left: left, day: day, days: days) / 100 * 100), verdict: verdict,
+        progress: Permille.ratio(spent, of: row.budget.minor), tick: row.paced ? gone : nil
       )
     }
   }
@@ -112,7 +115,7 @@ public enum GlanceEngine {
         late: isLate, amount: b.amount, isIncome: b.isIncome
       )
     }
-    return ComingUpWidget(days: comingUpDays, total: .aed(out.reduce(0) { $0 + $1.amount.minor }), rows: Array(rows))
+    return ComingUpWidget(days: comingUpDays, total: .aed(Money.homeTotal(out.map(\.amount))), rows: Array(rows))
   }
 
   static func toReview(_ s: LedgerState, now: LocalDateTime) -> ToReviewWidget {

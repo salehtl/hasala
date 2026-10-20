@@ -30,13 +30,28 @@ public enum Spending {
     return s.projects.compactMap { p in byProject[p.id].flatMap { $0 == 0 ? nil : (p, $0) } }
   }
 
+  public static func spent(_ s: LedgerState, category c: CategoryID, in period: Period) -> Int64 {
+    s.txns.reduce(Int64(0)) { sum, t in
+      guard period.contains(t.postedAt.date), includes(t, in: s) else { return sum }
+      return sum + t.lines.reduce(Int64(0)) { $1.category == c ? $0 + $1.minor : $0 }
+    }
+  }
+
+  public static func spent(_ s: LedgerState, category c: CategoryID, in month: YearMonth) -> Int64 {
+    spent(s, category: c, in: .month(month))
+  }
+
+  public static func includes(_ t: Txn, in s: LedgerState) -> Bool {
+    !t.archived && !t.isTransfer && !t.isHeldCopy && carvedOut(t, in: s) == nil
+  }
+
   static func measured(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
     if t.archived || t.isTransfer || t.isHeldCopy { return [] }
     if !t.splits.isEmpty {
       return t.splits.compactMap { sp in
         let c = s.category(sp.categoryID)
         guard counts(c), let home = sp.homeMinor else { return nil }
-        return (c, home)
+        return (c, t.direction == .out ? home : -home)
       }
     }
     guard let signed = t.homeSigned else { return [] }

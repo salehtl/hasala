@@ -149,7 +149,7 @@ public enum BillsEngine {
     let today = now.date
     let tracked = s.bills.filter { $0.state == .tracked }
     let in14 = today.adding(days: 14)
-    let next14 = tracked.filter { !$0.isIncome && $0.nextDue <= in14 }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let next14 = Money.homeTotal(tracked.filter { !$0.isIncome && $0.nextDue <= in14 }.map(\.amount))
 
     let incomeBill = tracked.filter { $0.isIncome && $0.nextDue >= today }.min { $0.nextDue < $1.nextDue }
     let incomeLine = incomeBill.map {

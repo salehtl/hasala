@@ -211,7 +211,7 @@ private struct HeroFigureLine: View {
   var body: some View {
     // Paper's hidden hero: 38 pt dots, 3 pt apart, on the 58 line (page 18 §18.7).
     MoneyText(amount, figure: .display, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 38,
-              hiddenTracking: 3, color: HColor.textPrimary, approx: approx)
+              hiddenTracking: 3, color: HColor.textPrimary, sign: amount.isNegative ? .debt : .none, approx: approx)
       .padding(.vertical, hidden ? 0 : -trim)
   }
 }
@@ -290,7 +290,7 @@ private struct HeroMonthBars: View {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("By month")
     .accessibilityValue(bars.map { bar in
-      "\(bar.month.title), " + (hidden ? "Amount hidden" : "AED \(MoneyFormat.string(bar.spent.minor))")
+      "\(bar.month.title), " + (hidden ? "Amount hidden" : "\(bar.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(bar.spent.minor))")
     }.joined(separator: "; "))
     .accessibilityIdentifier("home.hero.months")
   }

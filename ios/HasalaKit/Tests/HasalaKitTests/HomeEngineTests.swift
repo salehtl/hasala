@@ -272,8 +272,8 @@ struct HomeWidgetEngineTests {
       Issue.record("a widget is missing")
       return
     }
-    #expect(today.summary.rendered(hidden: false) == "2 transactions · 92")
-    #expect(today.summary.rendered(hidden: true) == "2 transactions · •••")
+    #expect(today.summary.rendered(hidden: false) == "4 transactions · 189")
+    #expect(today.summary.rendered(hidden: true) == "4 transactions · •••")
     #expect(trip.caption.rendered(hidden: false) == "of 12,000 · flies 14 Dec")
     #expect(trip.caption.rendered(hidden: true) == "of •••• · flies 14 Dec")
     #expect(goal.caption.rendered(hidden: false) == "38,500 of 50,000 · Jan")

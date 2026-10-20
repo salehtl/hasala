@@ -46,11 +46,10 @@ public enum HomeEngine {
     func section(_ b: Bucket) -> PlanSection? { plan.sections.first { $0.bucket == b } }
     let needs = section(.needs)
     let wants = section(.wants)
-    let savings = section(.savings)
     let total = Spending.total(s, in: month)
     let budget = (needs?.budget.minor ?? 0) + (wants?.budget.minor ?? 0)
     let overline = "Day \(day) of \(days)"
-    let tiles = heroTiles(needs: spent(needs), wants: spent(wants), saved: spent(savings))
+    let tiles = heroTiles(s, month: month)
 
     // S9: the first import is still running and nothing has arrived this month: the figure
     // fills in as batches land, beside Home's import pill.
@@ -97,7 +96,10 @@ public enum HomeEngine {
     )
   }
 
-  static func spent(_ sec: PlanSection?) -> Int64 { sec.map { $0.budget.minor - $0.left.minor } ?? 0 }
+  static func heroTiles(_ s: LedgerState, month: YearMonth) -> [HeroTile] {
+    heroTiles(needs: bucketSpent(s, .needs, month), wants: bucketSpent(s, .wants, month),
+              saved: bucketSpent(s, .savings, month))
+  }
 
   public static func notCounted(_ s: LedgerState, in period: Period) -> SpendHero.NotCounted? {
     let spend = Spending.notCounted(s, in: period)
@@ -122,7 +124,7 @@ public enum HomeEngine {
     let wants = section(.wants)
     let total = Spending.total(s, in: month)
     let budget = (needs?.budget.minor ?? 0) + (wants?.budget.minor ?? 0)
-    let tiles = heroTiles(needs: spent(needs), wants: spent(wants), saved: spent(section(.savings)))
+    let tiles = heroTiles(s, month: month)
     let note = topWant(s, month: month)
     let notCounted = notCounted(s, in: .month(month))
     guard budget > 0 else {
@@ -176,7 +178,7 @@ public enum HomeEngine {
   }
 
   static func bucketSpent(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
-    s.categories(in: b).reduce(Int64(0)) { $0 + s.spent($1.id, in: m).minor }
+    s.categories(in: b).reduce(Int64(0)) { $0 + Spending.spent(s, category: $1.id, in: m) }
   }
 
   static func bucketBudget(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
@@ -184,7 +186,7 @@ public enum HomeEngine {
   }
 
   static func topWant(_ s: LedgerState, month: YearMonth) -> MoneyPhrase? {
-    let top = s.categories(in: .wants).map { ($0, s.spent($0.id, in: month).minor) }
+    let top = s.categories(in: .wants).map { ($0, Spending.spent(s, category: $0.id, in: month)) }
       .filter { $0.1 > 0 }.max { $0.1 < $1.1 }
     guard let (c, spent) = top else { return nil }
     return MoneyPhrase([.text("\(c.name) "), .amount(.aed(spent), hidden: 3), .text(" · your top want")])
@@ -236,13 +238,12 @@ public enum HomeEngine {
       return cat.kind == .spending && (cat.bucket == .needs || cat.bucket == .wants)
     }
     var paid: Int64 = 0
-    for t in s.txns where t.billID != nil && t.countsInPlan && t.postedAt.date.yearMonth == month {
-      if let p = s.project(t.projectID), !p.countInPlan { continue }
+    for t in s.txns where t.billID != nil && Spending.includes(t, in: s) && t.postedAt.date.yearMonth == month {
       for line in t.lines where onTheBar(line.category) { paid += line.minor }
     }
-    let toCome = s.bills.filter {
+    let toCome = Money.homeTotal(s.bills.filter {
       $0.state == .tracked && !$0.isIncome && $0.nextDue.yearMonth <= month && onTheBar($0.categoryID)
-    }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    }.map(\.amount))
     return (paid, toCome)
   }
 
@@ -380,7 +381,7 @@ public enum HomeEngine {
 
   static func netWorthWidget(_ s: LedgerState) -> NetWorthWidget? {
     guard !s.accounts.isEmpty else { return nil }
-    let total = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
+    let total = Money.homeTotal(s.accounts.map(\.balance))
     return NetWorthWidget(
       total: .aed(total),
       change: MoneyPhrase([
@@ -422,12 +423,14 @@ public enum HomeEngine {
   }
 
   static func todayWidget(_ s: LedgerState, now: LocalDateTime) -> TodayWidget {
-    let today = s.txns.filter { $0.postedAt.date == now.date && $0.countsInPlan }
+    let today = s.txns.filter { $0.postedAt.date == now.date && !$0.archived && !$0.isTransfer && !$0.isHeldCopy }
       .sorted { $0.postedAt > $1.postedAt }
-    let todayTotal = today.reduce(Int64(0)) { $0 + ($1.homeSigned ?? 0) }
+    let todayTotal = today.reduce(Int64(0)) { $0 + Spending.spent($1, in: s) }
+    let figure: MoneyPhrase.Part = todayTotal < 0
+      ? .signedMoney(.aed(todayTotal), style: .rounded, hiddenGlyphs: 3) : .amount(.aed(todayTotal), .rounded, hidden: 3)
     return TodayWidget(
       summary: MoneyPhrase([
-        .text("\(today.count) transaction\(today.count == 1 ? "" : "s") · "), .amount(.aed(todayTotal), .rounded, hidden: 3),
+        .text("\(today.count) transaction\(today.count == 1 ? "" : "s") · "), figure,
       ]),
       rows: today.prefix(3).map { t in
         let c = s.category(t.categoryID)

@@ -99,7 +99,7 @@ public final class InMemoryLedger: LedgerStore {
       guard let t = s.txn(id) else { throw .notFound }
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
       try editTxn(id) { t in
-        t.splits = lines
+        t.splits = t.apportioned(lines)
         if let first = lines.first { t.categoryID = first.categoryID }
         t.needsReview = false
       }

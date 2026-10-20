@@ -183,7 +183,7 @@ public enum ActivityEngine {
     } else if !window.contains(t.postedAt.date) {
       return false
     }
-    if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !t.countsInPlan { return false }
+    if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !Spending.includes(t, in: s) { return false }
     switch f.kind {
     case .all: return !t.archived && (f.isSearching || f.category != nil || !t.inReview)
     case .toReview: return t.inReview
@@ -305,12 +305,12 @@ public enum ActivityEngine {
     _ c: CategoryID, _ txns: [Txn], _ s: LedgerState, now: LocalDateTime, period: Period
   ) -> FilterSummary? {
     guard let cat = s.category(c) else { return nil }
-    let total = period.months.reduce(Int64(0)) { $0 + s.spent(c, in: $1).minor }
+    let total = Spending.spent(s, category: c, in: period)
     let budget = period.months.reduce(Int64(0)) { $0 + s.plan.budget(c, $1).minor }
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)
     let pct = budget > 0 ? total * 100 / budget : 0
-    let approx = txns.contains { t in t.isEstimate && t.countsInPlan && t.lines.contains { $0.category == c } }
+    let approx = txns.contains { t in t.isEstimate && Spending.includes(t, in: s) && t.lines.contains { $0.category == c } }
     return FilterSummary(
       title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), approx: approx, progress: Permille.ratio(total, of: budget),
       today: Pace.monthGone(day: day, days: days), verdict: verdict,

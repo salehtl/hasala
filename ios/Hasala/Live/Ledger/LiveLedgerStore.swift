@@ -265,7 +265,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       let i = try index(id)
       let t = s.txns[i]
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
-      s.txns[i].splits = lines
+      s.txns[i].splits = t.apportioned(lines)
       if let first = lines.first { s.txns[i].categoryID = first.categoryID }
       s.txns[i].needsReview = false
       return (lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories", [.split(txn: id, lines: t.splits)])

@@ -57,3 +57,27 @@ extension Spending {
     }
   }
 }
+
+extension Money {
+  public static func homeTotal(_ ms: some Sequence<Money>) -> Int64 {
+    ms.reduce(Int64(0)) { $0 + (homeMinor(of: $1) ?? 0) }
+  }
+
+  public static func apportion(home: Int64?, parts: [Int64]) -> [Int64]? {
+    guard let home else { return nil }
+    let n = parts.reduce(Int128(0)) { $0 + Int128($1) }
+    guard n > 0 else { return nil }
+    var cumulative: Int128 = 0
+    var previous: Int128 = 0
+    var out: [Int64] = []
+    for p in parts {
+      cumulative += Int128(p)
+      let product = Int128(home) * cumulative
+      let here = product >= 0 ? product / n : -((-product + n - 1) / n)
+      guard let share = Int64(exactly: here - previous) else { return nil }
+      out.append(share)
+      previous = here
+    }
+    return out
+  }
+}
