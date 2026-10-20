@@ -124,8 +124,7 @@ public struct ComingUpWidgetView: View {
           .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 8)
         MoneyText(model.total, figure: .widgetRowTotal, unit: .widgetRowUnit, style: .rounded, hidden: hidden,
-                  hiddenGlyphs: 6, color: HColor.textPrimary, unitColor: HColor.textSecondary, unitGap: 4,
-                  approx: model.mark?.estimate ?? false)
+                  hiddenGlyphs: 6, color: HColor.textPrimary, unitColor: HColor.textSecondary, unitGap: 4)
           .fixedSize()
       }
       .padding(.bottom, model.mark?.caption == nil ? 6 : 0)

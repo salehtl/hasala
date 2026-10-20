@@ -207,8 +207,7 @@ final class AccountRuntime {
       http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase)
     let persistence = LedgerMailboxPersistence(
       store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() })
-    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await StepUpPrompt.password($0) },
-      explain: { await StepUpPrompt.passkey($0) })
+    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await StepUpPrompt.password($0) })
     let categorizer = PipelineCategorizer(projection: projection, dictionary: dictionary)
     var lanes: [MailboxProvider: MailboxLane] = [:]
     for p in MailboxProvider.allCases {

@@ -51,25 +51,20 @@ struct HomeSourceDisplayTests {
     #expect(!t.isEstimate && t.homeAmount.original == nil && t.homeAmount.shown == t.amount)
   }
 
-  @Test func rowsAndTotalsWithAnEstimateAreMarked() {
-    let base = MayaLedger.state
-    #expect(!HomeEngine.snapshot(base, now: now).hero.approx)
-    #expect(!ActivityEngine.snapshot(base, now: now, filter: TxnFilter()).days.contains { $0.approx })
-
+  @Test func onlyTheRowIsMarkedNotTheTotals() {
     let t = Self.usd("u1", home: 91_81, source: .rate, rate: 3_672_500)
     let s = Self.maya(with: t)
-    #expect(HomeEngine.snapshot(s, now: now).hero.approx)
     let days = ActivityEngine.snapshot(s, now: now, filter: TxnFilter()).days
     let day = days.first { $0.rows.contains { $0.id == "u1" } }
-    #expect(day?.approx == true)
     let row = day?.rows.first { $0.id == "u1" }
     #expect(row?.estimate == true && row?.amount == .aed(91_81))
-    #expect(ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "dining")).summary?.approx == true)
     #expect(TransactionEngine.detail("u1", s, now: now)?.home?.estimate == true)
   }
 
-  @Test func aStatedRowDoesNotMarkTheTotal() {
+  @Test func aStatedRowIsNotMarked() {
     let s = Self.maya(with: Self.usd("u1", home: 92_50, source: .stated))
-    #expect(!HomeEngine.snapshot(s, now: now).hero.approx)
+    let days = ActivityEngine.snapshot(s, now: now, filter: TxnFilter()).days
+    let row = days.flatMap(\.rows).first { $0.id == "u1" }
+    #expect(row?.estimate == false)
   }
 }

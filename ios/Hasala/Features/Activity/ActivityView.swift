@@ -286,7 +286,7 @@ private struct DayHeader: View {
   var body: some View {
     OverlineHeader(day.title) {
       MoneyText(day.total, figure: HFigure.badge.weight(.semibold), hidden: hidden, hiddenGlyphs: 3,
-                color: HColor.textSecondary, sign: day.total.isNegative ? .income : .none, approx: day.approx)
+                color: HColor.textSecondary, sign: day.total.isNegative ? .income : .none)
     }
     // One heading per day, not a small static figure on its own.
     .accessibilityElement(children: .combine)
@@ -388,7 +388,7 @@ struct FilterSummaryCard: View {
         Text("\(summary.count) transaction\(summary.count == 1 ? "" : "s")").hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
         MoneyText(summary.total, figure: .large, unit: .unit, hidden: hidden, color: HColor.moneyOut,
-                  unitColor: HColor.textPrimary, unitGap: 5, approx: summary.approx)
+                  unitColor: HColor.textPrimary, unitGap: 5)
           .accessibilityIdentifier("activity.summary.total")
       }
       CategoryPaceBar(spent: summary.progress, tick: summary.today, verdict: summary.verdict, phase: phase)

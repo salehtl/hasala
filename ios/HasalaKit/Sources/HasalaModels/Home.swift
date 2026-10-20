@@ -162,7 +162,6 @@ public struct SpendHero: Sendable, Hashable {
   public var bars: [HeroMonthBar]
   public var note: MoneyPhrase?
   public var notCounted: NotCounted?
-  public var approx: Bool = false
 
   public struct NotCounted: Sendable, Hashable {
     public var amount: Money

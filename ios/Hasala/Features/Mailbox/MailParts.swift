@@ -25,6 +25,8 @@ enum MailCopy {
       : "This iPhone checks for new alerts when you open Hasala, and from time to time in the background."
   }
 
+  static let confirmNote = "You'll confirm it's you before it connects."
+
   /// Under the Mailboxes card (Paper 1NS8). The server's part of a new-mail wake is
   /// Debug's: a Release build relays none.
   static var mailboxesFootnote: String {
