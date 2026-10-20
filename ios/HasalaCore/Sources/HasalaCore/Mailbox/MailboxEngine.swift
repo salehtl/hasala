@@ -702,7 +702,7 @@ public actor MailboxEngine {
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state))
+    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
     let cut: Bool
     do {
       cut = try await listAndProcess(
@@ -763,7 +763,7 @@ public actor MailboxEngine {
     }
     let days = Int64(state.backfillDays ?? 90)
     let since = max(0, (started - days * 86_400_000) / 1000)
-    var run = Run(trusted: trusted, cards: [:], grant: grant(state))
+    var run = Run(trusted: trusted, cards: [:], grant: grant(state), address: state.address)
     run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
     do {
@@ -835,7 +835,7 @@ public actor MailboxEngine {
       // column records the cap): ids only, and the accounted set skips everything already done.
       let days = Int64(state.backfillDays ?? 90)
       let since = max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
-      var run = Run(trusted: trusted, cards: cards, grant: grant(state))
+      var run = Run(trusted: trusted, cards: cards, grant: grant(state), address: state.address)
       do {
         let cut = try await listAndProcess(
           source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
@@ -1004,7 +1004,7 @@ public actor MailboxEngine {
         if !trusted.contains(domain) { trusted.append(domain) }
         let days = Int64(state.backfillDays ?? 90)
         let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
-        var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state))
+        var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
         do {
           let (ids, _) = try await list(source, domains: [domain], sinceSec: since, maxPages: config.importMaxPages)
           report.listed = ids.count
@@ -1130,6 +1130,7 @@ public actor MailboxEngine {
     var trusted: [String]
     var cards: [CardKey: CardState]
     var grant: String
+    var address: String?
     var width = 6
     var stagingFull = false
     var saw429 = false
@@ -1405,7 +1406,8 @@ public actor MailboxEngine {
       }
       let parsed = MessageDisposer.parse(
         raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
-        bankDomains: run.trusted, trusted: run.trusted, analyze: { provider.analyzeAuthResults($0) })
+        bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
+        analyze: { provider.analyzeAuthResults($0) })
       switch parsed {
       case .setAside(let domain):
         report.setAside += 1

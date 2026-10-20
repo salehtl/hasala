@@ -126,6 +126,15 @@ A pattern that captures under any other name is rejected: the executor reads
 only the names above, so a group named anything else has captured something
 nothing will ever read.
 
+An `amt` capture converts only with exactly two decimals, and only when the
+resolved currency (`ccy`, else `default_currency`) has a minor exponent of 2.
+The codes with exponent 3 (BHD IQD JOD KWD LYD OMR TND) and 0 (BIF CLP DJF GNF
+ISK JPY KMF KRW PYG RWF UGX UYI VND VUV XAF XOF XPF) are a conversion failure,
+so the message goes to review instead of filing a wrong amount. This is the
+same table as the client's `MinorExponent.v1`. A seed amount pattern must also
+refuse a third decimal with trailing context: `\.[0-9]{2}(?:[^0-9]|$)`, because
+`\b` is not in the dialect.
+
 `ToJS` is a scanner, not a string replace. In `a\(?P<v` the parenthesis is
 **escaped**, so those characters are a literal paren, an optional quantifier and
 three literals — a `ReplaceAll` would turn them into a named group and silently

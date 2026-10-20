@@ -43,13 +43,13 @@
       }
     },
     {
-      "name": "dmarc-pass-alone-domain-from-header-from",
+      "name": "dmarc-pass-alone-is-not-trust",
       "group": "goldens",
       "headers": "Authentication-Results: mx.google.com;\r\n       dkim=neutral;\r\n       dmarc=pass header.from=Bank.Example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
-        "trusted": true,
-        "reason": "pass",
-        "domain": "bank.example"
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {
@@ -268,7 +268,7 @@
     {
       "name": "no-terminating-blank-line",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -278,7 +278,7 @@
     {
       "name": "leading-blank-line-ends-the-block",
       "group": "structure",
-      "headers": "\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "no_ar",
@@ -288,7 +288,7 @@
     {
       "name": "continuation-before-any-field-is-ignored",
       "group": "structure",
-      "headers": "  dkim=pass header.d=evil.example\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "  dkim=pass header.d=evil.example\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -319,7 +319,7 @@
     {
       "name": "no-space-after-semicolons",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com;dkim=pass header.d=bank.example;dmarc=pass header.from=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com;dkim=pass header.d=bank.example;dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -339,7 +339,7 @@
     {
       "name": "quoted-authserv-id",
       "group": "structure",
-      "headers": "Authentication-Results: \"mx.google.com\"; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: \"mx.google.com\"; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -349,7 +349,7 @@
     {
       "name": "authserv-id-with-version",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com 1; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com 1; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -359,7 +359,7 @@
     {
       "name": "authserv-id-subdomain-is-foreign",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com.attacker.test; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com.attacker.test; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "no_ar",
@@ -379,17 +379,17 @@
     {
       "name": "method-without-result-is-skipped",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com; dkim; dmarc=pass header.from=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim; dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
-        "trusted": true,
-        "reason": "pass",
-        "domain": "bank.example"
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {
       "name": "quoted-result",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com; dkim=\"pass\" header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=\"pass\" header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -399,7 +399,7 @@
     {
       "name": "unclosed-comment-swallows-the-rest",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass (unclosed header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass (unclosed header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -409,7 +409,7 @@
     {
       "name": "unclosed-quote",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\"bank.example; dmarc=pass header.from=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\"bank.example; dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -419,7 +419,7 @@
     {
       "name": "escaped-paren-in-comment",
       "group": "structure",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass (a \\) b) header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass (a \\) b) header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -429,7 +429,7 @@
     {
       "name": "x-original-ar-is-not-ar",
       "group": "structure",
-      "headers": "X-Original-Authentication-Results: mx.google.com; dkim=pass header.d=evil.example\r\nAuthentication-Results: mx.google.com; dkim=fail header.d=bank.example\r\n\r\n",
+      "headers": "X-Original-Authentication-Results: mx.google.com; dkim=pass header.d=evil.example\r\nAuthentication-Results: mx.google.com; dkim=fail header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -439,7 +439,7 @@
     {
       "name": "foreign-ar-below-arc-headers",
       "group": "structure",
-      "headers": "ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.d=bank.example\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nAuthentication-Results: relay.example; dkim=fail\r\n\r\n",
+      "headers": "ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.d=bank.example\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nAuthentication-Results: relay.example; dkim=fail\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -449,7 +449,7 @@
     {
       "name": "gmail-ar-not-first-of-three",
       "group": "structure",
-      "headers": "Authentication-Results: relay-a.example; dkim=pass header.d=bank.example\r\nAuthentication-Results: relay-b.example; dkim=pass header.d=bank.example\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: relay-a.example; dkim=pass header.d=bank.example\r\nAuthentication-Results: relay-b.example; dkim=pass header.d=bank.example\r\nAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "not_topmost",
@@ -457,49 +457,89 @@
       }
     },
     {
-      "name": "dkim-domain-wins-over-dmarc",
+      "name": "dkim-for-another-domain-with-dmarc-pass",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=signer.example; dmarc=pass header.from=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=signer.example; dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
-        "trusted": true,
-        "reason": "pass",
-        "domain": "signer.example"
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {
-      "name": "first-passing-dkim-wins",
+      "name": "dkim-for-another-domain-with-spf-aligned-dmarc",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=first.example; dkim=pass header.d=second.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@esp.example header.d=esp.example;\r\n       spf=pass smtp.mailfrom=bank.example;\r\n       dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "first-aligned-passing-dkim-wins",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=other.example; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
-        "domain": "first.example"
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "first-of-two-aligned-dkim-wins",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=mail.bank.example; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "mail.bank.example"
       }
     },
     {
       "name": "failing-dkim-then-passing-dkim",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=fail header.d=bank.example; dkim=pass header.d=other.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=fail header.d=other.example; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
-        "domain": "other.example"
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "failing-aligned-dkim-then-unaligned-pass",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=fail header.d=bank.example; dkim=pass header.d=other.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {
       "name": "repeated-property-last-wins",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example header.d=evil.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=evil.example header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
-        "domain": "evil.example"
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "repeated-property-last-wins-unaligned",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example header.d=evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {
       "name": "property-key-case-folded",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass HEADER.D=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass HEADER.D=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -509,7 +549,7 @@
     {
       "name": "header-d-with-at-sign",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=alerts@bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=alerts@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -519,7 +559,7 @@
     {
       "name": "header-d-quoted",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\"bank.example\"\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\"bank.example\"\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -529,7 +569,7 @@
     {
       "name": "header-d-single-label",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=localhost\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=localhost\r\nFrom: Bank <alerts@localhost>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -539,7 +579,7 @@
     {
       "name": "header-d-trailing-dot",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example.\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example.\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -549,7 +589,7 @@
     {
       "name": "header-d-underscore",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank_alerts.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank_alerts.example\r\nFrom: Bank <alerts@bank_alerts.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -559,7 +599,7 @@
     {
       "name": "header-d-leading-hyphen",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=-bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=-bank.example\r\nFrom: Bank <alerts@-bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -569,7 +609,7 @@
     {
       "name": "header-d-punycode",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=xn--mgbh0fb.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=xn--mgbh0fb.example\r\nFrom: Bank <alerts@xn--mgbh0fb.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -579,7 +619,7 @@
     {
       "name": "header-d-non-ascii",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\u0628\u0646\u0643.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\u0628\u0646\u0643.example\r\nFrom: Bank <alerts@\u0628\u0646\u0643.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -589,7 +629,7 @@
     {
       "name": "header-d-label-63",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example\r\nFrom: Bank <alerts@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -599,7 +639,7 @@
     {
       "name": "header-d-label-64",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example\r\nFrom: Bank <alerts@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -607,9 +647,9 @@
       }
     },
     {
-      "name": "invalid-dkim-domain-falls-back-to-dmarc",
+      "name": "header-d-mixed-case-from",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=localhost; dmarc=pass header.from=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <Alerts@BANK.Example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -617,9 +657,99 @@
       }
     },
     {
+      "name": "from-is-subdomain-of-header-d",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@mail.bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "header-d-is-subdomain-of-from",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=mail.bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "mail.bank.example"
+      }
+    },
+    {
+      "name": "header-d-sibling-of-from",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=notbank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "header-d-suffix-without-dot",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=ank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "header-d-under-single-label-from",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "no-from-field",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nSubject: alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "two-from-fields",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "from-without-at-sign",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: bank.example\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "invalid-dkim-domain-and-dmarc-pass",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=localhost; dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
       "name": "dmarc-pass-without-header-from",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dmarc=pass\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dmarc=pass\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -629,7 +759,7 @@
     {
       "name": "dmarc-pass-invalid-header-from",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dmarc=pass header.from=not_a_domain\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dmarc=pass header.from=not_a_domain\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -639,7 +769,7 @@
     {
       "name": "dmarc-softfail",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; dkim=neutral header.d=bank.example; dmarc=bestguesspass header.from=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=neutral header.d=bank.example; dmarc=bestguesspass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -649,7 +779,7 @@
     {
       "name": "spf-pass-alone-is-not-trust",
       "group": "domain",
-      "headers": "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=alerts@bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=alerts@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -662,7 +792,7 @@
       "note": "262144 characters, the largest block that is parsed.",
       "headers_parts": [
         {
-          "text": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n",
+          "text": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n",
           "repeat": 1
         },
         {
@@ -671,7 +801,7 @@
         },
         {
           "text": "a",
-          "repeat": 262061
+          "repeat": 262027
         },
         {
           "text": "\r\n\r\n",
@@ -690,7 +820,7 @@
       "note": "262145 characters: refused before parsing.",
       "headers_parts": [
         {
-          "text": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n",
+          "text": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n",
           "repeat": 1
         },
         {
@@ -699,7 +829,7 @@
         },
         {
           "text": "a",
-          "repeat": 262062
+          "repeat": 262028
         },
         {
           "text": "\r\n\r\n",
@@ -726,7 +856,7 @@
           "repeat": 511
         },
         {
-          "text": "\tdkim=pass header.d=bank.example\r\n\r\n",
+          "text": "\tdkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
           "repeat": 1
         }
       ],
@@ -750,7 +880,7 @@
           "repeat": 512
         },
         {
-          "text": "\tdkim=pass header.d=bank.example\r\n\r\n",
+          "text": "\tdkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
           "repeat": 1
         }
       ],
@@ -763,7 +893,7 @@
     {
       "name": "bom-before-field-name",
       "group": "unicode_whitespace",
-      "headers": "Subject: alert\r\n\ufeffAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Subject: alert\r\n\ufeffAuthentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -773,7 +903,7 @@
     {
       "name": "nbsp-before-field-name",
       "group": "unicode_whitespace",
-      "headers": "\u00a0Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "\u00a0Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -783,7 +913,7 @@
     {
       "name": "nbsp-named-second-gmail-ar",
       "group": "unicode_whitespace",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\u00a0Authentication-Results: mx.google.com; dkim=pass header.d=evil.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\u00a0Authentication-Results: mx.google.com; dkim=pass header.d=evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "multiple_ar",
@@ -793,7 +923,7 @@
     {
       "name": "nbsp-before-authserv-id",
       "group": "unicode_whitespace",
-      "headers": "Authentication-Results:\u00a0mx.google.com; dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results:\u00a0mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -803,7 +933,7 @@
     {
       "name": "nbsp-around-result",
       "group": "unicode_whitespace",
-      "headers": "Authentication-Results: mx.google.com; dkim=\u00a0pass\u00a0 header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=\u00a0pass\u00a0 header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -813,7 +943,7 @@
     {
       "name": "nbsp-around-domain",
       "group": "unicode_whitespace",
-      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\u00a0bank.example\u2003\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\u00a0bank.example\u2003\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",
@@ -823,7 +953,7 @@
     {
       "name": "nbsp-continuation-line",
       "group": "unicode_whitespace",
-      "headers": "Authentication-Results: mx.google.com;\r\n\u00a0dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com;\r\n\u00a0dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
         "reason": "fail",
@@ -833,7 +963,7 @@
     {
       "name": "line-separator-is-not-a-line-break",
       "group": "unicode_whitespace",
-      "headers": "Authentication-Results: mx.google.com;\u2028dkim=pass header.d=bank.example\r\n\r\n",
+      "headers": "Authentication-Results: mx.google.com;\u2028dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": true,
         "reason": "pass",

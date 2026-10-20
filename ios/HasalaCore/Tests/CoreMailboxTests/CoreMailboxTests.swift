@@ -263,7 +263,7 @@ import Testing
   func parse(_ m: FakeGmail.Message) -> MessageDisposer.Parse {
     MessageDisposer.parse(
       raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
-      bankDomains: trusted, trusted: trusted, analyze: AuthResults.analyze)
+      bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
   }
 
   func mail(_ m: FakeGmail.Message) throws -> ParsedMail {
@@ -326,7 +326,85 @@ import Testing
     #expect(d.payload["amount_minor"] == .string("25000"))  // prefilled
     // Verified, but for a domain outside T.
     let q = try mail(SyntheticMail.dibCard(id: "m3", dateMs: Rig.t0, authDomain: "mailer.example"))
-    #expect(q.gates.ar == "pass" && !q.gates.senderTrusted)
+    #expect(q.gates.ar == "fail" && !q.gates.senderTrusted)
+  }
+
+  @Test func mailAddressedToAnotherMailboxStaysInReview() throws {
+    let cards = [CardKey(bank: "dib", last4: "1234"): CardState.mine]
+    let other = try mail(SyntheticMail.dibCard(id: "r1", dateMs: Rig.t0, to: "Someone Else <someone.else@example.net>"))
+    #expect(other.gates.ar == "pass" && other.gates.senderTrusted && other.recipient == .mismatch)
+    let d = MessageDisposer.finalize(other, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer())
+    #expect(d.needsReview && d.payload["amount_minor"] == .string("25000"))
+    let base = MessageDisposer.finalize(try mail(SyntheticMail.dibCard(id: "r0", dateMs: Rig.t0)), provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer())
+    #expect(!base.needsReview && d.payload["gates"] == base.payload["gates"])
+
+    let named = "\"\(SyntheticMail.defaultTo)\" <someone.else@example.net>, (\(SyntheticMail.defaultTo)) x@example.net"
+    #expect(try mail(SyntheticMail.dibCard(id: "r2", dateMs: Rig.t0, to: named)).recipient == .mismatch)
+
+    let cc = SyntheticMail.dibCard(
+      id: "r3", dateMs: Rig.t0, to: "someone.else@example.net\r\nCc: Me <\(SyntheticMail.defaultTo)>", signedHeaders: "From:To:Cc:Subject")
+    #expect(try mail(cc).recipient == .confirmed)
+
+    guard case .mail(let unlinked) = MessageDisposer.parse(
+      raw: SyntheticMail.dibCard(id: "r4", dateMs: Rig.t0).raw, messageID: "r4", internalDateMs: Rig.t0,
+      topLevelFrom: "DIB Alerts <alerts@dib.ae>", templates: templates, bankDomains: trusted, trusted: trusted,
+      provider: .gmail, linkedAddress: nil, spam: false, analyze: AuthResults.analyze)
+    else { throw CancellationError() }
+    #expect(unlinked.recipient == .mismatch)
+    #expect(MessageDisposer.finalize(unlinked, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview)
+  }
+
+  @Test func anUnsignedRecipientFilesOnlyAKnownCard() throws {
+    let known = [CardKey(bank: "dib", last4: "1234"): CardState.mine]
+    func review(_ p: ParsedMail, _ cards: [CardKey: CardState]) -> Bool {
+      MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview
+    }
+    let signed = try mail(SyntheticMail.dibCard(id: "u0", dateMs: Rig.t0))
+    #expect(signed.recipient == .confirmed && !review(signed, [:]) && !review(signed, known))
+
+    let unsigned = try mail(SyntheticMail.dibCard(id: "u1", dateMs: Rig.t0, signedHeaders: "From:Subject"))
+    #expect(unsigned.recipient == .unconfirmed && review(unsigned, [:]) && !review(unsigned, known))
+
+    let noTo = try mail(SyntheticMail.dibCard(id: "u2", dateMs: Rig.t0, to: nil))
+    #expect(noTo.recipient == .unconfirmed && review(noTo, [:]) && !review(noTo, known))
+
+    let twice = try mail(SyntheticMail.dibCard(
+      id: "u3", dateMs: Rig.t0, to: "\(SyntheticMail.defaultTo)\r\nTo: \(SyntheticMail.defaultTo)"))
+    #expect(twice.recipient == .unconfirmed)
+    let oversigned = try mail(SyntheticMail.dibCard(
+      id: "u4", dateMs: Rig.t0, to: "\(SyntheticMail.defaultTo)\r\nTo: \(SyntheticMail.defaultTo)", signedHeaders: "From:To:To:Subject"))
+    #expect(oversigned.recipient == .confirmed)
+
+    let raw = String(decoding: SyntheticMail.dibCard(id: "u5", dateMs: Rig.t0).raw, as: UTF8.self)
+      .replacingOccurrences(of: "header.b=c3ludGhl", with: "header.b=b3RoZXJz")
+    guard case .mail(let otherSig) = MessageDisposer.parse(
+      raw: Array(raw.utf8), messageID: "u5", internalDateMs: Rig.t0, topLevelFrom: "DIB Alerts <alerts@dib.ae>",
+      templates: templates, bankDomains: trusted, trusted: trusted, provider: .gmail,
+      linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
+    else { throw CancellationError() }
+    #expect(otherSig.recipient == .unconfirmed && review(otherSig, [:]))
+  }
+
+  @Test func spamStaysInReview() throws {
+    let m = SyntheticMail.dibCard(id: "s1", dateMs: Rig.t0)
+    guard case .mail(let p) = MessageDisposer.parse(
+      raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
+      bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: true,
+      analyze: AuthResults.analyze)
+    else { throw CancellationError() }
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: NoCategorizer())
+    #expect(d.needsReview && d.payload["amount_minor"] == .string("25000"))
+  }
+
+  @Test func stagedMailWithoutRecipientFactsStaysInReview() throws {
+    let p = try mail(SyntheticMail.dibCard(id: "o1", dateMs: Rig.t0))
+    let cards = [CardKey(bank: "dib", last4: "1234"): CardState.mine]
+    #expect(!MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview)
+    var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as! [String: Any]
+    json.removeValue(forKey: "recipient")
+    json.removeValue(forKey: "spam")
+    let old = try JSONDecoder().decode(ParsedMail.self, from: JSONSerialization.data(withJSONObject: json))
+    #expect(MessageDisposer.finalize(old, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview)
   }
 
   @Test func unparsedBankMailIsTheEmptyReviewShape() throws {
@@ -342,7 +420,7 @@ import Testing
     let m = SyntheticMail.lookAlike(id: "m5", dateMs: Rig.t0, listedAs: "emiratesnbd.com")
     let r = MessageDisposer.parse(
       raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: "Offers <offers@emiratesnbd.com.promo.example>",
-      templates: templates, bankDomains: trusted, trusted: trusted, analyze: AuthResults.analyze)
+      templates: templates, bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
     #expect(r == .setAside(domain: "promo.example"))
   }
 
@@ -383,6 +461,44 @@ import Testing
   }
 }
 
+@Suite struct MailRecipientsTests {
+  @Test func gmailFoldsDotsAndPlusOnlyForGmail() {
+    #expect(MailRecipients.canonical("First.Last+bank@GoogleMail.com", provider: .gmail) == "firstlast@gmail.com")
+    #expect(MailRecipients.canonical(" firstlast@gmail.com. ", provider: .gmail) == "firstlast@gmail.com")
+    #expect(MailRecipients.canonical("First.Last+bank@Work.Example", provider: .gmail) == "first.last@work.example")
+    #expect(MailRecipients.canonical("First.Last+bank@Outlook.Example", provider: .outlook) == "first.last+bank@outlook.example")
+    #expect(MailRecipients.canonical("First.Last@GMail.com", provider: .outlook) == "first.last@gmail.com")
+    #expect(MailRecipients.canonical("nobody", provider: .gmail) == nil)
+    #expect(MailRecipients.canonical("@example.com", provider: .gmail) == nil)
+    #expect(MailRecipients.canonical("+x@example.com", provider: .gmail) == nil)
+  }
+
+  @Test func readsSignedToAndCcOnly() {
+    let sig = "DKIM-Signature: v=1; d=bank.example; s=s1;\r\n h=From : To : Cc; b=QUJD\r\n DEF"
+    func check(_ linked: String?, _ lines: [String], provider: MailProviderID = .gmail, signature: String? = nil) -> RecipientCheck {
+      MailRecipients.check(
+        linked: linked, headers: lines.joined(separator: "\r\n"), provider: provider, signingDomain: "bank.example",
+        signature: signature)
+    }
+    let lines = [
+      "Delivered-To: me@example.com", "Reply-To: me@example.com", sig, "From: Bank <alerts@bank.example>",
+      "To: \"Me, Myself\" <me+alerts@example.com>,", "\tother@example.net (note @ here)", "CC: group: a@example.org; ",
+      "Subject: me@example.com",
+    ]
+    #expect(check("ME@example.com", lines) == .confirmed)
+    #expect(check("a@example.org", lines, signature: "QUJDDE") == .confirmed)
+    #expect(check("a@example.org", lines, signature: "WFla") == .unconfirmed)
+    #expect(check("me@example.com", lines, provider: .outlook) == .mismatch)
+    #expect(check("someone@example.com", lines) == .mismatch)
+    #expect(check(nil, lines) == .mismatch)
+    #expect(check("me@example.com", ["Delivered-To: me@example.com", sig, "To: you@example.com"]) == .mismatch)
+    #expect(check("me@example.com", ["Delivered-To: me@example.com", "X-Original-To: me@example.com", sig]) == .unconfirmed)
+    #expect(check("me@example.com", ["DKIM-Signature: d=other.example; h=to; b=x", "To: me@example.com"]) == .unconfirmed)
+    let both = ["DKIM-Signature: d=bank.example; h=from:to; b=x", "DKIM-Signature: d=bank.example; h=from; b=y", "To: me@example.com"]
+    #expect(check("me@example.com", both) == .unconfirmed)
+  }
+}
+
 @Suite struct URLSessionExchangeTests {
   @Test func gmailClientWorksOverARealURLSession() async throws {
     let g = FakeGmail()
@@ -393,6 +509,11 @@ import Testing
     #expect(g.requests.last?.authorization == "Bearer tok")
     let raw = try await c.messageRaw(id: "u1")
     #expect(try Base64.decodeURL(raw.rawBase64URL) == Data(SyntheticMail.enbdAlert(id: "u1", dateMs: Rig.t0).raw))
+    #expect(!raw.spam)
+    var junk = SyntheticMail.enbdAlert(id: "u2", dateMs: Rig.t0)
+    junk.spam = true
+    g.add(junk)
+    #expect(try await c.messageRaw(id: "u2").spam)
     await #expect(throws: GmailAPIError.status(404, op: "raw")) { try await c.messageRaw(id: "missing") }
   }
 

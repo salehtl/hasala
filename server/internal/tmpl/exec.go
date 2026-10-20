@@ -667,7 +667,16 @@ func convertAmount(amt, ccy, defaultCurrency string) (int64, string, bool) {
 		}
 		currency = c
 	}
+	if _, ok := nonTwoDecimalCurrencies[currency]; ok {
+		return 0, "", false
+	}
 	return minor, currency, true
+}
+
+var nonTwoDecimalCurrencies = map[string]struct{}{
+	"BHD": {}, "IQD": {}, "JOD": {}, "KWD": {}, "LYD": {}, "OMR": {}, "TND": {},
+	"BIF": {}, "CLP": {}, "DJF": {}, "GNF": {}, "ISK": {}, "JPY": {}, "KMF": {}, "KRW": {},
+	"PYG": {}, "RWF": {}, "UGX": {}, "UYI": {}, "VND": {}, "VUV": {}, "XAF": {}, "XOF": {}, "XPF": {},
 }
 
 // asciiUpper upper-cases A-Z and nothing else. strings.ToUpper and

@@ -121,7 +121,8 @@ public struct GmailClient: Sendable {
   public func messageRaw(id: String) async throws(GmailAPIError) -> GmailRawMessage {
     let o = try await get("/messages/\(FormEncoding.escape(id))", [("format", "raw")], op: "raw")
     guard let raw = o["raw"]?.stringValue, !raw.isEmpty else { throw .status(200, op: "raw") }
-    return GmailRawMessage(id: id, rawBase64URL: raw, internalDate: Self.decimal(o["internalDate"]))
+    let spam = (o["labelIds"]?.arrayValue ?? []).contains { $0.stringValue == "SPAM" }
+    return GmailRawMessage(id: id, rawBase64URL: raw, internalDate: Self.decimal(o["internalDate"]), spam: spam)
   }
 
   /// `users.watch` on INBOX only (spec 04 §7.5 step 5).
