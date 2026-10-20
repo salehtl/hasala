@@ -130,7 +130,8 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
       XCTAssertEqual(bell.label, "Notifications, 4 new")
       attach(app, "Release · Bell · \(tab)")
     }
-    assertPresent(app, ["header.add"], "Activity")
+    XCTAssertTrue(app.buttons["header.search"].firstMatch.isHittable, "Activity has no search")
+    XCTAssertTrue(tabBar.buttons["Add a transaction"].exists, "Activity has no add button")
     bell.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     assertAbsent(app, ["Earlier", "bell.settings"], "Notifications from Activity")

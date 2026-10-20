@@ -49,7 +49,7 @@ struct HomeView: View {
   var body: some View {
     NavigationStack(path: Bindable(app.router).home) {
       TabScreen(
-        app: app, title: nil, extra: .none,
+        app: app, title: nil,
         wash: HWash(snapshot.hero.wash)
       ) {
         if session?.reviewAccount == true {

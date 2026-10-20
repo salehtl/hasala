@@ -3,9 +3,9 @@ import HasalaModels
 import SwiftUI
 
 /// Search · Ready and Results as you type (Paper "Search · Ready", "Search · Results as you
-/// type (carre)"), in every build; no answers yet (plan D.2). The search tab grows into the
-/// bottom field; while it is empty, "Try asking" and the recent searches; as you type, the
-/// top result, the matching transactions, the categories and the rules, the typed part in
+/// type (carre)"), in every build; no answers yet (plan D.2). The header's search opens it as
+/// a sheet with the field focused; while it is empty, "Try asking" and the recent searches; as
+/// you type, the top result, the matching transactions, the categories and the rules, the typed part in
 /// bold. Everything is found in this iPhone's own ledger (`ActivityEngine`'s search): no
 /// query leaves the device.
 struct SearchView: View {
@@ -14,6 +14,7 @@ struct SearchView: View {
   /// The field is up and focused when Search opens (Paper "Search · Ready": keyboard up).
   @State private var searching = false
   @State private var ask = AskSearchModel()
+  @Environment(\.dismiss) private var dismiss
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
   /// questions (the fourth row, "Compare October with September", needs an answer card).
@@ -58,6 +59,7 @@ struct SearchView: View {
       .textInputAutocapitalization(.never)
       .autocorrectionDisabled()
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
+      .toolbar { SheetCloseButton(identifier: "search.close") { dismiss() } }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
       .task(id: query.trimmedSpaces) {
         await ask.run(query.trimmedSpaces, app.store.state, now: app.store.now)

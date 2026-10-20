@@ -72,30 +72,30 @@
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
       // Search · Ready.
-      Screen("search", scenario: "maya", prepare: shell(.search)),
+      Screen("search", scenario: "maya", prepare: shell(.home, sheet: .search)),
       // Search · Results as you type ("carre").
       Screen("search.results", scenario: "maya", prepare: { graph in
         SearchHistory.launchQuery = "carre"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
         SearchHistory.launchQuery = "How much did I spend at Carrefour in September?"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask.coffee", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
         SearchHistory.launchQuery = "coffee this month"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask.ready", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask.arabic", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
         SearchHistory.launchQuery = "كارفور"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
     ]
 

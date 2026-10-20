@@ -4,12 +4,11 @@ import HasalaWidgetData
 import SwiftUI
 
 /// The tab shell (Paper "13 · Navigation · Tab bar and search"): Home, Plan, Review with
-/// its to-sort badge, Activity, and Search as the system's search-role tab, with the app's
-/// sheets and the review cover over them. Search is the separate glass circle beside the bar
-/// (Paper); on iOS 27 the system draws it apart only when the search tab activates search.
-///
-/// Search is in every build: it finds transactions, categories and rules in this iPhone's
-/// own ledger, with no server call. Its direct answers (spec 04 §13.1) are not built.
+/// its to-sort badge and Activity, and the round add button beside the bar (the system's
+/// search-role tab, which opens Add a transaction and is never selected), with the app's
+/// sheets and the review cover over them. Search is in the header, a sheet on every tab: it
+/// finds transactions, categories and rules in this iPhone's own ledger, with no server call.
+/// Its direct answers (spec 04 §13.1) are not built.
 ///
 /// Routing is `app.router`'s: the tab bar, the sheet and the cover bind to it, and each
 /// sheet's view model lives in a small holder view with `@State`, so a body pass here can't
@@ -32,7 +31,13 @@ struct MainView: View {
     Binding(
       get: { app.router.tab },
       set: { tab in
-        if tab == app.router.tab { app.router.popToRoot(tab) } else { app.router.tab = tab }
+        if tab == .add {
+          app.router.open(.addTransaction)
+        } else if tab == app.router.tab {
+          app.router.popToRoot(tab)
+        } else {
+          app.router.tab = tab
+        }
       })
   }
 
@@ -55,9 +60,8 @@ struct MainView: View {
       Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
       }
-      // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
-      Tab(value: AppTab.search, role: .search) {
-        SearchView(app: app)
+      Tab("Add a transaction", systemImage: "plus", value: AppTab.add, role: .search) {
+        Color.clear
       }
     }
     .tabBarMinimizeBehavior(.never)
@@ -94,6 +98,9 @@ struct MainView: View {
         ProjectEditorSheet(app: app, project: id)
       case .addTransaction:
         AddTransactionHost(app: app)
+      // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
+      case .search:
+        SearchView(app: app)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

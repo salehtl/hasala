@@ -6,10 +6,10 @@ import HasalaModels
 // any screen with a real back stack behind it. A package that needs a case that isn't here
 // asks for it (plan 0.1 rule 15); the cases are shared by every package.
 
-/// The tabs, in the bar's order (Paper "Four tabs, one search, nothing else."): Home, Plan,
-/// Review and Activity, and Search beside them.
+/// The tabs, in the bar's order: Home, Plan, Review and Activity, and the add button beside
+/// them, which opens Add a transaction and is never the selected tab.
 enum AppTab: Hashable {
-  case home, plan, review, activity, search
+  case home, plan, review, activity, add
 }
 
 /// Pushed inside the Home tab.
@@ -89,6 +89,7 @@ enum SheetRoute: Hashable, Identifiable {
   case widgetConfig(HomeWidgetKind, entry: String?)
   case project(ProjectID?)
   case addTransaction
+  case search
 
   var id: String {
     switch self {
@@ -102,6 +103,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .widgetConfig(let kind, let entry): "widgetConfig.\(kind.rawValue).\(entry ?? "new")"
     case .project(let id): "project.\(id ?? "new")"
     case .addTransaction: "addTransaction"
+    case .search: "search"
     }
   }
 }

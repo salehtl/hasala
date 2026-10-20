@@ -16,6 +16,7 @@ public struct GlassIconButton: View {
   let selected: Bool?
   let action: () -> Void
   @Environment(\.isEnabled) private var isEnabled
+  @Environment(\.hGlassPaired) private var paired
 
   /// `badge` draws the count top right (hidden at 0, "99+" past 99); put the count in `label`
   /// too, since the badge is hidden from VoiceOver. `prominent` is the accent Done (one per
@@ -39,10 +40,10 @@ public struct GlassIconButton: View {
           .id(icon)
           .transition(.opacity)
       }
-      .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+      .frame(width: paired ? HSpacing.targetMinimum : HSpacing.glassButton, height: HSpacing.glassButton)
       .hAnimation(.hideAmounts, value: icon)
       .hGlass(in: Circle(), prominent: prominent)
-      .contentShape(Circle())
+      .contentShape(Capsule())
     }
     .buttonStyle(.plain)
     .overlay(alignment: .topLeading) {
@@ -70,6 +71,21 @@ public struct GlassIconButton: View {
   private var iconColor: Color {
     if !isEnabled { return HColor.controlNavigationDisabledForeground }
     return prominent ? HColor.iconOnAccent : HColor.iconGlass
+  }
+}
+
+public struct GlassButtonPair<Content: View>: View {
+  let content: Content
+
+  public init(@ViewBuilder content: () -> Content) {
+    self.content = content()
+  }
+
+  public var body: some View {
+    HStack(spacing: 0) { content }
+      .environment(\.hGlassPaired, true)
+      .hGlass(in: Capsule())
+      .accessibilityElement(children: .contain)
   }
 }
 
