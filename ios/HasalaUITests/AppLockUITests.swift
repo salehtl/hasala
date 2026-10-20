@@ -74,7 +74,7 @@ final class AppLockUITests: XCTestCase {
 
   @MainActor
   func testTurningTheLockOffAndOnInSignInAndSecurity() {
-    let app = launch(arguments: ["-HasalaAppLock", "cancel,pass,pass,pass", "-HasalaAppLockGrace", "0"])
+    let app = launch(arguments: ["-HasalaAppLock", "cancel,pass,pass,pass,cancel", "-HasalaAppLockGrace", "0"])
     tap(app, "lock.unlock")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
     let toggle = openSignInAndSecurity(app)
