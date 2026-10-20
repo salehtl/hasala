@@ -118,5 +118,15 @@ enum DuplicateGoldens {
           (3, G.w2, [sort(1, "groceries", parent: 1, id: "op-sort-1")]),
           (4, G.w1, [R.retire(R.a, legacy: false, id: "op-retire-a")]),
         ]),
+      FoldGoldenCase(
+        name: "merge-retire-keep-both",
+        note: "One device merges the held copy, then removes its mailbox, which retires it; another device, offline, chose Keep both on the same copy. The late keep_both is refused with duplicate_disposition_mismatch, and the retired row stays out of the live indexes.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a)]),
+          (2, G.w1, [alert(2, grant: R.b, at: "08:04:00")]),
+          (3, G.w1, [resolve(2, other: 1, "merge", parent: 1, id: "op-merge-2")]),
+          (4, G.w1, [R.retire(R.b, legacy: false, id: "op-retire-b")]),
+          (5, G.w2, [resolve(2, other: 1, "keep_both", parent: 1, id: "op-keep-2")]),
+        ]),
     ])
 }
