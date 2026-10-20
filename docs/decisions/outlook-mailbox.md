@@ -157,9 +157,20 @@ What shipped differs from step 1 below: the exact addresses are a client table
 template field changes the canonical template bytes in Go, the TypeScript reference and
 Swift, and the listing filter is not part of template execution. The addresses are the
 banks' public notification senders, not personal data. Each one is listed only when its
-domain is in the trusted set (`BankDomains.isMember`). A trusted domain with no known
-address (for example one from "Add a sender") is not listed on Outlook yet; step 3 is
-still open. The page check (1b) now also requires the exact address.
+domain is in the trusted set (`BankDomains.isMember`). The page check (1b) now also
+requires the exact address.
+
+**Step 3 (2026-10-20).** On Outlook, "Add a sender" takes a full address
+(`BankDomains.normalizeTypedAddress`; a bare domain is refused with `addressRequired`).
+The address is kept on this iPhone only, in the ledger.sqlite table
+`mailbox_sender_address` (migration `mailbox_sender_address`). The op log still records
+only the domain (`sender_trust_set`); no op or template schema changed. The Graph listing
+uses `OutlookSenders.known` plus these addresses. Unlink does not clear them; a new
+iPhone or a reinstall starts without them.
+
+A trusted domain with no address (known or typed) is reported, not skipped silently:
+`MailboxStatus.unlisted` names it, and Bank alerts shows it under "Not read on Outlook"
+with a sheet that asks for the address. Gmail lists by domain and reports nothing there.
 
 The original plan:
 
@@ -171,7 +182,7 @@ If L1 shows that Graph answers 400 to `endswith` on messages, do **not** ship
 2. List with `from/emailAddress/address eq '<addr>'` clauses (`or`-ed, same date bound).
    Exact `eq` values have a 120-character limit (known-issues page).
 3. A domain added by "Add a sender" has no address; the UI must then ask for the full
-   address.
+   address. (Done: see Step 3 above.)
 
 ---
 

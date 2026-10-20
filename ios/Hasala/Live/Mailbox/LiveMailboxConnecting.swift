@@ -18,7 +18,7 @@ import Observation
 /// person confirmed it (`connect(_:replacing:)`). The lane's status gives the one row.
 @MainActor
 @Observable
-final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, OtherBankProbing {
+final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, OtherBankProbing, SenderAddressAdding {
   @ObservationIgnored private let runtime: @MainActor () -> AccountRuntime?
   /// The providers this build has a client for, listed before an account opens ("Who can
   /// see what" and the stories run before any runtime exists).
@@ -144,6 +144,33 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     case .notReading: return .notReading
     case .reconnectRequired: return .signInAgain
     case .offline: return .offline
+    }
+  }
+
+  var unlistedSenders: [String] { runtime()?.store.mailboxStatus?.unlisted ?? [] }
+
+  func addSenderAddress(_ typed: String, for domain: String) async -> SenderAddressOutcome {
+    guard let rt = runtime(), let lane = rt.lane else { return .offline }
+    let address: String
+    do { address = try BankDomains.normalizeTypedAddress(typed) } catch { return .refused(Self.senderLine(error, domain)) }
+    guard BankDomains.isMember(BankDomains.domainOf(address), of: [domain]) else {
+      return .refused(Self.senderLine(.notQuerySafe, domain, other: true))
+    }
+    switch await lane.addSender(address) {
+    case .failure(let e): return .refused(Self.senderLine(e, domain))
+    case .success:
+      await rt.refreshMailbox()
+      return unlistedSenders.contains(domain) ? .offline : .added(address)
+    }
+  }
+
+  static func senderLine(_ e: BankDomains.TypedDomainError, _ domain: String, other: Bool = false) -> String {
+    if other { return "Type an address that ends in @\(domain)." }
+    switch e {
+    case .empty, .addressRequired: return "Type the full address, such as alerts@\(domain)."
+    case .forwarder: return "That's a personal email service. Type the address your bank sends from."
+    case .sharedSuffix, .notQuerySafe: return "Hasala can't read that address. Check it and try again."
+    case .nonASCII: return "Type the address in English letters, as it shows on the alert."
     }
   }
 

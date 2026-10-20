@@ -45,9 +45,21 @@ public struct OutlookProvider: MailProvider {
 
   public func source(accessToken: AccessToken) -> any MailSource { graph(accessToken: accessToken.value) }
 
-  public func graph(accessToken: String) -> GraphClient {
+  public var listsByAddress: Bool { true }
+
+  public func source(accessToken: AccessToken, senderAddresses: [String]) -> any MailSource {
+    graph(accessToken: accessToken.value, senderAddresses: senderAddresses)
+  }
+
+  public func unlisted(_ trusted: [String], senderAddresses: [String]) -> [String] {
+    OutlookSenders.unlisted(trusted, known: OutlookSenders.known + senderAddresses)
+  }
+
+  public func graph(accessToken: String, senderAddresses: [String] = []) -> GraphClient {
     let clock = self.clock
-    return GraphClient(http: http, accessToken: accessToken, link: link, base: base, nowMs: { clock.nowMs() })
+    return GraphClient(
+      http: http, accessToken: accessToken, link: link, base: base, knownSenders: OutlookSenders.known + senderAddresses,
+      nowMs: { clock.nowMs() })
   }
 
   /// The Outlook rule; while the gate is closed a passing verdict is not trusted (the reason is
