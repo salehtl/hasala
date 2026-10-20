@@ -227,13 +227,13 @@ public enum ActivityEngine {
     let c = s.category(t.categoryID)
     let detail: String
     if let reason = t.activeReviewReason {
-      detail = "\(reason.label) · \(t.postedAt.time)"
+      detail = t.joined(reason.label, t.postedTime)
     } else if t.inReview {
-      detail = "To review · \(t.postedAt.time)"
+      detail = t.joined("To review", t.postedTime)
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
     } else {
-      detail = "\(c?.name ?? "Uncategorized") · \(t.detailOverride ?? t.postedAt.time)"
+      detail = t.joined(c?.name ?? "Uncategorized", t.detailOverride ?? t.postedTime)
     }
     let glyph = t.isTransfer ? Glyph.transfer : (c?.glyph ?? .review)
     var r = MiniTxnRow(
@@ -251,7 +251,7 @@ public enum ActivityEngine {
   public static func dated(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
     var r = row(t, s)
     if !t.inReview && t.splits.isEmpty {
-      r.detail = "\(t.postedAt.date.short) · \(t.detailOverride ?? t.postedAt.time)"
+      r.detail = t.joined(t.postedAt.date.short, t.detailOverride ?? t.postedTime)
     }
     return r
   }

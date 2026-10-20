@@ -285,7 +285,7 @@ public enum ReviewEngine {
 
   public static func card(_ t: Txn, _ s: LedgerState) -> ReviewCardModel {
     let verb = t.direction == .in ? "Received" : "Spent"
-    var meta = "\(verb) · \(t.postedAt.date.short), \(t.postedAt.time)"
+    var meta = "\(verb) · " + t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
     let d = t.postedAt.date
     let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"

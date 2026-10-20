@@ -285,6 +285,18 @@ import Testing
     #expect(p.ingestID == Hex.encode(sha256(Data(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0).raw))))
   }
 
+  @Test func dibCardOnTheArrivalDayTakesTheArrivalTime() throws {
+    let p = try mail(SyntheticMail.dibCard(id: "m1", day: "29-05-2026", dateMs: Rig.t0))
+    let f = try #require(p.fields)
+    #expect(f.postedAt == "2026-05-28T20:26:40.000Z" && f.precision == "time")
+  }
+
+  @Test func dibCardOnAnotherDayStaysAtLocalMidnight() throws {
+    let p = try mail(SyntheticMail.dibCard(id: "m1", day: "28-05-2026", dateMs: Rig.t0))
+    let f = try #require(p.fields)
+    #expect(f.postedAt == "2026-05-27T20:00:00.000Z" && f.precision == "day")
+  }
+
   @Test func enbdAlertIsDatedByGmail() throws {
     let p = try mail(SyntheticMail.enbdAlert(id: "m2", dateMs: Rig.t0))
     let f = try #require(p.fields)
