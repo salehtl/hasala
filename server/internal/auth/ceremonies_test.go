@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -347,6 +348,59 @@ func TestEmailChangeWithThePhraseInsteadOfTheOldMailbox(t *testing.T) {
 	if err := f.acct.EmailChangeFinish(bgctx, m.info(), begun.ChangeID, f.lastCode(next), nil,
 		ed25519.Sign(cryptoref.RK(m.acct.E), msg)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEmailChangeFinishDoesNotUndoANewerPasswordState(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(f *acctFixture, m *member)
+	}{
+		{"removed", func(f *acctFixture, m *member) {
+			if _, err := f.pool.Exec(bgctx,
+				`UPDATE users SET password_hash = NULL, password_salt = NULL, password_version = NULL, password_set_at = NULL
+				  WHERE id = $1`, m.user.UserID); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"changed", func(f *acctFixture, m *member) {
+			hash, salt, err := newPasswordHash(bgctx, f.keys, f.acct.Gate, f.stretch(m.addr, "a newer password"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := setPasswordTx(bgctx, f.pool, m.user.UserID, hash, salt, f.keys.Current(), f.clock.now()); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newAcctFixture(t)
+			m := f.passwordMember("Maya")
+			next := newAddr()
+			sNew := f.stretch(next, m.pw)
+			su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
+			begun, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, sNew, su)
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldCode, newCode := f.lastCode(m.addr), f.lastCode(next)
+			var before []byte
+			f.clock.advance(time.Second)
+			tc.change(f, m)
+			if err := f.pool.QueryRow(bgctx, `SELECT password_hash FROM users WHERE id = $1`, m.user.UserID).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.acct.EmailChangeFinish(bgctx, m.info(), begun.ChangeID, newCode, &oldCode, nil); !errors.Is(err, ErrCodeRejected) {
+				t.Fatalf("finish after the password was %s: %v, want ErrCodeRejected", tc.name, err)
+			}
+			var after []byte
+			if err := f.pool.QueryRow(bgctx, `SELECT password_hash FROM users WHERE id = $1`, m.user.UserID).Scan(&after); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatalf("the password state was rewritten by an older email change")
+			}
+		})
 	}
 }
 

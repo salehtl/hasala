@@ -446,18 +446,23 @@ func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded,
 		return Proven{}, nil, errors.New("auth: StepUp.Keys is nil")
 	}
 	now := s.now()
-	if err := writerPasswordBudget(ctx, tx, g.UserID, p.WriterID, now); err != nil {
+	if err := writerPasswordAttempt(ctx, s.Pool, g.UserID, p.WriterID, now); err != nil {
 		return Proven{}, nil, err
 	}
 	ok, err := passwordMatches(ctx, s.Keys, s.Gate, st, g.StepUp.Proof.Verifier, true)
 	if err != nil {
+		if rerr := refundWriterPasswordAttempt(ctx, s.Pool, g.UserID, p.WriterID, now); rerr != nil {
+			return Proven{}, nil, rerr
+		}
 		return Proven{}, nil, err
 	}
 	if !ok {
-		writer := p.WriterID
 		return Proven{}, func(ctx context.Context, tx pgx.Tx) (bool, error) {
-			return true, recordPasswordFailure(ctx, tx, g.UserID, writer, now)
+			return true, recordPasswordFailure(ctx, tx, g.UserID, now)
 		}, fmt.Errorf("%w: wrong password", ErrStepUpFailed)
+	}
+	if err := refundWriterPasswordAttempt(ctx, tx, g.UserID, p.WriterID, now); err != nil {
+		return Proven{}, nil, err
 	}
 	if st.Failures != 0 || st.PausedUntil != nil {
 		if _, err := tx.Exec(ctx, `UPDATE users SET password_failures = 0, password_paused_until = NULL WHERE id = $1`,
@@ -469,9 +474,15 @@ func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded,
 }
 
 // verifyDeviceCode is the device_code proof's second half: C8's code, gated
-// by the DAK and bounded by code_attempts (no per-address counter).
+// by the DAK and by limitCodeVerify, like every other code check.
 func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p Proven, codeID uuid.UUID) (Proven, failure, error) {
 	now := s.now()
+	if err := limitCodeVerify(ctx, s.Pool, now, codeID); err != nil {
+		if errors.Is(err, ErrCodeRejected) {
+			return Proven{}, nil, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
+		}
+		return Proven{}, nil, err
+	}
 	fail, err := verifyCodeTx(ctx, tx, s.Keys, now, codeCheck{CodeID: codeID, Purpose: PurposePasswordReset,
 		CeremonyKind: CeremonyStepUp, CeremonyID: hex.EncodeToString(g.StepUp.Nonce), Submitted: g.StepUp.Proof.Code})
 	if err == nil {

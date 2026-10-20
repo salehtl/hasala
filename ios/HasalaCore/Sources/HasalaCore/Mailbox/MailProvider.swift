@@ -227,11 +227,13 @@ public struct MailRawMessage: Sendable, Equatable {
   public let rawBase64URL: String
   /// ms since the epoch as a decimal string.
   public let internalDate: String
+  public let spam: Bool
 
-  public init(id: String, rawBase64URL: String, internalDate: String) {
+  public init(id: String, rawBase64URL: String, internalDate: String, spam: Bool = false) {
     self.id = id
     self.rawBase64URL = rawBase64URL
     self.internalDate = internalDate
+    self.spam = spam
   }
 }
 

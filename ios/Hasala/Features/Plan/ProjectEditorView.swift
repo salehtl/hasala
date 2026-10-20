@@ -16,10 +16,12 @@ final class ProjectEditorModel {
   var end: Date
   var countInPlan: Bool
   var refusal: String?
+  private let decimalSeparator: String
 
-  init(app: AppModel, project: ProjectID?) {
+  init(app: AppModel, project: ProjectID?, decimalSeparator: String = Locale.current.decimalSeparator ?? ".") {
     self.app = app
     self.project = project
+    self.decimalSeparator = decimalSeparator
     let d = project.flatMap { app.store.state.project($0)?.draft } ?? ProjectDraft(name: "")
     let today = ProjectDates.date(app.store.now.date)
     name = d.name
@@ -39,7 +41,7 @@ final class ProjectEditorModel {
     let trimmed = budgetText.trimmingCharacters(in: .whitespaces)
     var budget: Money?
     if !trimmed.isEmpty {
-      guard let minor = MoneyFormat.parseMinor(trimmed) else { return nil }
+      guard let minor = MoneyFormat.parseMinor(trimmed, decimalSeparator: decimalSeparator) else { return nil }
       budget = .aed(minor)
     }
     return ProjectDraft(

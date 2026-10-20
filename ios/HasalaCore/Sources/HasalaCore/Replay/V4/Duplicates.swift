@@ -121,8 +121,56 @@ extension State {
     }
   }
 
+  func mergeWinner(_ id: String) -> String? {
+    guard let t = txns[id], t.retiredBy == nil, t.supersededBy == nil, let w = t.mergedInto,
+      let winner = txns[w], winner.isLive, !winner.unparsed
+    else { return nil }
+    return w
+  }
+
+  mutating func forwardCategory(_ id: String, seq: Int64) {
+    guard let w = mergeWinner(id), let t = txns[id] else { return }
+    carryUserEdits(from: id, to: w)
+    let winner = txns[w]!
+    if !sameText(winner.category, t.category) || winner.needsReview != t.needsReview {
+      anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w), which keeps its own category")
+    }
+  }
+
+  mutating func forwardSplit(_ id: String, seq: Int64) {
+    guard let w = mergeWinner(id), let t = txns[id] else { return }
+    carryUserEdits(from: id, to: w)
+    if txns[w]!.splits != t.splits {
+      anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w), which keeps its own split")
+    }
+  }
+
+  mutating func forwardAnnotations(_ id: String, fields: [String], seq: Int64) {
+    guard let w = mergeWinner(id), let t = txns[id] else { return }
+    for f in fields {
+      if txns[w]!.annotations[f] == nil {
+        txns[w]!.annotations[f] = t.annotations[f]
+      } else if txns[w]!.annotations[f]?.value != t.annotations[f]?.value {
+        anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w), which keeps its own \(f)")
+      }
+    }
+  }
+
+  func sameText(_ a: String?, _ b: String?) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case (let x?, let y?): return utf8Equal(x, y)
+    default: return false
+    }
+  }
+
+  mutating func flagEditOfMergedCopy(_ id: String, seq: Int64) {
+    guard let w = mergeWinner(id) else { return }
+    anomaly(seq, "unsupported_edit_field", "\(id) is merged into \(w): its edit stays on the merged copy")
+  }
+
   mutating func unmergeRow(_ id: String, seq: Int64) -> Bool {
-    guard let t = txns[id], let w = t.mergedInto else { return false }
+    guard let t = txns[id], let w = t.mergedInto, t.retiredBy == nil, t.supersededBy == nil else { return false }
     if let live = liveByIngestID[t.ingestID], !utf8Equal(live, id) {
       anomaly(seq, "duplicate_ingest", "\(id) cannot come back: its ingest id is live as \(live)")
       return false
@@ -140,6 +188,10 @@ extension State {
 
   mutating func resolveCopy(_ id: String, other: String, decision: String?, _ e: LogEntry) {
     let t = txns[id]!
+    if let by = t.retiredBy ?? t.supersededBy {
+      anomaly(e.seq, "duplicate_disposition_mismatch", "\(id): copy resolution on a row that left the ledger by \(by)")
+      return
+    }
     guard let target = t.copyOf, utf8Equal(target, other), t.mergeKind != "certain" else {
       anomaly(e.seq, "duplicate_disposition_mismatch", "\(id): copy resolution names \(other), the row names \(t.copyOf ?? "null")")
       return

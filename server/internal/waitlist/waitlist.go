@@ -274,6 +274,12 @@ func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UU
 			  WHERE id = $1`, e); err != nil {
 			return fmt.Errorf("waitlist: join: %w", err)
 		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE invite_codes SET state = 'revoked', closed_at = now()
+			  WHERE waitlist_entry_id = $1 AND id <> $2 AND state IN ('awaiting_testflight','queued','active')`,
+			e, inviteID); err != nil {
+			return fmt.Errorf("waitlist: join: revoke the entry's other invites: %w", err)
+		}
 		// A request identical to one the account already made is dropped first.
 		if _, err := tx.Exec(ctx,
 			`DELETE FROM bank_requests r WHERE r.waitlist_entry_id = $1 AND EXISTS (

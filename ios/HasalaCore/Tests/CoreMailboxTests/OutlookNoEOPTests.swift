@@ -97,7 +97,7 @@ import Testing
     #expect(a.verdict.reason == .fail)
     #expect(TxnGates(ar: a.verdict.reason.rawValue, sender: "untrusted").reviewReason == .senderUnverified)
     let pass = AuthResults.analyze(
-      ["Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: x", ""].joined(separator: "\r\n"),
+      ["Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: a@bank.example", ""].joined(separator: "\r\n"),
       provider: .gmail)
     #expect(pass.verdict.reason == .pass)
     #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").reviewReason == nil)

@@ -93,6 +93,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// Observed through the runtime: the review flag arrives with `GET /account`.
   var offersSampleData: Bool { runtime()?.offersSampleData ?? false }
 
+  var connectRefused: Bool {
+    guard let rt = runtime() else { return false }
+    return Self.refusesConnect(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample)
+  }
+
+  static func refusesConnect(reviewAccount: Bool, holdsSample: Bool) -> Bool { reviewAccount || holdsSample }
+
+  static let sampleRefusal = "This account shows sample data, so it can't read your email."
+
   /// Observed through the runtime, like `mailboxes`.
   var offer: MailOffer? { runtime()?.mailOffer }
 
@@ -338,6 +347,9 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
+    if Self.refusesConnect(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
+      throw .failed(Self.sampleRefusal)
+    }
     let current = rt.lane
     let status = await (current ?? lane).status()
     let replaces = try Self.admit(
@@ -351,9 +363,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
     let oldPlan = switching && replaces && removingOld ? await current?.retirePlan() : nil
     let oldName = status.address ?? current?.provider.appName ?? provider.appName
+    let old = switching ? current : nil
+    await old?.stop()
     let result = await lane.connect(
       backfillDays: days, replacing: replaces, confirm: Self.confirm(ask, provider: provider))
-    let nowReading = try Self.linked(result, provider: provider)
+    let nowReading: String?
+    do { nowReading = try Self.linked(result, provider: provider) } catch {
+      await old?.resume()
+      throw error
+    }
     rt.activate(provider)
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)

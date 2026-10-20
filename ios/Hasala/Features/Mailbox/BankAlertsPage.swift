@@ -56,7 +56,7 @@ struct BankAlertsPage: View {
         heroCard(hero)
         mailboxesSection
         banksSection
-        if BuildSurface.showsUnfinished { needsALook }
+        needsALook
         howItReads
       }
       .padding(.horizontal, HSpacing.insetPage)
@@ -207,7 +207,8 @@ struct BankAlertsPage: View {
         .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier("bankAlerts.status")
       }
-      if case .signInAgain(let id, let provider) = hero.kind, lane?.capabilities.contains(.signInAgain) == true {
+      if case .signInAgain(let id, let provider) = hero.kind, lane?.capabilities.contains(.signInAgain) == true,
+         lane?.connectRefused != true {
         ProviderButton(provider: provider, loading: signIn?.busy ?? false) { signInAgain(id, provider) }
           .accessibilityIdentifier("bankAlerts.signInAgain")
         if let message = signIn?.failureLine {
@@ -310,14 +311,17 @@ struct BankAlertsPage: View {
 
   /// "Add a mailbox" shows with a second mailbox allowed, or when none is read (B4.6 rule 3).
   private var offersAdd: Bool {
-    guard let lane, stateKnown, lane.capabilities.contains(.connect), !lane.connectable.isEmpty else { return false }
+    guard let lane, stateKnown, !lane.connectRefused, lane.capabilities.contains(.connect), !lane.connectable.isEmpty
+    else { return false }
     return lane.capabilities.contains(.addSecond) || !mailboxes.contains { $0.state != .disconnected }
   }
 
   /// "Use another email" shows where the build holds one mailbox, the account has it, and
   /// another provider can replace it (the provider's screen confirms the switch).
   private var offersChange: Bool {
-    guard let lane, !offersAdd, lane.holdsOneLink, lane.capabilities.contains(.connect) else { return false }
+    guard let lane, !lane.connectRefused, !offersAdd, lane.holdsOneLink, lane.capabilities.contains(.connect) else {
+      return false
+    }
     // Not while another iPhone reads it: this iPhone can't switch it.
     guard !mailboxes.contains(where: \.readElsewhere) else { return false }
     let linked = Set(mailboxes.filter { $0.state != .disconnected }.map(\.provider))
@@ -417,46 +421,66 @@ struct BankAlertsPage: View {
     return bank == .dib ? "\(when) · Arabic alerts" : when
   }
 
-  // MARK: Needs a look (Debug)
+  // MARK: Needs a look
 
   /// "1 email we couldn't read" (Paper 64L): the alerts a mailbox fetched but couldn't read.
-  /// Their review has no screen yet, so this is Debug's (plan P3 work 5).
+  /// Their review has no screen yet (plan P3 work 5): Release shows the count, Debug's row opens.
   @ViewBuilder private var needsALook: some View {
     let unreadable = (lane as? UnreadableMailReporting)?.unreadableMail ?? []
     let count = max(unreadable.count, app.store.state.mailbox.unreadable)
     if count > 0 {
+      let detail = BuildSurface.showsUnfinished
+        ? unreadable.first.map { "\($0.kind) · \($0.provider.appName) · \($0.day)" } ?? Self.unreadableDetail
+        : Self.unreadableDetail
       VStack(alignment: .leading, spacing: 12) {
         HSectionHeader("Needs a look")
         HListCard {
-          Button {
-            app.say("Reading these here isn't built yet", icon: .info)
-          } label: {
-            HStack(spacing: HSpacing.listRowGap) {
-              Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
-                .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
-              VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 7) {
-                  Circle().fill(HColor.paceFillOverPace).frame(width: 8, height: 8)
-                  Text(count == 1 ? "1 email we couldn't read" : "\(count) emails we couldn't read")
-                    .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-                }
-                Text(unreadable.first.map { "\($0.kind) · \($0.provider.appName) · \($0.day)" }
-                  ?? "Kept for you to sort by hand")
-                  .hType(.footnote).foregroundStyle(HColor.listRowSupporting)
-              }
-              .frame(maxWidth: .infinity, alignment: .leading)
-              HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+          if BuildSurface.showsUnfinished {
+            Button {
+              app.say("Reading these here isn't built yet", icon: .info)
+            } label: {
+              unreadableRow(count, detail: detail, chevron: true)
             }
-            .padding(.horizontal, HSpacing.listRowInsetInline)
-            .padding(.vertical, HSpacing.listRowInsetBlock)
-            .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
-            .contentShape(Rectangle())
+            .buttonStyle(HRowPressStyle())
+            .accessibilityIdentifier("bankAlerts.unreadable")
+          } else {
+            unreadableRow(count, detail: detail, chevron: false)
+              .accessibilityElement(children: .combine)
+              .accessibilityIdentifier("bankAlerts.unreadable")
           }
-          .buttonStyle(HRowPressStyle())
-          .accessibilityIdentifier("bankAlerts.unreadable")
         }
       }
     }
+  }
+
+  static let unreadableDetail = "Kept for you to sort by hand"
+
+  static func unreadableLine(_ n: Int) -> String {
+    n == 1 ? "1 email we couldn't read" : "\(n) emails we couldn't read"
+  }
+
+  private func unreadableRow(_ count: Int, detail: String, chevron: Bool) -> some View {
+    HStack(spacing: HSpacing.listRowGap) {
+      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
+        .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 7) {
+          Circle().fill(HColor.paceFillOverPace).frame(width: 8, height: 8)
+          Text(Self.unreadableLine(count))
+            .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+        }
+        Text(detail)
+          .hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      if chevron {
+        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+      }
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, HSpacing.listRowInsetBlock)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .contentShape(Rectangle())
   }
 
   // MARK: How Hasala reads your email

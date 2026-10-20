@@ -22,12 +22,18 @@ public enum InstallCheck {
 
   public static func run(
     protectedDataAvailable: Bool, defaults: UserDefaults, keychain: KeychainSecretStore, groups: [String?],
-    widgetsDirectory: URL?
+    widgetsDirectory: URL?, apiHost: String? = nil
   ) -> Outcome {
     guard protectedDataAvailable else { return .notNow(statuses: []) }
     if defaults.string(forKey: installIDKey) != nil { return .done }
+    let secrets = apiHost.map { Secrets(store: keychain, apiHost: $0) }
+    let leftover = secrets.flatMap { try? $0.session() }
     let (complete, statuses) = keychain.purgeAll(groups: groups)
     guard complete else { return .notNow(statuses: statuses) }
+    if var stranded = leftover, let secrets {
+      stranded.pending_logout = true
+      try? secrets.writeSession(stranded)
+    }
     if let w = widgetsDirectory { try? FileManager.default.removeItem(at: w) }  // logged and retried, never fatal
     let id = (try? SystemRandom().uuidV4()) ?? "00000000-0000-4000-8000-000000000000"
     defaults.set(id, forKey: installIDKey)

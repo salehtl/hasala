@@ -22,7 +22,7 @@
  * Trust a verdict ONLY when:
  *   - exactly one Authentication-Results header has authserv-id == mx.google.com,
  *   - it precedes every other Authentication-Results header, AND
- *   - it reports dkim=pass (with a d= domain) OR dmarc=pass.
+ *   - it reports dkim=pass with a d= domain aligned with the one From domain.
  *
  * Everything else is untrusted with a specific reason:
  *   - no_ar       — no mx.google.com A-R present (drafts, Gmail's POP importer,
@@ -222,28 +222,15 @@ function analyze(rawHeaders: string): Analysis {
 
     const ar = parsed[idx]!;
 
-    // dkim=pass with a d= domain, OR dmarc=pass.
+    const from = fields.filter((f) => fieldNameEquals(f.name, "from"));
+    const fromDom = from.length === 1 ? fromDomain(from[0]!.value) : "";
     const dkimPass = ar.methods.find(
-      (m) => m.method === "dkim" && m.result === "pass" && !!domainProp(m, "header.d"),
+      (m) => m.method === "dkim" && m.result === "pass" && dkimAligned(domainProp(m, "header.d"), fromDom),
     );
-    const dmarcPass = ar.methods.find((m) => m.method === "dmarc" && m.result === "pass");
-
-    if (!dkimPass && !dmarcPass) {
+    if (!dkimPass) {
       return untrusted("fail");
     }
-
-    const domain =
-      (dkimPass && domainProp(dkimPass, "header.d")) ||
-      (dmarcPass && domainProp(dmarcPass, "header.from")) ||
-      null;
-
-    // dmarc=pass with no header.from is still a pass per the rule, but then
-    // there is no domain to match a sender list against. A trusted verdict with
-    // no domain is unusable downstream, so fail closed rather than hand Task 12
-    // a null it would have to special-case.
-    if (domain === null) {
-      return untrusted("fail");
-    }
+    const domain = domainProp(dkimPass, "header.d");
 
     return { verdict: { trusted: true, reason: "pass" }, domain };
   } catch {
@@ -386,6 +373,11 @@ function analyzeOutlook(rawHeaders: string): Analysis {
  * `BankDomains.domainOf`, which the sender-trust match downstream uses on the
  * same From.
  */
+function dkimAligned(d: string, from: string): boolean {
+  if (d === "" || from === "") return false;
+  return from === d || from.endsWith("." + d) || (from.includes(".") && d.endsWith("." + from));
+}
+
 function fromDomain(value: string): string {
   const at = value.lastIndexOf("@");
   if (at < 0) return "";

@@ -11,8 +11,8 @@
  *
  * The hardened rule (spec D4): trust a verdict ONLY when exactly one A-R header
  * has authserv-id == mx.google.com, AND it precedes every other A-R header, AND
- * it reports dkim=pass (with a d= domain) OR dmarc=pass. Everything else is
- * untrusted with a specific reason.
+ * it reports dkim=pass with a d= domain aligned with the one From domain.
+ * Everything else is untrusted with a specific reason.
  */
 
 import { expect, test } from "bun:test";
@@ -34,16 +34,63 @@ test("single passing mx.google.com A-R with dkim=pass ⇒ trusted", () => {
   expect(verifiedDomain(raw)).toBe("bank.example");
 });
 
-test("dmarc=pass alone (no dkim d=) still trusts, verified domain from header.from", () => {
+test("dmarc=pass alone (no dkim d=) ⇒ fail", () => {
   const raw = block(
     "Authentication-Results: mx.google.com;",
     "       dkim=neutral;",
     "       dmarc=pass header.from=Bank.Example",
     "From: Bank <alerts@bank.example>",
   );
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "fail" });
+  expect(verifiedDomain(raw)).toBeNull();
+});
+
+test("dkim=pass for another domain with dmarc=pass ⇒ fail", () => {
+  const raw = block(
+    "Authentication-Results: mx.google.com;",
+    "       dkim=pass header.i=@esp.example header.d=esp.example;",
+    "       spf=pass smtp.mailfrom=bank.example;",
+    "       dmarc=pass header.from=bank.example",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "fail" });
+});
+
+test("the first aligned dkim=pass decides", () => {
+  const raw = block(
+    "Authentication-Results: mx.google.com;",
+    "       dkim=pass header.d=esp.example;",
+    "       dkim=pass header.d=bank.example",
+    "From: Bank <alerts@bank.example>",
+  );
   expect(gmailVerdict(raw)).toEqual({ trusted: true, reason: "pass" });
-  // header.from carried mixed case; domains are case-insensitive.
   expect(verifiedDomain(raw)).toBe("bank.example");
+});
+
+test("dkim d= and From align on a subdomain either way", () => {
+  const sub = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
+    "From: Bank <alerts@mail.bank.example>",
+  );
+  expect(verifiedDomain(sub)).toBe("bank.example");
+  const parent = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.d=mail.bank.example",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(verifiedDomain(parent)).toBe("mail.bank.example");
+  const sibling = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.d=notbank.example",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(gmailVerdict(sibling)).toEqual({ trusted: false, reason: "fail" });
+});
+
+test("dkim=pass with no From or two From fields ⇒ fail", () => {
+  const ar = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example";
+  expect(gmailVerdict(block(ar, "Subject: hi"))).toEqual({ trusted: false, reason: "fail" });
+  expect(
+    gmailVerdict(block(ar, "From: Bank <alerts@bank.example>", "From: Bank <alerts@bank.example>")),
+  ).toEqual({ trusted: false, reason: "fail" });
 });
 
 test("no Authentication-Results header ⇒ no_ar (drafts / POP-importer case)", () => {

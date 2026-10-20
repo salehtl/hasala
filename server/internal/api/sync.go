@@ -107,28 +107,28 @@ type UploadResponse struct {
 // Pull
 // ---------------------------------------------------------------------------
 
-// pullSlots bounds the pulls in flight per account (spec 02 §11.3: at most 2;
-// the third gets 429). The map holds one counter per account only while a
-// pull runs.
-type pullSlots struct {
+// accountSlots bounds the requests of one kind in flight per account (spec 02
+// §11.3: at most 2 pulls; the third gets 429). The map holds one counter per
+// account only while a request runs.
+type accountSlots struct {
 	mu    sync.Mutex
 	inUse map[uuid.UUID]int
 }
 
-func (p *pullSlots) acquire(u uuid.UUID) bool {
+func (p *accountSlots) acquire(u uuid.UUID, limit int) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.inUse == nil {
 		p.inUse = map[uuid.UUID]int{}
 	}
-	if p.inUse[u] >= maxConcurrentPulls {
+	if p.inUse[u] >= limit {
 		return false
 	}
 	p.inUse[u]++
 	return true
 }
 
-func (p *pullSlots) release(u uuid.UUID) {
+func (p *accountSlots) release(u uuid.UUID) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.inUse[u]--; p.inUse[u] <= 0 {
@@ -141,7 +141,7 @@ func (p *pullSlots) release(u uuid.UUID) {
 // refused for being the third in flight spends no pull-user token, and a
 // slot the limiter then refuses is given back.
 func (s *Server) pullAdmitted(w http.ResponseWriter, userID uuid.UUID) bool {
-	if !s.pulls.acquire(userID) {
+	if !s.pulls.acquire(userID, maxConcurrentPulls) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many pulls; try again shortly")
 		return false
 	}
@@ -310,6 +310,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 	// back-to-back append transactions — and it is explicitly NOT the storage
 	// control; see the syncRate block in api.go for the arithmetic that shows
 	// why no request rate could be.
+	if !s.uploads.acquire(userID, maxConcurrentUploads) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many uploads; try again shortly")
+		return
+	}
+	defer s.uploads.release(userID)
 	if !s.SyncPerUser.Allow(userID.String()) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many uploads; try again shortly")
 		return
@@ -420,7 +425,10 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 		return
 	}
 
-	seqs, err := s.Appender.AppendClient(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
+	seqs, stored, err := s.Appender.AppendClientStored(r.Context(), userID, req.WriterID, req.Stream, rows, headSig)
+	if !stored {
+		s.SyncUploadBytes.RefundN(userID.String(), float64(uploadBytes))
+	}
 	if err != nil {
 		s.writeAppendErr(w, r, userID, err)
 		return

@@ -324,19 +324,31 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// The money lines this transaction contributes to budgets: its splits, or itself.
   /// Refunds count against their category's spending; money in otherwise does not.
   public var lines: [(category: CategoryID, minor: Int64)] {
-    if !splits.isEmpty { return splits.map { ($0.categoryID, $0.homeMinor ?? 0) } }
+    if !splits.isEmpty { return splits.map { ($0.categoryID, signed($0.homeMinor ?? 0)) } }
     guard let c = categoryID else { return [] }
     return [(c, homeSigned ?? 0)]
   }
 
-  public var homeSigned: Int64? { homeMinor.map { direction == .out ? $0 : -$0 } }
+  public var homeSigned: Int64? { homeMinor.map(signed) }
+
+  func signed(_ minor: Int64) -> Int64 { direction == .out ? minor : -minor }
+
+  public func apportioned(_ lines: [SplitLine]) -> [SplitLine] {
+    let shares = Money.apportion(home: homeMinor, parts: lines.map(\.amount.minor))
+    return lines.enumerated().map { i, l in
+      var line = l
+      line.amount = Money(minor: l.amount.minor, currency: amount.currency)
+      line.homeMinor = shares?[i]
+      return line
+    }
+  }
 
   public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
 
   public var isNotCounted: Bool { homeMinor == nil }
 
-  /// Counts in budgets this month: sorted, not archived, not a transfer.
-  public var countsInPlan: Bool { !needsReview && !archived && !isTransfer && !isHeldCopy }
+  /// Counts in budgets: not archived, not a transfer, not a held copy. Rows in review count too.
+  public var countsInPlan: Bool { !archived && !isTransfer && !isHeldCopy }
 }
 
 public enum BillCadence: String, Sendable, Hashable, Codable {
@@ -722,11 +734,6 @@ public struct LedgerState: Sendable, Hashable, Codable {
 
   /// Spent in a category in a month: the sum of its money lines (refunds net out).
   public func spent(_ category: CategoryID, in month: YearMonth) -> Money {
-    var total: Int64 = 0
-    for t in txns where t.countsInPlan && t.postedAt.date.yearMonth == month {
-      if let p = project(t.projectID), !p.countInPlan { continue }
-      for line in t.lines where line.category == category { total += line.minor }
-    }
-    return .aed(total)
+    .aed(Spending.spent(self, category: category, in: month))
   }
 }

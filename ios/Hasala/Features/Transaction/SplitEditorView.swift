@@ -27,8 +27,9 @@ struct SplitEditorView: View {
   @FocusState private var noteFocus: Int?
 
   private var total: Int64 { model.detail?.amount.minor ?? 0 }
+  private var currency: String { model.detail?.amount.currency ?? Money.home }
   private var amounts: [Int64?] { lines.map { $0.entry.minor } }
-  private var verdict: SplitDraftVerdict { TransactionEngine.splitDraftVerdict(amounts, total: .aed(total)) }
+  private var verdict: SplitDraftVerdict { TransactionEngine.splitDraftVerdict(amounts, total: Money(minor: total, currency: currency)) }
   private var options: [CategoryOption] { model.categoryGroups.filter { $0.bucket != .other }.flatMap(\.options) }
 
   var body: some View {
@@ -110,6 +111,7 @@ struct SplitEditorView: View {
   /// "12 dirhams" / "12 dirhams 50", as VoiceOver should say a figure (page 16 · 08).
   static func dirhams(_ m: Money) -> String {
     let whole = m.minor / 100, fils = m.minor % 100
+    if m.currency != Money.home { return "\(m.currency) \(MoneyFormat.string(m.minor))" }
     return fils == 0 ? "\(MoneyFormat.grouped(UInt64(whole))) dirhams" : "\(MoneyFormat.grouped(UInt64(whole))) dirhams \(fils)"
   }
 
@@ -304,7 +306,7 @@ struct SplitEditorView: View {
 
   private func save() {
     let parsed = lines.compactMap { l in
-      l.entry.minor.map { SplitLine(id: l.id, categoryID: l.category, amount: .aed($0), note: l.note) }
+      l.entry.minor.map { SplitLine(id: l.id, categoryID: l.category, amount: Money(minor: $0, currency: currency), note: l.note) }
     }
     if model.saveSplit(parsed) { done() }
   }

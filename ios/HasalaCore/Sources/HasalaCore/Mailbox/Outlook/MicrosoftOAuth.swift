@@ -23,7 +23,7 @@ public struct MicrosoftOAuthConfig: Sendable, Equatable {
   /// The `consumers` tenant: personal Microsoft accounts (outlook.com, hotmail.com, live.com).
   public static let consumersTenantID = "9188040d-6c67-4c5b-b112-36a304b66dad"
   public static let mailReadScope = "https://graph.microsoft.com/Mail.Read"
-  public static let scopes = "openid email offline_access \(mailReadScope)"
+  public static let scopes = "openid email profile offline_access \(mailReadScope)"
   /// Where a user ends the app's consent (there is no revoke endpoint).
   public static let consentManagementURL = "https://account.live.com/consent/Manage"
 
@@ -59,8 +59,8 @@ public struct MicrosoftOAuthConfig: Sendable, Equatable {
 
 /// The claims of a Microsoft id_token the app reads. The app does NOT verify the signature (the
 /// server does, `msjwt`); it reads the address it shows and checks the nonce and the tenant.
-/// `preferred_username` needs the `profile` scope, which is not asked for: it is read only as a
-/// fallback for display, when it holds an address.
+/// `preferred_username` comes with the `profile` scope: it is read only as a fallback when it
+/// holds an address.
 public struct MicrosoftIDTokenClaims: Sendable, Equatable {
   public let email: String?
   public let preferredUsername: String?

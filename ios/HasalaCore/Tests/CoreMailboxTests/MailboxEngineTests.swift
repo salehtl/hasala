@@ -212,6 +212,30 @@ let day: Int64 = 86_400_000
 }
 
 @Suite struct CycleTests {
+  @Test func spamOrMailForAnotherMailboxWaitsForReview() async throws {
+    let rig = Rig()
+    var spam = SyntheticMail.dibCard(id: "sp1", dateMs: Rig.t0 - 3 * day)
+    spam.spam = true
+    rig.gmail.add(spam)
+    rig.gmail.add(SyntheticMail.dibCard(id: "to1", dateMs: Rig.t0 - 2 * day, to: "someone.else@example.net"))
+    rig.gmail.add(SyntheticMail.dibCard(id: "ok1", dateMs: Rig.t0 - day))
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    rig.clock.advance(3_600_000)
+    var later = SyntheticMail.dibCard(id: "sp2", dateMs: rig.clock.nowMs() - 60_000)
+    later.spam = true
+    rig.gmail.add(later)
+    rig.gmail.add(SyntheticMail.dibCard(id: "to2", dateMs: rig.clock.nowMs() - 50_000, to: "someone.else@example.net"))
+    rig.gmail.historyID = "1001"
+    _ = await rig.engine.runCycle(trigger: .silentPush)
+    let byID = Dictionary(uniqueKeysWithValues: await rig.enqueued().map { ($0.messageID, $0) })
+    #expect(byID.count == 5)
+    for id in ["sp1", "to1", "sp2", "to2"] {
+      #expect(byID[id]?.needsReview == true && byID[id]?.payload["amount_minor"] == .string("25000"), "\(id)")
+    }
+    #expect(byID["ok1"]?.needsReview == false)
+  }
+
   @Test func newMailBecomesAnOpOnceAndNeverDownloadsTwice() async throws {
     let rig = Rig()
     await rig.connectAndActivate()
@@ -330,6 +354,29 @@ let day: Int64 = 86_400_000
     let retry = await rig.engine.runCycle(trigger: .retry)
     #expect(retry.phase == .active && retry.completed && retry.ops == 0)  // the op was already queued
     #expect(await rig.enqueued().filter { $0.messageID == "big" }.count == 1)
+  }
+
+  @Test func accountFullIsAPauseThatProbesAgain() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.clock.advance(3_600_000)
+    rig.gmail.add(SyntheticMail.dibCard(id: "big", dateMs: rig.clock.nowMs() - 1000))
+    await rig.ledger.setFlush(.accountFull)
+    #expect(await rig.engine.runCycle(trigger: .refresh).haltedOn == .accountFull)
+    rig.clock.advance(60_000)
+    #expect(await rig.engine.runCycle(trigger: .timer).haltedOn == .accountFull)
+    await rig.ledger.setFlush(.flushed)
+    rig.clock.advance(15 * 60_000)
+    let timed = await rig.engine.runCycle(trigger: .timer)
+    #expect(timed.phase == .active && timed.completed)
+
+    await rig.ledger.setFlush(.accountFull)
+    rig.clock.advance(3_600_000)
+    rig.gmail.add(SyntheticMail.dibCard(id: "big2", amount: "9.00", dateMs: rig.clock.nowMs() - 1000))
+    #expect(await rig.engine.runCycle(trigger: .refresh).haltedOn == .accountFull)
+    await rig.ledger.setFlush(.flushed)
+    let fg = await rig.engine.runCycle(trigger: .foreground)
+    #expect(fg.phase == .active && fg.completed)
   }
 
   @Test func deadlineCutKeepsTheWatermarkAndResumesWithoutRedownloading() async {
@@ -610,7 +657,7 @@ let day: Int64 = 86_400_000
       guard
         case .mail(let p) = MessageDisposer.parse(
           raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
-          bankDomains: trusted, trusted: trusted, analyze: AuthResults.analyze)
+          bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
       else { throw CancellationError() }
       c.stage.append(p)
     }

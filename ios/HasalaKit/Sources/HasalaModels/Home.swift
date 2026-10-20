@@ -264,11 +264,13 @@ public struct NetWorthWidget: Sendable, Hashable, Codable {
   public var change: MoneyPhrase
   /// Twelve points for the sparkline, as permille of the drawn range (geometry only).
   public var spark: [Permille]
+  public var mark: TotalMark?
 
-  public init(total: Money, change: MoneyPhrase, spark: [Permille]) {
+  public init(total: Money, change: MoneyPhrase, spark: [Permille], mark: TotalMark? = nil) {
     self.total = total
     self.change = change
     self.spark = spark
+    self.mark = mark
   }
 }
 

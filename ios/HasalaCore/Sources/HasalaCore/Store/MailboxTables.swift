@@ -135,7 +135,7 @@ public struct MailboxWrite: Sendable {
 
 public final class MailboxTableStore: Sendable {
   public static let setAsideRing = 200
-  public static let unreadableRing = 50
+  public static let unreadableRing = 1_000
 
   let db: any DatabaseWriter
 

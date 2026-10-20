@@ -103,18 +103,25 @@ public extension MoneyFormat {
   /// Parses a typed amount ("297", "45.15", "1,800.5") into minor units without a float
   /// (spec 04 §14.6 `parseMinorDraft`). Nil for anything else: letters, a second point,
   /// more than two decimals, a sign, or nothing at all.
-  static func parseMinor(_ draft: String) -> Int64? {
+  static func parseMinor(_ draft: String, decimalSeparator: String = ".") -> Int64? {
+    let chars = Array(draft)
+    var decimalComma: Int?
+    if decimalSeparator == ",", !chars.contains(where: isPoint), let last = chars.lastIndex(of: ",") {
+      let after = chars[(last + 1)...].filter { !isGrouping($0) }
+      if after.count <= 2 { decimalComma = last }
+    }
     var whole: Int64 = 0
     var fils: Int64 = 0
     var decimals = -1
     var digits = 0
-    for ch in draft where ch != "," && ch != " " {
-      if ch == "." {
+    for (i, ch) in chars.enumerated() {
+      if isPoint(ch) || i == decimalComma {
         guard decimals < 0 else { return nil }
         decimals = 0
         continue
       }
-      guard let d = ch.wholeNumberValue, ch.isASCII else { return nil }
+      if isGrouping(ch) { continue }
+      guard let d = typedDigit(ch) else { return nil }
       digits += 1
       if decimals >= 0 {
         decimals += 1
@@ -134,5 +141,18 @@ public extension MoneyFormat {
   static func draft(_ minor: Int64) -> String {
     let m = minor.magnitude
     return "\(m / 100)." + (m % 100 < 10 ? "0" : "") + "\(m % 100)"
+  }
+
+  static func typedDigit(_ ch: Character) -> Int? {
+    guard ch.unicodeScalars.count == 1, ch.unicodeScalars.first?.properties.numericType == .decimal,
+      let d = ch.wholeNumberValue, (0...9).contains(d)
+    else { return nil }
+    return d
+  }
+
+  static func isPoint(_ ch: Character) -> Bool { ch == "." || ch == "\u{066B}" }
+
+  static func isGrouping(_ ch: Character) -> Bool {
+    ch == "," || ch == " " || ch == "\u{066C}" || ch == "\u{00A0}" || ch == "\u{202F}" || ch == "'"
   }
 }

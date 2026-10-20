@@ -136,8 +136,8 @@ public enum TransactionEngine {
   /// a line that is empty or zero never "adds up exactly", even when the others do.
   public static func splitDraftVerdict(_ amounts: [Int64?], total: Money) -> SplitDraftVerdict {
     let placed = amounts.reduce(Int64(0)) { $0 + ($1 ?? 0) }
-    if placed < total.minor { return .leftToPlace(.aed(total.minor - placed)) }
-    if placed > total.minor { return .over(.aed(placed - total.minor)) }
+    if placed < total.minor { return .leftToPlace(Money(minor: total.minor - placed, currency: total.currency)) }
+    if placed > total.minor { return .over(Money(minor: placed - total.minor, currency: total.currency)) }
     if amounts.count < 2 || amounts.contains(where: { ($0 ?? 0) <= 0 }) { return .emptyLine }
     return .addsUp
   }

@@ -156,6 +156,68 @@ func TestFiveWrongCodesBurnTheCodeAndPauseTheAddress(t *testing.T) {
 	}
 }
 
+func TestConcurrentWrongCodesGetAtMostFiveGuesses(t *testing.T) {
+	f := newAcctFixture(t)
+	addr := newAddr()
+	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(false), Email: addr, DisplayName: "Maya"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right := f.lastCode(addr)
+	wrong := "000000"
+	if right == wrong {
+		wrong = "111111"
+	}
+	hold, err := f.pool.Begin(bgctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hold.Exec(bgctx, `SELECT 1 FROM email_codes WHERE ceremony_id = $1 FOR UPDATE`, s.SignupID); err != nil {
+		t.Fatal(err)
+	}
+	const n = 10
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() { errs <- f.acct.SignupVerify(bgctx, s.SignupID, wrong) }()
+	}
+	time.Sleep(300 * time.Millisecond)
+	if err := hold.Rollback(bgctx); err != nil {
+		t.Fatal(err)
+	}
+	guessed := 0
+	for i := 0; i < n; i++ {
+		err := <-errs
+		if !errors.Is(err, ErrCodeRejected) {
+			t.Fatalf("a concurrent guess: %v", err)
+		}
+		if strings.Contains(err.Error(), "wrong code") {
+			guessed++
+		}
+	}
+	if guessed > codeMaxAttempts {
+		t.Fatalf("%d concurrent guesses were compared with the code, want at most %d", guessed, codeMaxAttempts)
+	}
+	if err := f.acct.SignupVerify(bgctx, s.SignupID, right); !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("the right code after five guesses: %v", err)
+	}
+}
+
+func TestACodeWithEveryAttemptTakenRefusesTheRightGuess(t *testing.T) {
+	f := newAcctFixture(t)
+	addr := newAddr()
+	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: f.printedInvite(false), Email: addr, DisplayName: "Maya"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right := f.lastCode(addr)
+	if _, err := f.pool.Exec(bgctx, `UPDATE email_codes SET attempts = $2 WHERE ceremony_id = $1`, s.SignupID, codeMaxAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.acct.SignupVerify(bgctx, s.SignupID, right); !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("the right code with no attempt left: %v", err)
+	}
+}
+
 func TestCodeSendsAreCountedPerAddressAndHour(t *testing.T) {
 	f := newAcctFixture(t)
 	addr := newAddr()

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1211,7 +1212,7 @@ func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
 	u := h.user("u")
 	tok := h.session(u)
 	// Two slots held: the third concurrent pull is refused.
-	if !h.srv.pulls.acquire(u) || !h.srv.pulls.acquire(u) {
+	if !h.srv.pulls.acquire(u, maxConcurrentPulls) || !h.srv.pulls.acquire(u, maxConcurrentPulls) {
 		t.Fatal("two slots were not available")
 	}
 	w := h.req("GET", "/api/v1/sync?stream=hot", tok, nil)
@@ -1227,7 +1228,7 @@ func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
 	h.srv.PullPerUser = NewLimiter(0, 2, 16, time.Now)
 	h.h = h.srv.Handler()
 	// A pull refused for want of a slot spends no pull-user token.
-	if !h.srv.pulls.acquire(u) || !h.srv.pulls.acquire(u) {
+	if !h.srv.pulls.acquire(u, maxConcurrentPulls) || !h.srv.pulls.acquire(u, maxConcurrentPulls) {
 		t.Fatal("two slots were not available")
 	}
 	wantStatus(t, h.req("GET", "/api/v1/sync?stream=hot", tok, nil), http.StatusTooManyRequests)
@@ -1240,5 +1241,106 @@ func TestPullsAreLimitedPerAccountAndToTwoInFlight(t *testing.T) {
 	// And a pull the limiter refuses gives its slot back.
 	if n := len(h.srv.pulls.inUse); n != 0 {
 		t.Fatalf("%d accounts still hold slots after a limiter refusal", n)
+	}
+}
+
+type heldBody struct {
+	once    sync.Once
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *heldBody) Read([]byte) (int, error) {
+	b.once.Do(func() { close(b.started) })
+	<-b.release
+	return 0, io.EOF
+}
+
+func (h *harness) uploadsInFlight(u uuid.UUID) int {
+	h.srv.uploads.mu.Lock()
+	defer h.srv.uploads.mu.Unlock()
+	return h.srv.uploads.inUse[u]
+}
+
+func TestUploadsAreLimitedToTwoInFlightPerAccount(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("u")
+	tok := h.session(u)
+	h.writer(u, "ios-00000000-0000-4000-8000-00000000000a")
+	other := h.user("other")
+	otherTok := h.session(other)
+	h.writer(other, "ios-00000000-0000-4000-8000-00000000000b")
+
+	release := make(chan struct{})
+	var wg sync.WaitGroup
+	codes := make([]int, maxConcurrentUploads)
+	for i := range maxConcurrentUploads {
+		body := &heldBody{started: make(chan struct{}), release: release}
+		r := httptest.NewRequest("POST", "/api/v1/sync", body)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", "Bearer "+tok)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			h.h.ServeHTTP(w, r)
+			codes[i] = w.Code
+		}()
+		select {
+		case <-body.started:
+		case <-time.After(10 * time.Second):
+			close(release)
+			t.Fatalf("upload %d never reached its body", i)
+		}
+	}
+	if n := h.uploadsInFlight(u); n != maxConcurrentUploads {
+		close(release)
+		t.Fatalf("%d uploads hold slots, want %d", n, maxConcurrentUploads)
+	}
+
+	blobs, _ := uploadChain(t, u, "ios-00000000-0000-4000-8000-00000000000a", 1, blob.ZeroHash, 1)
+	w := h.req("POST", "/api/v1/sync", tok, UploadRequest{
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs,
+	})
+	wantStatus(t, w, http.StatusTooManyRequests)
+	wantError(t, w, "rate_limited")
+	if n := countRows(t, h.pool, u); n != 0 {
+		close(release)
+		t.Fatalf("a refused upload stored %d rows", n)
+	}
+
+	otherBlobs, _ := uploadChain(t, other, "ios-00000000-0000-4000-8000-00000000000b", 1, blob.ZeroHash, 1)
+	wantStatus(t, h.req("POST", "/api/v1/sync", otherTok, UploadRequest{
+		WriterID: "ios-00000000-0000-4000-8000-00000000000b", Stream: blob.StreamHot, Blobs: otherBlobs,
+	}), http.StatusOK)
+
+	close(release)
+	wg.Wait()
+	for i, c := range codes {
+		if c != http.StatusBadRequest {
+			t.Fatalf("held upload %d answered %d, want 400 for its empty body", i, c)
+		}
+	}
+	if n := len(h.srv.uploads.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold upload slots", n)
+	}
+
+	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs,
+	}), http.StatusOK)
+	if n := len(h.srv.uploads.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold upload slots after a stored upload", n)
+	}
+
+	h.srv.SyncPerUser = NewLimiter(0, 1, 16, time.Now)
+	h.h = h.srv.Handler()
+	h.req("POST", "/api/v1/sync", tok, UploadRequest{
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs,
+	})
+	wantStatus(t, h.req("POST", "/api/v1/sync", tok, UploadRequest{
+		WriterID: "ios-00000000-0000-4000-8000-00000000000a", Stream: blob.StreamHot, Blobs: blobs,
+	}), http.StatusTooManyRequests)
+	if n := len(h.srv.uploads.inUse); n != 0 {
+		t.Fatalf("%d accounts still hold upload slots after a limiter refusal", n)
 	}
 }

@@ -45,7 +45,7 @@ public struct RuleRowModel: Sendable, Hashable, Identifiable {
 
 public enum ProfileEngine {
   public static func snapshot(_ s: LedgerState, now: LocalDateTime) -> ProfileSnapshot {
-    let netWorth = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
+    let netWorth = s.homeTotal(s.accounts.map(\.balance))
     let tracked = s.bills.filter { $0.state == .tracked }.count
     let found = s.billCandidates.count
     let categories = s.categories.filter { !$0.archived }.count
@@ -57,8 +57,9 @@ public enum ProfileEngine {
       emailLine: s.profile.email + (s.profile.emailVerified ? " · Verified" : " · Not verified"),
       mailbox: s.mailbox,
       accounts: MoneyPhrase([
-        .text("\(s.accounts.count) · net worth "), .amount(.aed(netWorth), .rounded, hidden: 4),
-      ]),
+        .text("\(s.accounts.count) · net worth \(netWorth.estimate ? "≈ " : "")"),
+        .amount(netWorth.money, .rounded, hidden: 4),
+      ] + (netWorth.mark?.caption.map { [.text(" · \($0)")] } ?? [])),
       accountsKnown: s.accounts.contains { !$0.balance.isZero },
       bills: "\(tracked) tracked" + (found > 0 ? " · \(found) new found" : ""),
       newBills: found,

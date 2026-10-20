@@ -312,6 +312,8 @@ protocol AccountService: AnyObject {
   /// conformer that doesn't declare it gets `.all` (see the extension below).
   var capabilities: AccountCapabilities { get }
 
+  var keysOnThisIPhone: Bool { get }
+
   // MARK: Signup (C1, C1-P)
 
   /// `signup/begin`: the invite, the address and the name.
@@ -405,6 +407,8 @@ extension AccountService {
   /// Everything, so the Debug mocks and test doubles offer every screen unchanged. A
   /// live service overrides this with only the actions it has wired.
   var capabilities: AccountCapabilities { .all }
+
+  var keysOnThisIPhone: Bool { true }
 
   func endUnlockOffer() {}
 

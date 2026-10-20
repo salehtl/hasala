@@ -14,7 +14,11 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
 
   /// `baseURL` is the API origin (`https://api.hasala.app`); `clientHeader` is
   /// `ios/<CFBundleShortVersionString>/<CFBundleVersion>`.
-  public init(baseURL: URL, clientHeader: String, timeout: TimeInterval = 30) {
+  public convenience init(baseURL: URL, clientHeader: String, timeout: TimeInterval = 30) {
+    self.init(baseURL: baseURL, clientHeader: clientHeader, timeout: timeout, protocolClasses: nil)
+  }
+
+  init(baseURL: URL, clientHeader: String, timeout: TimeInterval, protocolClasses: [AnyClass]?) {
     self.baseURL = baseURL
     self.clientHeader = clientHeader
     let c = URLSessionConfiguration.ephemeral
@@ -25,7 +29,8 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
     c.requestCachePolicy = .reloadIgnoringLocalCacheData
     c.timeoutIntervalForRequest = timeout
     c.waitsForConnectivity = false
-    session = URLSession(configuration: c)
+    if let protocolClasses { c.protocolClasses = protocolClasses }
+    session = URLSession(configuration: c, delegate: RefuseRedirects(), delegateQueue: nil)
   }
 
   deinit { session.invalidateAndCancel() }
@@ -56,7 +61,9 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
     guard let u = urlRequest(for: request) else { throw .offline(.badURL) }
     do {
       let (data, response) = try await session.data(for: u)
-      guard let http = response as? HTTPURLResponse else { throw TransportError.offline(.badServerResponse) }
+      guard let http = response as? HTTPURLResponse, !(300..<400).contains(http.statusCode) else {
+        throw TransportError.offline(.badServerResponse)
+      }
       var headers: [String: String] = [:]
       for (k, v) in http.allHeaderFields {
         if let k = k as? String, let v = v as? String { headers[k] = v }
@@ -82,5 +89,14 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
       .tls
     default: .offline(code)
     }
+  }
+}
+
+final class RefuseRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void
+  ) {
+    completionHandler(nil)
   }
 }

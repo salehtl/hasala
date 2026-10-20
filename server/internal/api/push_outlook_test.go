@@ -184,14 +184,26 @@ func TestOutlookHookValidation(t *testing.T) {
 	wantStatus(t, w, http.StatusTooManyRequests)
 }
 
-func TestOutlookHookValidationCountsAgainstTheGlobalBudget(t *testing.T) {
+func TestOutlookHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
 	h := newHarness(t)
-	push := outlookPushOn()
-	push.HookGlobal = NewLimiter(0, 2, 1, time.Now)
-	withOutlook(h, push)
-	wantStatus(t, h.graph(outlookHookPath, "validationToken=a", nil), http.StatusOK)
-	wantStatus(t, h.graph(outlookLifecyclePath, "validationToken=a", nil), http.StatusOK)
-	wantStatus(t, h.graph(outlookHookPath, "validationToken=a", nil), http.StatusTooManyRequests)
+	wk, o, _ := withOutlook(h, outlookPushOn())
+	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
+	o.Push.HookGlobal = NewLimiter(0, 1, 1, time.Now)
+	u := outlookLinkRow(h, o, "global", "ios-67777777-7777-4777-8777-777777777777", testClientState)
+	for range 5 {
+		wantStatus(t, h.graph(outlookHookPath, "validationToken=a", nil), http.StatusOK)
+		wantStatus(t, h.graph(outlookLifecyclePath, "validationToken=a", nil), http.StatusOK)
+		wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(otherClientState))), http.StatusAccepted)
+		wantStatus(t, h.graph(outlookHookPath, "", []byte("hello")), http.StatusNoContent)
+	}
+	wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(testClientState))), http.StatusAccepted)
+	if ws := wk.take(); len(ws) != 1 || ws[0].user != u {
+		t.Fatalf("wakes %+v, want the holder once", ws)
+	}
+	wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(testClientState))), http.StatusTooManyRequests)
+	if len(wk.take()) != 0 {
+		t.Fatal("a request over the global budget woke someone")
+	}
 }
 
 // A token with a body is no handshake: 204, a counter, no echo, no wake.

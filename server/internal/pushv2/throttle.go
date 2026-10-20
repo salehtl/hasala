@@ -7,6 +7,8 @@ package pushv2
 import (
 	"container/list"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Windows and caps (spec 02 §12.4).
@@ -27,6 +29,7 @@ type tokenState struct {
 	// wake is owed when it closes, per debounced reason.
 	windowEnd map[Reason]time.Time
 	pending   map[Reason]bool
+	owner     map[Reason]uuid.UUID
 	// Sends counted toward the caps within the last hour.
 	mailSends []time.Time
 	allSends  []time.Time
@@ -72,7 +75,8 @@ func (th *throttle) state(t Target) *tokenState {
 		th.lru.MoveToFront(s.elem)
 		return s
 	}
-	s := &tokenState{key: key, t: t, windowEnd: map[Reason]time.Time{}, pending: map[Reason]bool{}}
+	s := &tokenState{key: key, t: t, windowEnd: map[Reason]time.Time{}, pending: map[Reason]bool{},
+		owner: map[Reason]uuid.UUID{}}
 	s.elem = th.lru.PushFront(s)
 	th.states[key] = s
 	for th.lru.Len() > throttleMaxKeys {
@@ -117,8 +121,9 @@ func (s *tokenState) count(r Reason, now time.Time) {
 	s.allSends = append(s.allSends, now)
 }
 
-// admit decides one wake for t at now. A sendNow has already been counted.
-func (th *throttle) admit(t Target, r Reason, now time.Time) decision {
+// admit decides one wake for t at now, on behalf of owner (uuid.Nil for
+// pre-collected tokens). A sendNow has already been counted.
+func (th *throttle) admit(t Target, r Reason, now time.Time, owner uuid.UUID) decision {
 	s := th.state(t)
 	exempt := r == ReasonSecurity || r == ReasonAccountGone
 	if !exempt && now.Before(s.coolUntil) {
@@ -127,6 +132,7 @@ func (th *throttle) admit(t Target, r Reason, now time.Time) decision {
 	if w := windowFor(r); w > 0 {
 		if end, ok := s.windowEnd[r]; ok && now.Before(end) {
 			s.pending[r] = true
+			s.owner[r] = owner
 			return deferred
 		}
 		if s.capped(r, now) {
@@ -144,10 +150,12 @@ func (th *throttle) admit(t Target, r Reason, now time.Time) decision {
 	return sendNow
 }
 
-// trailing is one wake owed at the end of a window.
+// trailing is one wake owed at the end of a window, for the account whose
+// wake was deferred (uuid.Nil when the token was pre-collected).
 type trailing struct {
-	t Target
-	r Reason
+	t     Target
+	r     Reason
+	owner uuid.UUID
 }
 
 // due closes every window that has ended by now and returns the trailing wakes
@@ -172,7 +180,7 @@ func (th *throttle) due(now time.Time) (out []trailing, dropped []Reason) {
 			// stream of notices sends at most one wake per window.
 			s.windowEnd[r] = now.Add(windowFor(r))
 			s.count(r, now)
-			out = append(out, trailing{t: s.t, r: r})
+			out = append(out, trailing{t: s.t, r: r, owner: s.owner[r]})
 		}
 	}
 	return out, dropped

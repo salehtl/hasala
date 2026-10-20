@@ -11,6 +11,7 @@ public struct ExportRow: Sendable, Hashable {
   public var description: String
   /// Signed: money out negative.
   public var amount: Money
+  public var homeMinor: Int64?
   public var direction: Direction
   public var category: String
   public var merchant: String
@@ -22,6 +23,7 @@ public struct ExportRow: Sendable, Hashable {
     date = t.postedAt.date
     description = t.provenance?.rawMerchant ?? t.merchant
     amount = Money(minor: t.direction == .out ? -t.amount.minor : t.amount.minor, currency: t.amount.currency)
+    homeMinor = t.homeMinor.map { t.direction == .out ? -$0 : $0 }
     direction = t.direction
     category = s.category(t.categoryID)?.name ?? ""
     merchant = t.title
@@ -33,7 +35,7 @@ public struct ExportRow: Sendable, Hashable {
 
 public enum CSVExport {
   public static let headers = [
-    "Date", "Description", "Amount", "Currency", "Direction", "Category", "Merchant", "Note", "Project", "Account",
+    "Date", "Description", "Amount", "Currency", "\(Money.home) amount", "Direction", "Category", "Merchant", "Note", "Project", "Account",
   ]
 
   /// The whole file, CRLF line ends and a trailing CRLF, as the PWA writes it.
@@ -45,6 +47,7 @@ public enum CSVExport {
         text(r.description),
         decimal(r.amount.minor),
         r.amount.currency,
+        r.homeMinor.map(decimal) ?? "",
         r.direction == .out ? "Spending" : "Income",
         text(r.category),
         text(r.merchant),

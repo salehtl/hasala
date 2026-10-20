@@ -13,6 +13,7 @@ import SwiftUI
 struct AccountsView: View {
   @Bindable var app: AppModel
   @State private var model: AccountsViewModel
+  @Environment(\.inProfileSheet) private var inProfileSheet
 
   init(app: AppModel) {
     self.app = app
@@ -29,7 +30,8 @@ struct AccountsView: View {
         NetWorthChartCard(chart: chart).padding(.horizontal, HSpacing.insetPage)
       }
       if !snap.everyday.isEmpty {
-        section("Everyday money", subtitle: "Counts in your plan", total: snap.everydayTotal, rows: snap.everyday)
+        section("Everyday money", subtitle: "Counts in your plan" + (snap.everydayMark?.caption.map { " · \($0)" } ?? ""),
+                total: snap.everydayTotal, approx: snap.everydayMark?.estimate ?? false, rows: snap.everyday)
           .padding(.horizontal, HSpacing.insetPage)
       }
       if !snap.tracking.isEmpty {
@@ -64,7 +66,8 @@ struct AccountsView: View {
       Text("Net worth").hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
         .accessibilityAddTraits(.isHeader)
       MoneyText(snap.netWorth, figure: .hero, unit: .unit, hidden: model.hidden, hiddenGlyphs: 6,
-                color: HColor.textPrimary, sign: snap.netWorth.isNegative ? .debt : .none)
+                color: HColor.textPrimary, sign: snap.netWorth.isNegative ? .debt : .none,
+                approx: snap.netWorthMark?.estimate ?? false)
         .accessibilityIdentifier("accounts.netWorth")
       if let change = snap.monthChange {
         let up = !change.isNegative
@@ -85,12 +88,17 @@ struct AccountsView: View {
         .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("accounts.change")
       }
+      if let mark = snap.netWorthMark, let line = mark.line {
+        NotCountedLine(mark, line: line, id: "accounts.netWorth.notCounted", inProfileSheet: inProfileSheet, app: app)
+      }
     }
     .padding(.top, 4)
   }
 
   /// "Everyday money / Counts in your plan ……… 38,163.00" over its list card.
-  private func section(_ title: String, subtitle: String, total: Money?, rows: [AccountRowModel]) -> some View {
+  private func section(_ title: String, subtitle: String, total: Money?, approx: Bool = false, rows: [AccountRowModel])
+    -> some View
+  {
     VStack(alignment: .leading, spacing: 12) {
       ReflowingRow(alignment: .bottom) {
         VStack(alignment: .leading, spacing: 2) {
@@ -100,7 +108,7 @@ struct AccountsView: View {
       } trailing: {
         if let total {
           MoneyText(total, figure: .unit, hidden: model.hidden, hiddenGlyphs: 4, color: HColor.textSecondary,
-                    sign: total.isNegative ? .debt : .none)
+                    sign: total.isNegative ? .debt : .none, approx: approx)
         }
       }
       HListCard {

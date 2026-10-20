@@ -24,13 +24,32 @@ struct AuthResultsTests {
     #expect(AuthResults.verifiedDomain(raw) == "bank.example")
   }
 
-  @Test("dmarc=pass alone trusts, with the domain from header.from, lower-cased")
+  @Test("dmarc=pass alone is not trusted")
   func dmarcOnly() {
     let raw = block(
       "Authentication-Results: mx.google.com;", "       dkim=neutral;", "       dmarc=pass header.from=Bank.Example",
       "From: Bank <alerts@bank.example>")
-    #expect(verdict(raw) == (true, .pass))
-    #expect(AuthResults.verifiedDomain(raw) == "bank.example")
+    #expect(verdict(raw) == (false, .fail))
+    #expect(AuthResults.verifiedDomain(raw) == nil)
+  }
+
+  @Test("dkim=pass must align with the one From domain")
+  func alignment() {
+    let other = block(
+      "Authentication-Results: mx.google.com; dkim=pass header.d=esp.example; spf=pass smtp.mailfrom=bank.example;",
+      "       dmarc=pass header.from=bank.example", "From: Bank <alerts@bank.example>")
+    #expect(verdict(other) == (false, .fail))
+    let sub = block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: <a@mail.Bank.example>")
+    #expect(AuthResults.verifiedDomain(sub) == "bank.example")
+    let parent = block("Authentication-Results: mx.google.com; dkim=pass header.d=mail.bank.example", "From: a@bank.example")
+    #expect(AuthResults.verifiedDomain(parent) == "mail.bank.example")
+    let suffix = block("Authentication-Results: mx.google.com; dkim=pass header.d=ank.example", "From: a@bank.example")
+    #expect(verdict(suffix) == (false, .fail))
+    let single = block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: a@example")
+    #expect(verdict(single) == (false, .fail))
+    let ar = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example"
+    #expect(verdict(block(ar, "Subject: hi")) == (false, .fail))
+    #expect(verdict(block(ar, "From: a@bank.example", "From: a@bank.example")) == (false, .fail))
   }
 
   @Test("spf=pass alone is never trusted")
@@ -43,7 +62,7 @@ struct AuthResultsTests {
   @Test("no A-R, or only a foreign authserv-id, is no_ar")
   func noAR() {
     #expect(verdict(block("From: someone@bank.example", "Subject: hi")) == (false, .noAR))
-    let foreign = block("Authentication-Results: mail.attacker.test; dkim=pass header.d=bank.example", "From: x")
+    let foreign = block("Authentication-Results: mail.attacker.test; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(foreign) == (false, .noAR))
     #expect(AuthResults.verifiedDomain(foreign) == nil)
   }
@@ -52,7 +71,7 @@ struct AuthResultsTests {
   func multiple() {
     let raw = block(
       "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
-      "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: x")
+      "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(raw) == (false, .multipleAR))
     #expect(AuthResults.verifiedDomain(raw) == nil)
   }
@@ -61,12 +80,12 @@ struct AuthResultsTests {
   func topmost() {
     let above = block(
       "Authentication-Results: attacker.test; dkim=pass header.d=bank.example",
-      "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: x")
+      "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(above) == (false, .notTopmost))
     #expect(AuthResults.verifiedDomain(above) == nil)
     let below = block(
       "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
-      "Authentication-Results: some-forwarder.test; dkim=pass header.d=bank.example", "From: x")
+      "Authentication-Results: some-forwarder.test; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(below) == (true, .pass))
     #expect(AuthResults.verifiedDomain(below) == "bank.example")
   }
@@ -75,12 +94,12 @@ struct AuthResultsTests {
   func failures() {
     let fail = block(
       "Authentication-Results: mx.google.com;", "       dkim=fail header.d=bank.example;",
-      "       dmarc=fail header.from=bank.example", "From: x")
+      "       dmarc=fail header.from=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(fail) == (false, .fail))
-    let noD = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: x")
+    let noD = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(noD) == (false, .fail))
     #expect(AuthResults.verifiedDomain(noD) == nil)
-    let dmarcNoFrom = block("Authentication-Results: mx.google.com; dmarc=pass", "From: x")
+    let dmarcNoFrom = block("Authentication-Results: mx.google.com; dmarc=pass", "From: Bank <alerts@bank.example>")
     #expect(verdict(dmarcNoFrom) == (false, .fail))
   }
 
@@ -89,19 +108,19 @@ struct AuthResultsTests {
     let folded = block(
       "Authentication-Results: mx.google.com;", "\tdkim=pass", "        header.d=bank.example;",
       "\tspf=pass (google.com: domain of alerts@bank.example designates ...)", "        smtp.mailfrom=alerts@bank.example;",
-      "\tdmarc=pass header.from=bank.example", "From: x")
+      "\tdmarc=pass header.from=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(folded) == (true, .pass))
     #expect(AuthResults.verifiedDomain(folded) == "bank.example")
     let comments = block(
       "Authentication-Results: mx.google.com (Google mail server);",
       "       dkim=pass (2048-bit key; unprotected) header.d=bank.example;",
-      "       dmarc=pass (policy applied (nested comment)) header.from=bank.example", "From: x")
+      "       dmarc=pass (policy applied (nested comment)) header.from=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(comments) == (true, .pass))
-    let semis = block("Authentication-Results: mx.google.com;", "       dkim=pass (key; note; with; semicolons) header.d=bank.example")
+    let semis = block("Authentication-Results: mx.google.com;", "       dkim=pass (key; note; with; semicolons) header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(AuthResults.verifiedDomain(semis) == "bank.example")
-    let quoted = block("Authentication-Results: \"mx.google.com\"; dkim=\"pass\" header.d=\"bank.example\"")
+    let quoted = block("Authentication-Results: \"mx.google.com\"; dkim=\"pass\" header.d=\"bank.example\"", "From: Bank <alerts@bank.example>")
     #expect(AuthResults.verifiedDomain(quoted) == "bank.example")
-    let address = block("Authentication-Results: mx.google.com; dmarc=pass header.from=alerts@Bank.Example")
+    let address = block("Authentication-Results: mx.google.com; dkim=pass header.d=alerts@Bank.Example", "From: Bank <alerts@bank.example>")
     #expect(AuthResults.verifiedDomain(address) == "bank.example")
   }
 
@@ -109,10 +128,10 @@ struct AuthResultsTests {
   func names() {
     #expect(verdict(block("Authentication-Results: mx.google.com:25; dkim=pass header.d=bank.example")) == (false, .noAR))
     #expect(verdict(block("ARC-Authentication-Results: i=1; mx.google.com; dkim=pass header.d=bank.example")) == (false, .noAR))
-    let upper = block("AUTHENTICATION-RESULTS: MX.GOOGLE.COM; dkim=PASS header.d=Bank.Example")
+    let upper = block("AUTHENTICATION-RESULTS: MX.GOOGLE.COM; dkim=PASS header.d=Bank.Example", "From: Bank <alerts@bank.example>")
     #expect(verdict(upper) == (true, .pass))
     #expect(AuthResults.verifiedDomain(upper) == "bank.example")
-    #expect(AuthResults.verifiedDomain(block("Authentication-Results: mx.google.com; dkim/1=pass header.d=bank.example")) == "bank.example")
+    #expect(AuthResults.verifiedDomain(block("Authentication-Results: mx.google.com; dkim/1=pass header.d=bank.example", "From: Bank <alerts@bank.example>")) == "bank.example")
   }
 
   @Test("domains must be plain LDH names with a dot")
@@ -150,27 +169,27 @@ struct AuthResultsTests {
     // counted, and the result fails closed as multiple_ar).
     let nbspName = block(
       "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
-      "\u{A0}Authentication-Results: mx.google.com; dkim=pass header.d=evil.example")
+      "\u{A0}Authentication-Results: mx.google.com; dkim=pass header.d=evil.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(nbspName) == (false, .multipleAR))
     // A BOM before the value is trimmed like a space.
-    let bom = block("Authentication-Results:\u{FEFF} mx.google.com; dkim=pass header.d=bank.example")
+    let bom = block("Authentication-Results:\u{FEFF} mx.google.com; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(bom) == (true, .pass))
     // NBSP around a domain value is trimmed.
-    let nbspDomain = block("Authentication-Results: mx.google.com; dkim=pass header.d=\"\u{A0}bank.example\u{A0}\"")
+    let nbspDomain = block("Authentication-Results: mx.google.com; dkim=pass header.d=\"\u{A0}bank.example\u{A0}\"", "From: Bank <alerts@bank.example>")
     #expect(AuthResults.verifiedDomain(nbspDomain) == "bank.example")
     // U+212A lower-cases to `k`, so "d\u{212A}im" is dkim, as it is to the twin.
-    let kelvin = block("Authentication-Results: mx.google.com; d\u{212A}im=pass header.d=bank.example")
+    let kelvin = block("Authentication-Results: mx.google.com; d\u{212A}im=pass header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(kelvin) == (true, .pass))
     // NBSP is NOT a token separator: "dkim=pass\u{A0}header.d=..." is one token.
-    let glued = block("Authentication-Results: mx.google.com; dkim=pass\u{A0}header.d=bank.example")
+    let glued = block("Authentication-Results: mx.google.com; dkim=pass\u{A0}header.d=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(glued) == (false, .fail))
   }
 
   @Test("CR, LF and CRLF all end a header line")
   func lineEnds() {
-    let cr = "Authentication-Results: mx.google.com;\r dkim=pass header.d=bank.example\r\rbody"
+    let cr = "Authentication-Results: mx.google.com;\r dkim=pass header.d=bank.example\rFrom: a@bank.example\r\rbody"
     #expect(verdict(cr) == (true, .pass))
-    let lf = "Authentication-Results: mx.google.com;\n dkim=pass header.d=bank.example\n\nbody"
+    let lf = "Authentication-Results: mx.google.com;\n dkim=pass header.d=bank.example\nFrom: a@bank.example\n\nbody"
     #expect(verdict(lf) == (true, .pass))
   }
 }
@@ -192,7 +211,7 @@ struct MailHeaderTests {
     #expect(MailHeaders.headerBlock(rawMessage: bom + Array("A: 1\r\n\r\nbody".utf8)) == "A: 1")
     #expect(MailHeaders.headerBlock(rawMessage: bom + bom + Array("A: 1\r\n\r\nbody".utf8)) == "\u{FEFF}A: 1")
     // A large body no longer counts against the A-R bound.
-    let big = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\n\r\n"
+    let big = "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: a@bank.example\r\n\r\n"
       + String(repeating: "x", count: 900_000)
     #expect(AuthResults.gmailVerdict(MailHeaders.headerBlock(big)).trusted)
   }

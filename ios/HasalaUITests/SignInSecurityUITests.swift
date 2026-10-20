@@ -95,6 +95,19 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
+  @MainActor
+  func testTheWordsStayHiddenWhileTheScreenIsCaptured() throws {
+    let app = launch(scenario: "unlockPasswordOnly", arguments: ["-HasalaScreenCaptured"])
+    XCTAssertTrue(el(app, "unlock.words").waitForExistence(timeout: 15))
+    tap(app, "unlock.words")
+    XCTAssertTrue(el(app, "phraseEntry.field").waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "phraseEntry.masked").waitForExistence(timeout: uiWait))
+    type(app, "phraseEntry.field", Self.phrase.prefix(2).joined(separator: " ") + " ")
+    XCTAssertFalse(app.staticTexts[Self.phrase[0]].exists)
+    attach(app, "Unlock · 12 words while captured")
+    try audit(app)
+  }
+
   /// Also a passkey (Paper K34): both ways; the words' suggestions come from the list.
   @MainActor
   func testUnlockOffersThePasskeyAndTheWords() throws {

@@ -147,6 +147,7 @@ actor WorkCoordinator {
   func close() {
     closed = true
     rerun = nil
+    inFlight?.cancel()
   }
 
   /// Holds new runs and waits for the one in flight to end: the account is about to be

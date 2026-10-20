@@ -143,22 +143,20 @@ type codeFailure struct {
 	tag          []byte
 }
 
-// apply adds the attempt and, at the fifth, burns the code and (unless it is
-// C8's) pauses the address's purpose for 15 minutes. It reports whether the
-// code burned.
+// apply follows a wrong guess whose attempt limitCodeVerify already counted:
+// once the code has used all five, it burns the code and (unless it is C8's)
+// pauses the address's purpose for 15 minutes. It reports whether the code
+// burned.
 func (f *codeFailure) apply(ctx context.Context, q queryExecer, now time.Time) (bool, error) {
 	var attempts int
 	if err := q.QueryRow(ctx,
-		`UPDATE email_codes SET attempts = least(attempts + 1, 5),
-		        burned_at = CASE WHEN attempts + 1 >= 5 THEN $2::timestamptz ELSE burned_at END
-		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL RETURNING attempts`, f.codeID, now).Scan(&attempts); err != nil {
+		`UPDATE email_codes SET burned_at = $2
+		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts >= $3 RETURNING attempts`,
+		f.codeID, now, codeMaxAttempts).Scan(&attempts); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
-		return false, fmt.Errorf("auth: count a code attempt: %w", err)
-	}
-	if attempts < codeMaxAttempts {
-		return false, nil
+		return false, fmt.Errorf("auth: burn a code: %w", err)
 	}
 	if f.ceremonyKind != CeremonyStepUp {
 		if _, err := q.Exec(ctx,
@@ -171,9 +169,11 @@ func (f *codeFailure) apply(ctx context.Context, q queryExecer, now time.Time) (
 	return true, nil
 }
 
-// limitCodeVerify is the code-verify-email counter (20 per 15-minute window
-// for the code's address), bumped before the work in its own statement. A
-// device_code proof skips it (the DAK gates it).
+// limitCodeVerify runs before every code check, each step committed in its
+// own statement: the code-verify-email counter (20 per 15-minute window for
+// the code's address), then one of the code's five attempts, taken before the
+// guess is compared so that concurrent guesses cannot share one. A code with
+// no attempt left is refused with ErrCodeRejected.
 func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, codeID uuid.UUID) error {
 	var tag []byte
 	err := pool.QueryRow(ctx, `SELECT email_tag FROM email_codes WHERE code_id = $1`, codeID).Scan(&tag)
@@ -189,6 +189,17 @@ func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, cod
 	}
 	if n > codeVerifiesPerSpan {
 		return fmt.Errorf("%w: code checks for this address", ErrRateLimited)
+	}
+	var attempts int
+	err = pool.QueryRow(ctx,
+		`UPDATE email_codes SET attempts = attempts + 1
+		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts < $2 RETURNING attempts`,
+		codeID, codeMaxAttempts).Scan(&attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: no attempts left", ErrCodeRejected)
+	}
+	if err != nil {
+		return fmt.Errorf("auth: count a code attempt: %w", err)
 	}
 	return nil
 }

@@ -54,6 +54,7 @@ public enum NormalizeError: Error, Equatable, Sendable {
   /// A charset Go decodes with a codec no other executor reproduces (UTF-16, Shift_JIS, GB*,
   /// ISO-2022-*). Refused rather than guessed; the caller routes the message to review.
   case unsupportedCharset(String)
+  case tooDeep
 }
 
 public enum Normalizer {
@@ -62,6 +63,8 @@ public enum Normalizer {
 
   /// Every version this build can run, oldest first. Old versions are never removed.
   public static func versions() -> [Int] { [1] }
+
+  public static let maxMultipartDepth = 32
 
   /// Runs normalizer `version` over a raw RFC 822 message. `receivedAtMs` is the mailbox
   /// arrival time (Gmail `internalDate`, epoch milliseconds), used as `emailDate` whenever no
@@ -75,6 +78,8 @@ public enum Normalizer {
       extracted = try extract(raw)
     } catch .unsupportedCharset(let label) {
       throw .unsupportedCharset(label)
+    } catch .tooDeep {
+      throw .tooDeep
     } catch {
       // extract lets only .unsupportedCharset escape; anything else is a bug, and failing
       // closed (no text) is the safe reading of it.
@@ -113,9 +118,10 @@ public enum Normalizer {
     var htmlCharset = ""
     var plainCharset = ""
 
-    /// Returns whether the walk was aborted. Throws only `.unsupportedCharset`.
-    mutating func walk(_ e: MIME.Entity) throws(MIMEFailure) -> Bool {
+    /// Returns whether the walk was aborted. Throws only `.unsupportedCharset` and `.tooDeep`.
+    mutating func walk(_ e: MIME.Entity, depth: Int = 0) throws(MIMEFailure) -> Bool {
       if MIME.hasPrefix(e.mediaType, "multipart/") {
+        if depth >= Normalizer.maxMultipartDepth { throw .tooDeep }
         do throws(MIMEFailure) {
           var parts = try MIME.Multipart(body: e.rawBody, boundary: e.params["boundary"] ?? "")
           while let part = try parts.next() {
@@ -123,7 +129,7 @@ public enum Normalizer {
             // Go surfaces an unknown charset or encoding on a SUB-PART as an error out of
             // NextPart, which aborts the walk; on the top-level entity it is ignored.
             if entity.failed { return true }
-            if try walk(entity) { return true }
+            if try walk(entity, depth: depth + 1) { return true }
           }
         } catch .walkAbort {
           return true
@@ -160,11 +166,11 @@ public enum Normalizer {
   }
 
   /// Stages 1-4; nil when a well-formed message has no text leaf. Throws only
-  /// `.unsupportedCharset`.
+  /// `.unsupportedCharset` and `.tooDeep`.
   static func extract(_ raw: [UInt8]) throws(MIMEFailure) -> Extracted? {
     let header: ParsedHeader
     do {
-      header = try MIME.readHeader(raw, 0)
+      header = try MIME.readHeader(raw[...], 0)
     } catch {
       // Stage 1: an unrecoverable header. v2 falls back to the raw body rather than dropping.
       return try rawFallback(raw)
@@ -173,7 +179,7 @@ public enum Normalizer {
     let subject = try MIME.decodeWords(header.get("subject"))
     let from = MIME.bareAddress(try MIME.decodeWords(header.get("from")))
 
-    let entity = try MIME.newEntity(header, Array(raw[header.bodyStart...]))
+    let entity = try MIME.newEntity(header, raw[header.bodyStart...])
     var walker = Walker()
     let aborted = try walker.walk(entity)
 

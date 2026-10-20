@@ -7,6 +7,14 @@ import CoreReplay
 import CoreTime
 import HasalaText
 
+private func planAdd(_ a: Int64, _ b: Int64) -> Int64 { Int64(clamping: Int128(a) + Int128(b)) }
+
+private func planSub(_ a: Int64, _ b: Int64) -> Int64 { Int64(clamping: Int128(a) - Int128(b)) }
+
+private func planSum<S: Sequence>(_ s: S) -> Int64 where S.Element == Int64 {
+  Int64(clamping: s.reduce(Int128(0)) { $0 + Int128($1) })
+}
+
 /// One `money_line` row (03c §3.9.3).
 public struct MoneyLine: Sendable, Equatable {
   public enum Flow: String, Sendable {
@@ -129,7 +137,7 @@ public struct BucketFigures: Sendable, Equatable {
   public var bucket: Bucket
   public var assigned: Int64
   public var spent: Int64
-  public var left: Int64 { assigned - spent }
+  public var left: Int64 { planSub(assigned, spent) }
 }
 
 public struct IncomeBreakdown: Sendable, Equatable {
@@ -144,7 +152,7 @@ public struct PlanCategoryRow: Sendable, Equatable {
   public var role: String?
   public var assigned: Int64
   public var spent: Int64
-  public var left: Int64 { assigned - spent }
+  public var left: Int64 { planSub(assigned, spent) }
   public var pace: PaceFigures
 }
 
@@ -207,7 +215,7 @@ public struct PlanEngine: Sendable {
 
   public func assigned(_ m: CivilMonth, _ c: String) -> Int64 {
     guard let row = plan.cells[c] else { return 0 }
-    if let cell = row[m.wire], let set = cell.latestSet { return set &+ cell.movesSinceSet }
+    if let cell = row[m.wire], let set = cell.latestSet { return planAdd(set, cell.movesSinceSet) }
     var base: Int64 = 0
     var best: CivilMonth?
     for (key, cell) in row {
@@ -217,7 +225,7 @@ public struct PlanEngine: Sendable {
         base = onward
       }
     }
-    return base &+ (row[m.wire]?.movesAll ?? 0)
+    return planAdd(base, row[m.wire]?.movesAll ?? 0)
   }
 
   /// Plan start month: the earliest month holding a set.
@@ -234,12 +242,12 @@ public struct PlanEngine: Sendable {
   // MARK: Activity (03a §6.2)
 
   public func activity(_ m: CivilMonth) -> [String: Int64] {
-    var out: [String: Int64] = [:]
+    var out: [String: Int128] = [:]
     for l in lines where l.localMonth == m && l.countsInPlan {
       guard let c = l.category, let v = l.signedHome else { continue }
-      out[c, default: 0] &+= v
+      out[c, default: 0] += Int128(v)
     }
-    return out
+    return out.mapValues { Int64(clamping: $0) }
   }
 
   public func spent(_ m: CivilMonth, _ c: String) -> Int64 { activity(m)[c] ?? 0 }
@@ -280,47 +288,47 @@ public struct PlanEngine: Sendable {
 
   /// `received_c(M)`: credits +home, debits −home, over income lines attributed to `M`.
   public func received(_ m: CivilMonth, _ c: String) -> Int64 {
-    var r: Int64 = 0
+    var r: Int128 = 0
     for l in lines where l.flow == .income && l.confirmed && utf8Equal(l.category ?? "", c) {
       guard let v = l.signedHome else { continue }
-      if attributedMonth(l) == m { r &+= v }
+      if attributedMonth(l) == m { r += Int128(v) }
     }
-    return r
+    return Int64(clamping: r)
   }
 
   public func expected(_ c: String) -> Int64 {
-    plan.incomeSources.values.filter { $0.active && utf8Equal($0.categoryID, c) }.reduce(0) { $0 &+ $1.amountMinor }
+    planSum(plan.incomeSources.values.filter { $0.active && utf8Equal($0.categoryID, c) }.map(\.amountMinor))
   }
 
   public func income(_ m: CivilMonth) -> IncomeBreakdown {
-    var total: Int64 = 0
-    var exp: Int64 = 0
-    var rec: Int64 = 0
+    var total: Int128 = 0
+    var exp: Int128 = 0
+    var rec: Int128 = 0
     let past = phase(m) == .past
     for c in incomeCategories() {
       let r = received(m, c)
       let e = expected(c)
-      exp &+= e
-      rec &+= r
-      total &+= past ? r : max(e, r)
+      exp += Int128(e)
+      rec += Int128(r)
+      total += Int128(past ? r : max(e, r))
     }
-    return IncomeBreakdown(total: total, expected: exp, received: rec)
+    return IncomeBreakdown(total: Int64(clamping: total), expected: Int64(clamping: exp), received: Int64(clamping: rec))
   }
 
   // MARK: Ready to assign and buckets (03a §6.4-§6.5)
 
   public func planned(_ m: CivilMonth) -> Int64 {
-    taxonomy.ordered.filter { $0.kind == .spending }.reduce(0) { $0 &+ assigned(m, $1.id) }
+    planSum(taxonomy.ordered.filter { $0.kind == .spending }.map { assigned(m, $0.id) })
   }
 
-  public func readyToAssign(_ m: CivilMonth) -> Int64 { income(m).total &- planned(m) }
+  public func readyToAssign(_ m: CivilMonth) -> Int64 { planSub(income(m).total, planned(m)) }
 
   public func buckets(_ m: CivilMonth) -> [BucketFigures] {
     let act = activity(m)
     return Bucket.allCases.map { b in
       let cats = taxonomy.ordered.filter { $0.kind == .spending && $0.bucket == b }
       return BucketFigures(
-        bucket: b, assigned: cats.reduce(0) { $0 &+ assigned(m, $1.id) }, spent: cats.reduce(0) { $0 &+ (act[$1.id] ?? 0) })
+        bucket: b, assigned: planSum(cats.map { assigned(m, $0.id) }), spent: planSum(cats.map { act[$0.id] ?? 0 }))
     }
   }
 
@@ -338,15 +346,15 @@ public struct PlanEngine: Sendable {
 
   /// `q_i = w_i ÷ P`; the `total − Σq` largest remainders get +1, ties to the earlier index.
   static func largestRemainder(total: Int64, weights: [Int128], divisor: Int128) -> [Int64] {
-    var q = weights.map { Int64($0 / divisor) }
+    var q = weights.map { Int64(clamping: $0 / divisor) }
     let r = weights.map { $0 % divisor }
-    var left = total - q.reduce(0, +)
+    let left = Int128(total) - q.reduce(Int128(0)) { $0 + Int128($1) }
     let order = r.indices.sorted { r[$0] != r[$1] ? r[$0] > r[$1] : $0 < $1 }
-    var i = 0
-    while left > 0 && !order.isEmpty {
-      q[order[i % order.count]] += 1
-      left -= 1
-      i += 1
+    guard left > 0, !order.isEmpty else { return q }
+    let each = left / Int128(order.count)
+    let extra = left % Int128(order.count)
+    for (k, idx) in order.enumerated() {
+      q[idx] = Int64(clamping: Int128(q[idx]) + each + (Int128(k) < extra ? 1 : 0))
     }
     return q
   }
@@ -356,7 +364,7 @@ public struct PlanEngine: Sendable {
   public enum PaceKind: Sendable { case everyday, bills, saving }
 
   public func pace(budget b: Int64, spent s: Int64, phase: Phase, kind: PaceKind) -> PaceFigures {
-    var f = PaceFigures(verdict: .onTrack, budget: b, spent: s, left: b &- s)
+    var f = PaceFigures(verdict: .onTrack, budget: b, spent: s, left: planSub(b, s))
     switch kind {
     case .bills:
       f.verdict = s > b ? .overBudget : .onTrack
@@ -380,14 +388,14 @@ public struct PlanEngine: Sendable {
       }
     }
     if case .current(let d, let dd) = phase {
-      if b > 0 { f.usedPercent = Int64(Int128(max(s, 0)) * 100 / Int128(b)) }
+      if b > 0 { f.usedPercent = Int64(clamping: Int128(max(s, 0)) * 100 / Int128(b)) }
       f.monthPercent = Int64(d * 100 / dd)
       f.projection = s <= 0 ? 0 : Int64(clamping: Int128(s) * Int128(dd) / Int128(d))
       f.allowancePerDay = f.left > 0 ? f.left / Int64(dd - d + 1) : nil
       f.dailyBudget = b / Int64(dd)
       if f.verdict == .overPace, s > 0 {
         let num = Int128(b) * Int128(d)
-        let day = Int((num + Int128(s) - 1) / Int128(s))
+        let day = Int(clamping: (num + Int128(s) - 1) / Int128(s))
         f.runOutDay = day
         f.daysEarly = dd - day
       }
@@ -407,18 +415,17 @@ public struct PlanEngine: Sendable {
 
   public func hero(_ m: CivilMonth) -> EverydayHero {
     let act = activity(m)
-    let e = everydayCategories().reduce(Int64(0)) { $0 &+ assigned(m, $1.id) }
-    let se = everydayCategories().reduce(Int64(0)) { $0 &+ (act[$1.id] ?? 0) }
-    let billsPaid = billsCategories().reduce(Int64(0)) { $0 &+ (act[$1.id] ?? 0) }
+    let e = planSum(everydayCategories().map { assigned(m, $0.id) })
+    let se = planSum(everydayCategories().map { act[$0.id] ?? 0 })
+    let billsPaid = planSum(billsCategories().map { act[$0.id] ?? 0 })
     let monthBills = bills.filter { $0.expectedDay.yearMonth == m }
     let toCome =
       monthBills.isEmpty
       ? nil
-      : monthBills.filter { [.upcoming, .due, .late].contains($0.status) && role($0.categoryID) == "bills" }
-        .reduce(Int64(0)) { $0 &+ $1.amount }
+      : planSum(monthBills.filter { [.upcoming, .due, .late].contains($0.status) && role($0.categoryID) == "bills" }.map(\.amount))
     let ph = phase(m)
     return EverydayHero(
-      month: m, phase: ph, budget: e, spent: se, left: e &- se, pace: pace(budget: e, spent: se, phase: ph, kind: .everyday),
+      month: m, phase: ph, budget: e, spent: se, left: planSub(e, se), pace: pace(budget: e, spent: se, phase: ph, kind: .everyday),
       billsPaid: billsPaid, billsToCome: toCome)
   }
 
@@ -451,25 +458,26 @@ public struct PlanEngine: Sendable {
 
   /// Q-GOAL-SAVED: confirmed spend/refund lines of `category` with `since ≤ local_date ≤ until`.
   public func goalSaved(category: String, since: CivilDate, until: CivilDate) -> Int64 {
-    lines.filter {
-      $0.confirmed && ($0.flow == .spend || $0.flow == .refund) && utf8Equal($0.category ?? "", category)
-        && since <= $0.localDate && $0.localDate <= until
-    }.reduce(Int64(0)) { $0 &+ ($1.signedHome ?? 0) }
+    planSum(
+      lines.filter {
+        $0.confirmed && ($0.flow == .spend || $0.flow == .refund) && utf8Equal($0.category ?? "", category)
+          && since <= $0.localDate && $0.localDate <= until
+      }.map { $0.signedHome ?? 0 })
   }
 
   public func goalProgress(id: String, _ g: Goal, month m: CivilMonth) -> GoalProgress {
     var progress: Int64 = 0
     var required: Int64?
     if g.source.kind == "category", let c = g.source.categoryID, let since = g.source.since.flatMap(CivilDate.init(wire:)) {
-      progress = g.startingMinor &+ goalSaved(category: c, since: since, until: m.lastDay)
+      progress = planAdd(g.startingMinor, goalSaved(category: c, since: since, until: m.lastDay))
       if let t = g.targetMonth.flatMap(CivilMonth.init(wire:)), !(t < m), let prev = m.adding(months: -1) {
-        let before = g.startingMinor &+ goalSaved(category: c, since: since, until: prev.lastDay)
-        let remaining = max(0, g.targetMinor &- before)
+        let before = planAdd(g.startingMinor, goalSaved(category: c, since: since, until: prev.lastDay))
+        let remaining = max(0, planSub(g.targetMinor, before))
         let monthsLeft = Int64(monthsBetween(m, t) + 1)
-        required = (remaining + monthsLeft - 1) / monthsLeft
+        required = Int64(clamping: (Int128(remaining) + Int128(monthsLeft) - 1) / Int128(monthsLeft))
       }
     }
-    let pct = g.targetMinor > 0 ? min(100, Int64(Int128(max(progress, 0)) * 100 / Int128(g.targetMinor))) : 0
+    let pct = g.targetMinor > 0 ? min(100, Int64(clamping: Int128(max(progress, 0)) * 100 / Int128(g.targetMinor))) : 0
     return GoalProgress(goalID: id, progress: progress, target: g.targetMinor, percent: pct, required: required)
   }
 
@@ -479,10 +487,11 @@ public struct PlanEngine: Sendable {
   /// uncategorized_out (debit +, credit −), over `projectLines` (every month)
   /// or, without them, the months in `lines`.
   public func projectSpent(_ projectID: String) -> Int64 {
-    (projectLines ?? lines).filter {
-      $0.confirmed && $0.projectID.map { utf8Equal($0, projectID) } == true
-        && ($0.flow == .spend || $0.flow == .refund || $0.flow == .uncategorizedOut)
-    }.reduce(Int64(0)) { $0 &+ ($1.signedHome ?? 0) }
+    planSum(
+      (projectLines ?? lines).filter {
+        $0.confirmed && $0.projectID.map { utf8Equal($0, projectID) } == true
+          && ($0.flow == .spend || $0.flow == .refund || $0.flow == .uncategorizedOut)
+      }.map { $0.signedHome ?? 0 })
   }
 
   // MARK: Auto-assign (03a §6.11)
@@ -500,7 +509,7 @@ public struct PlanEngine: Sendable {
     func give(_ c: String, _ v: Int64) {
       guard v > 0 else { return }
       if a[c] == nil { touched.append(c) }
-      a[c, default: 0] += v
+      a[c] = planAdd(a[c] ?? 0, v)
     }
     let act = activity(m)
     // 1. Bill shortfalls, by earliest unpaid expected day, then sortKey.
@@ -517,11 +526,11 @@ public struct PlanEngine: Sendable {
       }
     }
     for (info, _) in billCats where r > 0 {
-      let claim = monthBills.filter { utf8Equal($0.categoryID, info.id) && unpaid($0) }.reduce(Int64(0)) { $0 + $1.amount }
-      let short = max(0, (act[info.id] ?? 0) + claim - assigned(m, info.id))
+      let claim = planSum(monthBills.filter { utf8Equal($0.categoryID, info.id) && unpaid($0) }.map(\.amount))
+      let short = max(0, Int64(clamping: Int128(act[info.id] ?? 0) + Int128(claim) - Int128(assigned(m, info.id))))
       let g = min(r, short)
       give(info.id, g)
-      r -= g
+      r = planSub(r, g)
     }
     // 2. Goal targets, grouped by funding category, in (target_month, id) order.
     var needByFund: [(String, Int64)] = []
@@ -532,13 +541,13 @@ public struct PlanEngine: Sendable {
       }
     for g in sortedGoals {
       guard let f = g.goal.source.categoryID, let req = goalProgress(id: g.id, g.goal, month: m).required else { continue }
-      if let i = needByFund.firstIndex(where: { $0.0 == f }) { needByFund[i].1 += req } else { needByFund.append((f, req)) }
+      if let i = needByFund.firstIndex(where: { $0.0 == f }) { needByFund[i].1 = planAdd(needByFund[i].1, req) } else { needByFund.append((f, req)) }
     }
     for (f, req) in needByFund where r > 0 {
-      let need = max(0, req - assigned(m, f) - (a[f] ?? 0))
+      let need = max(0, Int64(clamping: Int128(req) - Int128(assigned(m, f)) - Int128(a[f] ?? 0)))
       let g = min(r, need)
       give(f, g)
-      r -= g
+      r = planSub(r, g)
     }
     // 3. Template deficits; 4. the remainder by the template.
     let t = template ?? BudgetSplit(need: 50, want: 30, saving: 20)
@@ -547,19 +556,21 @@ public struct PlanEngine: Sendable {
     var giveB: [Bucket: Int64] = [:]
     var defs: [Int64] = []
     for b in Bucket.allCases {
-      let target = Int64(Int128(inc) * Int128(pct[b]!) / 100)
-      let cur = taxonomy.ordered.filter { $0.kind == .spending && $0.bucket == b }.reduce(Int64(0)) { $0 + assigned(m, $1.id) + (a[$1.id] ?? 0) }
-      defs.append(max(0, target - cur))
+      let target = Int64(clamping: Int128(inc) * Int128(pct[b]!) / 100)
+      let cur = taxonomy.ordered.filter { $0.kind == .spending && $0.bucket == b }.reduce(Int128(0)) {
+        $0 + Int128(assigned(m, $1.id)) + Int128(a[$1.id] ?? 0)
+      }
+      defs.append(Int64(clamping: max(0, Int128(target) - cur)))
     }
-    let sumDef = defs.reduce(0, +)
+    let sumDef = defs.reduce(Int128(0)) { $0 + Int128($1) }
     if sumDef > 0 {
-      let parts = sumDef <= r ? defs : Self.largestRemainder(total: r, weights: defs.map { Int128($0) * Int128(r) }, divisor: Int128(sumDef))
-      for (i, b) in Bucket.allCases.enumerated() { giveB[b, default: 0] += parts[i] }
-      r -= parts.reduce(0, +)
+      let parts = sumDef <= Int128(r) ? defs : Self.largestRemainder(total: r, weights: defs.map { Int128($0) * Int128(r) }, divisor: sumDef)
+      for (i, b) in Bucket.allCases.enumerated() { giveB[b] = planAdd(giveB[b] ?? 0, parts[i]) }
+      r = Int64(clamping: Int128(r) - parts.reduce(Int128(0)) { $0 + Int128($1) })
     }
     if r > 0 {
       let parts = Self.largestRemainder(total: r, weights: Bucket.allCases.map { Int128(r) * Int128(pct[$0]!) }, divisor: 100)
-      for (i, b) in Bucket.allCases.enumerated() { giveB[b, default: 0] += parts[i] }
+      for (i, b) in Bucket.allCases.enumerated() { giveB[b] = planAdd(giveB[b] ?? 0, parts[i]) }
       r = 0
     }
     // 5. Within each bucket, by cumulative floor over A(M,c) in sortKey order.
@@ -577,7 +588,7 @@ public struct PlanEngine: Sendable {
       for (c, wi) in recipients {
         let before = Int128(total) * cum / w
         cum += Int128(wi)
-        give(c, Int64(Int128(total) * cum / w - before))
+        give(c, Int64(clamping: Int128(total) * cum / w - before))
       }
     }
     // 6. In order of first touch.
@@ -608,7 +619,7 @@ public struct PlanEngine: Sendable {
       for (c, wi) in weights {
         let before = give * cum / w
         cum += Int128(wi)
-        let part = Int64(give * cum / w - before)
+        let part = Int64(clamping: give * cum / w - before)
         if wi > 0 { cats.append((c, part)) }
       }
     }

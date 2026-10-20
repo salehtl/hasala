@@ -12,6 +12,7 @@ import HasalaText
 enum MIMEFailure: Error, Equatable {
   /// The header block could not be parsed: the stage-1 raw-body fallback.
   case parse
+  case tooDeep
   /// A sub-part could not be produced: aborts the walk (anything collected stands).
   case walkAbort
   /// A leaf's body could not be decoded: the leaf is skipped.
@@ -47,9 +48,11 @@ enum MIME {
 
   /// bufio.ReadLine: the line WITHOUT its terminator (`\n`, and one `\r` before it). `eof` only
   /// when nothing is left; a final line with no newline is a normal line.
-  static func readLine(_ buf: [UInt8], _ pos: Int) -> (start: Int, end: Int, next: Int, eof: Bool) {
-    if pos >= buf.count { return (pos, pos, pos, true) }
-    guard let nl = Bytes.index(of: Bytes.lf, in: buf, from: pos) else { return (pos, buf.count, buf.count, false) }
+  static func readLine(_ buf: ArraySlice<UInt8>, _ pos: Int) -> (start: Int, end: Int, next: Int, eof: Bool) {
+    if pos >= buf.endIndex { return (pos, pos, pos, true) }
+    guard let nl = Bytes.index(of: Bytes.lf, in: buf, from: pos) else {
+      return (pos, buf.endIndex, buf.endIndex, false)
+    }
     var end = nl
     if end > pos && buf[end - 1] == Bytes.cr { end -= 1 }
     return (pos, end, nl + 1, false)
@@ -93,17 +96,21 @@ enum MIME {
   /// Parses a message or part header starting at `start`. Throws `.parse` exactly where
   /// go-message does: a folded first line, a line with no colon, a name outside `ftext`.
   static func readHeader(_ buf: [UInt8], _ start: Int) throws(MIMEFailure) -> ParsedHeader {
+    try readHeader(buf[...], start)
+  }
+
+  static func readHeader(_ buf: ArraySlice<UInt8>, _ start: Int) throws(MIMEFailure) -> ParsedHeader {
     var fields: [HeaderField] = []
-    if start < buf.count && isSpaceByte(buf[start]) { throw .parse }
+    if start < buf.endIndex && isSpaceByte(buf[start]) { throw .parse }
     var pos = start
     while true {
       let first = readLine(buf, pos)
-      if first.eof { return ParsedHeader(fields: fields, bodyStart: buf.count) }
+      if first.eof { return ParsedHeader(fields: fields, bodyStart: buf.endIndex) }
       var kv = Array(buf[first.start..<first.end])
       kv.append(contentsOf: [Bytes.cr, Bytes.lf])
       var p = first.next
       if first.end == first.start { return ParsedHeader(fields: fields, bodyStart: p) }  // the blank line
-      while p < buf.count && isSpaceByte(buf[p]) {
+      while p < buf.endIndex && isSpaceByte(buf[p]) {
         let cont = readLine(buf, p)
         if cont.eof { break }
         kv.append(contentsOf: buf[cont.start..<cont.end])
@@ -761,7 +768,7 @@ enum MIME {
   struct Entity {
     let mediaType: [UInt8]
     let params: [String: String]
-    let rawBody: [UInt8]
+    let rawBody: ArraySlice<UInt8>
     let decoder: TransferDecoder?
     let isMultipart: Bool
     let mode: TextMode
@@ -769,8 +776,8 @@ enum MIME {
     let failed: Bool
 
     func decodedBody() throws(MIMEFailure) -> [UInt8] {
-      guard !isMultipart, let decoder else { return rawBody }
-      return try MIME.transferDecode(decoder, rawBody)
+      guard !isMultipart, let decoder else { return Array(rawBody) }
+      return try MIME.transferDecode(decoder, Array(rawBody))
     }
 
     func text() throws(MIMEFailure) -> String {
@@ -784,7 +791,7 @@ enum MIME {
 
   static func hasPrefix(_ s: [UInt8], _ p: StaticString) -> Bool { Bytes.hasPrefix(s, Bytes.of(p)) }
 
-  static func newEntity(_ header: ParsedHeader, _ rawBody: [UInt8]) throws(MIMEFailure) -> Entity {
+  static func newEntity(_ header: ParsedHeader, _ rawBody: ArraySlice<UInt8>) throws(MIMEFailure) -> Entity {
     let ct = header.get("content-type")
     var type: [UInt8] = Bytes.of("text/plain")
     var params: [String: String] = [:]
@@ -817,19 +824,20 @@ enum MIME {
   /// go-message/textproto.MultipartReader over the whole buffer. `next()` throws `.walkAbort`
   /// (or `.parse` for a bad part header) exactly where Go's NextPart returns an error.
   struct Multipart {
-    let body: [UInt8]
+    let body: ArraySlice<UInt8>
     let dashBoundary: [UInt8]
     let dashBoundaryDash: [UInt8]
     var nl: [UInt8] = [Bytes.cr, Bytes.lf]
     var nlDashBoundary: [UInt8]
-    var pos = 0
+    var pos: Int
     var partsRead = 0
     var expectNewPart = false
     var done = false
 
-    init(body: [UInt8], boundary: String) throws(MIMEFailure) {
+    init(body: ArraySlice<UInt8>, boundary: String) throws(MIMEFailure) {
       if boundary.isEmpty { throw .walkAbort }
       self.body = body
+      pos = body.startIndex
       let b = Array(boundary.utf8)
       dashBoundary = [0x2d, 0x2d] + b
       dashBoundaryDash = dashBoundary + [0x2d, 0x2d]
@@ -862,16 +870,16 @@ enum MIME {
     func boundaryMatchesAt(_ at: Int, _ prefix: [UInt8]) -> Bool {
       guard Bytes.hasPrefix(body, prefix, at: at) else { return false }
       let after = at + prefix.count
-      if after == body.count { return true }
+      if after == body.endIndex { return true }
       let c = body[after]
       return c == Bytes.sp || c == Bytes.tab || c == Bytes.cr || c == Bytes.lf || c == 0x2d
     }
 
-    mutating func next() throws(MIMEFailure) -> (header: ParsedHeader, rawBody: [UInt8])? {
+    mutating func next() throws(MIMEFailure) -> (header: ParsedHeader, rawBody: ArraySlice<UInt8>)? {
       if done { return nil }
       while true {
         let idx = Bytes.index(of: Bytes.lf, in: body, from: pos)
-        let line = body[pos..<(idx.map { $0 + 1 } ?? body.count)]
+        let line = body[pos..<(idx.map { $0 + 1 } ?? body.endIndex)]
         let sawLF = idx != nil
         if !sawLF && isFinalBoundary(line) {
           done = true
@@ -885,7 +893,7 @@ enum MIME {
           let header = try MIME.readHeader(body, pos)
           let bodyStart = header.bodyStart
           var end: Int? = nil
-          if bodyStart <= body.count && boundaryMatchesAt(bodyStart, dashBoundary) {
+          if bodyStart <= body.endIndex && boundaryMatchesAt(bodyStart, dashBoundary) {
             end = bodyStart  // a body that starts with the boundary is empty
           } else {
             var i = bodyStart
@@ -901,7 +909,7 @@ enum MIME {
           guard let end else { throw .walkAbort }
           pos = end
           expectNewPart = false
-          return (header, Array(body[bodyStart..<end]))
+          return (header, body[bodyStart..<end])
         }
 
         if isFinalBoundary(line) {

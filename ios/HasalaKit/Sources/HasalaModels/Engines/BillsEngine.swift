@@ -56,6 +56,7 @@ public struct BillsSnapshot: Sendable, Hashable {
 
   /// Bills due in the next 14 days, late ones included.
   public var next14: Money
+  public var next14Mark: TotalMark?
   /// "+25,000.00 expected Wed 28 Oct".
   public var incomeLine: MoneyPhrase?
   /// The same line in its parts, for the hero (label, figure and date are drawn apart).
@@ -149,7 +150,7 @@ public enum BillsEngine {
     let today = now.date
     let tracked = s.bills.filter { $0.state == .tracked }
     let in14 = today.adding(days: 14)
-    let next14 = tracked.filter { !$0.isIncome && $0.nextDue <= in14 }.reduce(Int64(0)) { $0 + $1.amount.minor }
+    let next14 = s.homeTotal(tracked.filter { !$0.isIncome && $0.nextDue <= in14 }.map(\.amount))
 
     let incomeBill = tracked.filter { $0.isIncome && $0.nextDue >= today }.min { $0.nextDue < $1.nextDue }
     let incomeLine = incomeBill.map {
@@ -212,7 +213,7 @@ public enum BillsEngine {
     }
 
     return BillsSnapshot(
-      next14: .aed(next14), incomeLine: incomeLine, income: income, needsALook: attention, found: found,
+      next14: next14.money, next14Mark: next14.mark, incomeLine: incomeLine, income: income, needsALook: attention, found: found,
       upcoming: upcoming, range: range, tracked: tracked.count, recentlyPaid: paidRows,
       paidThisMonth: .aed(paid.reduce(0) { $0 + ($1.homeMinor ?? 0) }), tags: tags
     )

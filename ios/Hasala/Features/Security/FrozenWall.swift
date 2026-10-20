@@ -9,6 +9,7 @@ struct FrozenWall: View {
   let session: AccountSession
   let info: FreezeInfo
   @State private var path: [Route] = []
+  @State private var confirmSignOut = false
 
   enum Route: Hashable { case unfreeze }
 
@@ -33,10 +34,21 @@ struct FrozenWall: View {
           }
         }
       } footer: {
-        SecondaryLink(title: "Leave it frozen", identifier: "frozen.leave") { session.leaveFrozen() }
+        VStack(spacing: 8) {
+          if session.canLeaveFrozen {
+            SecondaryLink(title: "Leave it frozen", identifier: "frozen.leave") { session.leaveFrozen() }
+          }
+          SecondaryLink(title: "Sign out", identifier: "frozen.signOut") { confirmSignOut = true }
+        }
       }
       .navigationDestination(for: Route.self) { _ in
         UnfreezeView(session: session)
+      }
+      .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
+        Button("Sign out", role: .destructive) { Task { await session.signOut() } }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text(AccountCopy.signOutMessage)
       }
     }
     #if HASALA_MOCKS
@@ -184,12 +196,19 @@ private struct ReadOnlyEmail: View {
 struct FrozenBanner: View {
   var by: FreezeInfo.By
   var onShowWall: () -> Void
+  var onSignOut: () -> Void
+  @State private var confirmSignOut = false
 
   var body: some View {
     HStack(spacing: 10) {
       HIconView(.lockKeyhole, size: 18, color: Hue.rose.ink)
       Text("Account frozen").hType(.rowTitle).foregroundStyle(Hue.rose.ink)
       Spacer()
+      Button("Sign out") { confirmSignOut = true }
+        .hType(.rowTitle)
+        .foregroundStyle(HColor.textLink)
+        .frame(minHeight: 44)
+        .accessibilityIdentifier("frozenBanner.signOut")
       if by == .holder {
         Button("Unfreeze", action: onShowWall)
           .hType(.rowTitle)
@@ -207,5 +226,11 @@ struct FrozenBanner: View {
     .padding(.horizontal, 16)
     .frame(minHeight: 44)
     .background(Hue.rose.start)
+    .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
+      Button("Sign out", role: .destructive, action: onSignOut)
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text(AccountCopy.signOutMessage)
+    }
   }
 }

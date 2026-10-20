@@ -39,12 +39,12 @@ let testWriter = WriterID("ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")!
 
 @Suite("CoreCrypto: registry and wordlist")
 struct RegistryAndWordlistTests {
-  @Test("42 domain strings, D01-D42, unique, all hasala/v1/")
+  @Test("43 domain strings, D01-D43, unique, all hasala/v1/")
   func domains() {
-    #expect(Domain.allCases.count == 42)
-    #expect(Set(Domain.allCases.map(\.rawValue)).count == 42)
+    #expect(Domain.allCases.count == 43)
+    #expect(Set(Domain.allCases.map(\.rawValue)).count == 43)
     #expect(Domain.allCases.allSatisfy { $0.rawValue.hasPrefix("hasala/v1/") })
-    #expect(Domain.allCases.first == .register && Domain.allCases.last == .deviceFreeze)
+    #expect(Domain.allCases.first == .register && Domain.allCases.last == .serverInviteMint)
     #expect(Domain.writerHead.prefix == Data("hasala/v1/writer-head".utf8) + [0])
     // No retired string survives in the registry.
     #expect(!Domain.allCases.contains { $0.rawValue.contains("ledger") })

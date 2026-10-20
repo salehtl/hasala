@@ -76,6 +76,7 @@ final class BootController {
   /// The runtime being opened; its value is the runtime once it is open (before its
   /// launch run).
   @ObservationIgnored private var opening: Task<AccountRuntime?, Never>?
+  @ObservationIgnored private var closing: Task<Void, Never>?
   /// Bumped by every open and close, so an older opening can't publish or clear a newer one.
   @ObservationIgnored private var openingID = 0
   @ObservationIgnored private var lastPhase: AccountSession.Phase?
@@ -239,7 +240,9 @@ final class BootController {
     let stopped: @Sendable (SyncStop) async -> Void = { [weak self] stop in await self?.stopped(stop) }
     openingID += 1
     let id = openingID
+    let closing = self.closing
     opening = Task { [weak self] in
+      await closing?.value
       let rt: AccountRuntime
       do {
         rt = try await AccountRuntime.open(
@@ -263,6 +266,7 @@ final class BootController {
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
       let app = AppModel(store: rt.store, mailbox: self.services.mailbox, layouts: layouts)
+      rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app
@@ -315,7 +319,13 @@ final class BootController {
     app = nil
     session.reviewAccount = false
     PushRegistrar.shared.forget()
-    await rt.close()
+    let previous = closing
+    let task = Task {
+      await previous?.value
+      await rt.close()
+    }
+    closing = task
+    await task.value
   }
 
   // MARK: Walls

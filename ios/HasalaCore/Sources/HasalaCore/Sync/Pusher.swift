@@ -52,7 +52,9 @@ enum Pusher {
 
   /// Steps 1 and 4-7. Only `SyncEngine` calls this (one run at a time): two
   /// concurrent flushes could seal the same pending op twice.
-  static func flush(_ ctx: SyncContext, deadline: ContinuousClock.Instant?) async throws(SyncStop) -> PushSummary {
+  static func flush(
+    _ ctx: SyncContext, deadline: ContinuousClock.Instant?, beforeBatch: @Sendable () async -> Void = {}
+  ) async throws(SyncStop) -> PushSummary {
     var summary = try await reconcile(ctx)
     var inflight: [InflightBlob]
     // 4-7
@@ -61,6 +63,7 @@ enum Pusher {
       try Task.checkCancellation(or: .cancelled)
       let pending = try ctx.storeCall { () throws(StoreError) in try ctx.store.pendingOps() }
       guard !pending.isEmpty else { return summary }
+      await beforeBatch()
       inflight = try buildBatch(pending, ctx: ctx)
       try ctx.storeCall { () throws(StoreError) in try ctx.store.persistBatch(inflight) }
       summary.opsAcknowledged += try await send(inflight, ctx: ctx)

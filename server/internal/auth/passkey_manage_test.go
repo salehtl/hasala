@@ -530,3 +530,45 @@ func TestRemovingACredentialDoesNotDeleteItsSessionRows(t *testing.T) {
 		t.Fatalf("Resolve says %v, want ErrSessionRevoked", err)
 	}
 }
+
+func TestDeletingAPasskeySparesPasswordSessions(t *testing.T) {
+	pool := pgtest.New(t)
+	p := newPasskeys(t, pool)
+	sessions := &Sessions{Pool: pool, TTL: time.Hour}
+	userID, lost := enroll(t, p, mustMint(t, pool, "password and passkey"))
+	addPasskey(t, p, userID)
+
+	caller, err := sessions.IssueForCredential(bgctx, userID, lost.CredID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := map[string]string{}
+	for _, kind := range []string{MintedPasswordLogin, MintedPasswordSignup, MintedPasswordReset} {
+		m, err := sessions.IssueTx(bgctx, pool, Mint{UserID: userID, MintedBy: kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		password[kind] = m.Token
+		registerPushToken(t, pool, userID, plantWriter(t, pool, userID), m.Token, "push-"+kind)
+	}
+	legacy, err := sessions.Issue(bgctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerPushToken(t, pool, userID, plantWriter(t, pool, userID), legacy, "push-legacy")
+
+	if _, err := p.deleteCredential(bgctx, userID, lost.CredID, SessionHash(caller)); err != nil {
+		t.Fatalf("DeleteCredential: %v", err)
+	}
+	for kind, tok := range password {
+		if got, err := sessions.Resolve(bgctx, tok); err != nil || got != userID {
+			t.Fatalf("a %s session was revoked by a passkey removal: %v", kind, err)
+		}
+	}
+	if _, err := sessions.Resolve(bgctx, legacy); !errors.Is(err, ErrSessionRevoked) {
+		t.Fatalf("an unattributed login session resolves as %v, want ErrSessionRevoked", err)
+	}
+	if n := pushTokenCount(t, pool, userID); n != 3 {
+		t.Fatalf("%d push tokens left, want 3 (the password sessions')", n)
+	}
+}

@@ -7,9 +7,11 @@ package api
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/budget"
 )
 
@@ -129,5 +131,58 @@ func TestOnlyTheCeilingRefusalCarriesBudgetNumbers(t *testing.T) {
 	}
 	if got := decodeJSON[errorBody](t, w); got.Budget != nil {
 		t.Fatalf("a chain break carried budget numbers: %+v", got.Budget)
+	}
+}
+
+func TestTheUploadByteBudgetIsRefundedWhenNothingIsStored(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("refund")
+	tok := h.session(u)
+	const writer = "ios-00000000-0000-4000-8000-000000000301"
+	h.writer(u, writer)
+
+	first, head := uploadChain(t, u, writer, 1, blob.ZeroHash, 1)
+	second, head2 := uploadChain(t, u, writer, 2, head, 1)
+	third, _ := uploadChain(t, u, writer, 3, head2, 1)
+	size := first[0].SizeBucket
+	if second[0].SizeBucket != size || third[0].SizeBucket != size {
+		t.Fatalf("blob sizes differ: %d, %d, %d", size, second[0].SizeBucket, third[0].SizeBucket)
+	}
+	h.srv.SyncPerUser = NewLimiter(0, 1000, 16, h.srv.now)
+	h.srv.SyncUploadBytes = NewLimiter(0, float64(2*size), 16, h.srv.now)
+	h.h = h.srv.Handler()
+	upload := func(blobs []UploadBlob) *httptest.ResponseRecorder {
+		return h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{WriterID: writer, Stream: blob.StreamHot, Blobs: blobs})
+	}
+
+	wantStatus(t, upload(first), http.StatusOK)
+	for i := 0; i < 3; i++ {
+		wantStatus(t, upload(first), http.StatusOK)
+	}
+	if n := countRows(t, h.pool, u); n != 1 {
+		t.Fatalf("%d rows after replays, want 1", n)
+	}
+
+	forked, _ := uploadChain(t, u, writer, 3, blob.ZeroHash, 1)
+	for i := 0; i < 3; i++ {
+		w := upload(forked)
+		wantStatus(t, w, http.StatusConflict)
+		wantError(t, w, "chain_break")
+	}
+
+	setOplogCeiling(t, h, 1)
+	for i := 0; i < 3; i++ {
+		w := upload(second)
+		wantStatus(t, w, http.StatusRequestEntityTooLarge)
+		wantError(t, w, "account_full")
+	}
+	setOplogCeiling(t, h, 256<<20)
+
+	wantStatus(t, upload(second), http.StatusOK)
+	w := upload(third)
+	wantStatus(t, w, http.StatusTooManyRequests)
+	wantError(t, w, "upload_bytes")
+	if n := countRows(t, h.pool, u); n != 2 {
+		t.Fatalf("%d rows stored, want 2", n)
 	}
 }

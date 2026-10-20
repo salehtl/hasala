@@ -147,7 +147,7 @@ struct PhraseShowView: View {
 
   /// Whether any screen showing Hasala is being recorded or mirrored.
   static func screenCaptured() -> Bool {
-    UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.contains { $0.screen.isCaptured }
+    screenIsCaptured()
   }
 }
 

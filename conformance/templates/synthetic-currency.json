@@ -218,6 +218,132 @@
         "is_transfer": false,
         "empty_groups": []
       }
+    },
+    {
+      "name": "synth.currency/aed-two-decimals",
+      "source": "SYNTHETIC: a two-decimal amount in an exponent-2 currency converts",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBBRUQgMTIuMzQ=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "1234",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.currency/kwd-three-decimals",
+      "source": "SYNTHETIC: KWD has exponent 3; the shape refuses the third decimal",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBLV0QgMTIuMzQ1",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.currency/kwd-two-decimals",
+      "source": "SYNTHETIC: KWD has exponent 3; two printed decimals are not fils, so the amount is refused",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBLV0QgMTIuMzQ=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.currency/bhd-lower",
+      "source": "SYNTHETIC: the exponent check runs after asciiUpper",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBiaGQgMS41MA==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.currency/omr",
+      "source": "SYNTHETIC: OMR has exponent 3",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBPTVIgMy4wMA==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.currency/jpy",
+      "source": "SYNTHETIC: JPY has exponent 0; 1,200.00 would otherwise be read as 120000 minor units",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBKUFkgMSwyMDAuMDA=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.currency/krw",
+      "source": "SYNTHETIC: KRW has exponent 0",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiBLUlcgNTAwMC4wMA==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
     }
   ]
 }

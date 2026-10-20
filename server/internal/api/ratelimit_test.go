@@ -103,3 +103,27 @@ func TestNilLimiterAllows(t *testing.T) {
 		t.Fatal("a nil limiter must be an absent limit, not a closed door")
 	}
 }
+
+func TestRefundNGivesBackUpToTheBurst(t *testing.T) {
+	l := NewLimiter(0, 10, 1, time.Now)
+	if !l.AllowN("a", 10) {
+		t.Fatal("a full bucket refused its burst")
+	}
+	l.RefundN("a", 4)
+	if !l.AllowN("a", 4) || l.AllowN("a", 1) {
+		t.Fatal("a refund of 4 did not give back exactly 4")
+	}
+	l.RefundN("a", 100)
+	if !l.AllowN("a", 10) || l.AllowN("a", 1) {
+		t.Fatal("a refund was not capped at the burst")
+	}
+	if !l.AllowN("b", 10) || l.AllowN("b", 1) {
+		t.Fatal("the shared bucket did not apply its burst")
+	}
+	l.RefundN("b", 3)
+	if !l.AllowN("b", 3) || l.AllowN("b", 1) {
+		t.Fatal("a refund for an untracked key did not reach the shared bucket")
+	}
+	var none *Limiter
+	none.RefundN("a", 1)
+}

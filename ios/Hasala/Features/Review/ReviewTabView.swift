@@ -8,9 +8,9 @@ import SwiftUI
 /// (`AppModel.reviewCount`).
 ///
 /// Start opens the deck at the oldest card; a row opens it at that row's card and reads on
-/// down the list. "Use N suggestions" and the "couldn't read" card are Debug only: the first
-/// would be several edits in one gesture and the second needs Add a transaction, neither of
-/// which exists yet (plan D.2).
+/// down the list. "Use N suggestions" is Debug only, and the "couldn't read" card opens only
+/// in Debug: the first would be several edits in one gesture and the second needs Add a
+/// transaction, neither of which exists yet (plan D.2).
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -35,7 +35,7 @@ struct ReviewTabView: View {
             startCard(cards)
             list(cards)
           }
-          if BuildSurface.showsUnfinished, app.store.state.mailbox.unreadable > 0 {
+          if app.store.state.mailbox.unreadable > 0 {
             unreadable(app.store.state.mailbox.unreadable)
           }
         }
@@ -219,33 +219,49 @@ struct ReviewTabView: View {
     .accessibilityIdentifier("review.tab.empty")
   }
 
-  /// "1 bank email we couldn't read · Add the amount yourself" (Debug until Add a
-  /// transaction exists).
-  private func unreadable(_ n: Int) -> some View {
-    Button {
-      // TODO(plan D.2 "Add a transaction"): add the amount from the unread email.
-      app.say("Adding the amount yourself comes in a later build", icon: .info)
-    } label: {
-      HStack(spacing: 12) {
-        Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
-          .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
-        VStack(alignment: .leading, spacing: 0) {
-          Text("\(n) bank email\(n == 1 ? "" : "s") we couldn't read")
-            .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-          Text("Add the amount yourself")
-            .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
-            .foregroundStyle(HColor.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+  /// "1 bank email we couldn't read · Add the amount yourself": a button in Debug until Add a
+  /// transaction exists; Release shows the count alone.
+  @ViewBuilder private func unreadable(_ n: Int) -> some View {
+    if BuildSurface.showsUnfinished {
+      Button {
+        // TODO(plan D.2 "Add a transaction"): add the amount from the unread email.
+        app.say("Adding the amount yourself comes in a later build", icon: .info)
+      } label: {
+        unreadableRow(n, detail: "Add the amount yourself", chevron: true)
+      }
+      .buttonStyle(HRowPressStyle())
+      .accessibilityIdentifier("review.tab.unreadable")
+    } else {
+      unreadableRow(n, detail: "Kept for you to sort by hand", chevron: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("review.tab.unreadable")
+    }
+  }
+
+  static func unreadableLine(_ n: Int) -> String {
+    "\(n) bank email\(n == 1 ? "" : "s") we couldn't read"
+  }
+
+  private func unreadableRow(_ n: Int, detail: String, chevron: Bool) -> some View {
+    HStack(spacing: 12) {
+      Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
+        .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
+      VStack(alignment: .leading, spacing: 0) {
+        Text(Self.unreadableLine(n))
+          .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        Text(detail)
+          .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
+          .foregroundStyle(HColor.textSecondary)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      if chevron {
         HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
       }
-      .padding(.vertical, 14)
-      .padding(.horizontal, 16)
-      .background(cardSurface)
-      .contentShape(Rectangle())
     }
-    .buttonStyle(HRowPressStyle())
-    .accessibilityIdentifier("review.tab.unreadable")
+    .padding(.vertical, 14)
+    .padding(.horizontal, 16)
+    .background(cardSurface)
+    .contentShape(Rectangle())
   }
 
   /// The tab's cards: widget white, radius 26, near and far shadows.
