@@ -48,12 +48,12 @@ extension ModelTier {
     mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }
   ) async -> (
     suggestions: [StagedSuggestion], unknown: [(subject: String, modelTag: String)], stoppedBy: [String: ModelFailure],
-    asked: [(subject: String, modelTag: String)]
+    asked: [(subject: String, modelTag: String)], requests: Int
   ) {
     let budget = context.budget
     let limit = callTimeout ?? .milliseconds(budget.callMs)
     var live = stages.map { $0.model.availability() == .available }
-    guard budget.calls > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], []) }
+    guard budget.calls > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], [], 0) }
     let start = now()
     var seen: Set<String> = []
     var out: [StagedSuggestion] = []
@@ -69,7 +69,8 @@ extension ModelTier {
         calls += 1
         asked.append((subject, tag))
         var reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
-        if reply.answer == .failed(.contextOverflow) {
+        if reply.answer == .failed(.contextOverflow), calls < budget.calls {
+          calls += 1
           reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
         }
         switch reply.answer {
@@ -92,7 +93,7 @@ extension ModelTier {
         }
       }
     }
-    return (out, unknown, stopped, asked)
+    return (out, unknown, stopped, asked, calls)
   }
 }
 

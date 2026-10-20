@@ -42,7 +42,7 @@ struct FirstImportSortTests {
   typealias T = ModelSuggestionSweepTests
 
   static func pass(
-    _ l: T.Ledger, _ cloud: FirstImportCloud, memo: FirstImportSort.Memo = .init(), cache: MemoryCache = MemoryCache(),
+    _ l: T.Ledger, _ cloud: FirstImportCloud, memo: FirstImportSort.Memo = .init(), cache: any ModelAnswerCache = MemoryCache(),
     autoFile: Bool = true
   ) async throws -> FirstImportSort.Pass {
     try await FirstImportSort.pass(
@@ -75,19 +75,107 @@ struct FirstImportSortTests {
     #expect(try cache.isCached(subject: "mystery place 77", taxonomyHash: ModelTier.taxonomyHash(T.allowed), modelTag: "cf-clef/1", now: now))
   }
 
-  @Test("rows that load later reuse the answer without a second request; asked and cached names are not sent again")
+  @Test("rows that load later reuse the answer without a second request; answered and cached names are not sent again")
   func memo() async throws {
     var l = T.Ledger()
     _ = try l.ingest([("SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit"), ("SLOW SHOP", "debit")])
     let cloud = FirstImportCloud(["sure shop": (.category("groceries"), true), "slow shop": (.failed(.timeout), false)])
     let cache = MemoryCache()
     let first = try await Self.pass(l, cloud, cache: cache)
-    #expect(first.calls == 3 && first.pending == 0)
+    #expect(first.calls == 3 && first.pending == 1)
     let later = try l.ingest([("SURE SHOP", "debit"), ("SLOW SHOP", "debit"), ("MYSTERY PLACE 77", "debit")])
     let second = try await Self.pass(l, cloud, memo: first.memo, cache: cache)
-    #expect(second.calls == 0 && cloud.calls.count == 3)
+    #expect(second.calls == 1 && cloud.calls.count == 4 && cloud.calls.last == "slow shop")
     #expect(second.suggestions.contains { $0.txnID == later[0] && $0.category == "groceries" })
     #expect(!second.suggestions.contains { $0.txnID == later[1] || $0.txnID == later[2] })
+  }
+
+  @Test("a name that timed out is asked again on later passes, at most three times; a 429 is not a try")
+  func retries() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("SLOW SHOP", "debit")])
+    let cloud = FirstImportCloud(["slow shop": (.failed(.timeout), false)])
+    var memo = FirstImportSort.Memo()
+    for n in 1...FirstImportSort.maxTries {
+      let p = try await Self.pass(l, cloud, memo: memo)
+      memo = p.memo
+      #expect(p.calls == 1 && memo.tries["slow shop"] == n)
+      #expect(p.pending == (n < FirstImportSort.maxTries ? 1 : 0))
+    }
+    let after = try await Self.pass(l, cloud, memo: memo)
+    #expect(after.calls == 0 && after.pending == 0 && cloud.calls.count == FirstImportSort.maxTries)
+    let limited = FirstImportCloud(failAt: (1, .rateLimited))
+    let r = try await Self.pass(l, limited)
+    #expect(r.stop == .rateLimited && r.memo.requests == 1 && r.memo.tries.isEmpty && r.memo.asked.isEmpty && r.pending == 1)
+  }
+
+  @Test("a context-overflow retry is a request: it counts toward the pass and the device budget")
+  func overflowRetry() async throws {
+    final class OverflowsOnce: GradedCategoryModel, Sendable {
+      let modelTag = "cf-clef/1"
+      let calls = Mutex(0)
+      func availability() -> ModelAvailability { .available }
+      func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer { .unknown }
+      func suggestGraded(subject: String, allowed: [AllowedCategory]) async -> (answer: ModelAnswer, autoFile: Bool) {
+        let n = calls.withLock { c in
+          c += 1
+          return c
+        }
+        return n == 1 ? (.failed(.contextOverflow), false) : (.unknown, false)
+      }
+    }
+    var l = T.Ledger()
+    _ = try l.ingest((0..<12).map { ("PLACE NUMBER \(Character(UnicodeScalar(65 + $0)!))", "debit") })
+    let cloud = OverflowsOnce()
+    let p = try await FirstImportSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(), cache: MemoryCache(), now: { now },
+      autoFile: true)
+    let budget = ModelTier.Context.firstImport.budget.calls
+    #expect(cloud.calls.withLock { $0 } == budget)
+    #expect(p.calls == budget && p.memo.requests == budget && p.memo.asked.count == budget - 1 && p.pending == 3)
+  }
+
+  @Test("a failure after the requests keeps the memo, so they are counted and the names are not asked again")
+  func interrupted() async throws {
+    struct Boom: Error {}
+    final class FailingCache: ModelAnswerCache, Sendable {
+      func isCached(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> Bool { false }
+      func recordUnknown(_ entries: [(subject: String, modelTag: String)], taxonomyHash: String, now: Int64) throws { throw Boom() }
+    }
+    var l = T.Ledger()
+    _ = try l.ingest([("SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit")])
+    let cloud = FirstImportCloud(["sure shop": (.category("groceries"), true)])
+    let rows = l.rows()
+    do {
+      _ = try await FirstImportSort.run(
+        rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(requests: 5), cache: MemoryCache(),
+        now: { now }, autoFile: true, stamps: AuthorStamps(), reread: { throw Boom() })
+      Issue.record("the reread failed, so the run must throw")
+    } catch let e as FirstImportSort.Interrupted {
+      #expect(e.memo.requests == 7 && e.memo.answers["sure shop"]?.category == "groceries")
+      #expect(e.memo.asked == ["sure shop", "mystery place 77"])
+    }
+    do {
+      _ = try await Self.pass(l, cloud, cache: FailingCache())
+      Issue.record("the cache failed, so the pass must throw")
+    } catch let e as FirstImportSort.Interrupted {
+      #expect(e.memo.requests == 2 && e.memo.asked.count == 2)
+    }
+    #expect(FirstImportSort.Pass.failed(.init(requests: 3)).failed)
+  }
+
+  @Test("an answer kept from an earlier pass never files a row whose name may not leave the device")
+  func blockedLater() async throws {
+    var l = T.Ledger()
+    let card = try l.ingest([("SHARED NAME", "debit")], template: "dib.card.v1@1")
+    let cloud = FirstImportCloud(fallback: (.category("dining"), true))
+    let first = try await Self.pass(l, cloud)
+    #expect(first.suggestions.map(\.txnID) == card)
+    let transfer = try l.ingest([("SHARED NAME", "debit")], template: "enbd.transfer.v1@2")
+    let second = try await Self.pass(l, cloud, memo: first.memo)
+    #expect(second.calls == 0 && second.memo.answers["shared name"] != nil)
+    #expect(!second.suggestions.contains { transfer.contains($0.txnID) })
+    #expect(second.suggestions.isEmpty)
   }
 
   @Test("filing is idempotent: a rerun after a kill skips filed and user-edited rows and sends nothing more")
@@ -171,6 +259,18 @@ struct FirstImportSortTests {
       #expect(r.stop == stop && cloud.calls.count == 1)
       #expect(FirstImportSort.next(after: r, importRunning: true, backoffs: 0).next == .done(stop))
     }
+  }
+
+  @Test("a pass with no rate limit resets the backoff")
+  func backoffReset() {
+    let limited = FirstImportSort.Pass(suggestions: [], memo: .init(), pending: 3, calls: 1, stop: .rateLimited)
+    let good = FirstImportSort.Pass(suggestions: [], memo: .init(), pending: 3, calls: 1, stop: nil)
+    let idle = FirstImportSort.Pass(suggestions: [], memo: .init(), pending: 0, calls: 1, stop: nil)
+    let after = FirstImportSort.next(after: limited, importRunning: true, backoffs: 2)
+    #expect(after == (.pass(afterMs: FirstImportSort.backoffMs[2]), 3))
+    #expect(FirstImportSort.next(after: good, importRunning: true, backoffs: 3) == (.pass(afterMs: FirstImportSort.passSpacingMs), 0))
+    #expect(FirstImportSort.next(after: idle, importRunning: true, backoffs: 3) == (.waitForRows, 0))
+    #expect(FirstImportSort.next(after: limited, importRunning: true, backoffs: 0) == (.pass(afterMs: FirstImportSort.backoffMs[0]), 1))
   }
 
   @Test("switched off: no request at all")
