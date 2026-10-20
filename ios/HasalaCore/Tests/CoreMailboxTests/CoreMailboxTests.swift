@@ -346,6 +346,37 @@ import Testing
     #expect(r == .setAside(domain: "promo.example"))
   }
 
+  func nestedDIB(depth: Int) -> FakeGmail.Message {
+    var m = SyntheticMail.dibCard(id: "m7", dateMs: Rig.t0)
+    let text = String(decoding: m.raw, as: UTF8.self)
+    let split = text.range(of: "\r\n\r\n")!
+    var head = String(text[..<split.lowerBound])
+    let leafBody = String(text[split.upperBound...])
+    head = head.replacingOccurrences(
+      of: "Content-Type: text/plain; charset=\"utf-8\"", with: "Content-Type: multipart/mixed; boundary=\"n-0-x\"")
+    var body = ""
+    for i in 0..<(depth - 1) {
+      body += "--n-\(i)-x\r\nContent-Type: multipart/mixed; boundary=\"n-\(i + 1)-x\"\r\n\r\n"
+    }
+    body += "--n-\(depth - 1)-x\r\nContent-Type: text/plain; charset=\"utf-8\"\r\nContent-Transfer-Encoding: 8bit\r\n\r\n"
+    body += leafBody + "--n-\(depth - 1)-x--"
+    for i in (0..<(depth - 1)).reversed() { body += "\r\n--n-\(i)-x--" }
+    m.raw = Array((head + "\r\n\r\n" + body + "\r\n").utf8)
+    return m
+  }
+
+  @Test func nestedMailReadsWithinTheDepthCap() throws {
+    let p = try mail(nestedDIB(depth: 8))
+    #expect(p.fields?.amountMinor == 25000)
+  }
+
+  @Test func overDeepMailGoesToReview() throws {
+    let p = try mail(nestedDIB(depth: 3000))
+    #expect(p.fields == nil)
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    #expect(d.needsReview)
+  }
+
   @Test func zeroAmountIsAMissNotAFiling() throws {
     let p = try mail(SyntheticMail.dibCard(id: "m6", amount: "0.00", dateMs: Rig.t0))
     #expect(p.fields == nil)
