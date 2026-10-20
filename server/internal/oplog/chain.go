@@ -246,14 +246,19 @@ func VerifyChain(rows []Row, fromCounter int64, fromHash [32]byte) error {
 // FOR SHARE after the head (ErrStaleEpoch); rows at or below the head take the
 // replay path and are never refused for their epoch.
 func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID, stream string, rows []Row, headSig []byte) ([]int64, error) {
+	seqs, _, err := a.AppendClientStored(ctx, userID, writerID, stream, rows, headSig)
+	return seqs, err
+}
+
+func (a *Appender) AppendClientStored(ctx context.Context, userID uuid.UUID, writerID, stream string, rows []Row, headSig []byte) ([]int64, bool, error) {
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	if stream != blob.StreamHot {
 		// The only stream (the op_log_stream_is_hot CHECK). ledgerd's cold
 		// stream carried raw mail from the server's own writer, which no
 		// longer exists.
-		return nil, fmt.Errorf("oplog: append client: stream %q, want %q", stream, blob.StreamHot)
+		return nil, false, fmt.Errorf("oplog: append client: stream %q, want %q", stream, blob.StreamHot)
 	}
 
 	// Copied, not mutated in place: a caller's slice is its own, and filling in
@@ -266,16 +271,16 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 		// disagrees with itself, and guessing which half it meant is worse than
 		// refusing.
 		if r.UserID != uuid.Nil && r.UserID != userID {
-			return nil, fmt.Errorf("oplog: append client: row %d names user %s, the call names %s", i, r.UserID, userID)
+			return nil, false, fmt.Errorf("oplog: append client: row %d names user %s, the call names %s", i, r.UserID, userID)
 		}
 		if r.WriterID != "" && r.WriterID != writerID {
-			return nil, fmt.Errorf("oplog: append client: row %d names writer %q, the call names %q", i, r.WriterID, writerID)
+			return nil, false, fmt.Errorf("oplog: append client: row %d names writer %q, the call names %q", i, r.WriterID, writerID)
 		}
 		if r.Stream != "" && r.Stream != stream {
-			return nil, fmt.Errorf("oplog: append client: row %d names stream %q, the call names %q", i, r.Stream, stream)
+			return nil, false, fmt.Errorf("oplog: append client: row %d names stream %q, the call names %q", i, r.Stream, stream)
 		}
 		if r.HeadSig != nil {
-			return nil, fmt.Errorf("oplog: append client: row %d carries a head_sig; the batch's travels beside the rows", i)
+			return nil, false, fmt.Errorf("oplog: append client: row %d carries a head_sig; the batch's travels beside the rows", i)
 		}
 		r.UserID, r.WriterID, r.Stream = userID, writerID, stream
 		if r.TypeFlag == "" {
@@ -284,10 +289,10 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 		if r.TypeFlag != TypeFlagEdit {
 			// type_flag has one value: every row is a device's own batch
 			// (ledgerd's server-authored "ingest" rows are retired).
-			return nil, fmt.Errorf("oplog: append client: row %d has type_flag %q, want %q", i, r.TypeFlag, TypeFlagEdit)
+			return nil, false, fmt.Errorf("oplog: append client: row %d has type_flag %q, want %q", i, r.TypeFlag, TypeFlagEdit)
 		}
 		if err := r.validate(); err != nil {
-			return nil, fmt.Errorf("oplog: append client: row %d: %w", i, err)
+			return nil, false, fmt.Errorf("oplog: append client: row %d: %w", i, err)
 		}
 	}
 	// Everything checkable without the database is checked before the counter
@@ -297,13 +302,13 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 	var claimedPrev [32]byte
 	copy(claimedPrev[:], batch[0].PrevHash)
 	if err := VerifyChain(batch, batch[0].WriterCounter-1, claimedPrev); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	last := &batch[len(batch)-1]
 	headMsg, err := keyproto.HeadMessage(userID, uint64(last.WriterCounter), last.BlobHash, writerID)
 	if err != nil {
 		// writerID is not the §4.8 grammar: no writer could have signed a head.
-		return nil, fmt.Errorf("%w: %v", ErrHeadSignature, err)
+		return nil, false, fmt.Errorf("%w: %v", ErrHeadSignature, err)
 	}
 
 	var replayed []int64
@@ -370,9 +375,13 @@ func (a *Appender) AppendClient(ctx context.Context, userID uuid.UUID, writerID,
 
 	seqs, err := a.appendRows(ctx, batch, prepare)
 	if errors.Is(err, errBatchAlreadyApplied) {
-		return replayed, nil
+		return replayed, false, nil
 	}
-	return a.resolveAppendErr(ctx, userID, writerID, stream, batch, seqs, err)
+	if err == nil {
+		return seqs, true, nil
+	}
+	seqs, err = a.resolveAppendErr(ctx, userID, writerID, stream, batch, seqs, err)
+	return seqs, false, err
 }
 
 // Errors of the writer, epoch and head checks.

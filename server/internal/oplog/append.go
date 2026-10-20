@@ -277,7 +277,8 @@ func (a *Appender) appendRows(ctx context.Context, rows []Row, prepare prepareFu
 
 	seqs, err := a.appendTx(ctx, tx, userID, rows, prepare)
 	if err != nil {
-		return nil, err
+		pgtx.Rollback(ctx, tx)
+		return nil, a.budget().RecordRefusal(ctx, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("oplog: append: commit: %w", err)
