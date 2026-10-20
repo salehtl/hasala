@@ -130,7 +130,9 @@ When you create your Hasala account, we delete your address from the waitlist; y
 
 ### Bank requests
 
-If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. It's deleted with your account.
+If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. The app shows you how the request is going, and we email you when your bank works. It's deleted with your account.
+
+If you connected your email, you can also ask Hasala to look in your mail for banks we're adding. Your iPhone then asks Gmail or Outlook only whether there are emails from those banks' addresses in the last 6 months. It doesn't download or open them, and the answer stays on your iPhone. If it finds one, it shows you the bank and the address the emails came from (for example bank.example), and only if you tap Ask does it send us that bank and that address with your request. We use the address only to add support for your bank.
 
 On our website, you tell us your bank only when you ask for an invite (see [The website](#the-website)).
 
@@ -189,6 +191,7 @@ Hasala asks Google for three permissions: `openid` and `email`, which give Hasal
 
 - Your iPhone, not our server, connects to Gmail.
 - Your iPhone asks Gmail only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like it's from your bank, Hasala reads just its sender details on your iPhone and then sets it aside.
+- If you ask Hasala to look for a bank we're adding (see [Bank requests](#bank-requests)), your iPhone asks Gmail whether there are messages from that bank's addresses. It gets only message IDs back and downloads nothing.
 - From each bank alert, your iPhone keeps the amount, merchant, date and card, plus the Gmail message ID so you can open the original email later. These become transactions, which are encrypted on your iPhone before they sync.
 - Hasala can't send, delete, label or change your email.
 - Hasala reads alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
@@ -233,6 +236,7 @@ Hasala asks Microsoft for four permissions: `openid` and `email`, which give Has
 
 - Your iPhone, not our server, connects to Outlook.
 - Your iPhone asks Outlook only for messages from your banks' alert addresses, so the rest of your mailbox is never downloaded. It checks the sender of every message Outlook lists, and if Outlook ever lists one from another sender, Hasala reads nothing from that list.
+- If you ask Hasala to look for a bank we're adding (see [Bank requests](#bank-requests)), your iPhone asks Outlook whether there are messages from that bank's addresses. It gets only message IDs back and downloads nothing.
 - Before it uses a message, your iPhone checks that it really came from your bank. A message that only looks like it did is set aside for you to review.
 - From each bank alert, your iPhone keeps the amount, merchant, date and card, plus the Outlook message ID so you can open the original email later. These become transactions, which are encrypted on your iPhone before they sync.
 - So that new alerts arrive quickly, your iPhone asks Microsoft to notify our server each time a new message arrives in your mailbox. Our server then wakes your iPhone, and your iPhone checks Outlook itself. The notices carry no content (see [Outlook connection](#outlook-connection)).
@@ -321,7 +325,7 @@ Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft
 | Support emails | We keep them only as long as we need them to help you, and delete them when you ask. |
 | Waitlist sign-up, not confirmed | 7 days. |
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. |
-| Bank requests from the app | Until you delete your account. |
+| Bank requests from the app, with the bank's email address if you sent it | Until you delete your account. |
 | Email records | 30 days. We never keep what an email said. |
 | Data on your iPhone | Until you delete your account or use Remove this iPhone. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |
 

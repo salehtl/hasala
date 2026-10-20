@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -30,6 +31,10 @@ func (s *Server) mountBankRequests(mux *http.ServeMux) {
 	}
 	web := s.publicRoute(s.handleBankRequest)
 	mux.HandleFunc("/api/v1/bank-requests", func(w http.ResponseWriter, r *http.Request) {
+		if _, signedIn := bearerToken(r); signedIn && r.Method == http.MethodGet {
+			s.requireSession(s.handleBankRequestList)(w, r)
+			return
+		}
 		if s.Web != nil {
 			web(w, r)
 			return
@@ -50,6 +55,7 @@ func (s *Server) mountBankRequests(mux *http.ServeMux) {
 type bankRequestJSON struct {
 	Bank           string `json:"bank"`
 	OtherBank      string `json:"otherBank"`
+	SenderDomain   string `json:"senderDomain"`
 	Source         string `json:"source"`
 	Website        string `json:"website"`
 	TurnstileToken string `json:"turnstileToken"`
@@ -84,11 +90,11 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 		s.answerPublic(w, r, isForm, http.StatusAccepted, counted, "", "bank")
 		return
 	}
-	if form.Source != "web" || form.Email != "" {
+	if form.Source != "web" || form.Email != "" || js.SenderDomain != "" {
 		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_request", "bank")
 		return
 	}
-	s.recordBankRequest(w, r, isForm, form.Bank, form.OtherBank, nil)
+	s.recordBankRequest(w, r, isForm, form.Bank, form.OtherBank, "", nil)
 }
 
 func (s *Server) handleBankRequestSignedIn(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
@@ -104,10 +110,19 @@ func (s *Server) handleBankRequestSignedIn(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusBadRequest, "bad_request", "a signed-in request has source app and nothing else")
 		return
 	}
-	s.recordBankRequest(w, r, false, js.Bank, js.OtherBank, &userID)
+	domain := ""
+	if js.SenderDomain != "" {
+		d, err := banks.SenderDomain(js.SenderDomain)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "bad_domain", "")
+			return
+		}
+		domain = d
+	}
+	s.recordBankRequest(w, r, false, js.Bank, js.OtherBank, domain, &userID)
 }
 
-func (s *Server) recordBankRequest(w http.ResponseWriter, r *http.Request, isForm bool, bank, other string, userID *uuid.UUID) {
+func (s *Server) recordBankRequest(w http.ResponseWriter, r *http.Request, isForm bool, bank, other, domain string, userID *uuid.UUID) {
 	other = strings.TrimSpace(other)
 	if bank == "" || (bank == "other" && other == "") {
 		s.answerPublic(w, r, isForm, http.StatusBadRequest, nil, "bad_bank", "bank")
@@ -119,7 +134,7 @@ func (s *Server) recordBankRequest(w http.ResponseWriter, r *http.Request, isFor
 		return
 	}
 	if err == nil {
-		err = banks.Record(r.Context(), s.Pool, choice, userID, s.now())
+		err = banks.Record(r.Context(), s.Pool, choice, userID, domain, s.now())
 	}
 	switch {
 	case errors.Is(err, banks.ErrListFull):
@@ -132,4 +147,44 @@ func (s *Server) recordBankRequest(w http.ResponseWriter, r *http.Request, isFor
 	default:
 		s.answerPublic(w, r, isForm, http.StatusAccepted, StatusResponse{Status: "counted"}, "", "bank")
 	}
+}
+
+type BankRequestWire struct {
+	Bank        string `json:"bank"`
+	Name        string `json:"name"`
+	State       string `json:"state"`
+	RequestedAt string `json:"requestedAt"`
+}
+
+type BankCatalogWire struct {
+	Bank  string `json:"bank"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
+type BankRequestsResponse struct {
+	Requests []BankRequestWire `json:"requests"`
+	Catalog  []BankCatalogWire `json:"catalog"`
+}
+
+func (s *Server) handleBankRequestList(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	reqs, err := banks.ForUser(r.Context(), s.Pool, userID)
+	if err == nil {
+		var list []banks.Entry
+		list, err = banks.List(r.Context(), s.Pool)
+		if err == nil {
+			out := BankRequestsResponse{Requests: []BankRequestWire{}, Catalog: []BankCatalogWire{}}
+			for _, q := range reqs {
+				out.Requests = append(out.Requests, BankRequestWire{Bank: q.Bank, Name: q.Name, State: q.State,
+					RequestedAt: q.RequestedAt.UTC().Format(time.RFC3339)})
+			}
+			for _, e := range list {
+				out.Catalog = append(out.Catalog, BankCatalogWire{Bank: e.Slug, Name: e.Name, State: e.State})
+			}
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+	}
+	s.logf("api: bank requests: %v", err)
+	writeErr(w, http.StatusInternalServerError, "internal", "")
 }

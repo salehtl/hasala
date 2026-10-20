@@ -46,6 +46,26 @@
 
     func requestBank(_ name: String) async throws(SetupFailure) {
       requestedBanks.append(name)
+      if !requests.contains(where: { $0.name == name }) {
+        requests.append(RequestedBank(bank: "other", name: name, state: .requested))
+      }
+    }
+
+    private(set) var requests: [RequestedBank] = []
+    private(set) var senderDomains: [String: String] = [:]
+
+    func requestBank(slug: String, senderDomain: String?) async throws(SetupFailure) {
+      requestedBanks.append(slug)
+      if let senderDomain { senderDomains[slug] = senderDomain }
+      guard !requests.contains(where: { $0.bank == slug }) else { return }
+      let name = BankCandidate.all.first { $0.slug == slug }?.name ?? slug
+      requests.append(RequestedBank(bank: slug, name: name, state: .requested))
+    }
+
+    func bankRequests() async throws(SetupFailure) -> BankRequestsSnapshot {
+      BankRequestsSnapshot(
+        requests: requests,
+        catalog: BankCandidate.all.map { BankCatalogChoice(slug: $0.slug, name: $0.name, state: .requested) })
     }
 
     func savePlan(income: Int64?, payday: Int?, plan: StartingPlan?) async throws(SetupFailure) {
