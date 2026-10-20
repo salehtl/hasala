@@ -105,13 +105,54 @@ private let outlookDelivered: [URL] = {
   }
 }()
 
+@Suite(.enabled(if: privateRoot != nil, "needs HASALA_PRIVATE_FIXTURES"))
+struct PrivateOutlookSenderRuleTests {
+  @Test func everyRealAlertATemplateReadsPassesTheSenderRule() throws {
+    let root = try #require(privateRoot)
+    let repo = root.deletingLastPathComponent().deletingLastPathComponent()
+    var raws: [(String, [UInt8])] = []
+    for f in try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() where f.hasSuffix(".json") {
+      let v = try JSONParser.parse([UInt8](try Data(contentsOf: root.appendingPathComponent(f))))
+      guard let b64 = v["raw_base64"]?.stringValue else { continue }
+      raws.append((f, [UInt8](try Base64.decode(b64))))
+    }
+    for dir in ["server/internal/origin/testdata", "conformance/templates/eml"] {
+      guard let walk = FileManager.default.enumerator(at: repo.appendingPathComponent(dir), includingPropertiesForKeys: nil)
+      else { continue }
+      for case let url as URL in walk where url.pathExtension == "eml" {
+        raws.append((url.lastPathComponent, [UInt8](try Data(contentsOf: url))))
+      }
+    }
+    let templates = BundledTemplates.load().templates
+    let banks = OutlookSenders.dmarcReject
+    let gate = OutlookProvider(
+      oauth: MicrosoftOAuthClient(config: MicrosoftOAuthConfig(clientID: "unset", redirectScheme: "unset"), http: NoHTTP()),
+      http: NoHTTP(), link: MemoryOutlookLinkStore(), clock: FixedClockForTest())
+    var passedBy: [String: Int] = [:]
+    for (f, raw) in raws {
+      let from = MailHeadersForTest.from(raw)
+      guard BankDomains.isMember(BankDomains.domainOf(from), of: banks) else { continue }
+      let r = MessageDisposer.parse(
+        raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: from, templates: templates,
+        bankDomains: banks, trusted: banks, provider: .outlook, linkedAddress: nil, spam: false,
+        analyze: { gate.analyzeAuthResults($0, inInbox: true, senderAddresses: []) })
+      guard case .mail(let m) = r else {
+        Issue.record("\(f): set aside")
+        continue
+      }
+      #expect(["pass", "unknown_sender"].contains(m.gates.ar), "\(f): \(m.gates.ar)")
+      if m.fields != nil { #expect(m.gates.ar == "pass" && m.gates.senderTrusted, "\(f): \(m.gates.ar)") }
+      if m.gates.ar == "pass" { passedBy[BankDomains.domainOf(from), default: 0] += 1 }
+    }
+    #expect(Set(passedBy.keys) == Set(OutlookSenders.dmarcReject), "\(passedBy)")
+  }
+}
+
 @Suite(.enabled(if: !outlookDelivered.isEmpty, "needs HASALA_PRIVATE_FIXTURES with conformance/outlook/outlook-*.eml"))
 struct PrivateOutlookDeliveredTests {
-  /// Bank mail is never set aside under the Outlook rule, and while the trust gate is closed
-  /// nothing files without review, whatever the rule says.
-  @Test func outlookDeliveredBankMailIsReadAndWaitsForReview() throws {
+  @Test func outlookDeliveredBankMailInTheInboxPassesTheSenderRule() throws {
     let templates = BundledTemplates.load().templates
-    let banks = ["dib.ae", "emiratesnbd.com"]
+    let banks = OutlookSenders.dmarcReject
     let gate = OutlookProvider(
       oauth: MicrosoftOAuthClient(config: MicrosoftOAuthConfig(clientID: "unset", redirectScheme: "unset"), http: NoHTTP()),
       http: NoHTTP(), link: MemoryOutlookLinkStore(), clock: FixedClockForTest())
@@ -120,13 +161,13 @@ struct PrivateOutlookDeliveredTests {
       let raw = [UInt8](try Data(contentsOf: url))
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
-        templates: templates, bankDomains: banks, trusted: banks, provider: .outlook, linkedAddress: nil, spam: false, analyze: gate.analyzeAuthResults)
+        templates: templates, bankDomains: banks, trusted: banks, provider: .outlook, linkedAddress: nil, spam: false,
+        analyze: { gate.analyzeAuthResults($0, inInbox: true, senderAddresses: []) })
       guard case .mail(let m) = r else {
         Issue.record("\(f): set aside")
         continue
       }
-      let d = MessageDisposer.finalize(m, provider: .outlook, grantID: "g", cards: [:], categorizer: NoCategorizer())
-      #expect(d.needsReview, "\(f)")
+      #expect(m.gates.ar == "pass" && m.gates.senderTrusted, "\(f): \(m.gates.ar)")
     }
   }
 }

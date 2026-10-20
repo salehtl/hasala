@@ -71,10 +71,11 @@ constants are in the document's `outlook` object.
 
 The rule is fail-closed, but two of its premises (EOP stamps exactly one
 Microsoft-form A-R, topmost; Graph's `$value` keeps header order) are
-UNVERIFIED until the owner's real-mail checks (C1–C7 of the decision). Until
-they pass, the Outlook lane sends every message to review whatever this verdict
-says. When the samples tighten or loosen the rule, change the oracle, then
-regenerate; every vector's expectation follows.
+UNVERIFIED until the owner's real-mail checks (C1–C7 of the decision). The
+Outlook lane does not use this verdict: it uses the sender rule of the
+decision's §3a (`conformance/outlook-sender`). This rule stays as the reading
+of the owner's trust checks. When the samples tighten or loosen it, change the
+oracle, then regenerate; every vector's expectation follows.
 
 ## `vectors.json`
 
@@ -92,7 +93,8 @@ regenerate; every vector's expectation follows.
   },
   "limits": { "max_raw_utf16_units": 262144, "max_continuation_lines": 512 },
   "providers": ["gmail", "outlook"],
-  "reasons": ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop"],
+  "reasons": ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop",
+              "not_inbox", "unknown_sender", "no_dmarc_reject"],
   "vectors": [
     {
       "name": "…",
@@ -117,7 +119,9 @@ regenerate; every vector's expectation follows.
 - `reasons` is also the closed set of a v4 transaction's `gates.ar` (spec 03c
   §3.1). A fold that refuses one of them refuses a mailbox alert the lane
   authored. The Swift test `OutlookNoEOPTests.everyAuthResultsReasonFolds`
-  reads this list and checks it.
+  reads this list and checks it. `not_inbox`, `unknown_sender` and
+  `no_dmarc_reject` come from the Outlook sender rule
+  (`conformance/outlook-sender`); no vector here gives them.
 - `expect.domain` is `verifiedDomain(block, provider)`: a string exactly when
   `trusted`.
 - Non-ASCII code points are written as `\uXXXX` escapes.

@@ -23,7 +23,8 @@ has a numbered check in [Checks for the owner](#checks-for-the-owner-wp0).
 | 1c | Keep the Gmail overlap: re-list from watermark − 2 days (`BankDomains.overlapMs`). | Decided. "No index lag for `$filter`" is **UNVERIFIED** (L6); the overlap covers it either way. |
 | 1d | List with `$filter` on `/me/messages`: `receivedDateTime ge <since>` AND an `or` of `from/emailAddress/address eq '<address>'`, one per known bank sender address (`OutlookSenders.known`) whose domain is in the trusted set. Never fall back to `$search`. | **In use (2026-10-20).** `eq` answered 200 and listed the owner's DIB alerts. |
 | 2 | No change detector replaces `historyId`. Every cycle runs the filtered list. | Confirmed from docs (delta lists every message in a folder, so it breaks PO G). |
-| 3 | Trust only the single Microsoft-form `Authentication-Results` (no authserv-id), when it is the topmost A-R, the EOP-only headers prove inbound EOP processing, and it reports `compauth=pass` + `dmarc=pass` for the `From:` domain. Else `needs_review`. ARC is ignored. | Rule decided. Its two premises (EOP always stamps one A-R at the top; `$value` keeps header order) are **UNVERIFIED** (C1–C7). Hard gate for WP2. |
+| 3 | ~~Trust only the single Microsoft-form `Authentication-Results` (no authserv-id), when it is the topmost A-R, the EOP-only headers prove inbound EOP processing, and it reports `compauth=pass` + `dmarc=pass` for the `From:` domain.~~ **Replaced by 3a (2026-10-20).** The rule stays in the code as the reading of the owner's checks. | Its two premises (EOP always stamps one A-R at the top; `$value` keeps header order) are **UNVERIFIED** (C1–C7). The lane does not use it. |
+| 3a | Take a message as the bank's when its one `From` address is a known bank sender address, Graph has it in the Inbox, and the `From` domain publishes DMARC `p=reject` (a bundled list). Do not read Microsoft's verdict or the EOP fields. Else `needs_review`, with the reason code. | **Decided (2026-10-20), waits for the owner's approval of the residual risk (§3a).** Folder ids (L8) and Junk delivery of a spoof (C8) are **UNVERIFIED**. |
 | 4a | Read trust headers and the body from `GET /me/messages/{id}/$value` only. Do not use `internetMessageHeaders` for trust. | Decided. Header order in `$value` is **UNVERIFIED** (C4). |
 | 4b | Send `Prefer: IdType="ImmutableId"` on every Graph request. The provenance message id is the immutable id. | Confirmed from docs. Support on consumer mailboxes is **UNVERIFIED** (L7). |
 | 5 | At most 3 concurrent Graph requests per mailbox. On 429/503 honour `Retry-After` (stop the run, keep the watermark); without it, use the engine's backoff. | Confirmed from docs (4 concurrent, 10,000 per 10 min). |
@@ -339,10 +340,10 @@ without review (see "Shipping gate" below).
 
 ### Shipping gate
 
-- Before C1–C7 pass on real mail, the Outlook lane must send **every** message to review,
-  whatever `outlookVerdict` says. WP5b adds a flag (`outlookTrustProven`, default false).
-- The owner turns it on only after the checks pass, in a commit that cites this file's
-  results section (to be added after WP0).
+- **Replaced by §3a (2026-10-20).** Until then, the Outlook lane sent every message to
+  review, whatever `outlookVerdict` said (`outlookTrustProven = false`). The flag is
+  deleted. C1–C7 no longer decide anything in the app; they stay as a way to learn how
+  Outlook.com marks bank mail.
 
 ### Proposed vectors for WP2 (all synthetic)
 
@@ -353,6 +354,101 @@ only an authserv-id A-R (`no_ar`); `AuthAs` missing / `Internal` / twice (`no_eo
 `AuthSource` not under `.prod.outlook.com` (`no_eop`); `From` domain ≠ `header.from`
 (`fail`); two `From` fields (`fail`); forwarded message with `dkim=pass dmarc=pass`;
 `ARC-Authentication-Results` only (`no_ar`); the Gmail bounds vectors again.
+
+---
+
+## 3a. The Outlook sender rule (2026-10-20)
+
+The rule of §3 needs C1–C7 on real mail before it can trust anything, so every Outlook
+alert went to review. The owner asked for trust to matter less. This rule relies on the
+mailbox provider's own filtering and on the banks' DMARC policies instead of on
+Microsoft's header.
+
+### The rule (`AuthResults.analyzeOutlookSender`)
+
+Inputs: the header block of the `$value` MIME; whether Graph has the message in the
+Inbox; the known sender addresses (`OutlookSenders.known` plus the addresses the user
+added); the DMARC `p=reject` domains (`OutlookSenders.dmarcReject`, bundled, no DNS lookup).
+The first step that applies decides:
+
+1. Over the bounds of §3 (256 Ki UTF-16 units, 512 continuation lines) → `parse_error`.
+2. The message's `parentFolderId` is not the Inbox's id → `not_inbox`. This covers Junk
+   Email, Deleted Items, Archive and every folder a user rule moved the message to.
+3. Not exactly one `From` field, or its value does not hold exactly one address, or that
+   address is not a known sender (ASCII case-insensitive) → `unknown_sender`.
+4. The address's domain is not exactly on the `p=reject` list → `no_dmarc_reject`.
+   Subdomains do not count: their policy is `sp=`, and `dib.ae` has `sp=none`.
+5. Trusted, `pass`. The verified domain is the `From` domain.
+
+The other gates of `MessageDisposer.finalize` do not change: the domain must be in the
+trusted set T, a template must read an amount, the card must not be "not mine", the
+message must not be forwarded, and the recipient check must not be a mismatch.
+
+The bundled list on 2026-10-20 (`dig TXT _dmarc.<domain>`):
+
+| Domain | Policy | Known senders |
+|---|---|---|
+| `adib.ae` | `p=reject` (no `sp`) | `adibsms@adib.ae` |
+| `dib.ae` | `p=reject; sp=none` | `DIB.notification@dib.ae`, `dib.mail@dib.ae` |
+| `emiratesnbd.com` | `p=reject; sp=quarantine` | `OnlineBanking@emiratesnbd.com` |
+
+ENBD's alerts come from `OnlineBanking@emiratesnbd.com` (the private corpus). The old
+entry `alert@emiratesnbd.com` was a guess, and it never listed a real ENBD alert.
+
+Conformance: `conformance/outlook-sender/` (synthetic). The private-corpus test
+`PrivateOutlookSenderRuleTests` requires every real alert that a template reads to pass.
+
+### Why this is enough here
+
+**The threat model.** A spoof that passes makes a wrong row in the user's budget. It
+never moves money, and the app never acts on a row by itself. Anything that does not pass
+goes to review with its reason code (the transaction sheet shows "Sender check:
+<code>"). Nothing is dropped. The Gmail lane keeps its own rule (§3, "The Gmail rule"),
+because it reads Gmail's own verdict.
+
+**What stops a spoof.** To pass, a forged alert must say `From: <a known bank address>`
+and reach the Inbox. The bank's `p=reject` tells Outlook.com to refuse mail that fails
+DMARC for that domain. Outlook.com rejects it, or puts it in Junk Email (`action=oreject`).
+Either way it is not in the Inbox, so the rule gives `not_inbox` or never sees it.
+
+**What the rule does not need.** It does not need EOP's A-R at the top, the EOP-only
+fields, or the header order of `$value`. Those were the UNVERIFIED premises H1 and H2.
+
+### Residual risk (for the owner to approve)
+
+| # | A spoof passes when… | Likelihood | Effect, and what limits it |
+|---|---|---|---|
+| R1 | Outlook.com delivers a DMARC-failing message to the Inbox: a Microsoft bug, an `oreject` that is not applied, or a trusted ARC sealer that vouches for it. | Low | One wrong row. The bank's DMARC reports show the abuse to the bank. |
+| R2 | The user put the bank in Safe Senders, or wrote a rule that moves mail into the Inbox, and Outlook.com honours it for a DMARC fail. | Low | One wrong row for that user. |
+| R3 | The user moves a spoof from Junk to the Inbox ("Not junk"). | Low | The user's own choice. The rule reads the folder at download time. |
+| R4 | Someone with access to the mailbox (password, a token with `Mail.ReadWrite`, IMAP) puts a message in the Inbox. §3 caught this (`no_eop`); §3a does not. | Low | Such a person can already read every bank alert. A wrong row is the smallest harm. |
+| R5 | A bank lowers its policy (for example to `p=none`), and the bundled list is not updated. | Low, slow | Spoofs could then reach the Inbox. Recheck the list before each release (`dig TXT _dmarc.<domain>`). |
+| R6 | The bank's own sending system is abused (a compromised mail platform, a real signed message with false content). | Very low | Every rule passes such mail, Gmail's too. |
+| R7 | The recipient check (`MailRecipients`) counts a `DKIM-Signature` header with `d=<bank>` that lists `To` without checking the signature (Outlook gives it no `header.b`). A spoof that already passed (R1–R4) can make an unknown card file. | Low | Only after R1–R4. Without it, an unknown card goes to review. |
+
+**Failure modes, all fail-closed.** If the Inbox id cannot be read, the download fails and
+is tried again on the next cycle. If Graph's `parentFolderId` and the Inbox's `id` are in
+different forms (L8 fails), every Outlook alert goes to review with `not_inbox`. A sender
+address the bank starts to use and the list does not have goes to review with
+`unknown_sender`; the user can add it ("Add a sender"), and it passes if its domain is on
+the `p=reject` list.
+
+**Older builds.** `not_inbox`, `unknown_sender` and `no_dmarc_reject` are new values of
+`gates.ar`. An older build's fold refuses an op with one of them and records the refusal
+(it is not dropped). Every device of an account must run this build before an Outlook lane
+on this build authors such an op. During the TestFlight beta this means: ship it, and
+let the testers update.
+
+### Checks for the owner (add to WP0)
+
+- **L8.** With `Prefer: IdType="ImmutableId"`, compare a listed Inbox message's
+  `parentFolderId` with `GET /me/mailFolders/inbox?$select=id`. Expect the same string.
+  Move the message to Junk Email and expect a different one.
+- **C8.** From an SMTP account the owner controls, send a message with
+  `From: <a known bank address>` to the test mailbox (a spoof the bank's DMARC fails).
+  Expect it rejected or in Junk Email, and never in the Inbox. In the app, expect no row,
+  or a review row with `not_inbox`. Send one message, to the owner's own test mailbox
+  only.
 
 ---
 
@@ -590,8 +686,13 @@ which may rebuild the headers differently. Keep every real `.eml` in the private
     (I2).
 12. The status code that goes with `MailboxNotEnabledForRESTAPI` (I3).
 
-Until items 5, 6 and 8 are closed, the Outlook lane sends every message to review
-(`outlookTrustProven = false`).
+Items 5, 6 and 8 no longer hold the lane back: the lane uses §3a, which does not depend
+on them. §3a has its own UNVERIFIED items:
+
+13. Graph's `parentFolderId` and the Inbox's `id` are the same string for an Inbox message
+    (L8).
+14. Outlook.com rejects, or puts in Junk Email, a message whose `From` domain publishes
+    `p=reject` and that fails DMARC (C8).
 
 ## Results (WP0)
 
@@ -622,6 +723,5 @@ the change and its new vectors>`.
 
 ### Turning the gate on
 
-Only when C1–C7 all show PASS above, in its own commit that changes nothing else:
-
-`ios: trust Outlook verdicts (outlookTrustProven = true); WP0 results in docs/decisions/outlook-mailbox.md#results-wp0`
+Not used since §3a (2026-10-20): there is no gate to turn on. Record L8 and C8 here when
+they are run.

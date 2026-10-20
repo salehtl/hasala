@@ -14,7 +14,7 @@
  * The format is described in `conformance/authres/README.md`.
  */
 
-import { analyzeFor, type MailProvider } from "../src/mail/authres";
+import { AR_REASONS, analyzeFor, type MailProvider } from "../src/mail/authres";
 import { asciiJSON, assertFresh, writeOrCheck, type FixtureFile } from "./conformance-io";
 
 export const SUITE = "authres";
@@ -621,7 +621,7 @@ export function build(): FixtureFile[] {
         },
         limits: { max_raw_utf16_units: 256 * 1024, max_continuation_lines: 512 },
         providers: ["gmail", "outlook"],
-        reasons: ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop"],
+        reasons: AR_REASONS,
         vectors,
       }),
     },

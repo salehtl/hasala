@@ -1,23 +1,20 @@
 // The Outlook provider: Microsoft OAuth (MicrosoftOAuthClient), the Graph mail client
-// (GraphClient) and the Outlook Authentication-Results rule (AuthResults.analyze(_:provider:
-// .outlook)), behind MailProvider. Personal Microsoft accounts only.
+// (GraphClient) and the Outlook sender rule (AuthResults.analyzeOutlookSender), behind
+// MailProvider. Personal Microsoft accounts only.
 //
-// The trust gate ships closed (docs/decisions/outlook-mailbox.md §3 "Shipping gate"): until the
-// owner's checks C1–C7 pass on real mail, `trustProven` is false and every Outlook message goes
-// to review, whatever the rule says. The verdict's reason is still recorded in the row's gates.
+// The rule is docs/decisions/outlook-mailbox.md §3a: a known bank sender address, in the Inbox,
+// at a domain whose DMARC policy is p=reject. Microsoft's own Authentication-Results are not read.
+// The verdict's reason is recorded in the row's gates.
 import CoreMail
 import CoreTime
 import Foundation
 
 public struct OutlookProvider: MailProvider {
-  /// Turned on only in a commit that cites the WP0 results in outlook-mailbox.md.
-  public static let outlookTrustProven = false
   /// Graph allows four concurrent requests per mailbox; the fourth is for listing and the
   /// subscription (§5).
   public static let downloadWidth = 3
 
   public let microsoft: MicrosoftOAuthClient
-  public let trustProven: Bool
   let http: any HTTPExchange
   let base: String
   let link: any OutlookLinkStore
@@ -27,14 +24,13 @@ public struct OutlookProvider: MailProvider {
   /// account's `app.hasala.outlook.clientstate` item.
   public init(
     oauth: MicrosoftOAuthClient, http: any HTTPExchange, link: any OutlookLinkStore, clock: any Clock,
-    base: String = GraphClient.defaultBase, trustProven: Bool = OutlookProvider.outlookTrustProven
+    base: String = GraphClient.defaultBase
   ) {
     microsoft = oauth
     self.http = http
     self.link = link
     self.clock = clock
     self.base = base
-    self.trustProven = trustProven
   }
 
   public var id: MailProviderID { .outlook }
@@ -62,12 +58,16 @@ public struct OutlookProvider: MailProvider {
       nowMs: { clock.nowMs() })
   }
 
-  /// The Outlook rule; while the gate is closed a passing verdict is not trusted (the reason is
-  /// kept, the verified domain is not), so the message waits for review.
   public func analyzeAuthResults(_ headerBlock: String) -> AuthResults.Analysis {
-    let a = AuthResults.analyze(headerBlock, provider: .outlook)
-    guard !trustProven, a.verdict.trusted else { return a }
-    return AuthResults.Analysis(verdict: AuthResults.Verdict(trusted: false, reason: a.verdict.reason), domain: nil)
+    analyzeAuthResults(headerBlock, inInbox: nil, senderAddresses: [])
+  }
+
+  public func analyzeAuthResults(_ headerBlock: String, inInbox: Bool?, senderAddresses: [String])
+    -> AuthResults.Analysis
+  {
+    AuthResults.analyzeOutlookSender(
+      headerBlock, inInbox: inInbox ?? false, knownSenders: OutlookSenders.known + senderAddresses,
+      rejectDomains: OutlookSenders.dmarcReject)
   }
 
   /// Keeps the link's clientState for the subscription (a new link starts with no subscription

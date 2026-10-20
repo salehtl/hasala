@@ -21,7 +21,10 @@ extension State {
     if let v = P.present(p["gates"]) { out.gates = try decodeGates(v) }
   }
 
-  public static let gateARValues = ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop"]
+  public static let gateARValues = [
+    "pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop", "not_inbox", "unknown_sender",
+    "no_dmarc_reject",
+  ]
 
   /// 03c §3.1 `gates`: a closed enum per key; unknown keys ignored.
   static func decodeGates(_ v: JSONValue?) throws(PayloadError) -> TxnGates {

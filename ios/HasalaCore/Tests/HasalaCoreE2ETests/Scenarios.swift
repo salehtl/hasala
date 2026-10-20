@@ -191,13 +191,13 @@ enum Scenarios {
     #expect(try a.context.store.pendingCount() == 0)
     #expect(await ledger.isIngested(MessageDisposer.ingestID(d1.raw)))
 
-    // B pulls and folds what A read: the trust gate is closed, so every row is in Review, and
-    // each carries the immutable Graph id as its mailbox message id.
     #expect(await b.run(.launch).stop == nil)
     let review = try b.reader.review(lanes: ReviewLane.allCases)
-    #expect(Set(review.compactMap(\.mailboxMessageID)) == ["AAkALgAA-e2e-d1", "AAkALgAA-e2e-e1", "AAkALgAA-e2e-n1"])
-    let starbucks = try #require(review.first { $0.mailboxMessageID == "AAkALgAA-e2e-d1" })
-    #expect(starbucks.amountMinor == 6_450 && !starbucks.unparsed)
+    #expect(Set(review.compactMap(\.mailboxMessageID)) == ["AAkALgAA-e2e-e1", "AAkALgAA-e2e-n1"])
+    let rows = try await b.state().txns.values
+    let starbucks = try #require(rows.first { $0.mailboxMessageID == "AAkALgAA-e2e-d1" })
+    #expect(starbucks.amountMinor == 6_450 && !starbucks.unparsed && !starbucks.needsReview)
+    #expect(rows.first { $0.mailboxMessageID == "AAkALgAA-e2e-e1" }?.needsReview == false)
     #expect(try await a.state().serialized() == b.state().serialized())
     let again = await engine.runCycle(trigger: .refresh)
     #expect(again.ops == 0 && again.haltedOn == nil, "\(again)")

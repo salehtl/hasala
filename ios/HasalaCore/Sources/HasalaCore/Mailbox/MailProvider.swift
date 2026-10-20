@@ -31,6 +31,7 @@ public protocol MailProvider: Sendable {
   /// The Authentication-Results verdict for a header block (the trust gate, spec 04 §7.6): which
   /// header the provider's own receiving server wrote, and what it said. Fails closed.
   func analyzeAuthResults(_ headerBlock: String) -> AuthResults.Analysis
+  func analyzeAuthResults(_ headerBlock: String, inInbox: Bool?, senderAddresses: [String]) -> AuthResults.Analysis
   /// At most this many message downloads at once (the engine's width is capped by it).
   var maxDownloadWidth: Int { get }
   /// Whether `MailSource.stop` ends only this iPhone's push (Outlook: one subscription id, kept
@@ -48,6 +49,11 @@ public protocol MailProvider: Sendable {
 }
 
 extension MailProvider {
+  public func analyzeAuthResults(_ headerBlock: String, inInbox: Bool?, senderAddresses: [String])
+    -> AuthResults.Analysis
+  {
+    analyzeAuthResults(headerBlock)
+  }
   public var listsByAddress: Bool { false }
   public func source(accessToken: AccessToken, senderAddresses: [String]) -> any MailSource {
     source(accessToken: accessToken)
@@ -236,12 +242,14 @@ public struct MailRawMessage: Sendable, Equatable {
   /// ms since the epoch as a decimal string.
   public let internalDate: String
   public let spam: Bool
+  public let inInbox: Bool?
 
-  public init(id: String, rawBase64URL: String, internalDate: String, spam: Bool = false) {
+  public init(id: String, rawBase64URL: String, internalDate: String, spam: Bool = false, inInbox: Bool? = nil) {
     self.id = id
     self.rawBase64URL = rawBase64URL
     self.internalDate = internalDate
     self.spam = spam
+    self.inInbox = inInbox
   }
 }
 

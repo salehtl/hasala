@@ -1,0 +1,641 @@
+{
+  "note": "Written by reference/ledgerd-client/scripts/gen-outlook-sender-conformance.ts from the TypeScript oracle (analyzeOutlookSender in src/mail/authres.ts); do not hand-edit. Each vector is one header block (`headers`, or `headers_parts`: concatenate each part's `text` repeated `repeat` times) and whether Graph put the message in the Inbox (`in_inbox`). Every vector uses the document's `known_senders` and `reject_domains`. All inputs are synthetic. See README.md.",
+  "schema_version": 1,
+  "known_senders": [
+    "alerts@bank.example",
+    "Notices@Bank.Example",
+    "alerts@sub.bank.example",
+    "alerts@weak.example",
+    "pay@other.example"
+  ],
+  "reject_domains": [
+    "bank.example",
+    "Other.Example"
+  ],
+  "limits": {
+    "max_raw_utf16_units": 262144,
+    "max_continuation_lines": 512
+  },
+  "reasons": [
+    "pass",
+    "parse_error",
+    "not_inbox",
+    "unknown_sender",
+    "no_dmarc_reject"
+  ],
+  "vectors": [
+    {
+      "name": "pass-display-name-and-angle-address",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-bare-address",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: alerts@bank.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-angle-address-only",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-upper-case-address",
+      "in_inbox": true,
+      "note": "Known senders match ASCII case-insensitively, the local part included.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <ALERTS@BANK.EXAMPLE>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-known-sender-written-in-mixed-case",
+      "in_inbox": true,
+      "note": "The list has Notices@Bank.Example.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <notices@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-reject-domain-written-in-upper-case",
+      "in_inbox": true,
+      "note": "The p=reject list has Other.Example.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Pay <pay@other.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "other.example"
+      }
+    },
+    {
+      "name": "pass-quoted-display-name-with-an-address",
+      "in_inbox": true,
+      "note": "A quoted display name is not read.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: \"x@evil.example\" <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-quoted-display-name-with-escapes",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: \"Bank \\\"Alerts\\\" <x@evil.example>\" <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-encoded-word-display-name",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: =?UTF-8?B?QmFuaw==?= <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-comment-after-address",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: alerts@bank.example (Bank alerts)\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-comment-holding-an-address",
+      "in_inbox": true,
+      "note": "Comments are removed first.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank (x@evil.example) <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-folded-from",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank\r\n <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-nbsp-inside-angle-brackets",
+      "in_inbox": true,
+      "note": "JavaScript trim() strips U+00A0.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <\u00a0alerts@bank.example\u00a0>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-field-name-case-and-padding",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFROM : Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-without-any-authentication-results",
+      "in_inbox": true,
+      "note": "Microsoft's verdict is not read.",
+      "headers": "From: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-with-a-failing-microsoft-verdict",
+      "in_inbox": true,
+      "note": "The rule does not read the A-R: Outlook.com put the message in the Inbox, and that is the input.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=fail smtp.mailfrom=bank.example; dkim=fail header.d=bank.example; dmarc=fail action=oreject header.from=bank.example; compauth=fail reason=000\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-lf-line-endings",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\nFrom: Bank <alerts@bank.example>\nSubject: Transaction alert\n\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-cr-line-endings",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\rFrom: Bank <alerts@bank.example>\rSubject: Transaction alert\r\r",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "pass-no-trailing-blank-line",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "not-inbox",
+      "in_inbox": false,
+      "note": "Junk, Archive, Deleted Items or any other folder.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "not_inbox",
+        "domain": null
+      }
+    },
+    {
+      "name": "not-inbox-is-decided-before-the-sender",
+      "in_inbox": false,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: x@evil.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "not_inbox",
+        "domain": null
+      }
+    },
+    {
+      "name": "not-inbox-on-empty-input",
+      "in_inbox": false,
+      "headers": "",
+      "expect": {
+        "trusted": false,
+        "reason": "not_inbox",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-address-at-a-bank-domain",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <offers@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-look-alike-domain",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts@bank.example.evil.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-look-alike-local-part",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts.@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-unquoted-display-name-with-an-address",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: alerts@bank.example <x@evil.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-text-after-the-angle-address",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <x@evil.example> alerts@bank.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-two-angle-addresses",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts@bank.example> <x@evil.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-two-mailboxes",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: alerts@bank.example, x@evil.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-group-syntax",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank: alerts@bank.example;\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-two-from-fields",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\nFrom: x@evil.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-two-identical-from-fields",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-no-from",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-empty-input",
+      "in_inbox": true,
+      "headers": "",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-from-after-the-blank-line-is-body",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nSubject: Transaction alert\r\n\r\nFrom: Bank <alerts@bank.example>\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-sender-field-is-not-from",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nSender: alerts@bank.example\r\nFrom: x@evil.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-x-original-from-is-not-from",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nX-Original-From: alerts@bank.example\r\nFrom: x@evil.example\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-trailing-dot",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: alerts@bank.example.\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-unterminated-quote",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: \"Bank <alerts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-unclosed-angle-bracket",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-space-inside-the-address",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts @bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-non-ascii-local-part",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <al\u00e9rts@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-two-at-signs",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts@x@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-empty-local-part",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <@bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "unknown-address-literal",
+      "in_inbox": true,
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: <alerts@[192.0.2.1]>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "unknown_sender",
+        "domain": null
+      }
+    },
+    {
+      "name": "no-dmarc-reject-domain",
+      "in_inbox": true,
+      "note": "A known sender whose domain is not on the p=reject list.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@weak.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_dmarc_reject",
+        "domain": null
+      }
+    },
+    {
+      "name": "no-dmarc-reject-subdomain",
+      "in_inbox": true,
+      "note": "Exact domains only: a subdomain's policy is sp=, which can be weaker.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@sub.bank.example>\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "no_dmarc_reject",
+        "domain": null
+      }
+    },
+    {
+      "name": "bounds-exactly-256-kib",
+      "in_inbox": true,
+      "note": "262144 characters, the largest block that is parsed.",
+      "headers_parts": [
+        {
+          "text": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-Pad: ",
+          "repeat": 1
+        },
+        {
+          "text": "a",
+          "repeat": 261978
+        },
+        {
+          "text": "\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "bounds-one-past-256-kib",
+      "in_inbox": true,
+      "note": "262145 characters: refused before parsing.",
+      "headers_parts": [
+        {
+          "text": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-Pad: ",
+          "repeat": 1
+        },
+        {
+          "text": "a",
+          "repeat": 261979
+        },
+        {
+          "text": "\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "bounds-one-past-256-kib-outside-the-inbox",
+      "in_inbox": false,
+      "note": "The bounds come first.",
+      "headers_parts": [
+        {
+          "text": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nFrom: Bank <alerts@bank.example>\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "X-Pad: ",
+          "repeat": 1
+        },
+        {
+          "text": "a",
+          "repeat": 261979
+        },
+        {
+          "text": "\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "bounds-512-continuation-lines",
+      "in_inbox": true,
+      "note": "A field may have 512 continuation lines.",
+      "headers_parts": [
+        {
+          "text": "X-Folded: a\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "\tb\r\n",
+          "repeat": 512
+        },
+        {
+          "text": "From: Bank <alerts@bank.example>\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "bounds-513-continuation-lines",
+      "in_inbox": true,
+      "note": "The 513th continuation line refuses the whole block.",
+      "headers_parts": [
+        {
+          "text": "X-Folded: a\r\n",
+          "repeat": 1
+        },
+        {
+          "text": "\tb\r\n",
+          "repeat": 513
+        },
+        {
+          "text": "From: Bank <alerts@bank.example>\r\n\r\n",
+          "repeat": 1
+        }
+      ],
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    }
+  ]
+}
