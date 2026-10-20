@@ -100,7 +100,14 @@ CI is `.github/workflows/ci.yml`. It runs on each pull request and on each
 push to `main`. You can also start it manually (`workflow_dispatch`). CI does
 not have the private fixtures.
 
-The required checks are these three jobs:
+The last job, `ci-ok`, needs all jobs except the `ios` shards and
+`ios-main-red`: `changes`, `gate`, `vuln`, `secrets`, `swift`, `ios-build`,
+`ios-tools`, `web` and `nixos-vm`. It always runs. It fails if one of these
+jobs failed or was cancelled. It passes when each one succeeded or was
+skipped. `ci-ok` is the required check that the ruleset must name. On an
+older push to `main`, a Mac job that a newer push cancelled makes `ci-ok`
+fail. Until the owner changes the ruleset, the ruleset names these three
+jobs:
 
 - `gate`: first `nix flake check --no-build`, then a build of each check
   except `qa-vm`, then `scripts/check.sh` in the devShell. In CI,
@@ -112,15 +119,27 @@ The required checks are these three jobs:
   (`ios/scripts/check-imports.sh --no-manifest` and `check-forbidden.sh`),
   then gitleaks on the full history.
 
-Do not change these job names. The required status checks find the jobs by
-their names.
+Do not change these job names or the name `ci-ok`. The required status
+checks find the jobs by their names. When `ci-ok` is the only required check,
+add each new job to its `needs`.
 
-These jobs are not required: `swift` (HasalaCore on a Mac), `ios-build`,
-`ios` and `ios-tools` (the app on a Mac, refer to "The iOS app" below), `web`
-(the website, refer to "Website") and `nixos-vm` (it builds
-`checks.x86_64-linux.qa-vm` with KVM).
+These jobs are not required checks by name, but `ci-ok` needs them: `swift`
+(HasalaCore on a Mac), `ios-build` and `ios-tools` (the app on a Mac, refer
+to "The iOS app" below), `web` (the website, refer to "Website") and
+`nixos-vm` (it builds `checks.x86_64-linux.qa-vm` with KVM). The `ios` shards
+are not required and `ci-ok` does not need them.
 
 At most five Mac jobs run at the same time in one run (the account limit).
+
+`ios-main-red` alerts about the UI tests on `main`. It runs only on a push to
+`main`, with `issues: write` only:
+
+- When an `ios` shard (or `ios-build`) fails, it opens one issue with the
+  label `ci-main-red`, or updates the open one (new body and a comment). The
+  issue lists the failed tests of each shard (each failed shard uploads
+  `ios-failed-tests-<shard>`) and the link to the run.
+- When all `ios` shards pass in a later push to `main`, it closes the issue.
+- When the shards were skipped or cancelled, it does nothing.
 
 ### Path rules in CI
 
@@ -199,6 +218,16 @@ entries that were used least recently.
 Monday (job `vuln-weekly`, not required). This is necessary because new Go
 advisories occur without new commits. It is a different workflow, thus it
 does not record checks on the head of `main` with the required names.
+
+`.github/workflows/ci-weekly.yml` runs each Sunday (not required):
+
+- Job `ci` calls `ci.yml` (`workflow_call`). The event is `schedule`, thus
+  `changes` starts all jobs and the path rules do not apply. This finds jobs
+  that the path rules skipped for weeks. Its checks have the names
+  `ci / <job>`, thus they are not the required names.
+- Job `cache-usage` fails when the Actions cache of the repository is more
+  than 8 GB (`gh api repos/{repo}/actions/cache/usage`).
+- A pull request that changes `ci-weekly.yml` runs only `cache-usage`.
 
 ### Secrets and real mail
 
@@ -333,8 +362,10 @@ CI for iOS:
   `ios/scripts/tests/run.sh` and shellcheck on `ios/scripts`. It runs
   `ios/scripts/tests/devshell_test.sh` only when `ios/scripts/` or the flake
   changed.
-- `ios-build`, `ios` and `ios-tools` are not required checks. CI skips them
-  on the same paths. `ios` runs only when `ios-build` succeeded.
+- `ios-build`, `ios` and `ios-tools` are not required checks, but `ci-ok`
+  needs `ios-build` and `ios-tools`. CI skips them on the same paths. On
+  `main`, `ios-main-red` keeps the `ci-main-red` issue (refer to "CI").
+  `ios` runs only when `ios-build` succeeded.
 
 ### Nix
 
