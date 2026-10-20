@@ -109,7 +109,7 @@ struct BillsView: View {
       Text("Next 14 days").hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
         .accessibilityAddTraits(.isHeader)
       let figure = MoneyText(snap.next14, figure: .hero, unit: .unit, hidden: model.hidden, hiddenGlyphs: 6,
-                             color: HColor.textPrimary, approx: snap.next14Mark?.estimate ?? false)
+                             color: HColor.textPrimary)
         .accessibilityIdentifier("bills.next14")
       let toPay = Text("to pay").hType(.body).foregroundStyle(HColor.textOnWashSecondary)
       if typeSize.isAccessibilitySize {

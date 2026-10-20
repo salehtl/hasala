@@ -50,14 +50,6 @@ extension MiniTxnRow {
   }
 }
 
-extension Spending {
-  public static func hasEstimate(_ s: LedgerState, in period: Period) -> Bool {
-    s.txns.contains { t in
-      t.isEstimate && period.contains(t.postedAt.date) && carvedOut(t, in: s) == nil && !measured(t, in: s).isEmpty
-    }
-  }
-}
-
 public struct TotalMark: Sendable, Hashable, Codable {
   public var estimate: Bool
   public var leftOut: [String: Int]

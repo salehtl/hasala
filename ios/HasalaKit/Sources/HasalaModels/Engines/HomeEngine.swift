@@ -11,8 +11,7 @@ public enum HomeEngine {
     let chosen = period?.clamped(to: today)
     guard let p = chosen, p != .month(today) else {
       let plan = PlanEngine.snapshot(s, now: now)
-      var h = hero(s, now: now, plan: plan)
-      h.approx = Spending.hasEstimate(s, in: .month(today))
+      let h = hero(s, now: now, plan: plan)
       return HomeSnapshot(
         header: header, hero: h, notifications: notifications,
         widgets: widgets(s, now: now, plan: plan))
@@ -20,15 +19,13 @@ public enum HomeEngine {
     if p.isMonth {
       let month = p.first
       let plan = PlanEngine.snapshot(s, now: LocalDateTime(date: month.lastDay, hour: 23, minute: 59))
-      var h = endedHero(s, month: month, plan: plan)
-      h.approx = Spending.hasEstimate(s, in: .month(month))
+      let h = endedHero(s, month: month, plan: plan)
       return HomeSnapshot(
         header: header, hero: h, notifications: notifications,
         widgets: [.budgetPace(budgetPace(plan, label: "Ended \(month.lastDay.dayMonth)"))],
         period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
     }
-    var h = rangeHero(s, period: p, now: now)
-    h.approx = Spending.hasEstimate(s, in: p)
+    let h = rangeHero(s, period: p, now: now)
     return HomeSnapshot(
       header: header, hero: h, notifications: notifications, widgets: [],
       period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
