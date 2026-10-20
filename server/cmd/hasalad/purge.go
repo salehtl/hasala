@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/purge"
@@ -58,8 +56,8 @@ func runPurgeUser(env *runEnv, args []string) error {
 		if len(c.Unclassified) != 0 {
 			return fmt.Errorf("purge-user: a real purge would REFUSE: unclassified relations %v", c.Unclassified)
 		}
-		if err := dryRunCascades(ctx, pool, c.UserScoped); err != nil {
-			return err
+		if err := purge.CheckCascades(ctx, pool, c.UserScoped); err != nil {
+			return fmt.Errorf("purge-user: a real purge would REFUSE: %w", err)
 		}
 		total := 0
 		for _, r := range c.UserScoped {
@@ -100,44 +98,6 @@ func runPurgeUser(env *runEnv, args []string) error {
 		fmt.Fprintln(env.stdout, "no such account; nothing was deleted")
 	}
 	return nil
-}
-
-func dryRunCascades(ctx context.Context, pool *pgxpool.Pool, rels []purge.Relation) error {
-	rows, err := pool.Query(ctx, `
-		SELECT ns.nspname || '.' || cl.relname, con.confdeltype::text
-		  FROM pg_constraint con
-		  JOIN pg_class cl ON cl.oid = con.conrelid
-		  JOIN pg_namespace ns ON ns.oid = cl.relnamespace
-		 WHERE con.contype = 'f'
-		   AND con.confrelid = 'public.users'::regclass
-		   AND con.confdeltype <> 'c'
-		   AND EXISTS (
-		       SELECT 1 FROM pg_attribute a
-		        WHERE a.attrelid = con.conrelid
-		          AND a.attnum = ANY (con.conkey)
-		          AND a.attname = 'user_id')
-		 ORDER BY 1, 2`)
-	if err != nil {
-		return fmt.Errorf("purge-user: read foreign-key actions: %w", err)
-	}
-	defer rows.Close()
-	names := map[string]string{"a": "NO ACTION", "r": "RESTRICT", "n": "SET NULL", "d": "SET DEFAULT"}
-	for rows.Next() {
-		var rel, action string
-		if err := rows.Scan(&rel, &action); err != nil {
-			return fmt.Errorf("purge-user: read foreign-key actions: %w", err)
-		}
-		if !slices.ContainsFunc(rels, func(r purge.Relation) bool { return r.String() == rel }) {
-			continue
-		}
-		name, ok := names[action]
-		if !ok {
-			name = fmt.Sprintf("confdeltype %q", action)
-		}
-		return fmt.Errorf("purge-user: a real purge would REFUSE: %s.user_id references users ON DELETE %s, not CASCADE",
-			rel, name)
-	}
-	return rows.Err()
 }
 
 func printPurgeReport(env *runEnv, rep purge.Report) {
