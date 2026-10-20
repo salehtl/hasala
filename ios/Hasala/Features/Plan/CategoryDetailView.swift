@@ -80,7 +80,7 @@ private struct CategoryHero: View {
         VStack(alignment: .leading, spacing: 4) {
           // The figure rolls from zero with the fill (it switches inside the fill's
           // animation; money stays whole fils, never an in-between amount).
-          MoneyText(phase.figure(.aed(abs(detail.left.minor))), figure: .hero, unit: .unit, hidden: hidden,
+          MoneyText(phase.figure(.aed(Int64(clamping: detail.left.minor.magnitude))), figure: .hero, unit: .unit, hidden: hidden,
                     hiddenGlyphs: 6, color: over ? HColor.statusErrorForeground : HColor.textPrimary, unitGap: 6)
           PhraseText(caption, hidden: hidden).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
             .fixedSize(horizontal: false, vertical: true)

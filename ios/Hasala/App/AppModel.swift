@@ -232,7 +232,13 @@ final class AppModel {
       }
     }
     if let last = tokens.popLast() {
-      show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: tokens.reversed()))
+      let check = store as? UndoAvailability
+      if check?.canUndo(last) == false {
+        show(Toast(disc: .done, title: last.title))
+      } else {
+        let earlier = tokens.reversed().filter { check?.canUndo($0) != false }
+        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier))
+      }
     }
     return true
   }

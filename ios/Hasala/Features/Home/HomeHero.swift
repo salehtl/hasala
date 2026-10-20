@@ -26,6 +26,7 @@ struct HomeHero: View {
   /// "Set your plan" with no plan yet: the Plan tab.
   let setPlan: () -> Void
   let openNotCounted: (SpendHero.NotCounted) -> Void
+  let openRates: (TotalMark) -> Void
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -65,6 +66,9 @@ struct HomeHero: View {
         if let line = hero.notCounted {
           NotCountedLine(text: line.line.rendered(hidden: hidden), spoken: line.line.spoken(hidden: hidden), icon: .project,
                          id: "home.hero.notCounted") { openNotCounted(line) }
+        }
+        if let mark = hero.unrated, let line = mark.line {
+          NotCountedLine(text: line, spoken: line, icon: .globe, id: "home.hero.unrated") { openRates(mark) }
         }
       }
       if let note = hero.note {

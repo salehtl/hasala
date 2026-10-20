@@ -82,9 +82,9 @@ struct ReviewDoneView: View {
 
   /// "Your plan now counts AED 327.28 more", then each sorted line.
   private func summary(_ sorted: [SortedLine]) -> some View {
-    let counted = sorted.reduce(Int64(0)) { $0 + $1.counted }
+    let counted = Fils.sum(sorted.map(\.counted))
     return VStack(alignment: .leading, spacing: 0) {
-      header(counted: .aed(counted))
+      header(counted: .aed(counted), left: sorted.filter(\.notCounted).count)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 2)
         .padding(.bottom, 12)
@@ -106,9 +106,10 @@ struct ReviewDoneView: View {
     .hElevation(.nearFar)
   }
 
-  private func header(counted: Money) -> some View {
-    let phrase = MoneyPhrase([.text("Your plan now counts "), .text("AED "), .amount(counted), .text(" more")])
-    return Text("\(Text("Your plan now counts ").foregroundStyle(HColor.textSecondary))\(figure(counted))\(Text(" more").foregroundStyle(HColor.textSecondary))")
+  private func header(counted: Money, left: Int) -> some View {
+    let tail = left > 0 ? " more · \(left) not counted" : " more"
+    let phrase = MoneyPhrase([.text("Your plan now counts "), .text("AED "), .amount(counted), .text(tail)])
+    return Text("\(Text("Your plan now counts ").foregroundStyle(HColor.textSecondary))\(figure(counted))\(Text(tail).foregroundStyle(HColor.textSecondary))")
       .hType(.subheadline)
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityLabel(phrase.spoken(hidden: model.hidden))

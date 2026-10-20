@@ -202,6 +202,7 @@ public struct SortedLine: Sendable, Hashable, Identifiable {
   /// Money now counted in the plan by this sort (spending only).
   public var counted: Int64
   public var learnedRule: Bool
+  public var notCounted: Bool = false
 }
 
 public struct ReviewWindow: Sendable, Hashable {
@@ -345,7 +346,7 @@ public enum ReviewEngine {
       id: t.id, merchant: t.title,
       detail: category.name + (learnedRule ? " · new rule" : ""),
       amount: t.amount, isIncome: t.direction == .in, glyph: category.glyph, hue: category.hue,
-      counted: counts ? t.homeMinor ?? 0 : 0, learnedRule: learnedRule
+      counted: counts ? t.homeMinor ?? 0 : 0, learnedRule: learnedRule, notCounted: counts && t.homeMinor == nil
     )
   }
 }

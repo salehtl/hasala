@@ -99,7 +99,7 @@ struct BudgetEditSheet: View {
   /// sizes the three go one under the other, each figure on its label's line, so none has to
   /// shrink into a third of the width.
   private func mathRow(_ row: PlanRowModel) -> some View {
-    let left = row.budget.minor - row.spent.minor
+    let left = row.budget.minor.minus(row.spent.minor)
     let cells: [(String, Money, MoneyStyle)] = [
       ("Budget", row.budget, .compact), ("Spent", row.spent, .exact),
       (left < 0 ? "Over" : "Left", .aed(abs(left)), .exact),
@@ -173,7 +173,7 @@ struct BudgetEditSheet: View {
       // TODO(03a §6.12): "Match September" for live, once last month's spending is read there.
       if BuildSurface.showsUnfinished, let last = model.lastMonth {
         QuickChip(title: "Match \(last.name)", figure: MoneyPhrase([.amount(last.spent, .rounded, hidden: 3)]),
-                  hidden: model.hidden) { set((last.spent.minor + 50) / 100 * 100) }
+                  hidden: model.hidden) { set(last.spent.minor.plus(50) / 100 * 100) }
       }
       if let projected = model.projected, projected.minor != row.budget.minor {
         QuickChip(title: "Cover the pace", figure: MoneyPhrase([.amount(projected, .compact, hidden: 3)]),

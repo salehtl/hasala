@@ -8,9 +8,8 @@ import SwiftUI
 /// (`AppModel.reviewCount`).
 ///
 /// Start opens the deck at the oldest card; a row opens it at that row's card and reads on
-/// down the list. "Use N suggestions" is Debug only, and the "couldn't read" card opens only
-/// in Debug: the first would be several edits in one gesture and the second needs Add a
-/// transaction, neither of which exists yet (plan D.2).
+/// down the list. "Use N suggestions" is Debug only: it would be several edits in one gesture
+/// (plan D.2). The "couldn't read" card opens Add a transaction.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -219,24 +218,19 @@ struct ReviewTabView: View {
     .accessibilityIdentifier("review.tab.empty")
   }
 
-  /// "1 bank email we couldn't read · Add the amount yourself": a button in Debug until Add a
-  /// transaction exists; Release shows the count alone.
-  @ViewBuilder private func unreadable(_ n: Int) -> some View {
-    if BuildSurface.showsUnfinished {
-      Button {
-        // TODO(plan D.2 "Add a transaction"): add the amount from the unread email.
-        app.say("Adding the amount yourself comes in a later build", icon: .info)
-      } label: {
-        unreadableRow(n, detail: "Add the amount yourself", chevron: true)
-      }
-      .buttonStyle(HRowPressStyle())
-      .accessibilityIdentifier("review.tab.unreadable")
-    } else {
-      unreadableRow(n, detail: "Kept for you to sort by hand", chevron: false)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("review.tab.unreadable")
+  /// "1 bank email we couldn't read · Add it yourself": opens Add a transaction.
+  private func unreadable(_ n: Int) -> some View {
+    Button {
+      app.router.open(.addTransaction)
+    } label: {
+      unreadableRow(n, detail: Self.unreadableDetail, chevron: true)
     }
+    .buttonStyle(HRowPressStyle())
+    .accessibilityHint("Opens Add a transaction")
+    .accessibilityIdentifier("review.tab.unreadable")
   }
+
+  static let unreadableDetail = "Add it yourself from your bank app"
 
   static func unreadableLine(_ n: Int) -> String {
     "\(n) bank email\(n == 1 ? "" : "s") we couldn't read"

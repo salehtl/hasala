@@ -91,6 +91,12 @@ struct SamePurchaseTests {
     f = Self.f()
     f.currency = "AED"
     #expect(Self.pairs([f, Self.a()]).isEmpty)
+    f = Self.f()
+    f.archived = true
+    #expect(Self.pairs([f, Self.a()]).isEmpty)
+    f = Self.f()
+    f.heldCopy = true
+    #expect(Self.pairs([f, Self.a()]).isEmpty)
     for change in [
       { (r: inout SamePurchase.Row) in r.live = false }, { $0.unparsed = true }, { $0.archived = true }, { $0.manual = true },
       { $0.heldCopy = true }, { $0.currency = "USD" }, { $0.possibleDuplicateOf = "other" },
@@ -186,6 +192,37 @@ struct SamePurchaseTests {
     try Self.fold(try u.build().ops, &s, seq: 3)
     #expect(s.txns[f]?.amountHomeMinor == 9_181)
     #expect(s.txns[h]?.annotation("archived") == nil && s.txns[h]?.annotation("note") == nil)
+  }
+
+  @Test("undo with the live rate re-freezes F as an estimate at that rate")
+  func undoRefreezes() throws {
+    var (s, f, h, last) = try Self.seeded()
+    #expect(s.txns[f]?.homeSource == .rate && s.txns[f]?.homeRateMicro == 3_672_500)
+    var c = OpAuthor(ctx(own: last))
+    c.confirmSamePurchase(foreignID: f, foreignVersion: s.txns[f]!.version, homeID: h, homeAmountMinor: 9_300, foreignMinor: 2_500, foreignCurrency: "USD")
+    let blob = try c.build()
+    try Self.fold(blob.ops, &s, seq: 2)
+    #expect(s.txns[f]?.homeSource == .stated)
+
+    var u = OpAuthor(ctx(own: blob.lastAuthoredMs))
+    u.undoSamePurchase(
+      foreignID: f, foreignVersion: s.txns[f]!.version, previousHomeMinor: nil, homeID: h, previousNote: nil,
+      refreeze: (currency: "USD", micro: 3_672_500))
+    let undo = try u.build()
+    #expect(undo.ops.map(\.type) == [.txnEdited, .rateSet, .txnAnnotated])
+    try Self.fold(undo.ops, &s, seq: 3)
+    #expect(s.txns[f]?.amountHomeMinor == 9_181)
+    #expect(s.txns[f]?.homeSource == .rate && s.txns[f]?.homeRateMicro == 3_672_500)
+    #expect(s.txns[h]?.annotation("archived") == nil)
+  }
+
+  @Test("an archived foreign row is never offered as the same purchase")
+  func archivedForeign() throws {
+    var (s, f, _, last) = try Self.seeded()
+    var a = OpAuthor(ctx(own: last))
+    a.annotate(txnID: f, set: [("archived", "user")])
+    try Self.fold(try a.build().ops, &s, seq: 2)
+    #expect(SamePurchase.pairs(s.txns.values.map(Self.row), home: "AED").isEmpty)
   }
 
   @Test("decline: A names F as a possible duplicate, settled different; it never asks again; undo asks again")

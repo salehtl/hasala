@@ -71,6 +71,7 @@ public struct BillsSnapshot: Sendable, Hashable {
   public var paidThisMonth: Money
   /// A tag after a row's title, by row id ("Price change" on du's payment).
   public var tags: [String: StatusPill]
+  public var paidMark: TotalMark?
 }
 
 /// One bill (Bills · AXA Insurance (late)): what we noticed, its payment history and what
@@ -215,7 +216,7 @@ public enum BillsEngine {
     return BillsSnapshot(
       next14: next14.money, next14Mark: next14.mark, incomeLine: incomeLine, income: income, needsALook: attention, found: found,
       upcoming: upcoming, range: range, tracked: tracked.count, recentlyPaid: paidRows,
-      paidThisMonth: .aed(paid.reduce(0) { $0 + ($1.homeMinor ?? 0) }), tags: tags
+      paidThisMonth: .aed(Fils.sum(paid) { $0.homeMinor ?? 0 }), tags: tags, paidMark: TotalMark.unrated(paid)
     )
   }
 
@@ -242,9 +243,9 @@ public enum BillsEngine {
   /// "Charged 38.90 more than usual (389.00) on Mon 5 Oct."
   static func priceChange(_ b: Bill, usual: Money) -> MoneyPhrase {
     let last = b.history.first.map { " on \($0.short)" } ?? ""
-    let difference = b.amount.minor - usual.minor
+    let difference = b.amount.minor.minus(usual.minor)
     return MoneyPhrase([
-      .text("Charged "), .amount(.aed(abs(difference))), .text(" \(difference < 0 ? "less" : "more") than usual ("),
+      .text("Charged "), .amount(.aed(Int64(clamping: difference.magnitude))), .text(" \(difference < 0 ? "less" : "more") than usual ("),
       .amount(usual), .text(")\(last)."),
     ])
   }
