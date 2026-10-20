@@ -136,11 +136,13 @@ public struct Provenance: Sendable, Hashable, Codable {
   public var readAt: String
   /// The merchant exactly as the bank wrote it: "CARREFOUR MALL OF EMIRATES".
   public var rawMerchant: String
+  public var senderCheck: String?
 
-  public init(title: String, readAt: String, rawMerchant: String) {
+  public init(title: String, readAt: String, rawMerchant: String, senderCheck: String? = nil) {
     self.title = title
     self.readAt = readAt
     self.rawMerchant = rawMerchant
+    self.senderCheck = senderCheck
   }
 }
 
