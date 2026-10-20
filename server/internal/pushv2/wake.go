@@ -104,12 +104,12 @@ type Dispatcher struct {
 	Now    func() time.Time
 	Stats  Stats
 
-	queue chan job
+	queue    chan job
 	mu       sync.Mutex // guards th and pausedUntil
 	th       *throttle
 	pause    time.Time
 	envPause map[string]time.Time
-	wg    sync.WaitGroup
+	wg       sync.WaitGroup
 }
 
 // NewDispatcher builds a dispatcher; call Start to run it.
