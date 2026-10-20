@@ -139,7 +139,7 @@ public actor SyncEngine {
       set(.pushing)
       await observer?.willPush()
       let pushed = try await latchAware { () async throws(SyncStop) in
-        try await Pusher.flush(context, deadline: deadline)
+        try await Pusher.flush(context, deadline: deadline) { [observer] in await observer?.willPush() }
       }
       out.pushed.batches += pushed.batches
       out.pushed.blobs += pushed.blobs

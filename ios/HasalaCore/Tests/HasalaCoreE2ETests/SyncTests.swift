@@ -272,6 +272,16 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test("ops authored while a flush runs are shown to the observer before they are sealed")
+  func observerSeesEachBatch() async throws {
+    let (_, a, _) = try await twoPhones()
+    let observer = AuthoringObserver(inner: try Runtime(a).observer, context: a)
+    try enqueue(a, [op(1)])
+    _ = await SyncEngine(context: a, observer: observer).run(.authored)
+    #expect(try a.store.pendingCount() == 0)
+    #expect(observer.seen.contains { $0.contains(op(2).opID) })
+  }
+
   @Test("triggers coalesce: concurrent runs make one upload")
   func coalescing() async throws {
     let (w, a, _) = try await twoPhones()
@@ -378,5 +388,36 @@ final class Recorder: Transport, @unchecked Sendable {
   func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
     if request.method == .post, request.path == "/api/v1/sync", let b = request.body { lock.withLock { bodies.append(b) } }
     return try await inner.send(request)
+  }
+}
+
+final class AuthoringObserver: PageObserver, @unchecked Sendable {
+  let inner: LedgerPageObserver
+  let context: SyncContext
+  private let lock = NSLock()
+  private var calls = 0
+  private var seenIDs: [Set<String>] = []
+
+  init(inner: LedgerPageObserver, context: SyncContext) {
+    self.inner = inner
+    self.context = context
+  }
+
+  var seen: [Set<String>] { lock.withLock { seenIDs } }
+
+  func fold(_ rows: [PulledRow]) async throws(SyncStop) -> FoldSnapshotChange { try await inner.fold(rows) }
+  func pageCommitted() async { await inner.pageCommitted() }
+  func pageAbandoned() async { await inner.pageAbandoned() }
+  func pullEnded() async { await inner.pullEnded() }
+
+  func willPush() async {
+    let pending = Set(((try? context.store.pendingOps()) ?? []).map(\.opID))
+    let n = lock.withLock {
+      calls += 1
+      seenIDs.append(pending)
+      return calls
+    }
+    if n == 2 { try? enqueue(context, [op(2)]) }
+    await inner.willPush()
   }
 }
