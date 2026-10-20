@@ -21,7 +21,7 @@ Two optional features, both **off by default**, each with its own switch:
 
 | Feature | Model | What leaves the phone | Where it plugs in | What it may do |
 |---|---|---|---|---|
-| **Merchant suggestions** | Clef (`@cf/cloudflare/clef`) | One canonical merchant string per request, plus the built-in category list | A second `CategoryModel` behind the existing model tier (`Categorize/ModelTier.swift`) | Suggest a category. Never files a row (`ModelTier.autoConfirm = false` stays). |
+| **Merchant suggestions** | Clef (`@cf/cloudflare/clef`) | One canonical merchant string per request, plus the built-in category list | A second `CategoryModel` behind the existing model tier (`Categorize/ModelTier.swift`) | Suggest a category. Files a row only with the second opt-in, [Sort automatically](#sort-automatically-owner-decision-2026-10-20), above its stricter gate; Apple's model never files one (`ModelTier.autoConfirm = false` stays). |
 | **Alert reading help** (deferred) | Clairic (`@cf/cloudflare/clairic`) | The body text of **one** bank alert, redacted on the phone, shown to the person first | The review sheet for an alert no template could read (the empty review shape, `ParsedMail.fields == nil`) | Pre-fill the sheet's fields. The person saves them; the op is an ordinary user edit. |
 
 The requests go from the phone to a new Worker, `assist.hasala.app`, which holds the
@@ -71,6 +71,12 @@ preference.
   to a rule or a manual edit; it just isn't offered to the model.
 - Nothing else: no amount, date, card, bank, direction, account id, device id, or other
   subjects.
+- Only rows read by a card-payment alert template go to Clef: `adib.alert.v1`,
+  `dib.card.v1` and `enbd.alert.v1` (`ModelSuggestionSweep.cloudTemplates`). A transfer
+  template's merchant is a beneficiary's name, so transfers (`enbd.transfer.v1`), account
+  alerts (`adib.account.v1`, `dib.account.v1`) and manual entries stay on the device. A
+  subject shared with any of those rows is not sent either. The check is fail-closed: a
+  row with no template, or a new template, is not sent until it is added to the list.
 
 **Alert reading help (Clairic):**
 
@@ -95,6 +101,11 @@ answers per subject, so a subject is asked about once per device.
 - Abuse control in v1: a per-IP rate limit in the Worker (Cloudflare's rate-limiting
   binding, held in memory at the edge, not stored by us) and a global daily request cap
   that fails closed. See decision D3 for the stronger option (Privacy Pass tokens).
+- As built: the per-IP limit is keyed on the IPv4 address or the IPv6 /64, and it is
+  checked before the global limit, so a refused request does not use a global token. Both
+  limits count per Cloudflare location, so the global limit is not an account-wide or daily
+  cap. The account-wide stop is a Workers AI billing budget and alert in the Cloudflare
+  dashboard. Until it is in place, the per-location limit is an accepted risk.
 - The request carries a fixed app version header only, so the Worker can refuse versions
   with a known bad redaction.
 

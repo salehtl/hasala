@@ -148,6 +148,19 @@ struct ModelStageTests {
     ])
   }
 
+  @Test("a subject that may not leave the device skips the cloud stage only")
+  func staysOnDevice() async {
+    let device = StageFake("apple-fm/26.1")
+    let cloud = StageFake("cf-clef/1", fallback: .category("groceries"))
+    #expect(ModelStage.cloud(cloud).leavesDevice && !ModelStage.onDevice(device).leavesDevice)
+    let r = await ModelTier.run(
+      subjects: [Self.latin, Self.arabic, "other shop"], stages: [.cloud(cloud), .onDevice(device)], allowed: Self.allowed,
+      context: .foreground, now: { 0 },
+      mayLeaveDevice: { $0 == "other shop" })
+    #expect(cloud.calls == ["other shop"] && device.calls == [Self.latin])
+    #expect(r.suggestions == [.init(subject: "other shop", category: "groceries", modelTag: "cf-clef/1")])
+  }
+
   @Test("the single-model wrapper keeps its Latin gate and stop")
   func wrapper() async {
     let m = StageFake("apple-fm/26.1", answers: ["b shop": .failed(.busy)], fallback: .category("dining"))

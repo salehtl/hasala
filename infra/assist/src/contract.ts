@@ -112,7 +112,7 @@ export function clefBody(s: Suggestion): ClefBody {
   criteria[UNKNOWN] = UNKNOWN_CRITERION;
   return {
     model: "clef",
-    state: `The merchant name on a card payment from a bank in the United Arab Emirates: "${s.subject}"`,
+    state: `The merchant name on a card payment from a bank in the United Arab Emirates: ${JSON.stringify(s.subject)}`,
     questions: {
       category: {
         type: "choice",

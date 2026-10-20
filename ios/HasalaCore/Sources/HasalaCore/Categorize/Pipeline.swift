@@ -88,10 +88,11 @@ public struct SweepRow: Sendable, Equatable {
   /// Live, parsed, not archived and not split.
   public let candidate: Bool
   public let version: Int64?
+  public let template: String?
 
   public init(
     id: String, merchantRaw: String, direction: Direction?, category: String?, sourceKind: SourceKind, sourceRef: String?,
-    needsReview: Bool, candidate: Bool, version: Int64? = nil
+    needsReview: Bool, candidate: Bool, version: Int64? = nil, template: String? = nil
   ) {
     self.id = id
     self.merchantRaw = merchantRaw
@@ -102,6 +103,7 @@ public struct SweepRow: Sendable, Equatable {
     self.needsReview = needsReview
     self.candidate = candidate
     self.version = version
+    self.template = template
   }
 }
 

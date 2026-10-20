@@ -118,6 +118,11 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     guard let gatesJSON, let gates = try? JSONParser.parse(text: gatesJSON) else { return nil }
     return TxnGates(ar: gates["ar"]?.stringValue, sender: gates["sender"]?.stringValue).reviewReason
   }
+
+  static func template(gatesJSON: String?) -> String? {
+    guard let gatesJSON, let gates = try? JSONParser.parse(text: gatesJSON) else { return nil }
+    return gates["template"]?.stringValue
+  }
 }
 
 public struct PartRow: Sendable, Equatable {
@@ -277,7 +282,8 @@ public struct LedgerReader: Sendable {
         return SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
-          candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version)
+          candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
+          template: TxnRow.template(gatesJSON: r["gates_json"]))
       }
     }
   }

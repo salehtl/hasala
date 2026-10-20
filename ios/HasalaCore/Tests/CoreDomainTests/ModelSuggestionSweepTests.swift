@@ -62,6 +62,7 @@ struct ModelSuggestionSweepTests {
     var seq: Int64 = 0
     var own: Int64?
     var ingested = 0
+    var templates: [String: String] = [:]
     let random = SeededRandom(seed: "model-sweep")
 
     func context() -> AuthorContext { AuthorContext(writerID: w, nowMs: now, ownLastMs: own, maxAuthored: [:], random: random) }
@@ -73,7 +74,7 @@ struct ModelSuggestionSweepTests {
       #expect(state.anomalies.isEmpty, "\(state.anomalies)")
     }
 
-    mutating func ingest(_ merchants: [(String, String)]) throws -> [String] {
+    mutating func ingest(_ merchants: [(String, String)], template: String? = "dib.card.v1@1") throws -> [String] {
       var a = OpAuthor(context())
       var ids: [String] = []
       for (m, dir) in merchants {
@@ -84,7 +85,9 @@ struct ModelSuggestionSweepTests {
           ("tier", .string("template")), ("needs_review", .bool(true)), ("entry_method", .string("mailbox")),
         ])
         let hex = String(ingested, radix: 16)
-        ids.append(try a.ingest(payload: p, ingestID: String(repeating: "0", count: 64 - hex.count) + hex))
+        let id = try a.ingest(payload: p, ingestID: String(repeating: "0", count: 64 - hex.count) + hex)
+        ids.append(id)
+        templates[id] = template
       }
       try fold(try a.build())
       return ids
@@ -95,7 +98,7 @@ struct ModelSuggestionSweepTests {
         SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource?.kind.rawValue ?? "none") ?? .none, sourceRef: nil,
-          needsReview: t.needsReview, candidate: !t.unparsed && t.splits.isEmpty, version: t.version)
+          needsReview: t.needsReview, candidate: !t.unparsed && t.splits.isEmpty, version: t.version, template: templates[t.id])
       }.sorted { $0.id < $1.id }
     }
   }
@@ -242,5 +245,53 @@ struct ModelSuggestionSweepTests {
     #expect(blobs.map(\.ops.count) == [500, 1])
     for b in blobs { try l.fold(b) }
     #expect(ids.allSatisfy { l.state.txns[$0]?.category == "dining" })
+  }
+
+  @Test("only card-payment alert templates may leave the device")
+  func cloudTemplates() {
+    func row(_ t: String?) -> SweepRow {
+      SweepRow(
+        id: "x", merchantRaw: "SHOP", direction: .debit, category: nil, sourceKind: .none, sourceRef: nil, needsReview: true, candidate: true,
+        version: 1, template: t)
+    }
+    for t in ["adib.alert.v1@1", "dib.card.v1@3", "enbd.alert.v1@2", "enbd.alert.v1"] { #expect(ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t)") }
+    for t in [nil, "", "none", "enbd.transfer.v1@2", "dib.account.v1@1", "adib.account.v1@1", "enbd.alert.v2@1", "enbd.alert.v1x@1", "@1"] {
+      #expect(!ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t ?? "nil")")
+    }
+  }
+
+  @Test("a transfer's beneficiary goes to the on-device model but never to the cloud")
+  func transferStaysOnDevice() async throws {
+    var l = Ledger()
+    let ids = try l.ingest([("EXAMPLE PERSON NAME", "debit"), ("محمد مثال", "debit")], template: "enbd.transfer.v1@2")
+    let device = SweepModel("apple-fm/26.1", fallback: .category("shopping"))
+    let cloud = SweepModel("cf-clef/1", fallback: .category("dining"))
+    let suggestions = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: Self.stages(device, cloud), context: .foreground,
+      cache: MemoryCache(), now: { now })
+    #expect(cloud.calls.isEmpty)
+    #expect(device.calls == ["example person name"])
+    #expect(suggestions.map(\.txnID) == [ids[0]])
+    #expect(suggestions.allSatisfy { $0.modelTag == "apple-fm/26.1" })
+  }
+
+  @Test("manual rows, account alerts and a subject shared with a transfer stay on the device")
+  func otherRowsStayOnDevice() async throws {
+    var l = Ledger()
+    _ = try l.ingest([("MANUAL SHOP ONE", "debit")], template: nil)
+    _ = try l.ingest([("ACCOUNT TEXT TWO", "debit")], template: "dib.account.v1@1")
+    _ = try l.ingest([("ADIB ACCOUNT THREE", "debit")], template: "adib.account.v1@1")
+    _ = try l.ingest([("SHARED NAME FOUR", "debit")], template: "dib.card.v1@1")
+    _ = try l.ingest([("SHARED NAME FOUR", "debit")], template: "enbd.transfer.v1@2")
+    _ = try l.ingest([("CARD SHOP FIVE", "debit")], template: "enbd.alert.v1@1")
+    _ = try l.ingest([("CARD SHOP SIX", "debit")], template: "adib.alert.v1@1")
+    let device = SweepModel("apple-fm/26.1")
+    let cloud = SweepModel("cf-clef/1")
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: Self.stages(device, cloud), context: .foreground,
+      cache: MemoryCache(), now: { now })
+    #expect(cloud.calls.sorted() == ["card shop five", "card shop six"])
+    #expect(
+      device.calls.sorted() == ["account text two", "adib account three", "card shop five", "card shop six", "manual shop one", "shared name four"])
   }
 }

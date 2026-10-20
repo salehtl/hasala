@@ -45,7 +45,7 @@ let customCategory = AllowedCategory(id: "u_pets", name: "Pets", hint: nil)
 
 func model(_ exchange: StubExchange, enabled: Bool = true, autoFile: Bool = false) -> CloudCategoryModel {
   CloudCategoryModel(
-    baseURL: base, clientVersion: "1.2.3", isEnabled: { enabled }, isAutoFileEnabled: { autoFile }, exchange: exchange)
+    baseURL: base, clientVersion: "1.2.3", isEnabled: { enabled }, isAutoFileEnabled: { autoFile }, exchange: exchange, pause: {})
 }
 
 func reply(choice: String, _ probabilities: [String: Double], tag: String = "cf-clef/1") -> String {
@@ -92,6 +92,18 @@ struct CloudRequestTests {
     let dining = try #require(cats.first { $0["id"] as? String == "dining" })
     #expect(dining["name"] as? String == "Dining")
     #expect(dining["hint"] as? String == "restaurants, cafes, food delivery")
+  }
+
+  @Test("a built-in category is sent with its built-in name, not the account's name for it")
+  func builtinName() async throws {
+    let ex = StubExchange(status: 200, json: reply(choice: "unknown", [:]))
+    let renamed = builtinAllowed.map { $0.id == "dining" ? AllowedCategory(id: $0.id, name: "Eating Out at Home Street", hint: $0.hint) : $0 }
+    _ = await model(ex).suggest(subject: "CAFE EXAMPLE JBR", allowed: renamed)
+    let r = try #require(ex.requests.first)
+    let cats = try #require(try bodyObject(r)["categories"] as? [[String: Any]])
+    let dining = try #require(cats.first { $0["id"] as? String == "dining" })
+    #expect(dining["name"] as? String == "Dining")
+    #expect(!String(decoding: r.body, as: UTF8.self).contains("Eating Out"))
   }
 
   @Test("a missing hint is sent as null")
@@ -178,8 +190,8 @@ struct CloudAnswerTests {
   @Test(
     "HTTP status mapping",
     arguments: [
-      (400, ModelAnswer.failed(.other)), (403, .failed(.other)), (404, .failed(.other)), (405, .failed(.other)),
-      (413, .failed(.other)), (429, .failed(.rateLimited)), (502, .failed(.decoding)), (503, .failed(.busy)),
+      (400, ModelAnswer.failed(.refused)), (403, .failed(.refused)), (404, .failed(.other)), (405, .failed(.other)),
+      (413, .failed(.refused)), (429, .failed(.rateLimited)), (502, .failed(.decoding)), (503, .failed(.busy)),
       (500, .failed(.other)),
     ])
   func status(code: Int, want: ModelAnswer) async {
@@ -238,6 +250,124 @@ struct CloudAnswerTests {
     let m = HasalaCloudFactory.makeCategoryModel(baseURL: base, clientVersion: "1", isEnabled: { false }, isAutoFileEnabled: { false })
     #expect(m?.modelTag == "cf-clef/1")
     #expect(m?.availability() == .notEnabled)
+  }
+}
+
+@Suite("CloudCategoryModel switch, refusal and pause")
+struct CloudGuardTests {
+  @Test("a switch turned off before the request sends nothing")
+  func switchedOff() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
+    let flag = Atomic<Bool>(true)
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1", isEnabled: { flag.load(ordering: .relaxed) }, isAutoFileEnabled: { false }, exchange: ex,
+      pause: { flag.store(false, ordering: .relaxed) })
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.notEnabled))
+    #expect(ex.requests.isEmpty)
+    #expect(await model(ex, enabled: false).suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.notEnabled))
+    #expect(ex.requests.isEmpty)
+  }
+
+  @Test("the switch going off mid-run stops the stage after one request")
+  func switchedOffMidRun() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1", isEnabled: { ex.requests.isEmpty }, isAutoFileEnabled: { false }, exchange: ex, pause: {})
+    let r = await ModelTier.run(
+      subjects: ["CAFE EXAMPLE JBR", "BOOKS EXAMPLE MALL", "TAXI EXAMPLE DXB"], model: m, allowed: builtinAllowed, context: .foreground,
+      now: { 0 })
+    #expect(ex.requests.count == 1)
+    #expect(r.suggestions.map(\.subject) == ["CAFE EXAMPLE JBR"])
+    #expect(r.stoppedBy == .notEnabled)
+  }
+
+  @Test("a refused request stops the stage for the run", arguments: [400, 403, 413])
+  func refusedStops(code: Int) async {
+    let ex = StubExchange(status: code, json: "{\"error\":\"x\"}")
+    let r = await ModelTier.run(
+      subjects: ["CAFE EXAMPLE JBR", "BOOKS EXAMPLE MALL"], model: model(ex), allowed: builtinAllowed, context: .foreground, now: { 0 })
+    #expect(ex.requests.count == 1)
+    #expect(r.stoppedBy == .refused)
+    #expect(r.suggestions.isEmpty && r.unknown.isEmpty)
+  }
+
+  @Test("403 turns the model off for the life of the instance, across copies")
+  func latch() async {
+    let ex = StubExchange(status: 403, json: "{\"error\":\"client\"}")
+    let m = model(ex)
+    let copy = m
+    #expect(m.availability() == .available)
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
+    #expect(m.availability() == .notEligible)
+    #expect(copy.availability() == .notEligible)
+    #expect(await copy.suggest(subject: "BOOKS EXAMPLE MALL", allowed: builtinAllowed) == .failed(.refused))
+    #expect(await m.suggestGraded(subject: "TAXI EXAMPLE DXB", allowed: builtinAllowed).answer == .failed(.refused))
+    #expect(ex.requests.count == 1)
+    let fresh = model(ex)
+    #expect(fresh.availability() == .available)
+  }
+
+  @Test("400 and 413 do not turn the model off", arguments: [400, 413])
+  func noLatch(code: Int) async {
+    let ex = StubExchange(status: code, json: "{}")
+    let m = model(ex)
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
+    #expect(m.availability() == .available)
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
+    #expect(ex.requests.count == 2)
+  }
+
+  @Test("the pause runs before the request")
+  func pauseFirst() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
+    let seen = Mutex<[Int]>([])
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex,
+      pause: { seen.withLock { $0.append(ex.requests.count) } })
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .category("dining"))
+    #expect(seen.withLock { $0 } == [0])
+    #expect(ex.requests.count == 1)
+    #expect(CloudCategoryModel.jitterRange == 100...400)
+  }
+
+  @Test("a task cancelled during the pause sends nothing")
+  func cancelledInPause() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex,
+      pause: { withUnsafeCurrentTask { $0?.cancel() } })
+    let task = Task { await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) }
+    #expect(await task.value == .failed(.timeout))
+    #expect(ex.requests.isEmpty)
+  }
+}
+
+@Suite("URLSessionCloudExchange redirects")
+struct CloudRedirectTests {
+  @Test("a 3xx status is a transport failure", arguments: [300, 301, 302, 303, 304, 307, 308, 399])
+  func redirectStatus(code: Int) {
+    #expect(throws: CloudExchangeError.transport) { try URLSessionCloudExchange.response(status: code, body: Data()) }
+  }
+
+  @Test("other statuses pass through", arguments: [200, 299, 400, 403, 429, 503])
+  func otherStatus(code: Int) throws {
+    #expect(try URLSessionCloudExchange.response(status: code, body: Data("x".utf8)) == CloudResponse(status: code, body: Data("x".utf8)))
+  }
+
+  @Test("the session delegate refuses to follow a redirect")
+  func delegateRefuses() throws {
+    let url = URL(string: "https://assist.example.test/v1/category")!
+    let session = URLSession(configuration: .ephemeral)
+    defer { session.invalidateAndCancel() }
+    let task = session.dataTask(with: url)
+    let response = try #require(HTTPURLResponse(url: url, statusCode: 302, httpVersion: "HTTP/1.1", headerFields: ["Location": "https://elsewhere.example.test/"]))
+    let followed = Mutex<[URLRequest?]>([])
+    CloudRefuseRedirects().urlSession(
+      session, task: task, willPerformHTTPRedirection: response, newRequest: URLRequest(url: URL(string: "https://elsewhere.example.test/")!)
+    ) { r in followed.withLock { $0.append(r) } }
+    let calls = followed.withLock { $0 }
+    #expect(calls.count == 1)
+    #expect(calls.first.map { $0 == nil } == true)
   }
 }
 
