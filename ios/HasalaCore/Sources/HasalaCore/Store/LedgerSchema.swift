@@ -172,10 +172,18 @@ enum LedgerSchema {
     "CREATE TABLE onboarding_draft (id INTEGER PRIMARY KEY CHECK (id = 1), json BLOB NOT NULL)",
   ]
 
+  static let fmCache: [String] = [
+    "CREATE TABLE fm_cache (key TEXT PRIMARY KEY, expires_at_ms INTEGER NOT NULL)",
+    "CREATE INDEX fm_cache_expires ON fm_cache (expires_at_ms)",
+  ]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
       for sql in v1 { try db.execute(sql: sql) }
+    }
+    m.registerMigration("fm_cache") { db in
+      for sql in fmCache { try db.execute(sql: sql) }
     }
     return m
   }

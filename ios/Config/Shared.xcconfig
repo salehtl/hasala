@@ -59,6 +59,7 @@ INFOPLIST_KEY_NSCameraUsageDescription = Hasala uses the camera only to scan the
 HASALA_ENVIRONMENT = qa
 SLASH = /
 HASALA_API_BASE_URL = https:$(SLASH)$(SLASH)api.hasala.app
+HASALA_ASSIST_BASE_URL = https:$(SLASH)$(SLASH)assist.hasala.app
 HASALA_GOOGLE_IOS_CLIENT_ID = 987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9.apps.googleusercontent.com
 HASALA_GOOGLE_REDIRECT_SCHEME = com.googleusercontent.apps.987620996339-4tbl1o14pf309u5h9bjatnaipvqg1ob9
 HASALA_GMAIL_PUBSUB_TOPIC = unset

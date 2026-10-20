@@ -25,6 +25,8 @@ nonisolated enum BuildSurface {
   #endif
 
   /// Where testers and reviewers write to (support@ is routed to the owner).
+  static let showsCloudSuggestions: Bool = BuildInfo.assistBaseURL() != nil
+
   static let supportEmail = "support@hasala.app"
   static let supportMail = URL(string: "mailto:support@hasala.app")!
   /// The support page: how to reach us, for an iPhone where a mail link does nothing.
