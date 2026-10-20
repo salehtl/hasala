@@ -1506,6 +1506,8 @@ public actor MailboxEngine {
         try await store.clearParsing(id)
       }
       switch parsed {
+      case .interrupted:
+        return
       case .setAside(let domain):
         report.setAside += 1
         c.setAside.append(SetAsideRecord(messageID: id, domain: domain, internalDateMs: date, atMs: at))
