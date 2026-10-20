@@ -161,9 +161,9 @@ struct ProfileSheet: View {
                        trailing: value.tone.map { .status(value.text, $0) } ?? .value(value.text))
           }
         }
-        // TODO(spec 04 §16.2 X1): Currency and exchange rates (PENDING PO-17). One currency
-        // for now: the row states it and opens nothing.
-        SettingRow(icon: .globe, title: "Currency", trailing: .value("AED"), chevron: false)
+        row(.exchangeRates, id: "profile.currency") {
+          SettingRow(icon: .globe, title: "Currency", trailing: Self.currencyTrailing(app.store.state))
+        }
         // TODO(spec 04 §9, §11): local notifications and the Face ID lock are not in this
         // build, so a Release build doesn't offer their settings yet.
         if unfinished {
@@ -209,6 +209,11 @@ struct ProfileSheet: View {
   }
 
   /// Sign-in & security's own status (its hero): frozen, a passkey, or a password only.
+  static func currencyTrailing(_ s: LedgerState) -> SettingRow.Trailing {
+    let missing = ExchangeRates.page(s).missing.reduce(0) { $0 + $1.notCounted }
+    return missing > 0 ? .status(ExchangeRatesPage.notCountedLine(missing), .warning) : .value(Money.home)
+  }
+
   static func securityStatus(_ s: SecurityState) -> (text: String, tone: StatusTone) {
     if s.frozen != nil { return ("Frozen", .accent) }
     return s.hasPasskey ? ("Protected", .success) : ("Password only", .warning)
@@ -280,6 +285,10 @@ private struct ProfilePage: View {
       RulesPage(app: app, model: model)
     case .notifications:
       NotificationSettingsPage(model: model)
+    case .exchangeRates:
+      ExchangeRatesPage(app: app)
+    case .editRate(let currency):
+      RateEditorPage(app: app, currency: currency)
     case .bankAlerts:
       BankAlertsPage(app: app)
     case .mailbox(let id):

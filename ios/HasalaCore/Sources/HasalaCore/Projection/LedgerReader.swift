@@ -128,6 +128,12 @@ public struct PartRow: Sendable, Equatable {
   public var note: String?
 }
 
+public struct RateRow: Sendable, Equatable {
+  public let currency: String
+  public let rateMicro: Int64?
+  public let updatedAt: String?
+}
+
 public struct RuleRow: Sendable, Equatable, Identifiable {
   public var id: String
   public var patterns: [String]
@@ -321,6 +327,14 @@ public struct LedgerReader: Sendable {
 
   public func homeCurrency() throws -> String? {
     try db.read { db in try String.fetchOne(db, sql: "SELECT currency FROM rate WHERE home = 1") }
+  }
+
+  public func rates() throws -> [RateRow] {
+    try db.read { db in
+      try Row.fetchAll(db, sql: "SELECT currency, rate_micro, updated_at FROM rate WHERE home = 0").map { r in
+        RateRow(currency: r["currency"], rateMicro: r["rate_micro"], updatedAt: r["updated_at"])
+      }.sorted { compareUTF8($0.currency, $1.currency) < 0 }
+    }
   }
 
   // MARK: Plan inputs

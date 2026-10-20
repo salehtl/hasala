@@ -129,6 +129,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
         let t = CivilDate(year: today.year, month: today.month, day: today.day) ?? d.start
         d.end = d.start < t ? t : CivilDate(daysSinceEpoch: d.start.daysSinceEpoch + 1)
       }
+    case .setRate(let currency, let micro):
+      try await build { a throws(AuthorError) in try a.setRate(currency: currency, rateMicro: micro) }
+    case .unsetRate(let currency):
+      try await build { a throws(AuthorError) in a.unsetRate(currency: currency) }
     case .setRuleEnabled(let id, let enabled):
       guard let r = try reader.rules().first(where: { $0.id == id }), let snapshot = Self.snapshot(r) else {
         throw Failure.notFound

@@ -15,6 +15,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Profile")
     assertAbsent(app, ["profile.notifications", "profile.faceID", "profile.connectGmail"], "Profile")
     assertPresent(app, ["profile.accounts", "profile.bills", "profile.rules", "profile.projects", "profile.security",
+                        "profile.currency",
                         "profile.mailboxes",
                         "profile.export", "profile.privacy", "profile.help", "profile.signOut", "profile.delete",
                         "profile.buildFooter"], "Profile")
@@ -56,6 +57,14 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Profile › Categories and rules")
     assertAbsent(app, ["rules.segment", "rules.add", "rules.seeAll"], "Profile › Categories and rules")
+    try audit(app)
+    back(app)
+
+    tap(app, "profile.currency")
+    XCTAssertTrue(el(app, "rates.USD").waitForExistence(timeout: uiWait))
+    attach(app, "Release · Exchange rates")
+    assertNoPlaceholders(app, "Profile › Exchange rates")
+    assertPresent(app, ["rates.add"], "Profile › Exchange rates")
     try audit(app)
     back(app)
 

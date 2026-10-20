@@ -59,6 +59,9 @@ public enum LedgerEdit: Sendable, Hashable {
   /// `rule_added{enabled}`.
   case setRuleEnabled(RuleID, Bool)
 
+  case setRate(currency: String, rateMicro: Int64)
+  case unsetRate(currency: String)
+
   // Device preferences (spec 04 §4.5; never synced).
   case setNotifications(DevicePrefs.NotificationLevel)
   case setFaceIDLock(Bool)
