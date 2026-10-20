@@ -234,3 +234,81 @@ func TestDispatcherResolvesTokensAndForgetsGoneOnes(t *testing.T) {
 		t.Fatalf("%d tokens left, want 2", n)
 	}
 }
+
+func TestATrailingWakeSkipsATokenThatWasRemovedOrMoved(t *testing.T) {
+	pool := pgtest.New(t)
+	u := oplogtest.NewUser(t, pool)
+	other := oplogtest.NewUser(t, pool)
+	insert := func(user uuid.UUID, writer string, b byte) {
+		t.Helper()
+		oplogtest.NewWriter(t, pool, user, writer)
+		var hash []byte
+		if err := pool.QueryRow(bg,
+			`INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
+			 VALUES (sha256($1::bytea), $2, 'login', now(), now(), now() + interval '1 hour') RETURNING token_hash`,
+			[]byte(writer), user).Scan(&hash); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(bg,
+			`INSERT INTO apns_tokens (user_id, writer_id, session_hash, token_hex, environment, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, 'production', now(), now())`, user, writer, hash, tokenHex(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, b, k := "ios-11111111-1111-4111-8111-111111111111", "ios-22222222-2222-4222-8222-222222222222",
+		"ios-33333333-3333-4333-8333-333333333333"
+	insert(u, a, 1)
+	insert(u, b, 2)
+	insert(other, k, 3)
+	c := &clock{t: time.Unix(1_760_000_000, 0)}
+	s := &fakeSender{}
+	d := NewDispatcher(pool, s)
+	d.Now = c.now
+	for range 2 {
+		d.run(bg, job{user: u, writer: a, others: true, r: ReasonMail, resolve: true})
+		d.run(bg, job{user: other, writer: k, r: ReasonMail, resolve: true})
+	}
+	if s.count() != 2 {
+		t.Fatalf("%d leading sends, want 2", s.count())
+	}
+	if _, err := pool.Exec(bg, `DELETE FROM apns_tokens WHERE token_hex = $1`, tokenHex(2)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE apns_tokens SET user_id = $2, writer_id = $3 WHERE token_hex = $1`,
+		tokenHex(3), u, b); err != nil {
+		t.Fatal(err)
+	}
+	c.add(mailWindow + time.Second)
+	d.Flush(bg)
+	if s.count() != 2 {
+		t.Fatalf("trailing wakes reached %v, want none", s.sent[2:])
+	}
+	if d.Stats.Dropped[ReasonMail].Load() != 2 {
+		t.Fatalf("dropped %d trailing wakes, want 2", d.Stats.Dropped[ReasonMail].Load())
+	}
+
+	d.run(bg, job{user: u, writer: b, r: ReasonMail, resolve: true})
+	d.run(bg, job{user: u, writer: a, r: ReasonMail, resolve: true})
+	d.run(bg, job{user: u, writer: a, r: ReasonMail, resolve: true})
+	c.add(mailWindow + time.Second)
+	d.Flush(bg)
+	if s.count() != 5 || s.sent[4].TokenHex != tokenHex(1) {
+		t.Fatalf("a live token's trailing wake was not sent: %v", s.sent)
+	}
+}
+
+func TestTryWakeWriterReportsAFullQueue(t *testing.T) {
+	d := NewDispatcher(nil, &fakeSender{})
+	u := uuid.New()
+	for i := range queueCapacity {
+		if !d.TryWakeWriter(bg, u, "w", ReasonNudge) {
+			t.Fatalf("wake %d not queued", i)
+		}
+	}
+	if d.TryWakeWriter(bg, u, "w", ReasonNudge) {
+		t.Fatal("a wake past the queue's capacity was reported queued")
+	}
+	if d.TryWakeWriter(bg, u, "", ReasonNudge) {
+		t.Fatal("a wake for no writer was reported queued")
+	}
+}

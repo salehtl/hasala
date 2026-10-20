@@ -57,8 +57,10 @@ const (
 
 // mountHooks mounts each provider's hook only with that provider's push; a
 // mailbox link alone leaves it to the catch-all 404. The per-IP budget is one
-// across both providers' hooks; each provider has its own global budget, so
-// cheap unauthenticated Graph handshakes cannot spend the Gmail hook's.
+// across both providers' hooks and is spent by every request; each provider
+// has its own global budget, spent only by a request that proved itself (a
+// verified Google token, a clientState that names a link), so unauthenticated
+// traffic cannot delay a real wake.
 func (s *Server) mountHooks(mux *http.ServeMux) {
 	g, o := s.gmailPush(), s.outlookPush()
 	if g == nil && o == nil {
@@ -106,8 +108,8 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	g.Counters.Pushes.Add(1)
 	ctx, cancel := context.WithTimeout(r.Context(), hookDeadline)
 	defer cancel()
-	// 1: per caller before global, so one host cannot drain the shared budget.
-	if !g.HookPerIP.Allow(clientKey(r)) || !g.HookGlobal.Allow("") {
+	// 1: per caller; the global budget is spent only after step 5.
+	if !g.HookPerIP.Allow(clientKey(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
 		return
 	}
@@ -141,6 +143,10 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	if claims.Email != g.ServiceAccount || !claims.EmailVerified {
 		g.Counters.Forbidden.Add(1)
 		writeErr(w, http.StatusForbidden, "forbidden", "")
+		return
+	}
+	if !g.HookGlobal.Allow("") {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
 		return
 	}
 	// 6–8: the envelope and the notice.
@@ -216,21 +222,22 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 
 // handleOutlookHook is both Graph hooks; lifecycle says which. The order:
 //
-//  1. hook-ip, then hook-global, for every request, the handshake included.
+//  1. hook-ip for every request, the handshake included.
 //  2. The 64 KiB body cap.
 //  3. The validation handshake: a validationToken and an empty body is
 //     answered 200 with the token as text/plain, after no database work. A
 //     token with a body is no handshake: 204 and a counter.
 //  4. The notification collection; a malformed one is 204 and a counter.
 //  5. One route query by the unique client_state_hash for the distinct
-//     hashes, then per link that matched: hook-link, then the wake (an
-//     unmatched hash never touches hook-link): ReasonMail on the main path,
+//     hashes. A request with a match spends hook-global once (429 when it is
+//     out); then per link that matched: hook-link, then the wake (an
+//     unmatched hash never touches hook-global or hook-link): ReasonMail on the main path,
 //     ReasonNudge for a lifecycle event (reauthorizationRequired,
 //     subscriptionRemoved, missed). An unknown clientState is a counter.
 //  6. 202, or 503 if the route could not be read (Graph retries).
 func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifecycle bool) {
 	o := s.Outlook.Push
-	if !o.HookPerIP.Allow(clientKey(r)) || !o.HookGlobal.Allow("") {
+	if !o.HookPerIP.Allow(clientKey(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
 		return
 	}
@@ -279,10 +286,11 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		hashes[i] = p.Hashes[i][:]
 	}
 
-	// The route comes before hook-link: only a clientState that names a link
-	// spends (or creates) a hook-link bucket, so made-up clientStates cannot
-	// fill the limiter and push real links into its shared fallback. The
-	// lookup itself is bounded by hook-ip, hook-global and the 100 entries.
+	// The route comes before hook-global and hook-link: only a clientState
+	// that names a link spends them, so made-up clientStates cannot drain the
+	// global budget, nor fill the link limiter and push real links into its
+	// shared fallback. The lookup itself is bounded by hook-ip and the 100
+	// entries.
 	ctx, cancel := context.WithTimeout(r.Context(), hookDeadline)
 	defer cancel()
 	rows, err := s.Pool.Query(ctx,
@@ -293,24 +301,20 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
-	var holders []gmailpush.Holder
-	known := 0
+	type match struct {
+		hash []byte
+		h    gmailpush.Holder
+	}
+	var matched []match
 	for rows.Next() {
-		var hash []byte
-		var h gmailpush.Holder
-		if err := rows.Scan(&hash, &h.UserID, &h.WriterID); err != nil {
+		var m match
+		if err := rows.Scan(&m.hash, &m.h.UserID, &m.h.WriterID); err != nil {
 			rows.Close()
 			s.logf("api: outlook hook: route: %v", err)
 			writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
 			return
 		}
-		known++
-		// Per link, so one link's flood cannot spend another's budget.
-		if !o.HookLink.Allow(hex.EncodeToString(hash)) {
-			o.Counters.LinkLimited.Add(1)
-			continue
-		}
-		holders = append(holders, h)
+		matched = append(matched, m)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -319,7 +323,20 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
-	o.Counters.Unknown.Add(int64(len(hashes) - known))
+	o.Counters.Unknown.Add(int64(len(hashes) - len(matched)))
+	if len(matched) > 0 && !o.HookGlobal.Allow("") {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+		return
+	}
+	var holders []gmailpush.Holder
+	for _, m := range matched {
+		// Per link, so one link's flood cannot spend another's budget.
+		if !o.HookLink.Allow(hex.EncodeToString(m.hash)) {
+			o.Counters.LinkLimited.Add(1)
+			continue
+		}
+		holders = append(holders, m.h)
+	}
 
 	reason := pushv2.ReasonMail
 	if lifecycle {
