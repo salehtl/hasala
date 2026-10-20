@@ -467,6 +467,10 @@ func checkCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) err
 	return nil
 }
 
+func CheckCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) error {
+	return checkCascades(ctx, pool, rels)
+}
+
 // ---------------------------------------------------------------------------
 // The purge
 // ---------------------------------------------------------------------------

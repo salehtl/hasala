@@ -30,6 +30,7 @@ type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 // Text is bank_text(x): trimmed, whitespace collapsed, 1–64 runes, each a
@@ -160,19 +161,6 @@ func Record(ctx context.Context, q Querier, c Choice, userID *uuid.UUID, senderD
 	if c.Supported {
 		return nil
 	}
-	if c.OtherKey != "" {
-		var known bool
-		var distinct int
-		if err := q.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM bank_requests WHERE other_key = $1),
-			        (SELECT count(DISTINCT other_key) FROM bank_requests WHERE other_key IS NOT NULL)`,
-			c.OtherKey).Scan(&known, &distinct); err != nil {
-			return fmt.Errorf("banks: count names: %w", err)
-		}
-		if !known && distinct >= MaxOtherKeys {
-			return ErrListFull
-		}
-	}
 	source := "web"
 	if userID != nil {
 		source = "app"
@@ -182,11 +170,34 @@ func Record(ctx context.Context, q Querier, c Choice, userID *uuid.UUID, senderD
 		conflict = `ON CONFLICT (user_id, (coalesce(bank_slug, 'other:' || other_key))) WHERE user_id IS NOT NULL
 		 DO UPDATE SET sender_domain = coalesce(bank_requests.sender_domain, EXCLUDED.sender_domain)`
 	}
-	_, err := q.Exec(ctx,
+	tx, err := q.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("banks: record: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if c.OtherKey != "" {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('hasala/bank_requests/other_keys'))`); err != nil {
+			return fmt.Errorf("banks: lock names: %w", err)
+		}
+		var known bool
+		var distinct int
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM bank_requests WHERE other_key = $1),
+			        (SELECT count(DISTINCT other_key) FROM bank_requests WHERE other_key IS NOT NULL)`,
+			c.OtherKey).Scan(&known, &distinct); err != nil {
+			return fmt.Errorf("banks: count names: %w", err)
+		}
+		if !known && distinct >= MaxOtherKeys {
+			return ErrListFull
+		}
+	}
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO bank_requests (bank_slug, other_key, other_text, source, user_id, sender_domain, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7) `+conflict,
-		nullable(c.Slug), nullable(c.OtherKey), nullable(c.OtherText), source, userID, nullable(senderDomain), now)
-	if err != nil {
+		nullable(c.Slug), nullable(c.OtherKey), nullable(c.OtherText), source, userID, nullable(senderDomain), now); err != nil {
+		return fmt.Errorf("banks: record: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("banks: record: %w", err)
 	}
 	return nil

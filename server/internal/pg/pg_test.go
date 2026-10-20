@@ -570,6 +570,24 @@ func TestServingRefusesAWeakenedSchema(t *testing.T) {
 	}
 }
 
+func TestServingRefusesAWeakenedConstraintDefinition(t *testing.T) {
+	cases := map[string]string{
+		"op_log_stream_is_hot":        `CHECK (stream = 'hot' OR stream <> 'hot')`,
+		"op_log_aad_matches_position": `CHECK (octet_length(blob) >= 0)`,
+		"op_log_blob_is_sealed":       `CHECK (hasala_frame_is_sealed(blob) OR true)`,
+	}
+	for name, def := range cases {
+		t.Run(name, func(t *testing.T) {
+			pool, owner := pgtest.NewWithOwner(t)
+			mustExec(t, owner, `ALTER TABLE op_log DROP CONSTRAINT `+name)
+			mustExec(t, owner, `ALTER TABLE op_log ADD CONSTRAINT `+name+` `+def)
+			if got := refusalCode(pg.CheckServing(bg, pool, nil)); got != "O5" {
+				t.Fatalf("refusal %q, want O5", got)
+			}
+		})
+	}
+}
+
 // O3 on a role of its own: membership is cluster-wide, and granting it to the
 // shared hasala_runtime would refuse every other package's tests running
 // against the same cluster at that moment.
