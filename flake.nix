@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     # Used for ONE package, Go (see goFor). Everything else comes from 26.05.
-    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs-unstable.url = "github:nixos/nixpkgs/40b7966096659ec072bc0ca0d1a102165f1509eb";
   };
 
   outputs =
@@ -27,7 +27,8 @@
       # stay at or above the `toolchain` line in server/go.mod, which
       # scripts/check.sh enforces.
       #
-      # From nixos-unstable because 26.05 stops at 1.26.8: that release is past
+      # From nixpkgs master (40b7966, Go 1.27.3) until nixos-unstable has it; then
+      # back to nixos-unstable. Not 26.05, because 26.05 stops at 1.26.8: that release is past
       # GO-2026-6090 (the TLS KeyUpdate DoS in the 2026-08-14 ledgerd security
       # review, which is not published; fixed in 1.26.6) but still
       # carries ten reachable net/http, crypto/tls and mime/multipart advisories
