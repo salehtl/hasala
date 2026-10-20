@@ -231,3 +231,55 @@ func TestOneAccountsHeldUsageRowDoesNotBlockAnother(t *testing.T) {
 		t.Fatalf("an append for the account whose usage row is held = %v, want it to block until the deadline", err)
 	}
 }
+
+func TestARefusedAppendIsCountedOnAOneConnectionPool(t *testing.T) {
+	pool := pgtest.New(t)
+	u := insertUser(t, pool)
+	setOplogCeiling(t, pool, 1)
+
+	cfg := pool.Config()
+	cfg.MaxConns = 1
+	cfg.MinConns = 0
+	one, err := pgxpool.NewWithConfig(bg, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer one.Close()
+	a := &Appender{Pool: one}
+
+	const n = 4
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(bg, 3*time.Second)
+			defer cancel()
+			start := time.Now()
+			errs[i] = appendOne(ctx, t, a, u, "ios-00000000-0000-4000-8000-00000000000a")
+			if d := time.Since(start); d > 3*time.Second {
+				errs[i] = fmt.Errorf("append took %v: %w", d, errs[i])
+			}
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if !errors.Is(err, budget.ErrRefused) {
+			t.Fatalf("append %d = %v, want only budget.ErrRefused", i, err)
+		}
+		var refused *budget.RefusedError
+		if !errors.As(err, &refused) {
+			t.Fatalf("append %d = %v, want a *budget.RefusedError", i, err)
+		}
+		if err.Error() != fmt.Sprintf("oplog: append: %s", refused.Error()) {
+			t.Fatalf("append %d lost its refusal receipt: %v", i, err)
+		}
+	}
+	if got := refusalCount(t, pool, u, budget.ResourceOplogHotBytes); got != n {
+		t.Fatalf("hot refusals = %d, want %d", got, n)
+	}
+	if got := storedBytes(t, pool, u, blob.StreamHot); got != 0 {
+		t.Fatalf("refused appends stored %d bytes", got)
+	}
+}
