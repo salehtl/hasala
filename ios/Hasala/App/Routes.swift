@@ -68,6 +68,7 @@ enum ProfileRoute: Hashable {
   case editProject(ProjectID?)
   /// Sign-in & security.
   case security
+  case editName
   case notifications
   case exchangeRates
   case editRate(String?)

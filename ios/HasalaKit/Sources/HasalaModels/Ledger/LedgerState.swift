@@ -625,7 +625,9 @@ public struct ProfileInfo: Sendable, Hashable, Codable {
   }
 
   /// "M".
-  public var initial: String { displayName.first.map { String($0).uppercased() } ?? "?" }
+  public var initial: String {
+    (displayName.first(where: \.isLetter) ?? displayName.first).map { String($0).uppercased() } ?? "?"
+  }
 }
 
 /// Device-local preferences the screens show (spec 04 §4.5). Never synced.

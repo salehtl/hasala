@@ -667,6 +667,13 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
         "restricted": u.frozenBy != nil,
         "review_account": s.reviewAccounts,
       ])
+    case "PUT /api/v1/account/display-name":
+      guard let name = b["display_name"] as? String, case .success(let valid) = DisplayName.validate(name) else {
+        return error(400, "bad_name")
+      }
+      u.name = valid
+      s.users[u.id] = u
+      return APIResponse(status: 204)
     case "GET /api/v1/keys": return ok(u.keys)
     case "GET /api/v1/keys/wraps": return ok(["wraps": u.wraps])
     case "POST /api/v1/writers/challenge":

@@ -44,6 +44,42 @@ struct LiveAccountServiceTests {
     return (a, phrase.words)
   }
 
+  @Test func theNameIsSavedOnTheServerAndInTheBinding() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    #expect(a.capabilities.contains(.changeName))
+
+    let saved = try await a.updateDisplayName("  Maya   K.  Rahman ")
+    #expect(saved == "Maya K. Rahman")
+    #expect(a.profile == AccountProfile(displayName: "Maya K. Rahman", email: Self.email, method: .password))
+    #expect(try env.secrets.binding()?.display_name == "Maya K. Rahman")
+
+    let token = try #require(try env.secrets.session()).token
+    #expect(try await env.client.account(bearer: token).display_name == "Maya K. Rahman")
+  }
+
+  @Test func aRefusedNameIsNotSentOrKept() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await #expect(throws: AuthFailure.badName) { _ = try await a.updateDisplayName("   ") }
+    await #expect(throws: AuthFailure.badName) { _ = try await a.updateDisplayName("Maya \u{1F600}") }
+    await #expect(throws: AuthFailure.badName) { _ = try await a.updateDisplayName(String(repeating: "a", count: 65)) }
+    #expect(a.profile?.displayName == "Maya Rahman")
+    #expect(try env.secrets.binding()?.display_name == "Maya Rahman")
+  }
+
+  @Test func theNameStaysAsItWasWhenTheServerCannotBeReached() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    server.offline = true
+    await #expect(throws: AuthFailure.offline) { _ = try await a.updateDisplayName("Maya K") }
+    #expect(a.profile?.displayName == "Maya Rahman")
+    #expect(try env.secrets.binding()?.display_name == "Maya Rahman")
+  }
+
   @Test func theBetaOffersWhatItCarriesOut() {
     let a = LiveAccountService(env: Self.phone(MiniHasalad(invite: Self.invite)))
     #expect(a.capabilities == .beta)

@@ -15,7 +15,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Profile")
     assertAbsent(app, ["profile.notifications", "profile.connectGmail"], "Profile")
     assertPresent(app, ["profile.accounts", "profile.bills", "profile.rules", "profile.projects", "profile.security",
-                        "profile.currency", "profile.faceID",
+                        "profile.currency", "profile.faceID", "profile.editName",
                         "profile.mailboxes",
                         "profile.export", "profile.privacy", "profile.help", "profile.signOut", "profile.delete",
                         "profile.buildFooter"], "Profile")
