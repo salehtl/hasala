@@ -463,6 +463,13 @@ func syntheticCurrency() syntheticGroup {
 		{"turkish-dotted-capital", "U+0130 is already upper case and is still not [A-Z]", "", "Amt: \u0130ED 5.00"},
 		{"digit-in-code", "a currency code is three LETTERS", "", "Amt: AE1 5.00"},
 		{"four-letters", "the group needs exactly three plus a space, so it does not participate", "", "Amt: AEDX 5.00"},
+		{"aed-two-decimals", "a two-decimal amount in an exponent-2 currency converts", "", "Amt: AED 12.34"},
+		{"kwd-three-decimals", "KWD has exponent 3; the shape refuses the third decimal", "", "Amt: KWD 12.345"},
+		{"kwd-two-decimals", "KWD has exponent 3; two printed decimals are not fils, so the amount is refused", "", "Amt: KWD 12.34"},
+		{"bhd-lower", "the exponent check runs after asciiUpper", "", "Amt: bhd 1.50"},
+		{"omr", "OMR has exponent 3", "", "Amt: OMR 3.00"},
+		{"jpy", "JPY has exponent 0; 1,200.00 would otherwise be read as 120000 minor units", "", "Amt: JPY 1,200.00"},
+		{"krw", "KRW has exponent 0", "", "Amt: KRW 5000.00"},
 	}
 	return syntheticGroup{file: "synthetic-currency.json", template: "synth.currency", definition: def, cases: rows}
 }
@@ -669,7 +676,52 @@ func syntheticGroups(t *testing.T) []syntheticGroup {
 		syntheticCurrency(),
 		syntheticFallthrough(),
 	}
+	out = append(out, syntheticDefaultCurrencyExponent())
+	out = append(out, syntheticDIBSeedAmounts(t))
 	return append(out, syntheticDIB(t)...)
+}
+
+func syntheticDefaultCurrencyExponent() syntheticGroup {
+	def := `{
+	  "id":"synth.kwd","version":1,"bank":"t","normalizer_version":1,
+	  "match":{"sender_domain":["example.com"]},
+	  "default_currency":"KWD","date_from":"email",
+	  "extract":[
+	    {"field":"amount","type":"amount","source":"body",
+	     "patterns":["Amt: (?P<ccy>[A-Z]{3} )?(?P<amt>[^\\n]+)"]},
+	    {"field":"direction","type":"const","source":"body","value":"debit"}
+	  ],
+	  "required":["amount","direction"]}`
+	rows := []syntheticCase{
+		{"default-kwd", "default_currency KWD has exponent 3, so the amount is refused", "", "Amt: 12.34"},
+		{"ccy-overrides-to-aed", "the ccy group resolves AED, which has exponent 2", "", "Amt: AED 12.34"},
+		{"ccy-overrides-to-jpy", "the ccy group resolves JPY, which has exponent 0", "", "Amt: JPY 12.34"},
+	}
+	return syntheticGroup{file: "synthetic-currency-exponent.json", template: "synth.kwd", definition: def, cases: rows}
+}
+
+func syntheticDIBSeedAmounts(t *testing.T) syntheticGroup {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("seed", "dib.card.v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := func(amount string) string {
+		return "إشعار مشتريات\nالمبلغ\n" + amount + "\nبتاريخ 05-06-2026\n" +
+			"الدفع الى\nSHOP\nرقم البطاقة\nXXXX1234"
+	}
+	return syntheticGroup{
+		file: "synthetic-dib-card-seed.json", template: "dib.card.v1", definition: string(b),
+		cases: []syntheticCase{
+			{"aed", "the published seed reads a two-decimal AED amount", "", body("AED 250.00")},
+			{"aed-at-end-of-body", "the trailing context also accepts the end of the text", "",
+				"إشعار مشتريات\nبتاريخ 05-06-2026\nالمبلغ\nAED 250.00"},
+			{"kwd-three-decimals", "the seed refuses a third decimal instead of reading 12.34", "", body("KWD 12.345")},
+			{"aed-three-decimals", "the third decimal is refused whatever the currency", "", body("AED 12.345")},
+			{"kwd-two-decimals", "KWD has exponent 3, so the executor refuses the amount", "", body("KWD 12.34")},
+			{"jpy", "JPY has exponent 0, so the executor refuses the amount", "", body("JPY 1,200.00")},
+		},
+	}
 }
 
 func buildSyntheticFixture(t *testing.T, g syntheticGroup) ([]byte, templateFixture) {

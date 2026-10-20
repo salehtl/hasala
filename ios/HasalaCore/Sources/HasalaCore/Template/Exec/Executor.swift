@@ -493,9 +493,15 @@ public struct CompiledTemplate: Sendable {
     return String(out)
   }
 
+  static let nonTwoDecimalCurrencies: Set<String> = [
+    "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
+    "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF",
+  ]
+
   /// Rule 5: the `amt` group holds the NUMBER only: commas removed, exactly two decimals, no
   /// sign, at most Int64.max minor units. An optional `ccy` group overrides the default
-  /// currency and must then be three letters (ASCII-upper-cased first).
+  /// currency and must then be three letters (ASCII-upper-cased first). A currency whose minor
+  /// exponent is not 2 (ISO 4217, the same table as CoreMoney's) is refused.
   static func convertAmount(_ amt: String, _ ccy: String?, _ defaultCurrency: String) -> (minor: Int64, currency: String)? {
     let trimmed = trimCapture(amt)
     if runeCountExceeds(trimmed, TemplateBounds.maxCaptureRunes) { return nil }
@@ -520,6 +526,7 @@ public struct CompiledTemplate: Sendable {
       guard isCurrency(c) else { return nil }
       currency = c
     }
+    if nonTwoDecimalCurrencies.contains(currency) { return nil }
     return (Int64(minor), currency)
   }
 
