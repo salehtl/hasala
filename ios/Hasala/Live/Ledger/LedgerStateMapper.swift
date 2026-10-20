@@ -132,7 +132,8 @@ nonisolated enum LedgerStateMapper {
     return LedgerState(
       categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
-      unreadNotifications: 0, netWorth: NetWorthHistory(), skippedReview: skipped(txns, c))
+      unreadNotifications: 0, netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
+      rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) })
   }
 
   /// The transactions whose digest is among the skipped cards'.

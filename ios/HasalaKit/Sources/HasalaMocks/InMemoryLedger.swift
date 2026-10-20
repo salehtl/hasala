@@ -232,6 +232,14 @@ public final class InMemoryLedger: LedgerStore {
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
       s.rules[i].enabled = enabled
       title = nil
+    case .setRate(let currency, let micro):
+      guard ExchangeRates.isSettable(currency, micro) else { throw .invalidAmount }
+      s.setRate(currency, micro: micro)
+      title = nil
+    case .unsetRate(let currency):
+      guard ExchangeRates.isSettable(currency, nil) else { throw .invalidAmount }
+      s.unsetRate(currency)
+      title = nil
     case .setNotifications(let level):
       s.prefs.notifications = level
       title = nil

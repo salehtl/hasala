@@ -69,6 +69,8 @@ enum ProfileRoute: Hashable {
   /// Sign-in & security.
   case security
   case notifications
+  case exchangeRates
+  case editRate(String?)
   case privacy
   case help
   case deleteAccount

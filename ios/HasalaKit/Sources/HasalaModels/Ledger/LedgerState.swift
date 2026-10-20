@@ -666,13 +666,16 @@ public struct LedgerState: Sendable, Hashable, Codable {
   public var netWorth: NetWorthHistory
   /// Review cards skipped on this device until the next local midnight (spec 04 §16.1 "Review · Deck").
   public var skippedReview: Set<TxnID>
+  public var rates: [CurrencyRate]
 
   public init(
     categories: [Category], accounts: [Account], txns: [Txn], plan: PlanState, bills: [Bill] = [],
     billCandidates: [BillCandidate] = [], projects: [Project] = [], goals: [Goal] = [], rules: [Rule] = [],
     profile: ProfileInfo, mailbox: MailboxHealth, prefs: DevicePrefs = DevicePrefs(),
-    unreadNotifications: Int = 0, netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = []
+    unreadNotifications: Int = 0, netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
+    rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)]
   ) {
+    self.rates = rates
     self.netWorth = netWorth
     self.categories = categories
     self.accounts = accounts

@@ -281,6 +281,46 @@ struct LiveLedgerMapperTests {
 
   /// A review swipe through the live store: the card leaves at once, the edit is
   /// authored as `txn_categorized` into the outbox, and the projection agrees.
+  @Test func aLaterRateCountsTheRowsWaitingForIt() async throws {
+    let wall = Int64(1_791_633_600_000)
+    var id = ""
+    let live = try await Self.foldedState { o throws(AuthorError) in
+      id = try o.manualEntry(amountMinor: 40_00, currency: "EUR", direction: "debit", localWallMs: wall, merchant: "Zara Paris", category: "shopping")
+      try o.setRate(currency: "EUR", rateMicro: 4_050_000)
+    }
+    let eur = try #require(live.txns.first { $0.id == id })
+    #expect(eur.homeMinor == 162_00 && eur.homeSource == .rate && eur.homeRateMicro == 4_050_000)
+    #expect(live.rates.map(\.currency) == ["EUR", "USD"])
+    #expect(live.rates.map(\.rateMicro) == [4_050_000, 3_672_500])
+    #expect(ExchangeRates.page(live).missing.isEmpty)
+  }
+
+  @Test func aRateSetOnTheRatesPageIsAuthoredAndReadBack() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    let wall = Int64(1_791_633_600_000)
+    var id = ""
+    if let b = try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+      id = try o.manualEntry(amountMinor: 40_00, currency: "EUR", direction: "debit", localWallMs: wall, merchant: "Zara Paris", category: "shopping")
+    }) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "rates.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    #expect(store.state.txn(id)?.isNotCounted == true)
+    #expect(ExchangeRates.page(store.state).missing.map(\.currency) == ["EUR"])
+    #expect(try store.apply(.setRate(currency: "EUR", rateMicro: 4_050_000)) == nil)
+    #expect(store.state.txn(id)?.homeMinor == 162_00)
+    try await Self.eventually { try a.projection.reader.txn(id)?.amountHomeMinor == 162_00 }
+    try await Self.eventually { try a.projection.reader.rates().contains { $0.currency == "EUR" && $0.rateMicro == 4_050_000 } }
+    #expect(throws: ActionError.invalidAmount) { try store.apply(.setRate(currency: "AED", rateMicro: 1_000_000)) }
+    try store.apply(.unsetRate(currency: "EUR"))
+    try await Self.eventually { try a.projection.reader.rates().contains { $0.currency == "EUR" && $0.rateMicro == nil } }
+    #expect(try a.projection.reader.txn(id)?.amountHomeMinor == 162_00)
+  }
+
   @Test func aReviewEditIsAuthoredAndReadBack() async throws {
     let a = try Self.account()
     for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }

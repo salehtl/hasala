@@ -352,6 +352,14 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
       s.rules[i].enabled = enabled
       return (nil, [])
+    case .setRate(let currency, let micro):
+      guard ExchangeRates.isSettable(currency, micro) else { throw .invalidAmount }
+      s.setRate(currency, micro: micro)
+      return (nil, [])
+    case .unsetRate(let currency):
+      guard ExchangeRates.isSettable(currency, nil) else { throw .invalidAmount }
+      s.unsetRate(currency)
+      return (nil, [])
     case .saveProject(let id, let draft):
       guard draft.refusal == nil else { throw .invalidProject }
       let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
