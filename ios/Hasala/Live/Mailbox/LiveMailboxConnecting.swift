@@ -582,4 +582,23 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
         : "Couldn't connect Gmail. Try again."
     }
   }
+
+  #if DEBUG
+    struct OutlookTrustSource: Sendable {
+      let graph: GraphClient
+      let senders: [String]
+    }
+
+    func outlookTrustSource() async -> OutlookTrustSource? {
+      guard let rt = runtime(), let lane = rt.lanes[.outlook] else { return nil }
+      let trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])
+      guard let senders = BankDomains.groups(trusted, size: GraphClient.maxDomainsPerList).first, !senders.isEmpty,
+        let token = try? await lane.tokens.accessToken(forceRefresh: false)
+      else { return nil }
+      let graph = GraphClient(
+        http: URLSessionHTTPExchange.ephemeral(), accessToken: token.value, link: MemoryOutlookLinkStore(),
+        knownSenders: OutlookSenders.known + (await lane.engine.senderAddresses()), nowMs: { SystemClock().nowMs() })
+      return OutlookTrustSource(graph: graph, senders: senders)
+    }
+  #endif
 }

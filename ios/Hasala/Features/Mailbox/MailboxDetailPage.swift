@@ -111,6 +111,20 @@ struct MailboxDetailPage: View {
       .padding(.horizontal, 16)
     }
     banksCard(m, title: "Banks in this mailbox")
+    #if DEBUG
+      if m.provider == .outlook, BuildSurface.showsUnfinished, let live = app.mailbox as? LiveMailboxConnecting {
+        NavigationLink {
+          OutlookHeaderOrderPage(mailbox: live)
+        } label: {
+          Text("Header order check (Debug)")
+            .hType(.body).foregroundStyle(HColor.textLink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+        }
+        .accessibilityIdentifier("mailbox.headerOrderCheck")
+      }
+    #endif
     disconnect(m, footnote: m.state == .disconnected ? nil : Self.disconnectFootnote(m.provider))
     if m.state == .disconnected {
       Text("Hasala no longer reads this mailbox. Past transactions stay.")
