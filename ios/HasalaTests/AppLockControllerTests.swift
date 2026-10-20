@@ -150,6 +150,34 @@ struct AppLockControllerTests {
     #expect(context.reasons == ["Turn on Face ID lock for Hasala.", "Turn on Face ID lock for Hasala."])
   }
 
+  final class GatedLAContext: LockContext {
+    var biometry: LockBiometry { .faceID }
+    var gate: CheckedContinuation<Void, Never>?
+    func canEvaluate() -> Bool { true }
+    func evaluate(reason: String) async -> LockCheck {
+      await withCheckedContinuation { gate = $0 }
+      return .passed
+    }
+  }
+
+  @Test func theOwnPromptForTheSettingIsNotCovered() async throws {
+    let gated = GatedLAContext()
+    let lock = AppLockController(makeContext: { gated }, isEnabled: { false })
+    let change = Task { await lock.confirmChange(to: true) }
+    while gated.gate == nil { await Task.yield() }
+    #expect(lock.confirming)
+    lock.scenePhaseChanged(.inactive)
+    #expect(!lock.showsShield)
+    lock.scenePhaseChanged(.background)
+    #expect(lock.showsShield)
+    lock.scenePhaseChanged(.active)
+    gated.gate?.resume()
+    #expect(await change.value)
+    #expect(!lock.confirming)
+    lock.scenePhaseChanged(.inactive)
+    #expect(lock.showsShield)
+  }
+
   @Test func theWordsFollowTheBiometry() {
     #expect(LockBiometry(.faceID).unlockTitle == "Unlock with Face ID")
     #expect(LockBiometry(.touchID).lockTitle == "Touch ID lock")
@@ -161,6 +189,7 @@ struct AppLockControllerTests {
   @Test func systemErrorsMapToChecks() {
     #expect(LockCheck(LAError(.userCancel)) == .cancelled)
     #expect(LockCheck(LAError(.systemCancel)) == .cancelled)
+    #expect(LockCheck(LAError(.notInteractive)) == .cancelled)
     #expect(LockCheck(LAError(.passcodeNotSet)) == .unavailable)
     #expect(LockCheck(LAError(.authenticationFailed)) == .failed)
     #expect(LockCheck(nil) == .failed)

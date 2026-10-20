@@ -5,6 +5,7 @@ import UIKit
 @MainActor
 final class ShieldWindow {
   private var window: UIWindow?
+  private var announcedLock = false
 
   func install(in scene: UIWindowScene, lock: AppLockController) {
     guard window?.windowScene !== scene else { return }
@@ -28,6 +29,10 @@ final class ShieldWindow {
     for other in window.windowScene?.windows ?? [] where other !== window {
       other.accessibilityElementsHidden = lock.isLocked
     }
+    if lock.isLocked, !announcedLock {
+      UIAccessibility.post(notification: .screenChanged, argument: window)
+    }
+    announcedLock = lock.isLocked
   }
 }
 

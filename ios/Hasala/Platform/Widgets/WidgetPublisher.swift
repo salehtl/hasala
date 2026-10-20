@@ -12,6 +12,7 @@ final class WidgetPublisher {
   private let store: WidgetSnapshotStore?
   private let reload: @MainActor () -> Void
   private let today: @MainActor () -> LocalDate
+  private let locked: @MainActor () -> Bool
   private let center: NotificationCenter
   private var last: Data?
   private var running = true
@@ -21,11 +22,13 @@ final class WidgetPublisher {
     app: AppModel, store: WidgetSnapshotStore? = WidgetSnapshotStore.shared(),
     center: NotificationCenter = .default,
     reload: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadAllTimelines() },
-    today: @escaping @MainActor () -> LocalDate = { WidgetClock.today() }
+    today: @escaping @MainActor () -> LocalDate = { WidgetClock.today() },
+    locked: @escaping @MainActor () -> Bool = { false }
   ) {
     self.app = app
     self.store = store
     self.today = today
+    self.locked = locked
     self.center = center
     self.reload = reload
     if store == nil { Self.log.notice("no App Group container: widgets get no snapshot") }
@@ -52,7 +55,7 @@ final class WidgetPublisher {
   }
 
   var snapshot: WidgetSnapshot {
-    GlanceEngine.snapshot(app.store.state, now: app.store.now, home: app.thisMonthSnapshot, amountsHidden: app.amountsHidden)
+    GlanceEngine.snapshot(app.store.state, now: app.store.now, home: app.thisMonthSnapshot, amountsHidden: app.amountsHidden || locked())
   }
 
   func stop() {
