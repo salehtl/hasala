@@ -428,6 +428,29 @@ import Testing
     #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","card":"none","forwarded":false},"dedupe":{"message_id":"\#(mid)"}}"#)
   }
 
+  @Test func dibTransferNoticesAreTheEmptyReviewShape() throws {
+    let arabic =
+      "تحويل الأموال\nعزيزي المتعامل,\nإشعار تحويل الأموال الى بنك آخر داخل الدولة بتاريخ 05-06-2026 07:41 بالتفاصيل التالية.\n"
+      + "المبلغ\n(يشمل 5% ضريبة القيمة المضافة)\nAED 4321.09\nمن حساب\n001-000-123XXXX01\n[From Account FRM]\nالى\n"
+      + "AE000000000000000000001\nالبنك المستفيد\nsample bank uae\nالحالة\nتمت بنجاح\nالرقم المرجعي\n[Reference Number]"
+    let english =
+      "Money Transfer\nDear Customer,\nThis is to notify you that a Domestic Fund Transfer transaction has been initiated on "
+      + "07-23-2026 11:12:13 with the following details.\nAmount\n1,234.56\nFrom\nAE0000000000000XXXXX101\n"
+      + "[From Account FRM]\nTo\nAE0000000000000XXXXX002\nBeneficiary Bank\nSample Bank PJSC\nStatus\n"
+      + "Credited to beneficiary\nReference Number\n[Reference Number]"
+    for (i, body) in [arabic, english].enumerated() {
+      let from = "DIB <notification@dib.ae>"
+      let m = FakeGmail.Message(
+        id: "n\(i)",
+        raw: SyntheticMail.rfc822(from: from, subject: "DIB Notification", body: body, dateMs: Rig.t0, authDomain: "dib.ae"),
+        internalDateMs: Rig.t0, from: from)
+      let p = try mail(m)
+      #expect(p.fields == nil && p.gates.template == nil && p.gates.senderTrusted)
+      let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      #expect(d.needsReview && d.payload["unparsed"] == .bool(true))
+    }
+  }
+
   @Test func nonBankMailIsSetAside() {
     let m = SyntheticMail.lookAlike(id: "m5", dateMs: Rig.t0, listedAs: "emiratesnbd.com")
     let r = MessageDisposer.parse(
