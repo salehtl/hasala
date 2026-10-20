@@ -411,8 +411,11 @@ in
 
       with subtest("AT-V10b: a dump larger than the backup MemoryMax streams to disk"):
           machine.succeed(
-              f"{PSQL} \"CREATE TABLE vm_bulk AS SELECT md5(random()::text) || md5(random()::text) AS t"
-              " FROM generate_series(1, 1500000)\" -U hasala_migrate"
+              as_user(
+                  "hasala-migrate",
+                  f"{PSQL} \"CREATE TABLE vm_bulk AS SELECT md5(random()::text) || md5(random()::text) AS t"
+                  " FROM generate_series(1, 1500000)\" -U hasala_migrate",
+              )
           )
           machine.succeed(f"rm -f {BACKUP_DIR}/hasala-daily-*")
           machine.succeed("systemctl set-property --runtime hasala-backup.service MemoryMax=32M")
@@ -424,7 +427,7 @@ in
           )
           machine.fail(f"ls {BACKUP_DIR} | grep '\\.part$'")
           machine.succeed("rm -rf /run/systemd/system.control/hasala-backup.service.d && systemctl daemon-reload")
-          machine.succeed(f"{PSQL} 'DROP TABLE vm_bulk' -U hasala_migrate")
+          machine.succeed(as_user("hasala-migrate", f"{PSQL} 'DROP TABLE vm_bulk' -U hasala_migrate"))
 
       with subtest("AT-V11: retention deletes everything 29 days old or older"):
           for kind in ["daily", "premigrate"]:
