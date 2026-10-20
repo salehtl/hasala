@@ -45,7 +45,7 @@ struct ProfileSheet: View {
     NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-          ProfileIdentity(name: snap.displayName, initial: snap.initial, emailLine: snap.emailLine)
+          ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
           BankAlertsCard(summary: summary) { push(.bankAlerts) }
           money
           settings

@@ -66,6 +66,7 @@ struct TabScreen<Header: View, Content: View>: View {
         amountsHidden: app.amountsHidden,
         unread: app.bellCount,
         avatarInitial: app.avatarInitial,
+        avatarEmail: app.avatarEmail,
         onToggleAmounts: { app.toggleAmountsHidden() },
         onSearch: { app.router.open(.search) },
         onNotifications: { app.router.open(.notifications) },

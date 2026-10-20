@@ -282,6 +282,10 @@ Hasala writes its notifications on your iPhone. Our server only sends a silent s
 
 By default, notifications don't show amounts or merchants. For example, you'll see "New transaction" and "Tap to see it in Hasala". You can turn on **Show amounts and merchants** in Settings › Notifications. If you do, amounts and merchants may appear on your Lock Screen.
 
+## Your profile picture
+
+Hasala shows your picture from Gravatar, a service run by Automattic, if you have one tied to your email address. To do this, your iPhone asks Gravatar for the picture by sending a hash of your email address, a code made from it, and the size it needs. Automattic can see that request and your iPhone's IP address. The request goes straight from your iPhone to Gravatar, not through our server, and we never see it. Hasala sends no cookies and no other details with it, and keeps the picture on your iPhone for up to a day. If you have no Gravatar picture, or your iPhone is offline, Hasala shows your initials instead. A hash isn't a secret: someone who already knows your email address could make the same code and check it. The app has no switch for this yet.
+
 ## Cloud suggestions
 
 Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort your first import. There are two switches, and you can turn each on or off at any time.
@@ -308,6 +312,7 @@ We use a small number of service providers. None of them can open your sealed da
 | **Cloudflare Workers AI** | If you turn on Cloud suggestions: runs the AI model that suggests a category. | The merchant name, Hasala's built-in category names, and your IP address. No account or device identifier. [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say it answers and keeps nothing. |
 | **Google** | If you connect Gmail: hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Microsoft** | If you connect Outlook: hosts your Outlook mailbox and tells our server when a new message arrives in it. | Your mail, as it already does, and that you've given Hasala read-only access. Microsoft also sees your iPhone's IP address when it connects to Outlook, and our server's notification address. |
+| **Gravatar (Automattic)** | Shows your profile picture, if you have one on Gravatar. Your iPhone asks for it directly. Our server is not involved. | A code made from your email address (a SHA-256 hash), the size of the picture, and your iPhone's IP address. Nothing else. See [Your profile picture](#your-profile-picture). |
 | **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
 
 Emails you send to our @hasala.app addresses (support@, privacy@ and security@) arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them. Apart from that, we don't use any other service provider that handles your personal data. The waitlist, invites and our admin tool run on our own server.
@@ -320,7 +325,7 @@ Encryption of the server's disks at rest is being added before the public launch
 
 ### Where your data is processed
 
-Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft and Apple operate worldwide, so data they handle may be processed outside the UAE. When personal data leaves the UAE, we rely on the protections in the providers' own data processing terms and on the cross-border transfer rules of the UAE Personal Data Protection Law.
+Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft, Automattic and Apple operate worldwide, so data they handle may be processed outside the UAE. When personal data leaves the UAE, we rely on the protections in the providers' own data processing terms and on the cross-border transfer rules of the UAE Personal Data Protection Law.
 
 ## How long we keep data
 

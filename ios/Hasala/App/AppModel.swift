@@ -179,6 +179,8 @@ final class AppModel {
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
 
+  var avatarEmail: String { store.state.profile.email }
+
   /// Transactions waiting to be sorted, whatever the period: the Review tab's badge, once per
   /// ledger change. The bell, the Review tab and the deck count the same queue.
   var reviewCount: Int {

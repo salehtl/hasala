@@ -87,6 +87,10 @@ struct WhoCanSeeSheet: View {
           : "Sees your mail, as it already does, and that you gave Hasala read-only access. Nothing Hasala works out goes back to Google.")
       }
       divider
+      PartyRow(tile: tile(.other, .globe), title: "Gravatar") {
+        line("Your iPhone asks it for your picture with a code made from your email address. It sees that request and your IP address. No picture means your initials.")
+      }
+      divider
       PartyRow(tile: tile(.lilac, .phone), title: "Apple") {
         line("Sees that you installed Hasala through TestFlight. Your passkey syncs in iCloud Keychain, end-to-end encrypted by Apple.")
       }

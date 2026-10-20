@@ -1,6 +1,10 @@
 import HasalaModels
 import SwiftUI
 
+#if canImport(UIKit)
+  import UIKit
+#endif
+
 // Discs and plates (page 16 §03, page 15 §01): a round hue disc with a line icon names a
 // category; a grey monogram stands in for a merchant with no category yet; a rounded-square
 // plate is a bank, so a bank never reads as a category. All decorative: the row names them.
@@ -170,12 +174,21 @@ public struct AvatarDisc: View {
   let initial: String
   let size: CGFloat
   let ring: Bool
+  let email: String?
 
-  public init(initial: String, size: CGFloat = 36, ring: Bool = false) {
+  @Environment(\.avatarPictures) private var pictures
+  @Environment(\.displayScale) private var displayScale
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var picture: AvatarPicture?
+
+  public init(initial: String, size: CGFloat = 36, ring: Bool = false, email: String? = nil) {
     self.initial = initial
     self.size = size
     self.ring = ring
+    self.email = email
   }
+
+  private var pixels: Int { max(1, Int((size * displayScale).rounded(.up))) }
 
   public var body: some View {
     Circle()
@@ -197,8 +210,63 @@ public struct AvatarDisc: View {
           .font(.custom(HWeight.bold.interFace, size: size <= 48 ? size * 16 / 36 : size * 40 / 96))
           .foregroundStyle(Color(HRGBA(42, 31, 61, 1)))
       }
+      .overlay {
+        if let picture {
+          picture.image
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .transition(.opacity)
+        }
+      }
+      .task(id: AvatarKey(email: email, pixels: pixels, enabled: pictures != nil)) {
+        guard let pictures, let email, !email.isEmpty else {
+          picture = nil
+          return
+        }
+        let data = await pictures.load(email, pixels)
+        guard !Task.isCancelled else { return }
+        let loaded = data.flatMap(AvatarPicture.init(data:))
+        if reduceMotion {
+          picture = loaded
+        } else {
+          withAnimation(.easeOut(duration: 0.2)) { picture = loaded }
+        }
+      }
       .background { if ring { Circle().fill(HColor.white).padding(-4) } }
       .shadow(color: ring ? HColor.elevationFar : .clear, radius: 12, x: 0, y: 8)
       .accessibilityHidden(true)
   }
+}
+
+private struct AvatarKey: Hashable {
+  let email: String?
+  let pixels: Int
+  let enabled: Bool
+}
+
+struct AvatarPicture {
+  let image: Image
+
+  init?(data: Data) {
+    #if canImport(UIKit)
+      guard let ui = UIImage(data: data) else { return nil }
+      image = Image(uiImage: ui)
+    #else
+      return nil
+    #endif
+  }
+}
+
+public struct AvatarPictureProvider: Sendable {
+  public var load: @Sendable (_ email: String, _ pixels: Int) async -> Data?
+
+  public init(load: @escaping @Sendable (_ email: String, _ pixels: Int) async -> Data?) {
+    self.load = load
+  }
+}
+
+public extension EnvironmentValues {
+  @Entry var avatarPictures: AvatarPictureProvider? = nil
 }

@@ -20,6 +20,7 @@ struct MainHeader: ToolbarContent {
   let amountsHidden: Bool
   let unread: Int
   let avatarInitial: String
+  let avatarEmail: String?
   let onToggleAmounts: () -> Void
   let onSearch: () -> Void
   let onNotifications: () -> Void
@@ -49,7 +50,7 @@ struct MainHeader: ToolbarContent {
                           badge: unread, action: onNotifications)
             .accessibilityIdentifier("header.notifications")
         }
-        GlassAvatarButton(initial: avatarInitial, label: "Your profile", action: onProfile)
+        GlassAvatarButton(initial: avatarInitial, email: avatarEmail, label: "Your profile", action: onProfile)
           .accessibilityIdentifier("header.profile")
       }
     }

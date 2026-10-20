@@ -31,7 +31,7 @@ enum Stories {
           body: "Hasala reads the alerts your bank already sends, right here on your iPhone, and turns them into a live budget. No bank logins.",
           whoSees: false),
     Story(id: 2, kicker: "Private by design", headline: ["Your phone", "holds the key."], accentSecondLine: false,
-          body: "Anything that leaves your iPhone is end-to-end encrypted first. Our server keeps a sealed copy it can't open.",
+          body: "Your money data is end-to-end encrypted before it leaves your iPhone. Our server keeps a sealed copy it can't open.",
           whoSees: true),
     Story(id: 3, kicker: "Review", headline: ["Sort a week in a minute."], accentSecondLine: false,
           body: "Swipe new transactions into Needs, Wants or Savings. Hasala learns each merchant on your iPhone and sorts it for you next time.",
