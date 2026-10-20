@@ -292,7 +292,16 @@ func TestATrailingWakeSkipsATokenThatWasRemovedOrMoved(t *testing.T) {
 	d.run(bg, job{user: u, writer: a, r: ReasonMail, resolve: true})
 	c.add(mailWindow + time.Second)
 	d.Flush(bg)
-	if s.count() != 5 || s.sent[4].TokenHex != tokenHex(1) {
+	if s.count() != 5 {
+		t.Fatalf("a live token's trailing wake was not sent: %v", s.sent)
+	}
+	live := 0
+	for _, sent := range s.sent[2:] {
+		if sent.TokenHex == tokenHex(1) {
+			live++
+		}
+	}
+	if live != 2 {
 		t.Fatalf("a live token's trailing wake was not sent: %v", s.sent)
 	}
 }
