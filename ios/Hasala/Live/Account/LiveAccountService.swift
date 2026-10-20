@@ -73,6 +73,8 @@ final class LiveAccountService: AccountService {
 
   private var binding: AccountBinding? { try? env.secrets.binding() }
 
+  var keysOnThisIPhone: Bool { binding != nil }
+
   /// This iPhone holds `b`'s data: the gate shows the "Remove this iPhone's data" wall,
   /// and the screen that asked stays as it is (`.cancelled` shows nothing).
   private func otherAccountHere(_ b: AccountBinding) -> AuthFailure {
@@ -539,8 +541,12 @@ final class LiveAccountService: AccountService {
   }
 
   func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
-    guard let b = binding else { throw .refused }
     let factor: StepUpHelper.Factor = password.map { .device(password: $0) } ?? .passkey
+    guard let b = binding else {
+      guard case .unfreeze = action else { throw .refused }
+      try await unfreeze(factor: factor, binding: nil)
+      return
+    }
     do {
       switch action {
       case .deleteAccount:
@@ -588,23 +594,7 @@ final class LiveAccountService: AccountService {
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
       case .unfreeze:
-        // The app never sends #66 for an operator freeze (spec 04 §6.11): who froze the
-        // account is read first, and again if #66 refuses it (the operator froze it since).
-        if await freezeInfo()?.by == .operator { throw AuthFailure.frozenByOperator }
-        do throws(CeremonyError) {
-          try await guarded(.accountUnfreeze, "/api/v1/account/unfreeze", factor: factor, binding: b, action: action)
-        } catch {
-          if error.failure?.status == 401 {
-            // An operator freeze revokes every session, this one too: as after any
-            // revoked session, this iPhone signs in again, and then shows their wall.
-            try? env.secrets.deleteSession()
-            signIn = nil
-            await hooks.left()
-            throw AuthFailure.sessionEnded
-          }
-          if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw AuthFailure.frozenByOperator }
-          throw error
-        }
+        try await unfreeze(factor: factor, binding: b)
       case .addPasskey:
         _ = try await AccountPasskeys.add(env, binding: b, factor: factor, body: unlockBody, reason: action.explainer)
         endUnlockOffer()
@@ -622,8 +612,29 @@ final class LiveAccountService: AccountService {
     }
   }
 
+  private func unfreeze(factor: StepUpHelper.Factor, binding: AccountBinding?) async throws(AuthFailure) {
+    // The app never sends #66 for an operator freeze (spec 04 §6.11): who froze the
+    // account is read first, and again if #66 refuses it (the operator froze it since).
+    if await freezeInfo()?.by == .operator { throw .frozenByOperator }
+    do throws(CeremonyError) {
+      try await guarded(.accountUnfreeze, "/api/v1/account/unfreeze", factor: factor, binding: binding,
+                        action: .unfreeze)
+    } catch {
+      if error.failure?.status == 401 {
+        // An operator freeze revokes every session, this one too: as after any
+        // revoked session, this iPhone signs in again, and then shows their wall.
+        try? env.secrets.deleteSession()
+        signIn = nil
+        await hooks.left()
+        throw .sessionEnded
+      }
+      if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw .frozenByOperator }
+      throw Self.map(error)
+    }
+  }
+
   /// A step-up guarded `POST {"step_up"}` with an empty answer (#16, #65, #66).
-  private func guarded(_ params: StepUpParams, _ path: String, factor: StepUpHelper.Factor, binding: AccountBinding,
+  private func guarded(_ params: StepUpParams, _ path: String, factor: StepUpHelper.Factor, binding: AccountBinding?,
                        action: SecurityAction) async throws(CeremonyError)
   {
     let proof = try await StepUpHelper.prove(env, params: params, factor: factor, binding: binding,
