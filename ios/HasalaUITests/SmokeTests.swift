@@ -83,12 +83,12 @@ final class SmokeTests: XCTestCase {
     try audit(app)
     app.buttons["profile.close"].firstMatch.tap()
 
-    // Search last: on iOS 26 the search tab collapses the bar into one button, so
-    // there is no "Home" tab button to go back with.
-    XCTAssertTrue(tabBar.buttons["Search"].waitForExistence(timeout: uiWait))
-    tabBar.buttons["Search"].tap()
+    app.buttons["header.search"].firstMatch.tap()
     XCTAssertTrue(el(app, "search.placeholder").waitForExistence(timeout: uiWait))
     try audit(app)
+    tap(app, "search.close")
+    XCTAssertTrue(el(app, "search.placeholder").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(tabBar.buttons["Home"].isSelected, "Search left Home")
   }
 
   /// A bell row closes the sheet and opens its screen (spec 10 §4.4): the late bill inside
@@ -124,12 +124,22 @@ final class SmokeTests: XCTestCase {
     let tabBar = app.tabBars.firstMatch
     let bell = app.buttons["header.notifications"].firstMatch
     let profile = app.buttons["header.profile"].firstMatch
+    let search = app.buttons["header.search"].firstMatch
+    let mark = app.images["Hasala"].firstMatch
     for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
       XCTAssertEqual(bell.label, "Notifications, 4 new")
       XCTAssertLessThan(bell.frame.maxX, profile.frame.minX, "\(tab): the bell is not before the profile")
+      XCTAssertTrue(search.isHittable, "\(tab) has no search")
+      XCTAssertEqual(search.frame.maxX, bell.frame.minX, accuracy: 1, "\(tab): search and the bell are not joined")
+      XCTAssertGreaterThanOrEqual(search.frame.width, 44)
+      XCTAssertGreaterThanOrEqual(search.frame.height, 44)
+      if mark.exists {
+        XCTAssertLessThanOrEqual(mark.frame.maxX, search.frame.minX, "\(tab): search overlaps the mark")
+        XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "\(tab): the mark is off centre")
+      }
       attach(app, "Bell · \(tab)")
       bell.tap()
       XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
@@ -138,12 +148,6 @@ final class SmokeTests: XCTestCase {
       XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
       XCTAssertTrue(tabBar.buttons[tab].isSelected, "the bell left \(tab)")
     }
-
-    let add = app.buttons["header.add"].firstMatch
-    XCTAssertTrue(add.isHittable, "Activity lost its +")
-    XCTAssertLessThan(add.frame.maxX, bell.frame.minX)
-    let mark = app.images["Hasala"].firstMatch
-    if mark.exists { XCTAssertLessThanOrEqual(mark.frame.maxX, add.frame.minX, "the + overlaps the mark") }
 
     bell.tap()
     tap(app, "bell.row.bill.axa")
@@ -185,8 +189,14 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
 
     let tabBar = app.tabBars.firstMatch
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count"),
-                      ("Search", "search.placeholder")] {
+    app.buttons["header.search"].firstMatch.tap()
+    XCTAssertTrue(el(app, "search.placeholder").waitForExistence(timeout: uiWait))
+    attach(app, "AX3 · Search")
+    try audit(app, atLargeText: true)
+    tap(app, "search.close")
+    XCTAssertTrue(el(app, "search.placeholder").waitForNonExistence(timeout: uiWait))
+
+    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       attach(app, "AX3 · \(tab)")

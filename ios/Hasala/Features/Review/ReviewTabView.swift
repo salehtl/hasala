@@ -22,7 +22,7 @@ struct ReviewTabView: View {
   var body: some View {
     NavigationStack {
       let cards = ReviewEngine.cards(app.store.state, in: app.reviewWindow)
-      TabScreen(app: app, title: "Review", extra: .none, spacing: 24, titleGap: 4) {
+      TabScreen(app: app, title: "Review", spacing: 24, titleGap: 4) {
         Text(Self.countLine(cards.count))
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)

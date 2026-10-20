@@ -18,8 +18,7 @@ struct ActivityView: View {
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).activity) {
-      TabScreen(app: app, title: "Activity", extra: .add,
-                onExtra: { model.addTransaction() }) {
+      TabScreen(app: app, title: "Activity") {
         ActivityFilterBar(model: model)
       } content: {
         ActivityContent(model: model, showsChips: false)

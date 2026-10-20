@@ -364,7 +364,7 @@ final class CoreScreensTests: XCTestCase {
   @MainActor
   func testDebugSearchReadyThenResults() throws {
     let app = launchHome()
-    app.tabBars.firstMatch.buttons["Search"].tap()
+    app.buttons["header.search"].firstMatch.tap()
     XCTAssertTrue(element(app, "search.placeholder").waitForExistence(timeout: uiWait))
     let title = app.navigationBars.staticTexts["Search"]
     XCTAssertTrue(title.waitForExistence(timeout: uiWait) && title.isHittable, "Ready has no large title")
@@ -372,9 +372,9 @@ final class CoreScreensTests: XCTestCase {
     // Search's own parts are audited with the keyboard put away: with it up, the audit
     // flags the keyboard's empty prediction cells, system UI the shared filter does not
     // skip yet (requests/p6.md 4).
-    // (A drag from the content down through the keys: Search dismisses it interactively.)
-    element(app, "search.placeholder").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-      .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+    // (The field's own close: a drag down would also pull the sheet away.)
+    app.buttons.matching(NSPredicate(
+      format: "identifier != 'search.close' AND (label ==[c] 'Close' OR label ==[c] 'Cancel')")).firstMatch.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait), "the keyboard stayed up")
     try audit(app)
 

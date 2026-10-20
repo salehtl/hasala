@@ -1,7 +1,7 @@
 import XCTest
 
 /// The shell on the Release surface: the tab bar holds Home, Plan, Review and Activity, and
-/// Search beside them, which finds in this iPhone's own ledger. Each area's own checks are
+/// the add button beside them; Search, in the header, finds in this iPhone's own ledger. Each area's own checks are
 /// in its `ReleaseSurface*Tests` class (plan B7.4); the shared assertions are
 /// `ReleaseSurfaceTestCase`'s.
 final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
@@ -10,7 +10,7 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     let tabBar = app.tabBars.firstMatch
     XCTAssertEqual(tabBar.buttons.count, 5, "tabs: \(tabBar.buttons.allElementsBoundByIndex.map(\.label))")
-    for tab in ["Home", "Plan", "Review", "Activity", "Search"] {
+    for tab in ["Home", "Plan", "Review", "Activity", "Add a transaction"] {
       XCTAssertTrue(tabBar.buttons[tab].exists, "no \(tab) tab")
     }
     assertNoPlaceholders(app, "Home")
@@ -22,7 +22,7 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
   @MainActor
   func testSearchFindsAndOpensATransaction() throws {
     let app = launchRelease()
-    app.tabBars.firstMatch.buttons["Search"].tap()
+    app.buttons["header.search"].firstMatch.tap()
     assertPresent(app, ["search.placeholder", "search.ask.dining", "search.ask.rent", "search.ask.carrefour"], "Search")
     assertNoPlaceholders(app, "Search")
 
@@ -42,7 +42,7 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
   @MainActor
   func testAQuestionAnswersOrFallsBackToWords() throws {
     let app = launchRelease()
-    app.tabBars.firstMatch.buttons["Search"].tap()
+    app.buttons["header.search"].firstMatch.tap()
     let field = app.searchFields["Ask about your money"]
     XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     type("carrefour september", into: field)

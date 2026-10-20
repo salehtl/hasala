@@ -367,6 +367,18 @@ struct ButtonsPage: View {
       .padding(16)
       .background(Hue.sky.perceptualGradient, in: RoundedRectangle(cornerRadius: HRadius.card))
     }
+    Specimen(4, "Joined glass buttons") {
+      HStack(spacing: 10) {
+        GlassButtonPair {
+          GlassIconButton(.magnifier, label: "Search") {}
+          GlassIconButton(.bell, label: "Notifications, 4 new", badge: 4) {}
+        }
+        GlassAvatarButton(initial: "M") {}
+      }
+      .frame(maxWidth: .infinity)
+      .padding(16)
+      .background(Hue.sky.perceptualGradient, in: RoundedRectangle(cornerRadius: HRadius.card))
+    }
   }
 }
 

@@ -2,7 +2,7 @@ import XCTest
 
 /// Activity, the transaction sheet and Review on the Release surface.
 final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
-  /// Activity has its "+"; a row opens its sheet, which offers no bank email to view yet; the
+  /// The add button beside the tab bar opens Add a transaction; a row opens its sheet, which offers no bank email to view yet; the
   /// Review tab is there with its Start and its rows, and every deck control sorts, skips or
   /// closes ("Use N suggestions", opening the unreadable-email card and "View bank email" wait
   /// for the features behind them).
@@ -15,9 +15,10 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Activity")
     assertNoPlaceholders(app, "Activity")
     assertPersonalAccountsOnly(app, "Activity")
-    assertPresent(app, ["header.add"], "Activity")
+    XCTAssertTrue(tabBar.buttons["Add a transaction"].exists, "Activity has no add button")
     try audit(app)
-    tap(app, "header.add", opening: "add.amount")
+    tabBar.buttons["Add a transaction"].tap()
+    XCTAssertTrue(el(app, "add.amount").waitForExistence(timeout: uiWait))
     attach(app, "Release · Add transaction")
     assertNoPlaceholders(app, "Add transaction")
     tap(app, "add.close")

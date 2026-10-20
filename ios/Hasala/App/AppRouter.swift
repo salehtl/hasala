@@ -57,7 +57,7 @@ final class AppRouter {
     case .home: home = []
     case .plan: plan = []
     case .activity: activity = []
-    case .review, .search: break
+    case .review, .add: break
     }
   }
 

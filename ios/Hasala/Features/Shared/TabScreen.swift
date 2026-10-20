@@ -13,8 +13,6 @@ import SwiftUI
 struct TabScreen<Header: View, Content: View>: View {
   @Bindable var app: AppModel
   let title: String?
-  let extra: MainHeader.Extra
-  var onExtra: () -> Void
   var wash: HWash
   /// Between the title block and each section (Paper 32; Review draws 24).
   var spacing: CGFloat
@@ -24,14 +22,12 @@ struct TabScreen<Header: View, Content: View>: View {
   @ViewBuilder let content: () -> Content
 
   init(
-    app: AppModel, title: String?, extra: MainHeader.Extra, onExtra: @escaping () -> Void = {},
+    app: AppModel, title: String?,
     wash: HWash = .onTrack, spacing: CGFloat = HSpacing.gapScreenSection, titleGap: CGFloat = 10,
     @ViewBuilder header: @escaping () -> Header, @ViewBuilder content: @escaping () -> Content
   ) {
     self.app = app
     self.title = title
-    self.extra = extra
-    self.onExtra = onExtra
     self.wash = wash
     self.spacing = spacing
     self.titleGap = titleGap
@@ -68,11 +64,10 @@ struct TabScreen<Header: View, Content: View>: View {
     .toolbar {
       MainHeader(
         amountsHidden: app.amountsHidden,
-        extra: extra,
         unread: app.bellCount,
         avatarInitial: app.avatarInitial,
         onToggleAmounts: { app.toggleAmountsHidden() },
-        onExtra: onExtra,
+        onSearch: { app.router.open(.search) },
         onNotifications: { app.router.open(.notifications) },
         onProfile: { app.showingProfile = true }
       )
@@ -83,11 +78,11 @@ struct TabScreen<Header: View, Content: View>: View {
 
 extension TabScreen where Header == EmptyView {
   init(
-    app: AppModel, title: String?, extra: MainHeader.Extra, onExtra: @escaping () -> Void = {},
+    app: AppModel, title: String?,
     wash: HWash = .onTrack, spacing: CGFloat = HSpacing.gapScreenSection, titleGap: CGFloat = 10,
     @ViewBuilder content: @escaping () -> Content
   ) {
-    self.init(app: app, title: title, extra: extra, onExtra: onExtra, wash: wash, spacing: spacing,
+    self.init(app: app, title: title, wash: wash, spacing: spacing,
               titleGap: titleGap, header: { EmptyView() }, content: content)
   }
 }
