@@ -7,9 +7,10 @@
 //   - the token endpoint issues a refresh token on the code grant and a NEW one on every refresh
 //     (Microsoft rotates them); an id_token that is a real three-part JWT (alg "none") with
 //     `email`, `tid` (consumers) and the nonce of the last authorize URL;
-//   - `/me/messages` evaluates the lane's `$filter` shape (`receivedDateTime ge` and `endswith`
+//   - `/me/messages` evaluates the lane's `$filter` shape (`receivedDateTime ge` and `eq`
 //     clauses on the From address); a listing without it is answered 400, so a test fails loudly
-//     if the client ever sends one. `ignoreFilter` plays Graph silently ignoring a filter;
+//     if the client ever sends one, and `endswith` is answered 400 `ErrorInvalidUrlQueryFilter`
+//     as Outlook.com does. `ignoreFilter` plays Graph silently ignoring a filter;
 //   - `$value` serves the MIME bytes; subscriptions are kept, with Graph's 409 on a second
 //     `created` subscription to `me/messages`;
 //   - `noMailbox` answers every `/me/` request with `MailboxNotEnabledForRESTAPI`;
@@ -281,25 +282,26 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     return "\(header).\(b64(JSONObject(claims)))."
   }
 
-  /// `receivedDateTime ge <iso> and (endswith(from/emailAddress/address,'<s>') or …)`: the
-  /// lower time bound and the suffixes; nil for anything else.
-  static func parseFilter(_ f: String) -> (sinceMs: Int64, suffixes: [String])? {
+  /// `receivedDateTime ge <iso> and (from/emailAddress/address eq '<a>' or …)`: the lower time
+  /// bound and the addresses; nil for anything else.
+  static func parseFilter(_ f: String) -> (sinceMs: Int64, addresses: [String])? {
     let head = "receivedDateTime ge "
     guard f.hasPrefix(head), let and = f.range(of: " and (") , f.hasSuffix(")") else { return nil }
     guard let since = try? parseInstantMs(String(f[f.index(f.startIndex, offsetBy: head.count)..<and.lowerBound]))
     else { return nil }
     let inner = f[and.upperBound..<f.index(before: f.endIndex)]
-    var suffixes: [String] = []
+    var addresses: [String] = []
     for clause in inner.components(separatedBy: " or ") {
-      let open = "endswith(from/emailAddress/address,'"
-      guard clause.hasPrefix(open), clause.hasSuffix("')") else { return nil }
-      suffixes.append(String(clause.dropFirst(open.count).dropLast(2)))
+      let open = "from/emailAddress/address eq '"
+      guard clause.hasPrefix(open), clause.hasSuffix("'") else { return nil }
+      addresses.append(String(clause.dropFirst(open.count).dropLast(1)))
     }
-    return suffixes.isEmpty ? nil : (since, suffixes)
+    return addresses.isEmpty ? nil : (since, addresses)
   }
 
   func list(query: [(String, String)], rawQuery: String) -> HTTPResponse {
     func q(_ n: String) -> String? { query.first { $0.0 == n }?.1 }
+    if let f = q("$filter"), f.contains("endswith(") { return error(400, "ErrorInvalidUrlQueryFilter") }
     guard let parsed = q("$filter").flatMap(Self.parseFilter) else {
       return error(400, "BadRequest")
     }
@@ -310,7 +312,7 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
         ? all
         : all.filter { m in
           let a = m.fromAddress.lowercased()
-          return m.receivedMs >= parsed.sinceMs && parsed.suffixes.contains { a.hasSuffix($0.lowercased()) }
+          return m.receivedMs >= parsed.sinceMs && parsed.addresses.contains { a == $0.lowercased() }
         }
       let sorted = matching.sorted { $0.receivedMs > $1.receivedMs }
       let start = Int(q("$skiptoken") ?? "0") ?? 0
@@ -414,13 +416,13 @@ public enum SyntheticOutlookMail {
     return Array((h.joined(separator: "\r\n") + "\r\n\r\n" + body.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n").utf8)
   }
 
-  /// A DIB card purchase alert (dib.card.v1's shape), from `alerts@dib.ae`.
+  /// A DIB card purchase alert (dib.card.v1's shape), from `DIB.notification@<fromDomain>`.
   public static func dibCard(
     id: String, amount: String = "250.00", day: String = "05-06-2026", merchant: String = "SYNTHETIC GROCER DUBAI",
     last4: String = "1234", dateMs: Int64, fromDomain: String = "dib.ae", eop: Bool = true, spoofedAbove: Bool = false
   ) -> FakeGraph.Message {
     let body = "إشعار مشتريات\nالمبلغ\nAED \(amount)\nبتاريخ \(day)\nالدفع الى\n\(merchant)\nرقم البطاقة\nXXXX\(last4)"
-    let address = "alerts@\(fromDomain)"
+    let address = "DIB.notification@\(fromDomain)"
     return FakeGraph.Message(
       id: id,
       raw: rfc822(
@@ -433,7 +435,7 @@ public enum SyntheticOutlookMail {
   public static func enbdAlert(id: String, amount: String = "12.34", last4: String = "8642", dateMs: Int64)
     -> FakeGraph.Message
   {
-    let address = "alerts@emiratesnbd.com"
+    let address = "alert@emiratesnbd.com"
     return FakeGraph.Message(
       id: id,
       raw: rfc822(
@@ -445,7 +447,7 @@ public enum SyntheticOutlookMail {
 
   /// A bank-domain message no template reads (the empty review shape).
   public static func bankNotice(id: String, dateMs: Int64) -> FakeGraph.Message {
-    let address = "news@emiratesnbd.com"
+    let address = "alert@emiratesnbd.com"
     return FakeGraph.Message(
       id: id,
       raw: rfc822(

@@ -23,12 +23,14 @@ struct BankAlertsPage: View {
   @State private var visible = false
   /// The hero's sign-in again, while it runs or after it failed.
   @State private var signIn: MailConnectCoordinator?
+  @State private var retrying = false
   /// Each mailbox connected or read again, counted once its motion settles (the success
   /// haptic's trigger: a count, so the same mailbox twice plays twice).
   @State private var successes = 0
   @State private var changingBanks = false
   @State private var requestingBank = false
   @State private var bankRequests: [RequestedBank] = []
+  @State private var addingSender: UnlistedSender?
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.hMotion) private var motion
 
@@ -56,6 +58,7 @@ struct BankAlertsPage: View {
         heroCard(hero)
         mailboxesSection
         banksSection
+        unlistedSection
         needsALook
         howItReads
       }
@@ -80,6 +83,11 @@ struct BankAlertsPage: View {
     .sheet(isPresented: $requestingBank, onDismiss: { Task { await loadBankRequests() } }) {
       RequestBankSheet(setup: session?.services.setup, prober: lane as? OtherBankProbing) { _ in app.say("Request sent") }
     }
+    .sheet(item: $addingSender) { sender in
+      if let adder = lane as? SenderAddressAdding {
+        AddSenderAddressSheet(domain: sender.domain, adder: adder) { app.say("Hasala now reads \($0)") }
+      }
+    }
     .task { await loadBankRequests() }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
     // A mailbox connected or signed in again: the motion policy's success, once each.
@@ -99,6 +107,7 @@ struct BankAlertsPage: View {
 
     let kind: Kind
     let detail: String
+    let stoppedID: String?
 
     init(
       summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?,
@@ -122,6 +131,8 @@ struct BankAlertsPage: View {
       } else {
         kind = .working
       }
+      stoppedID = kind == .needsYou && health.status == .reconnect
+        ? (live.first { $0.note != nil && !$0.readElsewhere } ?? live.first { !$0.readElsewhere })?.id : nil
       switch kind {
       case .notConnected:
         detail = "Add a mailbox so Hasala can read your bank alerts."
@@ -216,6 +227,12 @@ struct BankAlertsPage: View {
             .hTransition(.rise)
         }
       }
+      if let id = hero.stoppedID, lane?.capabilities.contains(.tryAgain) == true {
+        Button("Try again") { tryAgain(id) }
+          .buttonStyle(.pill(.primary, size: .large, fill: true, loading: retrying))
+          .disabled(retrying)
+          .accessibilityIdentifier("bankAlerts.tryAgain")
+      }
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -223,6 +240,15 @@ struct BankAlertsPage: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bankAlerts.hero")
     .mailSwitchQuestion(signIn)
+  }
+
+  private func tryAgain(_ id: String) {
+    guard let lane, !retrying else { return }
+    retrying = true
+    Task {
+      await lane.tryAgain(id)
+      retrying = false
+    }
   }
 
   /// The provider's sign-in for that mailbox, from here (no read-only screen: the person
@@ -419,6 +445,51 @@ struct BankAlertsPage: View {
   static func bankDetail(_ bank: SupportedBank, lastEmail: String?, checking: Bool) -> String {
     let when = lastEmail.map { "Last email \($0)" } ?? (checking ? "Checking now" : "No alerts read yet")
     return bank == .dib ? "\(when) · Arabic alerts" : when
+  }
+
+  // MARK: Not read on Outlook
+
+  struct UnlistedSender: Identifiable, Hashable {
+    let domain: String
+    var id: String { domain }
+  }
+
+  static let unlistedDetail = "Not read on Outlook. Add the address it sends from."
+
+  @ViewBuilder private var unlistedSection: some View {
+    let domains = (lane as? SenderAddressAdding)?.unlistedSenders ?? []
+    if !domains.isEmpty {
+      VStack(alignment: .leading, spacing: 12) {
+        HSectionHeader("Not read on Outlook")
+        HListCard {
+          ForEach(Array(domains.enumerated()), id: \.element) { i, domain in
+            if i > 0 { HDivider(inset: .disc68) }
+            Button { addingSender = UnlistedSender(domain: domain) } label: { unlistedRow(domain) }
+              .buttonStyle(HRowPressStyle())
+              .accessibilityIdentifier("bankAlerts.unlisted.\(domain)")
+          }
+        }
+      }
+    }
+  }
+
+  private func unlistedRow(_ domain: String) -> some View {
+    HStack(spacing: HSpacing.listRowGap) {
+      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
+        .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+      VStack(alignment: .leading, spacing: 2) {
+        Text(domain).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+        Text(Self.unlistedDetail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, HSpacing.listRowInsetBlock)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .combine)
   }
 
   // MARK: Needs a look

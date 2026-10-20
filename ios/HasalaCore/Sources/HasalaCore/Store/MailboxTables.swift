@@ -211,7 +211,19 @@ public final class MailboxTableStore: Sendable {
       domain TEXT PRIMARY KEY, last_email_at INTEGER, month TEXT NOT NULL, read_this_month INTEGER NOT NULL
     ) WITHOUT ROWID
     """,
+    "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID",
   ]
+
+  public func senderAddresses() throws -> [String] {
+    try db.read { db in try String.fetchAll(db, sql: "SELECT address FROM mailbox_sender_address ORDER BY at, address") }
+  }
+
+  public func addSenderAddress(_ address: String, at: Int64) throws {
+    try db.write { db in
+      try db.execute(
+        sql: "INSERT OR IGNORE INTO mailbox_sender_address (address, at) VALUES (?, ?)", arguments: [address, at])
+    }
+  }
 
   public func loadState() throws -> MailboxStateRow? {
     try db.read { db in

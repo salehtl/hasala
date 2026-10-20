@@ -42,9 +42,17 @@ public protocol MailProvider: Sendable {
   /// Forgets what `installLink` kept (unlink, takeover, a link deleted elsewhere). The refresh
   /// token is the token provider's, not this.
   func forgetLink()
+  var listsByAddress: Bool { get }
+  func source(accessToken: AccessToken, senderAddresses: [String]) -> any MailSource
+  func unlisted(_ trusted: [String], senderAddresses: [String]) -> [String]
 }
 
 extension MailProvider {
+  public var listsByAddress: Bool { false }
+  public func source(accessToken: AccessToken, senderAddresses: [String]) -> any MailSource {
+    source(accessToken: accessToken)
+  }
+  public func unlisted(_ trusted: [String], senderAddresses: [String]) -> [String] { [] }
   public var maxDownloadWidth: Int { Int.max }
   public var stopIsDeviceScoped: Bool { false }
   public func installLink(_ result: MailboxLinkResult) throws(MailAuthError) {}

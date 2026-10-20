@@ -502,6 +502,9 @@ final class CountingMailbox: MailboxConnecting {
   func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
     try await base.signInAgain(mailboxID, ask: ask)
   }
+  func tryAgain(_ mailboxID: String) async {
+    await base.tryAgain(mailboxID)
+  }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
   }

@@ -52,6 +52,7 @@
     private(set) var replacingCalls: [Bool] = []
     /// Each `signInAgain` call.
     private(set) var signInCalls = 0
+    private(set) var tryAgainCalls = 0
     private(set) var sampleLoaded = false
     /// The alerts a mailbox fetched but couldn't read.
     var unreadableMail: [UnreadableMail] = []
@@ -229,6 +230,11 @@
         return
       }
       throw .noMailbox(provider)
+    }
+
+    func tryAgain(_ mailboxID: String) async {
+      tryAgainCalls += 1
+      if let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) { mailboxes[i].note = nil }
     }
 
     func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {

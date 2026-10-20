@@ -224,6 +224,7 @@ public struct MailboxStatus: Sendable, Equatable {
   public var health: [BankHealthRow]
   /// False when the server relays no wakes ("Updates when you open Hasala").
   public var watchActive: Bool
+  public var unlisted: [String] = []
 }
 
 public actor MailboxEngine {
@@ -417,9 +418,9 @@ public actor MailboxEngine {
       return .failed(.noMailbox)
     } catch .offline {
       return .failed(.offline)
-    } catch {
-      // Any other answer is the cycle's to handle (it halts with a reason the user sees).
-    }
+    } catch where error.status == 401 || error.status == 403 {
+      return .failed(.permissionMissing)
+    } catch {}
     let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
     if let stored, Self.identityUnknown(linked: stored.address, signedIn: claims.email) {
       return .failed(.permissionMissing)
@@ -687,7 +688,7 @@ public actor MailboxEngine {
       report.haltedOn = .offline
       return report
     }
-    let source = source(token)
+    let source = await listingSource(token)
     // Short runs list a page, download it, then list the next (§7.5 "one scan page per cycle in a
     // deadline run"); the foreground lists everything first so the first-scan board has a total.
     let paged = deadlineMs != nil || trigger == .processing
@@ -1013,12 +1014,27 @@ public actor MailboxEngine {
   /// window through the normal gates, without moving the watermark.
   public func importSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
     let domain: String
-    do { domain = try BankDomains.normalizeTyped(typed) } catch { return .failure(error) }
+    var address: String?
+    do {
+      if provider.listsByAddress {
+        let a = try BankDomains.normalizeTypedAddress(typed)
+        address = a
+        domain = BankDomains.domainOf(a)
+      } else {
+        domain = try BankDomains.normalizeTyped(typed)
+      }
+    } catch { return .failure(error) }
     return .success(
       await exclusive {
         var report = CycleReport()
         guard var state = try? await store.loadState() else { return report }
         report.phase = state.phase
+        if let address {
+          do { try await store.addSenderAddress(address) } catch {
+            report.haltedOn = .offline
+            return report
+          }
+        }
         do { try await ledger.authorSenderTrust(domain: domain, trusted: true) } catch {
           report.haltedOn = .offline
           return report
@@ -1048,7 +1064,7 @@ public actor MailboxEngine {
       report.haltedOn = .reconnectRequired
       return report
     }
-    let source = source(token)
+    let source = await listingSource(token)
     var trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
     for d in domains where !trusted.contains(d) { trusted.append(d) }
     let days = Int64(state.backfillDays ?? 90)
@@ -1084,7 +1100,7 @@ public actor MailboxEngine {
       } catch {
         return .offline
       }
-      let source = source(token)
+      let source = await listingSource(token)
       let since = max(0, (clock.nowMs() - Int64(days) * 86_400_000) / 1000)
       var found: [String] = []
       for domain in wanted where !found.contains(domain) {
@@ -1157,12 +1173,24 @@ public actor MailboxEngine {
       setAside: groups.map { .init(domain: $0.key, count: $0.value.0, newestMs: $0.value.1) }.sorted {
         $0.newestMs > $1.newestMs
       }, unreadable: ((try? await store.unreadableRecords()) ?? []).count,
-      health: (try? await store.bankHealth()) ?? [], watchActive: state.watchExpiresAtMs != nil)
+      health: (try? await store.bankHealth()) ?? [], watchActive: state.watchExpiresAtMs != nil,
+      unlisted: await unlisted(state))
+  }
+
+  func unlisted(_ state: MailboxState) async -> [String] {
+    guard provider.listsByAddress, state.phase != .unlinked, state.phase != .otherDevice else { return [] }
+    let trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
+    return provider.unlisted(trusted, senderAddresses: (try? await store.senderAddresses()) ?? [])
   }
 
   // MARK: - Internals
 
   func source(_ token: AccessToken) -> any MailSource { provider.source(accessToken: token) }
+
+  func listingSource(_ token: AccessToken) async -> any MailSource {
+    guard provider.listsByAddress else { return source(token) }
+    return provider.source(accessToken: token, senderAddresses: (try? await store.senderAddresses()) ?? [])
+  }
 
   /// This iPhone no longer holds the link (another took it over, or it was deleted): end this
   /// iPhone's own push where that cannot touch the new holder's (best effort), and forget what
@@ -1539,8 +1567,24 @@ public actor MailboxEngine {
     }
   }
 
+  static let log = CoreLog(category: "CoreMailbox")
+
+  static func kind(_ e: MailAPIError) -> StaticString {
+    switch e {
+    case .status: "status"
+    case .offline: "offline"
+    case .unfilteredListing: "unfiltered_listing"
+    case .throttled: "throttled"
+    case .noMailbox: "no_mailbox"
+    case .filterNotApplied: "filter_not_applied"
+    }
+  }
+
   func mailFailure(_ e: MailAPIError, _ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
+    Self.log.notice(
+      "mailbox.api_failure", .state("provider", provider.id == .outlook ? "outlook" : "gmail"),
+      .state("kind", Self.kind(e)), .count("status", e.status ?? 0))
     switch e {
     case .throttled(let sec, _):
       notBeforeMs = clock.nowMs() + min(max(sec, 1), 600) * 1000

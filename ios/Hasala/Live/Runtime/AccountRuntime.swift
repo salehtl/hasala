@@ -137,6 +137,10 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
+  func retryMailbox() async {
+    _ = await coordinator.run(.retryMail, budget: .seconds(20))
+  }
+
   /// Reads the mailbox lane's state again (after a connect, the first scan or the cards
   /// step), so Home and Profile follow it before the next run.
   func refreshMailbox() async {

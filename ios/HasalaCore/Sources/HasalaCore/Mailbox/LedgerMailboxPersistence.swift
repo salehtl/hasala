@@ -123,6 +123,15 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     }
   }
 
+  public func senderAddresses() async throws(MailboxPersistenceError) -> [String] {
+    try io { try tables.senderAddresses() }
+  }
+
+  public func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) {
+    let at = nowMs()
+    try io { try tables.addSenderAddress(address, at: at) }
+  }
+
   public func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow] {
     try io { try tables.bankHealth() }.map {
       BankHealthRow(domain: $0.domain, lastEmailAtMs: $0.lastEmailAt, month: $0.month, readThisMonth: $0.readThisMonth)
