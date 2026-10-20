@@ -372,12 +372,19 @@ extension State {
     switch payload {
     case .categorize(let category, let needsReview, let source):
       txns[id]!.category = category
-      if let source { txns[id]!.categorySource = source }
+      if let source {
+        txns[id]!.categorySource = source
+      } else if txns[id]!.categorySource != nil {
+        txns[id]!.categorySource = category == nil ? CategorySource.none : .user
+      }
       setNeedsReview(id, needsReview, seq: seq)
+      forwardToMergeWinner(id)
     case .split(let parts, _):
       txns[id]!.splits = parts
+      forwardToMergeWinner(id)
     case .edit(let p):
       applyTxnEdit(id, p, e)
+      forwardToMergeWinner(id)
     case .disposition(let other, let disposition):
       guard let notice = txns[id]!.possibleDuplicateOf, utf8Equal(notice, other) else {
         anomaly(

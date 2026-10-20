@@ -121,6 +121,12 @@ extension State {
     }
   }
 
+  mutating func forwardToMergeWinner(_ id: String) {
+    guard let t = txns[id], t.retiredBy == nil, t.supersededBy == nil, let w = t.mergedInto, txns[w]?.isLive == true
+    else { return }
+    carryUserEdits(from: id, to: w)
+  }
+
   mutating func unmergeRow(_ id: String, seq: Int64) -> Bool {
     guard let t = txns[id], let w = t.mergedInto, t.retiredBy == nil, t.supersededBy == nil else { return false }
     if let live = liveByIngestID[t.ingestID], !utf8Equal(live, id) {

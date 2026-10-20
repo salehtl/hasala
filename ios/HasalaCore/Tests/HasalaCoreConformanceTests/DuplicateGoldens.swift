@@ -128,5 +128,41 @@ enum DuplicateGoldens {
           (4, G.w1, [R.retire(R.b, legacy: false, id: "op-retire-b")]),
           (5, G.w2, [resolve(2, other: 1, "keep_both", parent: 1, id: "op-keep-2")]),
         ]),
+      FoldGoldenCase(
+        name: "edit-on-merged-copy-forwards",
+        note: "Another device, offline, sorted and noted the copy that became an alias: the sort and the note reach the canonical row, which had neither.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a, mid: mid)]),
+          (2, G.w1, [alert(2, grant: R.b, at: "08:00:30", mid: mid)]),
+          (3, G.w2, [
+            sort(2, "groceries", parent: 1, id: "op-sort-2"),
+            G.op("txn_annotated", #"{"txn_id":"\#(G.ulid(2))","set":{"note":"Team lunch"}}"#, id: "op-note-2"),
+          ]),
+        ]),
+      FoldGoldenCase(
+        name: "edit-on-merged-copy-keeps-the-canonical-sort",
+        note: "The canonical row was already sorted: a late sort of the alias stays on the alias, and the canonical row keeps its own.",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a, mid: mid)]),
+          (2, G.w1, [alert(2, grant: R.b, at: "08:00:30", mid: mid)]),
+          (3, G.w1, [sort(1, "transport", parent: 1, id: "op-sort-1")]),
+          (4, G.w2, [sort(2, "groceries", parent: 1, id: "op-sort-2")]),
+        ]),
+      FoldGoldenCase(
+        name: "legacy-categorize-on-v4-row",
+        note: "A below-v4 txn_categorized on a v4 row carries no source: the source follows the category (user when set, none when cleared).",
+        blobs: [
+          (1, G.w1, [alert(1, grant: R.a), alert(2, grant: R.a, merchant: "ENOC 1043", at: "12:00:00")]),
+          (2, G.w2, [
+            legacy(#"{"category":"groceries","needs_review":false}"#, entity: 1, id: "op-legacy-1"),
+            sort(2, "transport", parent: 1, id: "op-sort-2"),
+          ]),
+          (3, G.w2, [legacy(#"{"category":null,"needs_review":false}"#, entity: 2, parent: 2, id: "op-legacy-2")]),
+        ]),
     ])
+
+  static func legacy(_ payload: String, entity: Int, parent: Int = 1, id: String) -> String {
+    G.op("txn_categorized", payload, id: id, entity: ("txn", G.ulid(entity)), parent: parent)
+      .replacingOccurrences(of: #"{"v":4,"#, with: #"{"v":3,"#)
+  }
 }
