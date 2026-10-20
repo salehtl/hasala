@@ -491,9 +491,17 @@ final class LiveAccountService: AccountService {
     var hasPassword = profile?.method == .password
     var hasPasskey = profile?.method == .passkey
     var frozen: FreezeInfo?
-    if let token = try? env.secrets.session()?.token,
-      let a = try? await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
-    {
+    var fetched: LiveAccountFields?
+    if let token = try? env.secrets.session()?.token {
+      do {
+        fetched = try await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
+      } catch {
+        if !methodConfirmed { throw Self.map(CeremonyError.api(error)) }
+      }
+    } else if !methodConfirmed {
+      throw .refused
+    }
+    if let a = fetched {
       hasPassword = a.has_password ?? hasPassword
       hasPasskey = a.has_passkey ?? hasPasskey
       frozen = Self.freeze(a)

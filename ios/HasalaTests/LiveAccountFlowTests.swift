@@ -243,6 +243,20 @@ struct LiveAccountFlowTests {
     #expect(try b.env.secrets.session() == nil)
   }
 
+  @Test func securityStateAfterARelaunchNeedsTheServerToKnowTheMethod() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    account.loadProfile()
+    server.offline = true
+    await #expect(throws: AuthFailure.offline) { _ = try await account.securityState() }
+    server.offline = false
+    let state = try await account.securityState()
+    #expect(state.passkeys.isEmpty)
+    #expect(state.passwordChanged == "Set")
+  }
+
   @Test func offlineAtLaunchWaitsWithRetry() async throws {
     let server = MiniHasalad(invite: Self.invite)
     _ = try await signUp(Phone(server), server)
