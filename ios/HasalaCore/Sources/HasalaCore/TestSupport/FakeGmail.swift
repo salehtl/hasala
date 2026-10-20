@@ -27,6 +27,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     public var raw: [UInt8]
     public var internalDateMs: Int64
     public var trashed = false
+    public var spam = false
     /// The From header value (for listing); parsed from `raw` when built with `SyntheticMail`.
     public var from: String
 
@@ -177,7 +178,13 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
       guard let m = lock.withLock({ messages[id] }) else { return json(404, ["error": .string("not_found")]) }
       switch q("format") {
       case "raw":
-        return json(200, ["id": .string(id), "internalDate": .string(String(m.internalDateMs)), "raw": .string(Base64.encodeURL(m.raw))])
+        let labels: [JSONValue] = m.spam ? [.string("SPAM"), .string("UNREAD")] : [.string("INBOX"), .string("UNREAD")]
+        return json(
+          200,
+          [
+            "id": .string(id), "internalDate": .string(String(m.internalDateMs)), "labelIds": .array(labels),
+            "raw": .string(Base64.encodeURL(m.raw)),
+          ])
       case "metadata":
         let wanted = query.filter { $0.0 == "metadataHeaders" }.map { $0.1.lowercased() }
         let headers = Self.headers(m.raw).filter { wanted.contains($0.0.lowercased()) }.map {
@@ -327,7 +334,7 @@ public enum SyntheticMail {
   /// `arTopmost` false puts a foreign A-R above Gmail's (verdict `not_topmost`).
   public static func rfc822(
     from: String, subject: String, body: String, dateMs: Int64, authDomain: String?, arTopmost: Bool = true,
-    dkimPass: Bool = true
+    dkimPass: Bool = true, to: String = defaultTo
   ) -> [UInt8] {
     var h: [String] = []
     if let d = authDomain {
@@ -336,7 +343,7 @@ public enum SyntheticMail {
       h.append("Authentication-Results: mx.google.com; \(verdict)")
     }
     h += [
-      "Delivered-To: \(defaultTo)", "From: \(from)", "To: \(defaultTo)", "Subject: \(subject)",
+      "Delivered-To: \(defaultTo)", "From: \(from)", "To: \(to)", "Subject: \(subject)",
       "Message-ID: <\(dateMs).synthetic@example.invalid>", "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=\"utf-8\"", "Content-Transfer-Encoding: 8bit",
     ]
@@ -347,13 +354,14 @@ public enum SyntheticMail {
   public static func dibCard(
     id: String, amount: String = "250.00", day: String = "05-06-2026", merchant: String = "SYNTHETIC GROCER DUBAI",
     last4: String = "1234", dateMs: Int64, authDomain: String? = "dib.ae", fromDomain: String = "dib.ae",
-    arTopmost: Bool = true
+    arTopmost: Bool = true, to: String = defaultTo
   ) -> FakeGmail.Message {
     let body = "إشعار مشتريات\nالمبلغ\nAED \(amount)\nبتاريخ \(day)\nالدفع الى\n\(merchant)\nرقم البطاقة\nXXXX\(last4)"
     let from = "DIB Alerts <alerts@\(fromDomain)>"
     return FakeGmail.Message(
       id: id,
-      raw: rfc822(from: from, subject: "Card transaction", body: body, dateMs: dateMs, authDomain: authDomain, arTopmost: arTopmost),
+      raw: rfc822(from: from, subject: "Card transaction", body: body, dateMs: dateMs, authDomain: authDomain, arTopmost: arTopmost,
+        to: to),
       internalDateMs: dateMs, from: from)
   }
 

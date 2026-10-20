@@ -34,7 +34,7 @@ struct PrivateCorpusDispositionTests {
       let from = MailHeadersForTest.from(raw)
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: ms, topLevelFrom: from, templates: templates, bankDomains: banks,
-        trusted: banks, analyze: AuthResults.analyze)
+        trusted: banks, recipient: nil, spam: false, analyze: AuthResults.analyze)
       let fromBank = BankDomains.isMember(BankDomains.domainOf(from), of: banks)
       switch r {
       case .setAside:
@@ -72,7 +72,7 @@ struct PrivateGmailDeliveredTests {
       let raw = [UInt8](try Data(contentsOf: root.appendingPathComponent(f)))
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
-        templates: templates, bankDomains: banks, trusted: banks, analyze: AuthResults.analyze)
+        templates: templates, bankDomains: banks, trusted: banks, recipient: nil, spam: false, analyze: AuthResults.analyze)
       guard case .mail(let m) = r else {
         Issue.record("\(f): set aside")
         continue
@@ -111,7 +111,7 @@ struct PrivateOutlookDeliveredTests {
       let raw = [UInt8](try Data(contentsOf: url))
       let r = MessageDisposer.parse(
         raw: raw, messageID: f, internalDateMs: 1_750_000_000_000, topLevelFrom: MailHeadersForTest.from(raw),
-        templates: templates, bankDomains: banks, trusted: banks, analyze: gate.analyzeAuthResults)
+        templates: templates, bankDomains: banks, trusted: banks, recipient: nil, spam: false, analyze: gate.analyzeAuthResults)
       guard case .mail(let m) = r else {
         Issue.record("\(f): set aside")
         continue

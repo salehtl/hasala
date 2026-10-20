@@ -15,9 +15,10 @@
 //
 // Trust a verdict ONLY when exactly one Authentication-Results header has authserv-id
 // `mx.google.com`, it precedes every other Authentication-Results header, and it reports
-// `dkim=pass` with a `header.d` domain or `dmarc=pass` (whose domain is then `header.from`).
-// `spf` results are parsed like any other method but never trusted: SPF vouches for the
-// envelope sender, not the From domain a bank's template is keyed on. Everything else is
+// `dkim=pass` with a `header.d` domain aligned with the domain of the one `From` field.
+// `spf` and `dmarc` results are parsed like any other method but never trusted: DMARC can pass
+// on SPF alone, and SPF vouches for the envelope sender, not the From domain a bank's template
+// is keyed on. Everything else is
 // untrusted with a reason, and an untrusted message goes to review, never to the void.
 //
 // # Fidelity
@@ -125,15 +126,14 @@ public enum AuthResults {
     guard gmail[0] == 0 else { return untrusted(.notTopmost) }
 
     let ar = parsed[0]
-    let dkimPass = ar.methods.first { same($0.method, "dkim") && same($0.result, "pass") && !domainProp($0, "header.d").isEmpty }
-    let dmarcPass = ar.methods.first { same($0.method, "dmarc") && same($0.result, "pass") }
-    if dkimPass == nil && dmarcPass == nil { return untrusted(.fail) }
-
-    var domain = dkimPass.map { domainProp($0, "header.d") } ?? ""
-    if domain.isEmpty, let dmarcPass { domain = domainProp(dmarcPass, "header.from") }
-    // dmarc=pass with no usable header.from is a pass with nothing to match a sender list
-    // against: fail closed rather than hand the caller a nil to special-case.
-    if domain.isEmpty { return untrusted(.fail) }
+    let from = fields.filter { jsLower(jsTrim($0.name)) == Array("from".unicodeScalars) }
+    let fromDom = from.count == 1 ? string(fromDomain(from[0].value)) : ""
+    guard
+      let dkimPass = ar.methods.first(where: {
+        same($0.method, "dkim") && same($0.result, "pass") && dkimAligned(domainProp($0, "header.d"), fromDom)
+      })
+    else { return untrusted(.fail) }
+    let domain = domainProp(dkimPass, "header.d")
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
   }
 
@@ -211,6 +211,14 @@ public enum AuthResults {
 
     // 8.
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
+  }
+
+  static func dkimAligned(_ d: String, _ from: String) -> Bool {
+    if d.isEmpty || from.isEmpty { return false }
+    let (d8, f8) = (Array(d.utf8), Array(from.utf8))
+    if d8 == f8 { return true }
+    func under(_ a: [UInt8], _ b: [UInt8]) -> Bool { a.count > b.count && a.suffix(b.count + 1).elementsEqual([0x2e] + b) }
+    return under(f8, d8) || (f8.contains(0x2e) && under(d8, f8))
   }
 
   /// The domain of a `From` value: after the last `@`, cut at `>`, space, tab, CR, LF, `"` or
