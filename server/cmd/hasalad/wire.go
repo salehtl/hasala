@@ -246,7 +246,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Retention = cfg.Web.LogRetention
 	q.Register("test", mailq.TestRenderer)
 	q.Register("deleted", mailq.DeletedRenderer)
-	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true})
+	minter, _ := tagger.(invites.Minter)
+	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
+	q.Unsent = invites.MailUnsentTx
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention

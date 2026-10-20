@@ -885,3 +885,56 @@ func TestPurgeWithoutTheKeyStillQueuesTheGoodbye(t *testing.T) {
 		t.Fatal("a purge without Goodbye queued one")
 	}
 }
+
+func TestPurgeRevokesTheAddresssOpenInvites(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "open-invites")
+	exec(t, pool, `UPDATE users SET email_norm = 'gone@example.com' WHERE id = $1`, u)
+	tag, other := sumTagger{}.EmailTag("gone@example.com"), sumTagger{}.EmailTag("stays@example.com")
+	insert := func(tg []byte) uuid.UUID {
+		var id uuid.UUID
+		if err := pool.QueryRow(bg, `INSERT INTO invite_codes (code_hash, link_key_hash, email_tag, origin, state, created_at,
+		    minted_at, expires_at, mint_count) VALUES ($1, $2, $3, 'cli', 'active', now(), now(), now() + interval '1 day', 1)
+		    RETURNING id`, randBytes(t, 32), randBytes(t, 32), tg).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	byTag, stays := insert(tag), insert(other)
+	var byMail uuid.UUID
+	if err := pool.QueryRow(bg, `INSERT INTO invite_codes (origin, state, created_at) VALUES ('cli', 'queued', now())
+	    RETURNING id`).Scan(&byMail); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_hint, invite_id, params, status, next_attempt_at, created_at)
+	               VALUES ('invite', 'transactional', 'gone@example.com', 'g•••@example.com', $1, '{}', 'queued', now(), now())`, byMail)
+
+	if _, err := PurgeWith(bg, pool, u, Options{Goodbye: true}); err != nil {
+		t.Fatal(err)
+	}
+	state := func(id uuid.UUID) (s string, tagged bool) {
+		if err := pool.QueryRow(bg, `SELECT state, email_tag IS NOT NULL FROM invite_codes WHERE id = $1`, id).
+			Scan(&s, &tagged); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if s, _ := state(byMail); s != "revoked" {
+		t.Fatalf("the invite emailed to the address is %s without the key", s)
+	}
+	if s, _ := state(byTag); s != "active" {
+		t.Fatalf("without the key the tag-only invite is %s", s)
+	}
+
+	v := newUser(t, pool, "open-invites-key")
+	exec(t, pool, `UPDATE users SET email_norm = 'gone@example.com' WHERE id = $1`, v)
+	if _, err := PurgeWith(bg, pool, v, Options{Tagger: sumTagger{}}); err != nil {
+		t.Fatal(err)
+	}
+	if s, tagged := state(byTag); s != "revoked" || tagged {
+		t.Fatalf("the invite addressed to the tag is %s, tag kept %v", s, tagged)
+	}
+	if s, tagged := state(stays); s != "active" || !tagged {
+		t.Fatalf("another address's invite is %s, tag kept %v", s, tagged)
+	}
+}

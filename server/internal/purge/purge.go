@@ -738,6 +738,14 @@ func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Option
 		}
 	}
 	const addrs = `(SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`
+	if _, err := tx.Exec(ctx,
+		`UPDATE invite_codes SET state = 'revoked', closed_at = now(), email_tag = NULL, link_key_hash = NULL
+		  WHERE state IN ('awaiting_testflight','queued','active')
+		    AND ((email_tag IS NOT NULL AND email_tag = ANY($2::bytea[]))
+		      OR id IN (SELECT invite_id FROM mail_log WHERE invite_id IS NOT NULL AND recipient IN `+addrs+`))`,
+		users, tags); err != nil {
+		return fmt.Errorf("purge: revoke the address's invites: %w", err)
+	}
 	for _, q := range []string{
 		`DELETE FROM mail_log WHERE status = 'queued' AND recipient IN ` + addrs,
 		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now(), error = 'purged'
