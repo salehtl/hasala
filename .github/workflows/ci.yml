@@ -474,6 +474,9 @@ jobs:
       - name: Design tokens are generated from design/tokens/paper-tokens.json
         run: swift ios/tools/tokens/generate.swift --check
 
+      - name: HasalaCore tool pins equal ios/HasalaCore/Package.resolved
+        run: ios/scripts/check-tool-pins.sh
+
       - name: No Swift file references in the project (synchronized folders only)
         run: |
           if grep -q 'lastKnownFileType = sourcecode.swift' ios/Hasala.xcodeproj/project.pbxproj; then
@@ -827,7 +830,7 @@ jobs:
 
       - name: swift test (outlook-trust-check)
         working-directory: ios/HasalaCore/Tools/OutlookTrustCheck
-        run: swift test --disable-automatic-resolution
+        run: swift test --disable-automatic-resolution --explicit-target-dependency-import-check error
 
       # `swift test` builds for macOS only. The iOS build is what catches a
       # module that shadows an Apple framework (the reason `CoreText` is

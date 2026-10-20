@@ -46,7 +46,7 @@ extension AuthResults {
     public var c1: Bool { microsoftCount == 1 && topmost }
 
     public var c2: Bool {
-      authAs.count == 1 && authAs[0] == "anonymous" && authSource.count == 1 && authSource[0] != "other"
+      authAs.count == 1 && authAs[0] == "anonymous" && authSource.count == 1 && authSource[0] == "ok"
     }
 
     public var line: String {
@@ -194,7 +194,7 @@ extension AuthResults {
     guard v.count > outlookAuthSourceSuffix.count, v.count <= 253,
       Array(v.suffix(outlookAuthSourceSuffix.count)) == outlookAuthSourceSuffix, isLDHDomain(v)
     else { return "other" }
-    return string(v)
+    return "ok"
   }
 
   static func probeDomain(_ v: Scalars) -> String {

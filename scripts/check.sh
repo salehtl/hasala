@@ -131,7 +131,7 @@ leaked="$(
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		find reference/ledgerd-client/test/e2e -type f -name '*.json' || true
-		find . \( -name .git -o -name .claude -o -name .build -o -name node_modules -o -name .direnv \) -prune -o -type f -iname '*.eml' -print || true
+		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true
 	} 2>/dev/null | sort -u
 )"
 if [[ -n "$leaked" ]]; then

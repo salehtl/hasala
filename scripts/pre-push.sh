@@ -198,8 +198,17 @@ if changed '^(ios/|design/tokens/)'; then
 	else
 		skip "Xcode project" "no project changes"
 	fi
+	if changed '^ios/(HasalaCore/(Package\.resolved|Tools/)|scripts/check-tool-pins\.sh)'; then
+		if have jq; then
+			run "HasalaCore tool pins equal HasalaCore's" ios/scripts/check-tool-pins.sh
+		else
+			skip "HasalaCore tool pins" "jq not on PATH"
+		fi
+	else
+		skip "HasalaCore tool pins" "no Package.resolved or tool changes"
+	fi
 else
-	skip "design tokens, Xcode project" "no ios/ changes"
+	skip "design tokens, Xcode project, tool pins" "no ios/ changes"
 fi
 
 if changed '^(ios/HasalaCore/Sources/HasalaCore/Resources/templates/|server/internal/tmpl/seed/)'; then

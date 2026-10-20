@@ -107,7 +107,7 @@ struct TrustCheckTests {
     let p = TrustCheck.probe(bytes: eml(vector("outlook-pass")))
     #expect(
       p.line
-        == "from=bank.example from_fields=1 ar=1 forms=ms ms_index=0 topmost=yes authas=1[anonymous]@below authsource=1[am0pr01mb0001.eurprd01.prod.outlook.com]@below rcv0=above order=rcv0>ar:ms>as>src dmarc=pass compauth=pass reason=100 header_from=bank.example scl=- c7=none verdict=pass domain=bank.example"
+        == "from=bank.example from_fields=1 ar=1 forms=ms ms_index=0 topmost=yes authas=1[anonymous]@below authsource=1[ok]@below rcv0=above order=rcv0>ar:ms>as>src dmarc=pass compauth=pass reason=100 header_from=bank.example scl=- c7=none verdict=pass domain=bank.example"
     )
     #expect(p.c1 && p.c2)
   }
@@ -181,7 +181,7 @@ struct TrustCheckTests {
     let all = TrustCheck.probe(bytes: eml(spoofAllSurvive))
     #expect(all.line.contains(" forms=ms,ms,id "))
     #expect(all.line.contains(" authas=2[anonymous,internal]@below,below "))
-    #expect(all.line.contains(" authsource=2[am0pr01mb0001.eurprd01.prod.outlook.com,other]@below,below "))
+    #expect(all.line.contains(" authsource=2[ok,other]@below,below "))
     #expect(!all.line.contains("evil"))
     let r = run(cases.map { MessageInput(group: .plain, bytes: eml($0.0)) }, .untrusted)
     #expect(status(r, "C3") == .pass)
@@ -216,6 +216,7 @@ struct TrustCheckTests {
     for secret in [
       "alerts", "probe@", "tester-local-part", "Synthetic purchase", "Transaction alert", "1,234.56", "0000",
       "SYNTHETIC SHOP", "9876543210", "synthetic-message-id", "Mon,", "2026", "08:15", "192.0.2.1", "alerts@",
+      "am0pr01mb0001", "AM0PR01MB0001", "eurprd01",
     ] {
       #expect(!text.contains(secret), "leaked \(secret)")
     }

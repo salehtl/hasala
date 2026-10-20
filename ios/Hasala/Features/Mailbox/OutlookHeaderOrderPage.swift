@@ -58,18 +58,23 @@
         return "outlook-header-order-check\nC4 NEEDS-DATA no connected Outlook mailbox with trusted senders"
       }
       var ids: [String] = []
-      var token: String? = nil
       let since = SystemClock().nowMs() / 1000 - windowDays * 86_400
       do {
-        repeat {
-          let page = try await source.graph.listMessages(senders: source.senders, sinceSec: since, pageToken: token)
-          ids.append(contentsOf: page.ids)
-          token = page.nextPageToken
-        } while token != nil && ids.count < count
+        for senders in source.groups where ids.count < count {
+          var token: String? = nil
+          repeat {
+            let page = try await source.graph.listMessages(senders: senders, sinceSec: since, pageToken: token)
+            ids.append(contentsOf: page.ids)
+            token = page.nextPageToken
+          } while token != nil && ids.count < count
+        }
       } catch {
         return "outlook-header-order-check\nC4 NEEDS-DATA listing failed: \(error)"
       }
-      var lines = ["outlook-header-order-check messages=\(min(ids.count, count)) senders=\(source.senders.count)"]
+      let senders = source.groups.reduce(0) { $0 + $1.count }
+      var lines = [
+        "outlook-header-order-check messages=\(min(ids.count, count)) senders=\(senders) groups=\(source.groups.count)"
+      ]
       var matched = 0
       var read = 0
       let picked = Array(ids.prefix(count))

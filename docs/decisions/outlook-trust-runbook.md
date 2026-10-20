@@ -84,7 +84,7 @@ bank domains or a subdomain of one.
 Each message gives one line, for example (synthetic):
 
 ```text
-#01 from=bank.example from_fields=1 ar=1 forms=ms ms_index=0 topmost=yes authas=1[anonymous]@below authsource=1[am0pr01mb0001.eurprd01.prod.outlook.com]@below rcv0=above order=rcv0>ar:ms>as>src dmarc=pass compauth=pass reason=100 header_from=bank.example scl=- c7=none verdict=pass domain=bank.example
+#01 from=bank.example from_fields=1 ar=1 forms=ms ms_index=0 topmost=yes authas=1[anonymous]@below authsource=1[ok]@below rcv0=above order=rcv0>ar:ms>as>src dmarc=pass compauth=pass reason=100 header_from=bank.example scl=- c7=none verdict=pass domain=bank.example
 ```
 
 | Field | Meaning |
@@ -92,7 +92,7 @@ Each message gives one line, for example (synthetic):
 | `#01`, `[junk]`, `[forwarded]` | file index in name order, and its subfolder |
 | `from` | the `From` domain only (`none` or `invalid` if there is none) |
 | `ar`, `forms`, `ms_index`, `topmost` | the number of `Authentication-Results` fields, the form of each in order (`ms` Microsoft form, `id` authserv-id form), the index of the first Microsoft-form one, and whether it is the topmost A-R |
-| `authas`, `authsource` | count, values and position (above/below the Microsoft-form A-R) of `X-MS-Exchange-Organization-AuthAs` and `-AuthSource`; an AuthSource that does not end in `.prod.outlook.com` prints as `other` |
+| `authas`, `authsource` | count, values and position (above/below the Microsoft-form A-R) of `X-MS-Exchange-Organization-AuthAs` and `-AuthSource`; an AuthSource prints only as `ok` (it ends in `.prod.outlook.com`) or `other`, never the server name |
 | `rcv0`, `order` | position of the newest `Received`, and the order of the newest `Received` (`rcv0`), the A-Rs (`ar:ms`, `ar:id`), AuthAs (`as`) and AuthSource (`src`) |
 | `dmarc`, `compauth`, `reason`, `header_from` | from the first Microsoft-form A-R |
 | `scl` | `X-MS-Exchange-Organization-SCL` (spam confidence level) |
