@@ -128,6 +128,8 @@ public struct MailboxWrite: Sendable {
   public var pruneAccountedBelow: Int64?
   /// (domain, local month `YYYY-MM`, internalDate ms) per read message.
   public var health: [(domain: String, month: String, internalDate: Int64)] = []
+  public var addImports: [(domain: String, sinceMs: Int64)] = []
+  public var doneImports: [String] = []
   public var state: MailboxStateRow?
   public var clearAll = false
   public init() {}
@@ -213,7 +215,16 @@ public final class MailboxTableStore: Sendable {
     """,
     "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID",
     "CREATE TABLE mailbox_parsing (message_id TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID",
+    "CREATE TABLE mailbox_pending_import (domain TEXT PRIMARY KEY, since_ms INTEGER NOT NULL) WITHOUT ROWID",
   ]
+
+  public func pendingImports() throws -> [(domain: String, sinceMs: Int64)] {
+    try db.read { db in
+      try Row.fetchAll(db, sql: "SELECT domain, since_ms FROM mailbox_pending_import ORDER BY domain").map {
+        (($0["domain"] as String), ($0["since_ms"] as Int64))
+      }
+    }
+  }
 
   public func isParsing(_ messageID: String) throws -> Bool {
     try db.read { db in
@@ -342,6 +353,7 @@ public final class MailboxTableStore: Sendable {
       if w.clearAll {
         for t in [
           "mailbox_accounted", "mailbox_set_aside", "mailbox_unreadable", "mailbox_staging", "bank_health", "mailbox_parsing",
+          "mailbox_pending_import",
         ] {
           try db.execute(sql: "DELETE FROM \(t)")
         }
@@ -410,6 +422,16 @@ public final class MailboxTableStore: Sendable {
         try db.execute(
           sql: "INSERT OR REPLACE INTO bank_health (domain, last_email_at, month, read_this_month) VALUES (?, ?, ?, ?)",
           arguments: [h.domain, last, month, count])
+      }
+      for i in w.addImports {
+        try db.execute(
+          sql: """
+            INSERT INTO mailbox_pending_import (domain, since_ms) VALUES (?, ?)
+            ON CONFLICT(domain) DO UPDATE SET since_ms = min(since_ms, excluded.since_ms)
+            """, arguments: [i.domain, i.sinceMs])
+      }
+      for d in w.doneImports {
+        try db.execute(sql: "DELETE FROM mailbox_pending_import WHERE domain = ?", arguments: [d])
       }
       if let s = w.state {
         try db.execute(
