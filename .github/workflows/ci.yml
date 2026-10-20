@@ -24,8 +24,9 @@
 # at before the push: the pull request already ran every job on exactly what
 # merged (main requires a branch to be up to date), so a push that does not
 # touch a job's paths skips it. A manual run (workflow_dispatch) runs every
-# job. The weekly govulncheck of main is a separate workflow, vuln-weekly.yml,
-# so that its run never records checks on main's head.
+# job. A newer push to main cancels an older push's Mac jobs (see
+# "concurrency" below). The weekly govulncheck of main is a separate workflow,
+# vuln-weekly.yml, so that its run never records checks on main's head.
 #
 # Every action is pinned to a full commit SHA, with its release in a comment.
 #
@@ -52,8 +53,16 @@ permissions:
   contents: read
 
 # One run per pull request (a new push cancels the superseded run); every other
-# run (a push to main, a manual run) is its own group, so none is cancelled or
-# dropped.
+# run (a push to main, a manual run) is its own group, so no run is cancelled or
+# dropped as a whole. The Mac jobs (`swift`, `ios-build`, `ios-tools` and each
+# `ios` shard) also have a job-level group: on a push to main it is one group
+# per job (and shard) with cancel-in-progress, so a newer push to main cancels
+# an older push's Mac job that is still queued or running. The account runs at
+# most five Mac jobs at once and every push to main asks for six, so without
+# this pushes queued behind each other for hours. The newest push to main still
+# runs its Mac jobs (some pull requests merge before theirs finish); a push
+# that skips a Mac job by path leaves the older push's job running. Any other
+# run's job-level group is its own run id, so it changes nothing there.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -399,6 +408,9 @@ jobs:
   ios-tools:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    concurrency:
+      group: ci-mac-ios-tools-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -470,6 +482,9 @@ jobs:
   ios-build:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
+    concurrency:
+      group: ci-mac-ios-build-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -521,6 +536,9 @@ jobs:
     needs: [changes, ios-build]
     if: ${{ !cancelled() && needs.ios-build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     name: ios (${{ matrix.shard }})
+    concurrency:
+      group: ci-mac-ios-${{ matrix.shard }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: macos-26
     timeout-minutes: 60
     strategy:
@@ -611,6 +629,9 @@ jobs:
   swift:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.swift != 'false') }}
+    concurrency:
+      group: ci-mac-swift-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: macos-26
     timeout-minutes: 45
     env:

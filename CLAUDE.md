@@ -153,6 +153,19 @@ it is not sure, it runs the job.
   the same code, because a branch must be up to date before it merges. If CI
   cannot get that commit (a new branch, a force push), all jobs run.
 
+### Concurrency
+
+- A new push to a pull request cancels the older run of that pull request.
+- A push to `main` does not cancel an older run as a whole. But a newer push
+  to `main` cancels the Mac jobs (`swift`, `ios-build`, `ios-tools` and each
+  `ios` shard) of an older push, if they are in the queue or running. Each of
+  these jobs has a job-level `concurrency` group for this. The reason: each
+  push to `main` asks for six Mac jobs, and the account runs only five at the
+  same time. Without the groups, the runs of `main` waited for hours.
+- The newest push to `main` still runs its Mac jobs, because some pull
+  requests merge before their Mac jobs finish.
+- A manual run is not cancelled.
+
 Rules for a change to the CI:
 
 1. Use a job-level `if:` to skip a job. A required check that CI skips counts
