@@ -150,11 +150,13 @@ public struct SplitLine: Sendable, Hashable, Codable, Identifiable {
 public enum TxnReviewReason: String, Sendable, Hashable, Codable {
   case probableCopy = "probable_copy"
   case senderUnverified = "sender_unverified"
+  case samePurchase = "same_purchase"
 
   public var label: String {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .senderUnverified: "Couldn't verify sender"
+    case .samePurchase: "Same purchase?"
     }
   }
 
@@ -162,6 +164,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .senderUnverified: "Couldn't verify the sender"
+    case .samePurchase: "Same purchase?"
     }
   }
 
@@ -169,6 +172,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     switch self {
     case .probableCopy: "It matches one you already have. Merge it, or keep both."
     case .senderUnverified: "Check this matches your bank app before you sort it."
+    case .samePurchase: "It may be the AED charge for a purchase you already have. Count it once, or keep both."
     }
   }
 }
@@ -185,6 +189,16 @@ public struct HeldCopy: Sendable, Hashable, Codable {
 
 public enum HomeSource: String, Sendable, Hashable, Codable {
   case identity, rate, stated
+}
+
+public struct SamePurchaseMatch: Sendable, Hashable, Codable {
+  public var of: TxnID
+  public var merchantMissing: Bool
+
+  public init(of: TxnID, merchantMissing: Bool = false) {
+    self.of = of
+    self.merchantMissing = merchantMissing
+  }
 }
 
 public struct Txn: Sendable, Hashable, Identifiable, Codable {
@@ -230,6 +244,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// behind them.
   public var mailboxMessageID: String?
   public var heldCopy: HeldCopy?
+  public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
 
   public init(
@@ -241,6 +256,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
     provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil,
     heldCopy: HeldCopy? = nil,
+    samePurchase: SamePurchaseMatch? = nil,
     reviewReason: TxnReviewReason? = nil
   ) {
     self.id = id
@@ -269,6 +285,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.detailOverride = detailOverride
     self.mailboxMessageID = mailboxMessageID
     self.heldCopy = heldCopy
+    self.samePurchase = samePurchase
     self.reviewReason = reviewReason
   }
 
@@ -278,7 +295,11 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   /// A row of the App Review sample (its message id is `sample-<n>`; Gmail ids are hex).
   public var isSample: Bool { mailboxMessageID?.hasPrefix("sample-") == true }
 
-  public var activeReviewReason: TxnReviewReason? { isHeldCopy ? .probableCopy : (needsReview ? reviewReason : nil) }
+  public var activeReviewReason: TxnReviewReason? {
+    if isHeldCopy { return .probableCopy }
+    if samePurchase != nil { return .samePurchase }
+    return needsReview ? reviewReason : nil
+  }
 
   public var senderUnverified: Bool { activeReviewReason == .senderUnverified }
 

@@ -512,7 +512,7 @@ public struct TransactionRow: View {
   static func tone(_ reason: TxnReviewReason?) -> StatusTone {
     switch reason {
     case .senderUnverified: .warning
-    case .probableCopy: .accent
+    case .probableCopy, .samePurchase: .accent
     case nil: .accent
     }
   }

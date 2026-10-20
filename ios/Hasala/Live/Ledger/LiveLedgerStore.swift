@@ -282,6 +282,22 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       }
       s.txns[i].heldCopy = nil
       return ("Kept both", [])
+    case .resolveSamePurchase(let id, let same):
+      let i = try index(id)
+      guard let match = s.txns[i].samePurchase, let j = s.txns.firstIndex(where: { $0.id == match.of }) else {
+        throw .notFound
+      }
+      s.txns[i].samePurchase = nil
+      guard same else { return ("Kept both", [.samePurchaseDeclined(home: id)]) }
+      guard let previous = s.txns[j].homeMinor else { throw .notFound }
+      let oldNote = s.txns[i].note
+      s.txns[i].archived = true
+      s.txns[i].note = SamePurchaseText.note(s.txns[j].amount)
+      s.txns[j].homeMinor = s.txns[i].amount.minor
+      return (
+        "Counted once",
+        [.samePurchase(foreign: match.of, previousHome: previous, home: id, previousNote: oldNote)]
+      )
     case .skipReview(let id):
       s.skippedReview.insert(id)
       return (nil, [])

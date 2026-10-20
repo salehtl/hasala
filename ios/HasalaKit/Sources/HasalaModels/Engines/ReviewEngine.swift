@@ -185,6 +185,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   /// "Looks like Groceries".
   public var suggestion: CategoryOption?
   public var copyLine: String? = nil
+  public var samePurchase: Bool = false
 }
 
 /// One line of the All caught up list.
@@ -246,6 +247,7 @@ extension Txn {
   public var inReview: Bool {
     if archived { return false }
     if isHeldCopy { return true }
+    if samePurchase != nil { return true }
     if isTransfer { return false }
     if needsReview { return true }
     return categoryID == nil && splits.isEmpty
@@ -290,7 +292,8 @@ public enum ReviewEngine {
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
       suggestion: s.category(t.reviewSuggestion).map(CategoryOption.init)
     )
-    card.copyLine = copyLine(t, s)
+    card.copyLine = copyLine(t, s) ?? samePurchaseLine(t, s)
+    card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     return card
   }
 
@@ -301,6 +304,15 @@ public enum ReviewEngine {
     return held.fromOtherInbox
       ? "Looks like a copy of \(other.title) \(amount) from your other inbox"
       : "Looks like a copy of \(other.title) \(amount) you already have"
+  }
+
+  public static func samePurchaseLine(_ t: Txn, _ s: LedgerState) -> String? {
+    guard let match = t.samePurchase, let f = s.txn(match.of) else { return nil }
+    var amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount.minor))"
+    if let home = f.homeMinor { amount += " (about \(Money.home) \(MoneyFormat.string(home)))" }
+    var line = "Same purchase as \(amount) at \(f.title) on \(f.postedAt.date.short)?"
+    if match.merchantMissing { line += " This alert has no merchant." }
+    return line
   }
 
   /// Monday first, as `LocalDate.weekday` counts.
@@ -331,5 +343,11 @@ public enum ReviewEngine {
       amount: t.amount, isIncome: t.direction == .in, glyph: category.glyph, hue: category.hue,
       counted: counts ? t.homeMinor ?? 0 : 0, learnedRule: learnedRule
     )
+  }
+}
+
+public enum SamePurchaseText {
+  public static func note(_ foreign: Money) -> String {
+    "Settled the \(foreign.currency) \(MoneyFormat.string(foreign.minor)) purchase"
   }
 }

@@ -299,7 +299,7 @@ struct ReviewDeckView: View {
       reason: { reasonInfo = card },
       actions: {
         if card.copyLine != nil {
-          Button("Merge") { resolveCopy(card, merge: true) }
+          Button(card.samePurchase ? "Same purchase" : "Merge") { resolveCopy(card, merge: true) }
           Button("Keep both") { resolveCopy(card, merge: false) }
         }
         ForEach(ReviewChoice.allCases, id: \.self) { c in
@@ -526,6 +526,12 @@ struct ReviewDeckView: View {
 
   private func resolveCopy(_ card: ReviewCardModel, merge: Bool) {
     tap += 1
+    if card.samePurchase {
+      file(card, toward: nil, as: merge ? "Same purchase" : "Kept both") {
+        model.resolveSamePurchase(card.id, same: merge)
+      }
+      return
+    }
     file(card, toward: nil, as: merge ? "Merged" : "Kept both") {
       model.resolveCopy(card.id, merge: merge)
     }
@@ -821,9 +827,9 @@ struct ReviewCardView<Actions: View>: View {
         Button("Keep both", action: keepBoth)
           .buttonStyle(.pill(.secondary, size: .small))
           .accessibilityIdentifier("review.keepBoth")
-        Button("Merge", action: merge)
+        Button(card.samePurchase ? "Same purchase" : "Merge", action: merge)
           .buttonStyle(.pill(.primary, size: .small))
-          .accessibilityIdentifier("review.merge")
+          .accessibilityIdentifier(card.samePurchase ? "review.same" : "review.merge")
       }
     }
     .padding(.top, 14)
