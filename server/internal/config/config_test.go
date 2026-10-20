@@ -388,6 +388,10 @@ func TestTheCloudflarePostureIsStricter(t *testing.T) {
 	wantErr(t, prod(env{"HASALA_LOG_LEVEL": "debug"}), "debug")
 	wantErr(t, prod(env{"HASALA_PG_DSN": "host=/run/x user=hasala_runtime password=hunter2"}), "password")
 	wantErr(t, prod(env{"HASALA_SOMETHING_TOKEN": "raw"}), "raw value")
+	wantErr(t, prod(env{"HASALA_PG_DSN": "postgres://hasala_runtime:hunter2@%2Frun%2Fx/hasala"}), "password")
+	wantErr(t, prod(env{"HASALA_MIGRATE_DSN": "postgresql://hasala_migrate:@localhost/hasala"}), "password")
+	wantErr(t, prod(env{"PGPASSWORD": "hunter2"}), "PGPASSWORD")
+	mustLoad(t, prod(env{"HASALA_PG_DSN": "postgres://hasala_runtime@%2Frun%2Fx/hasala"}))
 	wantErr(t, prod(env{"HASALA_RP_ID": "localhost", "HASALA_RP_ORIGINS": "https://localhost"}), "localhost")
 	wantErr(t, prod(env{"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "http://hasala.app"}), "https")
 	// The same raw value is tolerated off Cloudflare (local runs and tests).
@@ -459,7 +463,7 @@ func TestServeAndConsoleRefuseEachOthersEnvironment(t *testing.T) {
 		t.Errorf("serve refused its own variable: %v", err)
 	}
 	for _, kv := range []string{"HASALA_AUTH_KEY_FILE=/x", "HASALA_APNS_KEY_FILE=/x", "HASALA_MAILBOX_ROUTE_KEY_FILE=/x",
-		"HASALA_EMAIL_API_TOKEN_FILE=/x", "HASALA_TURNSTILE_SECRET_FILE=/x"} {
+		"HASALA_EMAIL_API_TOKEN_FILE=/x", "HASALA_TURNSTILE_SECRET_FILE=/x", "HASALA_SALT_KEY_FILE=/x"} {
 		if err := CheckConsoleEnvironment([]string{kv}); err == nil {
 			t.Errorf("console accepted %s", kv)
 		}

@@ -965,10 +965,14 @@ var rawSecretName = regexp.MustCompile(`^HASALA_[A-Z0-9_]*_(KEY|TOKEN|SECRET)$`)
 // host uses peer authentication).
 func refuseRawSecrets(c Config, lookup func(string) (string, bool), environ []string) error {
 	for _, dsn := range []struct{ name, v string }{{"HASALA_PG_DSN", c.PGDSN}, {"HASALA_MIGRATE_DSN", c.MigrateDSN}} {
-		if strings.Contains(strings.ToLower(dsn.v), "password") {
+		if strings.Contains(strings.ToLower(dsn.v), "password") || dsnURLHasPassword(dsn.v) {
 			return fmt.Errorf("%s carries a password; with trusted_proxy = cloudflare the database "+
 				"is reached by peer authentication only", dsn.name)
 		}
+	}
+	if v, ok := lookup("PGPASSWORD"); ok && v != "" {
+		return errors.New("PGPASSWORD is set; with trusted_proxy = cloudflare the database " +
+			"is reached by peer authentication only")
 	}
 	for _, kv := range environ {
 		name, _, _ := strings.Cut(kv, "=")
@@ -980,6 +984,19 @@ func refuseRawSecrets(c Config, lookup func(string) (string, bool), environ []st
 		}
 	}
 	return nil
+}
+
+func dsnURLHasPassword(dsn string) bool {
+	rest, ok := strings.CutPrefix(dsn, "postgres://")
+	if !ok {
+		rest, ok = strings.CutPrefix(dsn, "postgresql://")
+	}
+	if !ok {
+		return false
+	}
+	authority, _, _ := strings.Cut(rest, "/")
+	at := strings.LastIndex(authority, "@")
+	return at >= 0 && strings.Contains(authority[:at], ":")
 }
 
 // ValidateFor adds the requirements of one mode to what Load checked.
@@ -1034,7 +1051,7 @@ func CheckServeEnvironment(env []string) error {
 func CheckConsoleEnvironment(env []string) error {
 	refused := map[string]bool{
 		"HASALA_TURNSTILE_SECRET_FILE": true, "HASALA_AUTH_KEY_FILE": true, "HASALA_APNS_KEY_FILE": true,
-		"HASALA_MAILBOX_ROUTE_KEY_FILE": true, "HASALA_EMAIL_API_TOKEN_FILE": true,
+		"HASALA_MAILBOX_ROUTE_KEY_FILE": true, "HASALA_EMAIL_API_TOKEN_FILE": true, "HASALA_SALT_KEY_FILE": true,
 	}
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
