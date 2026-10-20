@@ -332,6 +332,29 @@ let day: Int64 = 86_400_000
     #expect(await rig.enqueued().filter { $0.messageID == "big" }.count == 1)
   }
 
+  @Test func accountFullIsAPauseThatProbesAgain() async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    rig.clock.advance(3_600_000)
+    rig.gmail.add(SyntheticMail.dibCard(id: "big", dateMs: rig.clock.nowMs() - 1000))
+    await rig.ledger.setFlush(.accountFull)
+    #expect(await rig.engine.runCycle(trigger: .refresh).haltedOn == .accountFull)
+    rig.clock.advance(60_000)
+    #expect(await rig.engine.runCycle(trigger: .timer).haltedOn == .accountFull)
+    await rig.ledger.setFlush(.flushed)
+    rig.clock.advance(15 * 60_000)
+    let timed = await rig.engine.runCycle(trigger: .timer)
+    #expect(timed.phase == .active && timed.completed)
+
+    await rig.ledger.setFlush(.accountFull)
+    rig.clock.advance(3_600_000)
+    rig.gmail.add(SyntheticMail.dibCard(id: "big2", amount: "9.00", dateMs: rig.clock.nowMs() - 1000))
+    #expect(await rig.engine.runCycle(trigger: .refresh).haltedOn == .accountFull)
+    await rig.ledger.setFlush(.flushed)
+    let fg = await rig.engine.runCycle(trigger: .foreground)
+    #expect(fg.phase == .active && fg.completed)
+  }
+
   @Test func deadlineCutKeepsTheWatermarkAndResumesWithoutRedownloading() async {
     let rig = Rig { $0.downloadWidth = 1 }
     await rig.connectAndActivate()

@@ -238,6 +238,40 @@ struct SyncTests {
     #expect(await engine.run(.launch).stop == .needsSignIn)  // the session went with the writer
   }
 
+  @Test("account_full is a pause: it probes again on foreground, or after the pause, and the queue uploads")
+  func accountFullPause() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    let before = w.server.uploadCount
+    _ = await engine.run(.authored)
+    #expect(w.server.uploadCount == before)
+    #expect(await engine.status.latch == .accountFull)
+    _ = await engine.run(.foreground)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+
+    try enqueue(a, [op(2)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    let clock = try #require(a.clock as? FakeClock)
+    clock.advance(ms: SyncEngine.accountFullPauseMs)
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+
+    try enqueue(a, [op(3)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    _ = await SyncEngine(context: a).run(.silentPush)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+  }
+
   @Test("triggers coalesce: concurrent runs make one upload")
   func coalescing() async throws {
     let (w, a, _) = try await twoPhones()
