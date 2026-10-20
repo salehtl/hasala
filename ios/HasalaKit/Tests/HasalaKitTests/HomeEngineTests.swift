@@ -205,7 +205,7 @@ struct NotificationsEngineTests {
       "6 transactions to sort", "AXA Insurance may be late", "Found a bill: Apple.com/bill", "du has a new price",
     ])
     #expect(n.needsALook.map { $0.line.rendered(hidden: false) } == [
-      "AED 827.28 isn't in your plan yet", "Usually on the 7th · no email yet", "Seen 5× · every ~30 days",
+      "AED 827.28 still to check", "Usually on the 7th · no email yet", "Seen 5× · every ~30 days",
       "427.90 from 389.00 · accept or check",
     ])
     #expect(n.needsALook.map(\.when) == ["Today", "Thu", "Thu", "Mon"])
@@ -215,7 +215,7 @@ struct NotificationsEngineTests {
 
   @Test func hiddenAmountsAreThreeDots() {
     let n = NotificationsEngine.snapshot(MayaLedger.state, now: now)
-    #expect(n.needsALook[0].line.rendered(hidden: true) == "AED ••• isn't in your plan yet")
+    #expect(n.needsALook[0].line.rendered(hidden: true) == "AED ••• still to check")
     #expect(n.needsALook[3].line.rendered(hidden: true) == "••• from ••• · accept or check")
   }
 

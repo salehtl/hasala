@@ -97,7 +97,7 @@ public struct FilterSummary: Sendable, Hashable {
 
 public struct ReviewSummary: Sendable, Hashable {
   public var count: Int
-  /// Spending waiting in review: "AED 827.28 isn't in your plan yet".
+  /// Spending waiting in review: "AED 827.28 still to check".
   public var unplanned: Money
   /// Sorted today, in review, posted today ("2 new today").
   public var newToday: Int

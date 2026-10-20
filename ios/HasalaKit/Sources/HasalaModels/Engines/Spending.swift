@@ -42,7 +42,7 @@ public enum Spending {
   }
 
   public static func includes(_ t: Txn, in s: LedgerState) -> Bool {
-    !t.archived && !t.isTransfer && !t.isHeldCopy && carvedOut(t, in: s) == nil
+    t.countsInPlan && carvedOut(t, in: s) == nil
   }
 
   static func measured(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {

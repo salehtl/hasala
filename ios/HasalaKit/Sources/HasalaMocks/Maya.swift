@@ -118,7 +118,7 @@ public enum Maya {
   static let notifications = NotificationsSnapshot(needsALook: [
     NotificationItem(
       id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
-      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" isn't in your plan yet")]),
+      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" still to check")]),
       when: "Today", destination: .review),
     NotificationItem(
       id: "bill.axa", disc: .hue(.sand, .insurance), title: "AXA Insurance may be late",

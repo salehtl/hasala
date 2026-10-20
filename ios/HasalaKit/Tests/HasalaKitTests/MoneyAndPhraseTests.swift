@@ -31,10 +31,10 @@ struct MoneyFormatTests {
   }
 
   @Test func phrasesHideOnlyTheFigures() {
-    let p = MoneyPhrase([.text("AED "), .amount(.aed(827_28)), .text(" isn't in your plan yet")])
-    #expect(p.rendered(hidden: false) == "AED 827.28 isn't in your plan yet")
-    #expect(p.rendered(hidden: true) == "AED •••• isn't in your plan yet")
-    #expect(p.spoken(hidden: true) == "AED Amount hidden isn't in your plan yet")
+    let p = MoneyPhrase([.text("AED "), .amount(.aed(827_28)), .text(" still to check")])
+    #expect(p.rendered(hidden: false) == "AED 827.28 still to check")
+    #expect(p.rendered(hidden: true) == "AED •••• still to check")
+    #expect(p.spoken(hidden: true) == "AED Amount hidden still to check")
     let change = MoneyPhrase([.signedMoney(.aed(2_140_00), style: .rounded, hiddenGlyphs: 3), .text(" this month")])
     #expect(change.rendered(hidden: false) == "+2,140 this month")
     #expect(change.rendered(hidden: true) == "••• this month")

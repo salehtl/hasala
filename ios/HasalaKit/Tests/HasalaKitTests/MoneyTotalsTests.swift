@@ -113,7 +113,25 @@ struct MoneyTotalsTests {
     #expect(tile(s, "Wants") - tile(base, "Wants") == 50_00)
     #expect(diningLeft(base) - diningLeft(s) == 50_00)
     #expect(glance(s).today!.rows.contains { $0.id == "t.review" })
-    #expect(s.spent("dining", in: october) == base.spent("dining", in: october))
+  }
+
+  @Test func inReviewSpendingCountsInThePlan() {
+    let base = MayaLedger.state
+    let s = Self.maya(with: Self.txn("review", .aed(50_00), needsReview: true))
+    func plan(_ s: LedgerState) -> PlanSnapshot { PlanEngine.snapshot(s, now: now) }
+    func wants(_ s: LedgerState) -> PlanSection { plan(s).sections.first { $0.bucket == .wants }! }
+    func dining(_ s: LedgerState) -> PlanRowModel { wants(s).rows.first { $0.id == "dining" }! }
+    #expect(s.spent("dining", in: october).minor - base.spent("dining", in: october).minor == 50_00)
+    #expect(dining(s).spent.minor - dining(base).spent.minor == 50_00)
+    #expect(wants(base).left.minor - wants(s).left.minor == 50_00)
+    #expect(s.spent("dining", in: october).minor == Spending.spent(s, category: "dining", in: october))
+  }
+
+  @Test func theReviewLineDoesNotSayTheAmountIsLeftOut() {
+    let n = NotificationsEngine.snapshot(MayaLedger.state, now: now)
+    let line = n.needsALook.first { $0.id == "review" }!.line.rendered(hidden: false)
+    #expect(line == "AED 827.28 still to check")
+    #expect(!line.contains("plan"))
   }
 
   @Test func theToReviewCaptionDoesNotSayTheAmountIsUncounted() {
