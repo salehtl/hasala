@@ -139,10 +139,11 @@ fake rate limiters. They do not use the network.
 
 Before the first deployment:
 
-1. Set the two `namespace_id` values in `wrangler.jsonc`. Each is an integer
-   that you choose. It must be unique in the Cloudflare account.
-2. Make `assist.hasala.app` a custom domain of the Worker in the Cloudflare
-   dashboard, or let `wrangler deploy` make it with a token that can do this.
+1. Make sure no other rate-limiting binding in the account uses the
+   `namespace_id` values in `wrangler.jsonc` (41201 and 41202).
+2. `wrangler deploy` makes `assist.hasala.app` a custom domain of the Worker,
+   with its DNS record, because the route has `custom_domain: true`. The token
+   must have Workers Scripts edit and Workers Routes edit on `hasala.app`.
 3. Confirm the Workers AI data-usage terms for Clef in the dashboard. Do this
    before a tester who is not a developer uses cloud suggestions.
 

@@ -10,8 +10,8 @@
   "send_metrics": false,
   "ai": { "binding": "AI" },
   "ratelimits": [
-    { "name": "PER_IP", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
-    { "name": "GLOBAL", "namespace_id": "1002", "simple": { "limit": 600, "period": 60 } }
+    { "name": "PER_IP", "namespace_id": "41201", "simple": { "limit": 30, "period": 60 } },
+    { "name": "GLOBAL", "namespace_id": "41202", "simple": { "limit": 600, "period": 60 } }
   ],
   "vars": { "REFUSED_CLIENTS": "" }
 }

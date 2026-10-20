@@ -5,7 +5,10 @@ import CoreMailbox
 import CoreOutbox
 import CoreProjection
 import CoreSync
+import CoreStore
 import Foundation
+import HasalaCloud
+import HasalaModel
 import HasalaModels
 import Observation
 
@@ -219,6 +222,14 @@ final class AccountRuntime {
         await active.cycle(trigger, deadlineMs)
       }
     }
+    let suggestions = ModelSuggestionStage(
+      observer: observer, outbox: outbox, cache: FMCache(context.store), dictionary: dictionary,
+      onDevice: HasalaModelFactory.make(),
+      cloud: HasalaCloudFactory.makeCategoryModel(
+        baseURL: build.assistBaseURL, clientVersion: build.marketingVersion,
+        isEnabled: MerchantSuggestionsSetting.isEnabledReader,
+        isAutoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader),
+      nowMs: { context.clock.nowMs() })
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
@@ -227,6 +238,7 @@ final class AccountRuntime {
           return (out.newData, out.stop)
         },
         mailbox: mailboxStage,
+        categorize: { trigger in await suggestions.run(trigger) },
         committed: {
           if let lane = active.lane {
             let status = await lane.status()
