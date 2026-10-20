@@ -59,12 +59,12 @@ import Testing
     let t = try MailboxTableStore.inMemory()
     var w = MailboxWrite()
     w.setAside = (0..<210).map { MailboxSetAsideRow(messageID: "s\($0)", domain: "x.example", internalDate: Int64($0), at: 1) }
-    w.unreadable = (0..<60).map { MailboxUnreadableRow(messageID: "u\($0)", reason: "gone", domain: nil, internalDate: nil, at: Int64($0)) }
+    w.unreadable = (0..<1_010).map { MailboxUnreadableRow(messageID: "u\($0)", reason: "gone", domain: nil, internalDate: nil, at: Int64($0)) }
     try t.commit(w)
     let sa = try t.setAside()
     #expect(sa.count == 200 && sa.first?.messageID == "s209" && sa.last?.messageID == "s10")
     let un = try t.unreadable()
-    #expect(un.count == 50 && un.first?.messageID == "u59")
+    #expect(un.count == 1_000 && un.first?.messageID == "u1009" && un.last?.messageID == "u10")
   }
 
   @Test func stagingAndPruneAndHealth() throws {

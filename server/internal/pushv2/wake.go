@@ -159,21 +159,28 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 	return done
 }
 
-func (d *Dispatcher) enqueue(j job) {
+func (d *Dispatcher) enqueue(j job) bool {
 	select {
 	case d.queue <- j:
+		return true
 	default:
 		d.Stats.Dropped[j.r].Add(1)
 		slog.Warn("pushv2: wake queue full, wake dropped", "reason", j.r.String())
+		return false
 	}
 }
 
 // WakeWriter wakes one writer's device.
-func (d *Dispatcher) WakeWriter(_ context.Context, userID uuid.UUID, writerID string, r Reason) {
+func (d *Dispatcher) WakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r Reason) {
+	d.TryWakeWriter(ctx, userID, writerID, r)
+}
+
+// TryWakeWriter is WakeWriter that reports whether the wake was queued.
+func (d *Dispatcher) TryWakeWriter(_ context.Context, userID uuid.UUID, writerID string, r Reason) bool {
 	if writerID == "" {
-		return
+		return false
 	}
-	d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true})
+	return d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true})
 }
 
 // WakeOthers wakes every device of userID except exceptWriterID ("" = all).
@@ -234,7 +241,7 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 		paused := d.now().Before(d.pause)
 		var dec decision
 		if !paused {
-			dec = d.th.admit(t, j.r, d.now())
+			dec = d.th.admit(t, j.r, d.now(), j.user)
 		}
 		d.mu.Unlock()
 		if paused {
@@ -251,7 +258,9 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 }
 
 // Flush sends every trailing wake whose window has closed. The ticker calls it
-// every second; tests call it with a fake clock.
+// every second; tests call it with a fake clock. A trailing wake goes out only
+// if the token's row still exists for the account it was owed to: a token
+// revoked, logged out or moved to another account since is not woken.
 func (d *Dispatcher) Flush(ctx context.Context) {
 	d.mu.Lock()
 	owed, dropped := d.th.due(d.now())
@@ -261,12 +270,32 @@ func (d *Dispatcher) Flush(ctx context.Context) {
 		d.Stats.Dropped[r].Add(1)
 	}
 	for _, w := range owed {
-		if paused {
+		if paused || !d.stillRegistered(ctx, w) {
 			d.Stats.Dropped[w.r].Add(1)
 			continue
 		}
 		d.send(ctx, w.t)
 	}
+}
+
+func (d *Dispatcher) stillRegistered(ctx context.Context, w trailing) bool {
+	if d.Pool == nil {
+		return true
+	}
+	var owner *uuid.UUID
+	if w.owner != uuid.Nil {
+		owner = &w.owner
+	}
+	var ok bool
+	err := d.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM apns_tokens
+		  WHERE token_hex = $1 AND environment = $2 AND ($3::uuid IS NULL OR user_id = $3))`,
+		w.t.TokenHex, w.t.Environment, owner).Scan(&ok)
+	if err != nil {
+		slog.Warn("pushv2: check trailing wake token", "reason", w.r.String(), "err", err.Error())
+		return false
+	}
+	return ok
 }
 
 func (d *Dispatcher) send(ctx context.Context, t Target) {

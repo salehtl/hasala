@@ -20,7 +20,7 @@ final class OnboardingJourneyUITests: XCTestCase {
 
   // MARK: - New user to Home
 
-  /// Stories › join with the passkey › the words › setup: both banks, Choose your email ›
+  /// Stories › join with the passkey › the words › setup: every bank, Choose your email ›
   /// Gmail › the first scan › 25,000 on the keypad › the 50/30/20 plan › the result ›
   /// notifications › You're set › Home.
   @MainActor
@@ -31,7 +31,8 @@ final class OnboardingJourneyUITests: XCTestCase {
     // Setup · 1 of 4: both banks start picked.
     XCTAssertTrue(el(app, "bank.enbd").isSelected)
     XCTAssertTrue(el(app, "bank.dib").isSelected)
-    XCTAssertEqual(el(app, "bank.continue").label, "Continue with 2 banks")
+    XCTAssertTrue(el(app, "bank.adib").isSelected)
+    XCTAssertEqual(el(app, "bank.continue").label, "Continue with 3 banks")
     attach(app, "Setup · Bank")
     tap(app, "bank.continue")
 
@@ -131,6 +132,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     // One bank, not the two the step starts with, so "unchanged" means something.
     XCTAssertTrue(el(app, "bank.dib").waitForExistence(timeout: 15))
     tap(app, "bank.dib")
+    tap(app, "bank.adib")
     assertBanksAsLeft(app)
     tap(app, "bank.continue")
     tap(app, "mail.choose.gmail")
@@ -221,6 +223,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertFalse(el(app, "bankAlerts.mailbox.gmail-2").exists, "Google's sign-in ran twice")
     XCTAssertTrue(el(app, "bankAlerts.bank.enbd").exists, "the account doesn't read Emirates NBD")
     XCTAssertFalse(el(app, "bankAlerts.bank.dib").exists, "the account reads DIB, which was left out")
+    XCTAssertFalse(el(app, "bankAlerts.bank.adib").exists, "the account reads ADIB, which was left out")
     attach(app, "Bank alerts · one mailbox, one bank")
   }
 
@@ -316,6 +319,7 @@ final class OnboardingJourneyUITests: XCTestCase {
   private func assertBanksAsLeft(_ app: XCUIApplication, line: UInt = #line) {
     XCTAssertTrue(el(app, "bank.enbd").isSelected, "Emirates NBD was dropped", line: line)
     XCTAssertFalse(el(app, "bank.dib").isSelected, "DIB came back", line: line)
+    XCTAssertFalse(el(app, "bank.adib").isSelected, "ADIB came back", line: line)
     XCTAssertEqual(el(app, "bank.continue").label, "Continue with 1 bank", line: line)
   }
 

@@ -68,6 +68,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   func setBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
     let rt = try open()
     var trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])
+    let before = trusted
     var kept: [String] = []
     for bank in banks {
       for d in MailboxLane.senderDomains(bank: bank.rawValue) where !kept.contains(d) { kept.append(d) }
@@ -89,6 +90,12 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
         trusted.removeAll { $0 == d }
       }
     }
+    let added = Self.newlyTrusted(kept: kept, before: before)
+    if !added.isEmpty { rt.lane?.backfill(senders: added) }
+  }
+
+  static func newlyTrusted(kept: [String], before: [String]) -> [String] {
+    kept.filter { !before.contains($0) }
   }
 
   func requestBank(_ name: String) async throws(SetupFailure) {

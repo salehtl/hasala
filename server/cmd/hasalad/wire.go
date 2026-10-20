@@ -27,6 +27,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/msjwt"
 	"github.com/salehtl/hasala/server/internal/opsnotify"
 	"github.com/salehtl/hasala/server/internal/pushv2"
+	"github.com/salehtl/hasala/server/internal/turnstile"
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
@@ -245,7 +246,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Retention = cfg.Web.LogRetention
 	q.Register("test", mailq.TestRenderer)
 	q.Register("deleted", mailq.DeletedRenderer)
-	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true})
+	minter, _ := tagger.(invites.Minter)
+	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
+	q.Unsent = invites.MailUnsentTx
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
@@ -289,7 +292,19 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	}
 	if tagger != nil {
 		if cfg.Email.Enabled() {
-			srv.Web = &api.WebOptions{Waitlist: wl, Origins: cfg.Web.Origins, DoneURL: cfg.Web.DoneURL}
+			srv.Web = &api.WebOptions{Waitlist: wl, Origins: cfg.Web.Origins, DoneURL: cfg.Web.DoneURL,
+				TurnstileRequired: cfg.Web.TurnstileRequired}
+			if cfg.Web.TurnstileSecretFile != "" {
+				secret, err := readSecret("HASALA_TURNSTILE_SECRET_FILE", cfg.Web.TurnstileSecretFile)
+				if err != nil {
+					return nil, err
+				}
+				v, err := turnstile.New(secret, cfg.Web.TurnstileHostnames)
+				if err != nil {
+					return nil, refusal{err}
+				}
+				srv.Web.Turnstile = v
+			}
 		}
 		ex.done = append(ex.done, q.Run(ctx))
 	} else {

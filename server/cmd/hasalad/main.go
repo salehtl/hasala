@@ -84,6 +84,9 @@ func (e *runEnv) load(mode string, apply func(*config.Config)) (config.Config, e
 		return config.Config{}, refusal{err}
 	}
 	cfg.Mode = mode
+	if unknown := config.UnknownEnvironment(e.environ); len(unknown) > 0 {
+		fmt.Fprintf(e.stderr, "hasalad %s: warning: this build does not read %s\n", mode, strings.Join(unknown, ","))
+	}
 	if apply != nil {
 		apply(&cfg)
 	}

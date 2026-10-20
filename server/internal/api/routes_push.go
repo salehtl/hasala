@@ -6,12 +6,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/pushv2"
@@ -132,9 +134,14 @@ func (s *Server) environmentAllowed(env string) bool {
 }
 
 // handlePutAPNs registers (or moves) this device's token. One token per
-// writer; a token registered elsewhere — another writer, another account — is
-// moved here, so one row remains (AT-APNS-7). The row is bound to the calling
-// session, so logging that session out silences the device.
+// writer, one row per token (AT-APNS-7). A token another writer of this
+// account holds is moved here. A token another account holds is moved only
+// when that row is dead: its session revoked, expired or idle, or its writer
+// revoked; while it is live the answer is 409 token_in_use and nothing
+// changes, so knowing a device's token is not enough to silence it. A phone
+// that switches accounts signs the first one out, which deletes its row. The
+// row is bound to the calling session, so logging that session out silences
+// the device.
 func (s *Server) handlePutAPNs(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	if !s.Push.PerUser.Allow(userID.String()) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many push registrations; try again shortly")
@@ -164,9 +171,16 @@ func (s *Server) handlePutAPNs(w http.ResponseWriter, r *http.Request, userID uu
 		return
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
+	now := s.now()
 	if _, err := tx.Exec(r.Context(),
-		`DELETE FROM apns_tokens WHERE token_hex = $1 AND NOT (user_id = $2 AND writer_id = $3)`,
-		token, userID, info.WriterID); err != nil {
+		`DELETE FROM apns_tokens a
+		  WHERE a.token_hex = $1 AND NOT (a.user_id = $2 AND a.writer_id = $3)
+		    AND (a.user_id = $2
+		         OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.token_hash = a.session_hash
+		              AND s.revoked_at IS NULL AND s.expires_at > $4 AND s.last_used_at > $5)
+		         OR EXISTS (SELECT 1 FROM writers w WHERE w.user_id = a.user_id AND w.writer_id = a.writer_id
+		              AND w.revoked_at IS NOT NULL))`,
+		token, userID, info.WriterID, now, now.Add(-s.Sessions.TTL)); err != nil {
 		s.logf("api: put apns for %s: move: %v", userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
@@ -177,7 +191,12 @@ func (s *Server) handlePutAPNs(w http.ResponseWriter, r *http.Request, userID uu
 		 ON CONFLICT (user_id, writer_id) DO UPDATE
 		   SET session_hash = EXCLUDED.session_hash, token_hex = EXCLUDED.token_hex,
 		       environment = EXCLUDED.environment, updated_at = EXCLUDED.updated_at`,
-		userID, info.WriterID, info.Hash, token, req.Environment, s.now()); err != nil {
+		userID, info.WriterID, info.Hash, token, req.Environment, now); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "apns_tokens_token_uniq" {
+			writeErr(w, http.StatusConflict, "token_in_use", "this device token is registered to another account")
+			return
+		}
 		s.logf("api: put apns for %s: upsert: %v", userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return

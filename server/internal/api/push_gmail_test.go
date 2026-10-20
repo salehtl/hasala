@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/gmailpush"
@@ -162,12 +163,34 @@ func TestAPNsTokenRoutes(t *testing.T) {
 		t.Fatalf("devices %+v", devs)
 	}
 
-	// AT-APNS-7: the same token from another account moves it; one row remains.
+	// AT-APNS-7: another writer of the same account takes the token over.
+	w1b := "ios-12222222-2222-4222-8222-222222222222"
+	h.writer(u, w1b)
+	tokB := h.session(u)
+	h.bind(tokB, w1b)
+	wantStatus(t, h.req("PUT", "/api/v1/push/apns", tokB,
+		PutAPNsRequest{TokenHex: tokenHexFor(1), Environment: "production"}), http.StatusNoContent)
+	var holder string
+	if err := h.pool.QueryRow(bg, `SELECT writer_id FROM apns_tokens WHERE token_hex = $1`, tokenHexFor(1)).Scan(&holder); err != nil ||
+		holder != w1b {
+		t.Fatalf("the token is held by %q (%v), want the second writer", holder, err)
+	}
+
+	// Another account cannot take a token whose row is live; once that
+	// session is gone, it moves and one row remains.
 	v := h.user("apns-other")
 	w2 := "ios-22222222-2222-4222-8222-222222222222"
 	h.writer(v, w2)
 	tok2 := h.session(v)
 	h.bind(tok2, w2)
+	w := h.req("PUT", "/api/v1/push/apns", tok2, PutAPNsRequest{TokenHex: tokenHexFor(1), Environment: "production"})
+	wantStatus(t, w, http.StatusConflict)
+	if !strings.Contains(w.Body.String(), "token_in_use") || h.countAPNs(u) != 1 || h.countAPNs(v) != 0 {
+		t.Fatalf("a live token moved to another account: %s", w.Body)
+	}
+	if _, err := h.pool.Exec(bg, `UPDATE sessions SET revoked_at = now(), revoked_reason = 'logout' WHERE token_hash = $1`, auth.SessionHash(tokB)); err != nil {
+		t.Fatal(err)
+	}
 	wantStatus(t, h.req("PUT", "/api/v1/push/apns", tok2,
 		PutAPNsRequest{TokenHex: tokenHexFor(1), Environment: "production"}), http.StatusNoContent)
 	var owners []uuid.UUID
@@ -187,6 +210,48 @@ func TestAPNsTokenRoutes(t *testing.T) {
 	wantStatus(t, h.req("DELETE", "/api/v1/push/apns", tok2, map[string]any{}), http.StatusNoContent)
 	if h.countAPNs(v) != 0 {
 		t.Fatal("DELETE left the token")
+	}
+}
+
+func TestAPNsTokenMovesFromADeadRowOfAnotherAccount(t *testing.T) {
+	h := newHarness(t)
+	withPushAndGmail(h)
+	put := func(tok string) *httptest.ResponseRecorder {
+		return h.req("PUT", "/api/v1/push/apns", tok, PutAPNsRequest{TokenHex: tokenHexFor(5), Environment: "production"})
+	}
+	u := h.user("apns-dead")
+	wu := "ios-13333333-3333-4333-8333-333333333333"
+	h.writer(u, wu)
+	tokU := h.session(u)
+	h.bind(tokU, wu)
+	wantStatus(t, put(tokU), http.StatusNoContent)
+	v := h.user("apns-taker")
+	wv := "ios-14444444-4444-4444-8444-444444444444"
+	h.writer(v, wv)
+	tokV := h.session(v)
+	h.bind(tokV, wv)
+	wantStatus(t, put(tokV), http.StatusConflict)
+
+	if _, err := h.pool.Exec(bg, `UPDATE sessions SET created_at = now() - $2::interval, last_used_at = now() - $2::interval WHERE token_hash = $1`,
+		auth.SessionHash(tokU), (h.srv.Sessions.TTL + time.Hour).String()); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, put(tokV), http.StatusNoContent)
+	if h.countAPNs(u) != 0 || h.countAPNs(v) != 1 {
+		t.Fatal("the token did not move from an idle session")
+	}
+
+	wu2 := "ios-15555555-5555-4555-8555-555555555555"
+	h.writer(u, wu2)
+	tokU2 := h.session(u)
+	h.bind(tokU2, wu2)
+	wantStatus(t, put(tokU2), http.StatusConflict)
+	if _, err := h.pool.Exec(bg, `UPDATE writers SET revoked_at = now() WHERE user_id = $1 AND writer_id = $2`, v, wv); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, put(tokU2), http.StatusNoContent)
+	if h.countAPNs(u) != 1 || h.countAPNs(v) != 0 {
+		t.Fatal("the token did not move from a revoked writer")
 	}
 }
 
@@ -560,6 +625,35 @@ func TestGmailHook(t *testing.T) {
 	}
 }
 
+func TestGmailHookUnverifiedRequestsSpendNoGlobalBudget(t *testing.T) {
+	h := newHarness(t)
+	wk, g := withGmail(h, &GmailPush{Topic: testTopic, Hook: fakeVerifier{testAudience}, Subscription: testSub,
+		ServiceAccount: testSA, HookPerIP: NewLimiter(1e6, 1e6, 10, time.Now), HookGlobal: NewLimiter(0, 1, 1, time.Now)})
+	u := h.user("hook-global")
+	holder := "ios-46666666-6666-4666-8666-666666666666"
+	h.writer(u, holder)
+	if _, err := h.pool.Exec(bg, `INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id, created_at, updated_at)
+		VALUES ($1, 'gmail', $2, $3, $4, now(), now())`, u, g.RouteKey.AddressHMAC(testMailbox), g.RouteKey.KeyID(), holder); err != nil {
+		t.Fatal(err)
+	}
+	good := pubsubBody(t, testSub, map[string]any{"emailAddress": testMailbox, "historyId": "1"})
+	for range 5 {
+		wantStatus(t, h.hook("", good), http.StatusUnauthorized)
+		wantStatus(t, h.hook("Bearer garbage", good), http.StatusUnauthorized)
+		wantStatus(t, h.hook("Bearer "+fakeToken(fakeClaims{Aud: testAudience, Email: "x@example.com", EmailVerified: true}), good),
+			http.StatusForbidden)
+	}
+	pushToken := "Bearer " + fakeToken(fakeClaims{Aud: testAudience, Email: testSA, EmailVerified: true})
+	wantStatus(t, h.hook(pushToken, good), http.StatusNoContent)
+	if ws := wk.take(); len(ws) != 1 || ws[0].user != u || ws[0].writer != holder {
+		t.Fatalf("wakes %+v, want the holder once", ws)
+	}
+	wantStatus(t, h.hook(pushToken, good), http.StatusTooManyRequests)
+	if len(wk.take()) != 0 {
+		t.Fatal("a request over the global budget woke someone")
+	}
+}
+
 // AT-GM-7: the nudge sweep.
 func TestNudgeSweep(t *testing.T) {
 	h := newHarness(t)
@@ -588,6 +682,50 @@ func TestNudgeSweep(t *testing.T) {
 	other, _ := gmailpush.NewRouteKey(bytes.Repeat([]byte{8}, 32))
 	if err := gmailpush.CheckKeyID(bg, h.pool, other); err == nil {
 		t.Fatal("CheckKeyID accepted links made under another key")
+	}
+}
+
+type refusingWaker struct {
+	recWaker
+	accept bool
+}
+
+func (w *refusingWaker) TryWakeWriter(ctx context.Context, u uuid.UUID, writer string, r pushv2.Reason) bool {
+	if !w.accept {
+		return false
+	}
+	w.WakeWriter(ctx, u, writer, r)
+	return true
+}
+
+func TestNudgeNotQueuedIsRetriedOnTheNextRun(t *testing.T) {
+	h := newHarness(t)
+	_, g := withPushAndGmail(h)
+	u := h.user("nudge-dropped")
+	holder := "ios-56666666-6666-4666-8666-666666666666"
+	h.writer(u, holder)
+	if _, err := h.pool.Exec(bg, `INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id,
+		watch_expires_at, created_at, updated_at) VALUES ($1, 'gmail', $2, $3, $4, now() + interval '30 hours', now(), now())`,
+		u, g.RouteKey.AddressHMAC("d@gmail.com"), g.RouteKey.KeyID(), holder); err != nil {
+		t.Fatal(err)
+	}
+	wk := &refusingWaker{}
+	if _, err := gmailpush.Nudge(bg, h.pool, wk, gmailpush.ProviderGmail); err != nil || len(wk.take()) != 0 {
+		t.Fatalf("nudge: %v", err)
+	}
+	var mark *time.Time
+	if err := h.pool.QueryRow(bg, `SELECT last_nudge_at FROM mailbox_links WHERE user_id = $1`, u).Scan(&mark); err != nil || mark != nil {
+		t.Fatalf("a nudge that was not queued left the mark %v (%v)", mark, err)
+	}
+	wk.accept = true
+	if _, err := gmailpush.Nudge(bg, h.pool, wk, gmailpush.ProviderGmail); err != nil {
+		t.Fatal(err)
+	}
+	if ws := wk.take(); len(ws) != 1 || ws[0].writer != holder || ws[0].r != pushv2.ReasonNudge {
+		t.Fatalf("the next run nudged %+v, want the holder", ws)
+	}
+	if _, err := gmailpush.Nudge(bg, h.pool, wk, gmailpush.ProviderGmail); err != nil || len(wk.take()) != 0 {
+		t.Fatal("a second nudge inside 12 hours after a queued one")
 	}
 }
 

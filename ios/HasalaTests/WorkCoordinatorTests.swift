@@ -219,6 +219,16 @@ struct WorkCoordinatorTests {
     #expect(await c.runs == 1)
   }
 
+  @Test func closingCancelsTheRunInFlight() async {
+    let p = Probe()
+    let c = Self.probed(p, syncFor: .milliseconds(50), mailFor: .milliseconds(800))
+    let watcher = Task { await c.run(.foreground) }
+    try? await Task.sleep(for: .milliseconds(150))
+    await c.close()
+    _ = await watcher.value
+    #expect(p.mailSawCancel.withLock { $0 })
+  }
+
   @Test func pullToRefreshIsNotSpacedAndReadsMail() async {
     let log = Log()
     let c = Self.coordinator(log, delay: .zero)

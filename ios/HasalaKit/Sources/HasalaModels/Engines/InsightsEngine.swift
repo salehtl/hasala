@@ -53,7 +53,7 @@ public enum InsightsEngine {
       let carvedOut = s.project(t.projectID).map { !$0.countInPlan } ?? false
       let parts: [(category: CategoryID, minor: Int64, signed: Int64)] = t.splits.isEmpty
         ? (t.categoryID.flatMap { c in t.homeMinor.map { [(c, $0, t.homeSigned ?? $0)] } } ?? [])
-        : t.splits.compactMap { sp in sp.homeMinor.map { (sp.categoryID, $0, $0) } }
+        : t.splits.compactMap { sp in sp.homeMinor.map { (sp.categoryID, $0, t.signed($0)) } }
       for (i, part) in parts.enumerated() {
         guard let c = s.category(part.category) else { continue }
         if c.kind == .income, t.direction == .in {
@@ -418,7 +418,9 @@ public enum InsightsEngine {
       netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .missing, caption: "Needs a check-in",
                                 opens: false)
     } else {
-      let total = s.accounts.reduce(Int64(0)) { $0 + $1.balance.minor }
+      let home = s.homeTotal(s.accounts.map(\.balance))
+      let total = home.minor
+      let left = home.mark?.caption.map { " · \($0)" } ?? ""
       let change = s.netWorth.monthChange.minor
       if ctx.isCurrent {
         let caption: String
@@ -426,11 +428,11 @@ public enum InsightsEngine {
         case .up, .down: caption = InsightsDelta.between(total, total - change)!.text + " this month"
         default: caption = "No change this month"
         }
-        netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total)), caption: caption,
-                                  opens: true)
+        netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total)), caption: caption + left,
+                                  opens: true, mark: home.mark)
       } else if ctx.focus == now.date.yearMonth.previous {
         netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total - change)),
-                                  caption: "End of \(ctx.focus.name)", opens: true)
+                                  caption: "End of \(ctx.focus.name)" + left, opens: true, mark: home.mark)
       } else {
         netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .missing,
                                   caption: "No check-in for \(ctx.focus.name)", opens: true)

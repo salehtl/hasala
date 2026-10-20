@@ -91,6 +91,9 @@ struct TamperSuiteTests {
     let zero = base.mutate { $0[4] = 0 }
     #expect(LooksSealed.check(zero) == .epoch)
     #expect(base.open(zero) == .hardStop(.tampered(.badHeader)))
+    let aboveMax = base.mutate { $0[1] = 0x80; $0[4] = 0 }
+    #expect(base.open(aboveMax) == .hardStop(.tampered(.badHeader)))
+    #expect(base.open(aboveMax, serverEpoch: .max) == .hardStop(.tampered(.badHeader)))
     let two = base.mutate { $0[4] = 2 }
     #expect(LooksSealed.check(two) == nil)
     #expect(base.open(two) == .refreshEpoch(2))
@@ -290,6 +293,14 @@ struct TamperSuiteTests {
       try HeadCheck.verify(userID: testUser, rows: [try row(1, h2, signedBy: other.seed, writer: w2)], roster: revokedRoster)
     }
     try HeadCheck.verify(userID: testUser, rows: [try row(1, h1, signedBy: other.seed, writer: w2)], roster: revokedRoster)
+    let unsignedPastPin = HeadCheck.firstFailure(
+      userID: testUser, rows: [try row(2, h2, signedBy: nil, writer: w2)], roster: revokedRoster)
+    #expect(unsignedPastPin?.index == 0 && unsignedPastPin?.reason == .afterRevocation)
+    let byLastRow = HeadCheck.firstFailure(
+      userID: testUser,
+      rows: [try row(1, h1, signedBy: nil, writer: w2), try row(2, h2, signedBy: nil), try row(3, h2, signedBy: other.seed, writer: w2)],
+      roster: roster.merging([w2: HeadCheck.RosterWriter(dwkPublicKey: dwk.publicKey, revokedAt: nil)]) { a, _ in a })
+    #expect(byLastRow?.index == 1 && byLastRow?.reason == .headUnsigned)
   }
 
   @Test("PageReader: R0-R10 in order over a two-row page")
@@ -337,6 +348,13 @@ struct TamperSuiteTests {
     var shortBlob = page
     shortBlob[0] = row(base.frame1, 1, sig: nil, blob: base.frame1.bytes.prefix(1000))
     #expect(PageReader.read(shortBlob, state: state(roster: roster)).stop == .hardStop(.tampered(.rowShape)))
+    var unknownThenShape = shortBlob
+    unknownThenShape.swapAt(0, 1)
+    let firstUnknown = PageReader.read(unknownThenShape, state: state(roster: [:]))
+    #expect(firstUnknown.stop == .refreshRoster && firstUnknown.stopRow == 0)
+    let ownConflict = PageReader.read(
+      [row(base.frame1, 1, sig: nil), row(base.frame2, 2, sig: sig)], state: state(roster: roster, refreshed: true, own: (testWriter, 0)))
+    #expect(ownConflict.stop == .hardStop(.tampered(.ownChainConflict)) && ownConflict.stopRow == 0)
   }
 
   @Test("the sealer: bucket sizing, a fresh nonce per seal, an epoch mismatch is a programming error")

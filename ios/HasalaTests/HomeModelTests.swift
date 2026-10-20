@@ -145,7 +145,7 @@ struct HomeModelTests {
     let app = AppModel(store: InMemoryLedger(), amountsHidden: true)
     let home = HomeViewModel(app: app)
     #expect(home.hidden)
-    #expect(home.bell.needsALook[0].line.rendered(hidden: home.hidden) == "AED ••• isn't in your plan yet")
+    #expect(home.bell.needsALook[0].line.rendered(hidden: home.hidden) == "AED ••• still to check")
   }
 
   /// The hero's first reveal keeps the owner's sequence (motion policy): the tick starts as

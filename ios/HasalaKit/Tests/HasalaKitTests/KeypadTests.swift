@@ -93,6 +93,37 @@ struct KeypadTests {
     #expect(AmountEntry(typing: "5").spoken(unit: "USD") == "USD 5")
   }
 
+  @Test func arabicIndicDigitsCount() {
+    #expect(AmountEntry(typing: "١٢٫٥").minor == 12_50)
+    #expect(AmountEntry(typing: "۲۵۰۰۰").display == "25,000")
+    #expect(AmountEntry(typing: "١٢.٣٤").text == "12.34")
+  }
+
+  @Test func aTypedCommaIsThePointWhereTheRegionUsesOne() {
+    #expect(AmountEntry(editing: "12,", previous: "12", decimalSeparator: ",").text == "12.")
+    #expect(AmountEntry(editing: "12.5", previous: "12.", decimalSeparator: ",").minor == 12_50)
+    #expect(AmountEntry(editing: "12,5", previous: "", decimalSeparator: ",").minor == 12_50)
+    #expect(AmountEntry(editing: "1,800,", previous: "1,800", decimalSeparator: ",").text == "1800.")
+    #expect(AmountEntry(editing: "1,8005", previous: "1,800", decimalSeparator: ",").text == "18005")
+  }
+
+  @Test func deletingKeepsThousandsCommasOutOfTheFigure() {
+    #expect(AmountEntry(editing: "1,80", previous: "1,800", decimalSeparator: ",").text == "180")
+    #expect(AmountEntry(editing: "1,80", previous: "1,800", decimalSeparator: ".").text == "180")
+  }
+
+  @Test func aPointRegionIgnoresATypedComma() {
+    #expect(AmountEntry(editing: "12,5", previous: "12", decimalSeparator: ".").text == "125")
+  }
+
+  @Test func clampsToTheLargestAmount() {
+    #expect(AmountEntry.clamped(1_000_000_000_00) == 999_999_999_99)
+    #expect(AmountEntry.clamped(-5) == 0)
+    #expect(AmountEntry.clamped(48_00) == 48_00)
+    #expect(AmountEntry(minor: AmountEntry.maxMinor).minor == AmountEntry.maxMinor)
+    #expect(AmountEntry(typing: MoneyFormat.string(AmountEntry.maxMinor)).minor == AmountEntry.maxMinor)
+  }
+
   @Test func digitsOutsideZeroToNineAreIgnored() {
     var e = AmountEntry()
     e.type(.digit(12))

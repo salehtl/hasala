@@ -362,7 +362,8 @@ final class SignupModel {
   func submitPassword() {
     guard passwordReady else { return }
     do {
-      try startPhrase()
+      if phrase == nil { try startPhrase() }
+      failure = nil
       go(.phraseIntro)
     } catch {
       failure = error

@@ -43,6 +43,42 @@ enum Bytes {
     return nil
   }
 
+  static func index(of needle: [UInt8], in hay: ArraySlice<UInt8>, from: Int) -> Int? {
+    let lo = max(hay.startIndex, from)
+    if needle.isEmpty { return lo <= hay.endIndex ? lo : nil }
+    guard hay.endIndex - needle.count >= lo else { return nil }
+    let first = needle[0]
+    var i = lo
+    let last = hay.endIndex - needle.count
+    outer: while i <= last {
+      if hay[i] != first {
+        i += 1
+        continue
+      }
+      for j in 1..<needle.count where hay[i + j] != needle[j] {
+        i += 1
+        continue outer
+      }
+      return i
+    }
+    return nil
+  }
+
+  static func index(of b: UInt8, in hay: ArraySlice<UInt8>, from: Int) -> Int? {
+    var i = max(hay.startIndex, from)
+    while i < hay.endIndex {
+      if hay[i] == b { return i }
+      i += 1
+    }
+    return nil
+  }
+
+  static func hasPrefix(_ hay: ArraySlice<UInt8>, _ needle: [UInt8], at: Int) -> Bool {
+    guard at >= hay.startIndex, at + needle.count <= hay.endIndex else { return false }
+    for j in 0..<needle.count where hay[at + j] != needle[j] { return false }
+    return true
+  }
+
   static func hasPrefix(_ hay: [UInt8], _ needle: [UInt8], at: Int = 0) -> Bool {
     guard at >= 0, at + needle.count <= hay.count else { return false }
     for j in 0..<needle.count where hay[at + j] != needle[j] { return false }

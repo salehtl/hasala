@@ -678,6 +678,12 @@ function trimCapture(s: string): string {
 /** The shape an amount must have AFTER commas are removed: exactly two decimals, no sign. */
 const AMOUNT_SHAPE_RE = /^[0-9]+\.[0-9]{2}$/;
 
+const NON_TWO_DECIMAL_CURRENCIES: ReadonlySet<string> = new Set([
+  "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
+  "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW",
+  "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF",
+]);
+
 /** 2^63 - 1. An amount an int64 cannot hold is not an amount, because the server's is one. */
 const INT64_MAX = 9223372036854775807n;
 
@@ -709,6 +715,7 @@ function convertAmount(
     if (!CURRENCY_RE.test(c)) return null;
     currency = c;
   }
+  if (NON_TWO_DECIMAL_CURRENCIES.has(currency)) return null;
   return { minor, currency };
 }
 

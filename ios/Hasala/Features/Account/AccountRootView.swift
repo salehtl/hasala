@@ -125,7 +125,9 @@ struct AccountRootView<Main: View>: View {
       main()
         .safeAreaInset(edge: .top, spacing: 0) {
           if let info = session.leftFrozen {
-            FrozenBanner(by: info.by) { session.showFrozenWall() }
+            FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
+              Task { await session.signOut() }
+            })
           }
         }
         // A password reset another iPhone asked this one to approve (spec 04 §6.12):

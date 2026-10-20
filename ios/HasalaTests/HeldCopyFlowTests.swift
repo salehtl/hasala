@@ -63,4 +63,39 @@ struct HeldCopyFlowTests {
     #expect(app.store.state.txn("starbucks-copy")?.isHeldCopy == false)
     #expect(app.store.state.txn("starbucks-copy")?.countsInPlan == true)
   }
+
+  @Test func keepingBothCanBeUndone() throws {
+    var k = Scenario.mayaCopy.state
+    let (_, inverses) = try LiveLedgerStore.patch(.resolveCopy("starbucks-copy", merge: false), &k, now: MayaLedger.now)
+    #expect(inverses == [.copyReopened(txn: "starbucks-copy")])
+  }
+
+  @Test func undoingASortOfAHeldCopyHoldsItAgain() throws {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    let deck = ReviewViewModel(app: app)
+    #expect(deck.sort("starbucks-copy", into: "dining", alwaysUse: false, project: nil))
+    #expect(app.store.state.txn("starbucks-copy")?.isHeldCopy == false)
+    app.toastAction()
+    #expect(app.store.state.txn("starbucks-copy")?.isHeldCopy == true)
+    #expect(deck.cards.contains { $0.id == "starbucks-copy" && $0.reviewReason == .probableCopy })
+  }
+
+  @Test func aCopyResolutionWithNoDecisionHoldsTheCopyAgain() throws {
+    var s = State()
+    let resolved = { (n: Int, decision: String) in
+      #"{"v":4,"type":"txn_copy_resolved","op_id":"op-\#(n)","authored_at":"2026-10-04T08:00:00.000Z","entity":{"kind":"txn","id":"\#(Self.ulid(2))"},"parent_version":\#(n - 2),"payload":{"other_txn_id":"\#(Self.ulid(1))","decision":\#(decision)}}"#
+    }
+    let blobs = [Self.alert(1, grant: "u/mbx-a", at: "08:00:00"), Self.alert(2, grant: "u/mbx-b", at: "08:05:00"),
+                 resolved(3, #""keep_both""#), resolved(4, "null")]
+    var held: [Bool] = []
+    for (i, op) in blobs.enumerated() {
+      let body = Array(#"{"v":4,"kind":"ops","ops":[\#(op)]}"#.utf8)
+      try Replay.foldBlob(PositionedBlob(writerID: "ios-w", writerCounter: Int64(i + 1), seq: Int64(i + 1), body: body), into: &s)
+      guard i >= 1 else { continue }
+      let db = try Projector.open(path: nil)
+      try Projector.project(s, dictionary: AccountRuntime.dictionary, projectedAtMs: 0, into: db)
+      held.append(try #require(try LedgerReader(db).txn(Self.ulid(2))).heldCopy)
+    }
+    #expect(held == [true, false, true])
+  }
 }

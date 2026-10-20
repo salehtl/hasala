@@ -109,7 +109,7 @@ struct BillsView: View {
       Text("Next 14 days").hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
         .accessibilityAddTraits(.isHeader)
       let figure = MoneyText(snap.next14, figure: .hero, unit: .unit, hidden: model.hidden, hiddenGlyphs: 6,
-                             color: HColor.textPrimary)
+                             color: HColor.textPrimary, approx: snap.next14Mark?.estimate ?? false)
         .accessibilityIdentifier("bills.next14")
       let toPay = Text("to pay").hType(.body).foregroundStyle(HColor.textOnWashSecondary)
       if typeSize.isAccessibilitySize {
@@ -134,6 +134,9 @@ struct BillsView: View {
         .foregroundStyle(HColor.moneyIn)
         .padding(.top, 2)
         .accessibilityElement(children: .combine)
+      }
+      if let mark = snap.next14Mark, let line = mark.line {
+        NotCountedLine(mark, line: line, id: "bills.next14.notCounted", inProfileSheet: inProfileSheet, app: app)
       }
     }
   }

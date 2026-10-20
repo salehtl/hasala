@@ -145,6 +145,11 @@ struct ActivityReviewModelTests {
     #expect(ActivityContent.minutes(7) == "about 2 minutes")
   }
 
+  @Test func theReviewTabCountsUnreadableMail() {
+    #expect(ReviewTabView.unreadableLine(1) == "1 bank email we couldn't read")
+    #expect(ReviewTabView.unreadableLine(3) == "3 bank emails we couldn't read")
+  }
+
   @Test func activityFiltersAndSearches() {
     let app = AppModel(store: InMemoryLedger())
     let activity = ActivityViewModel(app: app)

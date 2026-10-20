@@ -263,3 +263,14 @@ func TestServeNoLongerWarnsAboutTheCloudflareProxy(t *testing.T) {
 		t.Fatalf("logGroups: %s", buf.String())
 	}
 }
+
+func TestUnreadVariablesAreWarnedOnStderrOnly(t *testing.T) {
+	_, stdout, stderr := hasalad(t, []string{"HASALA_PG_DSN=host=/nonexistent dbname=hasala", "HASALA_TURNSTYLE_REQUIRED=true"},
+		"migrate", "--pending")
+	if !strings.Contains(stderr, "does not read HASALA_TURNSTYLE_REQUIRED") {
+		t.Fatalf("stderr %q", stderr)
+	}
+	if strings.Contains(stdout, "HASALA_TURNSTYLE_REQUIRED") {
+		t.Fatalf("the warning reached stdout: %q", stdout)
+	}
+}

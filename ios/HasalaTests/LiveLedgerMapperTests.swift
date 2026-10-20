@@ -555,4 +555,27 @@ struct LiveLedgerMapperTests {
       try LiveLedgerStore.patch(.saveProject("x", ProjectDraft(name: " ")), &s, now: MayaLedger.now)
     }
   }
+
+  @Test func aWriteThatFailsIsReportedAndItsUndoDropped() async throws {
+    let a = try Self.account()
+    for b in try await Self.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let empty = try Self.account()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: empty.observer, outbox: empty.outbox),
+      profile: Self.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "write.failure.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    let app = AppModel(store: store)
+    store.onWriteFailed = { [weak app] in app?.writeFailed() }
+    let steam = try #require(store.state.txns.first { $0.merchant == "Steam" && $0.needsReview })
+    #expect(app.perform(.categorize(steam.id, "entertainment", learnRule: false, project: nil)))
+    let token = try #require(app.toast?.undo)
+    #expect(store.canUndo(token))
+    try await Self.eventually { app.toast?.title == "That change didn't save" }
+    #expect(app.toast?.title == "That change didn't save")
+    #expect(!store.canUndo(token))
+    try await Self.eventually { store.state.txn(steam.id)?.needsReview == true }
+    #expect(store.state.txn(steam.id)?.needsReview == true)
+  }
 }

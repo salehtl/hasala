@@ -81,7 +81,7 @@ public enum NotificationsEngine {
       dated.append((newest, NotificationItem(
         id: "review", disc: .hue(.sky, .review),
         title: "\(review.count) transaction\(review.count == 1 ? "" : "s") to sort",
-        line: MoneyPhrase([.text("AED "), .amount(review.unplanned, hidden: 3), .text(" isn't in your plan yet")]),
+        line: MoneyPhrase([.text("AED "), .amount(review.unplanned, hidden: 3), .text(" still to check")]),
         when: when(newest, today: today), destination: .review
       )))
     }

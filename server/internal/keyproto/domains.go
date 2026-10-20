@@ -63,6 +63,7 @@ const (
 	DomainEmailChange         = "hasala/v1/email-change"           // D40
 	DomainServerAuthKeyID     = "hasala/v1/server/auth-key-id"     // D41
 	DomainDeviceFreeze        = "hasala/v1/device-freeze"          // D42
+	DomainServerInviteMint    = "hasala/v1/server/invite-mint"     // D43
 )
 
 // Domain is one row of spec 01 §3's registry.
@@ -71,7 +72,7 @@ type Domain struct {
 	String string `json:"string"`
 }
 
-// Registry is spec 01 §3's first table, in ID order: 42 strings. The vector
+// Registry is spec 01 §3's first table, in ID order: 43 strings. The vector
 // generator writes it into conformance/crypto-v3/manifest.json and both
 // implementations assert their constants equal it (AT-X3). The non-crypto
 // hasala/v1/* strings of the second table are not here, on purpose.
@@ -119,5 +120,6 @@ func Registry() []Domain {
 		{"D40", DomainEmailChange},
 		{"D41", DomainServerAuthKeyID},
 		{"D42", DomainDeviceFreeze},
+		{"D43", DomainServerInviteMint},
 	}
 }

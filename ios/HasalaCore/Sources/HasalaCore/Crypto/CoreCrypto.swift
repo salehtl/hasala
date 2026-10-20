@@ -1,6 +1,6 @@
 // CoreCrypto (Crypto/), spec 04 §2.2. Owner: WS-9. Spec 01 §12.1:
 //
-//   Domains.swift          the D01-D42 registry (§3)
+//   Domains.swift          the D01-D43 registry (§3)
 //   BIP39English.swift     the generated wordlist; Phrase.swift: entropy ↔ words (§4.3)
 //   KeyDerivation.swift    RK, RWK, PWK, amk_commit, K_1, K_blob, K_pv, PRF_SALT (§4)
 //   Wraps.swift            KeyBody, the recovery and PRF wraps, the phrase box, AccountUnlock (§4.5, §5)

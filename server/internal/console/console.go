@@ -399,8 +399,14 @@ func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
 		if err != nil {
 			code := "error"
 			result := "error"
-			if errors.Is(err, errRefused) || errors.Is(err, invites.ErrNotApprovable) || errors.Is(err, invites.ErrNoSuchInvite) {
+			say := "That did not work (error). Go back and reload.\n"
+			if errors.Is(err, invites.ErrAddressGone) {
+				code, result = "address_gone", "refused"
+				say = "The server no longer keeps this invite's email address, so it cannot resend it. " +
+					"Revoke the invite and mint a new one.\n"
+			} else if errors.Is(err, errRefused) || errors.Is(err, invites.ErrNotApprovable) || errors.Is(err, invites.ErrNoSuchInvite) {
 				code, result = "refused", "refused"
+				say = "That did not work (refused). Go back and reload.\n"
 			} else {
 				slog.Error("console: action", "action", name, "err", err.Error())
 			}
@@ -409,7 +415,7 @@ func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
 			})
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte("That did not work (" + code + "). Go back and reload.\n"))
+			_, _ = w.Write([]byte(say))
 			return
 		}
 		if show != "" {

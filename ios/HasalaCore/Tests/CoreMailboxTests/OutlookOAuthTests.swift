@@ -25,7 +25,7 @@ import Testing
     #expect(q["client_id"] == OutlookRig.config.clientID)
     #expect(q["response_type"] == "code")
     #expect(q["redirect_uri"] == "msauth.app.hasala.ios://auth")
-    #expect(q["scope"] == "openid email offline_access https://graph.microsoft.com/Mail.Read")
+    #expect(q["scope"] == "openid email profile offline_access https://graph.microsoft.com/Mail.Read")
     #expect(q["code_challenge_method"] == "S256")
     #expect(q["code_challenge"] == PKCE.challenge(verifier: auth.codeVerifier))
     #expect(q["prompt"] == "consent")

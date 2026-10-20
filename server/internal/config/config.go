@@ -270,14 +270,17 @@ func (e EmailConfig) Enabled() bool { return e.CloudflareAccountID != "" || e.AP
 // CORS origins and form redirect, the waitlist ceilings and retention, and the
 // mail lanes' rates and the email log's retention.
 type WebConfig struct {
-	Origins            []string      // HASALA_WEB_ORIGINS; empty = CORS off
-	DoneURL            string        // HASALA_WEB_WAITLIST_DONE_URL
-	WaitlistMax        int64         // HASALA_WAITLIST_MAX
-	WaitlistPendingMax int64         // HASALA_WAITLIST_PENDING_MAX
-	WaitlistRetention  time.Duration // HASALA_WAITLIST_RETENTION
-	RateWaitlist       int64         // HASALA_EMAIL_RATE_WAITLIST, per hour
-	RateBulk           int64         // HASALA_EMAIL_RATE_BULK, per hour
-	LogRetention       time.Duration // HASALA_EMAIL_LOG_RETENTION
+	Origins             []string      // HASALA_WEB_ORIGINS; empty = CORS off
+	DoneURL             string        // HASALA_WEB_WAITLIST_DONE_URL
+	WaitlistMax         int64         // HASALA_WAITLIST_MAX
+	WaitlistPendingMax  int64         // HASALA_WAITLIST_PENDING_MAX
+	WaitlistRetention   time.Duration // HASALA_WAITLIST_RETENTION
+	RateWaitlist        int64         // HASALA_EMAIL_RATE_WAITLIST, per hour
+	RateBulk            int64         // HASALA_EMAIL_RATE_BULK, per hour
+	LogRetention        time.Duration // HASALA_EMAIL_LOG_RETENTION
+	TurnstileSecretFile string        `toml:"-"`
+	TurnstileRequired   bool          `toml:"-"`
+	TurnstileHostnames  []string      `toml:"-"`
 }
 
 // OpsConfig is the operator's ntfy notice for each new early-access request
@@ -529,6 +532,9 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	integer("HASALA_EMAIL_RATE_WAITLIST", &c.Web.RateWaitlist)
 	integer("HASALA_EMAIL_RATE_BULK", &c.Web.RateBulk)
 	dur("HASALA_EMAIL_LOG_RETENTION", &c.Web.LogRetention)
+	str("HASALA_TURNSTILE_SECRET_FILE", &c.Web.TurnstileSecretFile)
+	boolean("HASALA_TURNSTILE_REQUIRED", &c.Web.TurnstileRequired)
+	list("HASALA_TURNSTILE_HOSTNAMES", &c.Web.TurnstileHostnames)
 	str("HASALA_OPS_NTFY_URL", &c.Ops.NtfyURL)
 	str("HASALA_OPS_NTFY_CLICK", &c.Ops.NtfyClick)
 
@@ -606,6 +612,7 @@ func (c Config) validate(lookup func(string) (string, bool), environ []string) e
 		"HASALA_APNS_KEY_FILE":          c.APNs.KeyFile,
 		"HASALA_MAILBOX_ROUTE_KEY_FILE": c.Gmail.RouteKeyFile,
 		"HASALA_EMAIL_API_TOKEN_FILE":   c.Email.APITokenFile,
+		"HASALA_TURNSTILE_SECRET_FILE":  c.Web.TurnstileSecretFile,
 	} {
 		if path == "" {
 			continue
@@ -869,8 +876,39 @@ func (c Config) validateWeb() error {
 		return errors.New("HASALA_EMAIL_RATE_WAITLIST and HASALA_EMAIL_RATE_BULK must be positive")
 	case w.LogRetention < 168*time.Hour || w.LogRetention > 2160*time.Hour:
 		return errors.New("HASALA_EMAIL_LOG_RETENTION must be between 168h and 2160h")
+	case w.TurnstileRequired && w.TurnstileSecretFile == "":
+		return errors.New("HASALA_TURNSTILE_REQUIRED is true but HASALA_TURNSTILE_SECRET_FILE is not set")
+	}
+	for _, h := range w.TurnstileHostnames {
+		if h == "" || strings.ToLower(h) != h || strings.ContainsAny(h, "/:@ ") {
+			return fmt.Errorf("HASALA_TURNSTILE_HOSTNAMES entry %q: want a lowercase host name", h)
+		}
 	}
 	return nil
+}
+
+var otherEnvironment = []string{"HASALA_CONFIG", "HASALA_ADMIN_ACTOR"}
+
+func UnknownEnvironment(environ []string) []string {
+	known := map[string]bool{}
+	for _, n := range otherEnvironment {
+		known[n] = true
+	}
+	var probe Config
+	_ = applyEnv(&probe, func(name string) (string, bool) {
+		known[name] = true
+		return "", false
+	})
+	var unknown []string
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "HASALA_") && !known[name] {
+			known[name] = true
+			unknown = append(unknown, name)
+		}
+	}
+	sort.Strings(unknown)
+	return unknown
 }
 
 var cfAccountID = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -927,10 +965,14 @@ var rawSecretName = regexp.MustCompile(`^HASALA_[A-Z0-9_]*_(KEY|TOKEN|SECRET)$`)
 // host uses peer authentication).
 func refuseRawSecrets(c Config, lookup func(string) (string, bool), environ []string) error {
 	for _, dsn := range []struct{ name, v string }{{"HASALA_PG_DSN", c.PGDSN}, {"HASALA_MIGRATE_DSN", c.MigrateDSN}} {
-		if strings.Contains(strings.ToLower(dsn.v), "password") {
+		if strings.Contains(strings.ToLower(dsn.v), "password") || dsnURLHasPassword(dsn.v) {
 			return fmt.Errorf("%s carries a password; with trusted_proxy = cloudflare the database "+
 				"is reached by peer authentication only", dsn.name)
 		}
+	}
+	if v, ok := lookup("PGPASSWORD"); ok && v != "" {
+		return errors.New("PGPASSWORD is set; with trusted_proxy = cloudflare the database " +
+			"is reached by peer authentication only")
 	}
 	for _, kv := range environ {
 		name, _, _ := strings.Cut(kv, "=")
@@ -942,6 +984,19 @@ func refuseRawSecrets(c Config, lookup func(string) (string, bool), environ []st
 		}
 	}
 	return nil
+}
+
+func dsnURLHasPassword(dsn string) bool {
+	rest, ok := strings.CutPrefix(dsn, "postgres://")
+	if !ok {
+		rest, ok = strings.CutPrefix(dsn, "postgresql://")
+	}
+	if !ok {
+		return false
+	}
+	authority, _, _ := strings.Cut(rest, "/")
+	at := strings.LastIndex(authority, "@")
+	return at >= 0 && strings.Contains(authority[:at], ":")
 }
 
 // ValidateFor adds the requirements of one mode to what Load checked.
@@ -996,7 +1051,7 @@ func CheckServeEnvironment(env []string) error {
 func CheckConsoleEnvironment(env []string) error {
 	refused := map[string]bool{
 		"HASALA_TURNSTILE_SECRET_FILE": true, "HASALA_AUTH_KEY_FILE": true, "HASALA_APNS_KEY_FILE": true,
-		"HASALA_MAILBOX_ROUTE_KEY_FILE": true, "HASALA_EMAIL_API_TOKEN_FILE": true,
+		"HASALA_MAILBOX_ROUTE_KEY_FILE": true, "HASALA_EMAIL_API_TOKEN_FILE": true, "HASALA_SALT_KEY_FILE": true,
 	}
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")

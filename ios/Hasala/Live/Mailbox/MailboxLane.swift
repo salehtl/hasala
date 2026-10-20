@@ -27,6 +27,7 @@ nonisolated final class MailboxLane: Sendable {
   let tokens: RefreshingMailTokenProvider
   let presenter: any MailAuthSessionPresenter
   let events = LaneEvents()
+  let work = LaneWork()
 
   /// nil when the build carries no client for `provider` (the `unset` placeholders, spec 06
   /// §15.2): that provider is then not offered.
@@ -136,10 +137,11 @@ nonisolated final class MailboxLane: Sendable {
   func firstScan() -> AsyncStream<FirstScanEvent> {
     let engine = self.engine
     let events = self.events
+    let work = self.work
     return AsyncStream { continuation in
       // Not cancelled with the stream: the import outlives the setup screens.
-      Task {
-        await relayEvents()
+      let started = work.start {
+        await self.relayEvents()
         let id = events.add { if case .progress(let p) = $0 { continuation.yield(.progress(p)) } }
         var totals = FirstScanTotals()
         for r in await engine.runFirstScan(maxCycles: 50) { totals.add(r) }
@@ -148,7 +150,26 @@ nonisolated final class MailboxLane: Sendable {
         continuation.yield(.ended(totals))
         continuation.finish()
       }
+      if !started { continuation.finish() }
     }
+  }
+
+  func backfill(senders: [String]) {
+    let engine = self.engine
+    work.start { _ = await engine.backfill(senders: senders) }
+  }
+
+  func stop() async {
+    await engine.stop()
+    await work.cancelAll()
+  }
+
+  func resume() async { await engine.resume() }
+
+  func close() async {
+    work.close()
+    await engine.stop()
+    await work.cancelAll()
   }
 
   /// The sender domains Setup's bank step trusts for a bank (03c §7.2), e.g. "dib" → dib.ae.
@@ -174,6 +195,41 @@ nonisolated final class MailboxLane: Sendable {
 
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
     await engine.runCycle(trigger: trigger, deadlineMs: deadlineMs)
+  }
+}
+
+nonisolated final class LaneWork: @unchecked Sendable {
+  private let lock = NSLock()
+  private var tasks: [UUID: Task<Void, Never>] = [:]
+  private var closed = false
+
+  @discardableResult
+  func start(_ body: @escaping @Sendable () async -> Void) -> Bool {
+    let id = UUID()
+    return lock.withLock {
+      guard !closed else { return false }
+      tasks[id] = Task {
+        await body()
+        self.finished(id)
+      }
+      return true
+    }
+  }
+
+  private func finished(_ id: UUID) {
+    _ = lock.withLock { tasks.removeValue(forKey: id) }
+  }
+
+  func close() { lock.withLock { closed = true } }
+
+  var isClosed: Bool { lock.withLock { closed } }
+
+  var running: Int { lock.withLock { tasks.count } }
+
+  func cancelAll() async {
+    let all = lock.withLock { Array(tasks.values) }
+    for t in all { t.cancel() }
+    for t in all { await t.value }
   }
 }
 

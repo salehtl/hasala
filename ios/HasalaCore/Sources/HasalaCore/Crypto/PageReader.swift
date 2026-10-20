@@ -2,8 +2,9 @@
 // order. The first failing step decides.
 //
 //   page-wide, before any blob is opened (nothing from the page is persisted on
-//   a failure): R0 row shape, R1 roster, the own-writer rule, R2 chain from the
-//   pinned heads, R2b signed heads (the order of Go's reference reader);
+//   a failure): R0 row shape, R1 roster and the own-writer rule row by row, R2
+//   chain from the pinned heads, R2b signed heads (the order of Go's reference
+//   reader);
 //   then per row: R3-R9 (`Opener`) and R10 (`OpCodec.decodeR10`).
 //
 // The caller (CoreSync) persists rows, cursor and heads in one transaction, and
@@ -110,7 +111,6 @@ public enum PageReader {
   public static func read(_ page: [Row], state: State) -> Result {
     func stopped(_ i: Int, _ s: Stop, _ rows: [RowOutcome] = []) -> Result { Result(rows: rows, stop: s, stopRow: i) }
 
-    // R0: shape.
     var checked: [RowShape.Checked] = []
     for (i, r) in page.enumerated() {
       guard
@@ -118,17 +118,13 @@ public enum PageReader {
           stream: r.stream, writerID: r.writerID, counter: r.counter, sizeBucket: r.sizeBucket, blob: r.blob,
           prevHash: r.prevHash, blobHash: r.blobHash)
       else { return stopped(i, .hardStop(.tampered(.rowShape))) }
-      checked.append(c)
-    }
-    // R1: the roster, re-fetched once before an unknown writer is tampering.
-    for (i, c) in checked.enumerated() where state.roster[c.writerID] == nil {
-      return stopped(i, state.rosterRefreshed ? .hardStop(.tampered(.unknownWriter)) : .refreshRoster)
-    }
-    // Rows of the device's own writer above its authored head, which it did not author.
-    if let own = state.own {
-      for (i, c) in checked.enumerated() where c.writerID == own.writer && c.counter > own.authoredHead {
+      if state.roster[c.writerID] == nil {
+        return stopped(i, state.rosterRefreshed ? .hardStop(.tampered(.unknownWriter)) : .refreshRoster)
+      }
+      if let own = state.own, c.writerID == own.writer, c.counter > own.authoredHead {
         return stopped(i, .hardStop(.tampered(.ownChainConflict)))
       }
+      checked.append(c)
     }
     // R2: the chain, per writer, from its pinned head.
     var heads = state.pinnedHeads

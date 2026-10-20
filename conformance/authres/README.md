@@ -24,10 +24,14 @@ the committed file differs from what the generator writes, and runs in
 
 Trusted only when exactly one `Authentication-Results` field has authserv-id
 `mx.google.com`, it is the topmost `Authentication-Results` field, and it
-reports `dkim=pass` with a valid `header.d` domain or `dmarc=pass`. The verified
-domain is the first passing DKIM `header.d`, else the passing DMARC
-`header.from`; a domain must be a lower-case LDH name with at least two labels
-after stripping everything through the last `@`. Anything else is untrusted
+reports `dkim=pass` with a valid `header.d` domain aligned with the domain of
+the one `From` field: equal to it, a parent of it, or (when the From domain has
+at least two labels) a subdomain of it. `dmarc=pass` and `spf=pass` never trust
+on their own, because DMARC can pass on SPF alone. The verified domain is the
+first aligned passing DKIM `header.d`; a domain must be a lower-case LDH name
+with at least two labels after stripping everything through the last `@`. The
+From domain is the text after its last `@`, cut at `>`, space, tab, CR, LF, `"`
+or `)`, ASCII lower-cased, trailing dots dropped. Anything else is untrusted
 with one of the reasons below, and the decision never throws.
 
 ## The Outlook.com rule

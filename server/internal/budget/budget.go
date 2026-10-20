@@ -187,10 +187,11 @@ func (g *Gate) clock() time.Time {
 // fails closed if the resulting family total would exceed the account's
 // ceiling.
 //
-// The caller must roll tx back when Admit returns an error. It is the caller's
-// transaction, so Admit cannot and does not end it — but every increment Admit
-// wrote is only durable if the caller's own write is, which is the entire point
-// of taking a tx rather than a pool.
+// The caller must roll tx back when Admit returns an error, and then pass the
+// error to [Gate.RecordRefusal]. It is the caller's transaction, so Admit
+// cannot and does not end it — but every increment Admit wrote is only durable
+// if the caller's own write is, which is the entire point of taking a tx rather
+// than a pool.
 //
 // delta may be negative: that is a release (an expiry sweep, a future
 // compaction). A release is never refused by a ceiling — an account
@@ -252,14 +253,7 @@ func (g *Gate) Admit(ctx context.Context, tx pgx.Tx, userID uuid.UUID, resource 
 			ErrLedgerUnderflow, userID, amounts[resource], resource, -delta)
 	}
 	if delta > 0 && have+delta > limit {
-		refused := &RefusedError{UserID: userID, Resource: resource, Have: have, Delta: delta, Limit: limit}
-		if err := g.recordRefusal(ctx, userID, resource); err != nil {
-			// Both, joined: the caller still needs the refusal (errors.Is
-			// survives Join), and an operator still needs to know the receipt
-			// was lost.
-			return errors.Join(refused, err)
-		}
-		return refused
+		return &RefusedError{UserID: userID, Resource: resource, Have: have, Delta: delta, Limit: limit}
 	}
 
 	if _, err := tx.Exec(ctx,
@@ -351,6 +345,20 @@ func (g *Gate) lockFamily(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fam 
 	return amounts, nil
 }
 
+func (g *Gate) RecordRefusal(ctx context.Context, err error) error {
+	var refused *RefusedError
+	if !errors.As(err, &refused) {
+		return err
+	}
+	if g == nil || g.Pool == nil {
+		return errors.Join(err, errors.New("budget: refusal: gate has no pool"))
+	}
+	if rerr := g.recordRefusal(ctx, refused.UserID, refused.Resource); rerr != nil {
+		return errors.Join(err, rerr)
+	}
+	return err
+}
+
 // recordRefusal increments the (user, day, resource) count.
 //
 // It runs on the POOL, on its own connection and its own transaction, and that
@@ -365,9 +373,9 @@ func (g *Gate) lockFamily(ctx context.Context, tx pgx.Tx, userID uuid.UUID, fam 
 // the request that provoked it has already been cancelled, and bounded so a
 // wedged server cannot pin the connection.
 //
-// It cannot deadlock against the doomed transaction: that transaction holds
-// locks on account_usage and (for an append) oplog_seq, and touches
-// account_refusals not at all.
+// It runs only after the doomed transaction has rolled back, so a request
+// never holds that transaction's connection and locks while it waits for a
+// second connection from the pool.
 func (g *Gate) recordRefusal(ctx context.Context, userID uuid.UUID, resource string) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()

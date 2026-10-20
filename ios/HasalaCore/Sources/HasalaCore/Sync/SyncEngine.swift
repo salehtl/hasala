@@ -41,6 +41,8 @@ public actor SyncEngine {
   private var rerun: SyncTrigger?
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
   private var offlineAttempts = 0
+  private var accountFullAtMs: Int64?
+  public static let accountFullPauseMs: Int64 = 15 * 60_000
 
   public init(context: SyncContext, observer: (any PageObserver)? = nil) {
     self.context = context
@@ -121,6 +123,7 @@ public actor SyncEngine {
   private func once(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = RunOutcome()
     do {
+      try resumeAfterAccountFull(trigger)
       // Reconcile: an in-flight batch goes first, byte-identical.
       set(.reconciling)
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
@@ -136,7 +139,7 @@ public actor SyncEngine {
       set(.pushing)
       await observer?.willPush()
       let pushed = try await latchAware { () async throws(SyncStop) in
-        try await Pusher.flush(context, deadline: deadline)
+        try await Pusher.flush(context, deadline: deadline) { [observer] in await observer?.willPush() }
       }
       out.pushed.batches += pushed.batches
       out.pushed.blobs += pushed.blobs
@@ -175,6 +178,16 @@ public actor SyncEngine {
     if fresh != pinned { try context.storeCall { () throws(StoreError) in try context.store.setRoster(fresh.encoded()) } }
   }
 
+  private func resumeAfterAccountFull(_ trigger: SyncTrigger) throws(SyncStop) {
+    let state = try context.storeCall { () throws(StoreError) in try context.store.syncState() }
+    guard state.latch == .accountFull else { return }
+    let asked = trigger == .launch || trigger == .foreground || trigger == .refresh
+    if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }
+    try context.storeCall { () throws(StoreError) in try context.store.setLatch(nil) }
+    accountFullAtMs = nil
+    status.latch = nil
+  }
+
   /// A latch stops the flush but not the pull (§5.4: reads continue).
   private func latchAware(_ push: () async throws(SyncStop) -> PushSummary) async throws(SyncStop) -> PushSummary {
     do {
@@ -183,6 +196,7 @@ public actor SyncEngine {
       if case .latched(let l, let alarm) = error {
         status.latch = l
         if alarm { status.integrityAlarms += 1 }
+        if l == .accountFull { accountFullAtMs = context.clock.nowMs() }
         if l == .accountFull || l == .sealerFault || l == .chainBreak || l == .hardStop {
           return PushSummary()
         }

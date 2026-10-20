@@ -107,7 +107,10 @@ final class AccountSession {
     froze(info ?? known ?? FreezeInfo(by: .holder, when: nil))
   }
 
+  var canLeaveFrozen: Bool { account.keysOnThisIPhone }
+
   func leaveFrozen() {
+    guard canLeaveFrozen else { return }
     if case .frozen(let info) = phase { leftFrozen = info }
     phase = .ready
   }
@@ -146,7 +149,18 @@ final class AccountSession {
       signedOut()
       throw .sessionEnded
     }
+    guard account.keysOnThisIPhone else {
+      leftFrozen = nil
+      phase = .checking
+      await resume()
+      return
+    }
     unfroze()
+  }
+
+  func signOut() async {
+    await account.signOut()
+    signedOut()
   }
 
   func signedOut() {
