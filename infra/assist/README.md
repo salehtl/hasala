@@ -193,8 +193,10 @@ Before the first deployment:
 2. `wrangler deploy` makes `assist.hasala.app` a custom domain of the Worker,
    with its DNS record, because the route has `custom_domain: true`. The token
    must have Workers Scripts edit and Workers Routes edit on `hasala.app`.
-3. Confirm the Workers AI data-usage terms for Clef in the dashboard. Do this
-   before a tester who is not a developer uses cloud suggestions.
+3. The owner accepted the Workers AI data usage page for Clef (2026-10-20;
+   `docs/decisions/cloud-suggestions.md`, check 2). It holds only while the
+   gateway keeps logs and cache off. On the `hasala.app` zone, keep Logpush
+   and WAF payload logging off for `assist.hasala.app`.
 4. Make the AI Gateway before the deployment. Without it, each model call
    fails and the Worker answers 503.
    1. In the dashboard: AI > AI Gateway > Create gateway. Name it
@@ -202,13 +204,18 @@ Before the first deployment:
    2. In its Settings: turn off Logs (collect logs), turn off Cache, and keep
       Authenticated Gateway off (the Worker binding needs no token).
    3. In its Settings: set Workers AI billing to Unified billing, so that spend
-      limits count Workers AI requests.
+      limits count Workers AI requests. Unified billing takes Workers AI from
+      prepaid AI Gateway credits: load credits (AI Gateway > Credits Available
+      > Manage > Top-up credits) and keep auto top-up off, so the balance is a
+      second hard cap. With no credits, each model call fails and the Worker
+      answers 503.
    4. In Settings > Spend limits: add one rule with no dimensions (all
-      traffic), for example $5 per day, fixed window. Spend limits count only
-      models with known pricing: after the deployment, send one request and
-      confirm that the gateway analytics show a cost for
-      `@cf/cloudflare/clef`. To test the cap, set the limit to $0.01, send
-      requests until the Worker answers 503, then set it back.
+      traffic): $1 per day, fixed window. Spend limits count only models with
+      known pricing: after the deployment, send one request and confirm that
+      the gateway analytics show a cost for `@cf/cloudflare/clef`. To test the
+      cap, set the limit to $0.0001, send requests until the Worker answers
+      503, then set it back. The limit is eventually consistent, so a few
+      requests pass it before the block.
    5. Optional: keep the Workers AI billing alert as a second warning.
 
 Deploy from the devShell. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`

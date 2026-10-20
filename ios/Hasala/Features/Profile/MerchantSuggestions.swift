@@ -112,7 +112,7 @@ struct CloudConsentContent {
       (.eyeSlash, "What's not sent",
        "The amount, date, card or bank, your own category names, or anything about your account."),
       (.cloud, "What Cloudflare sees",
-       "Your IP address, as with any internet request. The service doesn't record it, and doesn't store or log what you send. Cloudflare doesn't keep it or use it to train models."),
+       "Your IP address, as with any internet request. The service doesn't record it, and doesn't store or log what you send. Cloudflare's terms say it doesn't keep what you send or use it to train models. Like any website it runs, Cloudflare keeps basic request records, such as the time and the country."),
       (.check, "You stay in charge",
        "Suggestions are marked and don't count in your totals until you confirm them. You can turn this off at any time."),
     ])
