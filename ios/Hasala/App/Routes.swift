@@ -40,6 +40,11 @@ enum ActivityRoute: Hashable {
   case bill(BillID)
 }
 
+/// Pushed inside the Review tab.
+enum ReviewRoute: Hashable {
+  case unreadMail
+}
+
 /// Pushed inside the transaction sheet (one sheet at a time: its editors push, never stack).
 enum TransactionRoute: Hashable {
   case category, note, rename, split, project
@@ -90,6 +95,7 @@ enum SheetRoute: Hashable, Identifiable {
   case widgetConfig(HomeWidgetKind, entry: String?)
   case project(ProjectID?)
   case addTransaction
+  case addFromEmail(TxnID)
   case search
 
   var id: String {
@@ -104,6 +110,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .widgetConfig(let kind, let entry): "widgetConfig.\(kind.rawValue).\(entry ?? "new")"
     case .project(let id): "project.\(id ?? "new")"
     case .addTransaction: "addTransaction"
+    case .addFromEmail(let id): "addFromEmail.\(id)"
     case .search: "search"
     }
   }

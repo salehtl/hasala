@@ -284,6 +284,28 @@ public enum ReviewEngine {
       }
   }
 
+  public static func unreadMail(_ s: LedgerState) -> [UnreadMail] {
+    s.unreadMail.sorted { $0.receivedOn == $1.receivedOn ? $0.id > $1.id : $0.receivedOn > $1.receivedOn }
+  }
+
+  public static func notDownloaded(_ s: LedgerState) -> Int { max(0, s.mailbox.unreadable) }
+
+  public static func unreadCount(_ s: LedgerState) -> Int { s.unreadMail.count + notDownloaded(s) }
+
+  public static func unreadLine(_ n: Int) -> String {
+    "\(n) bank email\(n == 1 ? "" : "s") we couldn't read"
+  }
+
+  public static func notDownloadedLine(_ n: Int) -> String {
+    "\(n) more email\(n == 1 ? "" : "s") couldn't be downloaded."
+  }
+
+  public static func unreadDetail(_ m: UnreadMail, today: LocalDate) -> String {
+    let when = m.receivedOn == today ? "Received today" : "Received \(m.receivedOn.short)"
+    guard let provider = m.provider else { return when }
+    return "\(when) · in \(provider.appName)"
+  }
+
   public static func months(_ cards: [ReviewCardModel], now: LocalDateTime) -> [ReviewMonth] {
     var out: [ReviewMonth] = []
     for card in cards {

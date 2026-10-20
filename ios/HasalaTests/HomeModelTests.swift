@@ -168,6 +168,9 @@ struct HomeModelTests {
         #expect(found.contains(item.id))
       case .category(let id):
         #expect(router.tab == .plan && router.plan == [.category(id)])
+      case .unreadMail:
+        #expect(router.tab == .review && router.review == [.unreadMail])
+        #expect(!app.store.state.unreadMail.isEmpty)
       case .bankAlerts:
         router.sheetDismissed()
         #expect(router.sheet == .profile && router.profile == [.bankAlerts])

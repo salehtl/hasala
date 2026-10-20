@@ -10,9 +10,9 @@ import SwiftUI
 ///
 /// Start opens the deck at the top of the list, the newest month's oldest card, and reads on
 /// in the list's order; a row opens it at that row's card and reads on down the list. "Use N
-/// suggestions" is Debug only, and the "couldn't read" card opens only in Debug: the first
-/// would be several edits in one gesture and the second needs Add a transaction, neither of
-/// which exists yet (plan D.2).
+/// suggestions" is Debug only: it would be several edits in one gesture (plan D.2). The
+/// "couldn't read" line counts the bank emails Hasala kept as empty rows and the ones it could
+/// not download; when there are rows, it opens the list where each is added by hand or dismissed.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -22,8 +22,9 @@ struct ReviewTabView: View {
   }
 
   var body: some View {
-    NavigationStack {
+    NavigationStack(path: Bindable(app.router).review) {
       let cards = ReviewEngine.cards(app.store.state)
+      let unread = ReviewEngine.unreadCount(app.store.state)
       TabScreen(app: app, title: "Review", spacing: 24, titleGap: 4) {
         Text(Self.countLine(cards.count))
           .hType(.subheadline)
@@ -33,15 +34,19 @@ struct ReviewTabView: View {
         VStack(alignment: .leading, spacing: 24) {
           if cards.isEmpty {
             caughtUp
+            if unread > 0 { unreadable(unread) }
           } else {
             startCard(cards)
+            if unread > 0 { unreadable(unread) }
             list(cards)
-          }
-          if app.store.state.mailbox.unreadable > 0 {
-            unreadable(app.store.state.mailbox.unreadable)
           }
         }
         .padding(.horizontal, HSpacing.insetPage)
+      }
+      .navigationDestination(for: ReviewRoute.self) { route in
+        switch route {
+        case .unreadMail: UnreadMailView(app: app)
+        }
       }
     }
   }
@@ -234,28 +239,23 @@ struct ReviewTabView: View {
     .accessibilityIdentifier("review.tab.empty")
   }
 
-  /// "1 bank email we couldn't read · Add the amount yourself": a button in Debug until Add a
-  /// transaction exists; Release shows the count alone.
   @ViewBuilder private func unreadable(_ n: Int) -> some View {
-    if BuildSurface.showsUnfinished {
-      Button {
-        // TODO(plan D.2 "Add a transaction"): add the amount from the unread email.
-        app.say("Adding the amount yourself comes in a later build", icon: .info)
-      } label: {
-        unreadableRow(n, detail: "Add the amount yourself", chevron: true)
-      }
-      .buttonStyle(HRowPressStyle())
-      .accessibilityIdentifier("review.tab.unreadable")
-    } else {
+    if app.store.state.unreadMail.isEmpty {
       unreadableRow(n, detail: "Kept for you to sort by hand", chevron: false)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("review.tab.unreadable")
+    } else {
+      Button {
+        app.router.review.append(.unreadMail)
+      } label: {
+        unreadableRow(n, detail: "Add each one by hand or dismiss it", chevron: true)
+      }
+      .buttonStyle(HRowPressStyle())
+      .accessibilityIdentifier("review.tab.unreadable")
     }
   }
 
-  static func unreadableLine(_ n: Int) -> String {
-    "\(n) bank email\(n == 1 ? "" : "s") we couldn't read"
-  }
+  static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 
   private func unreadableRow(_ n: Int, detail: String, chevron: Bool) -> some View {
     HStack(spacing: 12) {

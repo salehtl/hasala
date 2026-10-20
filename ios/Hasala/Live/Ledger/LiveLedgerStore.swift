@@ -291,6 +291,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       s.txns[i].needsReview = false
       return (lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories", [.split(txn: id, lines: t.splits)])
     case .archive(let id, let archived):
+      if archived, s.unreadMail.contains(where: { $0.id == id }) {
+        s.unreadMail.removeAll { $0.id == id }
+        return ("Dismissed", [.archived(txn: id, archived: false)])
+      }
       let i = try index(id)
       s.txns[i].archived = archived
       return (archived ? "Archived" : "Restored", [.archived(txn: id, archived: !archived)])

@@ -67,6 +67,29 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     el(app, "review.close").tap()
   }
 
+  @MainActor
+  func testUnreadBankEmailsOpenAListThatWorks() throws {
+    let app = launchRelease("mayaUnreadMail")
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let line = el(app, "review.tab.unreadable")
+    XCTAssertTrue(line.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(line.label.contains("3 bank emails we couldn't read"), line.label)
+    assertNoPlaceholders(app, "Review tab · unread")
+    line.tap()
+    XCTAssertTrue(el(app, "unread.row.unread-gmail").waitForExistence(timeout: uiWait))
+    assertNoPlaceholders(app, "Unread bank emails")
+    assertPersonalAccountsOnly(app, "Unread bank emails")
+    assertPresent(app, ["unread.add.unread-gmail", "unread.dismiss.unread-gmail", "unread.notDownloaded"], "Unread bank emails")
+    attach(app, "Release · Unread bank emails")
+    try audit(app)
+    tap(app, "unread.add.unread-gmail", opening: "add.amount")
+    assertNoPlaceholders(app, "Add from an email")
+    tap(app, "add.close")
+    XCTAssertTrue(el(app, "add.amount").waitForNonExistence(timeout: uiWait))
+    tap(app, "unread.dismiss.unread-gmail")
+    XCTAssertTrue(el(app, "unread.row.unread-gmail").waitForNonExistence(timeout: uiWait))
+  }
+
   /// The App Review demo account: Home says "Sample data", and a sample row's sheet says
   /// there's no email behind it.
   @MainActor
