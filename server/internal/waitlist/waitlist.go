@@ -476,6 +476,6 @@ func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.
 	}
 	r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Email: row.Recipient, BankName: bank,
 		LeaveURL: leave,
-		Why: "You're getting this because someone asked for a Hasala invite for this address at hasala.app."})
+		Why:      "You're getting this because someone asked for a Hasala invite for this address at hasala.app."})
 	return toMessage(row, r), err
 }
