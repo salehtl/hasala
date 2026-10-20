@@ -141,8 +141,9 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
             ]))
         ])
     }
+    let keyed = path + (query.first { $0.0 == "format" }.map { "?format=\($0.1)" } ?? "")
     if let failure = lock.withLock({ () -> (status: Int, reason: String?)? in
-      for (k, v) in failures where !v.isEmpty && path.contains(k) {
+      for (k, v) in failures where !v.isEmpty && keyed.contains(k) {
         failures[k] = Array(v.dropFirst())
         return v[0]
       }

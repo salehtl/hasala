@@ -611,6 +611,13 @@ struct MailboxFlowTests: AccountSuite {
       == ("Sign in again", .warning))
   }
 
+  @Test func bankAlertsCountsUnreadableMail() {
+    #expect(BankAlertsPage.unreadableLine(1) == "1 email we couldn't read")
+    #expect(BankAlertsPage.unreadableLine(4) == "4 emails we couldn't read")
+    #expect(BankAlertsPage.unreadableDetail == "Kept for you to sort by hand")
+    #expect(!mailbox().connectRefused)
+  }
+
   /// A bank says where its alerts are read; a mailbox page explains a lost sign-in.
   @Test func banksAndMailboxesSayWhereAndWhy() {
     #expect(BankAlertsPage.bankDetail(.enbd, lastEmail: "4 min ago", checking: false) == "Last email 4 min ago")

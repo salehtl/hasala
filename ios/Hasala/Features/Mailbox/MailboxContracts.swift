@@ -101,6 +101,7 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// What the bell, the Profile card and Bank alerts offer; nil when nothing needs doing,
   /// the lane's state isn't known yet, or the account loaded the App Review sample.
   var offer: MailOffer? { get }
+  var connectRefused: Bool { get }
   /// The banks the account reads (its sender-trust ops).
   func chosenBanks() -> [SupportedBank]
   /// The provider the account's link is to, while there is one, known before the mailbox
@@ -220,6 +221,8 @@ extension MailboxConnecting {
 
   /// No other iPhone where the mailboxes are held in memory (the mock).
   var heldElsewhere: MailProviderKind? { nil }
+
+  var connectRefused: Bool { false }
 
   /// A connect that replaces nothing: a first link, another mailbox beside one that works,
   /// or the same provider again.

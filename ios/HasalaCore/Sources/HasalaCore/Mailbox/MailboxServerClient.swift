@@ -64,6 +64,12 @@ public struct HTTPMailboxServer: MailboxServer {
     }
   }
 
+  public func linkStatus(provider: MailProviderID) async throws(MailboxServerError) -> MailboxLinkStatus {
+    let (status, linked) = try await linkStatusAndProvider()
+    if let linked, linked != provider { throw .otherProvider }
+    return status
+  }
+
   public func linkChallenge() async throws(MailboxServerError) -> String {
     let o = try await call(.post, "/api/v1/mailbox/link/challenge", body: .object(JSONObject()))
     guard let n = o["nonce"]?.stringValue, !n.isEmpty else { throw .refused(200, "bad_response") }

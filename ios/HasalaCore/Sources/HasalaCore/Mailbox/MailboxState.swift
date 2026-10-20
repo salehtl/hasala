@@ -84,6 +84,7 @@ public enum UnreadableReason: String, Sendable, Codable {
   case overCap = "over_cap"
   case badDate = "bad_date"
   case gone
+  case refused
 }
 
 public struct UnreadableRecord: Sendable, Equatable, Codable {
@@ -161,7 +162,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public var failNextCommit = false
 
   public static let setAsideRing = 200
-  public static let unreadableRing = 50
+  public static let unreadableRing = 1_000
 
   public init(state: MailboxState = MailboxState()) { self.state = state }
 
