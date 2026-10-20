@@ -73,11 +73,7 @@ final class ActivityViewModel: ActivityModel {
   func openBill(_ bill: BillID) { app.router.activity.append(.bill(bill)) }
   func startReview() { ReviewEntry.open(app, at: nil) }
 
-  // TODO(spec 04 §16.1 "Add transaction", plan D.2): AddTransactionSheet (keypad, merchant,
-  // category, date, paid with) authoring `txn_ingested` with entry_method manual.
-  func addTransaction() {
-    app.say("Adding by hand isn't in this build yet", icon: .add)
-  }
+  func addTransaction() { app.router.open(.addTransaction) }
 }
 
 /// Asks the Activity tab to show a filter from elsewhere (Search's category row, a Debug

@@ -1,0 +1,76 @@
+import Foundation
+import HasalaDesign
+import HasalaModels
+import Observation
+
+@MainActor
+@Observable
+final class AddTransactionModel {
+  private let app: AppModel
+  var entry = AmountEntry()
+  var direction: Direction = .out
+  var merchant = ""
+  var categoryID: CategoryID?
+  var postedAt: Date
+  var accountID: AccountID?
+
+  init(app: AppModel) {
+    self.app = app
+    postedAt = AddTransactionDates.date(app.store.now)
+    accountID = app.store.state.accounts.first { $0.inPlan }?.id
+  }
+
+  var latest: Date { AddTransactionDates.date(app.store.now) }
+  var categoryGroups: [CategoryGroup] { CategoryGroup.all(app.store.state) }
+  var accounts: [Account] { app.store.state.accounts }
+
+  var category: CategoryOption? {
+    categoryID.flatMap { id in app.store.state.category(id) }.map(CategoryOption.init)
+  }
+
+  var account: Account? { accountID.flatMap { id in accounts.first { $0.id == id } } }
+
+  var draft: ManualEntryDraft? {
+    guard let minor = entry.minor, minor > 0, categoryID != nil else { return nil }
+    let d = ManualEntryDraft(
+      amount: .aed(minor), direction: direction, merchant: merchant, categoryID: categoryID,
+      postedAt: min(AddTransactionDates.local(postedAt), app.store.now), accountID: accountID)
+    return d.refusal == nil ? d : nil
+  }
+
+  var canSave: Bool { draft != nil }
+
+  var saveTitle: String {
+    guard let minor = entry.minor, minor > 0 else { return "Enter an amount" }
+    return "Add AED \(MoneyFormat.string(minor))"
+  }
+
+  var missing: String? {
+    guard let minor = entry.minor, minor > 0 else { return nil }
+    if merchant.trimmedSpaces.isEmpty { return "Add who it was with" }
+    if categoryID == nil { return "Choose a category" }
+    return nil
+  }
+
+  @discardableResult
+  func save() -> Bool {
+    guard let d = draft, app.perform(.addTransaction(d)) else { return false }
+    app.sheet = nil
+    app.say("Added \(d.trimmedMerchant)")
+    return true
+  }
+
+  func cancel() { app.sheet = nil }
+}
+
+enum AddTransactionDates {
+  static func date(_ t: LocalDateTime) -> Date {
+    ProjectDates.calendar.date(
+      from: DateComponents(year: t.date.year, month: t.date.month, day: t.date.day, hour: t.hour, minute: t.minute)) ?? Date()
+  }
+
+  static func local(_ d: Date) -> LocalDateTime {
+    let c = ProjectDates.calendar.dateComponents([.year, .month, .day, .hour, .minute], from: d)
+    return LocalDateTime(c.year ?? 1970, c.month ?? 1, c.day ?? 1, c.hour ?? 0, c.minute ?? 0)
+  }
+}

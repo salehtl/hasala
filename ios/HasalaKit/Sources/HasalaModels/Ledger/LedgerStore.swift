@@ -12,6 +12,7 @@ import Observation
 /// One user gesture that changes the ledger.
 public enum LedgerEdit: Sendable, Hashable {
   // Transactions (03c §3.8).
+  case addTransaction(ManualEntryDraft)
   /// `txn_categorized` (+ learned `rule_added` when `learnRule`, + `txn_annotated{project_id}`).
   case categorize(TxnID, CategoryID, learnRule: Bool, project: ProjectID?)
   /// `txn_categorized{transfer}`.
@@ -67,6 +68,45 @@ public enum LedgerEdit: Sendable, Hashable {
   case setFaceIDLock(Bool)
 }
 
+public struct ManualEntryDraft: Sendable, Hashable {
+  public var amount: Money
+  public var direction: Direction
+  public var merchant: String
+  public var categoryID: CategoryID?
+  public var postedAt: LocalDateTime
+  public var accountID: AccountID?
+
+  public init(
+    amount: Money, direction: Direction = .out, merchant: String, categoryID: CategoryID?, postedAt: LocalDateTime,
+    accountID: AccountID? = nil
+  ) {
+    self.amount = amount
+    self.direction = direction
+    self.merchant = merchant
+    self.categoryID = categoryID
+    self.postedAt = postedAt
+    self.accountID = accountID
+  }
+
+  public static let maxMerchantLength = 80
+  public static let maxMinor: Int64 = 999_999_999_99
+
+  public var trimmedMerchant: String { merchant.trimmedSpaces }
+
+  public var refusal: ActionError? {
+    if amount.minor <= 0 || amount.minor > Self.maxMinor { return .invalidAmount }
+    if trimmedMerchant.isEmpty || trimmedMerchant.count > Self.maxMerchantLength { return .invalidMerchant }
+    return nil
+  }
+
+  public func txn(id: TxnID) -> Txn {
+    Txn(
+      id: id, merchant: trimmedMerchant, amount: amount, direction: direction, postedAt: postedAt, accountID: accountID,
+      categoryID: categoryID, categorySource: categoryID == nil ? nil : .user, isRefund: categoryID == "refunds",
+      isTransfer: categoryID == "transfer")
+  }
+}
+
 /// An edit the person can take back from the toast (spec 04 §14.6: 5 s window).
 public struct UndoToken: Sendable, Hashable, Identifiable {
   public var id: Int
@@ -88,6 +128,7 @@ public enum ActionError: Error, Sendable, Hashable {
   case insufficientFunds
   case invalidAmount
   case invalidProject
+  case invalidMerchant
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit

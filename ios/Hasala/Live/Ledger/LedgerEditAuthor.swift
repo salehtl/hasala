@@ -50,6 +50,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
   /// date, the current amount).
   func author(_ edit: LedgerEdit, before: LedgerState, today: LocalDate) async throws {
     switch edit {
+    case .addTransaction(let d):
+      let wall = try Self.localWallMs(d.postedAt)
+      try await build { a throws(AuthorError) in
+        _ = try a.manualEntry(
+          amountMinor: d.amount.minor, currency: d.amount.currency, direction: d.direction == .in ? "credit" : "debit",
+          localWallMs: wall, merchant: d.trimmedMerchant, category: d.categoryID, accountID: d.accountID)
+      }
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
       var snapshots: [OpAuthor.RuleSnapshot] = []
@@ -181,6 +188,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock:
       break
     }
+  }
+
+  static func localWallMs(_ t: LocalDateTime) throws -> Int64 {
+    guard let day = CivilDate(year: t.date.year, month: t.date.month, day: t.date.day), (0..<24).contains(t.hour),
+      (0..<60).contains(t.minute)
+    else { throw Failure.refused("date") }
+    return day.daysSinceEpoch * 86_400_000 + Int64(t.hour * 60 + t.minute) * 60_000
   }
 
   static func projectDraft(_ d: ProjectDraft) throws -> OpAuthor.ProjectDraft {

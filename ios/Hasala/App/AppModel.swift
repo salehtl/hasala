@@ -284,6 +284,7 @@ final class AppModel {
     case .insufficientFunds: "There isn't enough to move"
     case .invalidAmount: "Enter an amount"
     case .invalidProject: "Check the project's name, amount and dates"
+    case .invalidMerchant: "Enter who it was with"
     }
   }
 
