@@ -271,7 +271,7 @@ public struct LedgerReader: Sendable {
         return SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
-          candidate: !t.unparsed && t.archived == nil && !t.split)
+          candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version)
       }
     }
   }

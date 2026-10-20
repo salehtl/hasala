@@ -48,9 +48,17 @@ public protocol CategoryModel: Sendable {
   var modelTag: String { get }
 }
 
+public protocol GradedCategoryModel: CategoryModel {
+  func suggestGraded(subject: String, allowed: [AllowedCategory]) async -> (answer: ModelAnswer, autoFile: Bool)
+}
+
 public enum ModelTier {
   /// 03c §8.6.6: a model suggestion never auto-confirms. Flipping it is a spec change.
   public static let autoConfirm = false
+
+  public static let autoFilePrefix = "cf-clef/"
+
+  public static func mayAutoFile(modelTag: String) -> Bool { modelTag.hasPrefix(autoFilePrefix) }
 
   public enum Context: Sendable {
     case foreground, processing, refresh
@@ -152,54 +160,49 @@ public enum ModelTier {
     subjects: [String], model: any CategoryModel, allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
     callTimeout: Duration? = nil
   ) async -> (suggestions: [Suggestion], unknown: [String], stoppedBy: ModelFailure?) {
-    let budget = context.budget
-    let limit = callTimeout ?? .milliseconds(budget.callMs)
-    guard budget.calls > 0, model.availability() == .available, !allowed.isEmpty else { return ([], [], nil) }
-    let start = now()
-    var seen: Set<String> = []
-    var out: [Suggestion] = []
-    var unknown: [String] = []
-    var calls = 0
-    for subject in subjects where LatinGate.passes(subject) && seen.insert(subject).inserted {
-      if calls >= budget.calls || now() - start >= budget.phaseMs { break }
-      calls += 1
-      var answer = await suggest(model, subject: subject, allowed: allowed, within: limit)
-      if answer == .failed(.contextOverflow) {
-        answer = await suggest(model, subject: subject, allowed: allowed, within: limit)
-      }
-      switch answer {
-      case .category(let id) where allowed.contains(where: { $0.id == id }):
-        out.append(Suggestion(subject: subject, category: id))
-      case .category, .unknown:
-        unknown.append(subject)
-      case .failed(let f):
-        switch f {
-        case .guardrail, .refusal: unknown.append(subject)
-        case .rateLimited, .busy, .unsupportedLanguage, .assetsUnavailable: return (out, unknown, f)
-        default: continue
-        }
-      }
-    }
-    return (out, unknown, nil)
+    let r = await run(
+      subjects: subjects, stages: [ModelStage(model: model, accepts: LatinGate.passes)], allowed: allowed, context: context, now: now,
+      callTimeout: callTimeout)
+    return (
+      r.suggestions.map { Suggestion(subject: $0.subject, category: $0.category) }, r.unknown.map(\.subject),
+      r.stoppedBy[model.modelTag]
+    )
   }
 
   /// One model call, cancelled after `limit` (or when the sweep's task is
   /// cancelled). Returns `.failed(.timeout)` without waiting for a call that
   /// ignores cancellation.
   static func suggest(_ model: any CategoryModel, subject: String, allowed: [AllowedCategory], within limit: Duration) async -> ModelAnswer {
+    await graded(model, subject: subject, allowed: allowed, within: limit).answer
+  }
+
+  struct Graded: Sendable {
+    let answer: ModelAnswer
+    let autoFile: Bool
+  }
+
+  static func graded(_ model: any CategoryModel, subject: String, allowed: [AllowedCategory], within limit: Duration) async -> Graded {
     let race = Race()
+    let timedOut = Graded(answer: .failed(.timeout), autoFile: false)
     return await withTaskCancellationHandler {
-      await withCheckedContinuation { (k: CheckedContinuation<ModelAnswer, Never>) in
+      await withCheckedContinuation { (k: CheckedContinuation<Graded, Never>) in
         race.start(
           k,
-          call: Task { race.finish(await model.suggest(subject: subject, allowed: allowed)) },
+          call: Task {
+            if let g = model as? any GradedCategoryModel {
+              let r = await g.suggestGraded(subject: subject, allowed: allowed)
+              race.finish(Graded(answer: r.answer, autoFile: r.autoFile))
+            } else {
+              race.finish(Graded(answer: await model.suggest(subject: subject, allowed: allowed), autoFile: false))
+            }
+          },
           timer: Task {
             try? await Task.sleep(for: limit)
-            race.finish(.failed(.timeout))
+            race.finish(timedOut)
           })
       }
     } onCancel: {
-      race.finish(.failed(.timeout))
+      race.finish(timedOut)
     }
   }
 
@@ -207,14 +210,14 @@ public enum ModelTier {
   /// cancels both tasks; later ones do nothing.
   private final class Race: Sendable {
     private struct Inner {
-      var k: CheckedContinuation<ModelAnswer, Never>?
+      var k: CheckedContinuation<Graded, Never>?
       var tasks: [Task<Void, Never>] = []
-      var done: ModelAnswer?
+      var done: Graded?
     }
     private let inner = Mutex(Inner())
 
-    func start(_ k: CheckedContinuation<ModelAnswer, Never>, call: Task<Void, Never>, timer: Task<Void, Never>) {
-      let early: ModelAnswer? = inner.withLock { i in
+    func start(_ k: CheckedContinuation<Graded, Never>, call: Task<Void, Never>, timer: Task<Void, Never>) {
+      let early: Graded? = inner.withLock { i in
         if let d = i.done { return d }
         i.k = k
         i.tasks = [call, timer]
@@ -227,8 +230,8 @@ public enum ModelTier {
       }
     }
 
-    func finish(_ a: ModelAnswer) {
-      let (k, tasks) = inner.withLock { i -> (CheckedContinuation<ModelAnswer, Never>?, [Task<Void, Never>]) in
+    func finish(_ a: Graded) {
+      let (k, tasks) = inner.withLock { i -> (CheckedContinuation<Graded, Never>?, [Task<Void, Never>]) in
         guard i.done == nil else { return (nil, []) }
         i.done = a
         defer {

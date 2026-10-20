@@ -4,6 +4,7 @@
 // category (and not split) or a model suggestion → uncategorized. The deck
 // shows the needs_review and uncategorized lanes. "Skip for now" is
 // device-local, never an op.
+import CoreCategorize
 import CoreReplay
 
 public enum ReviewLane: String, Sendable, CaseIterable {
@@ -23,7 +24,8 @@ public enum ReviewQueue {
     if t.isHeldCopy { return .copy }
     if t.possibleDuplicateOf != nil && t.duplicateDisposition == nil && t.copyOf == nil { return .duplicate }
     if t.needsReview { return .needsReview }
-    if (t.category == nil && t.splits.isEmpty) || t.categorySource?.kind == .model { return .uncategorized }
+    if t.category == nil && t.splits.isEmpty { return .uncategorized }
+    if let s = t.categorySource, s.kind == .model, !ModelTier.mayAutoFile(modelTag: s.model ?? "") { return .uncategorized }
     return nil
   }
 }
