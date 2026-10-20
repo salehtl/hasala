@@ -39,6 +39,16 @@ struct WidgetPublisherTests {
     #expect(reloads.count == 1)
   }
 
+  @Test func theAppLockHidesTheWidgetAmounts() throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    let app = AppModel(store: InMemoryLedger())
+    _ = WidgetPublisher(app: app, store: store, reload: {}, locked: { app.store.state.prefs.faceIDLock })
+    #expect(store.read()?.amountsHidden == true)
+    let open = WidgetPublisher(app: app, store: nil, reload: {}, locked: { false })
+    #expect(open.snapshot.amountsHidden == false)
+  }
+
   @Test func followsHiddenAmountsAndLedgerEdits() async throws {
     let store = temporaryStore()
     defer { try? FileManager.default.removeItem(at: store.directory) }

@@ -270,7 +270,7 @@ final class BootController {
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app
-      self.widgets = WidgetPublisher(app: app)
+      self.widgets = WidgetPublisher(app: app, locked: { [weak app] in app?.store.state.prefs.faceIDLock ?? false })
       self.generation += 1
       self.setupFacts = facts
       rt.onAccount = { [weak self, weak rt] info in

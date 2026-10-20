@@ -46,8 +46,8 @@ enum LockCheck: Equatable, Sendable {
       return
     }
     switch code {
-    case .userCancel, .appCancel, .systemCancel, .userFallback: self = .cancelled
-    case .passcodeNotSet, .biometryNotAvailable, .notInteractive: self = .unavailable
+    case .userCancel, .appCancel, .systemCancel, .userFallback, .notInteractive: self = .cancelled
+    case .passcodeNotSet, .biometryNotAvailable: self = .unavailable
     default: self = .failed
     }
   }
@@ -89,6 +89,7 @@ final class AppLockController {
   private(set) var isLocked = false
   private(set) var isCovered = false
   private(set) var busy = false
+  private(set) var confirming = false
   private(set) var failed = false
   private(set) var isAvailable = false
   private(set) var biometry: LockBiometry = .none
@@ -118,7 +119,7 @@ final class AppLockController {
   var showsShield: Bool { isLocked || isCovered }
 
   func scenePhaseChanged(_ phase: ScenePhase) {
-    isCovered = SnapshotCover.covers(phase)
+    isCovered = phase == .background || (SnapshotCover.covers(phase) && !confirming)
     switch phase {
     case .background:
       if backgroundedAt == nil { backgroundedAt = now() }
@@ -165,9 +166,11 @@ final class AppLockController {
   func confirmChange(to on: Bool) async -> Bool {
     guard !busy else { return false }
     busy = true
+    confirming = true
     let check = await makeContext().evaluate(
       reason: on ? "Turn on \(biometry.lockTitle) for Hasala." : "Turn off \(biometry.lockTitle) for Hasala.")
     busy = false
+    confirming = false
     return check == .passed
   }
 

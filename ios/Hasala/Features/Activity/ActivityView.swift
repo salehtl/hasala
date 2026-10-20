@@ -18,8 +18,7 @@ struct ActivityView: View {
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).activity) {
-      // TODO(spec 04 §16.1 "Add transaction"): until AddTransactionSheet exists, Release has no "+".
-      TabScreen(app: app, title: "Activity", extra: BuildSurface.showsUnfinished ? .add : .none,
+      TabScreen(app: app, title: "Activity", extra: .add,
                 onExtra: { model.addTransaction() }) {
         ActivityFilterBar(model: model)
       } content: {

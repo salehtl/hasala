@@ -1450,6 +1450,7 @@ public actor MailboxEngine {
   func account(_ f: Fetched, mode: Mode, run: inout Run, report: inout CycleReport) async throws {
     let at = clock.nowMs()
     var c = MailboxCommit()
+    var interrupted: String?
     switch f {
     case .failed(let id, let error):
       guard let reason = Self.unreadableAfterStrikes(error) else { throw error }
@@ -1491,10 +1492,19 @@ public actor MailboxEngine {
         unreadable(.badDate)
         break
       }
-      let parsed = MessageDisposer.parse(
-        raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
-        bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
-        analyze: { provider.analyzeAuthResults($0) })
+      let parsed: MessageDisposer.Parse
+      if try await store.isParsing(id) {
+        Self.log.notice("mailbox.parse_interrupted", .state("provider", provider.id == .outlook ? "outlook" : "gmail"))
+        parsed = .mail(MessageDisposer.unparsed(raw: [UInt8](bytes), messageID: id, internalDateMs: date, spam: raw.spam))
+        interrupted = id
+      } else {
+        try await store.markParsing(id)
+        parsed = MessageDisposer.parse(
+          raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
+          bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
+          analyze: { provider.analyzeAuthResults($0) })
+        try await store.clearParsing(id)
+      }
       switch parsed {
       case .setAside(let domain):
         report.setAside += 1
@@ -1521,6 +1531,7 @@ public actor MailboxEngine {
       }
     }
     try await store.commit(c)
+    if let interrupted { try? await store.clearParsing(interrupted) }
   }
 
   static func unreadableAfterStrikes(_ e: MailAPIError) -> UnreadableReason? {

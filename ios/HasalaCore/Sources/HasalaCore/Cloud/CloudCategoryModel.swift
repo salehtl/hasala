@@ -15,12 +15,12 @@ public struct CloudCategoryModel: GradedCategoryModel {
   let isAutoFileEnabled: @Sendable () -> Bool
   let exchange: any CloudHTTPExchange
   let pause: @Sendable () async -> Void
-  let latch = Latch()
+  let latch: Latch
 
   public init(
     baseURL: URL, clientVersion: String, isEnabled: @escaping @Sendable () -> Bool,
     isAutoFileEnabled: @escaping @Sendable () -> Bool, exchange: any CloudHTTPExchange,
-    pause: @escaping @Sendable () async -> Void = CloudCategoryModel.jitter
+    refusal: CloudRefusalRecord = .none, pause: @escaping @Sendable () async -> Void = CloudCategoryModel.jitter
   ) {
     self.modelTag = Self.defaultTag
     self.endpoint = baseURL.appending(path: "v1/category")
@@ -29,6 +29,7 @@ public struct CloudCategoryModel: GradedCategoryModel {
     self.isAutoFileEnabled = isAutoFileEnabled
     self.exchange = exchange
     self.pause = pause
+    self.latch = Latch(refusal)
   }
 
   static let jitterRange = 100...400
@@ -156,22 +157,46 @@ public struct CloudCategoryModel: GradedCategoryModel {
   }
 }
 
+public struct CloudRefusalRecord: Sendable {
+  public let isRecorded: @Sendable () -> Bool
+  public let record: @Sendable () -> Void
+
+  public init(isRecorded: @escaping @Sendable () -> Bool, record: @escaping @Sendable () -> Void) {
+    self.isRecorded = isRecorded
+    self.record = record
+  }
+
+  public static let none = CloudRefusalRecord(isRecorded: { false }, record: {})
+}
+
 final class Latch: Sendable {
-  private let off = Mutex(false)
+  private let off: Mutex<Bool>
+  private let refusal: CloudRefusalRecord
+
+  init(_ refusal: CloudRefusalRecord = .none) {
+    self.refusal = refusal
+    self.off = Mutex(refusal.isRecorded())
+  }
 
   var isOff: Bool { off.withLock { $0 } }
 
-  func trip() { off.withLock { $0 = true } }
+  func trip() {
+    let first = off.withLock { wasOff in
+      defer { wasOff = true }
+      return !wasOff
+    }
+    if first { refusal.record() }
+  }
 }
 
 public enum HasalaCloudFactory {
   public static func makeCategoryModel(
     baseURL: URL?, clientVersion: String, isEnabled: @escaping @Sendable () -> Bool,
-    isAutoFileEnabled: @escaping @Sendable () -> Bool
+    isAutoFileEnabled: @escaping @Sendable () -> Bool, refusal: CloudRefusalRecord = .none
   ) -> (any CategoryModel)? {
     guard let baseURL else { return nil }
     return CloudCategoryModel(
       baseURL: baseURL, clientVersion: clientVersion, isEnabled: isEnabled, isAutoFileEnabled: isAutoFileEnabled,
-      exchange: URLSessionCloudExchange())
+      exchange: URLSessionCloudExchange(), refusal: refusal)
   }
 }

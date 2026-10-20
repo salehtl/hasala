@@ -6,6 +6,13 @@ struct CategoryGroup: Identifiable, Hashable {
   var id: Bucket { bucket }
   let bucket: Bucket
   let options: [CategoryOption]
+
+  static func all(_ s: LedgerState) -> [CategoryGroup] {
+    var groups = [Bucket.needs, .wants, .savings].map { CategoryGroup(bucket: $0, options: s.categories(in: $0).map(CategoryOption.init)) }
+    let other = s.categories.filter { $0.kind != .spending && !$0.archived }.map(CategoryOption.init)
+    groups.append(CategoryGroup(bucket: .other, options: other))
+    return groups
+  }
 }
 
 /// Transaction detail and its pushed editors (spec 04 §16.1 "Transaction detail", "Choose a category", "Split";
@@ -46,13 +53,7 @@ final class TransactionViewModel: TransactionModel {
   var hidden: Bool { app.amountsHidden }
   var merchantName: String { app.store.state.txn(id)?.merchant ?? "" }
 
-  var categoryGroups: [CategoryGroup] {
-    let s = app.store.state
-    var groups = [Bucket.needs, .wants, .savings].map { CategoryGroup(bucket: $0, options: s.categories(in: $0).map(CategoryOption.init)) }
-    let other = s.categories.filter { $0.kind != .spending && !$0.archived }.map(CategoryOption.init)
-    groups.append(CategoryGroup(bucket: .other, options: other))
-    return groups
-  }
+  var categoryGroups: [CategoryGroup] { CategoryGroup.all(app.store.state) }
 
   var projects: [(id: ProjectID, name: String)] {
     app.store.state.projects.filter { !$0.complete }.map { ($0.id, $0.name) }

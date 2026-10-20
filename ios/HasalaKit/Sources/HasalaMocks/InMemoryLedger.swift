@@ -30,6 +30,7 @@ public final class InMemoryLedger: LedgerStore {
 
   private var undoRecords: [Int: UndoRecord] = [:]
   private var nextToken = 1
+  private var nextManual = 1
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     self.state = state
@@ -54,6 +55,13 @@ public final class InMemoryLedger: LedgerStore {
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
 
     switch edit {
+    case .addTransaction(let d):
+      if let refusal = d.refusal { throw refusal }
+      if let c = d.categoryID, s.category(c) == nil { throw .notFound }
+      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
+      s.txns.append(d.txn(id: "manual-\(nextManual)"))
+      nextManual += 1
+      title = nil
     case .categorize(let id, let c, let learnRule, let project):
       guard s.category(c) != nil else { throw .notFound }
       try editTxn(id) { t in

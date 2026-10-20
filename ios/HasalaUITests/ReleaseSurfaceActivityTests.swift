@@ -2,7 +2,7 @@ import XCTest
 
 /// Activity, the transaction sheet and Review on the Release surface.
 final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
-  /// Activity has no "+"; a row opens its sheet, which offers no bank email to view yet; the
+  /// Activity has its "+"; a row opens its sheet, which offers no bank email to view yet; the
   /// Review tab is there with its Start and its rows, and every deck control sorts, skips or
   /// closes ("Use N suggestions", opening the unreadable-email card and "View bank email" wait
   /// for the features behind them).
@@ -15,8 +15,13 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Activity")
     assertNoPlaceholders(app, "Activity")
     assertPersonalAccountsOnly(app, "Activity")
-    assertAbsent(app, ["header.add"], "Activity")
+    assertPresent(app, ["header.add"], "Activity")
     try audit(app)
+    tap(app, "header.add", opening: "add.amount")
+    attach(app, "Release · Add transaction")
+    assertNoPlaceholders(app, "Add transaction")
+    tap(app, "add.close")
+    XCTAssertTrue(el(app, "add.amount").waitForNonExistence(timeout: uiWait))
     let carrefour = el(app, "txn.carrefour")
     XCTAssertTrue(reveal(app, carrefour))
     carrefour.tap()

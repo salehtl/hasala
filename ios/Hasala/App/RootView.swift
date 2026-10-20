@@ -34,6 +34,10 @@ struct RootView: View {
   var body: some View {
     content
       .environment(lock)
+      .overlay {
+        if lock.isLocked { HColor.surfaceSecondary.ignoresSafeArea() }
+      }
+      .accessibilityHidden(lock.isLocked)
       .background { WindowSceneReader { shield.install(in: $0, lock: lock) } }
       .onChange(of: scenePhase, initial: true) { _, phase in lock.scenePhaseChanged(phase) }
       .onChange(of: lock.showsShield) { shield.update(lock) }
@@ -155,7 +159,8 @@ struct LaunchView: View {
       self.session = session
       self.setupFacts = setupFacts
       self.lock = lock.controller(store: app.store)
-      widgets = WidgetPublisher(app: app)
+      let armed = lock.armed
+      widgets = WidgetPublisher(app: app, locked: { [weak app] in armed && app?.store.state.prefs.faceIDLock == true })
       onboarding = OnboardingStore(services: session.services, session: { [session] in session })
     }
 
