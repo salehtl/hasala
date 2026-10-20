@@ -407,7 +407,7 @@ Hasala is for adults. You must be at least 18 to use it. We don't knowingly coll
 
 ## Changes to this policy
 
-We'll update this policy when Hasala changes. The date at the top shows when it last changed. If a change materially affects how we use your data, we'll tell you in the app or by email at least 30 days before it takes effect.
+We'll update this policy when Hasala changes. The date at the top shows when it last changed. If a change materially affects how we use your data without you doing anything, we'll tell you in the app or by email at least 30 days before it takes effect. A new optional feature is different: it is off until you turn it on, it is explained before you do, and this policy describes it from the day it ships. It affects you only once you turn it on.
 
 ## Contact
 
