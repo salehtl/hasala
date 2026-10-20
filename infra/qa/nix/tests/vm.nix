@@ -402,7 +402,9 @@ in
           assert machine.succeed(f"stat -c '%a %U' {BACKUP_DIR}").strip() == "700 hasala-backup"
           machine.fail(f"age -d -i /root/other-identity.txt {dump} > /dev/null")
           machine.succeed(
-              f"age -d -i /root/test-identity.txt {dump} | pg_restore --list | grep ' TABLE DATA public op_log ' >/dev/null"
+              f"age -d -i /root/test-identity.txt -o /root/restore.dump {dump}"
+              f" && pg_restore --list /root/restore.dump | grep ' TABLE DATA public op_log ' >/dev/null"
+              " && rm /root/restore.dump"
           )
           ledger = machine.succeed(f"ls {BACKUP_DIR}/hasala-ledger-*.tar.age").strip()
           machine.succeed(f"age -d -i /root/test-identity.txt {ledger} | tar -tf - > /dev/null")
@@ -423,7 +425,9 @@ in
           dump = machine.succeed(f"ls {BACKUP_DIR}/hasala-daily-*.dump.age").strip()
           assert int(machine.succeed(f"stat -c %s {dump}").strip()) > 40 * 1024 * 1024
           machine.succeed(
-              f"age -d -i /root/test-identity.txt {dump} | pg_restore --list | grep ' TABLE DATA public vm_bulk ' >/dev/null"
+              f"age -d -i /root/test-identity.txt -o /root/restore.dump {dump}"
+              f" && pg_restore --list /root/restore.dump | grep ' TABLE DATA public vm_bulk ' >/dev/null"
+              " && rm /root/restore.dump"
           )
           machine.fail(f"ls {BACKUP_DIR} | grep '\\.part$'")
           machine.succeed("rm -rf /run/systemd/system.control/hasala-backup.service.d && systemctl daemon-reload")
