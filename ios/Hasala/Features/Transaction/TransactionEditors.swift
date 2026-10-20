@@ -35,7 +35,9 @@ struct CategoryPickerView: View {
     .background(HColor.sheetSurfaceLarge)
     .safeAreaInset(edge: .bottom, spacing: 0) {
       Button("Save") {
-        if let selected { model.choose(selected, alwaysUse: alwaysUse) }
+        if let selected, Self.changes(model.detail, to: selected, alwaysUse: alwaysUse) {
+          model.choose(selected, alwaysUse: alwaysUse)
+        }
         done()
       }
       .buttonStyle(.pill(.primary, fill: true))
@@ -137,6 +139,11 @@ struct CategoryPickerView: View {
     return q.isEmpty || o.name.lowercased().contains(q)
   }
 
+  static func changes(_ detail: TransactionDetail?, to selected: CategoryID, alwaysUse: Bool) -> Bool {
+    guard let detail, detail.category?.id == selected, !detail.needsReview else { return true }
+    return alwaysUse && !detail.sortedByRule
+  }
+
   private var groups: [CategoryGroup] {
     model.categoryGroups.map { g in CategoryGroup(bucket: g.bucket, options: g.options.filter(matches)) }
       .filter { !$0.options.isEmpty }
@@ -147,7 +154,14 @@ struct CategoryPickerView: View {
 struct NoteEditorView: View {
   @State var note: String
   let save: (String) -> Void
+  private let original: String
   @FocusState private var focused: Bool
+
+  init(note: String, save: @escaping (String) -> Void) {
+    _note = State(initialValue: note)
+    original = note
+    self.save = save
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -165,6 +179,7 @@ struct NoteEditorView: View {
       Spacer()
       Button("Save note") { save(note) }
         .buttonStyle(.pill(.primary, fill: true))
+        .disabled(note == original)
         .accessibilityIdentifier("note.save")
     }
     .padding(HSpacing.insetPage)

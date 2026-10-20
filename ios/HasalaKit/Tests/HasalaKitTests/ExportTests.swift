@@ -37,10 +37,24 @@ struct CSVExportTests {
 struct ParseMinorTests {
   @Test(arguments: [
     ("297", Int64?(297_00)), ("45.15", 45_15), ("45.1", 45_10), ("1,800", 1_800_00), (".5", 50), ("0", 0),
-    ("", nil), ("4.567", nil), ("1.2.3", nil), ("-3", nil), ("abc", nil), ("٣", nil),
+    ("", nil), ("4.567", nil), ("1.2.3", nil), ("-3", nil), ("abc", nil), ("٣", 300), ("١٢٫٥", 12_50),
+    ("١٬٨٠٠", 1_800_00), ("۴۵.۱۵", 45_15), ("½", nil), ("Ⅻ", nil),
   ])
   func parses(draft: String, expected: Int64?) {
     #expect(MoneyFormat.parseMinor(draft) == expected)
+  }
+
+  @Test(arguments: [
+    ("8000,50", Int64?(8_000_50)), ("12,5", 12_50), ("12,", 12_00), ("1,800", 1_800_00), ("8,000,5", 8_000_50),
+    ("8000.50", 8_000_50), ("1.234,56", nil), ("12,345", 12_345_00), ("١٢,٥", 12_50),
+  ])
+  func parsesACommaDecimal(draft: String, expected: Int64?) {
+    #expect(MoneyFormat.parseMinor(draft, decimalSeparator: ",") == expected)
+  }
+
+  @Test func aPointRegionKeepsCommasAsThousands() {
+    #expect(MoneyFormat.parseMinor("1,800.5", decimalSeparator: ".") == 1_800_50)
+    #expect(MoneyFormat.parseMinor("12,5") == 125_00)
   }
 
   @Test func draftsRoundTrip() {

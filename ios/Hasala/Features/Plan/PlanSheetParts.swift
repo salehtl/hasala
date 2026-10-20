@@ -171,8 +171,8 @@ struct PlanAmountField: View {
         .frame(height: line)
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
-        .onChange(of: text) { _, new in
-          let shown = Self.shown(new)
+        .onChange(of: text) { old, new in
+          let shown = Self.shown(new, after: old)
           if shown != new { text = shown }
         }
     }
@@ -182,15 +182,19 @@ struct PlanAmountField: View {
 
   /// What the field shows for what was typed: the keypad's rules, grouped ("1,800",
   /// "318.5"); empty stays empty so the placeholder shows.
-  static func shown(_ typed: String) -> String {
-    let entry = AmountEntry(typing: typed.filter { $0 != "," })
-    return entry.isEmpty ? "" : entry.display
+  static func shown(_ typed: String, after previous: String,
+                    decimalSeparator: String = Locale.current.decimalSeparator ?? ".") -> String {
+    shown(AmountEntry(editing: typed, previous: previous, decimalSeparator: decimalSeparator))
+  }
+
+  private static func shown(_ entry: AmountEntry) -> String {
+    entry.isEmpty ? "" : entry.display
   }
 
   /// The field's text for an amount: "1,800" in the budget sheet (plan amounts are whole,
   /// page 06), "318.00" in Move money (`.exact`).
   static func text(for minor: Int64, style: MoneyStyle = .compact) -> String {
-    shown(MoneyFormat.string(max(0, minor), style: style))
+    shown(AmountEntry(typing: MoneyFormat.string(AmountEntry.clamped(minor), style: style)))
   }
 }
 

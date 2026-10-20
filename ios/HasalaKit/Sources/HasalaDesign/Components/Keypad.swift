@@ -8,8 +8,8 @@ public enum AmountKey: Sendable, Hashable {
   case delete
 }
 
-/// What has been typed on the amount keypad (page 11 · Behaviour). A pure value: Western
-/// digits, one decimal point, at most two decimals, leading zeros collapse ("007" is 7), at
+/// What has been typed on the amount keypad (page 11 · Behaviour). A pure value:
+/// digits of any script, one decimal point, at most two decimals, leading zeros collapse ("007" is 7), at
 /// most nine whole digits. Input that breaks a rule is ignored, so there is nothing to correct
 /// afterwards. The amount is integer fils (`minor`); the text is display only.
 public struct AmountEntry: Sendable, Hashable {
@@ -25,12 +25,29 @@ public struct AmountEntry: Sendable, Hashable {
   public init(typing text: String) {
     self.init()
     for ch in text {
-      if ch == "." {
+      if MoneyFormat.isPoint(ch) {
         type(.decimal)
-      } else if let d = ch.wholeNumberValue, ch.isASCII {
+      } else if let d = MoneyFormat.typedDigit(ch) {
         type(.digit(d))
       }
     }
+  }
+
+  public static let maxMinor: Int64 = 999_999_999_99
+
+  public static func clamped(_ minor: Int64) -> Int64 { min(max(0, minor), maxMinor) }
+
+  public init(editing typed: String, previous: String, decimalSeparator: String) {
+    let new = Array(typed)
+    let old = Array(previous)
+    let shared = min(new.count, old.count)
+    var head = 0
+    while head < shared, new[head] == old[head] { head += 1 }
+    var tail = 0
+    while tail < shared - head, new[new.count - 1 - tail] == old[old.count - 1 - tail] { tail += 1 }
+    let inserted = head..<(new.count - tail)
+    let commaIsPoint = decimalSeparator == ","
+    self.init(typing: String(new.indices.map { i in commaIsPoint && inserted.contains(i) && new[i] == "," ? "." : new[i] }))
   }
 
   /// An entry showing a saved amount: whole units when there are no fils ("25000"), two
