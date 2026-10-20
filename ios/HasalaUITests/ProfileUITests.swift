@@ -225,4 +225,101 @@ final class ProfileUITests: XCTestCase {
     attach(app, "AX3 · Accounts")
     try audit(app, atLargeText: true)
   }
+  @MainActor
+  private func flip(_ app: XCUIApplication, _ toggle: XCUIElement) {
+    let knob = toggle.switches.firstMatch
+    if knob.exists { knob.tap() } else { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap() }
+  }
+
+  @MainActor
+  private func merchantSuggestionsSwitch(_ app: XCUIApplication) -> XCUIElement {
+    let toggle = app.switches["profile.merchantSuggestions"].firstMatch
+    XCTAssertTrue(toggle.waitForExistence(timeout: uiWait), "Cloud suggestions is missing")
+    XCTAssertTrue(app.staticTexts["Cloud suggestions"].exists)
+    XCTAssertTrue(bringUp(app, toggle), "could not reach Merchant suggestions")
+    if toggle.value as? String == "1" {
+      flip(app, toggle)
+      XCTAssertTrue(toggle.waitForValue("0"))
+    }
+    return toggle
+  }
+
+  @MainActor
+  func testMerchantSuggestionsAskBeforeTurningOn() throws {
+    let app = launchHome()
+    openProfile(app)
+    let toggle = merchantSuggestionsSwitch(app)
+    XCTAssertEqual(toggle.value as? String, "0", "Merchant suggestions starts off")
+    let auto = app.switches["profile.merchantAutoSort"].firstMatch
+    XCTAssertTrue(auto.exists, "Sort automatically shows while Merchant suggestions is off")
+    XCTAssertFalse(auto.isEnabled, "Sort automatically waits for Merchant suggestions")
+    XCTAssertEqual(auto.value as? String, "0")
+    try audit(app)
+
+    flip(app, toggle)
+    let sheet = el(app, "merchantSuggestions.sheet")
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait), "turning it on asks first")
+    XCTAssertTrue(app.staticTexts["What's not sent"].exists)
+    attach(app, "Merchant suggestions · consent")
+    try audit(app, overSheet: true)
+    tap(app, "merchantSuggestions.notNow")
+    XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
+    XCTAssertEqual(toggle.value as? String, "0", "Not now keeps it off")
+
+    flip(app, toggle)
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
+    tap(app, "merchantSuggestions.turnOn")
+    XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(toggle.waitForValue("1"), "Turn on turns it on")
+    XCTAssertTrue(auto.isEnabled, "Sort automatically can be turned on now")
+    XCTAssertEqual(auto.value as? String, "0")
+    attach(app, "Merchant suggestions · on")
+
+    flip(app, auto)
+    let autoSheet = el(app, "merchantAutoSort.sheet")
+    XCTAssertTrue(autoSheet.waitForExistence(timeout: uiWait), "sorting automatically asks first")
+    XCTAssertTrue(app.staticTexts["Counted right away"].exists)
+    attach(app, "Sort automatically · consent")
+    try audit(app, overSheet: true)
+    tap(app, "merchantAutoSort.notNow")
+    XCTAssertTrue(autoSheet.waitForNonExistence(timeout: uiWait))
+    XCTAssertEqual(auto.value as? String, "0", "Not now keeps it off")
+
+    flip(app, auto)
+    XCTAssertTrue(autoSheet.waitForExistence(timeout: uiWait))
+    tap(app, "merchantAutoSort.turnOn")
+    XCTAssertTrue(autoSheet.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(auto.waitForValue("1"), "Turn on sorts automatically")
+    attach(app, "Sort automatically · on")
+
+    flip(app, auto)
+    XCTAssertTrue(auto.waitForValue("0"), "turning it off asks nothing")
+    XCTAssertFalse(autoSheet.exists)
+    flip(app, auto)
+    tap(app, "merchantAutoSort.turnOn")
+    XCTAssertTrue(auto.waitForValue("1"))
+
+    flip(app, toggle)
+    XCTAssertTrue(toggle.waitForValue("0"), "turning it off asks nothing")
+    XCTAssertFalse(sheet.exists)
+    XCTAssertTrue(auto.waitForValue("0"), "turning suggestions off turns sorting off")
+    XCTAssertFalse(auto.isEnabled)
+  }
+
+  @MainActor
+  func testMerchantSuggestionsAtTheLargestText() throws {
+    let app = launchHome(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    openProfile(app)
+    let toggle = merchantSuggestionsSwitch(app)
+    attach(app, "AX3 · Profile · Cloud suggestions")
+    try audit(app, atLargeText: true)
+    flip(app, toggle)
+    let sheet = el(app, "merchantSuggestions.sheet")
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
+    attach(app, "AX3 · Merchant suggestions · consent")
+    try audit(app, atLargeText: true, overSheet: true)
+    tap(app, "merchantSuggestions.notNow")
+    XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
+    XCTAssertEqual(toggle.value as? String, "0")
+  }
 }

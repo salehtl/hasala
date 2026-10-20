@@ -115,7 +115,7 @@ public enum MayaLedger {
         categoryID: "groceries", categorySource: .rule(pattern: "carrefour"),
         provenance: alert(enbd, "19:12", "CARREFOUR MALL OF EMIRATES")),
     Txn(id: "lulu", merchant: "Lulu Hypermarket", amount: .aed(214_30), postedAt: oct(9, 18, 42), accountID: "dib",
-        needsReview: true, isNewMerchant: true, suggestion: "groceries",
+        categorySource: .model(tag: "cf-clef/1"), needsReview: true, isNewMerchant: true, suggestion: "groceries",
         provenance: alert(dib, "18:42", "LULU HYPERMARKET DXB MARINA")),
     // Thursday 8 October.
     Txn(id: "vox", merchant: "VOX Cinemas", amount: .aed(95_00), postedAt: oct(8, 21, 10), accountID: "dib",
