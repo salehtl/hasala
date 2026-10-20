@@ -28,6 +28,8 @@
 	<string>$(HASALA_ENVIRONMENT)</string>
 	<key>HasalaAPIBaseURL</key>
 	<string>$(HASALA_API_BASE_URL)</string>
+	<key>HasalaAssistBaseURL</key>
+	<string>$(HASALA_ASSIST_BASE_URL)</string>
 	<key>HasalaGoogleClientID</key>
 	<string>$(HASALA_GOOGLE_IOS_CLIENT_ID)</string>
 	<key>HasalaGoogleRedirectScheme</key>

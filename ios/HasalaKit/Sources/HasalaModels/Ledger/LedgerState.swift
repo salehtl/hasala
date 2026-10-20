@@ -108,9 +108,24 @@ public enum Direction: String, Sendable, Hashable, Codable {
 public enum CategorySource: Sendable, Hashable, Codable {
   case rule(pattern: String)
   case dictionary
-  case model
+  case model(tag: String?)
   case user
   case manual
+
+  public static let cloudflareModelPrefix = "cf-clef/"
+  public static let appleModelPrefix = "apple-fm/"
+
+  public static func suggestionLabel(modelTag tag: String?, needsReview: Bool = true) -> String {
+    guard let tag else { return "Suggested on this iPhone" }
+    if tag.hasPrefix(cloudflareModelPrefix) { return needsReview ? "Suggested by Cloudflare AI" : "Sorted by Cloudflare AI" }
+    if tag.hasPrefix(appleModelPrefix) { return "Suggested on this iPhone" }
+    return "Suggested"
+  }
+
+  public func suggestionLabel(needsReview: Bool = true) -> String? {
+    if case .model(let tag) = self { return Self.suggestionLabel(modelTag: tag, needsReview: needsReview) }
+    return nil
+  }
 }
 
 /// The bank alert a transaction was read from (spec 04 §7; never the email itself).
@@ -220,6 +235,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var homeRateMicro: Int64?
   public var direction: Direction
   public var postedAt: LocalDateTime
+  public var postedTimeKnown: Bool
   public var accountID: AccountID?
   public var categoryID: CategoryID?
   public var categorySource: CategorySource?
@@ -247,10 +263,16 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
 
+  public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
+
+  public func joined(_ lead: String, _ tail: String?, separator: String = " · ") -> String {
+    tail.map { "\(lead)\(separator)\($0)" } ?? lead
+  }
+
   public init(
     id: TxnID, merchant: String, place: String? = nil, amount: Money, homeMinor: Int64?? = nil,
     homeSource: HomeSource?? = nil, homeRateMicro: Int64? = nil, direction: Direction = .out,
-    postedAt: LocalDateTime, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
+    postedAt: LocalDateTime, postedTimeKnown: Bool = true, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
     isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
@@ -268,6 +290,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.homeRateMicro = self.homeSource == .rate ? homeRateMicro : nil
     self.direction = direction
     self.postedAt = postedAt
+    self.postedTimeKnown = postedTimeKnown
     self.accountID = accountID
     self.categoryID = categoryID
     self.categorySource = categorySource

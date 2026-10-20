@@ -223,6 +223,8 @@ final class CoreScreensTests: XCTestCase {
     let merchant = element(app, "review.merchant")
     XCTAssertTrue(merchant.waitForLabel(containing: "Lulu Hypermarket"), merchant.debugDescription)
     XCTAssertEqual(element(app, "review.position").label, "1 of 6")
+    XCTAssertTrue(merchant.label.contains("Looks like Groceries. Suggested by Cloudflare AI."), merchant.label)
+    attach(app, "Review · Cloudflare suggestion")
 
     // Drag left: Want asks which one; closing the sheet sorts nothing.
     drag(app, to: CGVector(dx: 0.02, dy: 0.5))

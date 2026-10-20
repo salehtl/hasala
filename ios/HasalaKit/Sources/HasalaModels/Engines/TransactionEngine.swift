@@ -72,7 +72,7 @@ public enum TransactionEngine {
   public static func detail(_ id: TxnID, _ s: LedgerState, now: LocalDateTime) -> TransactionDetail? {
     guard let t = s.txn(id) else { return nil }
     let c = s.category(t.categoryID)
-    var meta = "\(t.postedAt.date.short), \(t.postedAt.time)"
+    var meta = t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
 
     var pace: EmbeddedPace?
@@ -97,7 +97,9 @@ public enum TransactionEngine {
     switch t.categorySource {
     case .rule(let pattern): sortedBy = SortedBy(title: "Sorted by your rule", detail: "\(pattern) → \(c?.name ?? "")")
     case .dictionary: sortedBy = SortedBy(title: "Sorted by Hasala's merchant list", detail: "\(t.merchant) → \(c?.name ?? "")")
-    case .model: sortedBy = SortedBy(title: "Suggested on this iPhone", detail: "\(t.merchant) → \(c?.name ?? "")")
+    case .model(let tag):
+      let suggested = c ?? s.category(t.reviewSuggestion)
+      sortedBy = SortedBy(title: CategorySource.suggestionLabel(modelTag: tag, needsReview: t.needsReview), detail: "\(t.merchant) → \(suggested?.name ?? "")")
     case .user: sortedBy = SortedBy(title: "Sorted by you", detail: c?.name ?? "")
     case .manual: sortedBy = SortedBy(title: "Added by you", detail: c?.name ?? "")
     case nil: sortedBy = nil

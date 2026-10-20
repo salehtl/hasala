@@ -184,6 +184,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var spokenWhen: String
   /// "Looks like Groceries".
   public var suggestion: CategoryOption?
+  public var suggestedBy: String? = nil
   public var copyLine: String? = nil
   public var samePurchase: Bool = false
 }
@@ -254,7 +255,9 @@ extension Txn {
   }
 
   public var reviewSuggestion: CategoryID? {
-    suggestion ?? (categorySource == .model ? categoryID : nil)
+    if let suggestion { return suggestion }
+    if case .model = categorySource { return categoryID }
+    return nil
   }
 }
 
@@ -282,7 +285,7 @@ public enum ReviewEngine {
 
   public static func card(_ t: Txn, _ s: LedgerState) -> ReviewCardModel {
     let verb = t.direction == .in ? "Received" : "Spent"
-    var meta = "\(verb) · \(t.postedAt.date.short), \(t.postedAt.time)"
+    var meta = "\(verb) · " + t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
     let d = t.postedAt.date
     let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
@@ -293,6 +296,7 @@ public enum ReviewEngine {
       suggestion: s.category(t.reviewSuggestion).map(CategoryOption.init)
     )
     card.copyLine = copyLine(t, s) ?? samePurchaseLine(t, s)
+    if card.suggestion != nil { card.suggestedBy = t.categorySource?.suggestionLabel(needsReview: t.needsReview) }
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     return card
   }
