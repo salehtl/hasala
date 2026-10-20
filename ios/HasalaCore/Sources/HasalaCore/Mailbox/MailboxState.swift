@@ -145,6 +145,8 @@ public protocol MailboxPersistence: Sendable {
   func setAsideRecords() async throws(MailboxPersistenceError) -> [SetAsideRecord]
   func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord]
   func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow]
+  func senderAddresses() async throws(MailboxPersistenceError) -> [String]
+  func addSenderAddress(_ address: String) async throws(MailboxPersistenceError)
 }
 
 /// The reference `MailboxPersistence`: the semantics a GRDB implementation must keep, in memory.
@@ -164,7 +166,15 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public static let setAsideRing = 200
   public static let unreadableRing = 1_000
 
+  public private(set) var addresses: [String] = []
+
   public init(state: MailboxState = MailboxState()) { self.state = state }
+
+  public func senderAddresses() async throws(MailboxPersistenceError) -> [String] { addresses }
+
+  public func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) {
+    if !addresses.contains(where: { $0.lowercased() == address.lowercased() }) { addresses.append(address) }
+  }
 
   public func setFailNextCommit(_ v: Bool) { failNextCommit = v }
 

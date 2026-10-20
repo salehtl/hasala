@@ -30,6 +30,7 @@ struct BankAlertsPage: View {
   @State private var changingBanks = false
   @State private var requestingBank = false
   @State private var bankRequests: [RequestedBank] = []
+  @State private var addingSender: UnlistedSender?
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.hMotion) private var motion
 
@@ -57,6 +58,7 @@ struct BankAlertsPage: View {
         heroCard(hero)
         mailboxesSection
         banksSection
+        unlistedSection
         needsALook
         howItReads
       }
@@ -80,6 +82,11 @@ struct BankAlertsPage: View {
     }
     .sheet(isPresented: $requestingBank, onDismiss: { Task { await loadBankRequests() } }) {
       RequestBankSheet(setup: session?.services.setup, prober: lane as? OtherBankProbing) { _ in app.say("Request sent") }
+    }
+    .sheet(item: $addingSender) { sender in
+      if let adder = lane as? SenderAddressAdding {
+        AddSenderAddressSheet(domain: sender.domain, adder: adder) { app.say("Hasala now reads \($0)") }
+      }
     }
     .task { await loadBankRequests() }
     .onChange(of: mailboxes.map(\.id)) { _, ids in noteRows(ids) }
@@ -438,6 +445,51 @@ struct BankAlertsPage: View {
   static func bankDetail(_ bank: SupportedBank, lastEmail: String?, checking: Bool) -> String {
     let when = lastEmail.map { "Last email \($0)" } ?? (checking ? "Checking now" : "No alerts read yet")
     return bank == .dib ? "\(when) · Arabic alerts" : when
+  }
+
+  // MARK: Not read on Outlook
+
+  struct UnlistedSender: Identifiable, Hashable {
+    let domain: String
+    var id: String { domain }
+  }
+
+  static let unlistedDetail = "Not read on Outlook. Add the address it sends from."
+
+  @ViewBuilder private var unlistedSection: some View {
+    let domains = (lane as? SenderAddressAdding)?.unlistedSenders ?? []
+    if !domains.isEmpty {
+      VStack(alignment: .leading, spacing: 12) {
+        HSectionHeader("Not read on Outlook")
+        HListCard {
+          ForEach(Array(domains.enumerated()), id: \.element) { i, domain in
+            if i > 0 { HDivider(inset: .disc68) }
+            Button { addingSender = UnlistedSender(domain: domain) } label: { unlistedRow(domain) }
+              .buttonStyle(HRowPressStyle())
+              .accessibilityIdentifier("bankAlerts.unlisted.\(domain)")
+          }
+        }
+      }
+    }
+  }
+
+  private func unlistedRow(_ domain: String) -> some View {
+    HStack(spacing: HSpacing.listRowGap) {
+      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
+        .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+      VStack(alignment: .leading, spacing: 2) {
+        Text(domain).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+        Text(Self.unlistedDetail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, HSpacing.listRowInsetBlock)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .combine)
   }
 
   // MARK: Needs a look

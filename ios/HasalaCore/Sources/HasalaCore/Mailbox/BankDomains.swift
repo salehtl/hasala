@@ -96,7 +96,7 @@ public enum BankDomains {
   }
 
   public enum TypedDomainError: Error, Sendable, Equatable {
-    case empty, notQuerySafe, forwarder, sharedSuffix, nonASCII
+    case empty, notQuerySafe, forwarder, sharedSuffix, nonASCII, addressRequired
   }
 
   /// "Add a sender": a typed domain or address, normalized (trim, ASCII lower-case, one trailing
@@ -113,5 +113,16 @@ public enum BankDomains {
     if ForwarderDomains.contains(s) { throw .forwarder }
     if sharedSuffixesV1.contains(s) { throw .sharedSuffix }
     return s
+  }
+
+  public static func normalizeTypedAddress(_ typed: String) throws(TypedDomainError) -> String {
+    let s = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+    if s.unicodeScalars.contains(where: { !$0.isASCII }) { throw .nonASCII }
+    if s.isEmpty { throw .empty }
+    guard let at = s.lastIndex(of: "@"), at != s.startIndex else { throw .addressRequired }
+    let domain = try normalizeTyped(String(s[s.index(after: at)...]))
+    let address = String(s[..<at]) + "@" + domain
+    guard OutlookSenders.isQuerySafe(address) else { throw .notQuerySafe }
+    return address
   }
 }

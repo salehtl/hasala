@@ -177,6 +177,10 @@ enum LedgerSchema {
     "CREATE INDEX fm_cache_expires ON fm_cache (expires_at_ms)",
   ]
 
+  static let mailboxSenderAddress: [String] = [
+    "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID"
+  ]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
@@ -184,6 +188,9 @@ enum LedgerSchema {
     }
     m.registerMigration("fm_cache") { db in
       for sql in fmCache { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_sender_address") { db in
+      for sql in mailboxSenderAddress { try db.execute(sql: sql) }
     }
     return m
   }

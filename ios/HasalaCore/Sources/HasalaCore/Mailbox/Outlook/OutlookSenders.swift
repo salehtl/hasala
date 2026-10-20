@@ -15,6 +15,10 @@ public enum OutlookSenders {
     return out
   }
 
+  public static func unlisted(_ domains: [String], known: [String] = known) -> [String] {
+    domains.filter { d in addresses(for: [d], known: known).isEmpty }
+  }
+
   public static func isQuerySafe(_ address: String) -> Bool {
     let parts = address.split(separator: "@", omittingEmptySubsequences: false)
     guard parts.count == 2, !parts[0].isEmpty, parts[0].count <= 64, address.utf8.count <= 120 else { return false }

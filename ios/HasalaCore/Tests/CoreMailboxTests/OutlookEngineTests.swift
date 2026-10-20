@@ -5,6 +5,7 @@ import CoreJSON
 import CoreMail
 import CoreMailbox
 import CorePrimitives
+import CoreStore
 import CoreTestSupport
 import Foundation
 import Testing
@@ -598,5 +599,76 @@ import Testing
       #expect(report.phase == .unlinked && report.ops == 0)
     }
     #expect(rig.graph.graphRequests.count == reads)
+  }
+}
+
+@Suite struct OutlookTypedSenderTests {
+  static let day: Int64 = 86_400_000
+  let t0 = OutlookRig.t0
+
+  @Test func aTypedAddressKeepsItsLocalPartAndLowerCasesItsDomain() throws {
+    #expect(try BankDomains.normalizeTypedAddress("  Alerts@NewBank.Example. ") == "Alerts@newbank.example")
+    #expect(throws: BankDomains.TypedDomainError.addressRequired) { try BankDomains.normalizeTypedAddress("newbank.example") }
+    #expect(throws: BankDomains.TypedDomainError.addressRequired) { try BankDomains.normalizeTypedAddress("@newbank.example") }
+    #expect(throws: BankDomains.TypedDomainError.forwarder) { try BankDomains.normalizeTypedAddress("me@gmail.com") }
+    #expect(throws: BankDomains.TypedDomainError.notQuerySafe) { try BankDomains.normalizeTypedAddress("a'b@newbank.example") }
+    #expect(throws: BankDomains.TypedDomainError.empty) { try BankDomains.normalizeTypedAddress("  ") }
+  }
+
+  @Test func aBareDomainIsRefusedOnOutlookAndNothingIsTrusted() async {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    guard case .failure(let e) = await rig.engine.importSender("newbank.example") else {
+      Issue.record("bare domain accepted")
+      return
+    }
+    #expect(e == .addressRequired)
+    #expect(await rig.ledger.authoredTrust.isEmpty)
+    #expect(((try? await rig.store.senderAddresses()) ?? []).isEmpty)
+  }
+
+  @Test func aTrustedDomainWithNoAddressIsReportedUntilOneIsAdded() async throws {
+    let rig = OutlookRig()
+    await rig.ledger.setTrust(["dib.ae": true, "newbank.example": true])
+    await rig.connectAndActivate()
+    #expect(await rig.engine.status().unlisted == ["newbank.example"])
+    rig.graph.add(SyntheticOutlookMail.lookAlike(id: "AAkALgAA-nb1", dateMs: t0 - 3 * Self.day, address: "alerts@newbank.example"))
+    let r = try await rig.engine.importSender("alerts@NewBank.example").get()
+    #expect(r.listed == 1 && r.completed)
+    #expect(rig.accounted("AAkALgAA-nb1") != nil)
+    #expect(try await rig.store.senderAddresses() == ["alerts@newbank.example"])
+    #expect(await rig.ledger.authoredTrust.map(\.0) == ["newbank.example"])
+    #expect(await rig.engine.status().unlisted.isEmpty)
+    let f = try #require(rig.listRequests.last?.query.first { $0.0 == "$filter" }?.1)
+    #expect(f.contains("from/emailAddress/address eq 'alerts@newbank.example'"))
+  }
+
+  @Test func everyCycleListsTheTypedAddresses() async throws {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    _ = try await rig.engine.importSender("alerts@newbank.example").get()
+    rig.clock.advance(60_000)
+    rig.graph.add(SyntheticOutlookMail.lookAlike(id: "AAkALgAA-nb2", dateMs: rig.clock.nowMs() - 1_000, address: "alerts@newbank.example"))
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.completed)
+    #expect(rig.accounted("AAkALgAA-nb2") != nil)
+  }
+
+  @Test func theAddressesStayOnThisIPhoneAndDeduplicateInAnyCase() async throws {
+    let tables = try MailboxTableStore.inMemory()
+    let store = LedgerMailboxPersistence(tables: tables, author: { _, _ in [] }, nowMs: { 1 })
+    try await store.addSenderAddress("Alerts@newbank.example")
+    try await store.addSenderAddress("alerts@newbank.example")
+    try await store.addSenderAddress("notice@other.example")
+    #expect(try await store.senderAddresses() == ["Alerts@newbank.example", "notice@other.example"])
+    var wipe = MailboxCommit()
+    wipe.clearAll = true
+    try await store.commit(wipe)
+    #expect(try await store.senderAddresses().count == 2)
+  }
+
+  @Test func onlyDomainsWithNoAddressAreUnlisted() {
+    #expect(OutlookSenders.unlisted(["dib.ae", "adib.ae", "emiratesnbd.com", "newbank.example"]) == ["newbank.example"])
+    #expect(OutlookSenders.unlisted(["newbank.example"], known: ["a@alerts.newbank.example"]).isEmpty)
   }
 }
