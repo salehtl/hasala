@@ -312,6 +312,20 @@ public struct GraphClient: Sendable {
     return MailRawMessage(id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received)
   }
 
+  public func messageValue(id: String) async throws(MailAPIError) -> Data {
+    let res = try await call(.get, url(path(id) + "/$value"), json: false, op: "raw")
+    guard !res.body.isEmpty else { throw .status(res.status, op: "raw") }
+    return res.body
+  }
+
+  public func messageHeaderList(id: String) async throws(MailAPIError) -> [(name: String, value: String)] {
+    let o = try await object(.get, url(path(id), [("$select", "internetMessageHeaders")]), op: "headers")
+    return (o["internetMessageHeaders"]?.arrayValue ?? []).compactMap { h in
+      guard let n = h["name"]?.stringValue, let v = h["value"]?.stringValue else { return nil }
+      return (n, v)
+    }
+  }
+
   // MARK: Subscriptions (§6)
 
   func subscriptionBody(_ notificationURL: String, _ lifecycleURL: String, clientState: String, expiresAtMs: Int64)

@@ -1183,6 +1183,8 @@ public actor MailboxEngine {
     return provider.unlisted(trusted, senderAddresses: (try? await store.senderAddresses()) ?? [])
   }
 
+  public func senderAddresses() async -> [String] { (try? await store.senderAddresses()) ?? [] }
+
   // MARK: - Internals
 
   func source(_ token: AccessToken) -> any MailSource { provider.source(accessToken: token) }
