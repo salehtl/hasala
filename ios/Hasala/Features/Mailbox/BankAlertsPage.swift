@@ -23,6 +23,7 @@ struct BankAlertsPage: View {
   @State private var visible = false
   /// The hero's sign-in again, while it runs or after it failed.
   @State private var signIn: MailConnectCoordinator?
+  @State private var retrying = false
   /// Each mailbox connected or read again, counted once its motion settles (the success
   /// haptic's trigger: a count, so the same mailbox twice plays twice).
   @State private var successes = 0
@@ -99,6 +100,7 @@ struct BankAlertsPage: View {
 
     let kind: Kind
     let detail: String
+    let stoppedID: String?
 
     init(
       summary: MailboxesSummary, health: MailboxHealth, mailboxes: [MailboxSnapshot], offer: MailOffer?,
@@ -122,6 +124,8 @@ struct BankAlertsPage: View {
       } else {
         kind = .working
       }
+      stoppedID = kind == .needsYou && health.status == .reconnect
+        ? (live.first { $0.note != nil && !$0.readElsewhere } ?? live.first { !$0.readElsewhere })?.id : nil
       switch kind {
       case .notConnected:
         detail = "Add a mailbox so Hasala can read your bank alerts."
@@ -216,6 +220,12 @@ struct BankAlertsPage: View {
             .hTransition(.rise)
         }
       }
+      if let id = hero.stoppedID, lane?.capabilities.contains(.tryAgain) == true {
+        Button("Try again") { tryAgain(id) }
+          .buttonStyle(.pill(.primary, size: .large, fill: true, loading: retrying))
+          .disabled(retrying)
+          .accessibilityIdentifier("bankAlerts.tryAgain")
+      }
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -223,6 +233,15 @@ struct BankAlertsPage: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bankAlerts.hero")
     .mailSwitchQuestion(signIn)
+  }
+
+  private func tryAgain(_ id: String) {
+    guard let lane, !retrying else { return }
+    retrying = true
+    Task {
+      await lane.tryAgain(id)
+      retrying = false
+    }
   }
 
   /// The provider's sign-in for that mailbox, from here (no read-only screen: the person

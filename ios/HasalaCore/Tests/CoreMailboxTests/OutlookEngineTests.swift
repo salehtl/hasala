@@ -31,6 +31,22 @@ import Testing
     #expect(await rig.state().phase == .unlinked)
   }
 
+  @Test(arguments: [401, 403]) func aDeniedInboxCheckIsRefusedBeforeTheLink(status: Int) async throws {
+    let rig = OutlookRig()
+    rig.graph.fail("/me/mailFolders/inbox", with: [status], code: "ErrorAccessDenied")
+    #expect(await rig.connect() == .failed(.permissionMissing))
+    #expect(await rig.server.linkedProviders.isEmpty)
+    #expect(try rig.keychain.read() == nil && rig.link.read() == nil)
+    #expect(await rig.state().phase == .unlinked)
+  }
+
+  @Test func anotherInboxCheckFailureStillLinks() async {
+    let rig = OutlookRig()
+    rig.graph.fail("/me/mailFolders/inbox", with: [500])
+    #expect(await rig.connect() == .connected(address: "synthetic.user@outlook.example"))
+    #expect(await rig.server.linkedProviders == [.outlook])
+  }
+
   @Test func missingMailReadIsReported() async throws {
     let rig = OutlookRig()
     rig.graph.omitMailScope = true

@@ -29,6 +29,22 @@ let day: Int64 = 86_400_000
     #expect(s.profileHistoryID == "1000")
   }
 
+  @Test func aDeniedProfileCheckIsRefusedBeforeTheLink() async throws {
+    let rig = Rig()
+    rig.gmail.fail("/gmail/v1/users/me/profile", with: [403], reason: "insufficientPermissions")
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) == .failed(.permissionMissing))
+    #expect(await rig.server.linkedProviders.isEmpty)
+    #expect(try rig.keychain.read() == nil)
+    #expect(await rig.state().phase == .unlinked)
+  }
+
+  @Test func aRateLimitedProfileCheckStillLinks() async {
+    let rig = Rig()
+    rig.gmail.fail("/gmail/v1/users/me/profile", with: [403], reason: "userRateLimitExceeded")
+    #expect(await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90) != .failed(.permissionMissing))
+    #expect(await rig.server.linkedProviders.isEmpty == false)
+  }
+
   @Test func anAccountWithoutGmailIsRefusedBeforeTheLink() async throws {
     let rig = Rig()
     rig.gmail.noMailbox = true

@@ -417,9 +417,9 @@ public actor MailboxEngine {
       return .failed(.noMailbox)
     } catch .offline {
       return .failed(.offline)
-    } catch {
-      // Any other answer is the cycle's to handle (it halts with a reason the user sees).
-    }
+    } catch where error.status == 401 || error.status == 403 {
+      return .failed(.permissionMissing)
+    } catch {}
     let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
     if let stored, Self.identityUnknown(linked: stored.address, signedIn: claims.email) {
       return .failed(.permissionMissing)

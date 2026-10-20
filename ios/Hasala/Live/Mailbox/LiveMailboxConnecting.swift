@@ -56,7 +56,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// revoke and the server's link delete; plan D.1 risk 8). It ships only after one run on
   /// QA with the owner, with a passkey account and with a password-only one; if either
   /// fails, take `.disconnect` out of this set and the button goes from every surface.
-  var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect, .replace] }
+  var capabilities: MailboxCapabilities { [.connect, .signInAgain, .disconnect, .replace, .tryAgain] }
 
   /// The provider of the account's link, known from this iPhone's memory (or the grant it
   /// holds) before the lane's status is read; nil once the status says unlinked.
@@ -272,7 +272,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     case .halted:
       // A full account or missing templates aren't fixed by a new Google sign-in.
       switch halt {
-      case nil, .gmail?, .reconnectRequired?, .noMailbox?: return signInAgain
+      case .reconnectRequired?, .noMailbox?: return signInAgain
       default: return nil
       }
     // The first import runs on its own (Profile says "Importing").
@@ -424,6 +424,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     guard await linkState() == .scanning else { return linked }
     Task { for await _ in firstScan() {} }
     return linked
+  }
+
+  func tryAgain(_ mailboxID: String) async {
+    await runtime()?.retryMailbox()
   }
 
   /// CoreMailbox's disconnect: the `mailbox.unlink` step-up, the watch or subscription

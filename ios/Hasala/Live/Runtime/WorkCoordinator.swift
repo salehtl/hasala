@@ -30,13 +30,13 @@ actor WorkCoordinator {
     /// `refresh` is pull to refresh: a foreground run the person asked for, so it skips
     /// the once-a-minute spacing and the Gmail cycle lists even when the mailbox's history
     /// hasn't moved.
-    case launch, foreground, refresh, authored, silentPush, bgRefresh, bgProcessing
+    case launch, foreground, refresh, retryMail, authored, silentPush, bgRefresh, bgProcessing
 
     var sync: SyncTrigger {
       switch self {
       case .launch: .launch
       case .foreground: .foreground
-      case .refresh: .refresh
+      case .refresh, .retryMail: .refresh
       case .authored: .authored
       case .silentPush: .silentPush
       case .bgRefresh: .bgRefresh
@@ -50,6 +50,7 @@ actor WorkCoordinator {
       case .launch: .launch
       case .foreground: .foreground
       case .refresh: .refresh
+      case .retryMail: .retry
       case .authored: nil
       case .silentPush: .silentPush
       case .bgRefresh: .appRefresh
@@ -58,7 +59,13 @@ actor WorkCoordinator {
     }
 
     /// A rerun keeps the strongest trigger: anything that reads mail beats `authored`.
-    var strength: Int { self == .authored ? 0 : 1 }
+    var strength: Int {
+      switch self {
+      case .authored: 0
+      case .retryMail: 2
+      default: 1
+      }
+    }
   }
 
   nonisolated struct Outcome: Sendable, Equatable {
