@@ -568,3 +568,24 @@ func TestReadLogGeneration(t *testing.T) {
 		t.Fatalf("HASALA_LOG_GENERATION_FILE was not applied: %q", c.Server.LogGenerationFile)
 	}
 }
+
+func TestTurnstile(t *testing.T) {
+	wantErr(t, env{"HASALA_TURNSTILE_REQUIRED": "true"}, "HASALA_TURNSTILE_SECRET_FILE")
+	wantErr(t, env{"HASALA_TURNSTILE_REQUIRED": "maybe"}, "not a boolean")
+	wantErr(t, env{"HASALA_TURNSTILE_SECRET_FILE": secretFile(t, 0o644)}, "HASALA_TURNSTILE_SECRET_FILE")
+	wantErr(t, env{"HASALA_TURNSTILE_HOSTNAMES": "https://hasala.app"}, "HASALA_TURNSTILE_HOSTNAMES")
+	c := mustLoad(t, env{"HASALA_TURNSTILE_REQUIRED": "true", "HASALA_TURNSTILE_SECRET_FILE": secretFile(t, 0o600),
+		"HASALA_TURNSTILE_HOSTNAMES": "hasala.app"})
+	if !c.Web.TurnstileRequired || c.Web.TurnstileSecretFile == "" || len(c.Web.TurnstileHostnames) != 1 {
+		t.Fatalf("turnstile not applied: %+v", c.Web)
+	}
+}
+
+func TestUnknownEnvironment(t *testing.T) {
+	got := UnknownEnvironment([]string{"HASALA_PG_DSN=x", "HASALA_TURNSTILE_REQUIRED=true", "HASALA_CONFIG=x",
+		"HASALA_ADMIN_ACTOR=x", "HASALA_CONSOLE_LISTEN=x", "PATH=/bin", "HASALA_TURNSTYLE_REQUIRED=true",
+		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_TURNSTYLE_REQUIRED=false"})
+	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER_PATH,HASALA_TURNSTYLE_REQUIRED" {
+		t.Fatalf("unknown: %v", got)
+	}
+}
