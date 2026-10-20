@@ -189,4 +189,29 @@ struct AppModelTests {
     #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
     #expect(ReviewTabView.countLine(0) == "All caught up")
   }
+
+  @Test func editsMadeAsOneGestureAreAllTakenBack() {
+    let store = InMemoryLedger(state: Scenario.mayaCopy.state)
+    let app = AppModel(store: store)
+    #expect(app.perform([.resolveCopy("starbucks-copy", merge: false),
+                         .categorize("starbucks-copy", "groceries", learnRule: false, project: nil)]))
+    #expect(app.toast?.title == "Sorted into Groceries")
+    #expect(app.toast?.earlier.count == 1)
+    app.toastAction()
+    #expect(store.state.txn("starbucks-copy")?.isHeldCopy == true)
+    #expect(store.state.txn("starbucks-copy")?.categoryID == Scenario.mayaCopy.state.txn("starbucks-copy")?.categoryID)
+  }
+
+  @Test func aFailedWriteSaysSo() {
+    let app = AppModel(store: InMemoryLedger())
+    app.writeFailed()
+    #expect(app.toast?.title == "That change didn't save")
+    #expect(app.toast?.undo == nil)
+  }
+
+  @Test func theSnapshotCoverIsUpOnlyInTheBackground() {
+    #expect(SnapshotCover.covers(.background))
+    #expect(!SnapshotCover.covers(.active))
+    #expect(!SnapshotCover.covers(.inactive))
+  }
 }

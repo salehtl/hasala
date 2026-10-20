@@ -303,6 +303,7 @@ public final class InMemoryLedger: LedgerStore {
     field(\.archived)
     field(\.homeMinor)
     field(\.samePurchase)
+    field(\.heldCopy)
   }
 
   /// Element by element: an element still as the edit left it goes back to how it was

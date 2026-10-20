@@ -46,6 +46,17 @@ struct LiveGateTests {
     #expect(BootController.mailboxFact(.active) == .linked)
   }
 
+  @Test func theSilentPushBudgetCountsFromTheHandlerStart() {
+    let start = ContinuousClock.now
+    let total = AppDelegate.silentPushBudget
+    #expect(total == .seconds(25))
+    #expect(AppDelegate.remainingBudget(total, from: start, now: start) == .seconds(25))
+    #expect(AppDelegate.remainingBudget(total, from: start, now: start.advanced(by: .seconds(10))) == .seconds(15))
+    #expect(AppDelegate.remainingBudget(total, from: start, now: start.advanced(by: .milliseconds(24_500))) == .milliseconds(500))
+    #expect(AppDelegate.remainingBudget(total, from: start, now: start.advanced(by: .seconds(25))) == .zero)
+    #expect(AppDelegate.remainingBudget(total, from: start, now: start.advanced(by: .seconds(40))) == .zero)
+  }
+
   // MARK: UserDefaults (§4.5: no identifier but installID)
 
   static func defaults() -> UserDefaults {

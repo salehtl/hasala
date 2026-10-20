@@ -84,6 +84,11 @@ struct PhraseEntryState: Equatable {
     return out
   }
 
+  /// What each cell draws: the words, or dots in place of each word while masked.
+  func drawn(masked: Bool) -> [String] {
+    masked ? words.map { _ in "•••••" } : words
+  }
+
   /// The text with the active word replaced by `word`, moving on to the next cell.
   func completing(with word: String) -> String {
     var ws = words
@@ -121,8 +126,12 @@ struct PhraseEntryGrid: View {
 
   @Environment(\.dynamicTypeSize) private var typeSize
   @Environment(\.phraseEntryCompact) private var compact
+  @Environment(\.scenePhase) private var scenePhase
+  @State private var captured = screenIsCaptured()
+  @State private var screenshotWarning = false
 
   private var state: PhraseEntryState { PhraseEntryState(text) }
+  private var masked: Bool { captured || scenePhase != .active }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -135,13 +144,33 @@ struct PhraseEntryGrid: View {
       .contentShape(Rectangle())
       .onTapGesture { focused.wrappedValue = true }
       .environment(\.layoutDirection, .leftToRight)
+      if captured {
+        Text("Your words stay hidden. \(PhraseGrid.maskedNote)")
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("phraseEntry.masked")
+      }
+      if screenshotWarning {
+        FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
+      }
       if let unknown = state.unknownIndex {
         FieldErrorLine(text: "Word \(unknown + 1) isn't on the recovery list. Check the spelling on your paper.")
           .accessibilityIdentifier("phraseEntry.unknown")
       }
       helper
     }
-    .onAppear { focused.wrappedValue = true }
+    .privacySensitive()
+    .onAppear {
+      focused.wrappedValue = true
+      captured = screenIsCaptured()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
+      captured = screenIsCaptured()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+      screenshotWarning = !text.isEmpty && !captured
+    }
     .task {
       for _ in 0..<12 {
         try? await Task.sleep(for: .milliseconds(250))
@@ -186,7 +215,7 @@ struct PhraseEntryGrid: View {
   private var cells: some View {
     let columns = typeSize.isAccessibilitySize ? 1 : 2
     let perColumn = PhraseEntryState.wordCount / columns
-    let words = state.words
+    let words = state.drawn(masked: masked)
     return HStack(alignment: .top, spacing: 8) {
       ForEach(0..<columns, id: \.self) { c in
         VStack(spacing: compact ? 4 : 6) {

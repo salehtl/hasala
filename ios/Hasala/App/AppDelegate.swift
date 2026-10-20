@@ -30,9 +30,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async
     -> UIBackgroundFetchResult
   {
+    let start = ContinuousClock.now
     guard let coordinator = await AppGraph.boot?.openedRuntime()?.coordinator else { return .noData }
-    let out = await coordinator.run(.silentPush, budget: .seconds(25))
+    let budget = Self.remainingBudget(Self.silentPushBudget, from: start, now: .now)
+    guard budget > .zero else { return .noData }
+    let out = await coordinator.run(.silentPush, budget: budget)
     if out.failed { return .failed }
     return out.newData ? .newData : .noData
+  }
+
+  static let silentPushBudget: Duration = .seconds(25)
+
+  static func remainingBudget(_ total: Duration, from start: ContinuousClock.Instant, now: ContinuousClock.Instant)
+    -> Duration
+  {
+    max(.zero, total - start.duration(to: now))
   }
 }

@@ -266,6 +266,7 @@ final class BootController {
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
       let app = AppModel(store: rt.store, mailbox: self.services.mailbox, layouts: layouts)
+      rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app

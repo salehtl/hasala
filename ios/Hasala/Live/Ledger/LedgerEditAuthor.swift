@@ -38,6 +38,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case projectState(project: String, status: String, completedOn: String?, countInPlan: Bool)
     case samePurchase(foreign: String, previousHome: Int64, home: String, previousNote: String)
     case samePurchaseDeclined(home: String)
+    case copyReopened(txn: String)
   }
 
   enum Failure: Error, Equatable {
@@ -215,7 +216,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
-      case .samePurchase(let t, _, _, _), .samePurchaseDeclined(let t): rows[t] = try txn(t)
+      case .samePurchase(let t, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       default: break
       }
     }
@@ -261,6 +262,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .samePurchaseDeclined(let home):
           guard let row = rows[home] else { continue }
           a.undoDeclineSamePurchase(homeID: home, homeVersion: row.version)
+        case .copyReopened(let t):
+          guard let row = rows[t], let other = row.copyOf else { continue }
+          a.resolveCopy(txnID: t, parentVersion: row.version, otherTxnID: other, decision: nil)
         }
       }
     }
