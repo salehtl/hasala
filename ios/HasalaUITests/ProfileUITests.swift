@@ -188,6 +188,43 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "accounts.row.sarwa").label.contains("Net worth only"))
   }
 
+  @MainActor
+  func testExchangeRatesFromTheProfile() throws {
+    let app = launchHome()
+    openProfile(app)
+    tap(app, "profile.currency")
+    let usd = el(app, "rates.USD")
+    XCTAssertTrue(usd.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(usd.value as? String, "3.6725")
+    XCTAssertTrue(usd.label.contains("Pegged rate"), usd.label)
+    try audit(app)
+    attach(app, "Exchange rates")
+
+    tap(app, "rates.add")
+    XCTAssertTrue(el(app, "rate.code").waitForExistence(timeout: uiWait))
+    el(app, "rate.code").typeText("sar")
+    tap(app, "rate.usePeg")
+    XCTAssertEqual(el(app, "rate.value").value as? String, "0.979333")
+    try audit(app)
+    attach(app, "Add a currency")
+    tap(app, "rate.save")
+    let sar = el(app, "rates.SAR")
+    XCTAssertTrue(sar.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(sar.value as? String, "0.979333")
+
+    tap(app, "rates.SAR")
+    tap(app, "rate.remove")
+    XCTAssertTrue(el(app, "rates.SAR").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "rates.SAR").label.contains("No rate"), el(app, "rates.SAR").label)
+
+    tap(app, "rates.add")
+    el(app, "rate.code").typeText("AED")
+    el(app, "rate.value").tap()
+    el(app, "rate.value").typeText("1")
+    tap(app, "rate.save")
+    XCTAssertTrue(el(app, "rate.error").waitForExistence(timeout: uiWait))
+  }
+
   /// Profile, Bills, one bill and Accounts at `.accessibility3` (spec 04 §17).
   @MainActor
   func testProfileAtLargeTextSizes() throws {

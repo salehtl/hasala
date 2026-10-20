@@ -377,7 +377,7 @@ in
           machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
 
       with subtest("AT-V9: hasala-admin runs each mode in a sandbox, as root only"):
-          for mode in ["invite", "account", "email", "purge-user", "verify", "version", "migrate"]:
+          for mode in ["invite", "waitlist", "account", "email", "purge-user", "verify", "version", "migrate"]:
               machine.succeed(f"hasala-admin {mode} --help")
           machine.succeed("hasala-admin version | grep '^hasalad ' >/dev/null")
           code = machine.succeed("hasala-admin invite mint --note vm-note-text 2>/dev/null").strip()
@@ -402,12 +402,36 @@ in
           assert machine.succeed(f"stat -c '%a %U' {BACKUP_DIR}").strip() == "700 hasala-backup"
           machine.fail(f"age -d -i /root/other-identity.txt {dump} > /dev/null")
           machine.succeed(
-              f"age -d -i /root/test-identity.txt {dump} | pg_restore --list | grep ' TABLE DATA public op_log ' >/dev/null"
+              f"age -d -i /root/test-identity.txt -o /root/restore.dump {dump}"
+              f" && pg_restore --list /root/restore.dump | grep ' TABLE DATA public op_log ' >/dev/null"
+              " && rm /root/restore.dump"
           )
           ledger = machine.succeed(f"ls {BACKUP_DIR}/hasala-ledger-*.tar.age").strip()
           machine.succeed(f"age -d -i /root/test-identity.txt {ledger} | tar -tf - > /dev/null")
           machine.succeed("test ! -e /run/hasala-backup || test -z \"$(ls -A /run/hasala-backup)\"")
           machine.succeed("systemctl start hasala-backup-check.service")
+
+      with subtest("AT-V10b: a dump larger than the backup MemoryMax streams to disk"):
+          machine.succeed(
+              as_user(
+                  "hasala-migrate",
+                  f"{PSQL} \"CREATE TABLE vm_bulk AS SELECT md5(random()::text) || md5(random()::text) AS t"
+                  " FROM generate_series(1, 1500000)\" -U hasala_migrate",
+              )
+          )
+          machine.succeed(f"rm -f {BACKUP_DIR}/hasala-daily-*")
+          machine.succeed("systemctl set-property --runtime hasala-backup.service MemoryMax=32M")
+          machine.succeed("systemctl start hasala-backup.service")
+          dump = machine.succeed(f"ls {BACKUP_DIR}/hasala-daily-*.dump.age").strip()
+          assert int(machine.succeed(f"stat -c %s {dump}").strip()) > 40 * 1024 * 1024
+          machine.succeed(
+              f"age -d -i /root/test-identity.txt -o /root/restore.dump {dump}"
+              f" && pg_restore --list /root/restore.dump | grep ' TABLE DATA public vm_bulk ' >/dev/null"
+              " && rm /root/restore.dump"
+          )
+          machine.fail(f"ls {BACKUP_DIR} | grep '\\.part$'")
+          machine.succeed("rm -rf /run/systemd/system.control/hasala-backup.service.d && systemctl daemon-reload")
+          machine.succeed(as_user("hasala-migrate", f"{PSQL} 'DROP TABLE vm_bulk' -U hasala_migrate"))
 
       with subtest("AT-V11: retention deletes everything 29 days old or older"):
           for kind in ["daily", "premigrate"]:
