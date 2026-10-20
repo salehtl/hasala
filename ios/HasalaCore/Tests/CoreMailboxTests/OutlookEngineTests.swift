@@ -86,8 +86,8 @@ import Testing
     #expect(!rig.listRequests.isEmpty)
     for l in rig.listRequests {
       let f = try #require(l.query.first { $0.0 == "$filter" }?.1)
-      #expect(f.hasPrefix("receivedDateTime ge ") && f.contains("endswith(from/emailAddress/address,'@dib.ae')"))
-      #expect(f.contains("endswith(from/emailAddress/address,'.dib.ae')"))
+      #expect(f.hasPrefix("receivedDateTime ge ") && f.contains("from/emailAddress/address eq 'DIB.notification@dib.ae'"))
+      #expect(!f.contains("endswith("))
       #expect(l.query.contains { $0 == ("$select", "id,receivedDateTime,from") })
       #expect(!l.query.contains { $0.0 == "$orderby" || $0.0 == "$search" })
     }
@@ -129,11 +129,13 @@ import Testing
     let rig = OutlookRig()
     rig.graph.add(SyntheticOutlookMail.lookAlike(id: "AAkALgAA-x1", dateMs: t0 - Self.day, address: "offers@notdib.ae"))
     rig.graph.add(SyntheticOutlookMail.lookAlike(id: "AAkALgAA-x2", dateMs: t0 - Self.day, address: "a@dib.ae.evil.example"))
-    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d1", dateMs: t0 - Self.day, fromDomain: "alerts.dib.ae"))
+    rig.graph.add(SyntheticOutlookMail.lookAlike(id: "AAkALgAA-x3", dateMs: t0 - Self.day, address: "offers@dib.ae"))
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d1", dateMs: t0 - Self.day))
     await rig.connectAndActivate()
-    #expect(Set(rig.byID().keys) == ["AAkALgAA-d1"])  // a subdomain of a trusted domain is a member
+    #expect(Set(rig.byID().keys) == ["AAkALgAA-d1"])
     #expect(rig.rawRequests.allSatisfy { !$0.path.contains("-x") })
     #expect(rig.accounted("AAkALgAA-x1") == nil && rig.accounted("AAkALgAA-x2") == nil)
+    #expect(rig.accounted("AAkALgAA-x3") == nil)
   }
 
   @Test func aListingThatIgnoredTheFilterHaltsAndReadsNothing() async {
@@ -393,12 +395,35 @@ import Testing
     #expect(graph.requests.isEmpty)
   }
 
-  @Test func theFilterMatchesBankDomainsMembership() {
-    let q = GraphClient.listQuery(["dib.ae"], sinceSec: 1_780_000_000)
+  @Test func theFilterNamesEachKnownAddress() {
+    let q = GraphClient.listQuery(OutlookSenders.addresses(for: ["dib.ae"]), sinceSec: 1_780_000_000)
     #expect(
       q[0].1
-        == "receivedDateTime ge 2026-05-28T20:26:40Z and (endswith(from/emailAddress/address,'@dib.ae') or endswith(from/emailAddress/address,'.dib.ae'))"
+        == "receivedDateTime ge 2026-05-28T20:26:40Z and (from/emailAddress/address eq 'DIB.notification@dib.ae' or from/emailAddress/address eq 'dib.mail@dib.ae')"
     )
+  }
+
+  @Test func knownAddressesFollowDomainMembership() {
+    #expect(OutlookSenders.addresses(for: ["emiratesnbd.com"]) == ["alert@emiratesnbd.com"])
+    #expect(OutlookSenders.addresses(for: ["adib.ae", "dib.ae"]).count == 3)
+    #expect(OutlookSenders.addresses(for: ["notdib.ae", "ib.ae", "bank.example"]).isEmpty)
+    #expect(OutlookSenders.addresses(for: ["dib.ae"], known: ["a@alerts.dib.ae", "b@notdib.ae", "A@dib.ae", "a@dib.ae"])
+      == ["a@alerts.dib.ae", "A@dib.ae"])
+    #expect(OutlookSenders.addresses(for: ["dib.ae"], known: ["x'@dib.ae", "x y@dib.ae", "@dib.ae", "x@dib.ae'"]).isEmpty)
+    #expect(OutlookSenders.known.allSatisfy(OutlookSenders.isQuerySafe))
+  }
+
+  @Test func aDomainWithNoKnownAddressListsNothing() async throws {
+    let page = try await client.list(senders: ["bank.example"], since: 0, pageToken: nil)
+    #expect(page.ids.isEmpty && page.nextPageToken == nil)
+    #expect(graph.requests.isEmpty)
+  }
+
+  @Test func endswithIsRefusedAsOutlookComDoes() async throws {
+    let u = URL(string: "https://graph.microsoft.com/v1.0/me/messages?$filter=receivedDateTime%20ge%202026-01-01T00:00:00Z%20and%20(endswith(from/emailAddress/address,'@dib.ae'))")!
+    let res = try? await graph.send(HTTPRequest(method: .get, url: u, headers: [("Authorization", "Bearer t")], body: nil))
+    #expect(res?.status == 400)
+    #expect(GraphClient.failure(try #require(res), op: "list") == .status(400, op: "list"))
   }
 
   @Test func graphErrorsMapToTheEngineErrors() {

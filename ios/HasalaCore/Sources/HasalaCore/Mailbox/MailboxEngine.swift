@@ -1539,8 +1539,24 @@ public actor MailboxEngine {
     }
   }
 
+  static let log = CoreLog(category: "CoreMailbox")
+
+  static func kind(_ e: MailAPIError) -> StaticString {
+    switch e {
+    case .status: "status"
+    case .offline: "offline"
+    case .unfilteredListing: "unfiltered_listing"
+    case .throttled: "throttled"
+    case .noMailbox: "no_mailbox"
+    case .filterNotApplied: "filter_not_applied"
+    }
+  }
+
   func mailFailure(_ e: MailAPIError, _ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
+    Self.log.notice(
+      "mailbox.api_failure", .state("provider", provider.id == .outlook ? "outlook" : "gmail"),
+      .state("kind", Self.kind(e)), .count("status", e.status ?? 0))
     switch e {
     case .throttled(let sec, _):
       notBeforeMs = clock.nowMs() + min(max(sec, 1), 600) * 1000

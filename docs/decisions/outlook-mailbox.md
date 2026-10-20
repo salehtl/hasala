@@ -18,10 +18,10 @@ has a numbered check in [Checks for the owner](#checks-for-the-owner-wp0).
 
 | # | Decision | Status |
 |---|---|---|
-| 1a | List with `$filter` on `/me/messages`: `receivedDateTime ge <since>` AND an `or` of `endswith(from/emailAddress/address,'@<d>')` / `endswith(…,'.<d>')` per trusted domain. No `$search`, no `$orderby`. | Docs support `$filter` on `from/emailAddress/address` and the `InefficientFilter` rule. `endswith` on messages is **UNVERIFIED** (L1–L3). |
+| 1a | ~~List with `endswith` per trusted domain.~~ **Replaced by 1d (2026-10-20).** | **Refused**: L1 on the owner's Outlook.com mailbox answered 400 `ErrorInvalidUrlQueryFilter`. |
 | 1b | The phone re-checks every listed `from` address against the group and refuses the page if one is outside it. | Decided (defence against Graph ignoring a filter silently, which Microsoft documents as possible). |
 | 1c | Keep the Gmail overlap: re-list from watermark − 2 days (`BankDomains.overlapMs`). | Decided. "No index lag for `$filter`" is **UNVERIFIED** (L6); the overlap covers it either way. |
-| 1d | If `endswith` is refused: fall back to `eq` on exact sender addresses (needs a new template field, owner's call). Never fall back to `$search`. | Decided. |
+| 1d | List with `$filter` on `/me/messages`: `receivedDateTime ge <since>` AND an `or` of `from/emailAddress/address eq '<address>'`, one per known bank sender address (`OutlookSenders.known`) whose domain is in the trusted set. Never fall back to `$search`. | **In use (2026-10-20).** `eq` answered 200 and listed the owner's DIB alerts. |
 | 2 | No change detector replaces `historyId`. Every cycle runs the filtered list. | Confirmed from docs (delta lists every message in a folder, so it breaks PO G). |
 | 3 | Trust only the single Microsoft-form `Authentication-Results` (no authserv-id), when it is the topmost A-R, the EOP-only headers prove inbound EOP processing, and it reports `compauth=pass` + `dmarc=pass` for the `From:` domain. Else `needs_review`. ARC is ignored. | Rule decided. Its two premises (EOP always stamps one A-R at the top; `$value` keeps header order) are **UNVERIFIED** (C1–C7). Hard gate for WP2. |
 | 4a | Read trust headers and the body from `GET /me/messages/{id}/$value` only. Do not use `internetMessageHeaders` for trust. | Decided. Header order in `$value` is **UNVERIFIED** (C4). |
@@ -145,6 +145,23 @@ watermark − 2 days, and dedupe on the immutable id removes repeats. This cover
 delivery and any lag up to 2 days.
 
 ### Decision 1d: if `endswith` is refused
+
+**Result (2026-10-20).** L1 on the owner's Outlook.com mailbox: the §1 query answered
+400 `ErrorInvalidUrlQueryFilter` ("The query filter contains one or more invalid
+nodes"). The same query with `from/emailAddress/address eq '<address>'` answered 200 and
+listed the bank's alerts. Each cycle's 400 halted the lane, and the app showed it as
+"Microsoft ended Hasala's access".
+
+What shipped differs from step 1 below: the exact addresses are a client table
+(`ios/HasalaCore/.../Mailbox/Outlook/OutlookSenders.swift`), not a template field. A
+template field changes the canonical template bytes in Go, the TypeScript reference and
+Swift, and the listing filter is not part of template execution. The addresses are the
+banks' public notification senders, not personal data. Each one is listed only when its
+domain is in the trusted set (`BankDomains.isMember`). A trusted domain with no known
+address (for example one from "Add a sender") is not listed on Outlook yet; step 3 is
+still open. The page check (1b) now also requires the exact address.
+
+The original plan:
 
 If L1 shows that Graph answers 400 to `endswith` on messages, do **not** ship
 `$search`. Instead:
