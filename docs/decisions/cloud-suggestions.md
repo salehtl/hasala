@@ -101,20 +101,36 @@ answers per subject, so a subject is asked about once per device.
 - Abuse control in v1: a per-IP rate limit in the Worker (Cloudflare's rate-limiting
   binding, held in memory at the edge, not stored by us) and a global daily request cap
   that fails closed. See decision D3 for the stronger option (Privacy Pass tokens).
-- As built: the per-IP limit is keyed on the IPv4 address or the IPv6 /64, and it is
+- As built: `PER_IP` allows 30 requests per 60 s and `GLOBAL` 60 per 60 s (2026-10-20,
+  down from 600). One phone's foreground sweep can send up to 40 requests, so `PER_IP`
+  stays at 30. The per-IP limit is keyed on the IPv4 address or the IPv6 /64, and it is
   checked before the global limit, so a refused request does not use a global token. Both
   limits count per Cloudflare location, so the global limit is not an account-wide or daily
-  cap. The account-wide stop is a Workers AI billing budget and alert in the Cloudflare
-  dashboard. Until it is in place, the per-location limit is an accepted risk.
+  cap.
+- The account-wide stop (2026-10-20) is an AI Gateway spend limit. The Worker sends each
+  model call through one dedicated gateway (`hasala-assist`, from the `AI_GATEWAY`
+  variable). The gateway counts the dollar cost of all calls, across all locations, and
+  refuses each call when the limit is reached, until its window resets. The Worker then
+  answers 503 `model_unavailable`, and the phone treats it as busy and stops the cloud
+  stage. This fails closed. An empty `AI_GATEWAY` also gives 503, without a model call.
+  The cost is an estimate, and a burst can go a little over the limit. A Workers AI
+  billing alert stays as a second, late warning. The gateway sees no more than the
+  Worker already sends to the model, and it gets no account identity.
 - The request carries a fixed app version header only, so the Worker can refuse versions
   with a known bad redaction.
 
 ### Nothing kept
 
 - Workers observability off, no `console.log` of bodies, no Logpush, no tail Workers.
-- No AI Gateway in front of the model: AI Gateway logs prompts and responses by default.
-  If a gateway is ever added for caps or caching, its logging must be off and its cache
-  must be off.
+- AI Gateway logs prompts and responses by default, so a gateway is allowed only with its
+  logging off and its cache off. The one gateway is the spend cap (see
+  [No identity at the Worker](#no-identity-at-the-worker)). Each call sends
+  `collectLog: false` and `skipCache: true`; the request value has priority over the
+  gateway setting. The gateway's own Logs and Cache settings are off too. The gateway id
+  `default` is not allowed, because Cloudflare makes that gateway with logs on. The fence
+  test fails on any other gateway use: another id source, a cache TTL or key, metadata,
+  `cf-aig-` headers, logging on or cache on. The gateway's analytics keep counts, tokens,
+  cost and errors per model, without content.
 - The Worker returns the model's answer and forgets the request. No KV, D1, R2, Durable
   Object or Queue binding on this Worker. A fence test checks the Worker's
   `wrangler.jsonc` for these bindings (see [Build plan](#build-plan)).
@@ -254,7 +270,8 @@ stricter gate **files** the row instead of only suggesting it.
 
 ## Cost
 
-At the beta's scale this costs almost nothing, and the global cap bounds it.
+At the beta's scale this costs almost nothing, and the AI Gateway spend limit bounds it
+(see [No identity at the Worker](#no-identity-at-the-worker)).
 
 - Clef: 403 input tokens per subject (median in the spike) × $0.24 per million = about
   $0.0001 per new merchant. 100 people × 200 new merchants a month ≈ 20,000 requests ≈
@@ -493,8 +510,9 @@ In order; each step is its own pull request.
    bank's format, including Arabic names and greetings, and the sanity checks.
 3. **The Worker** in `infra/assist/` (or `web/`'s sibling): two routes, the AI binding,
    rate limit, global cap, version refusal, no storage bindings. A fence test that fails
-   on any KV, D1, R2, Durable Object, Queue, AI Gateway, Logpush or observability setting
-   in its `wrangler.jsonc`. Deployed by the owner.
+   on any KV, D1, R2, Durable Object, Queue, Logpush or observability setting in its
+   `wrangler.jsonc`, and on any AI Gateway use except the spend-cap gateway with logging
+   and cache off. Deployed by the owner.
 4. **Merchant suggestions.** `HasalaCloud` target with `CloudCategoryModel`, the order of
    D1, the switch and its screen, the "Suggested by Cloudflare AI" label, the check 6 fix.
 5. **Alert reading help.** The review-sheet button, preview, send and pre-fill, with the
