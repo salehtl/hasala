@@ -825,6 +825,10 @@ jobs:
         working-directory: ios/HasalaCore
         run: swift test --disable-automatic-resolution --explicit-target-dependency-import-check error
 
+      - name: swift test (outlook-trust-check)
+        working-directory: ios/HasalaCore/Tools/OutlookTrustCheck
+        run: swift test --disable-automatic-resolution
+
       # `swift test` builds for macOS only. The iOS build is what catches a
       # module that shadows an Apple framework (the reason `CoreText` is
       # `HasalaText`) or code that only compiles on the Mac. One xcodebuild for
