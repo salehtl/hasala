@@ -4,8 +4,9 @@
 # many; that is expected. See CLAUDE.md, "Build and test".
 #
 # The required jobs' ids are also their check names (no `name:` override, no
-# matrix): required status checks match `gate`, `vuln` and `secrets` by name,
-# so renaming a job silently drops it from the requirement. `swift` (the Swift
+# matrix): required status checks match `ci-ok` (and, until the ruleset drops
+# them, `gate`, `vuln` and `secrets`) by name, so renaming a job silently drops
+# it from the requirement. `swift` (the Swift
 # client core on a Mac), `ios-build` (the app built once for testing), `ios`
 # (three UI test shards on that build), `ios-tools` (HasalaKit, the iOS
 # project, token and release-script checks on a Mac), `web` (the website) and
@@ -59,6 +60,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -656,6 +658,49 @@ jobs:
           read -r -a selectors <<<"$SELECTORS"
           ios/scripts/ci-simulator-test.sh --from-build "$RUNNER_TEMP/dd" "$RUNNER_TEMP/Hasala.xcresult" "${selectors[@]}"
 
+      - name: List the failed tests
+        if: failure()
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          out="$RUNNER_TEMP/failed-tests/shard-$SHARD.md"
+          mkdir -p "$RUNNER_TEMP/failed-tests"
+          listed=""
+          if [[ -d "$RUNNER_TEMP/Hasala.xcresult" ]]; then
+            listed="$(xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/Hasala.xcresult" | python3 -c '
+          import json, sys
+          def walk(node, path):
+              name = node.get("name", "")
+              kind = node.get("nodeType", "")
+              if kind == "Test Case":
+                  if node.get("result") == "Failed":
+                      print("- " + chr(96) + "/".join(path + [name]) + chr(96))
+                  return
+              if kind in ("Unit test bundle", "UI test bundle", "Test Suite"):
+                  path = path + [name]
+              for child in node.get("children", []):
+                  walk(child, path)
+          for node in json.load(sys.stdin).get("testNodes", []):
+              walk(node, [])
+          ')" || listed=""
+          fi
+          {
+            echo "### ios ($SHARD)"
+            echo
+            echo "${listed:-- No failed test in the result bundle; see the job log.}"
+            echo
+          } >"$out"
+          cat "$out"
+
+      - name: Keep the failed tests
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-failed-tests-${{ matrix.shard }}
+          path: ${{ runner.temp }}/failed-tests
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Keep the test report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -664,6 +709,81 @@ jobs:
           path: ${{ runner.temp }}/Hasala.xcresult
           retention-days: 7
           if-no-files-found: ignore
+
+  ios-main-red:
+    needs: [ios-build, ios]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    concurrency:
+      group: ci-main-red
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD: ${{ needs.ios-build.result }}
+      IOS: ${{ needs.ios.result }}
+      SHA: ${{ github.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Get the failed tests
+        if: ${{ needs.ios.result == 'failure' }}
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ios-failed-tests-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/failed-tests
+
+      - name: Open, update or close the ci-main-red issue
+        run: |
+          set -euo pipefail
+          echo "ios-build: $BUILD, ios: $IOS"
+          if [[ "$BUILD" == failure || "$IOS" == failure ]]; then
+            state=red
+          elif [[ "$IOS" == success ]]; then
+            state=green
+          else
+            echo "No shard result to act on."
+            exit 0
+          fi
+          issue="$(gh issue list --label ci-main-red --state open --limit 1 --json number --jq '.[0].number // empty')"
+          if [[ "$state" == green ]]; then
+            if [[ -n "$issue" ]]; then
+              gh issue close "$issue" --comment "Every \`ios\` shard passed on \`main\` at $SHA: $RUN_URL"
+            fi
+            exit 0
+          fi
+          body="$RUNNER_TEMP/issue.md"
+          {
+            echo "The \`ios\` UI tests fail on \`main\` at $SHA."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            if [[ "$BUILD" == failure ]]; then
+              echo "\`ios-build\` failed, so no shard ran."
+              echo
+            fi
+            shopt -s nullglob
+            files=("$RUNNER_TEMP"/failed-tests/*.md)
+            if ((${#files[@]})); then
+              cat "${files[@]}"
+            elif [[ "$IOS" == failure ]]; then
+              echo "No list of failed tests was kept; see the run."
+            fi
+            echo
+            echo "This issue closes when a later push to \`main\` passes every \`ios\` shard."
+          } >"$body"
+          cat "$body"
+          gh label create ci-main-red --color B60205 --description "CI on main is red" --force
+          if [[ -n "$issue" ]]; then
+            gh issue edit "$issue" --body-file "$body"
+            gh issue comment "$issue" --body-file "$body"
+          else
+            gh issue create --title "CI on main is red: ios UI tests" --label ci-main-red --body-file "$body"
+          fi
 
   # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
   # `swift test` passes (unit tests and the conformance suite, reading
@@ -788,3 +908,20 @@ jobs:
           path: ${{ runner.temp }}/lighthouse
           if-no-files-found: warn
           retention-days: 14
+
+  ci-ok:
+    needs: [changes, gate, vuln, secrets]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every needed job succeeded or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          bad="$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")' <<<"$NEEDS")"
+          if [[ -n "$bad" ]]; then
+            echo "::error::not successful: $bad"
+            exit 1
+          fi
