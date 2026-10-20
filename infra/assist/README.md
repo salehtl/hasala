@@ -65,6 +65,9 @@ the answer. It does not use the queue, batches or AI Gateway. The body:
 }
 ```
 
+The subject goes into `state` as a JSON string, so a `"` or a `\` in it is
+escaped.
+
 Each criterion is the category's `hint`, or its `name` when `hint` is `null`.
 
 The 200 answer:
@@ -94,8 +97,9 @@ Errors are `{"error": "<code>"}`:
 | 503 | `model_unavailable` | The AI call threw. |
 
 The checks occur in this sequence: path, method, `Hasala-Client`,
-`REFUSED_CLIENTS`, content type, size, body, `GLOBAL`, `PER_IP`, the model.
-Only a valid request uses a rate-limit token.
+`REFUSED_CLIENTS`, content type, size, body, `PER_IP`, `GLOBAL`, the model.
+Only a valid request uses a rate-limit token. A request that `PER_IP` refuses
+does not use a `GLOBAL` token.
 
 Each response has `cache-control: no-store` and
 `content-type: application/json`. There are no CORS headers.
@@ -106,7 +110,8 @@ It is empty by default. Use it to stop a build that sends bad requests.
 ## No storage, no logging
 
 `wrangler.jsonc` has only these bindings: `AI`, the rate limiters `PER_IP`
-(30 per 60 s, key `cf-connecting-ip`) and `GLOBAL` (600 per 60 s, key
+(30 per 60 s, keyed on the `cf-connecting-ip` address for IPv4 and on its
+/64 for IPv6) and `GLOBAL` (600 per 60 s, key
 `global`), and the variable `REFUSED_CLIENTS`. The limits apply per Cloudflare
 location. The Worker never logs or returns the IP address.
 

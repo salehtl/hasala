@@ -1,5 +1,6 @@
 import CoreCategorize
 import Foundation
+import Synchronization
 
 public struct CloudCategoryModel: GradedCategoryModel {
   public static let defaultTag = "cf-clef/1"
@@ -13,10 +14,13 @@ public struct CloudCategoryModel: GradedCategoryModel {
   let isEnabled: @Sendable () -> Bool
   let isAutoFileEnabled: @Sendable () -> Bool
   let exchange: any CloudHTTPExchange
+  let pause: @Sendable () async -> Void
+  let latch = Latch()
 
   public init(
     baseURL: URL, clientVersion: String, isEnabled: @escaping @Sendable () -> Bool,
-    isAutoFileEnabled: @escaping @Sendable () -> Bool, exchange: any CloudHTTPExchange
+    isAutoFileEnabled: @escaping @Sendable () -> Bool, exchange: any CloudHTTPExchange,
+    pause: @escaping @Sendable () async -> Void = CloudCategoryModel.jitter
   ) {
     self.modelTag = Self.defaultTag
     self.endpoint = baseURL.appending(path: "v1/category")
@@ -24,10 +28,18 @@ public struct CloudCategoryModel: GradedCategoryModel {
     self.isEnabled = isEnabled
     self.isAutoFileEnabled = isAutoFileEnabled
     self.exchange = exchange
+    self.pause = pause
+  }
+
+  static let jitterRange = 100...400
+
+  @Sendable public static func jitter() async {
+    try? await Task.sleep(for: .milliseconds(Int.random(in: jitterRange)))
   }
 
   public func availability() -> ModelAvailability {
-    isEnabled() ? .available : .notEnabled
+    if latch.isOff { return .notEligible }
+    return isEnabled() ? .available : .notEnabled
   }
 
   public func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {
@@ -41,9 +53,16 @@ public struct CloudCategoryModel: GradedCategoryModel {
   }
 
   func ask(subject: String, allowed: [AllowedCategory]) async -> (answer: ModelAnswer, autoFile: Bool) {
-    let sent = allowed.filter { TaxonomyV1.builtin($0.id) != nil }
+    let sent = allowed.compactMap { a in
+      TaxonomyV1.builtin(a.id).map { AllowedCategory(id: a.id, name: $0.name, hint: a.hint) }
+    }
     guard !sent.isEmpty else { return (.unknown, false) }
+    if latch.isOff { return (.failed(.refused), false) }
     if Task.isCancelled { return (.failed(.timeout), false) }
+    await pause()
+    if Task.isCancelled { return (.failed(.timeout), false) }
+    guard isEnabled() else { return (.failed(.notEnabled), false) }
+    if latch.isOff { return (.failed(.refused), false) }
     let body: Data
     do {
       body = try Self.encodeBody(subject: subject, categories: sent)
@@ -65,6 +84,10 @@ public struct CloudCategoryModel: GradedCategoryModel {
     if Task.isCancelled { return (.failed(.timeout), false) }
     switch response.status {
     case 200: return decide(response.body, sent: sent)
+    case 403:
+      latch.trip()
+      return (.failed(.refused), false)
+    case 400, 413: return (.failed(.refused), false)
     case 429: return (.failed(.rateLimited), false)
     case 503: return (.failed(.busy), false)
     case 502: return (.failed(.decoding), false)
@@ -131,6 +154,14 @@ public struct CloudCategoryModel: GradedCategoryModel {
     let choice: String
     let probabilities: [String: Double]
   }
+}
+
+final class Latch: Sendable {
+  private let off = Mutex(false)
+
+  var isOff: Bool { off.withLock { $0 } }
+
+  func trip() { off.withLock { $0 = true } }
 }
 
 public enum HasalaCloudFactory {

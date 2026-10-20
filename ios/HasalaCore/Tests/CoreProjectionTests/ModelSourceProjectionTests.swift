@@ -42,4 +42,17 @@ import Testing
     let rows = try r.sweepRows()
     #expect(rows.allSatisfy { $0.version == 2 })
   }
+
+  @Test func sweepRowsCarryTheGatesTemplate() throws {
+    var s = State()
+    let gated = #"{"v":4,"type":"txn_ingested","op_id":"g5","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(Self.id(5))"},"parent_version":null,"ingest_id":"\#(String(repeating: "0", count: 63))5","payload":{"amount_minor":"2500","currency":"AED","direction":"debit","posted_at":"2026-10-03T08:00:00.000Z","merchant_raw":"EXAMPLE PERSON NAME","last4":"4412","needs_review":true,"tier":"template","entry_method":"mailbox","bank":"enbd","gates":{"ar":"pass","sender":"trusted","template":"enbd.transfer.v1@2","card":"known","forwarded":false}}}"#
+    try HomeSourceProjectionTests.blob(1, [HomeSourceProjectionTests.txn(1, "AED"), gated].joined(separator: ","), into: &s)
+    #expect(s.anomalies.isEmpty)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: try MerchantDictionary.bundled().get(), projectedAtMs: 0, into: db)
+    var templates: [String: String?] = [:]
+    for r in try LedgerReader(db).sweepRows() { templates[r.id] = r.template }
+    #expect(templates == [Self.id(1): nil, Self.id(5): "enbd.transfer.v1@2"])
+    #expect(TxnRow.template(gatesJSON: nil) == nil && TxnRow.template(gatesJSON: "not json") == nil)
+  }
 }

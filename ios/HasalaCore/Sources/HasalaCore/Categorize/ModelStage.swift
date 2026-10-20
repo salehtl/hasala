@@ -1,10 +1,12 @@
 public struct ModelStage: Sendable {
   public let model: any CategoryModel
   public let accepts: @Sendable (String) -> Bool
+  public let leavesDevice: Bool
 
-  public init(model: any CategoryModel, accepts: @escaping @Sendable (String) -> Bool) {
+  public init(model: any CategoryModel, accepts: @escaping @Sendable (String) -> Bool, leavesDevice: Bool = false) {
     self.model = model
     self.accepts = accepts
+    self.leavesDevice = leavesDevice
   }
 
   public static func onDevice(_ model: any CategoryModel) -> ModelStage {
@@ -12,7 +14,7 @@ public struct ModelStage: Sendable {
   }
 
   public static func cloud(_ model: any CategoryModel) -> ModelStage {
-    ModelStage(model: model, accepts: hasLetter)
+    ModelStage(model: model, accepts: hasLetter, leavesDevice: true)
   }
 
   public static func hasLetter(_ subject: String) -> Bool {
@@ -42,7 +44,8 @@ extension ModelTier {
 
   public static func run(
     subjects: [String], stages: [ModelStage], allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
-    callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false }
+    callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false },
+    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }
   ) async -> (suggestions: [StagedSuggestion], unknown: [(subject: String, modelTag: String)], stoppedBy: [String: ModelFailure]) {
     let budget = context.budget
     let limit = callTimeout ?? .milliseconds(budget.callMs)
@@ -57,7 +60,7 @@ extension ModelTier {
     subjects: for subject in subjects where seen.insert(subject).inserted {
       for (i, stage) in stages.enumerated() where live[i] {
         let tag = stage.model.modelTag
-        guard stage.accepts(subject), !isCached(subject, tag) else { continue }
+        guard stage.accepts(subject), !stage.leavesDevice || mayLeaveDevice(subject), !isCached(subject, tag) else { continue }
         if calls >= budget.calls || now() - start >= budget.phaseMs || Task.isCancelled { break subjects }
         calls += 1
         var reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
@@ -74,7 +77,7 @@ extension ModelTier {
           switch f {
           case .guardrail, .refusal:
             unknown.append((subject, tag))
-          case .rateLimited, .busy, .unsupportedLanguage, .assetsUnavailable:
+          case .rateLimited, .busy, .unsupportedLanguage, .assetsUnavailable, .notEnabled, .refused:
             live[i] = false
             stopped[tag] = f
             if !live.contains(true) { break subjects }

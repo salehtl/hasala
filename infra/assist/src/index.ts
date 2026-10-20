@@ -86,6 +86,27 @@ async function allowed(limiter: RateLimiter, key: string): Promise<boolean> {
   }
 }
 
+export function ipKey(ip: string | null): string {
+  const value = (ip ?? "").trim().toLowerCase();
+  if (value === "") return "none";
+  if (!value.includes(":")) return value;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(value);
+  if (mapped) return mapped[1]!;
+  const halves = value.split("::");
+  if (halves.length > 2) return value;
+  const head = halves[0] === "" ? [] : halves[0]!.split(":");
+  const tail = halves.length === 1 || halves[1] === "" ? [] : halves[1]!.split(":");
+  if (tail.length > 0 && tail[tail.length - 1]!.includes(".")) tail.splice(-1, 1, "0", "0");
+  const missing = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (missing < 0) return value;
+  const groups = [...head, ...Array<string>(missing).fill("0"), ...tail];
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return value;
+  return groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ""))
+    .join(":") + "::/64";
+}
+
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname !== PATH) return error(404, "not_found");
@@ -113,9 +134,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const suggestion = parseSuggestion(parsed);
   if (suggestion === null) return error(400, "bad_request");
 
+  if (!(await allowed(env.PER_IP, ipKey(request.headers.get("cf-connecting-ip"))))) return error(429, "rate_limited");
   if (!(await allowed(env.GLOBAL, "global"))) return error(429, "rate_limited");
-  const ip = request.headers.get("cf-connecting-ip") ?? "";
-  if (!(await allowed(env.PER_IP, ip === "" ? "none" : ip))) return error(429, "rate_limited");
 
   let result: unknown;
   try {

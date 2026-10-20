@@ -28,6 +28,13 @@ public enum ModelSuggestionSweep {
     }
   }
 
+  public static let cloudTemplates: Set<String> = ["adib.alert.v1", "dib.card.v1", "enbd.alert.v1"]
+
+  public static func mayLeaveDevice(_ r: SweepRow) -> Bool {
+    guard let t = r.template else { return false }
+    return cloudTemplates.contains(String(t.prefix { $0 != "@" }))
+  }
+
   public static func queue(rows: [SweepRow], categorizer: Categorizer) -> [SweepRow] {
     Sweep.plan(rows, categorizer).modelQueue.filter(eligible)
   }
@@ -45,6 +52,9 @@ public enum ModelSuggestionSweep {
     var subjects: [String] = []
     var seen: Set<String> = []
     for q in queued where seen.insert(q.subject).inserted { subjects.append(q.subject) }
+    var blocked: Set<String> = []
+    for q in queued where !mayLeaveDevice(q.row) { blocked.insert(q.subject) }
+    let held = blocked
     var cached: Set<[String]> = []
     for s in subjects {
       for stage in stages where stage.accepts(s) {
@@ -55,7 +65,7 @@ public enum ModelSuggestionSweep {
     let hits = cached
     let r = await ModelTier.run(
       subjects: subjects, stages: stages, allowed: allowed, context: context, now: now, callTimeout: callTimeout,
-      isCached: { hits.contains([$0, $1]) })
+      isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) })
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
     var answer: [String: ModelTier.StagedSuggestion] = [:]
     for s in r.suggestions { answer[s.subject] = s }

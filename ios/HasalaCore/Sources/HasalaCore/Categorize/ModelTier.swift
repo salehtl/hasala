@@ -3,10 +3,13 @@
 // `SystemLanguageModel` and is linked by the app only.
 //
 // The tier SUGGESTS: its answer becomes a `txn_categorized {source: model}`
-// with `needs_review` unchanged, so a suggestion never counts in a total until
-// a person confirms it (`MODEL_AUTO_CONFIRM = false`). It runs only on debits
-// with no category, Latin-gated subjects, one call per distinct subject, within
-// the context's budget, and never in a background refresh or a push wake.
+// with `needs_review` unchanged, so it counts in no total until a person
+// confirms it. Apple's model never files a row (`MODEL_AUTO_CONFIRM = false`);
+// the cloud stage files one only with the second opt-in "Sort automatically",
+// above the auto-file threshold, for `cf-clef/` tags. It runs only on debits
+// with no category (Latin subjects on the device; card-alert rows in the
+// cloud), one call per distinct subject, within the context's budget, and
+// never in a background refresh or a push wake.
 import CorePrimitives
 import Foundation
 import HasalaText
@@ -17,7 +20,8 @@ public enum ModelAvailability: String, Sendable, Equatable {
 }
 
 public enum ModelFailure: String, Sendable, Equatable {
-  case timeout, guardrail, refusal, rateLimited, busy, contextOverflow, assetsUnavailable, decoding, unsupportedLanguage, other
+  case timeout, guardrail, refusal, rateLimited, busy, contextOverflow, assetsUnavailable, decoding, unsupportedLanguage, notEnabled,
+    refused, other
 }
 
 public enum ModelAnswer: Sendable, Equatable {

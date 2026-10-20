@@ -50,7 +50,14 @@ public final class URLSessionCloudExchange: CloudHTTPExchange {
     c.timeoutIntervalForResource = timeout
     c.waitsForConnectivity = false
     c.httpAdditionalHeaders = nil
-    session = URLSession(configuration: c)
+    session = URLSession(configuration: c, delegate: CloudRefuseRedirects(), delegateQueue: nil)
+  }
+
+  deinit { session.invalidateAndCancel() }
+
+  static func response(status: Int, body: Data) throws(CloudExchangeError) -> CloudResponse {
+    guard !(300...399).contains(status) else { throw .transport }
+    return CloudResponse(status: status, body: body)
   }
 
   public func send(_ request: CloudRequest) async throws(CloudExchangeError) -> CloudResponse {
@@ -64,7 +71,7 @@ public final class URLSessionCloudExchange: CloudHTTPExchange {
     do {
       let (data, response) = try await session.data(for: r)
       guard let http = response as? HTTPURLResponse else { throw CloudExchangeError.transport }
-      return CloudResponse(status: http.statusCode, body: data)
+      return try Self.response(status: http.statusCode, body: data)
     } catch let e as CloudExchangeError {
       throw e
     } catch is CancellationError {
@@ -76,5 +83,14 @@ public final class URLSessionCloudExchange: CloudHTTPExchange {
     } catch {
       throw .transport
     }
+  }
+}
+
+final class CloudRefuseRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void
+  ) {
+    completionHandler(nil)
   }
 }
