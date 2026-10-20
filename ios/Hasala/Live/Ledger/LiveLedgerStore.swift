@@ -48,6 +48,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   @ObservationIgnored private var writes: Task<Void, Never>?
   @ObservationIgnored private var reloadSeq = 0
   @ObservationIgnored private var writesInFlight = 0
+  @ObservationIgnored var onWriteFailed: (@MainActor () -> Void)?
 
   init(
     reader: LedgerReader, author: LedgerEditAuthor?, profile: ProfileInfo, prefs: DevicePrefsStore,
@@ -159,13 +160,13 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     }
     state = s
     revision += 1
+    let token = title.map { UndoToken(id: nextToken, title: $0) }
+    if token != nil { nextToken += 1 }
     if let author {
       let today = now.date
-      enqueue { try await author.author(edit, before: before, today: today) }
+      enqueue(undo: token?.id) { try await author.author(edit, before: before, today: today) }
     }
-    guard let title else { return nil }
-    let token = UndoToken(id: nextToken, title: title)
-    nextToken += 1
+    guard let token else { return nil }
     if !inverses.isEmpty { undos[token.id] = inverses }
     return token
   }
@@ -177,16 +178,29 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
 
   /// Runs `write` after every earlier one, then reloads (a failure reloads too, so the
   /// optimistic change is replaced by what the projection holds).
-  private func enqueue(_ write: @escaping @Sendable () async throws -> Void) {
+  func enqueue(undo: Int? = nil, _ write: @escaping @Sendable () async throws -> Void) {
     let previous = writes
     writesInFlight += 1
     writes = Task { [weak self] in
       await previous?.value
-      try? await write()
-      self?.writesInFlight -= 1
-      await self?.reload()
+      let failed: Bool
+      do {
+        try await write()
+        failed = false
+      } catch {
+        failed = true
+      }
+      guard let self else { return }
+      writesInFlight -= 1
+      if failed {
+        if let undo { undos[undo] = nil }
+        onWriteFailed?()
+      }
+      await reload()
     }
   }
+
+  func canUndo(_ token: UndoToken) -> Bool { undos[token.id] != nil }
 
   // MARK: The optimistic change
 
@@ -281,7 +295,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
         return ("Merged", [])
       }
       s.txns[i].heldCopy = nil
-      return ("Kept both", [])
+      return ("Kept both", [.copyReopened(txn: id)])
     case .resolveSamePurchase(let id, let same):
       let i = try index(id)
       guard let match = s.txns[i].samePurchase, let j = s.txns.firstIndex(where: { $0.id == match.of }) else {

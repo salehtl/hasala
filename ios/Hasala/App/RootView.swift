@@ -20,7 +20,16 @@ struct RootView: View {
 
   /// The motion policy (plan B1.2) is set here once, above the gate, the shell and their
   /// sheets, so every part of the design system reads the same Reduce Motion answer.
+  @Environment(\.scenePhase) private var scenePhase
+
   var body: some View {
+    content
+      .overlay {
+        if SnapshotCover.covers(scenePhase) { SnapshotCover() }
+      }
+  }
+
+  @ViewBuilder private var content: some View {
     #if HASALA_MOCKS
       Group {
         if let mock {
@@ -81,6 +90,21 @@ struct LiveRootView: View {
 
   /// The app shows its own placeholder while the runtime opens; only setup waits here.
   private var isReady: Bool { boot.session.phase == .ready }
+}
+
+struct SnapshotCover: View {
+  static func covers(_ phase: ScenePhase) -> Bool { phase == .background }
+
+  var body: some View {
+    Image("HasalaWordmark")
+      .resizable()
+      .scaledToFit()
+      .frame(maxWidth: 200)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(HColor.surfaceSecondary)
+      .ignoresSafeArea()
+      .accessibilityHidden(true)
+  }
 }
 
 /// The wordmark on the launch background while the account opens.

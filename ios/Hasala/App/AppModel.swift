@@ -28,6 +28,8 @@ final class AppModel {
     var actionTitle: String?
     /// The edit the toast's "Undo" takes back.
     var undo: UndoToken?
+    /// Edits made with it, taken back after it, the latest first.
+    var earlier: [UndoToken] = []
   }
 
   let store: any LedgerStore
@@ -215,15 +217,31 @@ final class AppModel {
   /// why. Returns whether the edit was applied.
   @discardableResult
   func perform(_ edit: LedgerEdit) -> Bool {
-    do {
-      if let token = try store.apply(edit) {
-        show(Toast(disc: .done, title: token.title, actionTitle: "Undo", undo: token))
+    perform([edit])
+  }
+
+  /// Applies edits in order as one gesture: the last one's toast takes them all back.
+  /// Stops at the first refusal.
+  @discardableResult
+  func perform(_ edits: [LedgerEdit]) -> Bool {
+    var tokens: [UndoToken] = []
+    for edit in edits {
+      do {
+        if let token = try store.apply(edit) { tokens.append(token) }
+      } catch {
+        show(Toast(disc: .note(.info), title: Self.message(for: error)))
+        return false
       }
-      return true
-    } catch {
-      show(Toast(disc: .note(.info), title: Self.message(for: error)))
-      return false
     }
+    if let last = tokens.popLast() {
+      show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: tokens.reversed()))
+    }
+    return true
+  }
+
+  /// An edit the toast confirmed could not be saved: the ledger shows it as it was.
+  func writeFailed() {
+    show(Toast(disc: .note(.info), title: "That change didn't save", subtitle: "Try it again"))
   }
 
   /// Shows a one-line confirmation without an action: the accent check, or `icon` on the
@@ -233,8 +251,9 @@ final class AppModel {
   }
 
   func toastAction() {
-    if let undo = toast?.undo {
+    if let toast, let undo = toast.undo {
       store.undo(undo)
+      for token in toast.earlier { store.undo(token) }
       dismissToast()
     } else if amountsHidden, toast?.actionTitle == "Show" {
       toggleAmountsHidden()
