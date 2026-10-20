@@ -45,7 +45,7 @@ struct MainHeader: ToolbarContent {
         GlassButtonPair {
           GlassIconButton(.magnifier, label: "Search", action: onSearch)
             .accessibilityIdentifier("header.search")
-          GlassIconButton(.bell, label: unread > 0 ? "Notifications, \(unread) new" : "Notifications",
+          GlassIconButton(.bell, label: Bell.label(unread),
                           badge: unread, action: onNotifications)
             .accessibilityIdentifier("header.notifications")
         }

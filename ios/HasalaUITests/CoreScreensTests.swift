@@ -206,8 +206,12 @@ final class CoreScreensTests: XCTestCase {
     try audit(app)
     element(app, "review.seeActivity").tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
-    // The skipped card is still waiting; the others left the queue.
-    XCTAssertTrue(app.staticTexts["1 to sort"].waitForExistence(timeout: uiWait))
+    // The skipped card is still in review, but off today's to-do list with the others.
+    let chip = app.buttons["activity.chip.toReview"]
+    XCTAssertTrue(chip.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(chip.label.contains("1"), chip.label)
+    XCTAssertFalse(app.staticTexts["1 to sort"].exists)
+    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 3 need a look")
   }
 
   /// A To sort row opens the deck at its own card; a pick sheet closed without a choice sends

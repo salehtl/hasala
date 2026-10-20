@@ -23,7 +23,7 @@ struct ActivityPeriodTests {
     #expect(!a.isThisMonth)
     #expect(a.days.allSatisfy { $0.date.yearMonth == YearMonth(2026, 9) })
     #expect(ids(a).contains("h-rent-9") && !ids(a).contains("h-rent-8"))
-    #expect(a.review == nil && a.comingUp.isEmpty)
+    #expect(a.review?.count == 6 && a.comingUp.isEmpty)
     #expect(a.chips.first { $0.kind == .toReview }?.count == 0)
     let n = history.txns.filter { $0.postedAt.date.yearMonth == YearMonth(2026, 9) && !$0.archived }.count
     #expect(a.countLine == "\(n) transactions · September 2026")

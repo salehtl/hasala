@@ -22,7 +22,7 @@ struct ReviewScopeTests {
     #expect(ReviewEngine.queue(s, in: september).map(\.id) == ["sep-shop"])
     #expect(!ReviewEngine.queue(s, in: october).map(\.id).contains("sep-shop"))
     #expect(ReviewEngine.queue(s, in: october).count == 6)
-    #expect(ReviewEngine.queue(s).first?.id == "sep-shop")
+    #expect(ReviewEngine.queue(s).last?.id == "sep-shop")
     #expect(ReviewEngine.queue(s).count == 7)
   }
 
@@ -34,7 +34,7 @@ struct ReviewScopeTests {
     ])
     let range = ReviewWindow.range(LocalDate(2026, 10, 6), LocalDate(2026, 9, 1))
     let ids = ReviewEngine.queue(s, in: range).map(\.id)
-    #expect(ids.first == "sep-1")
+    #expect(ids.last == "sep-1")
     #expect(ids.contains("oct-6") && ids.contains("atm"))
     #expect(!ids.contains("aug-31") && !ids.contains("transfer-in"))
   }
@@ -49,7 +49,7 @@ struct ReviewScopeTests {
       unsorted("sep-30", LocalDateTime(2026, 9, 30, 23, 59)),
     ])
     let ids = ReviewEngine.queue(s, in: window).map(\.id)
-    #expect(ids.prefix(2) == ["aug-1", "sep-30"])
+    #expect(ids.suffix(2) == ["sep-30", "aug-1"])
     #expect(!ids.contains("jul-31") && ids.count == 8)
   }
 
@@ -110,6 +110,48 @@ struct ReviewScopeTests {
     #expect(snap.chips.first { $0.kind == .toReview }?.count == 7)
     #expect(snap.days.flatMap(\.rows).contains { $0.id == "oct-shop" && $0.toReview })
     #expect(ActivityEngine.reviewSummary(s, now: MayaLedger.now).count == 7)
+  }
+
+  @Test func theQueueRunsNewestMonthFirstAndOldestFirstInAMonth() {
+    let s = ledger([
+      unsorted("dec-shop", LocalDateTime(2025, 12, 20, 9, 0)),
+      unsorted("sep-late", LocalDateTime(2026, 9, 28, 9, 0)),
+      unsorted("sep-early", LocalDateTime(2026, 9, 2, 9, 0)),
+    ])
+    let ids = ReviewEngine.queue(s).map(\.id)
+    #expect(ids.count == 9)
+    #expect(ids.prefix(6).allSatisfy { s.txn($0)?.postedAt.date.yearMonth == MayaLedger.october })
+    #expect(ids.suffix(3) == ["sep-early", "sep-late", "dec-shop"])
+    let months = ReviewEngine.months(ReviewEngine.cards(s), now: MayaLedger.now)
+    #expect(months.map(\.title) == ["This month", "September", "December 2025"])
+    #expect(months.map(\.cards.count) == [6, 2, 1])
+    #expect(months.flatMap(\.cards).map(\.id) == ids)
+  }
+
+  @Test func everyCountOfWhatIsLeftToSortIsTheWholeQueueInAnyPeriod() {
+    var s = ledger([
+      unsorted("aug-shop", LocalDateTime(2026, 8, 12, 9, 0)),
+      unsorted("sep-shop", LocalDateTime(2026, 9, 12, 9, 0)),
+    ])
+    s.skippedReview = ["atm"]
+    let now = MayaLedger.now
+    let queue = ReviewEngine.queue(s)
+    #expect(queue.count == 7 && !queue.contains { $0.id == "atm" })
+    let bell = NotificationsEngine.snapshot(s, now: now).needsALook.first { $0.id == "review" }
+    #expect(bell?.title == "7 transactions to sort")
+    #expect(bell?.when == "Today")
+    #expect(GlanceEngine.snapshot(s, now: now, home: HomeEngine.snapshot(s, now: now), amountsHidden: false).toReview?.count == 7)
+    #expect(ActivityEngine.reviewSummary(s, now: now).count == 7)
+    for period in [Period.month(YearMonth(2026, 9)), .month(YearMonth(2026, 7)), Period(YearMonth(2026, 8), YearMonth(2026, 10))] {
+      let home = HomeEngine.snapshot(s, now: now, period: period)
+      #expect(home.aboutNow.first { $0.id == "review" }?.detail.rendered(hidden: false) == "7 waiting")
+      #expect(home.notifications.needsALook.first { $0.id == "review" }?.title == "7 transactions to sort")
+      #expect(ActivityEngine.snapshot(s, now: now, filter: .all, period: period).review?.count == 7)
+    }
+    s.skippedReview = Set(queue.map(\.id) + ["atm"])
+    #expect(NotificationsEngine.snapshot(s, now: now).needsALook.first { $0.id == "review" } == nil)
+    #expect(GlanceEngine.snapshot(s, now: now, home: HomeEngine.snapshot(s, now: now), amountsHidden: false).toReview?.count == 0)
+    #expect(ActivityEngine.snapshot(s, now: now, filter: .all).review == nil)
   }
 
   @Test func windowsNameThemselves() {

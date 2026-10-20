@@ -27,7 +27,7 @@ struct SetupDraft: Equatable, Sendable {
   var payday: PaydayChoice?
   var split: StartingPlan?
   var showDetails = false
-  enum NotificationsDecision: Equatable, Sendable { case allowed, notNow }
+  enum NotificationsDecision: Equatable, Sendable { case systemAsked, notNow }
   var notificationsDecision: NotificationsDecision?
   enum CloudSortDecision: Equatable, Sendable { case on, notNow }
   var cloudSortDecision: CloudSortDecision?
@@ -584,21 +584,21 @@ final class SetupModel {
   // MARK: Notifications and done
 
   /// The system was asked here already: the step shows "Continue" (plan B3.2 rule 2).
-  var notificationsAllowed: Bool { draft.notificationsDecision == .allowed }
+  var systemAskedForNotifications: Bool { draft.notificationsDecision == .systemAsked }
 
   /// "Allow notifications": iOS asks once; after that the step's button only continues.
   func allowNotifications() async {
-    if draft.notificationsDecision != .allowed {
+    if draft.notificationsDecision != .systemAsked {
       services.notifications.showsDetails = showDetails
       _ = await services.notifications.requestAuthorization()
-      draft.notificationsDecision = .allowed
+      draft.notificationsDecision = .systemAsked
     }
     facts.notificationsAsked = true
     go(.done)
   }
 
   func notNow() {
-    if draft.notificationsDecision != .allowed { draft.notificationsDecision = .notNow }
+    if draft.notificationsDecision != .systemAsked { draft.notificationsDecision = .notNow }
     facts.notificationsAsked = true
     go(.done)
   }

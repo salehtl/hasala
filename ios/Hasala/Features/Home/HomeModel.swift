@@ -14,6 +14,14 @@ struct Bell: Equatable {
   var earlier: [NotificationItem]
 
   var count: Int { needsALook.count }
+
+  static func label(_ count: Int) -> String {
+    switch count {
+    case ...0: "Notifications"
+    case 1: "Notifications, 1 needs a look"
+    default: "Notifications, \(count) need a look"
+    }
+  }
 }
 
 /// Home · Default (spec 10 §2) and its bell (§4).

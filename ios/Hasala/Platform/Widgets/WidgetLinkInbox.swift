@@ -28,7 +28,6 @@ extension AppModel {
       router.tab = .home
       router.home = BuildSurface.showsUnfinished ? [.accounts] : []
     case .review:
-      period = .month(store.now.date.yearMonth)
       router.tab = .review
       if reviewCount > 0 { startReview() }
     case .activity:

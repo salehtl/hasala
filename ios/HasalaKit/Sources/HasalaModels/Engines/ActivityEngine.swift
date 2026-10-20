@@ -146,6 +146,7 @@ public enum ActivityEngine {
     let listed = s.txns.filter { matches($0, filter, s, in: window) }.sorted { $0.postedAt > $1.postedAt }
     let days = group(listed, s, today: now.date)
     let showsOverview = filter.kind == .all && filter.category == nil && !filter.isSearching
+    let review = showsOverview ? reviewSummary(s, now: now) : nil
     let n = inPeriod.count
     let noun = "\(n) transaction\(n == 1 ? "" : "s")"
 
@@ -155,7 +156,7 @@ public enum ActivityEngine {
       countLine: isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)",
       chips: chips,
       filter: filter,
-      review: showsOverview && !reviewQueue.isEmpty ? reviewSummary(s, now: now, in: window) : nil,
+      review: review.flatMap { $0.count > 0 ? $0 : nil },
       comingUp: showsOverview && period.contains(today) ? comingUp(s, today: now.date, within: 7) : [],
       days: days,
       rows: filter.category == nil ? [] : listed.map { dated($0, s) },
@@ -164,7 +165,7 @@ public enum ActivityEngine {
   }
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime, in window: ReviewWindow = .all) -> ReviewSummary {
-    let queue = s.txns.filter { $0.inReview && window.contains($0.postedAt.date) }
+    let queue = ReviewEngine.queue(s, in: window)
     let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + ($1.homeMinor ?? 0) }
     let today = queue.filter { $0.postedAt.date == now.date }.count
     return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)

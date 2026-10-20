@@ -25,7 +25,6 @@ public enum MayaLedger {
       profile: ProfileInfo(displayName: Maya.displayName, email: "maya@example.com", signIn: .passkey),
       mailbox: MailboxHealth(status: .working, lastEmail: "4 min ago", banks: "Emirates NBD and DIB"),
       prefs: DevicePrefs(),
-      unreadNotifications: 2,
       netWorth: NetWorthHistory(monthChange: .aed(2_140_00),
                                 spark: [171, 229, 200, 329, 300, 429, 400, 557, 529, 686, 743])
     )

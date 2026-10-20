@@ -131,7 +131,7 @@ public enum Maya {
       line: MoneyPhrase([
         .amount(.aed(427_90), hidden: 3), .text(" from "), .amount(.aed(389_00), hidden: 3), .text(" · accept or check"),
       ]),
-      when: "Mon", destination: .bills),
+      when: "Mon", destination: .bill("du")),
   ])
 
   static let widgets: [HomeWidget] = [

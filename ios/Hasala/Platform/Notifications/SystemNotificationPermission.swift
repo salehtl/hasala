@@ -3,15 +3,20 @@ import LocalAuthentication
 import UserNotifications
 
 /// Notification permission through the system (spec 04 §9.3). "Show amounts and merchants"
-/// is a device preference (§4.5, non-sensitive), off by default (PO-7).
+/// is a device preference (§4.5, non-sensitive), off by default (PO-7): it is
+/// `DevicePrefs.notificationDetail`, the one the Lock Screen widgets read.
 @MainActor
 final class SystemNotificationPermission: NotificationPermissionAsking {
-  private static let detailsKey = "prefs.notifications.showDetails"
+  private static let legacyDetailsKey = "prefs.notifications.showDetails"
   private static let askedKey = "prefs.setup.notificationsAsked"
+  private let prefs = DevicePrefsStore()
 
   var showsDetails: Bool {
-    get { UserDefaults.standard.bool(forKey: Self.detailsKey) }
-    set { UserDefaults.standard.set(newValue, forKey: Self.detailsKey) }
+    get { prefs.prefs.notificationDetail }
+    set {
+      prefs.update { $0.notificationDetail = newValue }
+      UserDefaults.standard.removeObject(forKey: Self.legacyDetailsKey)
+    }
   }
 
   func requestAuthorization() async -> Bool {

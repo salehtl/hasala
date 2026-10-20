@@ -21,7 +21,7 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Your widgets"].exists)
     // Home has no Needs-you rail any more (decided 14 Oct): the bell counts what needs a look.
     XCTAssertFalse(app.staticTexts["Needs you"].exists)
-    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 4 new")
+    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 4 need a look")
     attach(app, "Home · Default")
     try audit(app)
     app.swipeUp()
@@ -130,7 +130,7 @@ final class SmokeTests: XCTestCase {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
-      XCTAssertEqual(bell.label, "Notifications, 4 new")
+      XCTAssertEqual(bell.label, "Notifications, 4 need a look")
       XCTAssertLessThan(bell.frame.maxX, profile.frame.minX, "\(tab): the bell is not before the profile")
       XCTAssertTrue(search.isHittable, "\(tab) has no search")
       XCTAssertEqual(search.frame.maxX, bell.frame.minX, accuracy: 1, "\(tab): search and the bell are not joined")

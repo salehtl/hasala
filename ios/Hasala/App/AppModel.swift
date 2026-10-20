@@ -63,7 +63,7 @@ final class AppModel {
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
-  @ObservationIgnored private var reviewMemo = Memo<ReviewMemoKey, Int>()
+  @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
   @ObservationIgnored private var canvasMemo = Memo<CanvasMemoKey, [HomeCanvasItem]>()
@@ -179,16 +179,11 @@ final class AppModel {
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
 
-  /// Transactions waiting to be sorted in Home's period: the Review tab's badge, once per
-  /// ledger or period change.
+  /// Transactions waiting to be sorted, whatever the period: the Review tab's badge, once per
+  /// ledger change. The bell, the Review tab and the deck count the same queue.
   var reviewCount: Int {
-    let window = reviewWindow
-    return reviewMemo.value(for: ReviewMemoKey(revision: store.revision, window: window)) {
-      ReviewEngine.queue(store.state, in: window).count
-    }
+    reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
   }
-
-  var reviewWindow: ReviewWindow { ReviewWindow(period) }
 
   var showingProfile: Bool {
     get { sheet == .profile }
@@ -326,9 +321,4 @@ struct CanvasMemoKey: Equatable {
 struct HomeMemoKey: Equatable {
   var revision: Int
   var period: Period?
-}
-
-struct ReviewMemoKey: Hashable {
-  var revision: Int
-  var window: ReviewWindow
 }

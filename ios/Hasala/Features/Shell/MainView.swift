@@ -55,7 +55,7 @@ struct MainView: View {
       Tab("Review", image: "TabReview", value: AppTab.review) {
         ReviewTabView(app: app)
       }
-      // Transactions to sort in the period; hidden at zero.
+      // Transactions to sort, whatever the period; hidden at zero.
       .badge(app.reviewCount)
       Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
