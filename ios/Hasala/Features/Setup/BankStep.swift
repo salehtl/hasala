@@ -11,7 +11,6 @@ struct BankStep: View {
   @State private var telling = false
   @State private var helping = false
   @State private var asking: MailProviderKind?
-  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     let provider = model.provider
@@ -40,11 +39,10 @@ struct BankStep: View {
         if connected == nil, model.connectable.count <= 1 { TellUsWhichLink(small: true, leading: true) }
         if connected == nil, provider == .gmail, BuildSurface.showsGoogleBriefing { GoogleBriefingCard() }
         SetupFailureBanner(failure: model.failure)
-        if typeSize.isAccessibilitySize { note(connected).padding(.top, 12) }
+        note(connected).padding(.top, 4)
       }
       .padding(.top, -8)
     } footer: {
-      if !typeSize.isAccessibilitySize { note(connected).padding(.bottom, 10) }
       if connected != nil {
         BusyButton(title: "Continue", busy: model.busy, enabled: !model.chosenBanks.isEmpty,
                    identifier: "bank.continue") { Task { await model.continueWithBanks() } }
