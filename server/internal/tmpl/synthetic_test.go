@@ -107,6 +107,15 @@ func syntheticENBD(t *testing.T) syntheticGroup {
 				"USD99.99 has been withdrawn from your account 012XXX34XXX56."},
 			{"foreign-currency-no-space-credit", "the credit entry carries the same pair", subj,
 				"USD400.00 has been credited to your account 012XXX34XXX56."},
+			{"non-two-decimal-no-space", "a currency with minor exponent 0 next to the number: the refusal is " +
+				"final, so the spaced pattern cannot read the same number as AED", subj,
+				"JPY12,500.00 has been debited from your account 012XXX34XXX56."},
+			{"non-two-decimal-no-space-credit", "the same refusal on the credit entry", subj,
+				"KRW150,000.00 has been credited to your account 012XXX34XXX56."},
+			{"three-decimal-no-space", "a currency with minor exponent 3 next to the number", subj,
+				"OMR12.50 has been debited from your account 012XXX34XXX56."},
+			{"non-two-decimal-spaced", "the spaced form was already refused; pinned beside the adjacent one", subj,
+				"JPY 12,500.00 has been debited from your account 012XXX34XXX56."},
 			{"subject-last4-two-spaces", "the ONE anchor the normalizer does not feed: last4 reads the " +
 				"SUBJECT, which is RFC 2047-decoded and trimmed but never whitespace-collapsed. That is why " +
 				"this is the one separator version 3 spells with `+`",
@@ -256,6 +265,10 @@ func syntheticADIB(t *testing.T) syntheticGroup {
 				line("USD 25.00", "*123", "SAMPLE STORE NEW YORK US")},
 			{"foreign-currency-no-space", "the currency-adjacent pattern runs first, as in enbd.alert.v1", subj,
 				line("USD25.00", "*123", "SAMPLE STORE NEW YORK US")},
+			{"non-two-decimal-no-space", "a currency with minor exponent 0 next to the number is refused for good",
+				subj, line("JPY12,500.00", "*123", "SAMPLE STORE TOKYO JP")},
+			{"three-decimal-no-space", "a currency with minor exponent 3 next to the number is refused for good",
+				subj, line("OMR12.50", "*123", "SAMPLE STORE MUSCAT OM")},
 			{"no-currency-prefix", "the ccy group does not participate; default_currency applies", subj,
 				line("73.40", "*123", "SAMPLE STORE DUBAI AE")},
 			{"case-folded", `flags ["i"] fold the patterns, but body_contains is an exact literal: an upper-cased ` +
@@ -308,6 +321,10 @@ func syntheticADIBAccount(t *testing.T) syntheticGroup {
 				line("USD 25.00", debit, "*456")},
 			{"foreign-currency-no-space", "the currency-adjacent pattern runs first, as in enbd.alert.v1",
 				"Credit Transaction Alert", line("USD25.00", credit, "*456")},
+			{"non-two-decimal-no-space", "a currency with minor exponent 0 next to the number is refused for good",
+				"Debit Transaction Alert", line("JPY12,500.00", debit, "*456")},
+			{"three-decimal-no-space", "a currency with minor exponent 3 next to the number is refused for good",
+				"Credit Transaction Alert", line("OMR12.50", credit, "*456")},
 			{"no-currency-prefix", "the ccy group does not participate; default_currency applies",
 				"Debit Transaction Alert", line("41.25", debit, "*456")},
 			{"four-digit-account", "last4 keeps the last four of up to eight digits", "Debit Transaction Alert",

@@ -283,6 +283,78 @@
       }
     },
     {
+      "name": "enbd.alert.v1/non-two-decimal-no-space",
+      "source": "SYNTHETIC: a currency with minor exponent 0 next to the number: the refusal is final, so the spaced pattern cannot read the same number as AED",
+      "subject_base64": "VHJhbnNhY3Rpb24gYWR2aWNlIGZvciB5b3VyIGFjY291bnQgZW5kaW5nIHdpdGggODY0Mg==",
+      "normalized_body_base64": "SlBZMTIsNTAwLjAwIGhhcyBiZWVuIGRlYml0ZWQgZnJvbSB5b3VyIGFjY291bnQgMDEyWFhYMzRYWFg1Ni4=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "8642",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.alert.v1/non-two-decimal-no-space-credit",
+      "source": "SYNTHETIC: the same refusal on the credit entry",
+      "subject_base64": "VHJhbnNhY3Rpb24gYWR2aWNlIGZvciB5b3VyIGFjY291bnQgZW5kaW5nIHdpdGggODY0Mg==",
+      "normalized_body_base64": "S1JXMTUwLDAwMC4wMCBoYXMgYmVlbiBjcmVkaXRlZCB0byB5b3VyIGFjY291bnQgMDEyWFhYMzRYWFg1Ni4=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "8642",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.alert.v1/three-decimal-no-space",
+      "source": "SYNTHETIC: a currency with minor exponent 3 next to the number",
+      "subject_base64": "VHJhbnNhY3Rpb24gYWR2aWNlIGZvciB5b3VyIGFjY291bnQgZW5kaW5nIHdpdGggODY0Mg==",
+      "normalized_body_base64": "T01SMTIuNTAgaGFzIGJlZW4gZGViaXRlZCBmcm9tIHlvdXIgYWNjb3VudCAwMTJYWFgzNFhYWDU2Lg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "8642",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.alert.v1/non-two-decimal-spaced",
+      "source": "SYNTHETIC: the spaced form was already refused; pinned beside the adjacent one",
+      "subject_base64": "VHJhbnNhY3Rpb24gYWR2aWNlIGZvciB5b3VyIGFjY291bnQgZW5kaW5nIHdpdGggODY0Mg==",
+      "normalized_body_base64": "SlBZIDEyLDUwMC4wMCBoYXMgYmVlbiBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50IDAxMlhYWDM0WFhYNTYu",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "8642",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
       "name": "enbd.alert.v1/subject-last4-two-spaces",
       "source": "SYNTHETIC: the ONE anchor the normalizer does not feed: last4 reads the SUBJECT, which is RFC 2047-decoded and trimmed but never whitespace-collapsed. That is why this is the one separator version 3 spells with `+`",
       "subject_base64": "VHJhbnNhY3Rpb24gYWR2aWNlIGZvciB5b3VyIGFjY291bnQgZW5kaW5nIHdpdGggIDg2NDI=",

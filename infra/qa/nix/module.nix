@@ -415,7 +415,7 @@ let
   # (through Cloudflare, when the tunnel is on), P5 (the AASA, headers and
   # body), and with the console on P8 (its /healthz) and P10 (the kernel rule
   # still resets a non-nginx connection to the console port, on 127.0.0.1 and
-  # ::1; this unit is a DynamicUser, never nginx). P6 (mail metrics) and P7
+  # ::1; this unit runs as hasala-health, never nginx). P6 (mail metrics) and P7
   # (apex token pages) need the metrics listener and the website's live
   # checks; they join when those land.
   healthScript = pkgs.writeShellApplication {
@@ -1462,7 +1462,8 @@ in
         restartTriggers = [ tunnelConfig ];
         serviceConfig = hardening // {
           Type = "notify";
-          DynamicUser = true;
+          User = "hasala-tunnel";
+          Group = "hasala-tunnel";
           ExecStart = "${hp.cloudflared}/bin/cloudflared tunnel --no-autoupdate --config ${tunnelConfig} run";
           LoadCredential = [ "tunnel.json:${cfg.tunnel.credentialsFile}" ];
           Restart = "always";
@@ -1479,6 +1480,28 @@ in
           TasksMax = 128;
         };
       };
+
+      users.groups.hasala-tunnel = { };
+      users.users.hasala-tunnel = {
+        isSystemUser = true;
+        group = "hasala-tunnel";
+      };
+
+      networking.firewall.extraCommands = ''
+        iptables -w -N hasala-api-out 2>/dev/null || true
+        iptables -w -F hasala-api-out
+        iptables -w -A hasala-api-out -m owner --uid-owner 0 -j RETURN
+        iptables -w -A hasala-api-out -m owner --uid-owner hasala-tunnel -j RETURN
+        ${optionalString cfg.monitoring.healthCheck.enable "iptables -w -A hasala-api-out -m owner --uid-owner hasala-health -j RETURN"}
+        iptables -w -A hasala-api-out -p tcp -j REJECT --reject-with tcp-reset
+        iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out 2>/dev/null \
+          || iptables -w -I OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out
+      '';
+      networking.firewall.extraStopCommands = ''
+        iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out 2>/dev/null || true
+        iptables -w -F hasala-api-out 2>/dev/null || true
+        iptables -w -X hasala-api-out 2>/dev/null || true
+      '';
     })
 
     # ------------------------------------------------------- §5.13, §5.14
@@ -1712,7 +1735,8 @@ in
         onFailure = cfg.monitoring.onFailure;
         serviceConfig = hardening // {
           Type = "oneshot";
-          DynamicUser = true;
+          User = "hasala-health";
+          Group = "hasala-health";
           StateDirectory = "hasala-health";
           RuntimeDirectory = "hasala-health";
           ExecStart = lib.getExe healthScript;
@@ -1724,6 +1748,11 @@ in
           # ntfy may live on loopback; the LAN and the tailnet stay out of reach.
           IPAddressDeny = denyLanAndTailnet;
         };
+      };
+      users.groups.hasala-health = { };
+      users.users.hasala-health = {
+        isSystemUser = true;
+        group = "hasala-health";
       };
       systemd.timers.hasala-health = {
         wantedBy = [ "hasala.target" ];

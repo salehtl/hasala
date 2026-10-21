@@ -63,9 +63,13 @@ func TestPurgeDryRunRunsTheRealPreflight(t *testing.T) {
 					t.Fatalf("dry run message %q does not name %q", msg, w)
 				}
 			}
-			code, _, realMsg := hasalad(t, env, "purge-user", user, "--confirm", user)
+			code, realOut, realMsg := hasalad(t, env, "purge-user", user, "--confirm", user)
 			if code == 0 {
 				t.Fatalf("the real purge succeeded where the dry run refused (%s)", realMsg)
+			}
+			if strings.Contains(realOut, "purged account") || strings.Contains(realOut, "queued the goodbye") ||
+				!strings.Contains(realMsg, "nothing was deleted and no email was queued") {
+				t.Fatalf("a refused purge reported %q (%s)", realOut, realMsg)
 			}
 			var left int
 			if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, user).Scan(&left); err != nil || left != 1 {
