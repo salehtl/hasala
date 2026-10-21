@@ -385,6 +385,9 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err := tx.Commit(ctx); err != nil {
 		return RecoverFinished{}, err
 	}
+	if kind == MethodPassword || st.hasPassword() {
+		a.recordPassword(userID, now)
+	}
 	a.Mail.Kick()
 	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID,
 		Wake: wakeFor(userID, w.WriterID, revoked)}, nil

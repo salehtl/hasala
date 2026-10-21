@@ -330,6 +330,7 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		s.Passkeys.StepUp = s.StepUp
 	}
 	s.Writers.StepUp = s.StepUp
+	s.Writers.Record = s.recordRestore
 	s.AccountKeys = &auth.AccountKeys{Pool: pool, StepUp: s.StepUp}
 	s.Sessions.Max = cfg.Auth.SessionMax
 	return s, nil

@@ -114,6 +114,7 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error)
 	if err := tx.Commit(ctx); err != nil {
 		return Wake{}, err
 	}
+	a.recordFreeze(userID, trigger, now)
 	a.Mail.Kick()
 	return wakeFor(userID, "", revoked), nil
 }
@@ -128,7 +129,10 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	}
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionAccountFreeze, ParamsHash: ph, StepUp: su}
-	var revoked []pushv2.Target
+	var (
+		revoked []pushv2.Target
+		frozeAt time.Time
+	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
@@ -138,6 +142,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 			return ErrAccountFrozen
 		}
 		now := a.now()
+		frozeAt = now
 		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, p.WriterID); err != nil {
 			return err
 		}
@@ -151,6 +156,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	if err != nil {
 		return Wake{}, err
 	}
+	a.recordFreeze(session.UserID, frozeAt, frozeAt)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
@@ -180,7 +186,10 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 	}
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionAccountUnfreeze, ParamsHash: ph, StepUp: su}
-	var revoked []pushv2.Target
+	var (
+		revoked    []pushv2.Target
+		unfrozenAt time.Time
+	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
@@ -211,6 +220,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 			return fmt.Errorf("%w: proof kind %s", ErrStepUpFailed, p.Kind)
 		}
 		now := a.now()
+		unfrozenAt = now
 		if _, err := tx.Exec(ctx,
 			`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false
 			  WHERE id = $1`, session.UserID); err != nil {
@@ -228,6 +238,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 	if err != nil {
 		return Wake{}, err
 	}
+	a.recordUnfreeze(session.UserID, unfrozenAt)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
@@ -327,6 +338,7 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 	if err := tx.Commit(ctx); err != nil {
 		return Wake{}, err
 	}
+	a.recordFreeze(c.user, trigger, now)
 	a.Mail.Kick()
 	return wakeFor(c.user, writerID, revoked), nil
 }

@@ -3,16 +3,20 @@ package purgeledger
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
 const (
@@ -20,35 +24,78 @@ const (
 	Retention             = 60 * 24 * time.Hour
 )
 
+type Kind string
+
+const (
+	KindPurge         Kind = ""
+	KindFreeze        Kind = "freeze"
+	KindDevice        Kind = "device"
+	KindPassword      Kind = "password"
+	KindUnfreeze      Kind = "unfreeze"
+	KindWaitlistLeave Kind = "waitlist-leave"
+)
+
 type Entry struct {
-	ID uuid.UUID
-	At time.Time
+	ID      uuid.UUID
+	At      time.Time
+	Kind    Kind
+	Trigger time.Time
+	Device  *Device
+}
+
+type Device struct {
+	WriterID       string
+	SignerWriterID string
+	FinalCounter   int64
+	FinalHead      []byte
+	Nonce          []byte
+	Sig            []byte
 }
 
 func Append(path string, ids []uuid.UUID, at time.Time) error {
+	entries := make([]Entry, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, Entry{ID: id, At: at})
+	}
+	return AppendEntries(path, entries...)
+}
+
+func AppendEntries(path string, entries ...Entry) error {
 	if path == "" {
 		return errors.New("purgeledger: no ledger path")
 	}
-	if len(ids) == 0 {
+	if len(entries) == 0 {
 		return nil
 	}
 	var buf bytes.Buffer
-	for _, id := range ids {
-		if id == uuid.Nil {
-			return errors.New("purgeledger: zero account id")
+	latest := entries[0].At
+	for _, e := range entries {
+		if err := check(e); err != nil {
+			return err
 		}
-		buf.WriteString(formatEntry(Entry{ID: id, At: at}))
+		if e.At.After(latest) {
+			latest = e.At
+		}
+		buf.WriteString(formatEntry(e))
 	}
 	unlock, err := lock(path)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	if err := appendLocked(path, buf.Bytes()); err != nil {
+		return err
+	}
+	_, _ = pruneLocked(path, latest.Add(-Retention))
+	return nil
+}
+
+func appendLocked(path string, line []byte) error {
 	f, created, err := openAppend(path)
 	if err != nil {
 		return fmt.Errorf("purgeledger: open %s: %w", path, err)
 	}
-	if _, err := f.Write(buf.Bytes()); err != nil {
+	if _, err := f.Write(line); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("purgeledger: write %s: %w", path, err)
 	}
@@ -88,6 +135,10 @@ func Prune(path string, cutoff time.Time) (int, error) {
 		return 0, err
 	}
 	defer unlock()
+	return pruneLocked(path, cutoff)
+}
+
+func pruneLocked(path string, cutoff time.Time) (int, error) {
 	entries, err := Read(path)
 	if err != nil || len(entries) == 0 {
 		return 0, err
@@ -133,7 +184,7 @@ func IDs(entries []Entry) []uuid.UUID {
 	seen := make(map[uuid.UUID]bool, len(entries))
 	ids := make([]uuid.UUID, 0, len(entries))
 	for _, e := range entries {
-		if !seen[e.ID] {
+		if e.Kind == KindPurge && !seen[e.ID] {
 			seen[e.ID] = true
 			ids = append(ids, e.ID)
 		}
@@ -141,8 +192,113 @@ func IDs(entries []Entry) []uuid.UUID {
 	return ids
 }
 
+func check(e Entry) error {
+	if e.ID == uuid.Nil {
+		return errors.New("purgeledger: zero id")
+	}
+	switch e.Kind {
+	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave:
+		if !e.Trigger.IsZero() || e.Device != nil {
+			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
+		}
+	case KindFreeze:
+		if e.Trigger.IsZero() || e.Device != nil {
+			return errors.New("purgeledger: a freeze entry carries its trigger time and no device")
+		}
+	case KindDevice:
+		d := e.Device
+		if !e.Trigger.IsZero() || d == nil || !keyproto.ValidWriterID(d.WriterID) || !keyproto.ValidWriterID(d.SignerWriterID) ||
+			d.FinalCounter < 0 || len(d.FinalHead) != keyproto.HashSize || len(d.Nonce) != keyproto.NonceSize ||
+			len(d.Sig) != keyproto.Ed25519SigSize {
+			return errors.New("purgeledger: a device entry carries a well-formed revocation and no trigger")
+		}
+	default:
+		return fmt.Errorf("purgeledger: unknown kind %q", e.Kind)
+	}
+	return nil
+}
+
 func formatEntry(e Entry) string {
-	return e.ID.String() + " " + e.At.UTC().Format(time.RFC3339) + "\n"
+	line := e.ID.String() + " " + e.At.UTC().Format(time.RFC3339)
+	switch e.Kind {
+	case KindFreeze:
+		line += " " + string(e.Kind) + " " + e.Trigger.UTC().Format(time.RFC3339)
+	case KindDevice:
+		d := e.Device
+		line += " " + string(e.Kind) + " " + d.WriterID + " " + d.SignerWriterID + " " +
+			strconv.FormatInt(d.FinalCounter, 10) + " " + hex.EncodeToString(d.FinalHead) + " " +
+			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
+	case KindPassword, KindUnfreeze, KindWaitlistLeave:
+		line += " " + string(e.Kind)
+	}
+	return line + "\n"
+}
+
+func parseTime(s string) (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339, s)
+	return t, err == nil
+}
+
+func parseHex(s string, n int) ([]byte, bool) {
+	if len(s) != 2*n || strings.ToLower(s) != s {
+		return nil, false
+	}
+	b, err := hex.DecodeString(s)
+	return b, err == nil
+}
+
+func parseLine(text string) (Entry, bool) {
+	f := strings.Split(text, " ")
+	if len(f) < 2 || len(f[0]) != 36 {
+		return Entry{}, false
+	}
+	id, err := uuid.Parse(f[0])
+	if err != nil || id == uuid.Nil {
+		return Entry{}, false
+	}
+	at, ok := parseTime(f[1])
+	if !ok {
+		return Entry{}, false
+	}
+	e := Entry{ID: id, At: at}
+	if len(f) == 2 {
+		return e, true
+	}
+	e.Kind = Kind(f[2])
+	switch e.Kind {
+	case KindPassword, KindUnfreeze, KindWaitlistLeave:
+		if len(f) != 3 {
+			return Entry{}, false
+		}
+	case KindFreeze:
+		if len(f) != 4 {
+			return Entry{}, false
+		}
+		if e.Trigger, ok = parseTime(f[3]); !ok {
+			return Entry{}, false
+		}
+	case KindDevice:
+		if len(f) != 9 {
+			return Entry{}, false
+		}
+		d := &Device{WriterID: f[3], SignerWriterID: f[4]}
+		n, err := strconv.ParseInt(f[5], 10, 64)
+		if err != nil || strconv.FormatInt(n, 10) != f[5] {
+			return Entry{}, false
+		}
+		d.FinalCounter = n
+		var okH, okN, okS bool
+		d.FinalHead, okH = parseHex(f[6], keyproto.HashSize)
+		d.Nonce, okN = parseHex(f[7], keyproto.NonceSize)
+		d.Sig, okS = parseHex(f[8], keyproto.Ed25519SigSize)
+		if !okH || !okN || !okS {
+			return Entry{}, false
+		}
+		e.Device = d
+	default:
+		return Entry{}, false
+	}
+	return e, check(e) == nil
 }
 
 func parse(path string, raw []byte) ([]Entry, error) {
@@ -152,13 +308,11 @@ func parse(path string, raw []byte) ([]Entry, error) {
 	var entries []Entry
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	for n := 1; sc.Scan(); n++ {
-		idText, atText, ok := strings.Cut(sc.Text(), " ")
-		id, idErr := uuid.Parse(idText)
-		at, atErr := time.Parse(time.RFC3339, atText)
-		if !ok || idErr != nil || atErr != nil || id == uuid.Nil || len(idText) != 36 {
-			return nil, fmt.Errorf("purgeledger: %s line %d is not \"<account id> <RFC 3339 time>\"", path, n)
+		e, ok := parseLine(sc.Text())
+		if !ok {
+			return nil, fmt.Errorf("purgeledger: %s line %d is not \"<id> <RFC 3339 time> [<kind> <fields>]\"", path, n)
 		}
-		entries = append(entries, Entry{ID: id, At: at})
+		entries = append(entries, e)
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("purgeledger: read %s: %w", path, err)

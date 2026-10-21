@@ -1,0 +1,438 @@
+package auth
+
+import (
+	"bytes"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/salehtl/hasala/server/internal/authtest"
+	"github.com/salehtl/hasala/server/internal/keyproto"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
+)
+
+func plantMailboxLink(t *testing.T, pool *pgxpool.Pool, u uuid.UUID, holder string, seed byte) {
+	t.Helper()
+	if _, err := pool.Exec(bgctx,
+		`INSERT INTO mailbox_links (user_id, provider, address_hmac, route_key_id, holder_writer_id, created_at, updated_at)
+		 VALUES ($1, 'gmail', $2, $3, $4, now(), now())`,
+		u, bytes.Repeat([]byte{seed}, 32), bytes.Repeat([]byte{seed}, 8), holder); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func ledgerRecorder(t *testing.T) (string, func(purgeledger.Entry)) {
+	path := filepath.Join(t.TempDir(), "purged")
+	return path, func(e purgeledger.Entry) {
+		if err := purgeledger.AppendEntries(path, e); err != nil {
+			t.Errorf("record %s: %v", e.Kind, err)
+		}
+	}
+}
+
+func readLedger(t *testing.T, path string) []purgeledger.Entry {
+	t.Helper()
+	entries, err := purgeledger.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}
+
+func TestRevokingTheHolderDropsTheMailboxLinkAndRecordsTheRemoval(t *testing.T) {
+	f := newKeyFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.writers.Record = rec
+	stolen := authtest.NewDevice(t)
+	f.enrol(stolen)
+	plantMailboxLink(t, f.pool, f.user, stolen.WriterID, 0x11)
+	before := f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'mailbox_unlinked'`, f.user)
+
+	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
+	rev := f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)
+	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), rev); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 0 {
+		t.Fatal("the removed iPhone still holds the mailbox link")
+	}
+	if n := f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'mailbox_unlinked' AND writer_id = $2`,
+		f.user, f.device.WriterID); n != before+1 {
+		t.Fatalf("%d mailbox_unlinked events by the revoking device, want %d", n, before+1)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 1 || entries[0].Kind != purgeledger.KindDevice || entries[0].ID != f.user {
+		t.Fatalf("ledger %+v, want one device removal", entries)
+	}
+	d := entries[0].Device
+	if d.WriterID != stolen.WriterID || d.SignerWriterID != f.device.WriterID || d.FinalCounter != 0 ||
+		!bytes.Equal(d.Nonce, rev.Nonce) || !bytes.Equal(d.Sig, rev.Sig) || !bytes.Equal(d.FinalHead, rev.FinalHead) {
+		t.Fatalf("recorded %+v", d)
+	}
+	f.verifiedRoster()
+}
+
+func TestRevokingAnotherDeviceKeepsTheHoldersLink(t *testing.T) {
+	f := newKeyFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.writers.Record = rec
+	other := authtest.NewDevice(t)
+	f.enrol(other)
+	plantMailboxLink(t, f.pool, f.user, f.device.WriterID, 0x12)
+	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
+	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1 AND holder_writer_id = $2`, f.user, f.device.WriterID); n != 1 {
+		t.Fatal("revoking a device that holds no link dropped the holder's link")
+	}
+	if n := f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'mailbox_unlinked'`, f.user); n != 0 {
+		t.Fatal("an unlink was recorded for a link that stayed")
+	}
+	if n := len(readLedger(t, path)); n != 1 {
+		t.Fatalf("%d ledger entries, want 1", n)
+	}
+}
+
+func TestAFailedRevocationRecordsNothing(t *testing.T) {
+	f := newKeyFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.writers.Record = rec
+	other := authtest.NewDevice(t)
+	f.enrol(other)
+	plantMailboxLink(t, f.pool, f.user, other.WriterID, 0x13)
+	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
+	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
+		t.Fatalf("a wrong head: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 1 {
+		t.Fatal("a refused revocation dropped the link")
+	}
+	if n := len(readLedger(t, path)); n != 0 {
+		t.Fatalf("a refused revocation wrote %d ledger entries", n)
+	}
+}
+
+func TestReapplyRevokesADeviceARestoreBroughtBack(t *testing.T) {
+	f := newKeyFixture(t)
+	stolen := authtest.NewDevice(t)
+	stolenTok := f.enrol(stolen)
+	counter, head := f.appendRows(stolen, 2)
+	registerPushToken(t, f.pool, f.user, stolen.WriterID, stolenTok, "stolen")
+	plantMailboxLink(t, f.pool, f.user, stolen.WriterID, 0x14)
+	rev := f.revocation(stolen.WriterID, f.device, counter, head, nil)
+	entries := []purgeledger.Entry{
+		{ID: f.user, At: f.clock.now().Truncate(time.Second), Kind: purgeledger.KindDevice, Device: &purgeledger.Device{
+			WriterID: rev.WriterID, SignerWriterID: rev.SignerWriterID, FinalCounter: rev.FinalCounter,
+			FinalHead: rev.FinalHead, Nonce: rev.Nonce, Sig: rev.Sig}},
+		{ID: uuid.New(), At: f.clock.now().Truncate(time.Second), Kind: purgeledger.KindPassword},
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Devices != 1 || rep.Passwords != 0 || rep.Freezes != 0 {
+		t.Fatalf("reapply %+v %v, want one device", rep, err)
+	}
+	r := f.verifiedRoster()
+	if w := r[stolen.WriterID]; w.live || w.finalCounter != counter || !bytes.Equal(w.finalHead, head) {
+		t.Fatalf("roster after the replay: %+v", w)
+	}
+	if !r[f.device.WriterID].live {
+		t.Fatal("the signer was revoked")
+	}
+	if n := f.count(`SELECT count(*) FROM sessions WHERE token_hash = $1 AND revoked_at IS NULL`, SessionHash(stolenTok)); n != 0 {
+		t.Fatal("the removed device's session is live again")
+	}
+	if n := f.count(`SELECT count(*) FROM apns_tokens WHERE writer_id = $1`, stolen.WriterID); n != 0 {
+		t.Fatal("the removed device's push token survived")
+	}
+	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 0 {
+		t.Fatal("the removed device's mailbox link survived")
+	}
+	if _, err := f.sessions.Resolve(bgctx, f.token); err != nil {
+		t.Fatalf("another device's session was revoked: %v", err)
+	}
+	rep, err = Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a second replay %+v %v, want nothing", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM key_history WHERE user_id = $1 AND event = 'revoked'`, f.user); n != 1 {
+		t.Fatalf("%d revocations in the key history, want 1", n)
+	}
+}
+
+func TestPasswordChangesSurviveARestore(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	other, err := m.loginPassword(m.s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var (
+		oldHash, oldSalt []byte
+		oldVersion       int
+		oldSetAt         time.Time
+	)
+	if err := f.pool.QueryRow(bgctx, `SELECT password_hash, password_salt, password_version, password_set_at FROM users WHERE id = $1`,
+		m.user.UserID).Scan(&oldHash, &oldSalt, &oldVersion, &oldSetAt); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	newS := f.stretch(m.addr, "an entirely new password")
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, m.deviceStepUp(keyproto.ActionPasswordChange, m.s, sumBytes(newS))); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 1 || entries[0].Kind != purgeledger.KindPassword || entries[0].ID != m.user.UserID {
+		t.Fatalf("ledger %+v, want one password change", entries)
+	}
+
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Passwords != 0 {
+		t.Fatalf("a replay on the live database %+v %v, want nothing", rep, err)
+	}
+	if _, err := m.loginPassword(newS, nil); err != nil {
+		t.Fatalf("the new password stopped working after a replay without a restore: %v", err)
+	}
+
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET password_hash = $2, password_salt = $3, password_version = $4, password_set_at = $5
+	    WHERE id = $1`, m.user.UserID, oldHash, oldSalt, oldVersion, oldSetAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = NULL, revoked_reason = NULL WHERE token_hash = $1`,
+		SessionHash(other.Session.Token)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatalf("the simulated restore did not bring the old password back: %v", err)
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Passwords != 1 {
+		t.Fatalf("reapply %+v %v, want one password", rep, err)
+	}
+	if _, err := m.loginPassword(m.s, nil); !errors.Is(err, ErrPasswordRejected) {
+		t.Fatalf("the old password works again after the replay: %v", err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, other.Session.Token); !errors.Is(err, ErrSessionRevoked) {
+		t.Fatalf("a session the change ended is live again: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND password_hash IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("the restored password was not removed")
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Passwords != 0 {
+		t.Fatalf("a second replay %+v %v", rep, err)
+	}
+}
+
+func TestARefusedPasswordChangeRecordsNothing(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), m.s, nil); !errors.Is(err, ErrStepUpRequired) {
+		t.Fatalf("no step-up: %v", err)
+	}
+	if n := len(readLedger(t, path)); n != 0 {
+		t.Fatalf("%d entries for a refused change", n)
+	}
+}
+
+func TestAFreezeSurvivesARestore(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	other, err := m.loginPassword(m.s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 1 || entries[0].Kind != purgeledger.KindFreeze || entries[0].ID != m.user.UserID ||
+		!entries[0].Trigger.Equal(f.clock.now().Truncate(time.Second)) {
+		t.Fatalf("ledger %+v, want one freeze", entries)
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Freezes != 0 {
+		t.Fatalf("a replay on the frozen account %+v %v, want nothing", rep, err)
+	}
+
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL WHERE id = $1`,
+		m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = NULL, revoked_reason = NULL WHERE user_id = $1`,
+		m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+		m.user.UserID, f.clock.now().Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Freezes != 1 {
+		t.Fatalf("reapply %+v %v, want one freeze", rep, err)
+	}
+	var frozenBy string
+	var trigger time.Time
+	if err := f.pool.QueryRow(bgctx, `SELECT frozen_by, freeze_trigger_at FROM users WHERE id = $1`, m.user.UserID).
+		Scan(&frozenBy, &trigger); err != nil {
+		t.Fatal(err)
+	}
+	if frozenBy != FrozenByHolder || !trigger.Equal(entries[0].Trigger) {
+		t.Fatalf("frozen by %q at trigger %v", frozenBy, trigger)
+	}
+	for _, tok := range []string{m.token, other.Session.Token} {
+		if _, err := f.sessions.Resolve(bgctx, tok); !errors.Is(err, ErrSessionRevoked) {
+			t.Fatalf("a session the freeze ended is live again: %v", err)
+		}
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Freezes != 0 {
+		t.Fatalf("a second replay %+v %v", rep, err)
+	}
+}
+
+func TestAnUnfreezeAfterTheFreezeIsKept(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	at := f.clock.now().Truncate(time.Second)
+	f.clock.advance(time.Hour)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+		m.user.UserID, f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	entries := []purgeledger.Entry{{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at}}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Freezes != 0 {
+		t.Fatalf("reapply %+v %v: a lifted freeze came back", rep, err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
+		t.Fatalf("the session was revoked: %v", err)
+	}
+}
+
+func TestReapplyOnlySignsOutADeviceWhoseSignerTheRestoreLost(t *testing.T) {
+	f := newKeyFixture(t)
+	stolen := authtest.NewDevice(t)
+	stolenTok := f.enrol(stolen)
+	plantMailboxLink(t, f.pool, f.user, stolen.WriterID, 0x15)
+	lost := authtest.NewDevice(t)
+	unknown := f.revocation(stolen.WriterID, lost, 0, make([]byte, 32), nil)
+	forged := f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), nil)
+	forged.Sig = bytes.Repeat([]byte{0x01}, len(forged.Sig))
+	at := f.clock.now().Truncate(time.Second)
+	var entries []purgeledger.Entry
+	for _, rev := range []Revocation{unknown, forged} {
+		entries = append(entries, purgeledger.Entry{ID: f.user, At: at, Kind: purgeledger.KindDevice, Device: &purgeledger.Device{
+			WriterID: rev.WriterID, SignerWriterID: rev.SignerWriterID, FinalCounter: rev.FinalCounter,
+			FinalHead: rev.FinalHead, Nonce: rev.Nonce, Sig: rev.Sig}})
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Devices != 0 || rep.Unsigned != 2 {
+		t.Fatalf("reapply %+v %v, want two unsigned removals", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM key_history WHERE user_id = $1 AND event = 'revoked'`, f.user); n != 0 {
+		t.Fatalf("%d revocations the roster cannot verify went into the key history", n)
+	}
+	r := f.verifiedRoster()
+	if !r[stolen.WriterID].live {
+		t.Fatal("the writer was revoked without a key-history row")
+	}
+	if n := f.count(`SELECT count(*) FROM sessions WHERE token_hash = $1 AND revoked_at IS NULL`, SessionHash(stolenTok)); n != 0 {
+		t.Fatal("the removed device's session is live again")
+	}
+	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 0 {
+		t.Fatal("the removed device's mailbox link survived")
+	}
+	if _, err := f.sessions.Resolve(bgctx, f.token); err != nil {
+		t.Fatalf("another device's session was revoked: %v", err)
+	}
+	rep, err = Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Devices != 0 || rep.Unsigned != 2 {
+		t.Fatalf("a second replay %+v %v, want the two unsigned removals reported again", rep, err)
+	}
+}
+
+func TestARecordedUnfreezeKeepsTheFreezeLiftedAfterARestore(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil || !in.Restricted {
+		t.Fatalf("a sign-in into the frozen account: %+v %v", in, err)
+	}
+	m.token = in.Session.Token
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 2 || entries[0].Kind != purgeledger.KindFreeze || entries[1].Kind != purgeledger.KindUnfreeze ||
+		entries[1].ID != m.user.UserID {
+		t.Fatalf("ledger %+v, want a freeze and an unfreeze", entries)
+	}
+	if _, err := f.pool.Exec(bgctx, `DELETE FROM auth_events WHERE user_id = $1 AND kind IN ('account_frozen', 'account_unfrozen')`,
+		m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Freezes != 0 {
+		t.Fatalf("reapply %+v %v: a freeze the holder lifted came back", rep, err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
+		t.Fatalf("the unfrozen session was revoked: %v", err)
+	}
+
+	f.clock.advance(time.Hour)
+	again := f.clock.now().Truncate(time.Second)
+	entries = append(entries, purgeledger.Entry{ID: m.user.UserID, At: again, Kind: purgeledger.KindFreeze, Trigger: again})
+	rep, err = Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Freezes != 1 {
+		t.Fatalf("reapply %+v %v, want the later freeze", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_by = 'holder'`, m.user.UserID); n != 1 {
+		t.Fatal("the freeze after the unfreeze was not applied again")
+	}
+}
+
+func TestAHolderFreezeOnAnOperatorFrozenAccountIsKeptByTheReplay(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	opAt := f.clock.now()
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET frozen_at = $2, freeze_trigger_at = $2, frozen_by = 'operator' WHERE id = $1`,
+		m.user.UserID, opAt); err != nil {
+		t.Fatal(err)
+	}
+	at := opAt.Add(time.Minute).Truncate(time.Second)
+	trigger := opAt.Add(-time.Hour).Truncate(time.Second)
+	entries := []purgeledger.Entry{{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: trigger}}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Freezes != 1 {
+		t.Fatalf("reapply %+v %v, want the holder's freeze kept", rep, err)
+	}
+	var (
+		by    string
+		also  bool
+		since time.Time
+	)
+	if err := f.pool.QueryRow(bgctx, `SELECT frozen_by, holder_also_froze, freeze_trigger_at FROM users WHERE id = $1`,
+		m.user.UserID).Scan(&by, &also, &since); err != nil {
+		t.Fatal(err)
+	}
+	if by != FrozenByOperator || !also || !since.Equal(trigger) {
+		t.Fatalf("frozen by %q, holder also %v, trigger %v", by, also, since)
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Freezes != 0 {
+		t.Fatalf("a second replay %+v %v", rep, err)
+	}
+}

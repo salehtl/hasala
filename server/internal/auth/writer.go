@@ -55,6 +55,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // AlgEd25519 is the only writers.alg (spec 01 §4.8: 0x01; 0x02 is reserved).
@@ -115,7 +116,8 @@ type Writers struct {
 	// StepUp verifies the writer.revoke step-up.
 	StepUp *StepUp
 	// Now defaults to time.Now; one clock decides minting and expiry.
-	Now func() time.Time
+	Now    func() time.Time
+	Record func(purgeledger.Entry)
 }
 
 func (w *Writers) now() time.Time {
@@ -360,7 +362,8 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 	}
 	g := Guarded{UserID: userID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionWriterRevoke, ParamsHash: ph, StepUp: r.StepUp}
-	return w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
+	var revokedAt time.Time
+	err = w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		var revoked *time.Time
 		err := tx.QueryRow(ctx,
 			`SELECT revoked_at FROM writers WHERE user_id = $1 AND writer_id = $2 FOR UPDATE`,
@@ -421,8 +424,36 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			userID, r.WriterID); err != nil {
 			return fmt.Errorf("auth: revoke: drop the writer's pending approvals: %w", err)
 		}
+		unlinked, err := dropHeldMailboxLinkTx(ctx, tx, userID, r.WriterID)
+		if err != nil {
+			return err
+		}
+		if unlinked {
+			if err := RecordQuietEventTx(ctx, tx, userID, AuthEvent{Kind: EventMailboxUnlinked,
+				WriterID: session.WriterID, CredentialID: p.CredentialID}, now); err != nil {
+				return err
+			}
+		}
+		revokedAt = now
 		return recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceRemoved, WriterID: r.WriterID}, now)
 	})
+	if err != nil {
+		return err
+	}
+	if w.Record != nil {
+		w.Record(purgeledger.Entry{ID: userID, At: revokedAt, Kind: purgeledger.KindDevice, Device: &purgeledger.Device{
+			WriterID: r.WriterID, SignerWriterID: r.SignerWriterID, FinalCounter: r.FinalCounter,
+			FinalHead: r.FinalHead, Nonce: r.Nonce, Sig: r.Sig}})
+	}
+	return nil
+}
+
+func dropHeldMailboxLinkTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, writerID string) (bool, error) {
+	tag, err := tx.Exec(ctx, `DELETE FROM mailbox_links WHERE user_id = $1 AND holder_writer_id = $2`, userID, writerID)
+	if err != nil {
+		return false, fmt.Errorf("auth: revoke: drop the writer's mailbox link: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // writerHead is the target's current (counter, blob_hash), or (0, 0^32).

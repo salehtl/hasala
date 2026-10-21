@@ -26,6 +26,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/msjwt"
 	"github.com/salehtl/hasala/server/internal/opsnotify"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 	"github.com/salehtl/hasala/server/internal/turnstile"
 	"github.com/salehtl/hasala/server/internal/waitlist"
@@ -252,6 +253,20 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
+	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		wl.Record = func(e purgeledger.Entry) {
+			if err := purgeledger.AppendEntries(p, e); err != nil {
+				slog.Warn("hasalad serve: the restore ledger did not record a waitlist leave", "err", err)
+			}
+		}
+		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention", func(context.Context) (string, error) {
+			n, err := purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
+			if err != nil || n == 0 {
+				return "", err
+			}
+			return fmt.Sprintf("removed %d restore ledger entries past retention", n), nil
+		}))
+	}
 	if cfg.Ops.Enabled() {
 		n := opsnotify.New(cfg.Ops.NtfyURL, cfg.Ops.NtfyClick)
 		wl.OnConfirmed = func() {
