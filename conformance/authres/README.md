@@ -24,15 +24,32 @@ the committed file differs from what the generator writes, and runs in
 
 Trusted only when exactly one `Authentication-Results` field has authserv-id
 `mx.google.com`, it is the topmost `Authentication-Results` field, and it
-reports `dkim=pass` with a valid `header.d` domain aligned with the domain of
-the one `From` field: equal to it, a parent of it, or (when the From domain has
-at least two labels) a subdomain of it. `dmarc=pass` and `spf=pass` never trust
-on their own, because DMARC can pass on SPF alone. The verified domain is the
-first aligned passing DKIM `header.d`; a domain must be a lower-case LDH name
-with at least two labels after stripping everything through the last `@`. The
-From domain is the text after its last `@`, cut at `>`, space, tab, CR, LF, `"`
-or `)`, ASCII lower-cased, trailing dots dropped. Anything else is untrusted
-with one of the reasons below, and the decision never throws.
+reports `dkim=pass` with a valid DKIM domain aligned with the domain of the
+one `From` field: equal to it, a parent of it, or (when the From domain has
+at least two labels) a subdomain of it. The DKIM domain is `header.d` when the
+method spec has one, else the domain of `header.i` (RFC 6376 §3.5; Gmail
+writes only `header.i`). Every `dmarc` method spec in that field must carry a
+`header.from` equal to the From domain, whatever its result; `dmarc=pass` and
+`spf=pass` never trust on their own, because DMARC can pass on SPF alone. The
+verified domain is the DKIM domain of the first aligned passing `dkim`; a
+domain must be a lower-case LDH name with at least two labels after stripping
+everything through the last `@`.
+
+The From domain is read from the one mailbox's addr-spec with comments
+removed: inside the one angle-addr when there is one, after the last `@`
+outside a quoted string, spaces and tabs trimmed, ASCII lower-cased, trailing
+dots dropped. It is empty (so nothing aligns) when the value has an
+unreadable comment or quote, more than one `<` or `>`, a top-level `,`, no
+`@`, or a domain with anything but letters, digits, `.` and `-`.
+
+Every `Authentication-Results` field must be readable, or the block is
+`parse_error`: no `"` inside a comment, no `)` outside one, no comment or
+quoted string left open, and every `;`-segment after the authserv-id (every
+segment, in Microsoft form) is `none` or a `method=result` followed only by
+`ptype.property=value` tokens.
+
+Anything else is untrusted with one of the reasons below, and the decision
+never throws.
 
 ## The Outlook.com rule
 
@@ -56,9 +73,8 @@ lower-case) is the Gmail rule's. The first step that applies decides:
    exactly `pass` and exactly one `dmarc` method with result exactly `pass`
    (`bestguesspass`, `softpass` are not), or the DMARC `header.from` is not a
    valid domain: `fail`;
-7. not exactly one `From` field, or its domain (after the last `@`, cut at
-   `>`, whitespace, `"` or `)`, ASCII lower-cased, trailing dots dropped) is not
-   the DMARC `header.from`: `fail`;
+7. not exactly one `From` field, or its domain (read as in the Gmail rule) is
+   not the DMARC `header.from`: `fail`;
 8. trusted (`pass`); the verified domain is the DMARC `header.from`.
 
 SPF and DKIM are parsed but are not trust inputs; ARC is ignored. The rule's

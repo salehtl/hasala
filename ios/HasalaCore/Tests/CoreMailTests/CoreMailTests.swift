@@ -90,15 +90,15 @@ struct AuthResultsTests {
     #expect(AuthResults.verifiedDomain(below) == "bank.example")
   }
 
-  @Test("dkim=fail with no dmarc pass, or dkim=pass with no d=, is fail")
+  @Test("dkim=fail with no dmarc pass is fail; dkim=pass with no d= reads the domain of header.i")
   func failures() {
     let fail = block(
       "Authentication-Results: mx.google.com;", "       dkim=fail header.d=bank.example;",
       "       dmarc=fail header.from=bank.example", "From: Bank <alerts@bank.example>")
     #expect(verdict(fail) == (false, .fail))
     let noD = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: Bank <alerts@bank.example>")
-    #expect(verdict(noD) == (false, .fail))
-    #expect(AuthResults.verifiedDomain(noD) == nil)
+    #expect(verdict(noD) == (true, .pass))
+    #expect(AuthResults.verifiedDomain(noD) == "bank.example")
     let dmarcNoFrom = block("Authentication-Results: mx.google.com; dmarc=pass", "From: Bank <alerts@bank.example>")
     #expect(verdict(dmarcNoFrom) == (false, .fail))
   }
@@ -136,10 +136,11 @@ struct AuthResultsTests {
 
   @Test("domains must be plain LDH names with a dot")
   func domains() {
-    for bad in ["bank", "bank.example:25", "-bank.example", "bank-.example", "bank..example", "b ank.example", "bänk.example"] {
+    for bad in ["bank", "bank.example:25", "-bank.example", "bank-.example", "bank..example", "bänk.example"] {
       let raw = block("Authentication-Results: mx.google.com; dkim=pass header.d=\(bad)")
       #expect(verdict(raw) == (false, .fail), "\(bad)")
     }
+    #expect(verdict(block("Authentication-Results: mx.google.com; dkim=pass header.d=b ank.example")) == (false, .parseError))
     let long = String(repeating: "a", count: 64) + ".example"
     #expect(verdict(block("Authentication-Results: mx.google.com; dkim=pass header.d=\(long)")) == (false, .fail))
   }

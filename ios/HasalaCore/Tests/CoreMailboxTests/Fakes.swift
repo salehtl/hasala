@@ -215,13 +215,14 @@ struct Rig {
 
   init(
     backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
-    gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil
+    gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil,
+    wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil
   ) {
     self.gmail = gmail
     self.backend = backend
     let authored = self.authored
     let clockForStore = clock
-    store =
+    let base: any MailboxPersistence =
       backend == .memory
       ? memory
       : LedgerMailboxPersistence(
@@ -234,6 +235,7 @@ struct Rig {
               entityKind: "txn", entityID: "e-\($0.messageID)", enqueuedAt: at)
           }
         }, nowMs: { clockForStore.nowMs() })
+    store = wrapStore?(base) ?? base
     let oauth = GoogleOAuthClient(
       config: GmailOAuthConfig(clientID: "synthetic-client.apps.googleusercontent.com", redirectScheme: "com.googleusercontent.apps.synthetic-client"),
       http: gmail)

@@ -37,6 +37,8 @@ struct PrivateCorpusDispositionTests {
         trusted: banks, provider: .gmail, linkedAddress: nil, spam: false, analyze: AuthResults.analyze)
       let fromBank = BankDomains.isMember(BankDomains.domainOf(from), of: banks)
       switch r {
+      case .interrupted:
+        Issue.record("\(f): interrupted")
       case .setAside:
         // Only mail that is not from a bank may be set aside (a Google notice is in the set).
         #expect(!fromBank, "\(f): bank mail set aside")

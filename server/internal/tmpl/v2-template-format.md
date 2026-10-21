@@ -130,7 +130,10 @@ An `amt` capture converts only with exactly two decimals, and only when the
 resolved currency (`ccy`, else `default_currency`) has a minor exponent of 2.
 The codes with exponent 3 (BHD IQD JOD KWD LYD OMR TND) and 0 (BIF CLP DJF GNF
 ISK JPY KMF KRW PYG RWF UGX UYI VND VUV XAF XOF XPF) are a conversion failure,
-so the message goes to review instead of filing a wrong amount. This is the
+so the message goes to review instead of filing a wrong amount. This failure is
+final for the field: no later pattern or entry for that field runs, not even an
+`override` entry, so a later pattern without the `ccy` group cannot read the
+same number in `default_currency`. This is the
 same table as the client's `MinorExponent.v1`. A seed amount pattern must also
 refuse a third decimal with trailing context: `\.[0-9]{2}(?:[^0-9]|$)`, because
 `\b` is not in the dialect.

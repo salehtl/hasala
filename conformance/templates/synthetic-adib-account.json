@@ -178,6 +178,42 @@
       }
     },
     {
+      "name": "adib.account.v1/non-two-decimal-no-space",
+      "source": "SYNTHETIC: a currency with minor exponent 0 next to the number is refused for good",
+      "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKSlBZMTIsNTAwLjAwIHdhcyBkZWJpdGVkIGZyb20geW91ciBhY2NvdW50ICo0NTYuIFlvdXIgYXZhaWxhYmxlIGFjY291bnQgYmFsYW5jZSBpcyBBRUQgMSwyMzQuNTYKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.account.v1/three-decimal-no-space",
+      "source": "SYNTHETIC: a currency with minor exponent 3 next to the number is refused for good",
+      "subject_base64": "Q3JlZGl0IFRyYW5zYWN0aW9uIEFsZXJ0",
+      "normalized_body_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKT01SMTIuNTAgd2FzIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCAqNDU2LiBZb3VyIGF2YWlsYWJsZSBhY2NvdW50IGJhbGFuY2UgaXMgQUVEIDEsMjM0LjU2CllvdXJzIFNpbmNlcmVseSwKQWJ1IERoYWJpIElzbGFtaWMgQmFuawo=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "456",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
       "name": "adib.account.v1/no-currency-prefix",
       "source": "SYNTHETIC: the ccy group does not participate; default_currency applies",
       "subject_base64": "RGViaXQgVHJhbnNhY3Rpb24gQWxlcnQ=",
