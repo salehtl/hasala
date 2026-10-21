@@ -1236,4 +1236,14 @@ enum CharsetTables {
     "x-sjis",
     "x-x-big5",
   ]
+
+  /// Encoded-word labels htmlindex resolves to UTF-8, decoded one word at a time.
+  static let wordPassthrough: Set<String> = [
+    "unicode-1-1-utf-8",
+    "unicode11utf8",
+    "unicode20utf8",
+    "utf-8",
+    "utf8",
+    "x-unicode20utf8",
+  ]
 }

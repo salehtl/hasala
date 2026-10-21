@@ -493,8 +493,9 @@ extension State {
 
   private mutating func indexFingerprint(_ id: String, seq: Int64) {
     let fp = fingerprint(txns[id]!)
-    guard var bucket = byFingerprint[fp] else {
-      byFingerprint[fp] = [id]
+    let key = ExactKey(fp)
+    guard var bucket = byFingerprint[key] else {
+      byFingerprint[key] = [id]
       return
     }
     if let other = bucket.first, !utf8Equal(other, id) {
@@ -503,18 +504,19 @@ extension State {
       anomaly(seq, "possible_duplicate", "\(id) matches \(other) on \(fp)")
     }
     bucket.append(id)
-    byFingerprint[fp] = bucket
+    byFingerprint[key] = bucket
   }
 
   mutating func indexFingerprintIfAbsent(_ id: String, seq: Int64) {
-    let fp = fingerprint(txns[id]!)
-    if byFingerprint[fp]?.contains(where: { utf8Equal($0, id) }) == true { return }
-    byFingerprint[fp, default: []].append(id)
+    let key = ExactKey(fingerprint(txns[id]!))
+    if byFingerprint[key]?.contains(where: { utf8Equal($0, id) }) == true { return }
+    byFingerprint[key, default: []].append(id)
   }
 
   mutating func unindexFingerprint(_ fp: String, _ id: String) {
-    guard var bucket = byFingerprint[fp] else { return }
+    let key = ExactKey(fp)
+    guard var bucket = byFingerprint[key] else { return }
     if let i = bucket.firstIndex(where: { utf8Equal($0, id) }) { bucket.remove(at: i) }
-    byFingerprint[fp] = bucket.isEmpty ? nil : bucket
+    byFingerprint[key] = bucket.isEmpty ? nil : bucket
   }
 }

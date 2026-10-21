@@ -247,6 +247,16 @@ enum Unwrap {
       return true
     }
 
+    mutating func spaces() -> Bool {
+      let start = i
+      while i < s.count, s[i] == " " { i += 1 }
+      return i > start
+    }
+
+    mutating func comma() -> Bool { lit(",") && spaces() }
+
+    mutating func at() -> Bool { spaces() && lit("at") && spaces() }
+
     /// `(AM|PM)`, upper case only (Go's stdPM).
     mutating func ampm() -> String? {
       if lit("AM") { return "AM" }
@@ -268,24 +278,24 @@ enum Unwrap {
     var c = Cursor(s: candidate)
     switch idx {
     case 0:  // Jan 2, 2006 at 3:04 PM
-      guard let mon = c.letters(3), c.lit(" "), let d = c.digits(1, 2), c.lit(", "), let y = c.digits(4, 4),
-        c.lit(" at "), let h = c.digits(1, 2), c.lit(":"), let mi = c.digits(2, 2), c.lit(" "),
+      guard let mon = c.letters(3), c.spaces(), let d = c.digits(1, 2), c.comma(), let y = c.digits(4, 4),
+        c.at(), let h = c.digits(1, 2), c.lit(":"), let mi = c.digits(2, 2), c.spaces(),
         let ap = c.ampm(), c.atEnd
       else { return nil }
       guard let month = monthsShort.firstIndex(of: mon), let hh = twelveHour(h, ap) else { return nil }
       return make(y, month + 1, d, hh, mi, 0)
     case 1:  // Mon, Jan 2, 2006 at 3:04 PM
-      guard let wd = c.letters(3), c.lit(", "), let mon = c.letters(3), c.lit(" "), let d = c.digits(1, 2),
-        c.lit(", "), let y = c.digits(4, 4), c.lit(" at "), let h = c.digits(1, 2), c.lit(":"),
-        let mi = c.digits(2, 2), c.lit(" "), let ap = c.ampm(), c.atEnd
+      guard let wd = c.letters(3), c.comma(), let mon = c.letters(3), c.spaces(), let d = c.digits(1, 2),
+        c.comma(), let y = c.digits(4, 4), c.at(), let h = c.digits(1, 2), c.lit(":"),
+        let mi = c.digits(2, 2), c.spaces(), let ap = c.ampm(), c.atEnd
       else { return nil }
       // Go checks only that the weekday is a known abbreviation, not that it agrees.
       guard weekdaysShort.contains(wd), let month = monthsShort.firstIndex(of: mon), let hh = twelveHour(h, ap)
       else { return nil }
       return make(y, month + 1, d, hh, mi, 0)
     case 2, 3:  // 2 January 2006 at 15:04:05 / 2 January 2006 at 15:04
-      guard let d = c.digits(1, 2), c.lit(" "), let mon = c.letters(nil), c.lit(" "), let y = c.digits(4, 4),
-        c.lit(" at "), let h = c.digits(1, 2), c.lit(":"), let mi = c.digits(2, 2)
+      guard let d = c.digits(1, 2), c.spaces(), let mon = c.letters(nil), c.spaces(), let y = c.digits(4, 4),
+        c.at(), let h = c.digits(1, 2), c.lit(":"), let mi = c.digits(2, 2)
       else { return nil }
       var sec = 0
       if idx == 2 {

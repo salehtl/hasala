@@ -340,9 +340,10 @@ public enum SyntheticMail {
     var h: [String] = []
     if let d = authDomain {
       if !arTopmost { h.append("Authentication-Results: relay.example.net; dkim=pass header.d=\(d)") }
+      let fromDomain = BankDomains.domainOf(from)
       let verdict =
         dkimPass
-        ? "dkim=pass header.d=\(d) header.s=synthetic header.b=c3ludGhl; dmarc=pass header.from=\(d); spf=pass"
+        ? "dkim=pass header.d=\(d) header.s=synthetic header.b=c3ludGhl; dmarc=pass header.from=\(fromDomain); spf=pass"
         : "dkim=fail header.d=\(d); spf=fail"
       h.append("Authentication-Results: mx.google.com; \(verdict)")
     }

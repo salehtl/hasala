@@ -92,7 +92,7 @@ func (s *Server) handleUnfreeze(w http.ResponseWriter, r *http.Request, _ uuid.U
 }
 
 // devFreezeLimited runs devfreeze-ip, then (for a well-formed writer id only)
-// devfreeze-writer, then devfreeze-global. It reports whether it answered.
+// devfreeze-global. It reports whether it answered.
 func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writerID string) bool {
 	refuse := func() bool {
 		w.Header().Set("Retry-After", "60")
@@ -105,7 +105,7 @@ func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writer
 	if !keyproto.ValidWriterID(writerID) {
 		return false
 	}
-	if !s.DevFreezeWriter.Allow(writerID) || !s.DevFreezeGlobal.Allow("") {
+	if !s.DevFreezeGlobal.Allow("") {
 		return refuse()
 	}
 	return false
@@ -156,7 +156,9 @@ func (s *Server) handleDeviceFreeze(w http.ResponseWriter, r *http.Request) {
 	}
 	nonce, _ := b64std(req.Nonce)
 	sig, _ := b64std(req.Sig)
-	wake, err := s.Accounts.DeviceFreeze(r.Context(), req.WriterID, nonce, sig)
+	wake, err := s.Accounts.DeviceFreeze(r.Context(), req.WriterID, nonce, sig, func(user uuid.UUID) bool {
+		return s.DevFreezeWriter.Allow(user.String() + "/" + req.WriterID)
+	})
 	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return

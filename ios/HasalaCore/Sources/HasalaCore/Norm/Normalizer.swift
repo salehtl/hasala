@@ -94,11 +94,17 @@ public enum Normalizer {
 
     // Stage 10.
     let fwd = Unwrap.unwrapForward(from: ex.from, subject: ex.subject, body: text)
-    let parsed = fwd.date.isEmpty ? nil : Unwrap.parseForwardDate(fwd.date)
-    let emailDate = parsed.map(format) ?? format(epochMs: receivedAtMs)
+    let (emailDate, dateSource) = emailDateOf(forwardDate: fwd.date, receivedAtMs: receivedAtMs)
     return NormalizeResult(
       text: fwd.body, partUsed: ex.part, charset: ex.charset, subject: fwd.subject, from: fwd.from,
-      forwarded: fwd.found, emailDate: emailDate, dateSource: parsed != nil ? .forwardHeader : .received)
+      forwarded: fwd.found, emailDate: emailDate, dateSource: dateSource)
+  }
+
+  static func emailDateOf(forwardDate: String, receivedAtMs: Int64) -> (String, DateSource) {
+    if !forwardDate.isEmpty, let parsed = Unwrap.parseForwardDate(forwardDate) {
+      return (format(parsed), .forwardHeader)
+    }
+    return (format(epochMs: receivedAtMs), .received)
   }
 
   // MARK: - Stages 1-4
