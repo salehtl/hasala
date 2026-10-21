@@ -103,7 +103,7 @@ struct UnreadMailFlowTests {
     #expect(store.state.unreadMail.isEmpty)
     store.undo(token)
     try await LiveLedgerMapperTests.eventually { try a.projection.reader.txn(mail.id)?.archived == nil }
-    await store.reload()
+    try await LiveLedgerMapperTests.eventually { store.state.unreadMail.map(\.id) == [mail.id] }
     #expect(store.state.unreadMail.map(\.id) == [mail.id])
   }
 
