@@ -94,6 +94,21 @@ struct WorkCoordinatorTests {
     #expect(all.count == 3 && all[1].hasPrefix("stopped.halted") && all[1].contains("updateRequired"))
   }
 
+  @Test(arguments: [HaltKind.tampered(.chainBreak), .serverRestored, .tamperedResend, .inconsistent("fold"), .rosterInvalid])
+  func everyHaltIsShownAndTheMailWaits(_ halt: HaltKind) async {
+    let log = Log()
+    log.syncStop.withLock { $0 = .halted(halt) }
+    let out = await Self.coordinator(log).run(.foreground)
+    #expect(out.failed)
+    #expect(log.all == ["sync.foreground", "stopped.\(SyncStop.halted(halt))", "committed"])
+  }
+
+  @Test func aStopThatIsNoHaltIsNotShown() {
+    for stop: SyncStop in [.offline, .rateLimited(retryAfter: 5), .protocolError("x"), .notNow, .cancelled, .suspended] {
+      #expect(!WorkCoordinator.surfaces(stop), "\(stop)")
+    }
+  }
+
   // MARK: Budgets and cancellation
 
   nonisolated final class Probe: Sendable {

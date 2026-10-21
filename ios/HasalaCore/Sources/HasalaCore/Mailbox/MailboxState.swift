@@ -95,6 +95,17 @@ public struct UnreadableRecord: Sendable, Equatable, Codable {
   public var atMs: Int64
 }
 
+/// A sender's mail in the connect window that Add a sender or a new bank still has to import:
+/// kept until its listing is exhausted, so a later cycle finishes what an earlier one could not.
+public struct PendingImport: Sendable, Equatable, Codable {
+  public var domain: String
+  public var sinceMs: Int64
+  public init(domain: String, sinceMs: Int64) {
+    self.domain = domain
+    self.sinceMs = sinceMs
+  }
+}
+
 public struct BankHealthRow: Sendable, Equatable, Codable {
   public var domain: String
   public var lastEmailAtMs: Int64?
@@ -116,6 +127,10 @@ public struct MailboxCommit: Sendable {
   public var pruneAccountedBelowMs: Int64?
   /// Count one read message for its domain's `bank_health` (domain, internalDate).
   public var healthBumps: [(domain: String, internalDateMs: Int64)] = []
+  /// Adds pending imports; a domain already pending keeps the earlier start.
+  public var addImports: [PendingImport] = []
+  /// Ends the pending imports of these domains.
+  public var doneImports: [String] = []
   /// Replaces the state row when set.
   public var state: MailboxState?
   /// Clears every mailbox table (Disconnect).
@@ -124,7 +139,8 @@ public struct MailboxCommit: Sendable {
   public init() {}
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
-      && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && state == nil && !clearAll
+      && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
+      && state == nil && !clearAll
   }
 }
 
@@ -150,6 +166,7 @@ public protocol MailboxPersistence: Sendable {
   func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool
   func markParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError)
+  func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport]
 }
 
 /// The reference `MailboxPersistence`: the semantics a GRDB implementation must keep, in memory.
@@ -171,6 +188,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
 
   public private(set) var addresses: [String] = []
   public private(set) var parsing: Set<String> = []
+  public private(set) var imports: [String: Int64] = [:]
 
   public init(state: MailboxState = MailboxState()) { self.state = state }
 
@@ -189,6 +207,10 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { parsing.remove(messageID) }
 
   public func loadState() async throws(MailboxPersistenceError) -> MailboxState { state }
+
+  public func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport] {
+    imports.map { PendingImport(domain: $0.key, sinceMs: $0.value) }.sorted { $0.domain < $1.domain }
+  }
 
   public func accounted(among ids: [String]) async throws(MailboxPersistenceError) -> Set<String> {
     Set(ids.filter { accountedRows[$0] != nil || staging[$0] != nil })
@@ -213,6 +235,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       staging = [:]
       health = [:]
       parsing = []
+      imports = [:]
     }
     enqueued.append(contentsOf: c.drafts)
     for a in c.accounted { accountedRows[a.messageID] = a }
@@ -239,6 +262,8 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       row.lastEmailAtMs = max(row.lastEmailAtMs ?? 0, b.internalDateMs)
       health[b.domain] = row
     }
+    for i in c.addImports { imports[i.domain] = min(imports[i.domain] ?? i.sinceMs, i.sinceMs) }
+    for d in c.doneImports { imports[d] = nil }
     if let s = c.state { state = s }
   }
 

@@ -107,6 +107,7 @@ final class SignupModel {
   var passkeyRegistered: Bool { ticket != nil && passkeyTicketID == ticket?.id }
   var busy = false
   var failure: AuthFailure?
+  var now: () -> Date = { .now }
 
   /// The welcome stories' "Who can see what" sheet is open (the stories pause under it).
   var whoCanSeeOpen = false
@@ -315,10 +316,8 @@ final class SignupModel {
 
   private func registerPasskey() async {
     guard let ticket else { return }
-    if ticket.isExpired(now: .now) {
-      failure = .signupExpired
-      // Back to About you, on the way the person came (a typed code or a link).
-      if let about = path.firstIndex(of: .aboutYou) { path = Array(path.prefix(through: about)) }
+    if ticket.isExpired(now: now()) {
+      startAgain()
       return
     }
     // Saved already for this signup (the person went Back, then Forward): no second sheet.
@@ -361,6 +360,10 @@ final class SignupModel {
 
   func submitPassword() {
     guard passwordReady else { return }
+    if !replacing, ticket?.isExpired(now: now()) == true {
+      startAgain()
+      return
+    }
     do {
       if phrase == nil { try startPhrase() }
       failure = nil
@@ -395,6 +398,10 @@ final class SignupModel {
   /// person; there is no word check (`docs/decisions/recovery-phrase-no-quiz.md`).
   func finish() async {
     guard phraseSeen, let phrase, replacing || ticket != nil else { return }
+    if !replacing, ticket?.isExpired(now: now()) == true {
+      startAgain()
+      return
+    }
     busy = true
     defer { busy = false }
     let credential: NewCredential = method == .passkey ? .passkey : .password(newPassword)
@@ -412,8 +419,22 @@ final class SignupModel {
       passwordShown = false
       failure = nil
       go(.accountReady)
+    } catch .codeExpired where !replacing {
+      startAgain()
     } catch {
       failure = error
     }
+  }
+
+  private func startAgain() {
+    let reason: AuthFailure = phraseSeen ? .signupExpiredPhrase : .signupExpired
+    phrase = nil
+    phraseRevealed = false
+    phraseSeen = false
+    ticket = nil
+    emailVerified = false
+    codeUsedUp = false
+    if let about = path.firstIndex(of: .aboutYou) { path = Array(path.prefix(through: about)) }
+    failure = reason
   }
 }

@@ -257,7 +257,7 @@ func (a *Accounts) DeviceFreezeChallenge(ctx context.Context, writerID string) (
 // with its DAK. The freeze is dated back to the writer's latest session
 // revocation caused by something else, when that is within seven days. Every
 // failure is ErrFreezeRefused.
-func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig []byte) (Wake, error) {
+func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig []byte, admit func(uuid.UUID) bool) (Wake, error) {
 	if !keyproto.ValidWriterID(writerID) || len(nonce) != keyproto.NonceSize {
 		return Wake{}, fmt.Errorf("%w: malformed", ErrFreezeRefused)
 	}
@@ -279,23 +279,28 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 		user uuid.UUID
 		dak  []byte
 	}
-	var cands []cand
+	var signed []cand
 	for rows.Next() {
 		var c cand
 		if err := rows.Scan(&c.user, &c.dak); err != nil {
 			rows.Close()
 			return Wake{}, err
 		}
-		cands = append(cands, c)
+		msg, err := keyproto.DeviceFreezeMessage(nonce, c.user, writerID)
+		if err == nil && keyproto.VerifyDAKBytes(c.dak, msg, sig) {
+			signed = append(signed, c)
+		}
 	}
 	rows.Close()
-	if len(cands) != 1 {
-		return Wake{}, fmt.Errorf("%w: no single live writer", ErrFreezeRefused)
+	if err := rows.Err(); err != nil {
+		return Wake{}, err
 	}
-	c := cands[0]
-	msg, err := keyproto.DeviceFreezeMessage(nonce, c.user, writerID)
-	if err != nil || !keyproto.VerifyDAKBytes(c.dak, msg, sig) {
-		return Wake{}, fmt.Errorf("%w: the DAK signature", ErrFreezeRefused)
+	if len(signed) != 1 {
+		return Wake{}, fmt.Errorf("%w: no single live writer signed it", ErrFreezeRefused)
+	}
+	c := signed[0]
+	if admit != nil && !admit(c.user) {
+		return Wake{}, fmt.Errorf("%w: device freezes for this writer", ErrRateLimited)
 	}
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
 	if err != nil {

@@ -123,7 +123,7 @@ struct SecurityView: View {
           title: "Frozen",
           body: frozen.by == .operator
             ? "We froze your account to protect it. Talk to us to unfreeze it."
-            : can(.freeze) ? "Your account is frozen. Confirm it's you to unfreeze it." : "Your account is frozen.",
+            : can(.unfreeze) ? "Your account is frozen. Confirm it's you to unfreeze it." : "Your account is frozen.",
           hue: .rose, icon: .lockKeyhole)
       } else if s.hasPasskey {
         StatusHero(title: "Protected", body: "Passkey and 12 words are set.\nLast sign-in \(s.lastSignIn).",
@@ -296,7 +296,7 @@ struct SecurityView: View {
       }
       if let frozen = s.frozen {
         // Only the operator lifts an operator freeze (spec 04 §6.11): no Unfreeze then.
-        if frozen.by == .holder, can(.freeze) {
+        if frozen.by == .holder, can(.unfreeze) {
           Button("Unfreeze") { Task { await model.request(.unfreeze) } }
             .buttonStyle(.pill(.primary, fill: true))
             .accessibilityIdentifier("security.unfreeze")

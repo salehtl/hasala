@@ -357,7 +357,8 @@ struct ToReviewCard: View {
         ReviewDeckArt()
         VStack(alignment: .leading, spacing: 2) {
           Text("\(review.count) to sort").hFigure(.small).foregroundStyle(HColor.textPrimary)
-          PhraseText(MoneyPhrase([.text("AED "), .amount(review.unplanned), .text(" still to check")]),
+          PhraseText(MoneyPhrase([.text("AED "), .amount(review.unplanned), .text(" still to check")]
+                                 + (review.mark?.caption.map { [.text(" · \($0)")] } ?? [])),
                      hidden: hidden)
             .hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)

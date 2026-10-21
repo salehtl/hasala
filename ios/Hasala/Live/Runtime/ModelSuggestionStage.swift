@@ -24,8 +24,15 @@ struct ModelSuggestionStage: Sendable {
   }
 
   static func stages(onDevice: any CategoryModel, cloud: (any CategoryModel)?, onDeviceAlone: Bool) -> [ModelStage] {
-    guard let cloud, cloud.availability() == .available else { return onDeviceAlone ? [.onDevice(onDevice)] : [] }
-    return [.cloud(cloud), .onDevice(onDevice)]
+    switch cloud?.availability() {
+    case .available?:
+      guard let cloud else { return [] }
+      return [.cloud(cloud), .onDevice(onDevice)]
+    case .notEnabled?, nil:
+      return onDeviceAlone ? [.onDevice(onDevice)] : []
+    case .notEligible?, .notReady?, .unsupportedLanguage?:
+      return [.onDevice(onDevice)]
+    }
   }
 
   func run(_ trigger: WorkCoordinator.Trigger) async -> Bool {

@@ -27,6 +27,7 @@ import Foundation
 /// The per-message size cap (fetch.ts MAILBOX_MAX_MESSAGE_BYTES): at or over it, unreadable.
 public enum MailboxLimits {
   public static let maxMessageBytes = 1_000_000
+  public static let maxAmountMinor: Int64 = 9_999_999_999_999
 }
 
 /// The trust and parse facts a row records in its `gates` object (03c §3.1), display only.
@@ -131,6 +132,7 @@ public enum MessageDisposer {
     /// positive, spec 04 §7.5 step 7b): no op; domain + date only.
     case setAside(domain: String)
     case mail(ParsedMail)
+    case interrupted
   }
 
   /// Reads one raw message. `topLevelFrom` is the message's own From (from the metadata
@@ -173,7 +175,15 @@ public enum MessageDisposer {
     for t in templates where t.definition.match.senderDomain.contains(where: { want in
       domains.contains { BankDomains.isMember($0, of: [asciiLowerString(want)]) }
     }) {
-      guard let x = try? t.execute(subject: norm.subject, normalizedBody: norm.text), x.matched else { continue }
+      let x: Extraction
+      do {
+        x = try t.execute(subject: norm.subject, normalizedBody: norm.text)
+      } catch .cancelled {
+        return .interrupted
+      } catch {
+        continue
+      }
+      guard x.matched else { continue }
       guard let posted = postedAt(x, template: t, internalDateMs: internalDateMs),
         let f = usableFields(x, posted: posted)
       else { continue }
@@ -184,6 +194,7 @@ public enum MessageDisposer {
       mail.fields = f
       return .mail(mail)
     }
+    if Task.isCancelled { return .interrupted }
     return .mail(mail)
   }
 
@@ -351,7 +362,8 @@ public enum MessageDisposer {
   /// letters and the direction is debit or credit; otherwise it is a miss (the safe direction:
   /// the message becomes the empty review shape).
   static func usableFields(_ x: Extraction, posted: (String, String)) -> ParsedFields? {
-    guard x.amountMinor > 0, x.currency.utf8.count == 3, x.currency.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5a }),
+    guard x.amountMinor > 0, x.amountMinor <= MailboxLimits.maxAmountMinor, x.currency.utf8.count == 3,
+      x.currency.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5a }),
       x.direction == "debit" || x.direction == "credit"
     else { return nil }
     return ParsedFields(

@@ -12,7 +12,8 @@ import SwiftUI
 /// in the list's order; a row opens it at that row's card and reads on down the list. "Use N
 /// suggestions" is Debug only: it would be several edits in one gesture (plan D.2). The
 /// "couldn't read" line counts the bank emails Hasala kept as empty rows and the ones it could
-/// not download; when there are rows, it opens the list where each is added by hand or dismissed.
+/// not download; when there are rows, it opens the list where each is added by hand or dismissed,
+/// and with none it opens Add a transaction.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -241,9 +242,14 @@ struct ReviewTabView: View {
 
   @ViewBuilder private func unreadable(_ n: Int) -> some View {
     if app.store.state.unreadMail.isEmpty {
-      unreadableRow(n, detail: "Kept for you to sort by hand", chevron: false)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("review.tab.unreadable")
+      Button {
+        app.router.open(.addTransaction)
+      } label: {
+        unreadableRow(n, detail: Self.unreadableDetail, chevron: true)
+      }
+      .buttonStyle(HRowPressStyle())
+      .accessibilityHint("Opens Add a transaction")
+      .accessibilityIdentifier("review.tab.unreadable")
     } else {
       Button {
         app.router.review.append(.unreadMail)
@@ -254,6 +260,8 @@ struct ReviewTabView: View {
       .accessibilityIdentifier("review.tab.unreadable")
     }
   }
+
+  static let unreadableDetail = "Add it yourself from your bank app"
 
   static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 

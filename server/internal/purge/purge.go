@@ -505,7 +505,8 @@ type Options struct {
 	// not.
 	Goodbye bool
 	// Now dates the goodbye; nil is time.Now.
-	Now func() time.Time
+	Now    func() time.Time
+	Record func(users []uuid.UUID) error
 }
 
 // PurgeWith is Purge with the steps that need more than the database.
@@ -549,6 +550,9 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 		return rep, fmt.Errorf("purge: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE`, users); err != nil {
+		return rep, fmt.Errorf("purge: lock the accounts: %w", err)
+	}
 
 	// Counted BEFORE the delete, because after it there is nothing to count.
 	for _, r := range c.UserScoped {
@@ -652,11 +656,35 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 		return rep, fmt.Errorf("%w: %d of the accounts survived their own deletion", ErrIncomplete, left)
 	}
 
+	if opts.Record != nil && len(deleted) > 0 {
+		if err := opts.Record(deleted); err != nil {
+			return rep, fmt.Errorf("purge: record the deletion: %w", err)
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return rep, fmt.Errorf("purge: commit: %w", err)
 	}
 	rep.Users = deleted
 	return rep, nil
+}
+
+func Replay(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID) (Report, error) {
+	if pool == nil {
+		return Report{}, errors.New("purge: pool is nil")
+	}
+	if len(ids) == 0 {
+		return newReport(), nil
+	}
+	rows, err := pool.Query(ctx, `SELECT id FROM users WHERE id = ANY($1) ORDER BY id`, ids)
+	if err != nil {
+		return newReport(), fmt.Errorf("purge: replay: %w", err)
+	}
+	live, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return newReport(), fmt.Errorf("purge: replay: %w", err)
+	}
+	return purgeUsers(ctx, pool, live, Options{})
 }
 
 // scanUUIDRows runs a statement inside the purge transaction and collects the

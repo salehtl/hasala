@@ -478,6 +478,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   static func disconnected(_ outcome: MailboxDisconnectOutcome, provider: MailProviderKind) throws(MailConnectFailure) {
     switch outcome {
     case .disconnected, .removed: return
+    case .otherDevice: throw .takenByOtherIPhone
     case .failed: throw .failed("Couldn't disconnect \(provider.appName). Try again.")
     case .disconnectedRemoveFailed:
       throw .failed("\(provider.appName) is disconnected, but its transactions couldn't be removed. They stay for now.")

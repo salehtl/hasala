@@ -472,6 +472,39 @@ import Testing
     #expect(notice.gates.template != "dib.account.v1@3" && notice.fields?.direction == "debit")
   }
 
+  @Test func aCancelledTemplateRunIsInterruptedNotAnEmptyReviewRow() async {
+    let m = SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0)
+    let me = self
+    let r = await Task { () -> MessageDisposer.Parse in
+      withUnsafeCurrentTask { $0?.cancel() }
+      return me.parse(m)
+    }.value
+    #expect(r == .interrupted)
+  }
+
+  @Test func anAmountOverTheMailBoundIsTheEmptyReviewShape() throws {
+    let over = try mail(SyntheticMail.dibCard(id: "m1", amount: "100,000,000,000.00", dateMs: Rig.t0))
+    #expect(over.fields == nil && over.gates.template == nil)
+    let d = MessageDisposer.finalize(over, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    #expect(d.needsReview && d.payload["unparsed"] == .bool(true) && d.payload["amount_minor"] == nil)
+    let atBound = try mail(SyntheticMail.dibCard(id: "m1", amount: "99,999,999,999.99", dateMs: Rig.t0))
+    #expect(atBound.fields?.amountMinor == MailboxLimits.maxAmountMinor)
+  }
+
+  @Test func aNonTwoDecimalCurrencyNextToTheAmountGoesToReview() throws {
+    for amount in ["JPY12,500.00", "KRW150,000.00", "OMR12.50", "jpy12,500.00"] {
+      let from = "Emirates NBD <alerts@emiratesnbd.com>"
+      let m = FakeGmail.Message(
+        id: "m1",
+        raw: SyntheticMail.rfc822(
+          from: from, subject: "Transaction advice for your account ending with 8642",
+          body: "\(amount) has been debited from your account 012XXX34XXX56.", dateMs: Rig.t0, authDomain: "emiratesnbd.com"),
+        internalDateMs: Rig.t0, from: from)
+      let p = try mail(m)
+      #expect(p.fields == nil, "\(amount)")
+    }
+  }
+
   @Test func nonBankMailIsSetAside() {
     let m = SyntheticMail.lookAlike(id: "m5", dateMs: Rig.t0, listedAs: "emiratesnbd.com")
     let r = MessageDisposer.parse(

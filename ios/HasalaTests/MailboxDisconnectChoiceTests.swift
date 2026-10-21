@@ -57,5 +57,8 @@ struct MailboxDisconnectChoiceTests {
     #expect(throws: MailConnectFailure.failed("Outlook is disconnected, but its transactions couldn't be removed. They stay for now.")) {
       try LiveMailboxConnecting.disconnected(.disconnectedRemoveFailed, provider: .outlook)
     }
+    #expect(throws: MailConnectFailure.takenByOtherIPhone) {
+      try LiveMailboxConnecting.disconnected(.otherDevice, provider: .gmail)
+    }
   }
 }

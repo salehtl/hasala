@@ -116,6 +116,16 @@
       }
     },
     {
+      "name": "dkim-pass-without-d",
+      "group": "goldens",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
       "name": "dkim-pass-without-identity",
       "group": "goldens",
       "headers": "Authentication-Results: mx.google.com; dkim=pass header.s=selector1 header.b=c3ludGhl\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
@@ -385,7 +395,7 @@
       "headers": "Authentication-Results: mx.google.com; dkim; dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
-        "reason": "fail",
+        "reason": "parse_error",
         "domain": null
       }
     },
@@ -405,7 +415,7 @@
       "headers": "Authentication-Results: mx.google.com; dkim=pass (unclosed header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
-        "reason": "fail",
+        "reason": "parse_error",
         "domain": null
       }
     },
@@ -415,7 +425,7 @@
       "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=\"bank.example; dmarc=pass header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
       "expect": {
         "trusted": false,
-        "reason": "fail",
+        "reason": "parse_error",
         "domain": null
       }
     },
@@ -456,6 +466,219 @@
       "expect": {
         "trusted": false,
         "reason": "not_topmost",
+        "domain": null
+      }
+    },
+    {
+      "name": "quote-inside-comment",
+      "group": "structure",
+      "headers": "Authentication-Results: mx.google.com; spf=pass (a \"b) c) smtp.mailfrom=x@bank.example; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "close-paren-outside-comment",
+      "group": "structure",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example) x\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "stray-token-in-method-spec",
+      "group": "structure",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example stray\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "segment-without-result",
+      "group": "structure",
+      "headers": "Authentication-Results: mx.google.com; stray; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "quoted-separators-at-top-level-are-text",
+      "group": "structure",
+      "headers": "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=\"a);b(c\"@other.example; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "quoted-mailfrom-inside-spf-comment",
+      "group": "structure",
+      "note": "A quote inside a comment is literal (RFC 5322), so the comment's ')' would close it early: unreadable, never read as a method.",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@other.example header.s=s1 header.b=AAAAAAAA;\r\n       spf=pass (google.com: domain of \"x);dkim=pass()header.d=bank.example()header.b=BBBBBBBB;(y\"@other.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=\"x);dkim=pass()header.d=bank.example()header.b=BBBBBBBB;(y\"@other.example;\r\n       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=other.example\r\nFrom: alerts@other.example (alerts@bank.example)\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "parse_error",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-form-header-i",
+      "group": "domain",
+      "note": "The DKIM domain is the domain of header.i when there is no header.d (RFC 6376 3.5).",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=AbCdEf12;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.10 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "header-i-subdomain-aligned",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=alerts@mail.bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "mail.bank.example"
+      }
+    },
+    {
+      "name": "header-i-unaligned",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@other.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "header-d-wins-over-header-i",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=other.example header.i=@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "dmarc-header-from-is-not-the-from",
+      "group": "domain",
+      "note": "Gmail's DMARC read another From domain than the one the phone reads.",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=other.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "dmarc-without-header-from",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=pass\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "dmarc-result-is-not-a-trust-input",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=fail header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "from-comment-is-not-the-address",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: alerts@other.example (alerts@bank.example)\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "from-comment-inside-angle-addr",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example (alerts)>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "from-text-after-angle-addr",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: <x@other.example> \"@bank.example\"\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "from-two-angle-addrs",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: <x@other.example> <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "from-two-mailboxes",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: x@other.example, alerts@bank.example\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "from-unclosed-angle-addr",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: Bank <alerts@bank.example\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "from-quoted-local-part-with-at",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: \"a@other.example\"@bank.example\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "from-quoted-domain-tail",
+      "group": "domain",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example\r\nFrom: x@other.example\"@bank.example\"\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
         "domain": null
       }
     },
@@ -1643,6 +1866,18 @@
         "trusted": true,
         "reason": "pass",
         "domain": "bank.example"
+      }
+    },
+    {
+      "name": "outlook-from-comment-is-not-the-address",
+      "group": "outlook",
+      "provider": "outlook",
+      "note": "The domain is the addr-spec's, comments removed.",
+      "headers": "Received: from mail.bank.example (192.0.2.1) by AM0PR01MB0001.eurprd01.prod.outlook.com; Mon, 1 Jun 2026 00:00:00 +0000\r\nAuthentication-Results: spf=pass (sender IP is 192.0.2.1)\r\n smtp.mailfrom=bank.example; dkim=pass (signature was verified)\r\n header.d=bank.example;dmarc=pass action=none\r\n header.from=bank.example;compauth=pass reason=100\r\nX-MS-Exchange-Organization-AuthAs: Anonymous\r\nX-MS-Exchange-Organization-AuthSource: AM0PR01MB0001.eurprd01.prod.outlook.com\r\nFrom: alerts@evil.example (alerts@bank.example)\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {

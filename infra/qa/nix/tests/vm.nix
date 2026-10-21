@@ -411,6 +411,38 @@ in
           machine.succeed("test ! -e /run/hasala-backup || test -z \"$(ls -A /run/hasala-backup)\"")
           machine.succeed("systemctl start hasala-backup-check.service")
 
+      with subtest("AT-V10c: a purge reaches the ledger and the backup, and a restore cannot undo it"):
+          gone = "00000000-0000-4000-8000-0000000000c1"
+          insert = as_user(
+              "hasala-migrate",
+              f"{PSQL} \"INSERT INTO users (id, user_handle, created_at, email_norm, email_verified_at, display_name)"
+              f" VALUES ('{gone}', sha256('vm-restore'::bytea), now(), 'vm-restore@example.test', now(), 'VM')\""
+              " -U hasala_migrate",
+          )
+          machine.succeed(insert)
+          machine.succeed(f"hasala-admin purge-user {gone} --confirm {gone}")
+          machine.succeed(f"grep '^{gone} ' /var/lib/hasala-ledger/purged")
+          assert machine.succeed("stat -c '%a %G' /var/lib/hasala-ledger/purged").strip() == "640 hasala-ledger"
+          machine.succeed("systemctl start hasala-backup.service")
+          ledger = machine.succeed(f"ls -t {BACKUP_DIR}/hasala-ledger-daily-*.tar.age | head -1").strip()
+          machine.succeed(f"age -d -i /root/test-identity.txt {ledger} | tar -xOf - purged | grep '^{gone} '")
+          machine.succeed(insert)
+          machine.succeed("systemctl restart hasalad.service")
+          machine.wait_for_unit("hasalad.service")
+          machine.succeed("journalctl -u hasala-purge-replay -o cat | grep '1 account(s) purged again' >/dev/null")
+          left = machine.succeed(as_user("hasala-migrate", f"{PSQL} \"SELECT count(*) FROM users WHERE id = '{gone}'\" -U hasala_migrate")).strip()
+          assert left == "0", left
+          machine.fail(f"journalctl -u hasala-purge-replay -o cat | grep {gone}")
+
+      with subtest("AT-V10d: the system CA bundle no longer trusts the distrusted roots"):
+          bundle = "/etc/ssl/certs/ca-certificates.crt"
+          first = lambda name: machine.succeed(
+              f"awk -v n='{name}' 'p {{ print; exit }} $0 == n {{ p = 1 }}' {bundle}"
+          ).strip()
+          for name in ["Comodo AAA Services root", "emSign ECC Root CA - G3"]:
+              assert first(name) != "-----BEGIN CERTIFICATE-----", name
+          assert first("USERTrust RSA Certification Authority") == "-----BEGIN CERTIFICATE-----"
+
       with subtest("AT-V10b: a dump larger than the backup MemoryMax streams to disk"):
           machine.succeed(
               as_user(

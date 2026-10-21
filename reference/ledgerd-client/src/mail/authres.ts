@@ -22,9 +22,9 @@
  * Trust a verdict ONLY when:
  *   - exactly one Authentication-Results header has authserv-id == mx.google.com,
  *   - it precedes every other Authentication-Results header, AND
- *   - it reports dkim=pass with a DKIM domain aligned with the one From domain:
- *     header.d when the method has one, else the domain of header.i (Gmail
- *     writes header.i=@<domain>, never header.d).
+ *   - it reports dkim=pass with a DKIM domain (header.d, else the domain of
+ *     header.i) aligned with the one From domain, AND
+ *   - every dmarc spec in it names that From domain as header.from.
  *
  * Everything else is untrusted with a specific reason:
  *   - no_ar       — no mx.google.com A-R present (drafts, Gmail's POP importer,
@@ -33,7 +33,9 @@
  *   - multiple_ar — more than one mx.google.com A-R.
  *   - not_topmost — a foreign-authserv-id A-R precedes the mx.google.com one.
  *   - fail        — the mx.google.com A-R does not report a passing verdict.
- *   - parse_error — the header block could not be read (malformed, over-bounds).
+ *   - parse_error — the header block could not be read (malformed, over-bounds,
+ *                   or an A-R with a quote inside a comment, an unbalanced
+ *                   paren or quote, or a segment that is not a method spec).
  *
  * Fail-closed is the whole posture: any ambiguity is untrusted, never a wrong
  * trust and never a dropped message (an untrusted verdict routes the message to
@@ -216,7 +218,11 @@ function analyze(rawHeaders: string): Analysis {
       return untrusted("no_ar");
     }
 
-    const parsed = arValues.map(parseArValue);
+    const read = arValues.map(parseArValue);
+    if (read.some((ar) => ar === null)) {
+      return untrusted("parse_error");
+    }
+    const parsed = read as ArHeader[];
 
     // Which A-Rs are Gmail's own. Bare authserv-id match only.
     const gmailIdx: number[] = [];
@@ -247,6 +253,9 @@ function analyze(rawHeaders: string): Analysis {
       (m) => m.method === "dkim" && m.result === "pass" && dkimAligned(dkimDomain(m), fromDom),
     );
     if (!dkimPass) {
+      return untrusted("fail");
+    }
+    if (ar.methods.some((m) => m.method === "dmarc" && domainProp(m, "header.from") !== fromDom)) {
       return untrusted("fail");
     }
     const domain = dkimDomain(dkimPass);
@@ -324,9 +333,13 @@ function analyzeOutlook(rawHeaders: string): Analysis {
       return untrusted("parse_error");
     }
 
-    const parsed = fields
+    const read = fields
       .filter((f) => fieldNameEquals(f.name, "authentication-results"))
       .map((f) => parseArValue(f.value));
+    if (read.some((ar) => ar === null)) {
+      return untrusted("parse_error");
+    }
+    const parsed = read as ArHeader[];
 
     // 2–4. Exactly one Microsoft-form A-R, and it is the topmost A-R.
     const msIdx: number[] = [];
@@ -423,7 +436,8 @@ function asciiLower(s: string): string {
 }
 
 function fromAddress(value: string): string | null {
-  const s = stripQuoted(stripComments(value));
+  const clean = stripComments(value);
+  const s = clean === null ? null : stripQuoted(clean);
   if (s === null || s.includes(",") || s.includes(";")) return null;
   let addr: string;
   const lt = s.indexOf("<");
@@ -470,30 +484,68 @@ function stripQuoted(v: string): string | null {
   return inQuote ? null : out;
 }
 
-function dkimDomain(m: MethodSpec): string {
-  return m.props.has("header.d") ? domainProp(m, "header.d") : domainProp(m, "header.i");
-}
-
 function dkimAligned(d: string, from: string): boolean {
   if (d === "" || from === "") return false;
   return from === d || from.endsWith("." + d) || (from.includes(".") && d.endsWith("." + from));
 }
 
 /**
- * fromDomain is the domain of a From value: the part after the last '@', cut
- * at '>', space, tab, CR, LF, '"' or ')', ASCII lower-cased, trailing dots
- * dropped; "" when there is no '@'. It is the Swift lane's
- * `BankDomains.domainOf`, which the sender-trust match downstream uses on the
- * same From.
+ * fromDomain is the domain of the one mailbox of a From value, read from its
+ * addr-spec with comments removed: inside the one angle-addr when there is one,
+ * after the last '@' outside a quoted string, spaces and tabs trimmed, ASCII
+ * lower-cased, trailing dots dropped. "" when the value has no such mailbox:
+ * an unreadable comment or quote, more than one '<' or '>', a top-level ',',
+ * no '@', or a domain with anything but letters, digits, '.' and '-'.
  */
 function fromDomain(value: string): string {
-  const at = value.lastIndexOf("@");
+  const clean = stripComments(value);
+  if (clean === null) return "";
+  let lt = -1;
+  let gt = -1;
+  let lts = 0;
+  let gts = 0;
+  let inQuote = false;
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i]!;
+    if (inQuote) {
+      if (c === "\\") i++;
+      else if (c === '"') inQuote = false;
+      continue;
+    }
+    if (c === '"') inQuote = true;
+    else if (c === "<") {
+      lt = i;
+      lts++;
+    } else if (c === ">") {
+      gt = i;
+      gts++;
+    } else if (c === ",") return "";
+  }
+  if (lts > 1 || gts !== lts || gt < lt) return "";
+  const addr = lts === 1 ? clean.slice(lt + 1, gt) : clean;
+  let at = -1;
+  inQuote = false;
+  for (let i = 0; i < addr.length; i++) {
+    const c = addr[i]!;
+    if (inQuote) {
+      if (c === "\\") i++;
+      else if (c === '"') inQuote = false;
+      continue;
+    }
+    if (c === '"') inQuote = true;
+    else if (c === "@") at = i;
+  }
   if (at < 0) return "";
+  let lo = at + 1;
+  let hi = addr.length;
+  while (lo < hi && (addr[lo] === " " || addr[lo] === "\t")) lo++;
+  while (hi > lo && (addr[hi - 1] === " " || addr[hi - 1] === "\t")) hi--;
   let out = "";
-  for (let i = at + 1; i < value.length; i++) {
-    const c = value[i]!;
-    if (c === ">" || c === " " || c === "\t" || c === "\r" || c === "\n" || c === '"' || c === ")") break;
-    out += c >= "A" && c <= "Z" ? c.toLowerCase() : c;
+  for (let i = lo; i < hi; i++) {
+    const c = addr[i]!;
+    const l = c >= "A" && c <= "Z" ? c.toLowerCase() : c;
+    if (!((l >= "a" && l <= "z") || (l >= "0" && l <= "9") || l === "." || l === "-")) return "";
+    out += l;
   }
   while (out.endsWith(".")) out = out.slice(0, -1);
   return out;
@@ -566,11 +618,12 @@ function fieldNameEquals(name: string, want: string): boolean {
  * empty authserv-id (which cannot match GMAIL_AUTHSERV_ID) and whatever methods
  * it could recover.
  */
-function parseArValue(value: string): ArHeader {
+function parseArValue(value: string): ArHeader | null {
   // Comments (CFWS) can appear anywhere and may nest and may contain ';' or
   // '('; strip them first so neither the resinfo split nor tokenisation trips
   // over their contents.
   const clean = stripComments(value);
+  if (clean === null) return null;
 
   // resinfo entries are separated by ';' (RFC 8601 §2.2). The first segment is
   // the authserv-id (and an optional version); each later segment is a
@@ -591,8 +644,10 @@ function parseArValue(value: string): ArHeader {
   for (let i = microsoftForm ? 0 : 1; i < segments.length; i++) {
     const toks = tokenize(segments[i]!);
     if (toks.length === 0) continue;
+    if (toks.length === 1 && toks[0]!.toLowerCase() === "none") continue;
     const spec = parseMethodSpec(toks);
-    if (spec) methods.push(spec);
+    if (!spec) return null;
+    methods.push(spec);
   }
 
   return { authservId, methods, microsoftForm };
@@ -609,7 +664,7 @@ function parseMethodSpec(tokens: string[]): MethodSpec | null {
   const props = new Map<string, string>();
   for (let i = 1; i < tokens.length; i++) {
     const kv = splitKV(tokens[i]!);
-    if (!kv) continue;
+    if (!kv) return null;
     props.set(kv.key.trim().toLowerCase(), unquote(kv.value));
   }
   return { method, result, props };
@@ -646,6 +701,10 @@ function domainProp(spec: MethodSpec, key: string): string {
   return v;
 }
 
+function dkimDomain(spec: MethodSpec): string {
+  return spec.props.has("header.d") ? domainProp(spec, "header.d") : domainProp(spec, "header.i");
+}
+
 /** A lower-case LDH domain with at least two labels. */
 function isLdhDomain(v: string): boolean {
   return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(v);
@@ -657,7 +716,7 @@ function isLdhDomain(v: string): boolean {
  * space so adjacent tokens stay separated. Quoted strings are passed through
  * verbatim so a '(' or ';' inside quotes is not mistaken for structure.
  */
-function stripComments(v: string): string {
+function stripComments(v: string): string | null {
   let out = "";
   let depth = 0;
   let inQuote = false;
@@ -678,10 +737,12 @@ function stripComments(v: string): string {
         i++; // skip the escaped char inside the comment
         continue;
       }
+      if (c === '"') return null;
       if (c === "(") depth++;
       else if (c === ")") depth--;
       continue; // drop comment content
     }
+    if (c === ")") return null;
     if (c === "(") {
       depth++;
       out += " ";
@@ -694,6 +755,7 @@ function stripComments(v: string): string {
     }
     out += c;
   }
+  if (depth > 0 || inQuote) return null;
   return out;
 }
 

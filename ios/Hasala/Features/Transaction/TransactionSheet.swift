@@ -73,7 +73,9 @@ struct TransactionSheet: View {
         case .reviewReason(let reason):
           ReviewReasonPage(
             reason: reason, sort: { app.router.transaction.removeAll() },
-            archive: { model.setArchived(true) })
+            archive: { model.setArchived(true) },
+            merge: { model.resolve(reason, merge: true) },
+            keepBoth: { model.resolve(reason, merge: false) })
         }
       }
       .confirmationDialog("Archive this transaction?", isPresented: $confirmArchive, titleVisibility: .visible) {
@@ -440,7 +442,7 @@ private struct BudgetContext: View {
       ReflowingRow(spacing: 12, alignment: .firstTextBaseline) {
         Text(pace.title).hType(.subheadline).foregroundStyle(HColor.textSecondary)
       } trailing: {
-        PhraseText(MoneyPhrase([.amount(pace.left.isNegative ? .aed(-pace.left.minor) : pace.left),
+        PhraseText(MoneyPhrase([.amount(pace.left.isNegative ? .aed(pace.left.minor.negated) : pace.left),
                                 .text(pace.left.isNegative ? " over " : " left of "),
                                 .amount(pace.budget, .compact)]), hidden: hidden)
           .hFigure(HFigure.compact.weight(.semibold))

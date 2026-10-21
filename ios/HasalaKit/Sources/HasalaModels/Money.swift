@@ -86,7 +86,7 @@ public struct Permille: Sendable, Hashable, Comparable, Codable {
   /// `part / whole` in permille, rounded down; zero when `whole` is zero.
   public static func ratio(_ part: Int64, of whole: Int64) -> Permille {
     guard whole > 0 else { return Permille(0) }
-    return Permille(Int(part.clamped(to: 0...Int64.max) * 1000 / whole))
+    return Permille(Int(Fils.mulDiv(part.clamped(to: 0...Int64.max), 1000, whole)))
   }
 
   public static func < (lhs: Permille, rhs: Permille) -> Bool { lhs.value < rhs.value }
@@ -97,6 +97,37 @@ public struct Permille: Sendable, Hashable, Comparable, Codable {
 
 extension Comparable {
   func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
+}
+
+public enum Fils {
+  public static func sum<S: Sequence>(_ values: S) -> Int64 where S.Element == Int64 {
+    Int64(clamping: values.reduce(Int128(0)) { $0 + Int128($1) })
+  }
+
+  public static func sum<S: Sequence>(_ values: S, _ minor: (S.Element) throws -> Int64) rethrows -> Int64 {
+    var total = Int128(0)
+    for v in values { total += Int128(try minor(v)) }
+    return Int64(clamping: total)
+  }
+
+  public static func mulDiv(_ a: Int64, _ b: Int64, _ d: Int64) -> Int64 {
+    guard d != 0 else { return 0 }
+    return Int64(clamping: Int128(a) * Int128(b) / Int128(d))
+  }
+
+  public static func percentRounded(_ part: Int64, of whole: Int64) -> Int64 {
+    guard whole > 0 else { return 0 }
+    let p = Int128(part), w = Int128(whole)
+    let rounded = (p.magnitude * 200 + w.magnitude) / (w.magnitude * 2)
+    return Int64(clamping: part < 0 ? -Int128(rounded) : Int128(rounded))
+  }
+}
+
+public extension Int64 {
+  func plus(_ other: Int64) -> Int64 { Int64(clamping: Int128(self) + Int128(other)) }
+  func minus(_ other: Int64) -> Int64 { Int64(clamping: Int128(self) - Int128(other)) }
+  var negated: Int64 { Int64(clamping: -Int128(self)) }
+  mutating func add(_ other: Int64) { self = plus(other) }
 }
 
 public extension MoneyFormat {

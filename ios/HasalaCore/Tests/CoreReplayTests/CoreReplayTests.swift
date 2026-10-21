@@ -348,4 +348,32 @@ struct SnapshotTests {
     bad.foldPrint = "0"
     #expect(throws: SnapshotError.foldSemantics) { try SnapshotCodec.decode(try SnapshotCodec.encode(bad)) }
   }
+
+  @Test("a snapshot keeps text that reads \"$null\" and large amounts")
+  func snapshotKeepsDollarNull() throws {
+    var log = Log()
+    try log.blob(op("home_currency_set", #"{"currency":"AED"}"#, id: 1))
+    try log.blob(
+      op(
+        "txn_ingested",
+        #"{"amount_minor":"9223372036854775807","currency":"AED","direction":"debit","posted_at":"2026-10-03T08:00:00.000Z","merchant_raw":"$null","last4":"4412","needs_review":true}"#,
+        id: 2, entity: ("txn", Ids.t1), ingest: Ids.ingest(1)))
+    try log.blob(op("txn_annotated", #"{"txn_id":"\#(Ids.t1)","set":{"note":"$null"}}"#, id: 3))
+    let back = try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: log.state))).state
+    #expect(back.txns[Ids.t1]?.merchantRaw == "$null")
+    #expect(back.txns[Ids.t1]?.annotation("note") == "$null")
+    #expect(back.txns[Ids.t1]?.amountMinor == Int64.max)
+    #expect(back == log.state)
+    #expect(back.serialized() == log.state.serialized())
+    let canary = FoldCanary.state()
+    #expect(try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: canary))).state == canary)
+  }
+
+  @Test("a snapshot from the property-list format is refused, so the log is folded again")
+  func oldSnapshotRefused() throws {
+    let e = PropertyListEncoder()
+    e.outputFormat = .binary
+    let old = try e.encode(StateSnapshot(state: Log().state))
+    #expect(throws: SnapshotError.undecodable) { try SnapshotCodec.decode(old) }
+  }
 }

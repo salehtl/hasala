@@ -42,6 +42,7 @@ enum Charset {
     let low = NormText.jsLower(label)
     guard isASCII(low) else { return .unresolved }
     if CharsetTables.wordUnsupported.contains(low) { return .unsupported }
+    if CharsetTables.wordPassthrough.contains(low) { return .passthrough }
     if let i = CharsetTables.wordSingleByte[low] { return .singleByte(i) }
     return .unresolved
   }

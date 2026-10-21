@@ -289,10 +289,17 @@ struct SearchView: View {
           Text(a.headline).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textSecondary)
         }
         VStack(alignment: .leading, spacing: 2) {
-          MoneyText(a.total, figure: .large, unit: .unit, hidden: app.amountsHidden, hiddenGlyphs: 4,
-                    color: a.isIncome ? HColor.moneyIn : HColor.textPrimary, sign: a.isIncome ? .income : .none)
-          Text("\(a.isIncome ? "Received" : "Spent") · \(a.countLine)").hType(.footnote)
+          MoneyText(a.refundedMore ? Money(minor: a.total.minor.negated, currency: a.total.currency) : a.total,
+                    figure: .large, unit: .unit, hidden: app.amountsHidden, hiddenGlyphs: 4,
+                    color: a.isIncome || a.refundedMore ? HColor.moneyIn : HColor.textPrimary,
+                    sign: a.isIncome || a.refundedMore ? .income : .none)
+          Text("\(a.isIncome ? "Received" : (a.refundedMore ? "Refunded more than spent" : "Spent")) · \(a.countLine)")
+            .hType(.footnote)
             .foregroundStyle(HColor.textSecondary)
+          if let line = a.mark?.line {
+            Text(line).hType(.footnote).foregroundStyle(HColor.textSecondary)
+              .accessibilityIdentifier("search.answer.notCounted")
+          }
         }
         if !a.scope.isEmpty {
           FlowLayout(spacing: 6) {

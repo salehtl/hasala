@@ -22,6 +22,15 @@ import {
   type Op,
 } from "./op";
 
+type ExpectOp = {
+  type: string;
+  op_id: string;
+  authored_at_unix_ms: string;
+  has_entity: boolean;
+  parent_version: string | null;
+  ingest_id: string;
+};
+
 const manifest: {
   schema_version: number;
   types: string[];
@@ -31,14 +40,7 @@ const manifest: {
   golden_ops_base64: string;
   golden_raw_body_base64: string;
   golden_checkpoint_base64: string;
-  expect_ops: {
-    type: string;
-    op_id: string;
-    authored_at_unix_ms: string;
-    has_entity: boolean;
-    parent_version: string | null;
-    ingest_id: string;
-  }[];
+  expect_ops: ExpectOp[];
   authored_at_cases: { wire: string; expect_unix_ms: string; expect_canonical_wire: string }[];
   authored_at_rejects: string[];
   parent_version_overflow_base64: string;
@@ -46,6 +48,8 @@ const manifest: {
   duplicate_disposition_base64: string;
   duplicate_disposition_invalid_payloads: unknown[];
   verified_origin_base64: string;
+  set_aside_blobs: { name: string; kind: string; body_base64: string }[];
+  accepted_variants: { name: string; body_base64: string; expect_ops: ExpectOp[] }[];
 } = await Bun.file(`${import.meta.dir}/../../../../conformance/op/manifest.json`).json();
 
 const goldenOps = new Uint8Array(Buffer.from(manifest.golden_ops_base64, "base64"));
@@ -129,6 +133,32 @@ test("both TS wire directions refuse every shared malformed duplicate dispositio
     expect(() => encodeBlobOps([op])).toThrow();
     const body = opsBlob(JSON.stringify({ v: 2, kind: "ops", ops: [op] }));
     expect(() => decodeBlobOps(body)).toThrow(BlobDecodeError);
+  }
+});
+
+test("set_aside_blobs: each shared body is set aside, never a hard stop", () => {
+  expect(manifest.set_aside_blobs.length).toBeGreaterThan(0);
+  for (const c of manifest.set_aside_blobs) {
+    const body = new Uint8Array(Buffer.from(c.body_base64, "base64"));
+    const decode = c.kind === "raw_body" ? () => decodeRawBody(body) : () => decodeBlobOps(body);
+    expect(decode, c.name).toThrow(BlobDecodeError);
+  }
+});
+
+test("accepted_variants: case-variant keys are ignored and a surrogate pair is read", () => {
+  expect(manifest.accepted_variants.length).toBeGreaterThan(0);
+  for (const c of manifest.accepted_variants) {
+    const ops = decodeBlobOps(new Uint8Array(Buffer.from(c.body_base64, "base64")));
+    expect(ops.length, c.name).toBe(c.expect_ops.length);
+    ops.forEach((o, i) => {
+      const want = c.expect_ops[i]!;
+      expect(o.type, c.name).toBe(want.type as Op["type"]);
+      expect(o.op_id, c.name).toBe(want.op_id);
+      expect(String(authoredAtMs(o)), c.name).toBe(want.authored_at_unix_ms);
+      expect(o.entity !== undefined, c.name).toBe(want.has_entity);
+      expect(o.parent_version === null ? null : String(o.parent_version), c.name).toBe(want.parent_version);
+      expect(o.ingest_id ?? "", c.name).toBe(want.ingest_id);
+    });
   }
 });
 

@@ -15,6 +15,19 @@ struct OnboardingStoreTests: AccountSuite {
     return (OnboardingStore(services: session.services, session: { session }), session)
   }
 
+  @Test func signingInForgetsAnAbandonedRecovery() async {
+    let (store, _) = store(MockAccountService(existing: .passkey))
+    let m = store.signIn
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    store.phaseChanged(from: nil, to: .signedOut)
+    #expect(!m.phraseText.isEmpty)
+    store.phaseChanged(from: .signedOut, to: .ready)
+    #expect(store.signIn === m)
+    #expect(m.phraseText.isEmpty && m.recoverCode.isEmpty && m.recovery == nil)
+  }
+
   @Test func theSameModelsComeBackOnEveryCall() {
     let (store, _) = store()
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)

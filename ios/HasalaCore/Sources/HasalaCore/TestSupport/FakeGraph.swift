@@ -30,9 +30,10 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     public var receivedMs: Int64
     /// The From address Graph reports (`from.emailAddress.address`).
     public var fromAddress: String
+    /// The well-known name of the folder that holds it (`inbox`, `junkemail`, `deleteditems`).
     public var folder: String
 
-    public init(id: String, raw: [UInt8], receivedMs: Int64, fromAddress: String, folder: String = FakeGraph.inboxID) {
+    public init(id: String, raw: [UInt8], receivedMs: Int64, fromAddress: String, folder: String = "inbox") {
       self.id = id
       self.raw = raw
       self.receivedMs = receivedMs
@@ -107,8 +108,8 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   public var nowMs: (@Sendable () -> Int64)?
 
   public static let tokenURL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
-  public static let inboxID = "AQMkADAwATM0MDAAMS1inbox-synthetic"
-  public static let junkID = "AQMkADAwATM0MDAAMS1junk-synthetic"
+  public static let inboxID = "inbox"
+  public static let junkID = "junkemail"
   static let graphPrefix = "/v1.0"
 
   public init() {}
@@ -195,8 +196,8 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
       return error(404, GraphClient.noMailboxCode)
     }
     switch (request.method, sub) {
-    case (.get, "/me/mailFolders/inbox"):
-      return json(200, [("id", .string(Self.inboxID))])
+    case (.get, "/me/mailFolders/inbox"), (.get, "/me/mailFolders/junkemail"), (.get, "/me/mailFolders/deleteditems"):
+      return json(200, [("id", .string(Self.folderID(String(sub.dropFirst("/me/mailFolders/".count)))))])
     case (.get, "/me/messages"):
       return list(query: query, rawQuery: comps.percentEncodedQuery ?? "")
     case (.post, "/subscriptions"):
@@ -331,14 +332,16 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     }
   }
 
+  public static func folderID(_ wellKnownName: String) -> String { "\(wellKnownName)-synthetic" }
+
   static func listed(_ m: Message) -> [(String, JSONValue)] {
     [
       ("id", .string(m.id)), ("receivedDateTime", .string(Instant.iso(m.receivedMs) ?? "")),
+      ("parentFolderId", .string(folderID(m.folder))),
       (
         "from",
         .object(JSONObject([("emailAddress", .object(JSONObject([("name", .string("Synthetic")), ("address", .string(m.fromAddress))])))]))
       ),
-      ("parentFolderId", .string(m.folder)),
     ]
   }
 

@@ -99,6 +99,7 @@ public struct ReviewSummary: Sendable, Hashable {
   public var unplanned: Money
   /// Sorted today, in review, posted today ("2 new today").
   public var newToday: Int
+  public var mark: TotalMark? = nil
 }
 
 public struct ActivitySnapshot: Sendable, Hashable {
@@ -164,9 +165,10 @@ public enum ActivityEngine {
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime, in window: ReviewWindow = .all) -> ReviewSummary {
     let queue = ReviewEngine.queue(s, in: window)
-    let unplanned = queue.filter { $0.direction == .out && !$0.isHeldCopy }.reduce(Int64(0)) { $0 + ($1.homeMinor ?? 0) }
+    let out = queue.filter { $0.direction == .out && !$0.isHeldCopy }
+    let unplanned = Fils.sum(out) { $0.homeMinor ?? 0 }
     let today = queue.filter { $0.postedAt.date == now.date }.count
-    return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today)
+    return ReviewSummary(count: queue.count, unplanned: .aed(unplanned), newToday: today, mark: TotalMark.unrated(out))
   }
 
   static func isBill(_ t: Txn, _ s: LedgerState) -> Bool {
@@ -203,7 +205,7 @@ public enum ActivityEngine {
       let signed = t.homeSigned ?? 0
       if let i = index[d] {
         groups[i].rows.append(row)
-        groups[i].total.minor += signed
+        groups[i].total.minor.add(signed)
       } else {
         index[d] = groups.count
         groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row]))
@@ -304,10 +306,10 @@ public enum ActivityEngine {
   ) -> FilterSummary? {
     guard let cat = s.category(c) else { return nil }
     let total = Spending.spent(s, category: c, in: period)
-    let budget = period.months.reduce(Int64(0)) { $0 + s.plan.budget(c, $1).minor }
+    let budget = Fils.sum(period.months) { s.plan.budget(c, $0).minor }
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)
-    let pct = budget > 0 ? total * 100 / budget : 0
+    let pct = Fils.mulDiv(total, 100, budget)
     return FilterSummary(
       title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
       today: Pace.monthGone(day: day, days: days), verdict: verdict,

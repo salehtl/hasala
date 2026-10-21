@@ -153,10 +153,11 @@ final class AccountRuntime {
   }
 
   /// Asks the server for the account's mailbox link after every run while this iPhone has
-  /// none (the lane's cycle never asks then): another iPhone can take the link at any
-  /// time. Offline, the last answer stays until the next run.
+  /// none or another iPhone holds it: another iPhone can take the link at any time, or
+  /// move it to the other provider, whose lane then runs here. Offline, the last answer
+  /// stays until the next run.
   func checkServerLink() async {
-    guard lane != nil, store.mailboxPhase == .unlinked else { return }
+    guard lane != nil, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice else { return }
     _ = await askServerLink()
   }
 
@@ -257,7 +258,8 @@ final class AccountRuntime {
         sync: { trigger, deadline in
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
-          return (out.newData, out.stop)
+          let phase = await engine.status.phase
+          return (out.newData, Self.shownStop(out.stop, phase: phase))
         },
         mailbox: mailboxStage,
         categorize: { trigger in await suggestions.run(trigger) },
@@ -285,6 +287,11 @@ final class AccountRuntime {
     await rt.followImports()
     await firstImport.start()
     return rt
+  }
+
+  nonisolated static func shownStop(_ stop: SyncStop?, phase: SyncPhase) -> SyncStop? {
+    guard case .halted = stop, case .halted(let kind) = phase else { return stop }
+    return .halted(kind)
   }
 
   /// The launch run (spec 04 §6.5): `GET /meta` and `GET /auth/session` first, then

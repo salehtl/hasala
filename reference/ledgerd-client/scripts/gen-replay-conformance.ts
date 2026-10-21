@@ -470,6 +470,12 @@ function foldSpecs(): Spec[] {
         .blob("ingest", c.ingest("t2", "i2", { posted_at: "2026-06-05T09:00:00Z" }))
         .blob("ingest", c.ingest("t3", "i3", { posted_at: "2026-06-06T01:30:00Z" })),
     ),
+    spec(g, "fingerprint-merchant-is-byte-exact", "An NFC and an NFD spelling of one merchant are two fingerprints; only the byte-identical spelling matches.", (c) =>
+      c
+        .blob("ingest", c.ingest("t1", "i1", { merchant_raw: "CAF\u00c9" }))
+        .blob("ingest", c.ingest("t2", "i2", { merchant_raw: "CAFE\u0301" }))
+        .blob("ingest", c.ingest("t3", "i3", { merchant_raw: "CAF\u00c9" })),
+    ),
     // --- unparsed rows ---
     spec(g, "unparsed-row-materializes", "An unparsed message is a row on the review surface with no money.", (c) => c.blob("ingest", c.unparsed("u1", "m1"))),
     spec(g, "unparsed-shape-is-held", "Each payload claims unparsed while breaking one rule of the shape; only the last is the real thing.", (c) =>

@@ -392,7 +392,7 @@ struct DayByDayDescriptor: AXChartDescriptorRepresentable {
     }
     let points = chart.days.map { day in
       AXDataPoint(
-        x: "\(day.day)", y: Double(day.spent.minor * 100 / top),
+        x: "\(day.day)", y: Double(Fils.mulDiv(day.spent.minor, 100, top)),
         label: "\(day.date.short), " + (hidden ? "Amount hidden" : "AED \(MoneyFormat.string(day.spent.minor))"))
     }
     return AXChartDescriptor(

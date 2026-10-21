@@ -443,6 +443,44 @@ func TestAPullTruncatedByTheByteBudgetIsNotComplete(t *testing.T) {
 	}
 }
 
+func TestACursorPastTheEndOfTheStreamIsCursorAhead(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("u")
+	tok := h.session(u)
+
+	for _, path := range []string{"/api/v1/sync?stream=hot", "/api/v1/sync/hashes?stream=hot"} {
+		wantStatus(t, h.req("GET", path+"&after=0", tok, nil), http.StatusOK)
+		w := h.req("GET", path+"&after=1", tok, nil)
+		wantStatus(t, w, http.StatusConflict)
+		if got := decodeJSON[map[string]any](t, w)["error"]; got != "cursor_ahead" {
+			t.Fatalf("%s on an empty stream answered error %v, want cursor_ahead", path, got)
+		}
+	}
+
+	h.seed(u, 3)
+	all := decodeJSON[PullResponse](t, h.req("GET", "/api/v1/sync?stream=hot&limit=100", tok, nil))
+	end := mustInt(t, all.Next)
+	at := strconv.FormatInt(end, 10)
+	past := strconv.FormatInt(end+1, 10)
+
+	tip := decodeJSON[PullResponse](t, h.req("GET", "/api/v1/sync?stream=hot&after="+at, tok, nil))
+	if len(tip.Rows) != 0 || !tip.Complete || tip.Next != at {
+		t.Fatalf("a pull at the end answered %d rows, complete=%v, next=%s", len(tip.Rows), tip.Complete, tip.Next)
+	}
+	tipHashes := decodeJSON[HashesResponse](t, h.req("GET", "/api/v1/sync/hashes?stream=hot&after="+at, tok, nil))
+	if len(tipHashes.Hashes) != 0 || !tipHashes.Complete {
+		t.Fatalf("a hash list at the end answered %d hashes, complete=%v", len(tipHashes.Hashes), tipHashes.Complete)
+	}
+
+	for _, path := range []string{"/api/v1/sync?stream=hot&after=", "/api/v1/sync/hashes?stream=hot&after="} {
+		w := h.req("GET", path+past, tok, nil)
+		wantStatus(t, w, http.StatusConflict)
+		if got := decodeJSON[map[string]any](t, w)["error"]; got != "cursor_ahead" {
+			t.Fatalf("%s%s answered error %v, want cursor_ahead", path, past, got)
+		}
+	}
+}
+
 func TestPullHasOneStream(t *testing.T) {
 	// Spec 02 §11.3: `stream` absent means hot, and every other value —
 	// ledgerd's retired cold stream included — is 400 bad_stream.

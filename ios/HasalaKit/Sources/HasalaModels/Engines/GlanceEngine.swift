@@ -46,7 +46,7 @@ public enum GlanceEngine {
     case nil:
       caption = "No plan yet"
     case .overBudget:
-      caption = MoneyPhrase([.text("Over by "), .amount(.aed(hero.spent.minor - hero.plan.minor), .rounded, hidden: 3)])
+      caption = MoneyPhrase([.text("Over by "), .amount(.aed(hero.spent.minor.minus(hero.plan.minor)), .rounded, hidden: 3)])
     case .overPace:
       caption = MoneyPhrase([.text("Over pace · "), .amount(hero.left, .rounded, hidden: 3), .text(" left")])
     case .onTrack, .done:
@@ -78,7 +78,7 @@ public enum GlanceEngine {
     let month = now.date.yearMonth
     return plan.sections.filter { $0.bucket != .savings }.flatMap(\.rows).filter { $0.budget.minor > 0 }.map { row in
       let spent = Spending.spent(s, category: row.id, in: month)
-      let left = row.budget.minor - spent
+      let left = row.budget.minor.minus(spent)
       let verdict = Pace.verdict(spent: spent, budget: row.budget.minor, day: day, days: days, paced: row.paced)
       return CategoryWatchWidget(
         id: row.id, name: row.name, glyph: row.glyph, hue: row.hue, left: .aed(left),

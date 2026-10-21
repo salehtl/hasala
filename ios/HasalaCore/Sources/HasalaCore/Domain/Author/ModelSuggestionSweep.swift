@@ -85,7 +85,7 @@ public enum ModelSuggestionSweep {
     for s in suggestions {
       guard let r = now[s.txnID], eligible(r), r.version == s.version, done.insert(s.txnID).inserted else { continue }
       items.append(
-        (s.txnID, s.version, s.category, s.needsReview, CategorySource(kind: .model, model: s.modelTag)))
+        (s.txnID, s.version, s.category, r.needsReview || s.needsReview, CategorySource(kind: .model, model: s.modelTag)))
     }
     guard !items.isEmpty else { return [] }
     return try OpAuthor.categorizations(items, context: context)
