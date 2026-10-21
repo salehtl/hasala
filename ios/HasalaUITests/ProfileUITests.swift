@@ -232,7 +232,7 @@ final class ProfileUITests: XCTestCase {
 
     openProfile(app)
     try audit(app, atLargeText: true)
-    for id in ["profile.rules", "profile.security", "profile.signOut"] {
+    for id in ["profile.rules", "profile.security", "profile.gravatar", "profile.signOut"] {
       XCTAssertTrue(bringUp(app, el(app, id)), "could not reach \(id)")
       attach(app, "AX3 · Profile · \(id)")
       try audit(app, atLargeText: true)
@@ -279,6 +279,39 @@ final class ProfileUITests: XCTestCase {
       XCTAssertTrue(toggle.waitForValue("0"))
     }
     return toggle
+  }
+
+  @MainActor
+  func testTheGravatarPictureCanBeTurnedOff() throws {
+    let app = launchHome()
+    openProfile(app)
+    let toggle = app.switches["profile.gravatar"].firstMatch
+    XCTAssertTrue(toggle.waitForExistence(timeout: uiWait), "Profile has no Gravatar switch")
+    XCTAssertTrue(bringUp(app, toggle), "could not reach the Gravatar switch")
+    if toggle.value as? String == "0" {
+      flip(app, toggle)
+      XCTAssertTrue(toggle.waitForValue("1"))
+    }
+    XCTAssertEqual(toggle.value as? String, "1", "Gravatar starts on")
+    XCTAssertTrue(el(app, "profile.gravatar.note").exists)
+    attach(app, "Profile · Gravatar · on")
+    try audit(app)
+
+    flip(app, toggle)
+    XCTAssertTrue(toggle.waitForValue("0"), "the switch did not turn off")
+    XCTAssertTrue(el(app, "profile.name").exists, "the profile closed")
+    attach(app, "Profile · Gravatar · off")
+    try audit(app)
+
+    el(app, "profile.close").tap()
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
+    openProfile(app)
+    let again = app.switches["profile.gravatar"].firstMatch
+    XCTAssertTrue(bringUp(app, again))
+    XCTAssertEqual(again.value as? String, "0", "the choice was not kept")
+
+    flip(app, again)
+    XCTAssertTrue(again.waitForValue("1"), "the switch did not turn back on")
   }
 
   @MainActor

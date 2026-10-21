@@ -48,6 +48,7 @@ struct ProfileSheet: View {
           BankAlertsCard(summary: summary) { push(.bankAlerts) }
           money
           settings
+          GravatarSection()
           if BuildSurface.showsCloudSuggestions { CloudSuggestionsSection() }
           footer
         }
