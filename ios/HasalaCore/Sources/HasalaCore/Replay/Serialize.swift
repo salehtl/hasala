@@ -236,14 +236,27 @@ extension State {
   }
 
   static func billJSON(_ b: Bill) -> JSONValue {
-    obj([
+    var o: [String: JSONValue] = [
       "account": str(b.account), "amount_minor": dec(b.amountMinor), "amount_mode": .string(b.amountMode),
       "anchor": .string(b.anchor), "cadence": obj(["every": num(b.cadence.every), "unit": .string(b.cadence.unit)]),
       "category": str(b.category), "currency": .string(b.currency), "direction": .string(b.direction), "end": str(b.end),
       "first_seq": dec(b.firstSeq), "keys": .array(b.keys.map(JSONValue.string)), "name": .string(b.name),
       "source": .string(b.source), "start": .string(b.start), "status": .string(b.status),
       "tolerance_bp": b.toleranceBp.map(num) ?? .null, "version": num(b.version),
-    ])
+    ]
+    if !b.changes.isEmpty {
+      o["changes"] = .array(b.changes.map { c in
+        obj([
+          "amount_minor": dec(c.amountMinor), "amount_mode": .string(c.amountMode), "from": .string(c.from),
+          "tolerance_bp": c.toleranceBp.map(num) ?? .null,
+        ])
+      })
+    }
+    if !b.pauses.isEmpty {
+      o["pauses"] = .array(b.pauses.map { p in obj(["from": .string(p.from), "until": str(p.until)]) })
+    }
+    if let c = b.createdAt { o["created_at"] = .string(c) }
+    return obj(o)
   }
 
   /// 03a §4.3.

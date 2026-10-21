@@ -620,6 +620,34 @@ public struct BillCadence: Sendable, Equatable, Codable {
   }
 }
 
+public struct BillChange: Sendable, Equatable, Codable {
+  public var from: String
+  public var amountMode: String
+  public var amountMinor: Int64
+  public var toleranceBp: Int64?
+
+  public init(
+    from: String, amountMode: String, amountMinor: Int64, toleranceBp: Int64? = nil
+  ) {
+    self.from = from
+    self.amountMode = amountMode
+    self.amountMinor = amountMinor
+    self.toleranceBp = toleranceBp
+  }
+}
+
+public struct BillPause: Sendable, Equatable, Codable {
+  public var from: String
+  public var until: String?
+
+  public init(
+    from: String, until: String? = nil
+  ) {
+    self.from = from
+    self.until = until
+  }
+}
+
 public struct Bill: Sendable, Equatable, Codable {
   public var name: String
   public var keys: [String]
@@ -636,11 +664,14 @@ public struct Bill: Sendable, Equatable, Codable {
   public var account: String?
   public var source: String
   public var status: String
+  public var changes: [BillChange]
+  public var pauses: [BillPause]
+  public var createdAt: String?
   public var firstSeq: Int64
   public var version: Int64
 
   public init(
-    name: String, keys: [String], direction: String, currency: String, amountMode: String, amountMinor: Int64, toleranceBp: Int64? = nil, cadence: BillCadence, anchor: String, start: String, end: String? = nil, category: String? = nil, account: String? = nil, source: String, status: String, firstSeq: Int64, version: Int64
+    name: String, keys: [String], direction: String, currency: String, amountMode: String, amountMinor: Int64, toleranceBp: Int64? = nil, cadence: BillCadence, anchor: String, start: String, end: String? = nil, category: String? = nil, account: String? = nil, source: String, status: String, changes: [BillChange] = [], pauses: [BillPause] = [], createdAt: String? = nil, firstSeq: Int64, version: Int64
   ) {
     self.name = name
     self.keys = keys
@@ -657,6 +688,9 @@ public struct Bill: Sendable, Equatable, Codable {
     self.account = account
     self.source = source
     self.status = status
+    self.changes = changes
+    self.pauses = pauses
+    self.createdAt = createdAt
     self.firstSeq = firstSeq
     self.version = version
   }
