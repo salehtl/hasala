@@ -405,7 +405,7 @@ bun test
 #           swift job, which also re-checks it); Go opens and verifies it once
 #           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
 #           runner on main yet: listed so the gap stays on screen.
-#   authres, categorize, norm-dates, replay
+#   authres, categorize, norm-dates, outlook-sender, replay
 #           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
 #           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
 #           executor joins CI's `swift` job with the port (WS-8, WS-10; replay
@@ -438,6 +438,7 @@ CONFORMANCE=(
 	"norm-dates||src/norm/dates-conformance.test.ts"
 	"normalizer|./internal/norm|src/norm/conformance.test.ts"
 	"op|./internal/oplog/opref|src/wire/op.test.ts"
+	"outlook-sender||src/mail/outlook-sender-conformance.test.ts"
 	"replay||src/replay/replay-conformance.test.ts"
 	"swift||"
 	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"

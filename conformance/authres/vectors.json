@@ -29,7 +29,10 @@
     "not_topmost",
     "fail",
     "parse_error",
-    "no_eop"
+    "no_eop",
+    "not_inbox",
+    "unknown_sender",
+    "no_dmarc_reject"
   ],
   "vectors": [
     {

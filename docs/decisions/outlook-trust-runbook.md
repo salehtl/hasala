@@ -1,8 +1,9 @@
 # Outlook trust checks: the owner's runbook (WP0)
 
 This runbook runs checks C1–C7 of [outlook-mailbox.md](outlook-mailbox.md#trust-needs-real-bank-alerts-plus-synthetic-spoof-probes)
-on real mail. Their results decide whether `OutlookProvider.outlookTrustProven` can become
-true. Until then, every Outlook message goes to review.
+on real mail. Since 2026-10-20 the app does not use their result: the Outlook lane uses the
+sender rule of [§3a](outlook-mailbox.md#3a-the-outlook-sender-rule-2026-10-20). The checks
+still show how Outlook.com marks bank mail. L8 and C8 of §3a are the checks that matter now.
 
 You do every step on your own Mac and phone. The real `.eml` files stay in
 `~/hasala-private/`. They never go into this repository, an issue, a pull request or a

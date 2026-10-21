@@ -3,11 +3,12 @@
 //
 //   GET    /me/messages              ALWAYS with a sender `$filter` (`eq` on the From address,
 //                                    one clause per known bank address) and a received-time
-//                                    bound; ids, received time and From only (§1)
-//   GET    /me/messages/{id}         id, received time and From, for a listed id the run has not
-//                                    seen in its listing
+//                                    bound; ids, received time, From and folder id only (§1)
+//   GET    /me/messages/{id}         id, received time, From and folder id, for a listed id the
+//                                    run has not seen in its listing
 //   GET    /me/messages/{id}/$value  the MIME, for a listed id (§4)
-//   GET    /me/mailFolders/inbox     `$select=id` only: does this account have a mailbox?
+//   GET    /me/mailFolders/inbox     `$select=id` only: does this account have a mailbox, and
+//                                    which folder id is the Inbox (§3a)
 //   POST   /subscriptions            `me/messages`, `created`, the server's two hook URLs, the
 //   PATCH  /subscriptions/{id}       link's clientState, now + 6 d 23 h (§6)
 //   DELETE /subscriptions/{id}
@@ -137,10 +138,17 @@ public final class MemoryOutlookLinkStore: OutlookLinkStore, @unchecked Sendable
 /// that follows needs no metadata request (§4: "Do not fetch metadata first").
 final class GraphListingCache: @unchecked Sendable {
   private let lock = NSLock()
-  private var entries: [String: (address: String, receivedMs: Int64)] = [:]
+  private var entries: [String: (address: String, receivedMs: Int64, folder: String?)] = [:]
+  private var inbox: String?
 
-  func put(_ id: String, address: String, receivedMs: Int64) { lock.withLock { entries[id] = (address, receivedMs) } }
-  func get(_ id: String) -> (address: String, receivedMs: Int64)? { lock.withLock { entries[id] } }
+  func put(_ id: String, address: String, receivedMs: Int64, folder: String?) {
+    lock.withLock { entries[id] = (address, receivedMs, folder) }
+  }
+  func get(_ id: String) -> (address: String, receivedMs: Int64, folder: String?)? { lock.withLock { entries[id] } }
+  var inboxID: String? {
+    get { lock.withLock { inbox } }
+    set { lock.withLock { inbox = newValue } }
+  }
 }
 
 public struct GraphClient: Sendable {
@@ -231,7 +239,7 @@ public struct GraphClient: Sendable {
   public static func listQuery(_ addresses: [String], sinceSec: Int64, top: Int = pageSize) -> [(String, String)] {
     let clauses = addresses.map { "from/emailAddress/address eq '\($0)'" }
     let filter = "receivedDateTime ge \(isoSeconds(sinceSec)) and (\(clauses.joined(separator: " or ")))"
-    return [("$filter", filter), ("$select", "id,receivedDateTime,from"), ("$top", String(top))]
+    return [("$filter", filter), ("$select", "id,receivedDateTime,from,parentFolderId"), ("$top", String(top))]
   }
 
   /// `2026-10-13T00:00:00Z`.
@@ -258,6 +266,7 @@ public struct GraphClient: Sendable {
       }
       o = try await object(.get, u, op: "list")
     } else {
+      _ = try await inboxFolderID()
       do {
         o = try await object(.get, url("/me/messages", Self.listQuery(addresses, sinceSec: sinceSec)), op: "list")
       } catch .status(504, _) {
@@ -265,7 +274,7 @@ public struct GraphClient: Sendable {
       }
     }
     var ids: [String] = []
-    var seen: [(String, String, Int64)] = []
+    var seen: [(String, String, Int64, String?)] = []
     for m in o["value"]?.arrayValue ?? [] {
       guard let id = m["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "list") }
       let address = m["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
@@ -276,9 +285,9 @@ public struct GraphClient: Sendable {
         received >= sinceSec * 1000
       else { throw .filterNotApplied }
       ids.append(id)
-      seen.append((id, address, received))
+      seen.append((id, address, received, m["parentFolderId"]?.stringValue))
     }
-    for (id, address, received) in seen { cache.put(id, address: address, receivedMs: received) }
+    for (id, address, received, folder) in seen { cache.put(id, address: address, receivedMs: received, folder: folder) }
     let next = o["@odata.nextLink"]?.stringValue
     return MailListPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
   }
@@ -290,12 +299,13 @@ public struct GraphClient: Sendable {
   /// From and received time: from this run's listing when it named the id, else one request.
   public func messageMetadata(id: String) async throws(MailAPIError) -> MailMessageMetadata {
     if let c = cache.get(id) { return Self.metadata(id, c.address, c.receivedMs) }
-    let o = try await object(.get, url(path(id), [("$select", "id,receivedDateTime,from")]), op: "metadata")
+    let o = try await object(
+      .get, url(path(id), [("$select", "id,receivedDateTime,from,parentFolderId")]), op: "metadata")
     let address = o["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
     guard let received = o["receivedDateTime"]?.stringValue.flatMap({ try? parseInstantMs($0) }) else {
       throw .status(200, op: "metadata")
     }
-    cache.put(id, address: address, receivedMs: received)
+    cache.put(id, address: address, receivedMs: received, folder: o["parentFolderId"]?.stringValue)
     return Self.metadata(id, address, received)
   }
 
@@ -307,9 +317,20 @@ public struct GraphClient: Sendable {
   /// that status (the engine treats it as `gone`).
   public func messageRaw(id: String) async throws(MailAPIError) -> MailRawMessage {
     let received = try await messageMetadata(id: id).internalDate
+    let inbox = try await inboxFolderID()
     let res = try await call(.get, url(path(id) + "/$value"), json: false, op: "raw")
     guard !res.body.isEmpty else { throw .status(res.status, op: "raw") }
-    return MailRawMessage(id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received)
+    let folder = cache.get(id)?.folder
+    return MailRawMessage(
+      id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received, inInbox: folder == inbox)
+  }
+
+  public func inboxFolderID() async throws(MailAPIError) -> String {
+    if let id = cache.inboxID { return id }
+    let o = try await object(.get, url("/me/mailFolders/inbox", [("$select", "id")]), op: "mailbox")
+    guard let id = o["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "mailbox") }
+    cache.inboxID = id
+    return id
   }
 
   public func messageValue(id: String) async throws(MailAPIError) -> Data {

@@ -83,7 +83,7 @@ import Testing
     g.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-old", dateMs: t0 - 120 * Self.day))
   }
 
-  @Test func theScanReadsOnlyTrustedSendersAndWaitsForReviewWhileTrustIsUnproven() async throws {
+  @Test func theScanReadsOnlyTrustedSendersAndFilesKnownSendersInTheInbox() async throws {
     let rig = OutlookRig()
     seed(rig.graph)
     _ = await rig.connect()
@@ -91,10 +91,11 @@ import Testing
     #expect(r.staged == 4 && r.ops == 4 && r.phase == .active && r.completed)
     let byID = rig.byID()
     #expect(Set(byID.keys) == ["AAkALgAA-d1", "AAkALgAA-d2", "AAkALgAA-e1", "AAkALgAA-n1"])
-    // The gate is closed: the rule passes, the row still waits for review.
-    #expect(byID.values.allSatisfy { $0.needsReview })
+    #expect(byID["AAkALgAA-n1"]?.needsReview == true)
+    #expect(byID.filter { $0.key != "AAkALgAA-n1" }.values.allSatisfy { !$0.needsReview })
+    #expect(byID.values.allSatisfy { $0.payload["gates"]?["ar"] == .string("pass") })
     let d1 = try #require(byID["AAkALgAA-d1"])
-    #expect(d1.payload["gates"]?["ar"] == .string("pass") && d1.payload["gates"]?["sender"] == .string("untrusted"))
+    #expect(d1.payload["gates"]?["ar"] == .string("pass") && d1.payload["gates"]?["sender"] == .string("trusted"))
     #expect(d1.payload["provenance"]?["provider"] == .string("outlook"))
     #expect(d1.payload["provenance"]?["message_id"] == .string("AAkALgAA-d1"))
     #expect(d1.payload["amount_minor"] == .string("25000"))
@@ -105,7 +106,7 @@ import Testing
       let f = try #require(l.query.first { $0.0 == "$filter" }?.1)
       #expect(f.hasPrefix("receivedDateTime ge ") && f.contains("from/emailAddress/address eq 'DIB.notification@dib.ae'"))
       #expect(!f.contains("endswith("))
-      #expect(l.query.contains { $0 == ("$select", "id,receivedDateTime,from") })
+      #expect(l.query.contains { $0 == ("$select", "id,receivedDateTime,from,parentFolderId") })
       #expect(!l.query.contains { $0.0 == "$orderby" || $0.0 == "$search" })
     }
     // The listing named every id's From and time: no metadata request, one $value per message.
@@ -114,17 +115,57 @@ import Testing
     #expect(await rig.state().watermarkMs == t0)
   }
 
-  @Test func withTrustProvenAVerifiedAlertFilesItself() async throws {
-    let rig = OutlookRig(trustProven: true)
+  @Test func aKnownSenderInTheInboxFilesItselfWhateverTheEOPFieldsSay() async throws {
+    let rig = OutlookRig()
     rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d1", dateMs: t0 - Self.day))
     rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-noeop", amount: "1.00", dateMs: t0 - Self.day, eop: false))
-    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-spoof", amount: "2.00", dateMs: t0 - Self.day, spoofedAbove: true))
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-forged", amount: "2.00", dateMs: t0 - Self.day, spoofedAbove: true))
+    rig.graph.add(
+      SyntheticOutlookMail.dibCard(id: "AAkALgAA-junk", amount: "3.00", dateMs: t0 - Self.day, folder: FakeGraph.junkID))
+    var other = SyntheticOutlookMail.dibCard(id: "AAkALgAA-other", amount: "4.00", dateMs: t0 - Self.day)
+    other.raw = SyntheticOutlookMail.rfc822(
+      from: "DIB Alerts <dib.security@dib.ae>", subject: "Card transaction",
+      body: "إشعار مشتريات\nالمبلغ\nAED 4.00\nبتاريخ 05-06-2026\nالدفع الى\nSYNTHETIC GROCER DUBAI\nرقم البطاقة\nXXXX1234",
+      dateMs: t0 - Self.day, authDomain: "dib.ae")
+    rig.graph.add(other)
     await rig.connectAndActivate()
     let byID = rig.byID()
-    #expect(byID["AAkALgAA-d1"]?.needsReview == false)
-    #expect(byID["AAkALgAA-d1"]?.payload["gates"]?["sender"] == .string("trusted"))
-    #expect(byID["AAkALgAA-noeop"]?.needsReview == true && byID["AAkALgAA-noeop"]?.payload["gates"]?["ar"] == .string("no_eop"))
-    #expect(byID["AAkALgAA-spoof"]?.needsReview == true && byID["AAkALgAA-spoof"]?.payload["gates"]?["ar"] == .string("multiple_ar"))
+    for id in ["AAkALgAA-d1", "AAkALgAA-noeop", "AAkALgAA-forged"] {
+      #expect(byID[id]?.needsReview == false, "\(id)")
+      #expect(byID[id]?.payload["gates"]?["ar"] == .string("pass"), "\(id)")
+      #expect(byID[id]?.payload["gates"]?["sender"] == .string("trusted"), "\(id)")
+    }
+    #expect(byID["AAkALgAA-junk"]?.needsReview == true)
+    #expect(byID["AAkALgAA-junk"]?.payload["gates"]?["ar"] == .string("not_inbox"))
+    #expect(byID["AAkALgAA-junk"]?.payload["amount_minor"] == .string("300"))
+    #expect(byID["AAkALgAA-other"]?.needsReview == true)
+    #expect(byID["AAkALgAA-other"]?.payload["gates"]?["ar"] == .string("unknown_sender"))
+    #expect(byID["AAkALgAA-other"]?.payload["amount_minor"] == .string("400"))
+  }
+
+  @Test func theInboxIsAskedForOnceAndAnUnknownFolderIsNotTheInbox() async throws {
+    let rig = OutlookRig()
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d1", dateMs: t0 - Self.day))
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d2", amount: "5.00", dateMs: t0 - Self.day, folder: ""))
+    await rig.connectAndActivate()
+    #expect(rig.byID()["AAkALgAA-d1"]?.needsReview == false)
+    #expect(rig.byID()["AAkALgAA-d2"]?.payload["gates"]?["ar"] == .string("not_inbox"))
+    let inboxAsks = rig.graph.graphRequests.filter { $0.path == "/v1.0/me/mailFolders/inbox" }.count
+    #expect(inboxAsks == 2, "\(inboxAsks)")
+  }
+
+  @Test func anInboxLookupThatFailsReadsTheMessageAgainLater() async throws {
+    let rig = OutlookRig()
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d1", dateMs: t0 - Self.day))
+    _ = await rig.connect()
+    rig.graph.fail("/me/mailFolders/inbox", with: [500])
+    let first = await rig.engine.runCycle(trigger: .launch)
+    #expect(!first.completed && first.ops == 0, "\(first)")
+    #expect(rig.accounted("AAkALgAA-d1") == nil)
+    rig.clock.advance(3_600_000)
+    let next = await rig.engine.runCycle(trigger: .launch)
+    #expect(next.completed && next.ops == 1, "\(next)")
+    #expect(rig.byID()["AAkALgAA-d1"]?.needsReview == false)
   }
 
   @Test func aSecondCycleDownloadsNothingTwice() async {
@@ -421,13 +462,43 @@ import Testing
   }
 
   @Test func knownAddressesFollowDomainMembership() {
-    #expect(OutlookSenders.addresses(for: ["emiratesnbd.com"]) == ["alert@emiratesnbd.com"])
+    #expect(OutlookSenders.addresses(for: ["emiratesnbd.com"]) == ["OnlineBanking@emiratesnbd.com"])
     #expect(OutlookSenders.addresses(for: ["adib.ae", "dib.ae"]).count == 3)
     #expect(OutlookSenders.addresses(for: ["notdib.ae", "ib.ae", "bank.example"]).isEmpty)
     #expect(OutlookSenders.addresses(for: ["dib.ae"], known: ["a@alerts.dib.ae", "b@notdib.ae", "A@dib.ae", "a@dib.ae"])
       == ["a@alerts.dib.ae", "A@dib.ae"])
     #expect(OutlookSenders.addresses(for: ["dib.ae"], known: ["x'@dib.ae", "x y@dib.ae", "@dib.ae", "x@dib.ae'"]).isEmpty)
     #expect(OutlookSenders.known.allSatisfy(OutlookSenders.isQuerySafe))
+  }
+
+  @Test func everyKnownSenderIsAtADMARCRejectDomain() {
+    #expect(OutlookSenders.dmarcReject == ["adib.ae", "dib.ae", "emiratesnbd.com"])
+    for a in OutlookSenders.known {
+      #expect(OutlookSenders.dmarcReject.contains(BankDomains.domainOf(a)), "\(a)")
+    }
+  }
+
+  @Test func theProviderRuleReadsTheFolderAndTheAddedSenders() {
+    let provider = OutlookProvider(
+      oauth: MicrosoftOAuthClient(config: OutlookRig.config, http: graph), http: graph, link: MemoryOutlookLinkStore(),
+      clock: ManualClock(OutlookRig.t0))
+    func headers(_ from: String) -> String { "From: \(from)\r\nSubject: x\r\n\r\n" }
+    let enbd = provider.analyzeAuthResults(headers("Emirates NBD <onlinebanking@EmiratesNBD.com>"), inInbox: true, senderAddresses: [])
+    #expect(enbd == AuthResults.Analysis(verdict: .init(trusted: true, reason: .pass), domain: "emiratesnbd.com"))
+    #expect(
+      provider.analyzeAuthResults(headers("<alert@emiratesnbd.com>"), inInbox: true, senderAddresses: []).verdict.reason
+        == .unknownSender)
+    #expect(
+      provider.analyzeAuthResults(headers("<adibsms@adib.ae>"), inInbox: false, senderAddresses: []).verdict.reason
+        == .notInbox)
+    #expect(provider.analyzeAuthResults(headers("<adibsms@adib.ae>"), inInbox: nil, senderAddresses: []).verdict.reason == .notInbox)
+    #expect(provider.analyzeAuthResults(headers("<adibsms@adib.ae>")).verdict.reason == .notInbox)
+    #expect(
+      provider.analyzeAuthResults(headers("<cards@dib.ae>"), inInbox: true, senderAddresses: ["Cards@dib.ae"]).verdict.reason
+        == .pass)
+    #expect(
+      provider.analyzeAuthResults(headers("<alerts@newbank.example>"), inInbox: true, senderAddresses: ["alerts@newbank.example"])
+        .verdict.reason == .noDMARCReject)
   }
 
   @Test func aDomainWithNoKnownAddressListsNothing() async throws {
