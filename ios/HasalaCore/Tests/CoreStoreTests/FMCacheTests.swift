@@ -14,7 +14,7 @@ struct FMCacheTests {
     let columns = try s.db.read { db in try Row.fetchAll(db, sql: "PRAGMA table_info(fm_cache)").map { $0["name"] as String } }
     #expect(columns == ["key", "expires_at_ms"])
     let migrations = try s.db.read { db in try LedgerSchema.migrator.appliedMigrations(db) }
-    #expect(migrations == ["v1", "fm_cache", "mailbox_sender_address", "mailbox_parsing", "mailbox_pending_import"])
+    #expect(migrations == ["v1", "fm_cache", "mailbox_sender_address", "mailbox_parsing", "mailbox_pending_import", "mailbox_unparsed_sender"])
     let cache = FMCache(s)
     try cache.recordUnknown([(subject: "cafe example jbr", modelTag: "apple-fm/26.1")], taxonomyHash: Self.taxonomy, now: 0)
     let keys = try s.db.read { db in try String.fetchAll(db, sql: "SELECT key FROM fm_cache") }

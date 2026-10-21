@@ -52,6 +52,32 @@ struct UnreadMailFlowTests {
     #expect(ReviewEngine.unreadLine(state.unreadMail.count) == "2 bank emails we couldn't read")
   }
 
+  @Test func theSenderKeptOnThisIPhoneNamesTheBankAndItsAccount() async throws {
+    var c = LiveLedgerMapperTests.context()
+    c.unreadSenders = ["m-dib": "alerts.dib.ae", "m-other": "example.com"]
+    let state = try await LiveLedgerMapperTests.foldedState(context: c) { o throws(AuthorError) in
+      try Self.addUnparsed(&o, messageID: "m-dib")
+      try Self.addUnparsed(&o, messageID: "m-other")
+      try Self.addUnparsed(&o, messageID: "m-before")
+    }
+    let named = state.unreadMail.filter { $0.bank != nil }
+    #expect(named.map(\.bank) == ["DIB"])
+    #expect(state.unreadMail.count == 3)
+    #expect(state.unreadMail.map(ReviewEngine.unreadTitle).sorted() == ["Bank email", "Bank email", "DIB email"])
+    let dibAccounts = state.accounts.filter { $0.shortName.hasPrefix("DIB") }
+    #expect(named.first?.accountID == (dibAccounts.first(where: \.inPlan) ?? dibAccounts.first)?.id)
+    #expect(state.unreadMail.filter { $0.bank == nil }.allSatisfy { $0.accountID == nil })
+  }
+
+  @Test func addingByHandFromANamedEmailPicksThatBanksAccount() throws {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaUnreadMail.state))
+    #expect(AddTransactionModel(app: app, resolving: "unread-gmail").accountID == "dib")
+    #expect(AddTransactionModel(app: app, resolving: "unread-outlook").accountID == AddTransactionModel(app: app).accountID)
+    var s = Scenario.mayaUnreadMail.state
+    s.unreadMail[0].accountID = "gone"
+    #expect(AddTransactionModel(app: AppModel(store: InMemoryLedger(state: s)), resolving: "unread-gmail").accountID == AddTransactionModel(app: app).accountID)
+  }
+
   @Test func dismissingARowIsAnArchiveThatTheProjectionKeeps() async throws {
     let a = try LiveLedgerMapperTests.account()
     for b in try await LiveLedgerMapperTests.seed(a) { try await a.outbox.enqueue(b.ops) }
@@ -77,7 +103,7 @@ struct UnreadMailFlowTests {
     #expect(store.state.unreadMail.isEmpty)
     store.undo(token)
     try await LiveLedgerMapperTests.eventually { try a.projection.reader.txn(mail.id)?.archived == nil }
-    await store.reload()
+    try await LiveLedgerMapperTests.eventually { store.state.unreadMail.map(\.id) == [mail.id] }
     #expect(store.state.unreadMail.map(\.id) == [mail.id])
   }
 

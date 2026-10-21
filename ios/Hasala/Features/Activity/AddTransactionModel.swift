@@ -21,7 +21,8 @@ final class AddTransactionModel {
     resolvedMail = unread?.id
     postedAt = AddTransactionDates.date(
       unread.map { LocalDateTime(date: $0.receivedOn, hour: 0, minute: 0) } ?? app.store.now)
-    accountID = app.store.state.accounts.first { $0.inPlan }?.id
+    let accounts = app.store.state.accounts
+    accountID = unread?.accountID.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first { $0.inPlan }?.id
   }
 
   var latest: Date { AddTransactionDates.date(app.store.now) }

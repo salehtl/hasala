@@ -38,13 +38,106 @@ nonisolated final class GravatarClock: @unchecked Sendable {
   nonisolated(unsafe) var now = Date(timeIntervalSince1970: 1_000_000)
 }
 
+nonisolated final class GravatarAsks: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+
+  func next() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    count += 1
+    return count == 1
+  }
+}
+
 @Suite("Gravatar avatar", .serialized)
 struct GravatarTests {
-  private func loader(clock: GravatarClock = GravatarClock(), directory: URL? = nil) -> GravatarLoader {
+  private func loader(
+    clock: GravatarClock = GravatarClock(), directory: URL? = nil,
+    isEnabled: @escaping @Sendable () -> Bool = { true }
+  ) -> GravatarLoader {
     GravatarStubProtocol.reset()
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [GravatarStubProtocol.self]
-    return GravatarLoader(directory: directory, session: URLSession(configuration: configuration), now: { clock.now })
+    return GravatarLoader(
+      directory: directory, session: URLSession(configuration: configuration), now: { clock.now }, isEnabled: isEnabled)
+  }
+
+  private func freshSuite() -> String {
+    let name = "test.gravatar.\(UUID().uuidString)"
+    UserDefaults(suiteName: name)!.removePersistentDomain(forName: name)
+    return name
+  }
+
+  private func freshDefaults() -> UserDefaults { UserDefaults(suiteName: freshSuite())! }
+
+  private func tempDirectory() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("gravatar-\(UUID().uuidString)")
+  }
+
+  @Test func theSwitchIsOnByDefaultAndStoredOnThisIPhone() {
+    let d = freshDefaults()
+    #expect(GravatarSetting.isEnabled(d))
+    GravatarSetting.setEnabled(false, d)
+    #expect(!GravatarSetting.isEnabled(d))
+    GravatarSetting.setEnabled(true, d)
+    #expect(GravatarSetting.isEnabled(d))
+  }
+
+  @Test func withTheSwitchOffTheLoaderNeverAsksGravatar() async {
+    let subject = loader(isEnabled: { false })
+    #expect(await subject.picture(email: "a@example.com", pixels: 72) == nil)
+    #expect(await subject.provider.load("a@example.com", 72) == nil)
+    #expect(GravatarStubProtocol.requests.isEmpty)
+  }
+
+  @Test func clearingDeletesTheCachedPicturesAndTheNextAskFetchesAgain() async {
+    let directory = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let subject = loader(directory: directory)
+    _ = await subject.picture(email: "a@example.com", pixels: 72)
+    #expect(FileManager.default.fileExists(atPath: directory.path))
+    await subject.clear()
+    #expect(!FileManager.default.fileExists(atPath: directory.path))
+    _ = await subject.picture(email: "a@example.com", pixels: 72)
+    #expect(GravatarStubProtocol.requests.count == 2)
+  }
+
+  @Test func aPictureThatArrivesAfterTheSwitchTurnedOffIsNotKept() async {
+    let directory = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let asks = GravatarAsks()
+    let subject = loader(directory: directory, isEnabled: { asks.next() })
+    #expect(await subject.picture(email: "a@example.com", pixels: 72) == nil)
+    #expect(!FileManager.default.fileExists(atPath: directory.path))
+  }
+
+  @Test @MainActor func turningTheSwitchOffClearsTheCacheAndStaysOff() async {
+    let suite = freshSuite()
+    let d = UserDefaults(suiteName: suite)!
+    let directory = tempDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let subject = loader(directory: directory, isEnabled: { GravatarSetting.isEnabled(UserDefaults(suiteName: suite)!) })
+    _ = await subject.picture(email: "a@example.com", pixels: 72)
+    #expect(FileManager.default.fileExists(atPath: directory.path))
+
+    let preference = GravatarPreference(defaults: d, loader: subject)
+    #expect(preference.isOn)
+    preference.setOn(false)
+    #expect(!preference.isOn)
+    await preference.clearing?.value
+    #expect(!FileManager.default.fileExists(atPath: directory.path))
+    #expect(!GravatarSetting.isEnabled(d))
+    #expect(!GravatarPreference(defaults: d, loader: subject).isOn)
+
+    GravatarStubProtocol.reset()
+    #expect(await subject.picture(email: "a@example.com", pixels: 72) == nil)
+    #expect(GravatarStubProtocol.requests.isEmpty)
+
+    preference.setOn(true)
+    #expect(preference.isOn)
+    #expect(await subject.picture(email: "a@example.com", pixels: 72) == Data([1, 2, 3]))
+    #expect(GravatarStubProtocol.requests.count == 1)
   }
 
   @Test func hashIsTheSHA256OfTheTrimmedLowercasedAddress() {

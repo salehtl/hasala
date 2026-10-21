@@ -106,6 +106,12 @@ public struct PendingImport: Sendable, Equatable, Codable {
   }
 }
 
+public struct UnparsedSenderRecord: Sendable, Equatable, Codable {
+  public var messageID: String
+  public var domain: String
+  public var atMs: Int64
+}
+
 public struct BankHealthRow: Sendable, Equatable, Codable {
   public var domain: String
   public var lastEmailAtMs: Int64?
@@ -131,6 +137,7 @@ public struct MailboxCommit: Sendable {
   public var addImports: [PendingImport] = []
   /// Ends the pending imports of these domains.
   public var doneImports: [String] = []
+  public var unparsedSenders: [UnparsedSenderRecord] = []
   /// Replaces the state row when set.
   public var state: MailboxState?
   /// Clears every mailbox table (Disconnect).
@@ -140,7 +147,7 @@ public struct MailboxCommit: Sendable {
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
       && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
-      && state == nil && !clearAll
+      && unparsedSenders.isEmpty && state == nil && !clearAll
   }
 }
 
@@ -167,6 +174,7 @@ public protocol MailboxPersistence: Sendable {
   func markParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport]
+  func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String]
 }
 
 /// The reference `MailboxPersistence`: the semantics a GRDB implementation must keep, in memory.
@@ -189,6 +197,8 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public private(set) var addresses: [String] = []
   public private(set) var parsing: Set<String> = []
   public private(set) var imports: [String: Int64] = [:]
+  public private(set) var senders: [String: UnparsedSenderRecord] = [:]
+  public static let unparsedSenderRing = 1_000
 
   public init(state: MailboxState = MailboxState()) { self.state = state }
 
@@ -264,8 +274,15 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
     }
     for i in c.addImports { imports[i.domain] = min(imports[i.domain] ?? i.sinceMs, i.sinceMs) }
     for d in c.doneImports { imports[d] = nil }
+    for u in c.unparsedSenders { senders[u.messageID] = u }
+    if senders.count > Self.unparsedSenderRing {
+      let keep = senders.values.sorted { ($0.atMs, $0.messageID) > ($1.atMs, $1.messageID) }.prefix(Self.unparsedSenderRing)
+      senders = Dictionary(uniqueKeysWithValues: keep.map { ($0.messageID, $0) })
+    }
     if let s = c.state { state = s }
   }
+
+  public func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String] { senders.mapValues(\.domain) }
 
   public func setAsideRecords() async throws(MailboxPersistenceError) -> [SetAsideRecord] { setAside }
   public func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord] { unreadable }

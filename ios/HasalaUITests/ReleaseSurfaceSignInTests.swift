@@ -107,7 +107,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
                        "security.freeze", "security.lockdown", "security.setPassword", "security.changePassword",
                        "security.removePassword"],
                  "Sign-in & security")
-    assertPresent(app, ["security.addPasskey", "security.viewPhrase", "security.signOut", "security.signOutEverywhere", "security.delete",
+    assertPresent(app, ["security.addPasskey", "security.appLock", "security.viewPhrase", "security.signOut", "security.signOutEverywhere", "security.delete",
                         "security.support", "security.support.web"], "Sign-in & security")
     try audit(app)
 

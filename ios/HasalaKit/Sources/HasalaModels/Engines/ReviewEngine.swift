@@ -301,6 +301,10 @@ public enum ReviewEngine {
     "\(n) more email\(n == 1 ? "" : "s") couldn't be downloaded."
   }
 
+  public static func unreadTitle(_ m: UnreadMail) -> String {
+    m.bank.map { "\($0) email" } ?? "Bank email"
+  }
+
   public static func unreadDetail(_ m: UnreadMail, today: LocalDate) -> String {
     let when = m.receivedOn == today ? "Received today" : "Received \(m.receivedOn.short)"
     guard let provider = m.provider else { return when }

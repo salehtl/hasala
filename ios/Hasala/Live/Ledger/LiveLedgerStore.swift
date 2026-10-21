@@ -42,6 +42,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored var profile: ProfileInfo
   /// Bank alerts' health for the next reload (`noteMailbox`).
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
+  @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored private var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var undoable: Set<Int> = []
@@ -101,6 +102,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   /// The Gmail lane's status: its health shows from the next reload, its phase at once.
   func noteMailbox(_ status: MailboxStatus, nowMs: Int64) {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
+    unreadSenders = status.unparsedSenders
     if mailboxStatus != status { mailboxStatus = status }
     if mailboxPhase != status.phase { mailboxPhase = status.phase }
     if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
@@ -132,7 +134,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let today = clock()
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
-      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt)
+      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders)
     let reader = self.reader
     let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
       .value
@@ -475,7 +477,7 @@ final class DevicePrefsStore {
     self.defaults = defaults
   }
 
-  /// The app lock is off until it is turned on in Profile (§4.5 `appLock.enabled`
+  /// The app lock is off until it is turned on in Sign-in & security (§4.5 `appLock.enabled`
   /// defaults to false).
   var prefs: DevicePrefs {
     guard let d = defaults.data(forKey: Self.prefsKey), let p = try? JSONDecoder().decode(DevicePrefs.self, from: d) else {

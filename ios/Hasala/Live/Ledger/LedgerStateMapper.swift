@@ -28,6 +28,7 @@ nonisolated enum LedgerStateMapper {
     /// The review cards skipped today, as digests (`DevicePrefsStore`), and their salt.
     var skippedDigests: Set<String> = []
     var digestSalt = ""
+    var unreadSenders: [String: String] = [:]
   }
 
   enum MapError: Error { case date }
@@ -51,7 +52,8 @@ nonisolated enum LedgerStateMapper {
     // Accounts: the latest check-in is the balance (03b §4.6).
     let cards = try r.cards()
     let checkins = try r.checkins()
-    let accounts: [HasalaModels.Account] = try r.accounts().filter(\.active).map { a in
+    let liveAccounts = try r.accounts().filter(\.active)
+    let accounts: [HasalaModels.Account] = liveAccounts.map { a in
       let card = cards.first { $0.account == a.id && $0.state == "mine" }
       let balance = checkins.first { $0.account == a.id && !$0.void }?.balanceMinor ?? 0
       return HasalaModels.Account(
@@ -70,7 +72,9 @@ nonisolated enum LedgerStateMapper {
       txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
     }
     markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
-    let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map(unreadMail)
+    let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
+      unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
+    }
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
@@ -141,10 +145,13 @@ nonisolated enum LedgerStateMapper {
       unreadMail: unreadMail)
   }
 
-  static func unreadMail(_ row: TxnRow) -> UnreadMail {
-    UnreadMail(
+  static func unreadMail(_ row: TxnRow, senders: [String: String] = [:], accounts: [CoreReplay.Account] = []) -> UnreadMail {
+    let bank = row.mailboxMessageID.flatMap { senders[$0] }.flatMap { Self.bank(domain: $0) }
+    let ofBank = accounts.filter { a in bank.map { a.institution == $0 } ?? false }
+    return UnreadMail(
       id: row.id, provider: row.sourceProvider.flatMap(MailProviderKind.init(rawValue:)),
-      receivedOn: CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1))
+      receivedOn: CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1),
+      bank: bank.flatMap { bankNames[$0] }, accountID: (ofBank.first(where: \.inPlan) ?? ofBank.first)?.id)
   }
 
   /// The transactions whose digest is among the skipped cards'.
@@ -394,13 +401,17 @@ nonisolated enum LedgerStateMapper {
 
   /// Each bank's sender domains, from its bundled templates (03c §7.2), e.g. Emirates NBD
   /// → emiratesnbd.com: a health row names its bank by the template it matched.
-  static let bankDomains: [(name: String, domains: [String])] = bankNames.sorted { $0.key < $1.key }.map {
-    (name: $0.value, domains: MailboxLane.senderDomains(bank: $0.key))
+  static let bankDomains: [(bank: String, domains: [String])] = bankNames.keys.sorted().map {
+    (bank: $0, domains: MailboxLane.senderDomains(bank: $0))
+  }
+
+  static func bank(domain: String) -> String? {
+    bankDomains.first { BankDomains.isMember(domain, of: $0.domains) }?.bank
   }
 
   /// The bank a sender domain belongs to, if it is one the beta reads.
   static func bankName(domain: String) -> String? {
-    bankDomains.first { BankDomains.isMember(domain, of: $0.domains) }?.name
+    bank(domain: domain).flatMap { bankNames[$0] }
   }
 
   /// "4 min ago", "3 h ago", "2 days ago".

@@ -67,7 +67,7 @@ public enum Scenario: String, Sendable, CaseIterable {
     }
     if self == .mayaUnreadMail {
       s.unreadMail = [
-        UnreadMail(id: "unread-gmail", provider: .gmail, receivedOn: LocalDate(2026, 10, 9)),
+        UnreadMail(id: "unread-gmail", provider: .gmail, receivedOn: LocalDate(2026, 10, 9), bank: "DIB", accountID: "dib"),
         UnreadMail(id: "unread-outlook", provider: .outlook, receivedOn: LocalDate(2026, 10, 7)),
       ]
       s.mailbox.unreadable = 1

@@ -189,6 +189,10 @@ enum LedgerSchema {
     "CREATE TABLE mailbox_pending_import (domain TEXT PRIMARY KEY, since_ms INTEGER NOT NULL) WITHOUT ROWID"
   ]
 
+  static let mailboxUnparsedSender: [String] = [
+    "CREATE TABLE mailbox_unparsed_sender (message_id TEXT PRIMARY KEY, domain TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID"
+  ]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
@@ -205,6 +209,9 @@ enum LedgerSchema {
     }
     m.registerMigration("mailbox_pending_import") { db in
       for sql in mailboxPendingImport { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_unparsed_sender") { db in
+      for sql in mailboxUnparsedSender { try db.execute(sql: sql) }
     }
     return m
   }

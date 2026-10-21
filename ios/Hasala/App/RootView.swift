@@ -104,7 +104,7 @@ struct LiveRootView: View {
         SyncHaltWall(halt: halt, retrying: boot.retryingSync, tryAgain: boot.retrySync)
       }
     }
-    .environment(\.avatarPictures, GravatarLoader.shared.provider)
+    .environment(\.avatarPictures, GravatarPreference.shared.isOn ? GravatarLoader.shared.provider : nil)
     .onAppear { boot.start() }
     .onChange(of: boot.session.phase) { _, phase in boot.phaseChanged(phase) }
     .onChange(of: scenePhase) { _, phase in

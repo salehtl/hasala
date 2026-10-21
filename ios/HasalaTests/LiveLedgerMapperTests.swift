@@ -104,7 +104,9 @@ struct LiveLedgerMapperTests {
   }
 
   /// Seed → fold → project → map: the blobs as the rows of one pulled page.
-  static func foldedState(extra: (inout OpAuthor) throws(AuthorError) -> Void = { _ throws(AuthorError) in }) async throws -> LedgerState {
+  static func foldedState(
+    context c: LedgerStateMapper.Context = context(), extra: (inout OpAuthor) throws(AuthorError) -> Void = { _ throws(AuthorError) in }
+  ) async throws -> LedgerState {
     let a = try account()
     var blobs = try await seed(a)
     if let more = try a.observer.stamps.build(try await a.observer.authorContext(), extra) { blobs.append(more) }
@@ -116,7 +118,7 @@ struct LiveLedgerMapperTests {
     let state = try LedgerFold.page(rows, onto: State())
     try a.projection.project(
       state, pending: [], writerID: writer.string, dictionary: AccountRuntime.dictionary, projectedAtMs: anchor)
-    return try LedgerStateMapper.map(a.projection.reader, context: context())
+    return try LedgerStateMapper.map(a.projection.reader, context: c)
   }
 
   // MARK: Home source
