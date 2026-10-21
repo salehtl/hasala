@@ -65,6 +65,16 @@ struct CompareTests {
     #expect(compareUTF8(nfd, nfc) == -compareUTF8(nfc, nfd))
   }
 
+  @Test("ExactKey keeps NFC and NFD apart as dictionary keys")
+  func exactKey() {
+    var d: [ExactKey: Int] = [:]
+    d[ExactKey("CAF\u{C9}")] = 1
+    d[ExactKey("CAFE\u{301}")] = 2
+    #expect(d.count == 2)
+    #expect(d[ExactKey("CAF\u{C9}")] == 1)
+    #expect(d[ExactKey("CAFE\u{301}")] == 2)
+  }
+
   @Test("scalar and UTF-8 order agree on a mixed sample")
   func ordersAgree() {
     let sample = ["", "a", "B", "é", "e\u{301}", "\u{FFFF}", "\u{10000}", "\u{E000}", "ي", "z", "\u{7F}", "\u{80}"]

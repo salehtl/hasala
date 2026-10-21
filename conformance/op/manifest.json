@@ -201,5 +201,97 @@
     "10000-01-01T23:58:59Z",
     "-0001-12-31T23:59:00Z",
     "2026-06-05T10:00:00-24:00"
+  ],
+  "set_aside_blobs": [
+    {
+      "name": "ingest-id-null-on-a-config-op",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQjEiLCJ2IjozLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiZGliIiwiYWN0aXZlIjp0cnVlfSwiaW5nZXN0X2lkIjpudWxsfV19"
+    },
+    {
+      "name": "ingest-id-null-on-an-ingest",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBPMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiZW50aXR5Ijp7ImtpbmQiOiJ0eG4iLCJpZCI6IlQyIn0sImluZ2VzdF9pZCI6bnVsbCwicGF5bG9hZCI6eyJhbW91bnRfbWlub3IiOiIxIiwiY3VycmVuY3kiOiJBRUQiLCJkaXJlY3Rpb24iOiJkZWJpdCIsInBvc3RlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwibGFzdDQiOiIiLCJuZWVkc19yZXZpZXciOmZhbHNlLCJ1bnBhcnNlZCI6ZmFsc2UsInRpZXIiOiJ0ZW1wbGF0ZSIsIm1lcmNoYW50X3JhdyI6IkJBTksifX1dfQ=="
+    },
+    {
+      "name": "type-key-in-another-case",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJUeXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQjEiLCJ2IjozLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiZGliIiwiYWN0aXZlIjp0cnVlfX1dfQ=="
+    },
+    {
+      "name": "op-id-key-in-another-case",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIk9QX0lEIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQjEiLCJ2IjozLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiZGliIiwiYWN0aXZlIjp0cnVlfX1dfQ=="
+    },
+    {
+      "name": "entity-key-in-another-case",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBPMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiZW50aXR5Ijp7IktpbmQiOiJ0eG4iLCJpZCI6IlQyIn0sImluZ2VzdF9pZCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJwYXlsb2FkIjp7ImFtb3VudF9taW5vciI6IjEiLCJjdXJyZW5jeSI6IkFFRCIsImRpcmVjdGlvbiI6ImRlYml0IiwicG9zdGVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJsYXN0NCI6IiIsIm5lZWRzX3JldmlldyI6ZmFsc2UsInVucGFyc2VkIjpmYWxzZSwidGllciI6InRlbXBsYXRlIiwibWVyY2hhbnRfcmF3IjoiQkFOSyJ9fV19"
+    },
+    {
+      "name": "lone-high-surrogate-in-a-payload-value",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBPMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiZW50aXR5Ijp7ImtpbmQiOiJ0eG4iLCJpZCI6IlQyIn0sImluZ2VzdF9pZCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJwYXlsb2FkIjp7ImFtb3VudF9taW5vciI6IjEiLCJjdXJyZW5jeSI6IkFFRCIsImRpcmVjdGlvbiI6ImRlYml0IiwicG9zdGVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJsYXN0NCI6IiIsIm5lZWRzX3JldmlldyI6ZmFsc2UsInVucGFyc2VkIjpmYWxzZSwidGllciI6InRlbXBsYXRlIiwibWVyY2hhbnRfcmF3IjoiQ0FGXHVkODAwIn19XX0="
+    },
+    {
+      "name": "lone-low-surrogate-in-a-payload-value",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBPMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiZW50aXR5Ijp7ImtpbmQiOiJ0eG4iLCJpZCI6IlQyIn0sImluZ2VzdF9pZCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJwYXlsb2FkIjp7ImFtb3VudF9taW5vciI6IjEiLCJjdXJyZW5jeSI6IkFFRCIsImRpcmVjdGlvbiI6ImRlYml0IiwicG9zdGVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJsYXN0NCI6IiIsIm5lZWRzX3JldmlldyI6ZmFsc2UsInVucGFyc2VkIjpmYWxzZSwidGllciI6InRlbXBsYXRlIiwibWVyY2hhbnRfcmF3IjoiXHVkYzAwQ0FGRSJ9fV19"
+    },
+    {
+      "name": "high-surrogate-before-a-non-low-escape",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBPMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiZW50aXR5Ijp7ImtpbmQiOiJ0eG4iLCJpZCI6IlQyIn0sImluZ2VzdF9pZCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJwYXlsb2FkIjp7ImFtb3VudF9taW5vciI6IjEiLCJjdXJyZW5jeSI6IkFFRCIsImRpcmVjdGlvbiI6ImRlYml0IiwicG9zdGVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJsYXN0NCI6IiIsIm5lZWRzX3JldmlldyI6ZmFsc2UsInVucGFyc2VkIjpmYWxzZSwidGllciI6InRlbXBsYXRlIiwibWVyY2hhbnRfcmF3IjoiXHVkODNkQSJ9fV19"
+    },
+    {
+      "name": "lone-surrogate-in-a-payload-key",
+      "kind": "ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQjEiLCJ2IjozLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiZGliIiwiYWN0aXZlIjp0cnVlLCJcdWRiZmYiOjF9fV19"
+    },
+    {
+      "name": "lone-surrogate-in-an-unread-raw-body-field",
+      "kind": "raw_body",
+      "body_base64": "eyJ2IjoxLCJraW5kIjoicmF3X2JvZHkiLCJpbmdlc3RfaWQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicmVjZWl2ZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwWiIsInJhd19iYXNlNjQiOiJhR2s9Iiwibm90ZSI6Ilx1ZGZmZiJ9"
+    },
+    {
+      "name": "raw-body-ingest-id-key-in-another-case",
+      "kind": "raw_body",
+      "body_base64": "eyJ2IjoxLCJraW5kIjoicmF3X2JvZHkiLCJJTkdFU1RfSUQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicmVjZWl2ZWRfYXQiOiIyMDI2LTA2LTA1VDEwOjAwOjAwWiIsInJhd19iYXNlNjQiOiJhR2s9In0="
+    }
+  ],
+  "accepted_variants": [
+    {
+      "name": "ops-key-in-another-case-is-zero-ops",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwiT1BTIjpbeyJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQjEiLCJ2IjozLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiZGliIiwiYWN0aXZlIjp0cnVlfX1dfQ==",
+      "expect_ops": []
+    },
+    {
+      "name": "case-variant-keys-are-ignored",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ0eXBlIjoiYmFua19kZWNsYXJlZCIsIm9wX2lkIjoiMDFKMDAwMDAwMDAwMDAwMDAwMDAwMDAwQjEiLCJ2IjozLCJhdXRob3JlZF9hdCI6IjIwMjYtMDYtMDVUMTA6MDA6MDBaIiwicGF5bG9hZCI6eyJiYW5rIjoiZGliIiwiYWN0aXZlIjp0cnVlfSwiVFlQRSI6InJhdGVfc2V0IiwiT3BfSWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBCOSIsIklOR0VTVF9JRCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEifV19",
+      "expect_ops": [
+        {
+          "type": "bank_declared",
+          "op_id": "01J000000000000000000000B1",
+          "authored_at_unix_ms": "1780653600000",
+          "has_entity": false,
+          "parent_version": null,
+          "ingest_id": ""
+        }
+      ]
+    },
+    {
+      "name": "surrogate-pair-escape-is-read",
+      "body_base64": "eyJ2IjozLCJraW5kIjoib3BzIiwib3BzIjpbeyJ2IjoyLCJ0eXBlIjoidHhuX2luZ2VzdGVkIiwib3BfaWQiOiIwMUowMDAwMDAwMDAwMDAwMDAwMDAwMDBPMSIsImF1dGhvcmVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJwYXJlbnRfdmVyc2lvbiI6bnVsbCwiZW50aXR5Ijp7ImtpbmQiOiJ0eG4iLCJpZCI6IlQyIn0sImluZ2VzdF9pZCI6ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJwYXlsb2FkIjp7ImFtb3VudF9taW5vciI6IjEiLCJjdXJyZW5jeSI6IkFFRCIsImRpcmVjdGlvbiI6ImRlYml0IiwicG9zdGVkX2F0IjoiMjAyNi0wNi0wNVQxMDowMDowMFoiLCJsYXN0NCI6IiIsIm5lZWRzX3JldmlldyI6ZmFsc2UsInVucGFyc2VkIjpmYWxzZSwidGllciI6InRlbXBsYXRlIiwibWVyY2hhbnRfcmF3IjoiQ0FG8J+YgCJ9fV19",
+      "expect_ops": [
+        {
+          "type": "txn_ingested",
+          "op_id": "01J000000000000000000000O1",
+          "authored_at_unix_ms": "1780653600000",
+          "has_entity": true,
+          "parent_version": null,
+          "ingest_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    }
   ]
 }

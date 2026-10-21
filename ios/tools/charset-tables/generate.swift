@@ -117,6 +117,7 @@ let unsupported = labelList("UNSUPPORTED")
 let passthrough = labelList("PASSTHROUGH")
 let unresolved = labelList("UNRESOLVED")
 let wordUnsupported = labelList("WORD_UNSUPPORTED")
+let wordPassthrough = labelList("WORD_PASSTHROUGH")
 
 func hex(_ v: UInt32) -> String {
   let s = String(v, radix: 16, uppercase: true)
@@ -168,6 +169,7 @@ emitSet(
   "unresolved", unresolved)
 emitMap("RFC 2047 encoded-word labels (htmlindex alone) decoded through a single-byte table.", "wordSingleByte", wordSingleByte)
 emitSet("Encoded-word labels htmlindex resolves to a multi-byte or stateful codec.", "wordUnsupported", wordUnsupported)
+emitSet("Encoded-word labels htmlindex resolves to UTF-8, decoded one word at a time.", "wordPassthrough", wordPassthrough)
 out.removeLast()
 out += "}\n"
 

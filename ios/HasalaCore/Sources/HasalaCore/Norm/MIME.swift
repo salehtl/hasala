@@ -525,7 +525,8 @@ enum MIME {
     switch Charset.classifyWord(label) {
     case .singleByte(let t): return Charset.decodeSingleByte(table: t, content)
     case .unsupported: throw .unsupportedCharset(label)
-    case .unresolved, .passthrough: return nil
+    case .passthrough: return NormText.decodeUTF8(content)
+    case .unresolved: return nil
     }
   }
 

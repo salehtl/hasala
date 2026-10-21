@@ -310,3 +310,7 @@ private func obj(_ members: [String: JSONValue]) -> JSONValue {
 private func pairs<V>(_ m: OrderedDictionary<String, V>, _ f: (V) -> JSONValue) -> JSONValue {
   .array(m.keys.sorted { compareUTF8($0, $1) < 0 }.map { k in .array([.string(k), f(m[k]!)]) })
 }
+
+private func pairs<V>(_ m: OrderedDictionary<ExactKey, V>, _ f: (V) -> JSONValue) -> JSONValue {
+  .array(m.keys.sorted { compareUTF8($0.value, $1.value) < 0 }.map { k in .array([.string(k.value), f(m[k]!)]) })
+}
