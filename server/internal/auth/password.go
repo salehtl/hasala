@@ -487,7 +487,11 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 	}
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: action, ParamsHash: ph, StepUp: su}
-	var revoked []pushv2.Target
+	var (
+		revoked []pushv2.Target
+		changed string
+		at      time.Time
+	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
 		st, err := readAccount(ctx, tx, session.UserID, true)
@@ -501,6 +505,7 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 		if err != nil {
 			return err
 		}
+		changed, at = event, now
 		if revoked, err = RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
 			return err
 		}
@@ -508,6 +513,9 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 	})
 	if err != nil {
 		return Wake{}, err
+	}
+	if changed != EventPasswordSet {
+		a.recordPassword(session.UserID, at)
 	}
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil

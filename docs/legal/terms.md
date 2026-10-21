@@ -1,7 +1,7 @@
 ---
 title: "Beta Terms of Use"
 description: "The terms for using the invite-only Hasala beta: what to expect, what we ask of you, and the limits of what we can promise."
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-21
 status: "final"
 plainWords: "Hasala is an early, invite-only beta. It's free while the beta runs, it may have bugs or change, and it isn't financial advice. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
 ---
@@ -25,12 +25,19 @@ Hasala is in a private beta. You need access to the beta on Apple's TestFlight a
 Hasala is unfinished. During the beta:
 
 - features may change, appear or disappear without notice;
+- we may change how the service works, including how Hasala checks bank emails, which ones it sends to Review, and how it sorts transactions;
+- Hasala's automatic checks, sorting and suggestions can be wrong;
 - Hasala may have bugs, including bugs that show wrong amounts, miss transactions or put transactions in the wrong category;
 - the service may be slow or unavailable at times, including for maintenance;
+- emails and alerts from Hasala, including security emails, can be late or fail to arrive;
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
-- we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll tell you in the app or by email at least 7 days before, so that you can export your data first.
+- we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll aim to tell you in the app or by email at least 7 days before, so that you can export your data first, unless an urgent reason, such as a security risk or a legal requirement, means we can't.
 
-Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). It supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
+Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). At the time of writing, it supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
+
+### Help pages
+
+Our [Support](/support) page and other help we give you, such as the steps, screens and buttons they describe, are there to help. They describe the app as it was when they were written, may change at any time, and aren't promises about how Hasala works.
 
 ### Price
 
@@ -45,7 +52,7 @@ We'd love your feedback. If you send us ideas or suggestions, you allow us to us
 Hasala helps you see and plan your own spending. It is not a bank, a payment service or a financial adviser.
 
 - Nothing in Hasala is financial, investment, tax or legal advice.
-- Budgets, pace estimates, bill reminders and category suggestions are calculated automatically from your own data. They can be wrong or incomplete.
+- Budgets, pace estimates and bill reminders are calculated automatically from your own data. Categories come from your rules, a built-in merchant list and, if you turn them on, Cloud suggestions (with Apple's on-device model when Cloudflare can't help). All of these, including any transaction that Sort automatically files for you, can be wrong or incomplete.
 - Hasala does not move money, make payments, or connect to your bank account. It reads the alert emails your bank sends you.
 - Your bank's own statements are the record of your money. Check important figures against them before you rely on them.
 
@@ -65,7 +72,7 @@ You are responsible for keeping your sign-in methods and your iPhone secure. In 
 
 - **Your 12-word recovery phrase is your account.** Anyone who has it can read your data, sign in as you and add devices. Keep it private and stored somewhere safe.
 - **We can't reset your recovery phrase.** If you lose your recovery phrase and every passkey, and have no signed-in iPhone, your account and data can't be recovered. Not even by us.
-- **A password reset needs your 12 words or a signed-in iPhone.** If you sign in with email and password, keep at least one of these available.
+- **Password reset is not in the beta.** If you can't sign in, the way back is your 12 words with a code we email you. If you sign in with email and password, keep your 12 words safe.
 - **Hasala will never ask for your recovery phrase, your password or a code** in an email, a notification, a phone call or on a website. Only type them into the Hasala app.
 - Keep a passcode on your iPhone, and keep two-factor authentication on for your Apple Account. Your passkey is stored in iCloud Keychain.
 
@@ -91,15 +98,15 @@ Please use Hasala only for its intended purpose: managing your own money. Don't:
 
 We may suspend an account if we reasonably believe it breaks these terms, puts other users or the service at risk, or if the law requires it. Where it's safe and lawful, we'll tell you why.
 
-While your account is suspended you can still:
+As Hasala works today, while your account is suspended you can still:
 
 - open Hasala and see the data already on your iPhone;
 - sign in and sign out; and
 - delete your account.
 
-You can't sync new changes, connect your email, or change your sign-in methods or devices. If you think we've made a mistake, email us and we'll review it.
+You can't sync new changes, connect your email, change your sign-in methods or devices, sign out everywhere, use your recovery phrase to get back in, reset a password or view your recovery phrase. If you think we've made a mistake, email us and we'll review it.
 
-Suspension is something we do. It is different from freezing, which you can do yourself from a security email or in the app if a sign-in wasn't you; see our [Security](/security) page.
+Suspension is something we do. It is different from freezing, which you can do yourself with the Freeze link in a security email if a sign-in wasn't you. The beta app has no freeze button, but you can lift a freeze in the app; see our [Security](/security) page.
 
 ## Ending your use of Hasala
 
@@ -111,7 +118,7 @@ Deleting the app from your iPhone does not delete your account.
 
 ### We can end the beta or your access
 
-We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk or a legal requirement, we'll give you at least 30 days' notice, in the app or by email, so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
+We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk, a legal requirement or something outside our reasonable control, we'll give you at least 30 days' notice, in the app or by email, so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
 
 ## Source-available code
 
@@ -131,7 +138,8 @@ We work hard to make Hasala accurate, secure and reliable. But it's a free beta,
 
 To the extent the law allows:
 
-- we aren't responsible for losses caused by relying on Hasala's figures, categories or reminders, such as missed bill payments or bank charges;
+- we aren't responsible for losses caused by relying on Hasala's figures, categories, suggestions, checks or reminders (including transactions that Sort automatically filed in the wrong category, and emails that Hasala wrongly took as coming from your bank, or wrongly sent to Review), such as missed bill payments or bank charges;
+- we aren't responsible for losses caused by an email or alert from Hasala that was late or didn't arrive;
 - we aren't responsible for losing access to your data if you lose your recovery phrase and every passkey and signed-in device;
 - we aren't responsible for problems caused by Google, Microsoft, Apple, Cloudflare, your bank, or your device; and
 - our total liability to you for any claim about the beta is limited to AED 100.
@@ -148,14 +156,14 @@ These terms are governed by the laws of the United Arab Emirates as applied in t
 
 ## Changes to these terms
 
-We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is material, we'll tell you in the app or by email at least 30 days before it takes effect. If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
+We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is material, we'll tell you in the app or by email at least 30 days before it takes effect, unless we must make it sooner for legal or security reasons. If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
 
 ## General
 
 - If part of these terms can't be enforced, the rest still applies.
 - If we don't enforce a right straight away, we haven't given it up.
 - You may not transfer your rights under these terms. We may transfer ours to a business that takes over Hasala, and we'll tell you if that happens.
-- These terms, the [Privacy Policy](/privacy) and the [Security](/security) policy are the whole agreement between you and us about the beta.
+- These terms, the [Privacy Policy](/privacy) and the [Security](/security) policy are the whole agreement between you and us about the beta. The [Support](/support) page is help, not part of this agreement.
 - If there's a conflict between these terms and Apple's TestFlight terms, Apple's terms govern your use of TestFlight itself.
 
 ## Contact

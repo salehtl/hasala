@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
@@ -141,5 +143,89 @@ func TestReplayNeedsTheLedgerAndNoAccount(t *testing.T) {
 		if code, _, _ := hasalad(t, env, argv...); code != 2 {
 			t.Fatalf("%v exited %d, want 2", argv, code)
 		}
+	}
+}
+
+func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	gone := oplogtest.NewUser(t, pool)
+	changed := oplogtest.NewUser(t, pool)
+	frozen := oplogtest.NewUser(t, pool)
+	thawed := oplogtest.NewUser(t, pool)
+	unfrozen := oplogtest.NewUser(t, pool)
+	if _, err := pool.Exec(ctx, `UPDATE users SET password_hash = decode(repeat('11', 32), 'hex'), password_salt = decode(repeat('22', 16), 'hex'),
+	    password_version = 1, password_set_at = now() - interval '2 days' WHERE id IN ($1, $2)`, changed, frozen); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE users SET frozen_at = now() - interval '2 days', freeze_trigger_at = now() - interval '2 days',
+	    frozen_by = 'holder' WHERE id = $1`, unfrozen); err != nil {
+		t.Fatal(err)
+	}
+	var entry string
+	if err := pool.QueryRow(ctx, `INSERT INTO waitlist_entries (email_tag, email_norm, state, source, created_at, updated_at, confirmed_at)
+	    VALUES (decode(repeat('33', 32), 'hex'), 'left@example.test', 'confirmed', 'web', now(), now(), now()) RETURNING id::text`).
+		Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	var bounced string
+	if err := pool.QueryRow(ctx, `INSERT INTO waitlist_entries (email_tag, email_norm, state, source, created_at, updated_at, confirmed_at,
+	    invited_at) VALUES (decode(repeat('44', 32), 'hex'), 'bounced@example.test', 'invited', 'web', now(), now(), now(), now())
+	    RETURNING id::text`).Scan(&bounced); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO webauthn_credentials (credential_id, user_id, user_handle, public_key, sign_count,
+	    backup_eligible, backup_state, attestation_sha256, created_at) VALUES (decode(repeat('55', 20), 'hex'), $1,
+	    decode(repeat('66', 32), 'hex'), decode(repeat('77', 40), 'hex'), 0, true, true, decode(repeat('88', 32), 'hex'),
+	    now() - interval '2 days')`, changed); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	body := gone.String() + " " + at + "\n" +
+		changed.String() + " " + at + " password\n" +
+		frozen.String() + " " + at + " freeze " + at + "\n" +
+		thawed.String() + " " + at + " freeze " + at + "\n" +
+		unfrozen.String() + " " + at + " unfreeze\n" +
+		entry + " " + at + " waitlist-leave\n" +
+		changed.String() + " " + at + " passkey " + strings.Repeat("55", 20) + "\n" +
+		bounced + " " + at + " waitlist-unsent\n"
+	if err := os.WriteFile(ledger, []byte(body), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
+	if code != 0 || !strings.Contains(out, "8 entries, 1 account(s) purged again") ||
+		!strings.Contains(out, "2 freeze(s), 1 unfreeze(s), 0 device removal(s), 1 password change(s), 1 passkey removal(s), "+
+			"1 waitlist leave(s) and 1 bounced-invite waitlist deletion(s) applied again, 1 freeze(s) lifted because") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	for _, id := range []string{gone.String(), changed.String(), frozen.String(), thawed.String(), unfrozen.String(), entry, bounced,
+		strings.Repeat("55", 20)} {
+		if strings.Contains(out, id) {
+			t.Fatalf("the replay printed an id: %q", out)
+		}
+	}
+	var n int
+	for q, want := range map[string]int{
+		`SELECT count(*) FROM users WHERE id = '` + gone.String() + `'`:                                  0,
+		`SELECT count(*) FROM users WHERE id = '` + changed.String() + `' AND password_hash IS NULL`:     1,
+		`SELECT count(*) FROM users WHERE id = '` + frozen.String() + `' AND frozen_by = 'holder'`:       1,
+		`SELECT count(*) FROM users WHERE id = '` + thawed.String() + `' AND frozen_at IS NULL`:          1,
+		`SELECT count(*) FROM users WHERE id = '` + unfrozen.String() + `' AND frozen_at IS NULL`:        1,
+		`SELECT count(*) FROM waitlist_entries WHERE id = '` + entry + `'`:                               0,
+		`SELECT count(*) FROM waitlist_entries WHERE id = '` + bounced + `'`:                             0,
+		`SELECT count(*) FROM webauthn_credentials WHERE user_id = '` + changed.String() + `'`:           0,
+		`SELECT count(*) FROM users WHERE id IN ('` + changed.String() + `', '` + frozen.String() + `')`: 2,
+	} {
+		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil || n != want {
+			t.Fatalf("%s: %d (%v), want %d", q, n, err, want)
+		}
+	}
+	code, out, _ = hasalad(t, env, "purge-user", "--replay-ledger")
+	if code != 0 || !strings.Contains(out, "0 account(s) purged again") ||
+		!strings.Contains(out, "0 freeze(s), 0 unfreeze(s), 0 device removal(s), 0 password change(s), 0 passkey removal(s), "+
+			"0 waitlist leave(s) and 0 bounced-invite waitlist deletion(s) applied again, 0 freeze(s) lifted because") {
+		t.Fatalf("a second replay exited %d with %q", code, out)
 	}
 }

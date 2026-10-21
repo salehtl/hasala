@@ -19,8 +19,8 @@ import { MAIL_NOTE } from '../data/site';
       senders and reads them on the phone, so the rest of your inbox is never downloaded.
     </p>
     <p>
-      Hasala can’t send, change or delete mail. Before it uses an email, your iPhone checks that it really came from your bank, and sets aside any that only looks like it did.
-      Nothing is sent to an AI service.
+      Hasala can’t send, change or delete mail. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review.
+      No email is ever sent to an AI service.
     </p>
     <p>{MAIL_NOTE}</p>
     <AlertArt kind="mail" slot="art" />
@@ -37,7 +37,7 @@ import { MAIL_NOTE } from '../data/site';
     <ol>
       <li>your own rules;</li>
       <li>a built‑in list of UAE merchants;</li>
-      <li>Apple’s on‑device model, which reads English merchant names.</li>
+      <li>if you turn on Cloud suggestions, a suggestion for the merchant’s name from Cloudflare’s AI service, or from Apple’s on‑device model.</li>
     </ol>
     <p>You confirm the rest. Correct a merchant once, and Hasala remembers it.</p>
     <AlertArt kind="sorted" slot="art" />
@@ -55,7 +55,7 @@ import { MAIL_NOTE } from '../data/site';
 
   <DetailSection id="iphone" title="iPhone and English only, for now">
     <p>
-      Hasala does its work on the iPhone itself, and its sorting uses Apple’s on‑device model, which reads English merchant names. Starting with one platform
+      Hasala does its work on the iPhone itself. Starting with one platform
       and one language lets us get every bank alert right before we promise more.
     </p>
     <p>You need an iPhone with iOS 26 or later. The app is in English and in light mode only for now.</p>

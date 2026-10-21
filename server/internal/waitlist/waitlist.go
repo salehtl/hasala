@@ -27,6 +27,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // Errors the routes map to spec 07 §5.8's codes.
@@ -56,6 +57,7 @@ type Service struct {
 	// OnConfirmed, when set, runs after a confirmation commits: the entry is
 	// then on the console's list to approve. It gets nothing about the entry.
 	OnConfirmed func()
+	Record      func(purgeledger.Entry)
 
 	mu        sync.Mutex
 	countsAt  time.Time
@@ -232,7 +234,13 @@ func (s *Service) Leave(ctx context.Context, token string) error {
 	if err := DeleteEntryTx(ctx, tx, entry); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if s.Record != nil {
+		s.Record(purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistLeave})
+	}
+	return nil
 }
 
 // DeleteEntryTx deletes an entry as P3 and C8 do: an open invite is revoked

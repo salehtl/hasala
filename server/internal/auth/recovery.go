@@ -368,7 +368,8 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err != nil {
 		return release(err)
 	}
-	if err := revokeOldCredentialsTx(ctx, tx, userID, cred, kind == MethodPassword, now); err != nil {
+	removed, err := revokeOldCredentialsTx(ctx, tx, userID, cred, kind == MethodPassword, now)
+	if err != nil {
 		return release(err)
 	}
 	m, err := a.Sessions.IssueTx(ctx, tx, Mint{UserID: userID, MintedBy: MintedRecover, CredentialID: cred, WriterID: w.WriterID})
@@ -385,25 +386,29 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err := tx.Commit(ctx); err != nil {
 		return RecoverFinished{}, err
 	}
+	if kind == MethodPassword || st.hasPassword() {
+		a.recordPassword(userID, now)
+	}
+	recordPasskeyRemovals(a.Record, userID, removed, now)
 	a.Mail.Kick()
 	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID,
 		Wake: wakeFor(userID, w.WriterID, revoked)}, nil
 }
 
-func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keepCredential []byte, keepPassword bool, now time.Time) error {
+func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keepCredential []byte, keepPassword bool, now time.Time) ([][]byte, error) {
 	rows, err := tx.Query(ctx,
 		`DELETE FROM webauthn_credentials WHERE user_id = $1 AND ($2::bytea IS NULL OR credential_id <> $2)
 		 RETURNING credential_id`, userID, keepCredential)
 	if err != nil {
-		return fmt.Errorf("auth: recovery: remove old passkeys: %w", err)
+		return nil, fmt.Errorf("auth: recovery: remove old passkeys: %w", err)
 	}
 	removed, err := pgx.CollectRows(rows, pgx.RowTo[[]byte])
 	if err != nil {
-		return fmt.Errorf("auth: recovery: remove old passkeys: %w", err)
+		return nil, fmt.Errorf("auth: recovery: remove old passkeys: %w", err)
 	}
 	for _, id := range removed {
 		if err := recordEventTx(ctx, tx, nil, userID, AuthEvent{Kind: EventPasskeyRemoved, CredentialID: id}, now); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if !keepPassword {
@@ -412,11 +417,11 @@ func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ke
 			        password_failures = 0, password_paused_until = NULL
 			  WHERE id = $1 AND password_hash IS NOT NULL`, userID)
 		if err != nil {
-			return fmt.Errorf("auth: recovery: remove the old password: %w", err)
+			return nil, fmt.Errorf("auth: recovery: remove the old password: %w", err)
 		}
 		if tag.RowsAffected() == 1 {
 			if err := recordEventTx(ctx, tx, nil, userID, AuthEvent{Kind: EventPasswordRemoved}, now); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -427,7 +432,7 @@ func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ke
 		`DELETE FROM email_change_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
 	} {
 		if _, err := tx.Exec(ctx, q, userID); err != nil {
-			return fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
+			return nil, fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
 		}
 	}
 	for _, q := range []string{
@@ -435,8 +440,8 @@ func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ke
 		`UPDATE email_codes SET burned_at = $2 WHERE user_id = $1 AND used_at IS NULL AND burned_at IS NULL`,
 	} {
 		if _, err := tx.Exec(ctx, q, userID, now); err != nil {
-			return fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
+			return nil, fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
 		}
 	}
-	return nil
+	return removed, nil
 }

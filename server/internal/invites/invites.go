@@ -30,6 +30,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // Sizes and defaults.
@@ -342,8 +344,8 @@ func RedeemTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID 
 // email left to send is revoked), expiry (an expired invite's entry goes back
 // to confirmed), forget (30 days after closing, the tag, note and
 // link key go) and delete. It reports what it did.
-func Sweep(ctx context.Context, q *pgxpool.Pool) (string, error) {
-	unsent, err := sweepUnsent(ctx, q)
+func Sweep(ctx context.Context, q *pgxpool.Pool, record func(purgeledger.Entry)) (string, error) {
+	unsent, err := sweepUnsent(ctx, q, record)
 	if err != nil {
 		return "", err
 	}

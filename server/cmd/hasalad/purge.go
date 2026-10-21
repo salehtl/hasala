@@ -9,9 +9,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/purge"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 // runPurgeUser is `hasalad purge-user <uuid> --confirm <uuid> [--dry-run]`
@@ -136,12 +138,28 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 	if err != nil {
 		return fmt.Errorf("purge-user --replay-ledger: %w", err)
 	}
+	again, err := auth.Reapply(ctx, pool, entries, time.Now())
+	if err != nil {
+		return fmt.Errorf("purge-user --replay-ledger: %w", err)
+	}
+	left, err := waitlist.ReapplyLeaves(ctx, pool, entries)
+	if err != nil {
+		return fmt.Errorf("purge-user --replay-ledger: %w", err)
+	}
+	bounced, err := waitlist.ReapplyUnsent(ctx, pool, entries)
+	if err != nil {
+		return fmt.Errorf("purge-user --replay-ledger: %w", err)
+	}
 	dropped, err := purgeledger.Prune(path, time.Now().Add(-purgeledger.Retention))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d entries past retention removed\n",
-		len(entries), len(rep.Users), rep.Total(), dropped)
+	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d freeze(s), %d unfreeze(s), "+
+		"%d device removal(s), %d password change(s), %d passkey removal(s), %d waitlist leave(s) and %d bounced-invite waitlist "+
+		"deletion(s) applied again, %d freeze(s) lifted because the replay left the account no passkey and no password, "+
+		"%d device removal(s) whose signer is not in the database (signed out only), %d entries past retention removed\n",
+		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Unfreezes, again.Devices, again.Passwords, again.Passkeys,
+		left, bounced, again.Lifted, again.Unsigned, dropped)
 	return nil
 }
 

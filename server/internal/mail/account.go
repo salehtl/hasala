@@ -165,7 +165,8 @@ var AlertSubkinds = []string{
 // AlertCarriesFreezeLink says whether an alert of this subkind carries a
 // freeze link (and so needs a token minted at send time).
 func AlertCarriesFreezeLink(subkind string) bool {
-	return strings.HasPrefix(subkind, "new_sign_in_") || strings.HasPrefix(subkind, "recovery_used_")
+	return strings.HasPrefix(subkind, "new_sign_in_") || strings.HasPrefix(subkind, "recovery_used_") ||
+		subkind == "phrase_viewed"
 }
 
 // Alert renders a security alert. freezeLink is the full link for the two
@@ -207,8 +208,9 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 		return alert("Your Hasala password changed", "Your password was changed",
 			"Your Hasala password was "+verb+" on "+when+". Other devices were signed out.", notYou)
 	case "phrase_viewed":
-		return alert("Your Hasala recovery phrase was shown", "Your recovery phrase was viewed",
-			"Your recovery phrase was shown in the Hasala app on "+when+".", notYou)
+		return withFreeze("Your Hasala recovery phrase was shown", "Your recovery phrase was viewed",
+			"Your recovery phrase was shown in the Hasala app on "+when+".",
+			"If this was you, there's nothing to do.")
 	case "device_removed":
 		return alert("A device was removed from Hasala", "Device removed",
 			"An iPhone was removed from your Hasala account on "+when+".", notYou)
