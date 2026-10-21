@@ -157,15 +157,15 @@ final class JoinUITests: XCTestCase {
 
   // MARK: - The stories wait under a pushed screen
 
-  /// Story 1 is playing when "Get started" opens the invite code: under it the stories
+  /// Story 2 has just begun when "Get started" opens the invite code: under it the stories
   /// don't move on, and Back finds the same story.
   @MainActor
   func testStoriesWaitUnderAPushedScreen() throws {
     let app = launch(scenario: "newUser")
     let progress = el(app, "stories.progress")
     XCTAssertTrue(progress.waitForExistence(timeout: 15))
+    XCTAssertTrue(progress.waitForLabel("Page 2 of 4", timeout: 15))
     let shown = progress.label
-    XCTAssertFalse(shown.isEmpty)
     tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: uiWait))
     sleep(8)
