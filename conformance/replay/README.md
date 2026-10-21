@@ -11,6 +11,9 @@ cd reference/ledgerd-client && bun run gen-replay-conformance
 bun run gen-replay-conformance --check   # compare only, exit 1 if stale
 ```
 
+The expected output is also a golden file: the Swift test rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`).
+
 Generation is deterministic (no clock, randomness, network or locale), so a
 re-run writes identical bytes. `src/replay/replay-conformance.test.ts` fails
 when the committed files differ from what the generator writes, and that test
