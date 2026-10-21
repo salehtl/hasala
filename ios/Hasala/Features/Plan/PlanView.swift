@@ -437,6 +437,9 @@ struct ProjectCard: View {
                    hidden: hidden)
           .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
       }
+      if let line = project.mark?.line {
+        Text(line).hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+      }
       if !project.countInPlan {
         HStack(alignment: .top, spacing: 6) {
           HIconView(.info, size: 14, color: HColor.textOnHueSecondary)
@@ -473,6 +476,7 @@ struct ProjectCard: View {
     if !project.pending.isZero {
       out += " " + MoneyPhrase([.amount(project.pending, .compact), .text(" waiting for review.")]).spoken(hidden: hidden)
     }
+    if let line = project.mark?.line { out += " \(line)." }
     return out + (project.countInPlan ? "" : " Not counted in your monthly plan.")
   }
 }

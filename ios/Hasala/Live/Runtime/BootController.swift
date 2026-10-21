@@ -70,6 +70,8 @@ final class BootController {
   private(set) var wall: Wall?
   /// "Remove this iPhone's data" is running.
   private(set) var erasing = false
+  private(set) var syncHalt: HaltKind?
+  private(set) var retryingSync = false
 
   @ObservationIgnored private let account: LiveAccountService
   @ObservationIgnored private let services: AccountServices
@@ -222,6 +224,7 @@ final class BootController {
     let env = self.env.account
     Task { await LiveAccountService.retryPendingLogout(env) }
     guard let rt = runtime else { return }
+    if syncHalt != nil { return retrySync() }
     Task { await rt.coordinator.run(.foreground) }
     Task { await rt.firstImport.nudge() }
   }
@@ -315,6 +318,7 @@ final class BootController {
     opening?.cancel()
     opening = nil
     BackgroundScheduler.shared.cancelAll()
+    syncHalt = nil
     guard let rt = runtime else { return }
     runtime = nil
     app = nil
@@ -345,6 +349,26 @@ final class BootController {
     default:
       break
     }
+  }
+
+  func retrySync() {
+    guard syncHalt != nil, !retryingSync, let rt = runtime else { return }
+    retryingSync = true
+    Task {
+      let out = await rt.coordinator.run(.refresh)
+      retryingSync = false
+      guard runtime === rt else { return }
+      if Self.clearsSyncHalt(out.stop) { syncHalt = nil }
+    }
+  }
+
+  static func clearsSyncHalt(_ stop: SyncStop?) -> Bool {
+    stop.map(WorkCoordinator.tolerable) ?? true
+  }
+
+  static func syncHalt(for stop: SyncStop) -> HaltKind? {
+    guard case .halted(let kind) = stop, kind != .updateRequired else { return nil }
+    return kind
   }
 
   /// "Back" on the other-account wall: Welcome, as it was.
@@ -407,6 +431,9 @@ final class BootController {
       session.signedOut()
     case .halted(.updateRequired):
       wall = .updateRequired
+    case .halted:
+      guard runtime != nil, let kind = Self.syncHalt(for: stop) else { return }
+      syncHalt = kind
     default:
       break
     }

@@ -76,14 +76,16 @@ extension State {
       if bWins { carryUserEdits(from: w, to: id) }
       registerDedupeKeys(of: bWins ? w : id, to: winner)
       registerDedupeKeys(of: winner, to: winner)
-      if let key = DuplicateRules.candidateKey(txns[winner]!), copyCandidates[key]?.contains(where: { utf8Equal($0, winner) }) != true {
+      if let key = DuplicateRules.candidateKey(txns[winner]!).map(ExactKey.init(_:)),
+        copyCandidates[key]?.contains(where: { utf8Equal($0, winner) }) != true
+      {
         copyCandidates[key, default: []].append(winner)
       }
       detectTransferCopy(winner)
       return
     }
     registerDedupeKeys(of: id, to: id)
-    if let key = DuplicateRules.candidateKey(b) {
+    if let key = DuplicateRules.candidateKey(b).map(ExactKey.init(_:)) {
       if let earlier = copyCandidates[key] {
         for oid in earlier where !utf8Equal(oid, id) {
           guard let a = txns[oid], a.isLive, !a.isHeldCopy, DuplicateRules.probable(a, b) else { continue }
@@ -97,7 +99,7 @@ extension State {
   }
 
   mutating func detectTransferCopy(_ id: String) {
-    guard let b = txns[id], let key = DuplicateRules.transferKey(b), let role = DuplicateRules.transferRole(b) else { return }
+    guard let b = txns[id], let key = DuplicateRules.transferKey(b).map(ExactKey.init(_:)), let role = DuplicateRules.transferRole(b) else { return }
     let bucket = copyCandidates[key] ?? []
     if b.isLive, b.copyOf == nil, !transferPartnered(id, role: role, in: bucket), let mb = try? parseInstantMs(b.postedAt) {
       var best: (id: String, gap: Int64)?

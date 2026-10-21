@@ -377,6 +377,29 @@ final class SignInSecurityUITests: XCTestCase {
   }
 
   @MainActor
+  func testTheFrozenBannerLeavesTheHeaderReachable() throws {
+    for (scenario, action) in [("frozen", "frozenBanner.unfreeze"), ("frozenOperator", "frozenBanner.details")] {
+      let app = launch(scenario: scenario)
+      tap(app, "frozen.leave")
+      let profile = app.buttons["header.profile"].firstMatch
+      XCTAssertTrue(profile.waitForExistence(timeout: uiWait))
+      XCTAssertTrue(el(app, action).waitForExistence(timeout: uiWait))
+      attach(app, "Home · frozen banner · \(scenario)")
+      for banner in [action, "frozenBanner.signOut"] {
+        for header in ["header.hideAmounts", "header.notifications", "header.profile"] {
+          let a = el(app, banner).frame
+          let b = app.buttons[header].firstMatch.frame
+          XCTAssertFalse(a.intersects(b), "\(banner) \(a) covers \(header) \(b) (\(scenario))")
+        }
+      }
+      XCTAssertTrue(profile.isHittable)
+      profile.tap()
+      XCTAssertTrue(el(app, "profile.security").waitForExistence(timeout: uiWait), "Profile did not open (\(scenario))")
+      app.terminate()
+    }
+  }
+
+  @MainActor
   func testApprovingAPasswordReset() throws {
     let app = launch(scenario: "resetApproval")
     XCTAssertTrue(app.staticTexts["Is this you on a new iPhone?"].waitForExistence(timeout: 15))

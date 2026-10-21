@@ -206,6 +206,20 @@ struct LiveLedgerMapperTests {
     #expect(got.projects.map(\.dates) == want.projects.map(\.dates))
   }
 
+  @Test func incomeReceivedAboveTheSourceIsReadyToAssign() async throws {
+    let wall = Int64(1_791_633_600_000)
+    let base = PlanEngine.snapshot(try await Self.foldedState(), now: MayaLedger.now)
+    let live = try await Self.foldedState { o throws(AuthorError) in
+      _ = try o.manualEntry(amountMinor: 30_000_00, currency: "AED", direction: "credit", localWallMs: wall,
+                            merchant: "Acme bonus", category: "salary")
+    }
+    let got = PlanEngine.snapshot(live, now: MayaLedger.now)
+    let month = MayaLedger.now.date.yearMonth
+    #expect(live.plan.income(in: month).minor > live.plan.income.minor)
+    #expect(got.readyToAssign.minor - base.readyToAssign.minor >= 5_000_00)
+    #expect(got.readyToAssign.minor == live.plan.income(in: month).minor - got.sections.map(\.budget.minor).reduce(0, +))
+  }
+
   // MARK: Activity and Review
 
   @Test func activityAndReviewAreMayas() async throws {

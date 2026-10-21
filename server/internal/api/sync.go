@@ -215,6 +215,10 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return
 	}
+	if after > maxSeq {
+		writeErr(w, http.StatusConflict, "cursor_ahead", "after is past the end of the stream")
+		return
+	}
 	out.Complete = next >= maxSeq
 	writeJSON(w, http.StatusOK, out)
 }
@@ -262,6 +266,10 @@ func (s *Server) handleHashes(w http.ResponseWriter, r *http.Request, userID uui
 	if err != nil {
 		s.logf("api: hashes %s max seq for %s: %v", stream, userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
+	}
+	if after > maxSeq {
+		writeErr(w, http.StatusConflict, "cursor_ahead", "after is past the end of the stream")
 		return
 	}
 	out.Complete = next >= maxSeq

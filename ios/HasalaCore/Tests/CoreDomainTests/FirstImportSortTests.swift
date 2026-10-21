@@ -181,7 +181,7 @@ struct FirstImportSortTests {
   @Test("filing is idempotent: a rerun after a kill skips filed and user-edited rows and sends nothing more")
   func idempotent() async throws {
     var l = T.Ledger()
-    let ids = try l.ingest([("SURE SHOP", "debit"), ("OTHER SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit")])
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("OTHER SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit")], needsReview: false)
     let cloud = FirstImportCloud(["sure shop": (.category("groceries"), true), "other sure shop": (.category("dining"), true)])
     let cache = MemoryCache()
     let p = try await Self.pass(l, cloud, cache: cache)
@@ -201,7 +201,7 @@ struct FirstImportSortTests {
   @Test("a row files only with Sort automatically on and a confident graded answer")
   func threshold() async throws {
     var l = T.Ledger()
-    let ids = try l.ingest([("SURE SHOP", "debit"), ("UNSURE SHOP", "debit")])
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("UNSURE SHOP", "debit")], needsReview: false)
     let cloud = FirstImportCloud(["sure shop": (.category("groceries"), true), "unsure shop": (.category("dining"), false)])
     let on = try await Self.pass(l, cloud)
     let onBlobs = try ModelSuggestionSweep.author(on.suggestions, current: l.rows(), context: l.context())
@@ -318,7 +318,7 @@ struct FirstImportSortTests {
   @Test("run re-reads before authoring, so an edit made during the requests wins")
   func run() async throws {
     var l = T.Ledger()
-    let ids = try l.ingest([("SURE SHOP", "debit"), ("OTHER SURE SHOP", "debit")])
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("OTHER SURE SHOP", "debit")], needsReview: false)
     let cloud = FirstImportCloud(fallback: (.category("groceries"), true))
     let read = l.rows()
     var u = OpAuthor(l.context())

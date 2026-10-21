@@ -64,15 +64,22 @@ final class AccountSession {
   private(set) var resumeFailure: AuthFailure?
 
   /// `.checking`: the server says whether this account's keys exist (§6.5).
+  private(set) var resuming = false
+
   func resume() async {
-    guard phase == .checking else { return }
+    guard phase == .checking, !resuming else { return }
+    resuming = true
+    defer { resuming = false }
     do {
       let outcome = try await account.resumeSignedIn()
+      guard phase == .checking else { return }
       resumeFailure = nil
       signedIn(outcome)
     } catch .offline, .rateLimited {
+      guard phase == .checking else { return }
       resumeFailure = .offline
     } catch {
+      guard phase == .checking else { return }
       // The session is gone or refused: sign in again.
       resumeFailure = nil
       await account.signOut()

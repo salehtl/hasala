@@ -196,6 +196,39 @@ test("dkim=pass with neither header.d nor header.i and no dmarc pass ⇒ fail", 
   expect(verifiedDomain(raw)).toBeNull();
 });
 
+test("dkim=pass WITHOUT a d= domain reads the domain of header.i", () => {
+  const raw = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(gmailVerdict(raw)).toEqual({ trusted: true, reason: "pass" });
+  expect(verifiedDomain(raw)).toBe("bank.example");
+});
+
+test("a quote inside a comment makes the A-R unreadable", () => {
+  const raw = block(
+    'Authentication-Results: mx.google.com; spf=pass (a "b) c) smtp.mailfrom=x@bank.example; dkim=pass header.d=bank.example',
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "parse_error" });
+});
+
+test("a From comment is not the From address", () => {
+  const raw = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example",
+    "From: alerts@other.example (alerts@bank.example)",
+  );
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "fail" });
+});
+
+test("Gmail's DMARC header.from must be the From domain", () => {
+  const raw = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=other.example",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "fail" });
+});
+
 const GMAIL_AR = [
   "Authentication-Results: mx.google.com;",
   "       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;",

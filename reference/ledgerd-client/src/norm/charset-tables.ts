@@ -593,7 +593,17 @@ const WORD_UNSUPPORTED: readonly string[] = [
   "x-x-big5", // stateful or multi-byte: 256 bytes decoded to 193 runes
 ];
 
+const WORD_PASSTHROUGH: readonly string[] = [
+  "unicode-1-1-utf-8", // resolves to UTF-8; identical to passthrough
+  "unicode11utf8", // resolves to UTF-8; identical to passthrough
+  "unicode20utf8", // resolves to UTF-8; identical to passthrough
+  "utf-8", // resolves to UTF-8; identical to passthrough
+  "utf8", // resolves to UTF-8; identical to passthrough
+  "x-unicode20utf8", // resolves to UTF-8; identical to passthrough
+];
+
 const WORD_UNSUPPORTED_SET = new Set(WORD_UNSUPPORTED);
+const WORD_PASSTHROUGH_SET = new Set(WORD_PASSTHROUGH);
 
 /**
  * Classifies a charset named by an RFC 2047 encoded word.
@@ -606,6 +616,7 @@ const WORD_UNSUPPORTED_SET = new Set(WORD_UNSUPPORTED);
 export function classifyWordCharset(label: string): { kind: CharsetKind; table?: string } {
   const low = label.toLowerCase();
   if (WORD_UNSUPPORTED_SET.has(low)) return { kind: "unsupported" };
+  if (WORD_PASSTHROUGH_SET.has(low)) return { kind: "passthrough" };
   const idx = WORD_SINGLE_BYTE[low];
   if (idx !== undefined) return { kind: "single-byte", table: TABLES[idx]! };
   return { kind: "unresolved" };

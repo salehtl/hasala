@@ -31,6 +31,7 @@
     var capabilities: AccountCapabilities = .all
     /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
+    var refuseFinish: AuthFailure?
     /// What the existing account has (the sign-in scenarios).
     var existing: Account
     /// What a successful sign-in leads to.
@@ -81,6 +82,15 @@
       try? await Task.sleep(for: delay)
     }
 
+    var failNext: AuthFailure?
+    private(set) var verifiedRecoveryCodes: [String] = []
+
+    private func injected() throws(AuthFailure) {
+      guard let f = failNext else { return }
+      failNext = nil
+      throw f
+    }
+
     // MARK: Signup
 
     func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
@@ -127,6 +137,10 @@
       async throws(AuthFailure) -> AccountProfile
     {
       await pause()
+      if let f = refuseFinish {
+        refuseFinish = nil
+        throw f
+      }
       let p = AccountProfile(displayName: ticket.displayName, email: ticket.email, method: credential.method)
       profile = p
       existing = credential.method == .passkey ? .passkey : .passwordOnly
@@ -217,6 +231,7 @@
 
     func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
       await pause()
+      try injected()
       return resumeOutcome
     }
 
@@ -232,6 +247,7 @@
 
     func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
       await pause()
+      try injected()
       guard words == Self.phraseWords else { throw .noAccountForPhrase }
       codeTries = 5
       return RecoveryTicket(id: "recover-1", emailHint: "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}.com")
@@ -242,6 +258,8 @@
 
     func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
       await pause()
+      try injected()
+      verifiedRecoveryCodes.append(code)
       guard code == Self.emailCode else {
         codeTries -= 1
         throw codeTries <= 0 ? .codeExpired : .codeWrong(triesLeft: codeTries)

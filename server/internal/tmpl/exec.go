@@ -377,14 +377,14 @@ func (c *Compiled) Execute(subject, normalizedBody string) (Extraction, error) {
 		return Extraction{}, err
 	}
 
-	st := &execState{set: map[string]bool{}, empty: map[string]bool{}}
+	st := &execState{set: map[string]bool{}, empty: map[string]bool{}, refused: map[string]bool{}}
 	for _, ce := range c.entries {
 		// Rule 3: the first entry that produces a value for a field wins, and
 		// later entries for that field are SKIPPED — not evaluated and
 		// discarded. Skipping is also what keeps the cost of a hostile body
 		// proportional to the number of fields rather than to the number of
 		// entries.
-		if st.set[ce.x.Field] && !ce.x.Override {
+		if st.refused[ce.x.Field] || (st.set[ce.x.Field] && !ce.x.Override) {
 			continue
 		}
 		src := normalizedBody
@@ -449,7 +449,8 @@ func (c *Compiled) gate(subject, body string) error {
 // Rule 3 in full: a pattern that does not match moves to the next pattern; a
 // pattern that matches but whose capture fails typed conversion ALSO moves to
 // the next pattern; an entry whose patterns are exhausted produces nothing. A
-// conversion failure is never a zero value and never aborts the run.
+// conversion failure is never a zero value and never aborts the run. The one
+// exception is a currency the format refuses: it ends the field for the run.
 func (c *Compiled) runEntry(st *execState, ce compiledEntry, src string) (bool, error) {
 	x := ce.x
 	// A const or flag entry with no patterns at all is an unconditional
@@ -477,6 +478,10 @@ func (c *Compiled) runEntry(st *execState, ce compiledEntry, src string) (bool, 
 			ccy, _ := group(src, re, idx, "ccy")
 			minor, currency, ok := convertAmount(amt, ccy, c.def.DefaultCurrency)
 			if !ok {
+				if currencyRefused(ccy, c.def.DefaultCurrency) {
+					st.refused[x.Field] = true
+					return false, nil
+				}
 				continue
 			}
 			st.out.AmountMinor, st.out.Currency = minor, currency
@@ -530,9 +535,10 @@ func (c *Compiled) runEntry(st *execState, ce compiledEntry, src string) (bool, 
 // ---------------------------------------------------------------------------
 
 type execState struct {
-	out   Extraction
-	set   map[string]bool
-	empty map[string]bool
+	out     Extraction
+	set     map[string]bool
+	empty   map[string]bool
+	refused map[string]bool
 }
 
 func (st *execState) mark(field string) { st.set[field] = true }
@@ -673,6 +679,18 @@ func convertAmount(amt, ccy, defaultCurrency string) (int64, string, bool) {
 	return minor, currency, true
 }
 
+func currencyRefused(ccy, defaultCurrency string) bool {
+	currency := defaultCurrency
+	if c := asciiUpper(trimCapture(ccy)); c != "" {
+		if !currencyRe.MatchString(c) {
+			return false
+		}
+		currency = c
+	}
+	_, ok := nonTwoDecimalCurrencies[currency]
+	return ok
+}
+
 var nonTwoDecimalCurrencies = map[string]struct{}{
 	"BHD": {}, "IQD": {}, "JOD": {}, "KWD": {}, "LYD": {}, "OMR": {}, "TND": {},
 	"BIF": {}, "CLP": {}, "DJF": {}, "GNF": {}, "ISK": {}, "JPY": {}, "KMF": {}, "KRW": {},
@@ -738,8 +756,10 @@ func convertDate(text string, layouts []string) (time.Time, bool) {
 //   - Trailing text is an error, which is what makes the whole-string attempt
 //     genuinely whole-string and the first-token fallback necessary.
 func parseLayout(text, layout string) (time.Time, bool) {
-	if t, err := time.Parse(layout, text); err == nil {
-		return t, true
+	if !strings.Contains(text, "  ") {
+		if t, err := time.Parse(layout, text); err == nil {
+			return t, true
+		}
 	}
 	// The first U+0020 specifically, not "any whitespace": one code point that
 	// both languages find the same way.

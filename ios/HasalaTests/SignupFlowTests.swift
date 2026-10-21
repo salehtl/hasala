@@ -134,6 +134,104 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.phrase == nil)
   }
 
+  private func passwordSignupAtThePhrase(_ account: MockAccountService) async -> SignupModel {
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .password
+    await m.continueWithMethod()
+    m.newPassword = "copper lantern quietly 42"
+    m.confirmPassword = "copper lantern quietly 42"
+    return m
+  }
+
+  @Test func aPasswordAfterTheSignupExpiredStartsAgainAtAboutYou() async {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = await passwordSignupAtThePhrase(account)
+    m.now = { .now.addingTimeInterval(31 * 60) }
+    m.submitPassword()
+    #expect(m.path == [.aboutYou])
+    #expect(m.failure == .signupExpired)
+    #expect(m.ticket == nil && m.phrase == nil)
+
+    m.now = { .now }
+    await m.submitAboutYou()
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.failure == nil)
+  }
+
+  @Test func wordsShownAfterTheSignupExpiredAreDroppedAndTheSignupStartsAgain() async {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = await passwordSignupAtThePhrase(account)
+    m.submitPassword()
+    m.go(.phraseShow)
+    showPhrase(m)
+    m.now = { .now.addingTimeInterval(31 * 60) }
+    await m.finish()
+    #expect(account.profile == nil)
+    #expect(m.path == [.aboutYou])
+    #expect(m.failure == .signupExpiredPhrase)
+    #expect(m.phrase == nil && !m.phraseSeen && m.ticket == nil)
+
+    m.now = { .now }
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .password
+    await m.continueWithMethod()
+    m.submitPassword()
+    #expect(m.path.last == .phraseIntro)
+    #expect(!m.phraseSeen)
+    showPhrase(m)
+    await m.finish()
+    #expect(m.path.last == .accountReady)
+    #expect(account.profile?.method == .password)
+  }
+
+  @Test func aLateClaimTheServerRefusesStartsAgain() async {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = await passwordSignupAtThePhrase(account)
+    m.submitPassword()
+    showPhrase(m)
+    account.refuseFinish = .codeExpired
+    await m.finish()
+    #expect(account.profile == nil)
+    #expect(m.path == [.aboutYou])
+    #expect(m.failure == .signupExpiredPhrase)
+    #expect(m.phrase == nil)
+  }
+
+  @Test func aPasskeySignupWhosePhraseOutlastsTheCeremonyStartsAgain() async {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.method = .passkey
+    await m.continueWithMethod()
+    #expect(m.path.last == .phraseIntro)
+    showPhrase(m)
+    m.now = { .now.addingTimeInterval(31 * 60) }
+    await m.finish()
+    #expect(account.profile == nil)
+    #expect(m.path == [.aboutYou])
+    #expect(m.failure == .signupExpiredPhrase)
+    #expect(!m.passkeyRegistered)
+  }
+
   /// "I've written them down" before the words were ever shown publishes nothing (Paper
   /// F6Q draws it disabled; the model refuses it too).
   @Test func finishBeforeTheRevealPublishesNothing() async {

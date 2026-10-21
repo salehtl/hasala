@@ -125,6 +125,17 @@ func TestApproveAndMintWithCSRF(t *testing.T) {
 		t.Fatalf("audit ok=%d refused=%d", ok, refused)
 	}
 
+	gone, cancel := context.WithCancel(bg)
+	cancel()
+	if w := req(c, "POST", path, url.Values{"csrf": {m[1]}}, func(r *http.Request) { *r = *r.WithContext(gone) }); w.Code != http.StatusConflict {
+		t.Fatalf("an approve whose request was cancelled: %d", w.Code)
+	}
+	var failed int
+	_ = pool.QueryRow(bg, `SELECT count(*) FROM admin_audit WHERE actor = 'tailnet:owner@github' AND result = 'error'`).Scan(&failed)
+	if failed != 1 {
+		t.Fatalf("a cancelled request's failure left %d audit rows", failed)
+	}
+
 	// Mint a printed code: shown once.
 	inv := req(c, "GET", "/invites", nil, nil).Body.String()
 	tok := csrfRE.FindStringSubmatch(inv)[1]

@@ -206,10 +206,23 @@ public final class FakeServer: Transport, @unchecked Sendable {
     }
   }
 
+  public func publishEpoch(user: UserID, _ epoch: Int) {
+    state.withLock { s in
+      guard let k = s.users[user]?.keys else { return }
+      s.users[user]?.keys = KeysResponse(
+        format_version: k.format_version, amk_commitment: k.amk_commitment, authority_pubkey: k.authority_pubkey,
+        recovery_pubkey: k.recovery_pubkey, recovery_wrap: k.recovery_wrap, current_epoch: epoch)
+    }
+  }
+
   public func freeze(user: UserID) { state.withLock { $0.users[user]?.frozen = true } }
 
   /// Marks the account a review account (`account review <uuid> on`), or not.
   public func setReviewAccount(user: UserID, _ on: Bool) { state.withLock { $0.users[user]?.review = on } }
+
+  public func loseLogTail(user: UserID, after seq: Int64) {
+    state.withLock { $0.users[user]?.log.removeAll { $0.seq > seq } }
+  }
 
   public func storedRowCount(user: UserID) -> Int { state.withLock { $0.users[user]?.log.count ?? 0 } }
 

@@ -42,7 +42,7 @@ public enum InsightsEngine {
 
   public static func lines(_ s: LedgerState, in window: InsightsWindow? = nil) -> [InsightsLine] {
     var out: [InsightsLine] = []
-    for t in s.txns where !t.archived && !t.isTransfer {
+    for t in s.txns where !t.archived && !t.isTransfer && !t.isHeldCopy {
       if let window, !window.contains(t.postedAt.date) { continue }
       func line(_ part: Int, _ c: Category?, _ kind: InsightsLine.Kind, _ minor: Int64) {
         out.append(InsightsLine(txnID: t.id, part: part, merchant: t.merchant, postedAt: t.postedAt,
@@ -82,28 +82,28 @@ public enum InsightsEngine {
       for l in lines {
         switch l.kind {
         case .income:
-          income += l.minor
+          income.add(l.minor)
         case .saved:
-          saved += l.minor
-          byCategory[l.categoryID, default: 0] += l.minor
+          saved.add(l.minor)
+          byCategory[l.categoryID, default: 0].add(l.minor)
           countByCategory[l.categoryID, default: 0] += 1
         case .spent:
           if l.categoryID == InsightsEngine.unsortedID {
-            unsorted += l.minor
+            unsorted.add(l.minor)
           } else {
             switch l.bucket {
-            case .needs: needs += l.minor
-            case .wants: wants += l.minor
-            default: otherSpent += l.minor
+            case .needs: needs.add(l.minor)
+            case .wants: wants.add(l.minor)
+            default: otherSpent.add(l.minor)
             }
           }
-          byCategory[l.categoryID, default: 0] += l.minor
+          byCategory[l.categoryID, default: 0].add(l.minor)
           countByCategory[l.categoryID, default: 0] += 1
         }
       }
     }
 
-    public var spent: Int64 { needs + wants + unsorted + otherSpent }
+    public var spent: Int64 { Fils.sum([needs, wants, unsorted, otherSpent]) }
 
     public var onlyNeedsAndWants: Bool { unsorted == 0 && otherSpent == 0 }
 
@@ -121,20 +121,15 @@ public enum InsightsEngine {
   // MARK: - Arithmetic (integers; only ratios divide, rounded at the end)
 
   public static func percent(_ part: Int64, of whole: Int64) -> Int {
-    guard whole > 0 else { return 0 }
-    let m = part.magnitude
-    let w = UInt64(whole)
-    let rounded = Int((m * 200 + w) / (w * 2))
-    return part < 0 ? -rounded : rounded
+    Int(Fils.percentRounded(part, of: whole))
   }
 
   public static func average(_ values: [Int64]) -> Int64 {
     guard !values.isEmpty else { return 0 }
-    let sum = values.reduce(Int64(0), +)
-    let n = Int64(values.count)
-    let m = sum.magnitude
-    let rounded = Int64((m * 2 + UInt64(n)) / (UInt64(n) * 2))
-    return sum < 0 ? -rounded : rounded
+    let sum = values.reduce(Int128(0)) { $0 + Int128($1) }
+    let n = Int128(values.count)
+    let rounded = (sum.magnitude * 2 + n.magnitude) / (n.magnitude * 2)
+    return Int64(clamping: sum < 0 ? -Int128(rounded) : Int128(rounded))
   }
 
   public static func topChanges(current: [CategoryID: Int64], previous: [CategoryID: Int64],
@@ -142,7 +137,7 @@ public enum InsightsEngine {
     let ids = Set(current.keys).union(previous.keys)
     var changes: [(category: CategoryID, change: Int64)] = []
     for id in ids {
-      let change: Int64 = (current[id] ?? 0) - (previous[id] ?? 0)
+      let change: Int64 = (current[id] ?? 0).minus(previous[id] ?? 0)
       if change != 0 { changes.append((category: id, change: change)) }
     }
     changes.sort { a, b in
@@ -334,14 +329,14 @@ public enum InsightsEngine {
         label: isCurrent ? "Spent so far" : "Spent", figure: .aed(cur.spent), isNet: false, keptPercent: nil,
         income: .aed(0), spent: .aed(cur.spent), saved: .aed(cur.saved), split: nil, note: note, legend: legend)
     }
-    let net = cur.income - cur.spent
-    let unspent = max(0, cur.income - cur.spent - cur.saved)
+    let net = cur.income.minus(cur.spent)
+    let unspent = max(0, net.minus(cur.saved))
     legend.append(InsightsLegendRow(kind: .unspent, title: "Not yet spent or saved", amount: .aed(unspent),
                                     delta: nil, target: nil))
     return InsightsSummary(
       label: "Net · in minus spent", figure: .aed(net), isNet: true, keptPercent: percent(net, of: cur.income),
       income: .aed(cur.income), spent: .aed(cur.spent), saved: .aed(cur.saved),
-      split: InsightsSplit(needs: cur.needs, wants: cur.wants, unsorted: cur.unsorted + cur.otherSpent,
+      split: InsightsSplit(needs: cur.needs, wants: cur.wants, unsorted: cur.unsorted.plus(cur.otherSpent),
                            savings: cur.saved, unspent: unspent),
       note: MoneyPhrase([.text("Where "), .amount(.aed(cur.income)), .text(" of income went")]),
       legend: legend)
@@ -355,9 +350,9 @@ public enum InsightsEngine {
     }
     var acc: [String: Acc] = [:]
     for l in lines where l.kind == .spent {
-      acc[l.merchant, default: Acc()].amount += l.minor
+      acc[l.merchant, default: Acc()].amount.add(l.minor)
       acc[l.merchant, default: Acc()].count += 1
-      acc[l.merchant, default: Acc()].byCategory[l.categoryID, default: 0] += l.minor
+      acc[l.merchant, default: Acc()].byCategory[l.categoryID, default: 0].add(l.minor)
     }
     return acc.compactMap { name, a -> InsightsRow? in
       guard a.amount != 0 else { return nil }
@@ -424,14 +419,14 @@ public enum InsightsEngine {
       let change = s.netWorth.monthChange.minor
       if ctx.isCurrent {
         let caption: String
-        switch InsightsDelta.between(total, total - change)?.kind {
-        case .up, .down: caption = InsightsDelta.between(total, total - change)!.text + " this month"
+        switch InsightsDelta.between(total, total.minus(change))?.kind {
+        case .up, .down: caption = InsightsDelta.between(total, total.minus(change))!.text + " this month"
         default: caption = "No change this month"
         }
         netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total)), caption: caption + left,
                                   opens: true, mark: home.mark)
       } else if ctx.focus == now.date.yearMonth.previous {
-        netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total - change)),
+        netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total.minus(change))),
                                   caption: "End of \(ctx.focus.name)" + left, opens: true, mark: home.mark)
       } else {
         netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .missing,
@@ -440,7 +435,7 @@ public enum InsightsEngine {
     }
 
     let inVsSpent = cur.income > 0
-      ? InsightsReport(kind: .inVsSpent, title: "In vs spent", value: .signedMoney(.aed(cur.income - cur.spent)),
+      ? InsightsReport(kind: .inVsSpent, title: "In vs spent", value: .signedMoney(.aed(cur.income.minus(cur.spent))),
                        caption: "Each category by month", opens: false)
       : InsightsReport(kind: .inVsSpent, title: "In vs spent", value: .missing, caption: "Once income lands", opens: false)
 
@@ -470,7 +465,7 @@ public enum InsightsEngine {
     parts += [.text("AED "), .amount(.aed(totals.spent)), .text(" spent on needs and wants, AED "),
               .amount(.aed(totals.saved)), .text(" moved to savings.")]
     if totals.income > 0 {
-      parts.append(.text(" Kept \(percent(totals.income - totals.spent, of: totals.income))%."))
+      parts.append(.text(" Kept \(percent(totals.income.minus(totals.spent), of: totals.income))%."))
     }
     return MoneyPhrase(parts)
   }
@@ -493,7 +488,7 @@ public enum InsightsEngine {
                            now: LocalDateTime) -> InsightsDrill {
     let ctx = context(s, months: months, now: now)
     let mine = ctx.current.filter { matches($0, target) }
-    let total = mine.reduce(Int64(0)) { $0 + $1.minor }
+    let total = Fils.sum(mine.map(\.minor))
     let count = Set(mine.map(\.txnID)).count
 
     let name: String
@@ -509,12 +504,12 @@ public enum InsightsEngine {
 
     var line: [MoneyPhrase.Part] = [.text("\(count) transaction\(count == 1 ? "" : "s")")]
     if let comparison = ctx.comparison {
-      let before = ctx.previous.filter { matches($0, target) }.reduce(Int64(0)) { $0 + $1.minor }
-      let diff = total - before
+      let before = Fils.sum(ctx.previous.filter { matches($0, target) }.map(\.minor))
+      let diff = total.minus(before)
       if diff == 0 {
         line.append(.text(" · same as \(comparison.name)"))
       } else {
-        line += [.text(" · "), .amount(.aed(abs(diff))),
+        line += [.text(" · "), .amount(.aed(Int64(clamping: diff.magnitude))),
                  .text(diff < 0 ? " less than \(comparison.name)" : " more than \(comparison.name)")]
       }
     }
@@ -525,7 +520,7 @@ public enum InsightsEngine {
       var acc: [CategoryID: (count: Int, amount: Int64)] = [:]
       for l in mine {
         acc[l.categoryID, default: (0, 0)].count += 1
-        acc[l.categoryID, default: (0, 0)].amount += l.minor
+        acc[l.categoryID, default: (0, 0)].amount.add(l.minor)
       }
       categories = acc.map { id, a in
         InsightsDrillCategory(id: id, title: s.category(id)?.name ?? id, count: a.count, amount: .aed(a.amount))

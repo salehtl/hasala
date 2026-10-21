@@ -86,10 +86,8 @@ public struct InsightsDelta: Sendable, Hashable {
     }
     if current <= 0 { return InsightsDelta(kind: .gone, tone: .success) }
     let change = current - previous
-    let magnitude = change.magnitude
-    let whole = UInt64(previous)
-    let percent = Int((magnitude * 200 + whole) / (whole * 2))
-    let marked = magnitude * 10 >= whole
+    let percent = Int(clamping: Fils.percentRounded(change, of: previous).magnitude)
+    let marked = Int128(change.magnitude) * 10 >= Int128(previous)
     return change > 0
       ? InsightsDelta(kind: .up(percent: percent), tone: marked ? .warning : .neutral)
       : InsightsDelta(kind: .down(percent: percent), tone: marked ? .success : .neutral)
@@ -244,7 +242,7 @@ public struct InsightsSplit: Sendable, Hashable {
     self.unspent = unspent
   }
 
-  public var total: Int64 { max(0, needs) + max(0, wants) + max(0, unsorted) + max(0, savings) + max(0, unspent) }
+  public var total: Int64 { Fils.sum([needs, wants, unsorted, savings, unspent].map { max(0, $0) }) }
 }
 
 public struct InsightsSummary: Sendable, Hashable {

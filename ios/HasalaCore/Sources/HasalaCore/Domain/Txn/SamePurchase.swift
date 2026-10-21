@@ -1,3 +1,4 @@
+import CoreJSON
 import CoreMoney
 import CoreReplay
 import HasalaText
@@ -65,7 +66,7 @@ public enum SamePurchase {
   }
 
   public static func isForeign(_ f: Row, home: String) -> Bool {
-    f.live && !f.unparsed && !utf8Equal(f.currency, home) && (f.amountHomeMinor ?? 0) > 0
+    f.live && !f.unparsed && !f.archived && !f.heldCopy && !utf8Equal(f.currency, home) && (f.amountHomeMinor ?? 0) > 0
   }
 
   public static func isPosting(_ a: Row, home: String) -> Bool {
@@ -147,8 +148,15 @@ extension OpAuthor {
       set: [("archived", "user"), ("note", SamePurchase.note(foreignMinor: foreignMinor, currency: foreignCurrency))])
   }
 
-  public mutating func undoSamePurchase(foreignID: String, foreignVersion: Int64, previousHomeMinor: Int64, homeID: String, previousNote: String?) {
-    add(.txnEdited, entity: ("txn", foreignID), parent: foreignVersion, [("amount_home_minor", .string(String(previousHomeMinor)))])
+  public mutating func undoSamePurchase(
+    foreignID: String, foreignVersion: Int64, previousHomeMinor: Int64?, homeID: String, previousNote: String?,
+    refreeze: (currency: String, micro: Int64)? = nil
+  ) {
+    let home: JSONValue = refreeze == nil ? previousHomeMinor.map { .string(String($0)) } ?? .null : .null
+    add(.txnEdited, entity: ("txn", foreignID), parent: foreignVersion, [("amount_home_minor", home)])
+    if let r = refreeze, r.micro > 0 {
+      add(.rateSet, [("currency", .string(r.currency)), ("rate_micro", .string(String(r.micro)))])
+    }
     annotate(txnID: homeID, set: [("archived", nil), ("note", previousNote.flatMap { $0.isEmpty ? nil : $0 })])
   }
 

@@ -69,6 +69,7 @@ public struct PlanProjectModel: Sendable, Hashable, Identifiable {
   public var countInPlan: Bool
   public var complete: Bool
   public var completedOn: LocalDate?
+  public var mark: TotalMark? = nil
 }
 
 public struct PlanSnapshot: Sendable, Hashable {
@@ -109,13 +110,13 @@ public enum PlanEngine {
         } else {
           rows.append(row(c, s, month: month, budget: budget, spent: spent, day: day, days: days, now: now))
         }
-        bBudget += budget
-        bSpent += spent
+        bBudget.add(budget)
+        bSpent.add(spent)
       }
-      planned += bBudget
+      planned.add(bBudget)
       let budgetedRows = rows.filter { $0.budget.minor > 0 }
       let done = bucket == .savings && !budgetedRows.isEmpty && budgetedRows.allSatisfy { $0.verdict == .done }
-      sections.append(PlanSection(bucket: bucket, left: .aed(bBudget - bSpent), budget: .aed(bBudget), done: done,
+      sections.append(PlanSection(bucket: bucket, left: .aed(bBudget.minus(bSpent)), budget: .aed(bBudget), done: done,
                                   rows: rows))
     }
 
@@ -123,9 +124,10 @@ public enum PlanEngine {
       SplitShare(bucket: sec.bucket, share: Permille.ratio(sec.budget.minor, of: planned),
                  label: "\(percentRounded(sec.budget.minor, of: planned))%")
     }
-    let rta = s.plan.income.minor - planned
+    let income = s.plan.income(in: month)
+    let rta = income.minor.minus(planned)
     let incomeLine = MoneyPhrase([
-      .text("Income "), .amount(s.plan.income, .compact), .text(" · planned "), .amount(.aed(planned), .compact),
+      .text("Income "), .amount(income, .compact), .text(" · planned "), .amount(.aed(planned), .compact),
     ])
     let projects = s.projects.filter { !$0.complete }.map { projectModel($0, s, today: now.date) }
     return PlanSnapshot(
@@ -138,8 +140,7 @@ public enum PlanEngine {
 
   /// Whole percent, rounded half up (Needs 12,350 of 24,000 → 51%).
   static func percentRounded(_ part: Int64, of whole: Int64) -> Int64 {
-    guard whole > 0 else { return 0 }
-    return (part * 200 + whole) / (whole * 2)
+    Fils.percentRounded(part, of: whole)
   }
 
   static func row(
@@ -149,11 +150,16 @@ public enum PlanEngine {
     let paced = c.role == .everyday
     let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
     // Row figures hide as three dots (spec 03 §16.16).
-    let ofBudget = MoneyPhrase([
-      .amount(.aed(spent), hidden: 3), .text(" of "), .amount(.aed(budget), .compact, hidden: 3),
-    ])
+    let ofBudget = spent < 0
+      ? MoneyPhrase([
+        .signedMoney(.aed(spent.negated), style: .exact, hiddenGlyphs: 3), .text(" back · "),
+        .amount(.aed(budget), .compact, hidden: 3), .text(" planned"),
+      ])
+      : MoneyPhrase([
+        .amount(.aed(spent), hidden: 3), .text(" of "), .amount(.aed(budget), .compact, hidden: 3),
+      ])
     var detail: [PlanDetailPart] = []
-    var trailing = PlanRowModel.Trailing.left(.aed(budget - spent))
+    var trailing = PlanRowModel.Trailing.left(.aed(budget.minus(spent)))
 
     switch c.role {
     case .bill:
@@ -223,15 +229,15 @@ public enum PlanEngine {
 
   static func projectModel(_ p: Project, _ s: LedgerState, today: LocalDate) -> PlanProjectModel {
     let txns = projectTxns(p, s)
-    let spent = txns.filter { !$0.needsReview }.reduce(Int64(0)) { $0 + projectMinor($1) }
-    let pending = txns.filter(\.needsReview).reduce(Int64(0)) { $0 + projectMinor($1) }
+    let spent = Fils.sum(txns.filter { !$0.needsReview }, projectMinor)
+    let pending = Fils.sum(txns.filter(\.needsReview), projectMinor)
     let range = projectRange(p)
     let when = projectWhen(p, today: today)
     return PlanProjectModel(
       id: p.id, name: p.name, glyph: p.glyph, dates: [range, when].compactMap { $0 }.joined(separator: " · "),
-      range: range, when: when, left: p.budget.map { .aed($0.minor - spent) }, budget: p.budget,
+      range: range, when: when, left: p.budget.map { .aed($0.minor.minus(spent)) }, budget: p.budget,
       spent: .aed(spent), pending: .aed(pending), progress: Permille.ratio(spent, of: p.budget?.minor ?? 0),
-      countInPlan: p.countInPlan, complete: p.complete, completedOn: p.completedOn
+      countInPlan: p.countInPlan, complete: p.complete, completedOn: p.completedOn, mark: TotalMark.unrated(txns)
     )
   }
 
@@ -405,6 +411,7 @@ public struct ProjectDetail: Sendable, Hashable {
   /// "Trip spending stays out of October's budgets. It comes from the 12,000 you set aside."
   public var explainer: MoneyPhrase
   public var categories: [ProjectCategoryRow]
+  public var mark: TotalMark?
   /// The project's payments in the order they were made, as Paper lists them ("Mon 14 Sep ·
   /// Travel", then "Sat 19 Sep · Transport"): a project is one story, told from its start.
   public var transactions: [MiniTxnRow]
@@ -443,7 +450,7 @@ public extension PlanEngine {
     let (day, days) = (now.date.day, month.days)
     let budget = s.plan.budget(c.id, month).minor
     let spent = s.spent(c.id, in: month).minor
-    let left = budget - spent
+    let left = budget.minus(spent)
     let goal = s.goals.first { $0.categoryID == c.id }
     let paced = c.role == .everyday && goal == nil
     let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
@@ -467,7 +474,7 @@ public extension PlanEngine {
     case .done:
       word = c.role == .bill ? "Paid" : "Done"
     case .overBudget:
-      fact = MoneyPhrase([.amount(.aed(-left), .compact, hidden: 3), .text(" over")])
+      fact = MoneyPhrase([.amount(.aed(left.negated), .compact, hidden: 3), .text(" over")])
     }
 
     return CategoryDetail(
@@ -492,7 +499,7 @@ public extension PlanEngine {
     }
     let days = (1...max(1, today)).map { d in
       DaySpend(day: d, date: LocalDate(month.year, month.month, d),
-               spent: .aed(max(0, byDay[d]?.reduce(Int64(0)) { $0 + $1.minor } ?? 0)))
+               spent: .aed(max(0, Fils.sum((byDay[d] ?? []).map(\.minor)))))
     }
     var peak: DayByDay.Peak?
     if let top = days.max(by: { ($0.spent.minor, -$0.day) < ($1.spent.minor, -$1.day) }), top.spent.minor > 0 {
@@ -527,7 +534,7 @@ public extension PlanEngine {
       .map { t, minor in
         var r = MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c.glyph, hue: c.hue,
-          detail: t.joined(t.postedAt.date.short, t.postedTime), amount: .aed(abs(minor)), isIncome: minor < 0,
+          detail: t.joined(t.postedAt.date.short, t.postedTime), amount: .aed(Int64(clamping: minor.magnitude)), isIncome: minor < 0,
           project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) })
         r.showHome(t, amount: !t.isNotCounted)
         return r
@@ -540,7 +547,7 @@ public extension PlanEngine {
     var out: [(txn: Txn, minor: Int64)] = []
     for t in s.txns where t.countsInPlan && t.postedAt.date.yearMonth == month {
       if let p = s.project(t.projectID), !p.countInPlan { continue }
-      let minor = t.lines.filter { $0.category == c }.reduce(Int64(0)) { $0 + $1.minor }
+      let minor = Fils.sum(t.lines.filter { $0.category == c }.map(\.minor))
       if t.lines.contains(where: { $0.category == c }) { out.append((t, minor)) }
     }
     return out
@@ -587,7 +594,7 @@ public extension PlanEngine {
       let detail = names.count <= 2 ? listed(names) : "\(names[0]), \(names[1]) and \(names.count - 2) more"
       return ProjectCategoryRow(
         id: key, name: c?.name ?? "Not sorted", glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other, detail: detail,
-        spent: .aed(ts.reduce(Int64(0)) { $0 + projectMinor($1) }))
+        spent: .aed(Fils.sum(ts, projectMinor)))
     }.sorted { $0.spent.minor > $1.spent.minor }
     let monthName = now.date.yearMonth.name
     let kind = spendingKind(p)
@@ -606,7 +613,7 @@ public extension PlanEngine {
       id: p.id, name: p.name, glyph: p.glyph, budget: p.budget, spent: card.spent, left: card.left,
       pending: card.pending, progress: card.progress, range: card.range, when: card.when,
       countInPlan: p.countInPlan, complete: p.complete, explainer: explainer, categories: categories,
-      transactions: txns.map { t in
+      mark: card.mark, transactions: txns.map { t in
         let c = s.category(t.categoryID)
         var r = MiniTxnRow(
           id: t.id, merchant: t.title, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,

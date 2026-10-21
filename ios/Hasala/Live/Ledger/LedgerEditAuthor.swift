@@ -5,6 +5,7 @@ import CoreProjection
 import CoreReplay
 import CoreSync
 import CoreTime
+import CoreWire
 import Foundation
 import HasalaModels
 
@@ -32,13 +33,15 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case project(txn: String, project: String?)
     case archived(txn: String, archived: Bool)
     case split(txn: String, lines: [SplitLine])
-    case budget(category: String, month: YearMonth, amount: Money)
-    case move(from: String?, to: String?, month: YearMonth, amount: Money)
+    case budget(category: String, month: YearMonth, onward: Int64, assigned: Int64)
+    case move(from: String?, to: String?, month: YearMonth, amount: Money, undoes: String)
     case occurrence(bill: String, due: LocalDate)
     case projectState(project: String, status: String, completedOn: String?, countInPlan: Bool)
-    case samePurchase(foreign: String, previousHome: Int64, home: String, previousNote: String)
+    case samePurchase(foreign: String, previousHome: Int64, previousRateMicro: Int64?, home: String, previousNote: String)
     case samePurchaseDeclined(home: String)
     case copyReopened(txn: String)
+    case copyUnmerged(txn: String, other: String, version: Int64)
+    case bill(id: String, draft: OpAuthor.BillDraft)
   }
 
   enum Failure: Error, Equatable {
@@ -48,7 +51,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   /// Authors `edit`. `before` is the screens' state the gesture was made on (a bill's due
   /// date, the current amount).
-  func author(_ edit: LedgerEdit, before: LedgerState, today: LocalDate) async throws {
+  @discardableResult
+  func author(_ edit: LedgerEdit, before: LedgerState, today: LocalDate) async throws -> [Inverse] {
     switch edit {
     case .addTransaction(let d):
       let wall = try Self.localWallMs(d.postedAt)
@@ -60,12 +64,17 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
       var snapshots: [OpAuthor.RuleSnapshot] = []
-      if learnRule { snapshots = try ruleSnapshots() }
+      var filed: [(merchantRaw: String, category: String)] = []
+      if learnRule {
+        snapshots = try ruleSnapshots()
+        filed = try categorizedRows(except: id)
+      }
+      let guardRows = filed
       try await build { a throws(AuthorError) in
         a.categorize(txnID: id, parentVersion: row.version, category: c, needsReview: false)
         if let project { a.annotate(txnID: id, set: [("project_id", project)]) }
         if learnRule {
-          try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: [])
+          try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: guardRows)
         }
       }
     case .markTransfer(let id):
@@ -99,6 +108,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in
         a.resolveCopy(txnID: id, parentVersion: row.version, otherTxnID: other, decision: merge ? .merge : .keepBoth)
       }
+      if merge { return [.copyUnmerged(txn: id, other: other, version: row.version + 1)] }
     case .resolveSamePurchase(let id, let same):
       let row = try txn(id)
       guard let f = before.txn(id)?.samePurchase?.of else { throw Failure.notFound }
@@ -117,10 +127,16 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in a.annotate(txnID: id, set: [("archived", archived ? "user" : nil)]) }
     case .setBudget(let c, let month, let amount):
       let m = try civil(month)
+      let inverse = Self.budgetInverse(try reader.planState(), category: c, month: m, shown: month)
       try await build { a throws(AuthorError) in a.setBudget(category: c, month: m, amountMinor: amount.minor) }
+      return [inverse]
     case .moveMoney(let from, let to, let month, let amount):
       let m = try civil(month)
-      try await build { a throws(AuthorError) in a.moveMoney(month: m, from: from, to: to, amountMinor: amount.minor) }
+      let ops = try await build { a throws(AuthorError) in
+        a.moveMoney(month: m, from: from, to: to, amountMinor: amount.minor)
+      }
+      guard let op = ops.first(where: { $0.type == .budgetMoved }) else { return [] }
+      return [.move(from: to, to: from, month: month, amount: amount, undoes: op.opID)]
     case .markBillPaid(let id):
       guard let due = before.bill(id)?.nextDue, let d = CivilDate(year: due.year, month: due.month, day: due.day) else {
         throw Failure.notFound
@@ -128,15 +144,17 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in a.setBillOccurrence(bill: id, due: d, .paid(txn: nil)) }
     case .acceptBillAmount(let id):
       guard let shown = before.bill(id)?.amount else { throw Failure.notFound }
-      try await editBill(id) { d in
+      let old = try await editBill(id) { d in
         d.amountMinor = shown.minor
       }
+      return [.bill(id: id, draft: old)]
     case .stopTrackingBill(let id):
-      try await editBill(id) { d in
+      let old = try await editBill(id) { d in
         d.status = .cancelled
         let t = CivilDate(year: today.year, month: today.month, day: today.day) ?? d.start
         d.end = d.start < t ? t : CivilDate(daysSinceEpoch: d.start.daysSinceEpoch + 1)
       }
+      return [.bill(id: id, draft: old)]
     case .setRate(let currency, let micro):
       try await build { a throws(AuthorError) in try a.setRate(currency: currency, rateMicro: micro) }
     case .unsetRate(let currency):
@@ -189,6 +207,35 @@ nonisolated struct LedgerEditAuthor: Sendable {
       .setDisplayName:
       break
     }
+    return []
+  }
+
+  static func budgetInverse(_ plan: CoreReplay.PlanState, category c: String, month m: CivilMonth, shown: YearMonth) -> Inverse {
+    let row = plan.cells[c] ?? [:]
+    var inherited: Int64 = 0
+    var best: CivilMonth?
+    for (key, cell) in row {
+      guard let km = CivilMonth(wire: key), km < m, let onward = cell.onwardSet else { continue }
+      if best == nil || best! < km {
+        best = km
+        inherited = onward
+      }
+    }
+    let cell = row[m.wire]
+    let assigned: Int64
+    if let cell, let set = cell.latestSet {
+      assigned = Int64(clamping: Int128(set) + Int128(cell.movesSinceSet))
+    } else {
+      assigned = Int64(clamping: Int128(inherited) + Int128(cell?.movesAll ?? 0))
+    }
+    return .budget(category: c, month: shown, onward: cell?.onwardSet ?? inherited, assigned: max(0, assigned))
+  }
+
+  private func categorizedRows(except id: String) throws -> [(merchantRaw: String, category: String)] {
+    try reader.activity(limit: 1_000_000).compactMap { r in
+      guard r.id != id, !r.needsReview, let c = r.category else { return nil }
+      return (r.merchantRaw, c)
+    }
   }
 
   static func localWallMs(_ t: LocalDateTime) throws -> Int64 {
@@ -235,9 +282,17 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
-      case .samePurchase(let t, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
+      case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       default: break
       }
+    }
+    var bills: [String: Int64] = [:]
+    if inverses.contains(where: { if case .bill = $0 { true } else { false } }) {
+      for (id, b) in try reader.bills() { bills[id] = b.version }
+    }
+    var liveRates: [String: Int64] = [:]
+    if inverses.contains(where: { if case .samePurchase(_, _, .some, _, _) = $0 { true } else { false } }) {
+      for r in try reader.rates() { if let micro = r.rateMicro { liveRates[r.currency] = micro } }
     }
     try await build { a throws(AuthorError) in
       for inv in inverses {
@@ -259,12 +314,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
           a.split(
             txnID: t, parentVersion: row.version,
             parts: lines.map { (category: $0.categoryID, amountMinor: $0.amount.minor, note: $0.note.isEmpty ? nil : $0.note) })
-        case .budget(let c, let month, let amount):
+        case .budget(let c, let month, let onward, let assigned):
           guard let m = CivilMonth(year: month.year, month: month.month) else { continue }
-          a.setBudget(category: c, month: m, amountMinor: amount.minor)
-        case .move(let from, let to, let month, let amount):
+          a.setBudget(category: c, month: m, amountMinor: onward)
+          if assigned != onward { a.setBudget(category: c, month: m, amountMinor: assigned, scope: "only") }
+        case .move(let from, let to, let month, let amount, let undoes):
           guard let m = CivilMonth(year: month.year, month: month.month) else { continue }
-          a.moveMoney(month: m, from: from, to: to, amountMinor: amount.minor, reason: "undo")
+          a.moveMoney(month: m, from: from, to: to, amountMinor: amount.minor, reason: "undo", undoes: undoes)
         case .occurrence(let bill, let due):
           guard let d = CivilDate(year: due.year, month: due.month, day: due.day) else { continue }
           a.setBillOccurrence(bill: bill, due: d, .clear)
@@ -275,15 +331,23 @@ nonisolated struct LedgerEditAuthor: Sendable {
           d.completedOn = completedOn.flatMap(CivilDate.init(wire:))
           d.countInPlan = countInPlan
           try a.defineProject(id: id, parentVersion: p.version, d)
-        case .samePurchase(let f, let previous, let home, let note):
+        case .samePurchase(let f, let previous, let rate, let home, let note):
           guard let row = rows[f] else { continue }
-          a.undoSamePurchase(foreignID: f, foreignVersion: row.version, previousHomeMinor: previous, homeID: home, previousNote: note)
+          let live = rate == nil ? nil : liveRates[row.currency].map { (currency: row.currency, micro: $0) }
+          a.undoSamePurchase(
+            foreignID: f, foreignVersion: row.version, previousHomeMinor: live == nil ? previous : nil, homeID: home,
+            previousNote: note, refreeze: live)
         case .samePurchaseDeclined(let home):
           guard let row = rows[home] else { continue }
           a.undoDeclineSamePurchase(homeID: home, homeVersion: row.version)
         case .copyReopened(let t):
           guard let row = rows[t], let other = row.copyOf else { continue }
           a.resolveCopy(txnID: t, parentVersion: row.version, otherTxnID: other, decision: nil)
+        case .copyUnmerged(let t, let other, let version):
+          a.resolveCopy(txnID: t, parentVersion: version, otherTxnID: other, decision: nil)
+        case .bill(let id, let draft):
+          guard let version = bills[id] else { continue }
+          try a.setBill(id: id, parentVersion: version, draft)
         }
       }
     }
@@ -292,11 +356,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
   // MARK: Building
 
   /// One blob under the account's shared stamps; enqueued, then re-projected.
-  private func build(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws {
+  @discardableResult
+  private func build(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws -> [Op] {
     let ctx = try await observer.authorContext()
-    guard let blob = try observer.stamps.build(ctx, body) else { return }
+    guard let blob = try observer.stamps.build(ctx, body) else { return [] }
     try await outbox.enqueue(blob.ops)
     try await observer.reproject()
+    return blob.ops
   }
 
   /// The name a merchant shows with no rename (03c §3.6: the dictionary's, else the
@@ -318,13 +384,15 @@ nonisolated struct LedgerEditAuthor: Sendable {
   }
 
   /// A whole-record bill edit from the projected record.
-  private func editBill(_ id: String, _ change: (inout OpAuthor.BillDraft) -> Void) async throws {
-    guard let (_, b) = try reader.bills().first(where: { $0.id == id }), var d = Self.draft(b) else {
+  private func editBill(_ id: String, _ change: (inout OpAuthor.BillDraft) -> Void) async throws -> OpAuthor.BillDraft {
+    guard let (_, b) = try reader.bills().first(where: { $0.id == id }), let old = Self.draft(b) else {
       throw Failure.notFound
     }
+    var d = old
     change(&d)
     let draft = d
     try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: b.version, draft) }
+    return old
   }
 
   static func draft(_ b: CoreReplay.Bill) -> OpAuthor.BillDraft? {

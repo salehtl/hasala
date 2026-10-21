@@ -53,3 +53,63 @@ import Testing
     #expect(try !tables.isParsing("m2"))
   }
 }
+
+actor CancelOnParse: MailboxPersistence {
+  let base: any MailboxPersistence
+  var armed = false
+
+  init(_ base: any MailboxPersistence) { self.base = base }
+
+  func arm() { armed = true }
+
+  func loadState() async throws(MailboxPersistenceError) -> MailboxState { try await base.loadState() }
+  func accounted(among ids: [String]) async throws(MailboxPersistenceError) -> Set<String> {
+    try await base.accounted(among: ids)
+  }
+  func staged(limit: Int) async throws(MailboxPersistenceError) -> [ParsedMail] { try await base.staged(limit: limit) }
+  func stagedCount() async throws(MailboxPersistenceError) -> Int { try await base.stagedCount() }
+  func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError) { try await base.commit(c) }
+  func setAsideRecords() async throws(MailboxPersistenceError) -> [SetAsideRecord] { try await base.setAsideRecords() }
+  func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord] { try await base.unreadableRecords() }
+  func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow] { try await base.bankHealth() }
+  func senderAddresses() async throws(MailboxPersistenceError) -> [String] { try await base.senderAddresses() }
+  func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) { try await base.addSenderAddress(address) }
+  func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool { try await base.isParsing(messageID) }
+  func markParsing(_ messageID: String) async throws(MailboxPersistenceError) {
+    if armed {
+      armed = false
+      withUnsafeCurrentTask { $0?.cancel() }
+    }
+    try await base.markParsing(messageID)
+  }
+  func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { try await base.clearParsing(messageID) }
+  func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport] { try await base.pendingImports() }
+  func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String] { try await base.unparsedSenders() }
+}
+
+@Suite struct CancelledParseTests {
+  @Test(arguments: [Backend.sqlite, .memory])
+  func aCycleCancelledWhileParsingLeavesTheMessageForTheNextCycle(_ backend: Backend) async throws {
+    var gate: CancelOnParse?
+    let rig = Rig(backend: backend, wrapStore: { base in
+      let g = CancelOnParse(base)
+      gate = g
+      return g
+    })
+    let store = try #require(gate)
+    await rig.connectAndActivate()
+    rig.gmail.add(SyntheticMail.dibCard(id: "d2", amount: "2.00", dateMs: rig.clock.nowMs() - 1000))
+    await store.arm()
+    let engine = rig.engine
+    _ = await Task { await engine.runCycle(trigger: .refresh) }.value
+    #expect(await rig.accounted("d2") == nil)
+    #expect(try await store.isParsing("d2") == false)
+    #expect(!(await rig.enqueued()).contains { $0.messageID == "d2" })
+
+    let r = await rig.engine.runCycle(trigger: .refresh)
+    #expect(r.ops == 1 && r.review == 0)
+    let d2 = try #require(await rig.enqueued().first { $0.messageID == "d2" })
+    #expect(d2.payload["unparsed"] == .bool(false) && d2.payload["amount_minor"] == .string("200"))
+    #expect(await rig.accounted("d2") == .op)
+  }
+}

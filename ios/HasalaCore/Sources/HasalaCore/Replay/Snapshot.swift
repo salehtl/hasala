@@ -1,3 +1,5 @@
+// lint-allow: JSONEncoder the snapshot is a cache of the fold, never compared byte for byte; a property list read the string "$null" back as nil.
+// lint-allow: JSONDecoder the snapshot is a cache of the fold, never compared byte for byte; a property list read the string "$null" back as nil.
 // The fold fingerprint canary (replay/snapshot.ts `CANARY`, extended for v4 as
 // spec 03c §11 asks) and the Codable fold snapshot (spec 04 §5.3).
 //
@@ -15,7 +17,7 @@
 // alert is held as its copy, and a transfer notice whose same-amount alert
 // comes forty minutes later and stays its own row.
 //
-// The snapshot is a binary property list of `StateSnapshot`. Ordered maps
+// The snapshot is the LZFSE-compressed JSON of `StateSnapshot`. Ordered maps
 // encode their insertion order, so a warm start projects the same `ord`
 // columns as a cold fold (client-core-b §5.4's TypeScript bug is not
 // ported). The validation table (`bound_tip`, digest, cursor) belongs to the
@@ -105,7 +107,7 @@ public enum FoldCanary {
 /// The fold snapshot (spec 04 §5.3): the whole state, delivery bookkeeping and
 /// `maxAuthored` included, with every map's insertion order.
 public struct StateSnapshot: Sendable, Codable, Equatable {
-  public static let currentFormat = 2
+  public static let currentFormat = 3
   public var formatVersion: Int
   public var foldPrint: String
   public var state: State
@@ -124,18 +126,17 @@ public enum SnapshotError: Error, Sendable, Equatable {
 }
 
 public enum SnapshotCodec {
-  /// The binary property list of `snapshot`.
+  /// The LZFSE-compressed JSON of `snapshot`.
   public static func encode(_ snapshot: StateSnapshot) throws -> Data {
-    let e = PropertyListEncoder()
-    e.outputFormat = .binary
-    return try e.encode(snapshot)
+    try (JSONEncoder().encode(snapshot) as NSData).compressed(using: .lzfse) as Data
   }
 
   /// Decodes a payload, refusing another format or other fold semantics.
   public static func decode(_ data: Data) throws(SnapshotError) -> StateSnapshot {
     let s: StateSnapshot
     do {
-      s = try PropertyListDecoder().decode(StateSnapshot.self, from: data)
+      let json = try (data as NSData).decompressed(using: .lzfse) as Data
+      s = try JSONDecoder().decode(StateSnapshot.self, from: json)
     } catch {
       throw .undecodable
     }

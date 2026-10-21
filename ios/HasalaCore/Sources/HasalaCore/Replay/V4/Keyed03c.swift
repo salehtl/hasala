@@ -77,7 +77,7 @@ extension State {
     }
     var name: String?
     if let v = P.present(p["display_name"]) { name = try P.label(v, "display_name") }
-    merchantNames[key] = Keyed(name, opID: e.op.opID)
+    merchantNames[ExactKey(key)] = Keyed(name, opID: e.op.opID)
   }
 
   mutating func applySenderTrustSet(_ e: LogEntry) throws(PayloadError) {

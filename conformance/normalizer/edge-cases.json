@@ -894,6 +894,36 @@
       "expect_date_source": "received"
     },
     {
+      "name": "hdr-rfc2047-utf8-alias-word-decoded",
+      "class": "headers",
+      "note": "htmlindex resolves utf8 and unicode-1-1-utf-8 to UTF-8, so the word decodes; each word is decoded on its own",
+      "raw_base64": "RnJvbTogYUBiLmMNClN1YmplY3Q6ID0/dXRmOD9CP1EyRm13Nms9Pz0gPT9VTklDT0RFLTEtMS1VVEYtOD9RP189QzM9QTk/PSA9P3V0Zjg/Qj93Nmc9Pz0NCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KDQpib2R5DQo=",
+      "expect_error": "",
+      "expect_text_base64": "Ym9keQ==",
+      "expect_part": "plain",
+      "expect_charset": "utf-8",
+      "expect_subject_base64": "Q2Fmw6kgw6nDqA==",
+      "expect_from_base64": "YUBiLmM=",
+      "expect_forwarded": false,
+      "expect_email_date": "2026-08-01T12:00:00Z",
+      "expect_date_source": "received"
+    },
+    {
+      "name": "hdr-rfc2047-utf8-alias-split-sequence",
+      "class": "headers",
+      "note": "an alias word is decoded alone, so a sequence split across two words becomes U+FFFD, where two utf-8 words join their bytes",
+      "raw_base64": "RnJvbTogYUBiLmMNClN1YmplY3Q6ID0/dXRmOD9CP3d3PT0/PSA9P3V0Zjg/Qj9xUT09Pz0NCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOA0KDQpib2R5DQo=",
+      "expect_error": "",
+      "expect_text_base64": "Ym9keQ==",
+      "expect_part": "plain",
+      "expect_charset": "utf-8",
+      "expect_subject_base64": "77+977+9",
+      "expect_from_base64": "YUBiLmM=",
+      "expect_forwarded": false,
+      "expect_email_date": "2026-08-01T12:00:00Z",
+      "expect_date_source": "received"
+    },
+    {
       "name": "hdr-rfc2047-unknown-charset-kept-raw",
       "class": "headers",
       "note": "an undecodable word leaves the whole field at its raw value",

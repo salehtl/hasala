@@ -122,14 +122,14 @@ struct AccountRootView<Main: View>: View {
     case .frozen(let info):
       FrozenWall(session: session, info: info)
     case .ready:
-      main()
-        .safeAreaInset(edge: .top, spacing: 0) {
-          if let info = session.leftFrozen {
-            FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
-              Task { await session.signOut() }
-            })
-          }
+      VStack(spacing: 0) {
+        if let info = session.leftFrozen {
+          FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
+            Task { await session.signOut() }
+          })
         }
+        main()
+      }
         // A password reset another iPhone asked this one to approve (spec 04 §6.12):
         // checked on every foreground, in builds that offer password resets.
         .task(id: scenePhase) {

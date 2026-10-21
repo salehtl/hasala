@@ -82,6 +82,7 @@ final class OnboardingStore {
     let previous = old ?? lastPhase
     lastPhase = new
     if new == .signedOut, let previous, previous != .signedOut { forgetAccountDrafts() }
+    if new != .signedOut, new != .checking { signIn.forgetRecovery() }
   }
 
   /// Sign-out, erase, wipe: every draft goes; the stories' page stays.

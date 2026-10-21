@@ -279,10 +279,11 @@ actor WorkCoordinator {
     }
   }
 
-  /// A stop the gate shows: one that ends the account, or the server's "update Hasala"
-  /// (`426`, spec 04 §6.5 RD-1), after which every call is refused.
+  /// A stop the gate shows: one that ends the account, or a halt (spec 04 §5.7), the
+  /// server's "update Hasala" (`426`, §6.5 RD-1) among them.
   static func surfaces(_ stop: SyncStop) -> Bool {
-    endsTheAccount(stop) || stop == .halted(.updateRequired)
+    if case .halted = stop { return true }
+    return endsTheAccount(stop)
   }
 
   /// A stop the screens read through (the last projection is still good).

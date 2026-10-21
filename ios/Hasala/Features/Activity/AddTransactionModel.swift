@@ -53,6 +53,9 @@ final class AddTransactionModel {
   var missing: String? {
     guard let minor = entry.minor, minor > 0 else { return nil }
     if merchant.trimmedSpaces.isEmpty { return "Add who it was with" }
+    if merchant.trimmedSpaces.count > ManualEntryDraft.maxMerchantLength {
+      return "Keep the name to \(ManualEntryDraft.maxMerchantLength) characters"
+    }
     if categoryID == nil { return "Choose a category" }
     return nil
   }

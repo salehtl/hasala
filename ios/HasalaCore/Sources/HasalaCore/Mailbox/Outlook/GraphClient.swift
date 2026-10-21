@@ -3,14 +3,16 @@
 //
 //   GET    /me/messages              ALWAYS with a sender `$filter` (`eq` on the From address,
 //                                    one clause per known bank address) and a received-time
-//                                    bound; ids, received time, From and folder id only (§1)
-//   GET    /me/messages/{id}         id, received time, From and folder id, for a listed id the
-//                                    run has not seen in its listing
+//                                    bound; ids, received time, From and folder only (§1)
+//   GET    /me/messages/{id}         id, received time, From and folder, for a listed id the run
+//                                    has not seen in its listing
 //   GET    /me/messages/{id}/$value  the MIME, for a listed id (§4)
 //   GET    /me/mailFolders/inbox     `$select=id` only: does this account have a mailbox, and
 //                                    which folder id is the Inbox (§3a)
-//   POST   /subscriptions            `me/messages`, `created`, the server's two hook URLs, the
-//   PATCH  /subscriptions/{id}       link's clientState, now + 6 d 23 h (§6)
+//   GET    /me/mailFolders/junkemail and /deleteditems, `$select=id` only: a message in Junk
+//                                    Email is marked spam, one in Deleted Items is left out
+//   POST   /subscriptions            the inbox's messages, `created`, the server's two hook URLs,
+//   PATCH  /subscriptions/{id}       the link's clientState, now + 6 d 23 h (§6)
 //   DELETE /subscriptions/{id}
 //
 // There is no delta query and no unfiltered listing: the rest of the mailbox, its ids included,
@@ -37,15 +39,19 @@ import Foundation
 public struct OutlookLinkState: Sendable, Equatable {
   public var clientState: String
   public var subscriptionID: String?
+  /// The resource the subscription watches; nil for one made before it was the inbox alone.
+  public var subscriptionResource: String?
 
-  public init(clientState: String, subscriptionID: String? = nil) {
+  public init(clientState: String, subscriptionID: String? = nil, subscriptionResource: String? = nil) {
     self.clientState = clientState
     self.subscriptionID = subscriptionID
+    self.subscriptionResource = subscriptionResource
   }
 
   var bytes: [UInt8] {
     var o = JSONObject([("client_state", .string(clientState))])
     if let subscriptionID { o["subscription_id"] = .string(subscriptionID) }
+    if let subscriptionResource { o["subscription_resource"] = .string(subscriptionResource) }
     return JSONWriter().bytes(.object(o))
   }
 
@@ -54,6 +60,7 @@ public struct OutlookLinkState: Sendable, Equatable {
     else { return nil }
     clientState = cs
     subscriptionID = o["subscription_id"]?.stringValue
+    subscriptionResource = o["subscription_resource"]?.stringValue
   }
 }
 
@@ -138,13 +145,16 @@ public final class MemoryOutlookLinkStore: OutlookLinkStore, @unchecked Sendable
 /// that follows needs no metadata request (§4: "Do not fetch metadata first").
 final class GraphListingCache: @unchecked Sendable {
   private let lock = NSLock()
-  private var entries: [String: (address: String, receivedMs: Int64, folder: String?)] = [:]
+  private var entries: [String: (address: String, receivedMs: Int64, folder: String?, junk: Bool)] = [:]
+  private var folders: GraphClient.SpecialFolders?
   private var inbox: String?
 
-  func put(_ id: String, address: String, receivedMs: Int64, folder: String?) {
-    lock.withLock { entries[id] = (address, receivedMs, folder) }
+  func put(_ id: String, address: String, receivedMs: Int64, folder: String?, junk: Bool) {
+    lock.withLock { entries[id] = (address, receivedMs, folder, junk) }
   }
-  func get(_ id: String) -> (address: String, receivedMs: Int64, folder: String?)? { lock.withLock { entries[id] } }
+  func get(_ id: String) -> (address: String, receivedMs: Int64, folder: String?, junk: Bool)? { lock.withLock { entries[id] } }
+  func special() -> GraphClient.SpecialFolders? { lock.withLock { folders } }
+  func setSpecial(_ f: GraphClient.SpecialFolders) { lock.withLock { folders = f } }
   var inboxID: String? {
     get { lock.withLock { inbox } }
     set { lock.withLock { inbox = newValue } }
@@ -162,6 +172,16 @@ public struct GraphClient: Sendable {
   public static let immutableIDs = ("Prefer", "IdType=\"ImmutableId\"")
   /// `error.code` of a Microsoft account that has no Outlook mailbox.
   public static let noMailboxCode = "MailboxNotEnabledForRESTAPI"
+  /// The subscription's resource: new mail in the inbox only, as Gmail's watch is.
+  public static let subscriptionResource = "me/mailFolders('inbox')/messages"
+  static let subscriptionResources: Set<String> = ["me/messages", subscriptionResource.lowercased()]
+  static let messageFields = "id,receivedDateTime,from,parentFolderId"
+
+  /// The ids of Junk Email and Deleted Items (nil when the mailbox has no such folder).
+  struct SpecialFolders: Sendable, Equatable {
+    var junk: String?
+    var deleted: String?
+  }
 
   let http: any HTTPExchange
   let accessToken: String
@@ -239,7 +259,7 @@ public struct GraphClient: Sendable {
   public static func listQuery(_ addresses: [String], sinceSec: Int64, top: Int = pageSize) -> [(String, String)] {
     let clauses = addresses.map { "from/emailAddress/address eq '\($0)'" }
     let filter = "receivedDateTime ge \(isoSeconds(sinceSec)) and (\(clauses.joined(separator: " or ")))"
-    return [("$filter", filter), ("$select", "id,receivedDateTime,from,parentFolderId"), ("$top", String(top))]
+    return [("$filter", filter), ("$select", messageFields), ("$top", String(top))]
   }
 
   /// `2026-10-13T00:00:00Z`.
@@ -274,8 +294,10 @@ public struct GraphClient: Sendable {
       }
     }
     var ids: [String] = []
-    var seen: [(String, String, Int64, String?)] = []
-    for m in o["value"]?.arrayValue ?? [] {
+    var seen: [(String, String, Int64, String?, Bool)] = []
+    let values = o["value"]?.arrayValue ?? []
+    let folders = values.isEmpty ? SpecialFolders() : try await specialFolders()
+    for m in values {
       guard let id = m["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "list") }
       let address = m["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
       let received = m["receivedDateTime"]?.stringValue.flatMap { try? parseInstantMs($0) }
@@ -284,10 +306,14 @@ public struct GraphClient: Sendable {
         let received,
         received >= sinceSec * 1000
       else { throw .filterNotApplied }
+      let parent = m["parentFolderId"]?.stringValue
+      if let deleted = folders.deleted, parent == deleted { continue }
       ids.append(id)
-      seen.append((id, address, received, m["parentFolderId"]?.stringValue))
+      seen.append((id, address, received, parent, folders.junk != nil && parent == folders.junk))
     }
-    for (id, address, received, folder) in seen { cache.put(id, address: address, receivedMs: received, folder: folder) }
+    for (id, address, received, folder, junk) in seen {
+      cache.put(id, address: address, receivedMs: received, folder: folder, junk: junk)
+    }
     let next = o["@odata.nextLink"]?.stringValue
     return MailListPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
   }
@@ -296,16 +322,35 @@ public struct GraphClient: Sendable {
 
   func path(_ id: String) -> String { "/me/messages/\(FormEncoding.escape(id))" }
 
+  /// The ids of Junk Email and Deleted Items, read once per client.
+  func specialFolders() async throws(MailAPIError) -> SpecialFolders {
+    if let f = cache.special() { return f }
+    let f = SpecialFolders(junk: try await folderID("junkemail"), deleted: try await folderID("deleteditems"))
+    cache.setSpecial(f)
+    return f
+  }
+
+  func folderID(_ wellKnownName: String) async throws(MailAPIError) -> String? {
+    do {
+      let o = try await object(.get, url("/me/mailFolders/\(wellKnownName)", [("$select", "id")]), op: "folder")
+      return o["id"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+    } catch .status(404, _) {
+      return nil
+    }
+  }
+
   /// From and received time: from this run's listing when it named the id, else one request.
   public func messageMetadata(id: String) async throws(MailAPIError) -> MailMessageMetadata {
     if let c = cache.get(id) { return Self.metadata(id, c.address, c.receivedMs) }
-    let o = try await object(
-      .get, url(path(id), [("$select", "id,receivedDateTime,from,parentFolderId")]), op: "metadata")
+    let o = try await object(.get, url(path(id), [("$select", Self.messageFields)]), op: "metadata")
     let address = o["from"]?["emailAddress"]?["address"]?.stringValue ?? ""
     guard let received = o["receivedDateTime"]?.stringValue.flatMap({ try? parseInstantMs($0) }) else {
       throw .status(200, op: "metadata")
     }
-    cache.put(id, address: address, receivedMs: received, folder: o["parentFolderId"]?.stringValue)
+    var junk = false
+    let parent = o["parentFolderId"]?.stringValue
+    if let parent { junk = try await specialFolders().junk == parent }
+    cache.put(id, address: address, receivedMs: received, folder: parent, junk: junk)
     return Self.metadata(id, address, received)
   }
 
@@ -320,9 +365,10 @@ public struct GraphClient: Sendable {
     let inbox = try await inboxFolderID()
     let res = try await call(.get, url(path(id) + "/$value"), json: false, op: "raw")
     guard !res.body.isEmpty else { throw .status(res.status, op: "raw") }
-    let folder = cache.get(id)?.folder
+    let entry = cache.get(id)
     return MailRawMessage(
-      id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received, inInbox: folder == inbox)
+      id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received, spam: entry?.junk ?? false,
+      inInbox: entry?.folder == inbox)
   }
 
   public func inboxFolderID() async throws(MailAPIError) -> String {
@@ -355,7 +401,7 @@ public struct GraphClient: Sendable {
     .object(
       JSONObject([
         ("changeType", .string("created")), ("notificationUrl", .string(notificationURL)),
-        ("lifecycleNotificationUrl", .string(lifecycleURL)), ("resource", .string("me/messages")),
+        ("lifecycleNotificationUrl", .string(lifecycleURL)), ("resource", .string(Self.subscriptionResource)),
         ("expirationDateTime", .string(Instant.iso(expiresAtMs) ?? "")), ("clientState", .string(clientState)),
       ]))
   }
@@ -365,7 +411,7 @@ public struct GraphClient: Sendable {
     o["expirationDateTime"]?.stringValue.flatMap { try? parseInstantMs($0) } ?? asked
   }
 
-  /// Creates the subscription. A `409 Conflict` means the app already has one for `me/messages`
+  /// Creates the subscription. A `409 Conflict` means the app already has one for the inbox
   /// in this mailbox (another iPhone's, or one this iPhone lost track of): it is deleted and the
   /// subscription created again, once.
   func createSubscription(_ n: String, _ l: String, state: OutlookLinkState) async throws(MailAPIError)
@@ -383,18 +429,20 @@ public struct GraphClient: Sendable {
     guard let id = o["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "subscribe") }
     var kept = state
     kept.subscriptionID = id
+    kept.subscriptionResource = Self.subscriptionResource
     try? link.write(kept)
     return MailSubscription(expiresAtMs: Self.expiry(o, asked: asked))
   }
 
-  /// Deletes every subscription the app holds on this mailbox's messages (the 409 case).
+  /// Deletes every subscription the app holds on this mailbox's messages (the 409 case), the
+  /// inbox's and any older one on every folder.
   func deleteMailboxSubscriptions() async throws(MailAPIError) {
     let o = try await object(.get, url("/subscriptions"), op: "subscriptions")
     for s in o["value"]?.arrayValue ?? [] {
       guard let id = s["id"]?.stringValue, !id.isEmpty else { continue }
       var resource = (s["resource"]?.stringValue ?? "").lowercased()
       if resource.hasPrefix("/") { resource.removeFirst() }
-      guard resource == "me/messages" else { continue }
+      guard Self.subscriptionResources.contains(resource) else { continue }
       try await deleteSubscription(id: id)
     }
   }
@@ -432,10 +480,17 @@ extension GraphClient: MailSource {
   }
 
   /// `PATCH` this iPhone's subscription to now + 6 d 23 h (and the server's current notification
-  /// URL); a subscription Graph no longer has is created again.
+  /// URL); a subscription Graph no longer has is created again, and one on every folder is
+  /// replaced by one on the inbox.
   public func renew(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
     guard case .outlook(let n, let l) = push, var state = try? link.read() else { return nil }
     guard let id = state.subscriptionID else { return try await createSubscription(n, l, state: state) }
+    if state.subscriptionResource != Self.subscriptionResource {
+      try await deleteSubscription(id: id)
+      state.subscriptionID = nil
+      try? link.write(state)
+      return try await createSubscription(n, l, state: state)
+    }
     let asked = nowMs() + Self.subscriptionLifetimeMs
     let body = JSONValue.object(
       JSONObject([("expirationDateTime", .string(Instant.iso(asked) ?? "")), ("notificationUrl", .string(n))]))
@@ -454,6 +509,7 @@ extension GraphClient: MailSource {
     guard var state = try? link.read(), let id = state.subscriptionID else { return }
     try await deleteSubscription(id: id)
     state.subscriptionID = nil
+    state.subscriptionResource = nil
     try? link.write(state)
   }
 

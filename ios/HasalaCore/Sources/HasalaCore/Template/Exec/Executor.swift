@@ -240,7 +240,7 @@ public struct CompiledTemplate: Sendable {
       for ce in entries {
         // First entry that produces a value for a field wins; later entries for it are
         // SKIPPED (not evaluated), unless they override.
-        if st.isSet(ce.x.field) && !ce.x.override { continue }
+        if st.refused.contains(ce.x.field) || (st.isSet(ce.x.field) && !ce.x.override) { continue }
         let src = same(ce.x.source, "subject") ? subject16 : body16
         if try !runEntry(&st, ce, src) { continue }
         for (f, v) in ce.x.onMatch.sorted(by: { Self.byCodeUnit($0.key, $1.key) }) where !st.isSet(f) {
@@ -301,7 +301,8 @@ public struct CompiledTemplate: Sendable {
   }
 
   /// Evaluates one entry; whether it produced a value. A pattern that does not match, or
-  /// whose capture fails typed conversion, moves on to the next pattern.
+  /// whose capture fails typed conversion, moves on to the next pattern. A currency the format
+  /// refuses ends the field for the run.
   func runEntry(_ st: inout State, _ ce: Entry, _ src: [UInt16]) throws(RunError) -> Bool {
     let x = ce.x
     // A const or flag entry with no patterns is an unconditional default.
@@ -332,7 +333,13 @@ public struct CompiledTemplate: Sendable {
         return true
       case .amount:
         guard let amt = group("amt") else { continue }
-        guard let got = Self.convertAmount(amt, group("ccy"), definition.defaultCurrency) else { continue }
+        guard let got = Self.convertAmount(amt, group("ccy"), definition.defaultCurrency) else {
+          if Self.currencyRefused(group("ccy"), definition.defaultCurrency) {
+            st.refused.insert(x.field)
+            return false
+          }
+          continue
+        }
         st.setAmount(got.minor, got.currency)
         return true
       case .date:
@@ -395,6 +402,7 @@ public struct CompiledTemplate: Sendable {
     var isTransfer = false
     var set: [Field] = []
     var empty: [String] = []
+    var refused: Set<String> = []
 
     func isSet(_ field: String) -> Bool { Field(field).map { set.contains($0) } ?? false }
 
@@ -528,6 +536,16 @@ public struct CompiledTemplate: Sendable {
     }
     if nonTwoDecimalCurrencies.contains(currency) { return nil }
     return (Int64(minor), currency)
+  }
+
+  static func currencyRefused(_ ccy: String?, _ defaultCurrency: String) -> Bool {
+    var currency = defaultCurrency
+    let c = asciiUpper(trimCapture(ccy ?? ""))
+    if !c.isEmpty {
+      guard isCurrency(c) else { return false }
+      currency = c
+    }
+    return nonTwoDecimalCurrencies.contains(currency)
   }
 
   /// Rule 6: each declared layout in order, on the whole trimmed capture and then on the text

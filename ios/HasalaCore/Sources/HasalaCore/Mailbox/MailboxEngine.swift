@@ -40,6 +40,7 @@ public enum MailboxDisconnectOutcome: Sendable, Equatable {
   case disconnected
   case removed(Int)
   case disconnectedRemoveFailed
+  case otherDevice
 }
 
 public struct MailboxEngineConfig: Sendable {
@@ -68,7 +69,6 @@ public struct MailboxEngineConfig: Sendable {
   /// Renew the watch when it expires within this window (§7.5 step 5).
   public var watchRenewWindowMs: Int64 = 3 * 86_400_000
   public var maxListPages = 100
-  public var importMaxPages = 5
   public var messageStrikeLimit = 3
   /// The Gmail API base of the `oauth:gmailHTTP:` initializer's `GmailProvider`.
   public var gmailBase = GmailClient.defaultBase
@@ -551,8 +551,8 @@ public actor MailboxEngine {
   }
 
   public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
-    guard await disconnect() else { return .failed }
-    guard let plan else { return .disconnected }
+    let outcome = await unlink()
+    guard outcome == .disconnected, let plan else { return outcome }
     switch await retire(plan) {
     case .removed(let n): return .removed(n ?? 0)
     case .failed: return .disconnectedRemoveFailed
@@ -569,28 +569,52 @@ public actor MailboxEngine {
     return .removed(plan.countKnown ? plan.total : nil)
   }
 
-  public func disconnect() async -> Bool {
+  public func disconnect() async -> Bool { await unlink() == .disconnected }
+
+  private func unlink() async -> MailboxDisconnectOutcome {
     await exclusive {
+      guard var state = try? await store.loadState() else { return .failed }
+      do throws(MailboxServerError) {
+        switch try await server.linkStatus(provider: provider.id) {
+        case .holder(isThisDevice: false, _):
+          return await leaveLink(&state)
+        case .noLink, .holder(isThisDevice: true, _):
+          break
+        }
+      } catch .otherProvider {
+        if case .holder(isThisDevice: true, _)? = try? await server.linkStatus() { return .failed }
+        return await leaveLink(&state)
+      } catch {
+        return .failed
+      }
       let proof: JSONValue
-      do { proof = try await stepUp.proof(kind: "mailbox.unlink", payloadHash: nil) } catch { return false }
+      do { proof = try await stepUp.proof(kind: "mailbox.unlink", payloadHash: nil) } catch { return .failed }
       if let token = try? await tokens.accessToken(forceRefresh: false) {
         try? await source(token).stop()
       }
-      guard await tokens.revokeAndForget() else { return false }
+      guard await tokens.revokeAndForget() else { return .failed }
       provider.forgetLink()
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)
       } catch .noLink {
         // Already gone server-side.
       } catch {
-        return false
+        return .failed
       }
       var c = MailboxCommit()
       c.clearAll = true
       c.state = MailboxState()
-      do { try await store.commit(c) } catch { return false }
-      return true
+      do { try await store.commit(c) } catch { return .failed }
+      return .disconnected
     }
+  }
+
+  private func leaveLink(_ state: inout MailboxState) async -> MailboxDisconnectOutcome {
+    await endLocalPush()
+    await tokens.forget()
+    state.lastHolderCheckAtMs = clock.nowMs()
+    _ = await setPhase(&state, .otherDevice, halt: .notHolder, CycleReport())
+    return .otherDevice
   }
 
   // MARK: - The cycle
@@ -627,8 +651,35 @@ public actor MailboxEngine {
       state.haltedDetail = nil
     }
     switch state.phase {
-    case .unlinked, .otherDevice:
+    case .unlinked:
       return report
+    case .otherDevice:
+      guard holderCheckDue(state, trigger) else { return report }
+      let now = clock.nowMs()
+      do {
+        switch try await server.linkStatus(provider: provider.id) {
+        case .noLink:
+          var c = MailboxCommit()
+          c.clearAll = true
+          c.state = MailboxState()
+          try? await store.commit(c)
+          report.phase = .unlinked
+          return report
+        case .holder(isThisDevice: false, _):
+          state.lastHolderCheckAtMs = now
+          return await finish(&state, report)
+        case .holder(isThisDevice: true, _):
+          state.phase = resumePhase(state)
+          state.haltedOn = nil
+          state.haltedDetail = nil
+        }
+      } catch .otherProvider {
+        state.lastHolderCheckAtMs = now
+        return await finish(&state, report)
+      } catch {
+        report.haltedOn = .offline
+        return report
+      }
     case .awaitingCards:
       // A scan staged by a build that still asked "Are these your cards?": author it now, as a
       // finished scan does.
@@ -644,9 +695,7 @@ public actor MailboxEngine {
 
     let now = clock.nowMs()
     // 1. Holder check.
-    if trigger == .launch || trigger == .retry || state.lastHolderCheckAtMs == nil
-      || now - (state.lastHolderCheckAtMs ?? 0) >= config.holderCheckIntervalMs
-    {
+    if holderCheckDue(state, trigger) {
       do {
         switch try await server.linkStatus(provider: provider.id) {
         case .noLink:
@@ -665,7 +714,22 @@ public actor MailboxEngine {
           if let watch, state.watchExpiresAtMs == nil { state.watchExpiresAtMs = watch }
         }
       } catch .otherProvider {
-        stopped = true
+        if case .holder(isThisDevice: true, _)? = try? await server.linkStatus() {
+          stopped = true
+          return report
+        }
+        await endLocalPush()
+        await tokens.forget()
+        var elsewhere = MailboxState()
+        elsewhere.phase = .otherDevice
+        elsewhere.haltedOn = .notHolder
+        elsewhere.lastHolderCheckAtMs = now
+        var c = commitState(elsewhere)
+        c.clearAll = true
+        try? await store.commit(c)
+        report.haltedOn = .notHolder
+        report.phase = .otherDevice
+        emit(.failed(.notHolder), 0, 0)
         return report
       } catch {
         report.haltedOn = .offline
@@ -727,7 +791,8 @@ public actor MailboxEngine {
     {
       state.lastSuccessAtMs = now
       report.completed = true
-      return await finish(&state, report)
+      let unchanged = await finish(&state, report)
+      return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, unchanged).report
     }
     let t0 = now
 
@@ -769,7 +834,14 @@ public actor MailboxEngine {
     c.state = state
     try? await store.commit(c)
     report.phase = state.phase
-    return report
+    if cut || state.phase != .active { return report }
+    return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, report).report
+  }
+
+  func holderCheckDue(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
+    let now = clock.nowMs()
+    return trigger == .launch || trigger == .retry || state.lastHolderCheckAtMs == nil
+      || now - (state.lastHolderCheckAtMs ?? 0) >= config.holderCheckIntervalMs
   }
 
   // MARK: - First connect (§7.7)
@@ -1041,7 +1113,6 @@ public actor MailboxEngine {
           report.haltedOn = .offline
           return report
         }
-        guard state.phase == .active else { return report }  // the scan or next cycle lists it
         return await importLocked([domain], &state, report)
       })
   }
@@ -1052,39 +1123,91 @@ public actor MailboxEngine {
       var report = CycleReport()
       guard !stopped, !domains.isEmpty, var state = try? await store.loadState() else { return report }
       report.phase = state.phase
-      guard state.phase == .active else { return report }
       return await importLocked(domains, &state, report)
     }
   }
 
+  /// Records the senders' window as pending, then imports it now when the lane is active. A
+  /// scan in progress lists every trusted sender itself; anything left pending is finished by
+  /// later cycles, and `completed` says the whole window was listed and read.
   private func importLocked(_ domains: [String], _ state: inout MailboxState, _ report: CycleReport) async
     -> CycleReport
   {
     var report = report
+    guard state.watermarkMs != nil else { return report }
+    let days = Int64(state.backfillDays ?? 90)
+    let sinceMs = max(0, clock.nowMs() - days * 86_400_000)
+    var c = MailboxCommit()
+    c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
+    do { try await store.commit(c) } catch {
+      report.haltedOn = .offline
+      return report
+    }
+    guard state.phase == .active, !stopped else { return report }
     let token: AccessToken
     do { token = try await tokens.accessToken(forceRefresh: false) } catch {
       report.haltedOn = .reconnectRequired
       return report
     }
-    let source = await listingSource(token)
-    var trusted = BankDomains.effectiveTrusted(await ledger.senderTrust())
-    for d in domains where !trusted.contains(d) { trusted.append(d) }
-    let days = Int64(state.backfillDays ?? 90)
-    let since = max(0, (clock.nowMs() - days * 86_400_000) / 1000)
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
-    do {
-      let (ids, _) = try await list(source, domains: domains, sinceSec: since, maxPages: config.importMaxPages)
-      report.listed = ids.count
-      _ = try await process(source, ids: ids, mode: .author, run: &run, report: &report, deadlineMs: nil)
-    } catch let e as MailAPIError {
-      return await mailFailure(e, &state, report)
-    } catch {
-      report.haltedOn = .offline
-      return report
-    }
-    if await ledger.flush() == .accountFull { return await halt(&state, .accountFull, report) }
-    report.completed = true
+    let (out, done) = await runImports(await listingSource(token), &state, deadlineMs: nil, paged: false, report)
+    report = out
+    report.completed = done && report.haltedOn == nil
     return report
+  }
+
+  /// Lists and authors every pending import's window, sender group by sender group, and ends
+  /// each one whose listing was exhausted. A sender the ledger no longer trusts is dropped.
+  func runImports(
+    _ source: any MailSource, _ state: inout MailboxState, deadlineMs: Int64?, paged: Bool, _ report: CycleReport
+  ) async -> (report: CycleReport, done: Bool) {
+    var report = report
+    guard let pending = try? await store.pendingImports() else {
+      report.haltedOn = .offline
+      return (report, false)
+    }
+    if pending.isEmpty { return (report, true) }
+    let trust = await ledger.senderTrust()
+    var trusted = BankDomains.effectiveTrusted(trust)
+    let wanted = pending.filter { trust[$0.domain] != false && BankDomains.isQuerySafe($0.domain) }
+    for p in wanted where !trusted.contains(p.domain) { trusted.append(p.domain) }
+    var done = pending.filter { p in !wanted.contains(p) }.map(\.domain)
+    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
+    var failure: MailAPIError?
+    var offline = false
+    for (sinceMs, group) in Dictionary(grouping: wanted, by: \.sinceMs).sorted(by: { $0.key < $1.key }) {
+      if shouldStop(deadlineMs) { break }
+      let domains = group.map(\.domain)
+      do {
+        let cut = try await listAndProcess(
+          source, domains: domains, sinceSec: sinceMs / 1000, maxPages: config.maxListPages, mode: .author,
+          paged: paged, run: &run, report: &report, deadlineMs: deadlineMs)
+        if cut { break }
+        done += domains
+      } catch let e as MailAPIError {
+        failure = e
+        break
+      } catch {
+        offline = true
+        break
+      }
+    }
+    switch await ledger.flush() {
+    case .accountFull:
+      await endImports(done)
+      return (await halt(&state, .accountFull, report), false)
+    case .failed, .flushed: break
+    }
+    await endImports(done)
+    if let failure { return (await mailFailure(failure, &state, report), false) }
+    if offline { report.haltedOn = .offline }
+    return (report, !offline && done.count == pending.count)
+  }
+
+  func endImports(_ domains: [String]) async {
+    guard !domains.isEmpty else { return }
+    var c = MailboxCommit()
+    c.doneImports = domains
+    try? await store.commit(c)
   }
 
   public func probeSenders(_ domains: [String], days: Int = 180) async -> SenderProbeResult {
@@ -1517,6 +1640,8 @@ public actor MailboxEngine {
         try await store.clearParsing(id)
       }
       switch parsed {
+      case .interrupted:
+        return
       case .setAside(let domain):
         report.setAside += 1
         c.setAside.append(SetAsideRecord(messageID: id, domain: domain, internalDateMs: date, atMs: at))

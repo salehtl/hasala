@@ -162,6 +162,7 @@ public struct SpendHero: Sendable, Hashable {
   public var bars: [HeroMonthBar]
   public var note: MoneyPhrase?
   public var notCounted: NotCounted?
+  public var unrated: TotalMark?
 
   public struct NotCounted: Sendable, Hashable {
     public var amount: Money
@@ -199,7 +200,7 @@ public struct SpendHero: Sendable, Hashable {
   }
 
   /// What is left of the plan (negative when over).
-  public var left: Money { Money(minor: plan.minor - spent.minor, currency: plan.currency) }
+  public var left: Money { Money(minor: plan.minor.minus(spent.minor), currency: plan.currency) }
 }
 
 /// The big figure on a brief card's poster: a count ("6 to sort"), an amount, or a word
@@ -226,7 +227,7 @@ public struct BucketPaceRow: Sendable, Hashable, Codable, Identifiable {
     self.verdict = verdict
   }
 
-  public var left: Money { Money(minor: budget.minor - spent.minor, currency: budget.currency) }
+  public var left: Money { Money(minor: budget.minor.minus(spent.minor), currency: budget.currency) }
   public var progress: Permille { Permille.ratio(spent.minor, of: budget.minor) }
 }
 

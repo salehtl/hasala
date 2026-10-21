@@ -1,6 +1,6 @@
 // Home · Notifications (Paper 11Y9-0, 12AC-0; spec 10 §4, page 15 §15.2, page 18 §14): what
 // needs a look, from the ledger. The bell on every tab counts these items; its large sheet lists
-// them newest first under "Needs a look". Notifications never follow the period.
+// them newest first under "Needs a look". Notifications never follow the period; the review item counts the deck it opens.
 //
 // The mailbox item ("Connect your email", "Sign in again to …") comes from the mail lane, not
 // the ledger, so the app appends it (`HomeViewModel`). "Earlier" needs a notification history
@@ -69,20 +69,23 @@ public struct NotificationsSnapshot: Sendable, Hashable {
 }
 
 public enum NotificationsEngine {
-  public static func snapshot(_ s: LedgerState, now: LocalDateTime) -> NotificationsSnapshot {
+  public static func snapshot(_ s: LedgerState, now: LocalDateTime, review window: ReviewWindow = .all)
+    -> NotificationsSnapshot
+  {
     let today = now.date
     // Items in the order the plan lists their kinds; the sort below is stable, so items of
     // the same day keep it: transactions to sort, late bills, new prices, found bills.
     var dated: [(date: LocalDate, item: NotificationItem)] = []
 
-    // Transactions to sort: one item for the whole queue (the Review tab counts them one by one).
-    let review = ActivityEngine.reviewSummary(s, now: now)
-    if review.count > 0 {
-      let newest = ReviewEngine.queue(s).map(\.postedAt.date).max() ?? today
+    // Transactions to sort: one item for the deck it opens, the same queue in the same window.
+    let queue = ReviewEngine.queue(s, in: window)
+    if !queue.isEmpty {
+      let newest = queue.map(\.postedAt.date).max() ?? today
+      let unplanned = Fils.sum(queue.filter { $0.direction == .out && !$0.isHeldCopy }) { $0.homeMinor ?? 0 }
       dated.append((newest, NotificationItem(
         id: "review", disc: .hue(.sky, .review),
-        title: "\(review.count) transaction\(review.count == 1 ? "" : "s") to sort",
-        line: MoneyPhrase([.text("AED "), .amount(review.unplanned, hidden: 3), .text(" still to check")]),
+        title: "\(queue.count) transaction\(queue.count == 1 ? "" : "s") to sort",
+        line: MoneyPhrase([.text("AED "), .amount(.aed(unplanned), hidden: 3), .text(" still to check")]),
         when: when(newest, today: today), destination: .review
       )))
     }

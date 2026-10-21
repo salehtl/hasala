@@ -45,6 +45,18 @@ struct AddTransactionTests {
     #expect(!model.canSave)
   }
 
+  @Test func aNameOverEightyCharactersSaysWhy() {
+    let model = AddTransactionModel(app: AppModel(store: InMemoryLedger()))
+    type([.digit(2), .digit(5)], into: model)
+    model.categoryID = "dining"
+    model.merchant = String(repeating: "a", count: 81)
+    #expect(!model.canSave)
+    #expect(model.missing == "Keep the name to 80 characters")
+    model.merchant = String(repeating: "a", count: 80)
+    #expect(model.missing == nil)
+    #expect(model.canSave)
+  }
+
   @Test func savingAddsTheRowAndClosesTheSheet() throws {
     let store = InMemoryLedger()
     let app = AppModel(store: store)

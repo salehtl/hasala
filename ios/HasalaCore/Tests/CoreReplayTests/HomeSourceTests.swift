@@ -68,7 +68,7 @@ struct HomeSourceTests {
     #expect(!w.contains("home_source") && !w.contains("homeSource"))
     let back = try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: log.state))).state
     #expect(back.txns[Ids.t1]?.homeSource == .rate)
-    #expect(StateSnapshot.currentFormat == 2)
+    #expect(StateSnapshot.currentFormat == 3)
     var old = StateSnapshot(state: log.state)
     old.formatVersion = 1
     #expect(throws: SnapshotError.version) { try SnapshotCodec.decode(try SnapshotCodec.encode(old)) }

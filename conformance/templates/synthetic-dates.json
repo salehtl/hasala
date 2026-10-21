@@ -555,6 +555,42 @@
         "is_transfer": false,
         "empty_groups": []
       }
+    },
+    {
+      "name": "synth.dates/double-space-before-time",
+      "source": "SYNTHETIC: a layout space is exactly one U+0020, so only the first token parses",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA3L0phbi8yMDI2ICAwMzoxNCBQTQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-01-07T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.dates/double-space-before-marker",
+      "source": "SYNTHETIC: the same rule before the AM/PM marker",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA3L0phbi8yMDI2IDAzOjE0ICBQTQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-01-07T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
     }
   ]
 }

@@ -115,6 +115,7 @@ function specs(): VectorSpec[] {
     "dkim-fail-dmarc-fail",
     block("Authentication-Results: mx.google.com;", "       dkim=fail header.d=bank.example;", "       dmarc=fail header.from=bank.example", FROM),
   );
+  add("goldens", "dkim-pass-without-d", block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", FROM));
   add(
     "goldens",
     "dkim-pass-without-identity",
@@ -219,7 +220,60 @@ function specs(): VectorSpec[] {
     ),
   );
 
+  add("structure", "quote-inside-comment", block('Authentication-Results: mx.google.com; spf=pass (a "b) c) smtp.mailfrom=x@bank.example; dkim=pass header.d=bank.example', FROM));
+  add("structure", "close-paren-outside-comment", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example) x", FROM));
+  add("structure", "stray-token-in-method-spec", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example stray", FROM));
+  add("structure", "segment-without-result", block("Authentication-Results: mx.google.com; stray; dkim=pass header.d=bank.example", FROM));
+  add(
+    "structure",
+    "quoted-separators-at-top-level-are-text",
+    block('Authentication-Results: mx.google.com; spf=pass smtp.mailfrom="a);b(c"@other.example; dkim=pass header.d=bank.example', FROM),
+  );
+  add(
+    "structure",
+    "quoted-mailfrom-inside-spf-comment",
+    block(
+      "Authentication-Results: mx.google.com;",
+      "       dkim=pass header.i=@other.example header.s=s1 header.b=AAAAAAAA;",
+      '       spf=pass (google.com: domain of "x);dkim=pass()header.d=bank.example()header.b=BBBBBBBB;(y"@other.example designates 192.0.2.1 as permitted sender) smtp.mailfrom="x);dkim=pass()header.d=bank.example()header.b=BBBBBBBB;(y"@other.example;',
+      "       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=other.example",
+      "From: alerts@other.example (alerts@bank.example)",
+    ),
+    "A quote inside a comment is literal (RFC 5322), so the comment's ')' would close it early: unreadable, never read as a method.",
+  );
+
   // --- domain: which domain is reported, what is refused, and the From alignment ---
+  add(
+    "domain",
+    "gmail-form-header-i",
+    block(
+      "Authentication-Results: mx.google.com;",
+      "       dkim=pass header.i=@bank.example header.s=selector1 header.b=AbCdEf12;",
+      "       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.10 as permitted sender) smtp.mailfrom=alerts@bank.example;",
+      "       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example",
+      FROM,
+    ),
+    "The DKIM domain is the domain of header.i when there is no header.d (RFC 6376 3.5).",
+  );
+  add("domain", "header-i-subdomain-aligned", block("Authentication-Results: mx.google.com; dkim=pass header.i=alerts@mail.bank.example", FROM));
+  add("domain", "header-i-unaligned", block("Authentication-Results: mx.google.com; dkim=pass header.i=@other.example", FROM));
+  add("domain", "header-d-wins-over-header-i", block("Authentication-Results: mx.google.com; dkim=pass header.d=other.example header.i=@bank.example", FROM));
+  add(
+    "domain",
+    "dmarc-header-from-is-not-the-from",
+    block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=pass header.from=other.example", FROM),
+    "Gmail's DMARC read another From domain than the one the phone reads.",
+  );
+  add("domain", "dmarc-without-header-from", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=pass", FROM));
+  add("domain", "dmarc-result-is-not-a-trust-input", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example; dmarc=fail header.from=bank.example", FROM));
+  add("domain", "from-comment-is-not-the-address", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: alerts@other.example (alerts@bank.example)"));
+  add("domain", "from-comment-inside-angle-addr", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example (alerts)>"));
+  add("domain", "from-text-after-angle-addr", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", 'From: <x@other.example> "@bank.example"'));
+  add("domain", "from-two-angle-addrs", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: <x@other.example> <alerts@bank.example>"));
+  add("domain", "from-two-mailboxes", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: x@other.example, alerts@bank.example"));
+  add("domain", "from-unclosed-angle-addr", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: Bank <alerts@bank.example"));
+  add("domain", "from-quoted-local-part-with-at", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", 'From: "a@other.example"@bank.example'));
+  add("domain", "from-quoted-domain-tail", block("Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", 'From: x@other.example"@bank.example"'));
   add("domain", "dkim-for-another-domain-with-dmarc-pass", block("Authentication-Results: mx.google.com; dkim=pass header.d=signer.example; dmarc=pass header.from=bank.example", FROM));
   add(
     "domain",
@@ -520,6 +574,7 @@ function outlookSpecs(v: VectorSpec[]): void {
   add("outlook-two-from-fields", block(RECEIVED, MS_AR, AUTH_AS, AUTH_SOURCE, FROM, "From: x@evil.example"));
   add("outlook-no-from", block(RECEIVED, MS_AR, AUTH_AS, AUTH_SOURCE, SUBJECT));
   add("outlook-from-bare-upper-case-trailing-dot", block(RECEIVED, MS_AR, AUTH_AS, AUTH_SOURCE, "From: ALERTS@BANK.EXAMPLE."));
+  add("outlook-from-comment-is-not-the-address", block(RECEIVED, MS_AR, AUTH_AS, AUTH_SOURCE, "From: alerts@evil.example (alerts@bank.example)"), "The domain is the addr-spec's, comments removed.");
   add("outlook-from-display-name-at-sign", block(RECEIVED, MS_AR, AUTH_AS, AUTH_SOURCE, 'From: "alerts@bank.example" <x@evil.example>'), "The domain is after the LAST '@'.");
   add("outlook-header-from-address", block(RECEIVED, msAR(spf, dkim, "dmarc=pass action=none header.from=alerts@Bank.Example", comp), AUTH_AS, AUTH_SOURCE, FROM), "header.from is reduced to a lower-case domain.");
 
