@@ -2,23 +2,13 @@
 
 Date and time canonicalisation that must be identical in every client: the
 normalizer's forwarded-`Date` parser and `emailDate`, and the wire timestamp
-grammar the fold applies to `posted_at` and `authored_at`. The TypeScript
-reference client is the oracle; the Swift port (Norm, Time) must reproduce
-every vector. All inputs are synthetic.
+grammar the fold applies to `posted_at` and `authored_at`. The ledgerd
+TypeScript client (removed after commit 9b4aae2) wrote the vectors; the Swift
+port (Norm, Time) must reproduce every vector. All inputs are synthetic.
 
-Regenerate (never hand-edit):
-
-```sh
-cd reference/ledgerd-client && bun run gen-norm-dates-conformance
-bun run gen-norm-dates-conformance --check   # compare only, exit 1 if stale
-```
-
-The expected output is also a golden file: the Swift test rewrites it with
-`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`).
-
-Generation is deterministic (no clock, no time zone, no locale);
-`src/norm/dates-conformance.test.ts` fails when the committed file differs from
-what the generator writes, and runs in `scripts/check.sh`.
+Golden file: the Swift test owns the expected output and rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`). To add or change a
+case, edit its input by hand, run update mode, and review the diff.
 
 ## `dates.json`
 

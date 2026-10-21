@@ -18,11 +18,11 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 )
 
-// This file generates the two artifacts the TypeScript twin cannot derive for
-// itself, and then checks that what is committed is what this build would
+// This file generates the two artifacts a client twin (once TypeScript, now
+// the Swift port) cannot derive for itself, and then checks that what is committed is what this build would
 // generate today.
 //
-//   - client/src/norm/charset-tables.ts — the byte tables of every legacy
+//   - conformance/normalizer/charset-tables.ts — the byte tables of every legacy
 //     charset the Go normalizer can decode. TypeScript cannot use TextDecoder
 //     for this. Bun 1.3's TextDecoder does not implement windows-1256 AT ALL —
 //     the corpus's only non-UTF-8 charset, 110 messages — and where both do
@@ -48,7 +48,7 @@ import (
 // and both have a freshness test below that runs unconditionally.
 
 const (
-	charsetTablesPath = "../../../reference/ledgerd-client/src/norm/charset-tables.ts"
+	charsetTablesPath = conformanceDir + "/charset-tables.ts"
 	edgeCasesPath     = conformanceDir + "/edge-cases.json"
 )
 
@@ -753,10 +753,10 @@ func TestWriteTwinArtifacts(t *testing.T) {
 
 // TestTwinArtifactsAreFresh is the un-regenerated-generator check.
 //
-// Both artifacts are produced by Go and consumed by TypeScript. Without this,
-// a change to the Go normalizer or to the charset registry would leave the
-// TypeScript executor running against a fossil and passing — the exact blind
-// spot a one-way generated artifact has.
+// Both artifacts are produced by Go and consumed by the Swift port (CoreNorm).
+// Without this, a change to the Go normalizer or to the charset registry would
+// leave the Swift executor running against a fossil and passing — the exact
+// blind spot a one-way generated artifact has.
 func TestTwinArtifactsAreFresh(t *testing.T) {
 	for _, a := range []struct {
 		path string

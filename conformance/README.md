@@ -1,13 +1,16 @@
 # conformance
 
 Shared fixtures. Each directory is one fixture set. The `CONFORMANCE` table in
-`scripts/check.sh` names the executors that check each set.
+`scripts/check.sh` names the Go packages that check each set; the Swift port
+(`ios/HasalaCore/Tests/HasalaCoreConformanceTests`, CI's `swift` job) reads
+every set.
 
 ## Golden files
 
-These five sets are golden files: `authres`, `categorize`, `fx`, `norm-dates`
-and `replay`. The TypeScript reference wrote them, and until it is removed its
-generators still write the inputs. The Swift tests in
+These six sets are golden files: `authres`, `categorize`, `fx`, `norm-dates`,
+`outlook-sender` and `replay`. The ledgerd TypeScript client wrote them; it was
+removed after commit 9b4aae2, and that commit still has its generators. The
+inputs are now edited by hand. The Swift tests in
 `ios/HasalaCore/Tests/HasalaCoreConformanceTests` own the expected output:
 
 | Set | Swift test |
@@ -16,11 +19,12 @@ generators still write the inputs. The Swift tests in
 | `categorize` | `CategorizeConformanceTests/golden` |
 | `fx` | `FXConformanceTests/golden` |
 | `norm-dates` | `NormDatesConformanceTests/golden` |
+| `outlook-sender` | `OutlookSenderConformanceTests/golden` |
 | `replay` | `ReplayConformanceTests/golden` |
 
 Each test computes the expected output of every case with the Swift code and
-writes the file as the generator does: two-space JSON, keys in their committed
-order, a trailing newline, and every code point above U+007E as a `\uXXXX`
+writes the file as the TypeScript generator did: two-space JSON, keys in
+their committed order, a trailing newline, and every code point above U+007E as a `\uXXXX`
 escape (except in `fx`, which is plain UTF-8). The test fails when one byte
 differs.
 
@@ -45,14 +49,9 @@ In `replay`, `expect.diagnostics` holds the TypeScript oracle's anomaly and
 unreadable text, for reference. Update mode keeps it when the state hash does
 not change, and drops it when the state changes.
 
-Update mode never rewrites a case in `ReplayConformanceTests.disagreements`
-(empty now). A case goes there only when Swift and the TypeScript oracle
-disagree and the owner has not yet decided which side changes. The test
-expects such a case to fail, and fails when it starts to pass.
-
 ### The gate
 
-`scripts/check.sh` fails when a file under one of the five sets changes on a
+`scripts/check.sh` fails when a file under one of the six sets changes on a
 branch with no change under `ios/HasalaCore/Tests`. In CI it compares with
 `HEAD^1`; locally, with the merge base of `origin/main`.
 
@@ -61,6 +60,6 @@ branch with no change under `ios/HasalaCore/Tests`. In CI it compares with
 `swift/` is written by the Swift executor
 (`HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftGoldenTests` or
 `SwiftFoldGoldenTests`). `swift/fold-v4-edges.json` holds the v4 fold cases
-that the TypeScript reference (schema 3) cannot express: held copies, the Undo
+that the ledgerd TypeScript fold (schema 3) could not express: held copies, the Undo
 pairs, same-purchase pairing with archived and held rows, and money at the
 Int64 limits.

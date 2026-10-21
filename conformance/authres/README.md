@@ -2,26 +2,16 @@
 
 The mailbox provider's `Authentication-Results` trust decision, for Gmail and
 for Outlook.com: given a message's header block, is it trusted, why not, and
-which domain was verified. The TypeScript reference client
-(`reference/ledgerd-client/src/mail/authres.ts`: `gmailVerdict`,
-`outlookVerdict`, `verifiedDomain`, `analyzeFor`) is the oracle; the Swift port
-(CoreMail `AuthResults`, `analyze(_:provider:)`) must reproduce every vector
-(`ios/HasalaCore/Tests/CoreMailTests/AuthResultsConformanceTests.swift`). There is no Go executor: the server
+which domain was verified. The ledgerd TypeScript client (`src/mail/authres.ts`:
+`gmailVerdict`, `outlookVerdict`, `verifiedDomain`, `analyzeFor`; removed after
+commit 9b4aae2) wrote the vectors; the Swift port (CoreMail `AuthResults`,
+`analyze(_:provider:)`) must reproduce every vector
+(`ios/HasalaCore/Tests/HasalaCoreConformanceTests/AuthResultsConformanceTests.swift`). There is no Go executor: the server
 never reads mail. All header blocks are synthetic.
 
-Regenerate (never hand-edit):
-
-```sh
-cd reference/ledgerd-client && bun run gen-authres-conformance
-bun run gen-authres-conformance --check   # compare only, exit 1 if stale
-```
-
-The expected output is also a golden file: the Swift test rewrites it with
-`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`).
-
-Generation is deterministic; `src/mail/authres-conformance.test.ts` fails when
-the committed file differs from what the generator writes, and runs in
-`scripts/check.sh`.
+Golden file: the Swift test owns the expected output and rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`). To add or change a
+case, edit its input by hand, run update mode, and review the diff.
 
 ## The Gmail rule
 
@@ -88,8 +78,8 @@ Microsoft-form A-R, topmost; Graph's `$value` keeps header order) are
 UNVERIFIED until the owner's real-mail checks (C1–C7 of the decision). The
 Outlook lane does not use this verdict: it uses the sender rule of the
 decision's §3a (`conformance/outlook-sender`). This rule stays as the reading
-of the owner's trust checks. When the samples tighten or loosen it, change the
-oracle, then regenerate; every vector's expectation follows.
+of the owner's trust checks. When the samples tighten or loosen it, change
+`AuthResults`, then run update mode; every vector's expectation follows.
 
 ## `vectors.json`
 

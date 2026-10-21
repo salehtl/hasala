@@ -11,6 +11,9 @@
 #
 # Adding an entry here needs the same justification as each one below: a value
 # that is public by construction, never a credential that "is only for tests".
+#
+# Paths under reference/ no longer exist in the tree. They stay listed because
+# the `secrets` job scans the full history, where those test files remain.
 
 [extend]
 useDefault = true

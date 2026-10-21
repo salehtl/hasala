@@ -1,23 +1,12 @@
 # conformance/replay
 
-Whole op logs and the state the v3 fold produces from them. The TypeScript
-reference client (`reference/ledgerd-client/src/replay`) is the oracle; the
-Swift fold (CoreReplay) must reproduce every case. All inputs are synthetic.
+Whole op logs and the state the v3 fold produces from them. The ledgerd
+TypeScript client (`src/replay`, removed after commit 9b4aae2) wrote the cases;
+the Swift fold (CoreReplay) must reproduce every case. All inputs are synthetic.
 
-Regenerate (never hand-edit):
-
-```sh
-cd reference/ledgerd-client && bun run gen-replay-conformance
-bun run gen-replay-conformance --check   # compare only, exit 1 if stale
-```
-
-The expected output is also a golden file: the Swift test rewrites it with
-`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`).
-
-Generation is deterministic (no clock, randomness, network or locale), so a
-re-run writes identical bytes. `src/replay/replay-conformance.test.ts` fails
-when the committed files differ from what the generator writes, and that test
-is part of `scripts/check.sh`.
+Golden file: the Swift test owns the expected output and rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`). To add or change a
+case, edit its input by hand, run update mode, and review the diff.
 
 ## Files
 
@@ -123,11 +112,9 @@ order. A blob's seq must be greater than the folded cursor, or the fold stops.
 
 ## Consumers
 
-- TypeScript: `reference/ledgerd-client/src/replay/replay-conformance.test.ts`
-  reads the committed files and folds them through `foldBlobs`.
-- Swift: the HasalaCore conformance tests (spec 04 §19.7), once CoreReplay
-  lands. v4 fold additions must leave every case here byte-identical (spec 03c
-  acceptance test 2), with diagnostic text blanked as above.
+- Swift: `ReplayConformanceTests` (HasalaCoreConformanceTests, spec 04
+  §19.7). v4 fold additions must leave every case here byte-identical (spec
+  03c acceptance test 2), with diagnostic text blanked as above.
 
 The `hard_stops` cases that need "a newer schema version" stamp it `99`, not
 the oracle's `SCHEMA_VERSION + 1` (4): spec 03c makes 4 the current version, so

@@ -1,7 +1,7 @@
 // Unit vectors for CoreNorm: the clauses of the normalizer contract no end-to-end fixture can
-// reach (a port of reference/ledgerd-client/src/norm/norm.test.ts, each of which pins a
+// reach (a port of the ledgerd TypeScript client's src/norm/norm.test.ts, each of which pins a
 // mutation that survived the whole corpus), plus the freshness check of the generated
-// charset tables against the TypeScript file they are generated from.
+// charset tables against conformance/normalizer/charset-tables.ts, which they are generated from.
 import Foundation
 import Testing
 
@@ -277,11 +277,11 @@ struct StageTests {
 
 @Suite("CharsetTables.swift is current")
 struct CharsetTablesFreshnessTests {
-  /// reference/ledgerd-client/src/norm/charset-tables.ts, found by walking up from this file.
+  /// conformance/normalizer/charset-tables.ts, found by walking up from this file.
   static func tsSource() throws -> String {
     var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     while dir.path != "/" {
-      let f = dir.appendingPathComponent("reference/ledgerd-client/src/norm/charset-tables.ts")
+      let f = dir.appendingPathComponent("conformance/normalizer/charset-tables.ts")
       if FileManager.default.fileExists(atPath: f.path) { return try String(contentsOf: f, encoding: .utf8) }
       dir.deleteLastPathComponent()
     }

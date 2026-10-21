@@ -22,13 +22,14 @@ package opref
 // # Three directions are covered, and each catches something different
 //
 //  1. conformance/blob + conformance/op are written BY Go and read BY both.
-//     TestConformanceFixturesAreWhatThisBuildProduces re-opens them here; the
-//     TypeScript blob.test.ts/op.test.ts open the same bytes. A change to the
+//     TestConformanceFixturesAreWhatThisBuildProduces re-opens them here, and
+//     the Swift port opens the same bytes. A change to the
 //     framing, the bucket ladder, the AAD field set or the op JSON breaks
 //     whichever side moved.
 //
-//  2. conformance/ts is written BY TypeScript (client/scripts/gen-fixtures.ts)
-//     and read here by TestTypeScriptSealedBlobsOpenInGo. That is the direction
+//  2. conformance/ts was written BY the ledgerd TypeScript client
+//     (scripts/gen-fixtures.ts, removed after commit 9b4aae2; the bytes are
+//     frozen) and is read here by TestTypeScriptSealedBlobsOpenInGo. That is the direction
 //     a fixture set alone always misses: a TS port that decodes Go's bytes
 //     perfectly and emits subtly wrong ones would pass every test in group 1.
 //     It is also the direction the server sees, since a device uploads blobs it
@@ -1369,9 +1370,8 @@ func TestTheExpandedYearRangeIsRefusedByBothExecutors(t *testing.T) {
 // discovered by the server rejecting a device's uploads — or worse, by the
 // server accepting them and no other device being able to open them.
 //
-// The fixtures are produced by `cd client && bun run gen-fixtures` and
-// committed; that script also asserts the bytes it is about to write are the
-// bytes the current TypeScript produces, so a stale set fails on the TS side.
+// The fixtures were produced by the ledgerd TypeScript client's gen-fixtures
+// script (removed after commit 9b4aae2) and are frozen.
 func TestTypeScriptSealedBlobsOpenInGo(t *testing.T) {
 	dir := filepath.Join(conformanceDir(), "ts")
 	checkFixtures(t, dir)

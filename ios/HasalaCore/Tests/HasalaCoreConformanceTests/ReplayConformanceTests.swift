@@ -60,14 +60,8 @@ struct ReplayConformanceTests {
     #expect(Set(onDisk) == Set(Self.files))
   }
 
-  static let disagreements: [String: Comment] = [:]
-
-  @Test("fold matches the oracle", arguments: files)
+  @Test("fold matches the committed state", arguments: files)
   func foldMatches(_ file: String) throws {
-    if let why = Self.disagreements[file] {
-      withKnownIssue(why) { try Self.compare(file) }
-      return
-    }
     try Self.compare(file)
   }
 
@@ -121,7 +115,6 @@ struct ReplayConformanceTests {
 
   @Test("each case's expect is what Swift computes (HASALA_UPDATE_GOLDEN=1 rewrites it)", arguments: files)
   func golden(_ file: String) throws {
-    guard Self.disagreements[file] == nil else { return }
     let c = try Fixtures.json("replay/\(file)")
     try Golden.check("replay/\(file)", c.setting("expect", try Self.expected(c)))
   }

@@ -1,3 +1,4 @@
+import CoreJSON
 import Foundation
 import Testing
 
@@ -78,6 +79,26 @@ struct OutlookSenderConformanceTests {
       senderDoc.reasons
         == [AuthResults.Reason.pass, .parseError, .notInbox, .unknownSender, .noDMARCReject].map(\.rawValue))
     #expect(Set(senderDoc.vectors.map(\.expect.reason)) == Set(senderDoc.reasons))
+  }
+
+  @Test("vectors.json is what Swift computes (HASALA_UPDATE_GOLDEN=1 rewrites it)")
+  func golden() throws {
+    let file = try Fixtures.json("outlook-sender/vectors.json")
+    let known = try file.array("known_senders").compactMap(\.stringValue)
+    let reject = try file.array("reject_domains").compactMap(\.stringValue)
+    let vectors = try Golden.mapping(file["vectors"]) { v in
+      let parts = try (v["headers_parts"]?.arrayValue ?? []).map { String(repeating: try $0.string("text"), count: try $0.int("repeat")) }
+      let raw = v["headers"]?.stringValue ?? parts.joined()
+      let inInbox = try #require(v["in_inbox"]?.boolValue)
+      let a = AuthResults.analyzeOutlookSender(raw, inInbox: inInbox, knownSenders: known, rejectDomains: reject)
+      return v.setting(
+        "expect",
+        obj([
+          ("trusted", .bool(a.verdict.trusted)), ("reason", .string(a.verdict.reason.rawValue)),
+          ("domain", a.domain.map { .string($0) } ?? .null),
+        ]))
+    }
+    try Golden.check("outlook-sender/vectors.json", file.setting("vectors", vectors))
   }
 
   @Test("every vector", arguments: senderDoc.vectors.map(\.name))

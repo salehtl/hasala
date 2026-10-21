@@ -1,5 +1,5 @@
 {
-  "note": "Written by reference/ledgerd-client/scripts/gen-categorize-conformance.ts from the TypeScript oracle (src/categorize); do not hand-edit. See README.md. Each case: prepare(rules, entries) gives the prepared rules and entries in match order and the load-time defects in input order (rules first); categorize(merchant) gives each decision.",
+  "note": "First written by the ledgerd TypeScript oracle (src/categorize), removed after commit 9b4aae2. Golden file: the Swift tests own `expect` and rewrite it with HASALA_UPDATE_GOLDEN=1 (conformance/README.md); add or change an input by hand. See README.md. Each case: prepare(rules, entries) gives the prepared rules and entries in match order and the load-time defects in input order (rules first); categorize(merchant) gives each decision.",
   "schema_version": 1,
   "match_order": {
     "exact": 0,

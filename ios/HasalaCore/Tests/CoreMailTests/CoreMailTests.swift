@@ -1,5 +1,5 @@
 // CoreMail: the Gmail Authentication-Results trust rule (every adversarial golden of
-// reference/ledgerd-client/src/mail/authres.test.ts, plus the non-ASCII whitespace and
+// the ledgerd TypeScript client's src/mail/authres.test.ts, plus the non-ASCII whitespace and
 // case-folding behaviour pinned explicitly), the header block slicer and the forwarder list.
 // Every fixture is synthetic.
 import Testing

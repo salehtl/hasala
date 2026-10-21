@@ -11,21 +11,13 @@ Third-party material in this repository
 
 Each entry names the files it covers. Licence texts are in LICENSES/.
 
-Pixelarticons
-  Copyright (c) 2019 Gerrit Halfmann
-  https://github.com/halfmage/pixelarticons
-  MIT License (LICENSES/MIT.txt)
-
-  The SVG path data in reference/ledgerd-pwa/src/components/ui/pixelIcons.ts is
-  generated from pixelarticons 2.2.0 by
-  reference/ledgerd-pwa/scripts/generate-pixel-icons.mjs.
-
 BIP-39 English wordlist
   https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
   BIP-0039 by Marek Palatinus, Pavol Rusnak, Aaron Voisine and Sean Bowe.
   Copyright (c) 2013-2016 Pavol Rusnak (trezor/python-mnemonic, MIT License)
 
-  Copied verbatim into reference/ledgerd-client/src/crypto/wordlist.ts. The
+  Copied verbatim into ios/HasalaCore/Sources/HasalaCore/Crypto/BIP39English.swift
+  and server/internal/cryptoref/wordlist.go. The
   BIP-0039 document carries no licence header; the identical list is
   distributed under the MIT License (LICENSES/MIT.txt) by the BIP's reference
   implementation, trezor/python-mnemonic (https://github.com/trezor/python-mnemonic).
@@ -73,14 +65,12 @@ Swift packages
     Apache License 2.0 (LICENSES/Apache-2.0.txt)
 
 npm packages
-  reference/ledgerd-client/ and reference/ledgerd-pwa/ declare their
-  dependencies in their package.json and bun.lock files. They are installed at
-  build time and are not vendored here.
-
-  The website (web/) and its Lighthouse CI tooling (web/lighthouse/) do the
-  same. The built site (web/dist, not committed) bundles code from three of
-  them (vite comes in through astro) into the JavaScript it serves, all under
-  the MIT License (LICENSES/MIT.txt):
+  The website (web/), its Lighthouse CI tooling (web/lighthouse/) and the
+  assist worker (infra/assist/) declare their dependencies in their
+  package.json and bun.lock files. They are installed at build time and are
+  not vendored here. The built site (web/dist, not committed) bundles code
+  from three of the website's packages (vite comes in through astro) into the
+  JavaScript it serves, all under the MIT License (LICENSES/MIT.txt):
     - astro (Copyright (c) 2021 Fred K. Schott), whose client router runs on
       every page; https://github.com/withastro/astro
     - vite (Copyright (c) 2019-present, VoidZero Inc. and Vite contributors),
@@ -99,7 +89,6 @@ What is not in this repository
   by a placeholder page: Hasala's server does not serve that PWA, and the bundle
   carried fonts, a SQLite build and libraries this repository does not
   redistribute.
-- dither-kit (reference/ledgerd-pwa/src/components/dither-kit), which was
-  vendored without a licence, has been removed, as has the ledgerd mascot
-  artwork (reference/ledgerd-pwa/public). reference/ledgerd-pwa is reference
-  material for product logic only and no longer builds on its own.
+- The ledgerd TypeScript client core and the ledgerd PWA, which were kept as
+  reference material, have been removed (after commit 9b4aae2), with the
+  pixelarticons-derived icon data the PWA carried.

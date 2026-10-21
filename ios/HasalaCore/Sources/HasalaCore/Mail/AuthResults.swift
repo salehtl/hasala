@@ -1,6 +1,6 @@
 // The mailbox provider's own Authentication-Results, read as the trust primitive of the mailbox
 // lane (spec 04 §7.6; spec 01's trust rule, security inventory G3): a port of
-// reference/ledgerd-client/src/mail/authres.ts. Gmail's rule is below; Outlook.com's is
+// the ledgerd TypeScript client's src/mail/authres.ts. Gmail's rule is below; Outlook.com's is
 // `analyzeOutlook` (the WP1 decision, docs/decisions/outlook-mailbox.md §3). `analyze(_:provider:)`
 // picks the rule.
 //

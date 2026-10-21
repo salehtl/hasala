@@ -218,9 +218,9 @@ else
 fi
 
 if changed '\.sh$'; then
-	SHFILES="$(all_files '*.sh' '\.sh$' | grep -v '^reference/' || true)"
+	SHFILES="$(all_files '*.sh' '\.sh$')"
 	if [[ -z "$SHFILES" ]]; then
-		skip "shellcheck" "only reference/ scripts changed"
+		skip "shellcheck" "only deleted scripts changed"
 	elif have shellcheck; then
 		run "shellcheck" bash -c 'printf "%s\n" "$1" | xargs shellcheck -S warning' _ "$SHFILES"
 	else

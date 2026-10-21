@@ -59,7 +59,7 @@ struct SwiftGoldenTests {
       (
         "note",
         .string(
-          "Written by the Swift executor (HasalaCore, WS-9: HasalaCoreConformanceTests/SwiftGoldenTests). Go and the TypeScript reference read these files; Swift never re-derives another executor's expectation. Frames, wraps and signatures are random per run: check them by opening and verifying, never by comparing bytes."
+          "Written by the Swift executor (HasalaCore, WS-9: HasalaCoreConformanceTests/SwiftGoldenTests). Go reads these files; Swift never re-derives another executor's expectation. Frames, wraps and signatures are random per run: check them by opening and verifying, never by comparing bytes."
         )
       ),
       ("spec", .string("01-crypto-and-log-format, 2026-10-11 review 2; 00 §3 op registry")),

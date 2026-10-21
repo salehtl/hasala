@@ -1,5 +1,5 @@
 // Strict text codecs: hex, base64, base64url, base32 (spec 01 §1; the grammar
-// of reference/ledgerd-client/src/platform.ts and platform.web.ts, pinned by
+// of the ledgerd TypeScript client's src/platform.ts and platform.web.ts, pinned by
 // their platform tests).
 //
 // "Strict" is the point. Lenient decoders (Node's Buffer, atob, Foundation's
