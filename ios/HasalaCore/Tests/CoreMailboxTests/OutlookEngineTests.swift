@@ -136,10 +136,10 @@ import Testing
       #expect(byID[id]?.payload["gates"]?["sender"] == .string("trusted"), "\(id)")
     }
     #expect(byID["AAkALgAA-junk"]?.needsReview == true)
-    #expect(byID["AAkALgAA-junk"]?.payload["gates"]?["ar"] == .string("not_inbox"))
+    #expect(byID["AAkALgAA-junk"]?.payload["gates"]?["ar"] == .string("fail"))
     #expect(byID["AAkALgAA-junk"]?.payload["amount_minor"] == .string("300"))
     #expect(byID["AAkALgAA-other"]?.needsReview == true)
-    #expect(byID["AAkALgAA-other"]?.payload["gates"]?["ar"] == .string("unknown_sender"))
+    #expect(byID["AAkALgAA-other"]?.payload["gates"]?["ar"] == .string("fail"))
     #expect(byID["AAkALgAA-other"]?.payload["amount_minor"] == .string("400"))
   }
 
@@ -149,7 +149,7 @@ import Testing
     rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-d2", amount: "5.00", dateMs: t0 - Self.day, folder: ""))
     await rig.connectAndActivate()
     #expect(rig.byID()["AAkALgAA-d1"]?.needsReview == false)
-    #expect(rig.byID()["AAkALgAA-d2"]?.payload["gates"]?["ar"] == .string("not_inbox"))
+    #expect(rig.byID()["AAkALgAA-d2"]?.payload["gates"]?["ar"] == .string("fail"))
     let inboxAsks = rig.graph.graphRequests.filter { $0.path == "/v1.0/me/mailFolders/inbox" }.count
     #expect(inboxAsks == 2, "\(inboxAsks)")
   }

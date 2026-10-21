@@ -380,6 +380,10 @@ The first step that applies decides:
    Subdomains do not count: their policy is `sp=`, and `dib.ae` has `sp=none`.
 5. Trusted, `pass`. The verified domain is the `From` domain.
 
+The fold accepts the three new codes, but `txn_ingested` records them as `fail` for now
+(`AuthResults.Reason.recorded`). An older build refuses an unknown `gates.ar` value, so a
+later release starts to record the codes, after every build in use accepts them.
+
 The other gates of `MessageDisposer.finalize` do not change: the domain must be in the
 trusted set T, a template must read an amount, the card must not be "not mine", the
 message must not be forwarded, and the recipient check must not be a mismatch.

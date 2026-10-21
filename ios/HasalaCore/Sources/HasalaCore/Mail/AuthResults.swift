@@ -62,6 +62,13 @@ public enum AuthResults {
     case notInbox = "not_inbox"
     case unknownSender = "unknown_sender"
     case noDMARCReject = "no_dmarc_reject"
+
+    public var recorded: String {
+      switch self {
+      case .notInbox, .unknownSender, .noDMARCReject: Reason.fail.rawValue
+      default: rawValue
+      }
+    }
   }
 
   public struct Verdict: Sendable, Equatable {

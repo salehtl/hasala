@@ -161,7 +161,7 @@ public enum MessageDisposer {
     var mail = ParsedMail(
       messageID: messageID, ingestID: "", internalDateMs: internalDateMs, bank: "", last4: "",
       templateHasCardField: false,
-      gates: MailGates(ar: analysis.verdict.reason.rawValue, senderTrusted: senderTrusted, template: nil, forwarded: forwarded),
+      gates: MailGates(ar: analysis.verdict.reason.recorded, senderTrusted: senderTrusted, template: nil, forwarded: forwarded),
       fields: nil, dayPostedAt: day)
     mail.ingestID = ingestID(raw)
     mail.headerIDHash = MessageIDEvidence.hash(headers: headers)

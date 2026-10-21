@@ -121,7 +121,7 @@ import Testing
     #expect(s.anomalies.isEmpty)
     let t = try #require(Self.row(s, message: "AAkALgAA-junk"))
     #expect(t.needsReview && !t.unparsed && t.amountMinor == 100)
-    #expect(t.gates?.ar == "not_inbox" && t.gates?.sender == "untrusted")
+    #expect(t.gates?.ar == "fail" && t.gates?.sender == "untrusted")
     #expect(t.gates?.reviewReason == .senderUnverified)
     #expect(t.category == nil)
   }
