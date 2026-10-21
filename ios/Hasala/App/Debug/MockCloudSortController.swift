@@ -62,6 +62,7 @@
         s.suggested = 19
         s.leftForYou = 25
         s.staysOnDevice = 18
+        s.pendingTxnIDs = ["apple", "steam"]
       case .done:
         s.askedNames = 147
         s.totalNames = 147
@@ -73,7 +74,11 @@
         s.canUndoLastRun = true
         s.cloudSortedCount = 104
       }
-      if case .paused(.runCap) = phase { s.waitingNames = 147 }
+      if case .paused(.runCap) = phase {
+        s.waitingNames = 147
+        s.askedNames = 250
+        s.totalNames = 250
+      }
       s.remainingToday = phase == .paused(.dayCap) ? 0 : 400 - s.askedNames
       s.nextRunNames = min(s.waitingNames, 250, s.remainingToday)
       return s
@@ -83,12 +88,12 @@
 
     func start() {
       starts += 1
-      status.phase = .running
+      status = Self.sample(.running)
     }
 
     func stop() {
       stops += 1
-      status.phase = .done
+      status = Self.sample(.done)
     }
 
     func undoLastRun() async -> Int {

@@ -22,6 +22,11 @@
       Screen("profile.help", scenario: "maya", prepare: profile([.help])),
       Screen("profile.bills", scenario: "maya", prepare: profile([.bills])),
       Screen("profile.accounts", scenario: "maya", prepare: profile([.accounts])),
+      Screen("profile.cloudSort", scenario: "maya", prepare: cloudSort(.done, then: profile([]))),
+      Screen("profile.cloudSortOffer", scenario: "maya", prepare: cloudSort(.idle) { graph in
+        CloudSortOffer.launchOffer = true
+        profile([])(graph)
+      }),
       // Bills · Coming up and found (1K9-0), pushed from Home.
       Screen("bills", scenario: "maya", prepare: shell(.home, home: [.bills])),
       // Bills · AXA Insurance (late) (1UD-0), and the other states one bill can be in.
