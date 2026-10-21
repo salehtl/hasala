@@ -265,6 +265,8 @@ struct StoriesView: View {
         WidePasteButton(identifier: "stories.useInvite", onPaste: onPasteInvite)
           .frame(maxWidth: .infinity)
           .frame(height: 54)
+        InlineTextButton(title: "Enter a code instead", identifier: "stories.enterCode", action: onGetStarted)
+          .padding(.vertical, -8)
       } else {
         Button("Get started", action: onGetStarted)
           .buttonStyle(.pill(.primary, fill: true))
@@ -539,6 +541,7 @@ private struct WidePasteButton: UIViewRepresentable {
     let control = UIPasteControl(configuration: config)
     control.target = target
     control.accessibilityIdentifier = identifier
+    control.accessibilityHint = "Uses the invite link you copied."
     control.translatesAutoresizingMaskIntoConstraints = false
     target.addSubview(control)
     NSLayoutConstraint.activate([
@@ -590,10 +593,10 @@ private struct CopiedInviteCard: View {
       }
       .frame(width: 20, height: 20)
       VStack(alignment: .leading, spacing: 1) {
-        Text("Your invite link is ready")
+        Text("Copied your invite link?")
           .hType(.subheadline.weight(.semibold))
           .foregroundStyle(HColor.textPrimary)
-        Text("Copied from hasala.app · no code to type")
+        Text("Paste it here. There's no code to type.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
       }

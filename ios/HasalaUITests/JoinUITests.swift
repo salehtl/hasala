@@ -97,6 +97,19 @@ final class JoinUITests: XCTestCase {
   }
 
   @MainActor
+  func testACopiedLinkStillLetsYouTypeACodeAtLargeText() throws {
+    let app = launch(
+      scenario: "newUser", arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"],
+      pasteboard: "https://example.com/hello")
+    XCTAssertTrue(el(app, "stories.inviteFound").waitForExistence(timeout: 15))
+    attach(app, "AX3 · Stories · link copied")
+    try audit(app, atLargeText: true)
+    tap(app, "stories.enterCode")
+    XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(UIPasteboard.general.string, "https://example.com/hello")
+  }
+
+  @MainActor
   func testPasteFillsTheInviteCodeWithoutAPrompt() throws {
     let app = launch(scenario: "newUser", pasteboard: "abcd efgh-ijkl mnop qrst uvwx")
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
