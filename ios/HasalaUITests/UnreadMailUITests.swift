@@ -68,7 +68,10 @@ final class UnreadMailUITests: XCTestCase {
     let rest = el(app, "review.tab.unreadable")
     XCTAssertTrue(rest.waitForExistence(timeout: uiWait))
     XCTAssertTrue(rest.label.contains("1 bank email we couldn't read"), rest.label)
-    XCTAssertFalse(app.buttons["review.tab.unreadable"].exists, "a line with nothing to open is a button")
+    XCTAssertTrue(app.buttons["review.tab.unreadable"].exists)
+    tap(app, "review.tab.unreadable", opening: "add.amount")
+    tap(app, "add.close")
+    XCTAssertTrue(el(app, "add.amount").waitForNonExistence(timeout: uiWait))
   }
 
   @MainActor
