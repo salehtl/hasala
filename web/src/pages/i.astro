@@ -36,7 +36,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 
 <Base
   title="Your invite"
-  description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and type your invite code."
+  description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and paste your invite."
   path="/i"
   noindex
   nav="invite"
@@ -100,11 +100,14 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
             <span class="coin-badge">3</span>
             <div class="isteps__text">
               <h2><span class="is-wide">Install and set up</span><span class="is-narrow">Set up</span></h2>
-              <p class="for-code">Choose Face ID or a password, write down your 12 words, connect your email.</p>
+              <p class="for-code">
+                <span class="is-wide">Copy your invite here. After installing, open Hasala and tap Paste. Then choose Face ID or a password, write down your 12 words and connect your email.</span>
+                <span class="is-narrow">Copy your invite. After installing, open Hasala and tap Paste.</span>
+              </p>
               <p class="no-code">Open Hasala and type the code from your invite email. Then choose Face ID or a password, and connect your email.</p>
             </div>
             <button class="btn btn--subtle btn--sm isteps__btn for-code" type="button" data-copy-code hidden>
-              <Icon name="copy" size={16} stroke={1.6} /><span>Copy code</span>
+              <Icon name="copy" size={16} stroke={1.6} /><span>Copy invite</span>
             </button>
           </li>
         </ol>
@@ -181,20 +184,24 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       el.hidden = false;
     });
 
+    const link = `https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`;
+    const copied = linkKey ? link : shown;
+    const idle = linkKey ? 'Copy invite link' : 'Copy code';
     const copy = document.querySelector<HTMLButtonElement>('[data-copy-code]');
     if (copy && navigator.clipboard) {
+      copy.querySelector('span')!.textContent = idle;
       copy.hidden = false;
       copy.addEventListener(
         'click',
         async () => {
           const label = copy.querySelector('span')!;
           try {
-            await navigator.clipboard.writeText(shown);
+            await navigator.clipboard.writeText(copied);
             label.textContent = 'Copied';
           } catch {
             label.textContent = shown;
           }
-          setTimeout(() => (label.textContent = 'Copy code'), 2000);
+          setTimeout(() => (label.textContent = idle), 2000);
         },
         { signal },
       );
@@ -205,7 +212,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       import('uqr').then(({ encode }) => {
         const box = document.querySelector('[data-qr]');
         if (signal.aborted || !box) return;
-        const { data, size } = encode(`https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`, { ecc: 'M', border: 0 });
+        const { data, size } = encode(link, { ecc: 'M', border: 0 });
         const ns = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(ns, 'svg');
         svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
