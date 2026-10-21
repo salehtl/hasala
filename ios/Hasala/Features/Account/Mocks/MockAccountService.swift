@@ -81,6 +81,15 @@
       try? await Task.sleep(for: delay)
     }
 
+    var failNext: AuthFailure?
+    private(set) var verifiedRecoveryCodes: [String] = []
+
+    private func injected() throws(AuthFailure) {
+      guard let f = failNext else { return }
+      failNext = nil
+      throw f
+    }
+
     // MARK: Signup
 
     func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
@@ -217,6 +226,7 @@
 
     func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
       await pause()
+      try injected()
       return resumeOutcome
     }
 
@@ -232,6 +242,7 @@
 
     func beginRecovery(words: [String]) async throws(AuthFailure) -> RecoveryTicket {
       await pause()
+      try injected()
       guard words == Self.phraseWords else { throw .noAccountForPhrase }
       codeTries = 5
       return RecoveryTicket(id: "recover-1", emailHint: "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}.com")
@@ -242,6 +253,8 @@
 
     func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
       await pause()
+      try injected()
+      verifiedRecoveryCodes.append(code)
       guard code == Self.emailCode else {
         codeTries -= 1
         throw codeTries <= 0 ? .codeExpired : .codeWrong(triesLeft: codeTries)
