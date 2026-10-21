@@ -55,6 +55,17 @@ public enum LedgerEdit: Sendable, Hashable {
   case acceptBillAmount(BillID)
   /// `bill_set{stopped}`.
   case stopTrackingBill(BillID)
+  case addBill(BillDraft)
+  case editBillAmount(BillID, Money, approximate: Bool, from: LocalDate)
+  case pauseBill(BillID, until: LocalDate?)
+  case resumeBill(BillID)
+  case endBill(BillID, lastPayment: LocalDate)
+  case reactivateBill(BillID)
+  case deleteBill(BillID)
+  case linkBillPayments(BillID, [TxnID])
+  case reapplyBill(BillID)
+  case dismissBillNotice(BillID, noticeID: String)
+  case editIncome(id: String, amount: Money, payday: Int, active: Bool)
 
   // Rules (03c §5.5).
   /// `rule_added{enabled}`.
@@ -109,6 +120,46 @@ public struct ManualEntryDraft: Sendable, Hashable {
   }
 }
 
+public struct BillDraft: Sendable, Hashable {
+  public var name: String
+  public var keys: [String]
+  public var amount: Money
+  public var approximate: Bool
+  public var cadence: BillCadence
+  public var every: Int
+  public var firstDue: LocalDate
+  public var categoryID: CategoryID
+  public var accountID: AccountID?
+  public var linkTxns: [TxnID]
+
+  public init(
+    name: String, keys: [String] = [], amount: Money, approximate: Bool = false, cadence: BillCadence = .monthly,
+    every: Int = 1, firstDue: LocalDate, categoryID: CategoryID, accountID: AccountID? = nil, linkTxns: [TxnID] = []
+  ) {
+    self.name = name
+    self.keys = keys
+    self.amount = amount
+    self.approximate = approximate
+    self.cadence = cadence
+    self.every = every
+    self.firstDue = firstDue
+    self.categoryID = categoryID
+    self.accountID = accountID
+    self.linkTxns = linkTxns
+  }
+
+  public static let maxNameLength = 80
+
+  public var trimmedName: String { name.trimmedSpaces }
+
+  public var refusal: ActionError? {
+    if amount.minor <= 0 || amount.minor > ManualEntryDraft.maxMinor { return .invalidAmount }
+    if trimmedName.isEmpty || trimmedName.count > Self.maxNameLength { return .invalidMerchant }
+    if every < 1 || every > cadence.maxEvery { return .invalidBill }
+    return nil
+  }
+}
+
 /// An edit the person can take back from the toast (spec 04 §14.6: 5 s window).
 public struct UndoToken: Sendable, Hashable, Identifiable {
   public var id: Int
@@ -131,6 +182,7 @@ public enum ActionError: Error, Sendable, Hashable {
   case invalidAmount
   case invalidProject
   case invalidMerchant
+  case invalidBill
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit
