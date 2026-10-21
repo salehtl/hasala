@@ -60,7 +60,7 @@ struct BillsProfileEngineParityTests {
   @Test func everyTrackedBillHasADetail() throws {
     let du = try #require(BillsEngine.detail(s, now: now, bill: "du"))
     #expect(du.isPriceChange)
-    #expect(du.noticed?.rendered(hidden: false) == "Charged 38.90 more than usual (389.00) on Mon 5 Oct.")
+    #expect(du.notices.first?.body.rendered(hidden: false) == "Charged 38.90 more than usual (389.00) on Mon 5 Oct.")
     #expect(du.history.map(\.amount) == [.aed(427_90), .aed(389_00)])
     #expect(du.history.allSatisfy { $0.kind == .paid })
 
