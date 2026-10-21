@@ -26,6 +26,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
   /// "Undo (toast)": inverse ops that touch only those fields).
   enum Inverse: Sendable, Equatable {
     case category(txn: String, category: String?, needsReview: Bool)
+    case suggestion(txn: String, category: String?, needsReview: Bool, modelTag: String?, used: String)
     case note(txn: String, note: String)
     /// The merchant's name as it was shown before a rename: a user rename is put back,
     /// a name that was the dictionary's or the prettified one clears the rename.
@@ -77,6 +78,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: guardRows)
         }
       }
+    case .useSuggestions(let uses):
+      try await useSuggestions(uses)
     case .markTransfer(let id):
       let row = try txn(id)
       try await build { a throws(AuthorError) in
@@ -272,8 +275,37 @@ nonisolated struct LedgerEditAuthor: Sendable {
     try await build { a throws(AuthorError) in try a.defineProject(id: id, parentVersion: p.version, draft) }
   }
 
+  private func useSuggestions(_ uses: [SuggestionUse]) async throws {
+    var items: [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CoreReplay.CategorySource)] = []
+    var seen: Set<String> = []
+    for u in uses where seen.insert(u.txn).inserted {
+      guard let row = try reader.txn(u.txn), row.needsReview, row.categorySource == "model", row.category == u.category
+      else { continue }
+      items.append((u.txn, row.version, u.category, false, .user))
+    }
+    guard !items.isEmpty else { return }
+    let ctx = try await observer.authorContext()
+    let blobs = try observer.stamps.authoring {
+      (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
+      let b = try OpAuthor.categorizations(items, context: ctx.raised(to: floor))
+      return (b, b.last?.lastAuthoredMs)
+    }
+    for b in blobs { try await outbox.enqueue(b.ops) }
+    try await observer.reproject()
+  }
+
+  static let undoChunk = Sweep.maxOpsPerBlob / 2
+
   /// Writes an undo back.
   func undo(_ inverses: [Inverse]) async throws {
+    var i = 0
+    while i < inverses.count {
+      try await undoBlob(Array(inverses[i..<min(i + Self.undoChunk, inverses.count)]))
+      i += Self.undoChunk
+    }
+  }
+
+  private func undoBlob(_ inverses: [Inverse]) async throws {
     var rows: [String: TxnRow] = [:]
     var projects: [String: CoreReplay.Project] = [:]
     if inverses.contains(where: { if case .projectState = $0 { true } else { false } }) {
@@ -282,6 +314,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
+      case .suggestion(let t, _, _, _, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       default: break
       }
@@ -300,6 +333,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .category(let t, let c, let review):
           guard let row = rows[t] else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
+        case .suggestion(let t, let c, let review, let tag, let used):
+          guard let row = rows[t], row.category == used, row.categorySource == "user", !row.needsReview else { continue }
+          a.categorize(
+            txnID: t, parentVersion: row.version, category: c, needsReview: review,
+            source: CoreReplay.CategorySource(kind: .model, model: tag))
         case .note(let t, let n):
           a.annotate(txnID: t, set: [("note", n.isEmpty ? nil : n)])
         case .displayName(let t, let shown):

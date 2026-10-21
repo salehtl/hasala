@@ -277,6 +277,25 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         : [.split(txn: id, lines: old.splits)]
       if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }
       return ("Sorted into \(name(c))", inverses)
+    case .useSuggestions(let uses):
+      var inverses: [LedgerEditAuthor.Inverse] = []
+      for u in uses where s.category(u.category) != nil {
+        guard let i = s.txns.firstIndex(where: { $0.id == u.txn }), s.txns[i].inReview else { continue }
+        let old = s.txns[i]
+        s.txns[i].categoryID = u.category
+        s.txns[i].categorySource = .user
+        s.txns[i].needsReview = false
+        s.txns[i].isTransfer = u.category == "transfer"
+        s.txns[i].splits = []
+        if case .model(let tag) = old.categorySource {
+          inverses.append(
+            .suggestion(txn: u.txn, category: old.categoryID, needsReview: old.needsReview, modelTag: tag, used: u.category))
+        } else {
+          inverses.append(.category(txn: u.txn, category: old.categoryID, needsReview: old.needsReview))
+        }
+      }
+      guard !inverses.isEmpty else { throw .notFound }
+      return (SuggestionsEngine.usedLine(inverses.count), inverses)
     case .markTransfer(let id):
       let i = try index(id)
       let old = s.txns[i]

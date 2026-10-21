@@ -80,6 +80,20 @@ public final class InMemoryLedger: LedgerStore {
                             learnedToday: true))
       }
       title = "Sorted into \(categoryName(c))"
+    case .useSuggestions(let uses):
+      var used = 0
+      for u in uses where s.category(u.category) != nil && s.txn(u.txn)?.inReview == true {
+        try editTxn(u.txn) { t in
+          t.categoryID = u.category
+          t.categorySource = .user
+          t.needsReview = false
+          t.isTransfer = u.category == "transfer"
+          t.splits = []
+        }
+        used += 1
+      }
+      guard used > 0 else { throw .notFound }
+      title = SuggestionsEngine.usedLine(used)
     case .markTransfer(let id):
       try editTxn(id) { t in
         t.categoryID = "transfer"

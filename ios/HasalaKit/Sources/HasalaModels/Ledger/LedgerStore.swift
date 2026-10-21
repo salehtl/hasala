@@ -15,6 +15,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case addTransaction(ManualEntryDraft)
   /// `txn_categorized` (+ learned `rule_added` when `learnRule`, + `txn_annotated{project_id}`).
   case categorize(TxnID, CategoryID, learnRule: Bool, project: ProjectID?)
+  case useSuggestions([SuggestionUse])
   /// `txn_categorized{transfer}`.
   case markTransfer(TxnID)
   /// `txn_categorized{refunds}` + `txn_annotated{refund_of}`.
@@ -68,6 +69,16 @@ public enum LedgerEdit: Sendable, Hashable {
   case setFaceIDLock(Bool)
 
   case setDisplayName(String)
+}
+
+public struct SuggestionUse: Sendable, Hashable {
+  public var txn: TxnID
+  public var category: CategoryID
+
+  public init(txn: TxnID, category: CategoryID) {
+    self.txn = txn
+    self.category = category
+  }
 }
 
 public struct ManualEntryDraft: Sendable, Hashable {
