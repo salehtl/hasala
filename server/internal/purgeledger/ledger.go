@@ -27,20 +27,23 @@ const (
 type Kind string
 
 const (
-	KindPurge         Kind = ""
-	KindFreeze        Kind = "freeze"
-	KindDevice        Kind = "device"
-	KindPassword      Kind = "password"
-	KindUnfreeze      Kind = "unfreeze"
-	KindWaitlistLeave Kind = "waitlist-leave"
+	KindPurge          Kind = ""
+	KindFreeze         Kind = "freeze"
+	KindDevice         Kind = "device"
+	KindPassword       Kind = "password"
+	KindUnfreeze       Kind = "unfreeze"
+	KindWaitlistLeave  Kind = "waitlist-leave"
+	KindPasskey        Kind = "passkey"
+	KindWaitlistUnsent Kind = "waitlist-unsent"
 )
 
 type Entry struct {
-	ID      uuid.UUID
-	At      time.Time
-	Kind    Kind
-	Trigger time.Time
-	Device  *Device
+	ID         uuid.UUID
+	At         time.Time
+	Kind       Kind
+	Trigger    time.Time
+	Device     *Device
+	Credential []byte
 }
 
 type Device struct {
@@ -196,10 +199,17 @@ func check(e Entry) error {
 	if e.ID == uuid.Nil {
 		return errors.New("purgeledger: zero id")
 	}
+	if e.Kind != KindPasskey && e.Credential != nil {
+		return fmt.Errorf("purgeledger: a %q entry carries no credential", e.Kind)
+	}
 	switch e.Kind {
-	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave:
+	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
+		}
+	case KindPasskey:
+		if !e.Trigger.IsZero() || e.Device != nil || keyproto.CheckCredentialID(e.Credential) != nil {
+			return errors.New("purgeledger: a passkey entry carries a credential id and no trigger or device")
 		}
 	case KindFreeze:
 		if e.Trigger.IsZero() || e.Device != nil {
@@ -228,7 +238,9 @@ func formatEntry(e Entry) string {
 		line += " " + string(e.Kind) + " " + d.WriterID + " " + d.SignerWriterID + " " +
 			strconv.FormatInt(d.FinalCounter, 10) + " " + hex.EncodeToString(d.FinalHead) + " " +
 			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
-	case KindPassword, KindUnfreeze, KindWaitlistLeave:
+	case KindPasskey:
+		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -266,8 +278,15 @@ func parseLine(text string) (Entry, bool) {
 	}
 	e.Kind = Kind(f[2])
 	switch e.Kind {
-	case KindPassword, KindUnfreeze, KindWaitlistLeave:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
 		if len(f) != 3 {
+			return Entry{}, false
+		}
+	case KindPasskey:
+		if len(f) != 4 || len(f[3]) < 2*keyproto.MinCredentialID || len(f[3]) > 2*keyproto.MaxCredentialID {
+			return Entry{}, false
+		}
+		if e.Credential, ok = parseHex(f[3], len(f[3])/2); !ok {
 			return Entry{}, false
 		}
 	case KindFreeze:

@@ -37,10 +37,20 @@ func (a *Accounts) recordUnfreeze(userID uuid.UUID, at time.Time) {
 	}
 }
 
+func recordPasskeyRemovals(record func(purgeledger.Entry), userID uuid.UUID, credentials [][]byte, at time.Time) {
+	if record == nil {
+		return
+	}
+	for _, id := range credentials {
+		record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPasskey, Credential: id})
+	}
+}
+
 type ReapplyReport struct {
 	Freezes   int
 	Devices   int
 	Passwords int
+	Passkeys  int
 	Unsigned  int
 }
 
@@ -99,6 +109,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			step, count = reapplyDeviceTx, &rep.Devices
 		case purgeledger.KindPassword:
 			step, count = reapplyPasswordTx, &rep.Passwords
+		case purgeledger.KindPasskey:
+			step, count = reapplyPasskeyTx, &rep.Passkeys
 		default:
 			continue
 		}
@@ -296,6 +308,30 @@ func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 		return reappliedNothing, err
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, e.ID, nil, now); err != nil {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	var created time.Time
+	err := tx.QueryRow(ctx,
+		`SELECT created_at FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2 FOR UPDATE`,
+		e.ID, e.Credential).Scan(&created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return reappliedNothing, nil
+	}
+	if err != nil {
+		return reappliedNothing, err
+	}
+	if created.Truncate(time.Second).After(e.At) {
+		return reappliedNothing, nil
+	}
+	if _, err := revokeCredentialSessionsTx(ctx, tx, e.ID, e.Credential, nil, now); err != nil {
+		return reappliedNothing, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, e.ID, e.Credential)
+	if err != nil || tag.RowsAffected() != 1 {
 		return reappliedNothing, err
 	}
 	return reappliedDone, nil

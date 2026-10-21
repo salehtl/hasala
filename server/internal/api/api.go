@@ -328,6 +328,7 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 	s.StepUp = &auth.StepUp{Pool: pool, Passkeys: s.Passkeys}
 	if s.Passkeys != nil {
 		s.Passkeys.StepUp = s.StepUp
+		s.Passkeys.Record = s.recordRestore
 	}
 	s.Writers.StepUp = s.StepUp
 	s.Writers.Record = s.recordRestore

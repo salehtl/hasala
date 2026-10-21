@@ -14,16 +14,22 @@ coming back:
   removes the lines that are older than 60 days (the privacy policy's
   "Restore records" row).
 - The ledger also records holder freezes and unfreezes, device removals,
-  password changes, resets and removals, and waitlist leaves, with internal ids
-  and times only. These are written after the change commits; a failed write
-  is logged and does not stop the change. The replay applies each one again:
-  a freeze (unless an unfreeze came later), a removed device (only when the
-  device that signed the removal is still in the database; otherwise it only
-  signs that device out, and the summary counts it), a password change (the
-  restored password is cleared and every session ends, so a password-only
-  account gets back in with its 12 words), and a waitlist leave. Operator
-  freezes, passkey removals and unsent-invite waitlist deletions are not
-  recorded.
+  password changes, resets and removals, passkey removals (by the holder, and
+  the old passkeys that a recovery removes), waitlist leaves, and waitlist
+  entries deleted because their invite email bounced, with internal ids and
+  times only (a passkey by its credential id). These are written after the
+  change commits; a failed write is logged and does not stop the change. The
+  replay applies each one again: a freeze (unless an unfreeze came later), a
+  removed device (only when the device that signed the removal is still in the
+  database; otherwise it only signs that device out, and the summary counts
+  it), a password change (the restored password is cleared and every session
+  ends, so a password-only account gets back in with its 12 words), a removed
+  passkey (the passkey and its key wrap go, and the sessions it signed in end,
+  with every passkey session the server cannot attribute; an account left with
+  no passkey and no password gets back in with its 12 words), a waitlist leave,
+  and a bounced-invite deletion (the entry goes again and its invite is
+  revoked). Operator freezes are not recorded: no console or CLI command
+  freezes or unfreezes an account yet.
 - An older `hasalad` cannot read the new event lines. Before you roll back past
   this change, keep a copy of the ledger and remove the lines that have a third
   field.

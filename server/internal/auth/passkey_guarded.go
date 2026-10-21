@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/jackc/pgx/v5"
@@ -193,16 +194,24 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 	if err != nil {
 		return 0, err
 	}
-	var revoked int64
+	var (
+		revoked   int64
+		removedAt time.Time
+	)
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionPasskeyDelete, ParamsHash: ph, StepUp: su}
 	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		var err error
-		revoked, err = deleteCredentialTx(ctx, tx, session.UserID, credentialID, session.Hash, p.now())
+		removedAt = p.now()
+		revoked, err = deleteCredentialTx(ctx, tx, session.UserID, credentialID, session.Hash, removedAt)
 		if err != nil {
 			return err
 		}
 		return recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyRemoved, CredentialID: credentialID}, p.now())
 	})
-	return revoked, err
+	if err != nil {
+		return revoked, err
+	}
+	recordPasskeyRemovals(p.Record, session.UserID, [][]byte{credentialID}, removedAt)
+	return revoked, nil
 }

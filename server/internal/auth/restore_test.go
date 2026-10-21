@@ -436,3 +436,127 @@ func TestAHolderFreezeOnAnOperatorFrozenAccountIsKeptByTheReplay(t *testing.T) {
 		t.Fatalf("a second replay %+v %v", rep, err)
 	}
 }
+
+func saveRow(t *testing.T, pool *pgxpool.Pool, table, where string, args ...any) string {
+	t.Helper()
+	var row string
+	if err := pool.QueryRow(bgctx, `SELECT row_to_json(r)::text FROM `+table+` r WHERE `+where, args...).Scan(&row); err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func restoreRow(t *testing.T, pool *pgxpool.Pool, table, row string) {
+	t.Helper()
+	if _, err := pool.Exec(bgctx, `INSERT INTO `+table+` SELECT * FROM json_populate_record(NULL::`+table+`, $1::json)`, row); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAPasskeyRemovalIsRecordedAndSurvivesARestore(t *testing.T) {
+	f := newKeyFixture(t).guarded()
+	path, rec := ledgerRecorder(t)
+	f.passkeys.Record = rec
+	second, _, err := f.addOver(f.token, f.device, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	minted, err := f.sessions.IssueForCredential(bgctx, f.user, second.CredID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred := saveRow(t, f.pool, "webauthn_credentials", "credential_id = $1", second.CredID)
+	wrap := saveRow(t, f.pool, "account_key_wraps", "credential_id = $1", second.CredID)
+
+	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyDelete, second.CredID)
+	if _, err := f.passkeys.DeletePasskey(bgctx, f.info(f.token), second.CredID, su); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 1 || entries[0].Kind != purgeledger.KindPasskey || entries[0].ID != f.user ||
+		!bytes.Equal(entries[0].Credential, second.CredID) {
+		t.Fatalf("ledger %+v, want the removed credential", entries)
+	}
+	if _, err := f.sessions.Resolve(bgctx, minted); !errors.Is(err, ErrSessionRevoked) {
+		t.Fatalf("the removed passkey's session: %v", err)
+	}
+
+	restoreRow(t, f.pool, "webauthn_credentials", cred)
+	restoreRow(t, f.pool, "account_key_wraps", wrap)
+	if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = NULL, revoked_reason = NULL WHERE credential_id = $1`,
+		second.CredID); err != nil {
+		t.Fatal(err)
+	}
+	early := []purgeledger.Entry{{ID: f.user, At: entries[0].At.Add(-time.Hour), Kind: purgeledger.KindPasskey, Credential: second.CredID}}
+	if rep, err := Reapply(bgctx, f.pool, early, f.clock.now()); err != nil || rep.Passkeys != 0 {
+		t.Fatalf("a removal older than the credential: %+v %v", rep, err)
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Passkeys != 1 || rep.Devices != 0 || rep.Freezes != 0 || rep.Passwords != 0 {
+		t.Fatalf("reapply %+v %v, want one passkey", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM webauthn_credentials WHERE credential_id = $1`, second.CredID); n != 0 {
+		t.Fatal("the restored passkey came back")
+	}
+	if n := f.count(`SELECT count(*) FROM account_key_wraps WHERE credential_id = $1`, second.CredID); n != 0 {
+		t.Fatal("the restored passkey's wrap stayed")
+	}
+	if n := f.count(`SELECT count(*) FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2`, f.user, f.credID); n != 1 {
+		t.Fatal("the other passkey's wrap went")
+	}
+	if _, err := f.sessions.Resolve(bgctx, minted); !errors.Is(err, ErrSessionRevoked) {
+		t.Fatalf("the restored session of the removed passkey: %v", err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, f.token); err != nil {
+		t.Fatalf("the other passkey's session: %v", err)
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Passkeys != 0 {
+		t.Fatalf("a second replay %+v %v", rep, err)
+	}
+}
+
+func TestARefusedPasskeyRemovalRecordsNothing(t *testing.T) {
+	f := newKeyFixture(t).guarded()
+	path, rec := ledgerRecorder(t)
+	f.passkeys.Record = rec
+	su := f.stepUpPasskey(f.token, keyproto.ActionPasskeyDelete, f.credID)
+	if _, err := f.passkeys.DeletePasskey(bgctx, f.info(f.token), f.credID, su); !errors.Is(err, ErrLastPasskey) {
+		t.Fatalf("delete of the last passkey: %v", err)
+	}
+	if n := len(readLedger(t, path)); n != 0 {
+		t.Fatalf("a refused removal wrote %d ledger entries", n)
+	}
+}
+
+func TestRecoveryRecordsTheOldPasskeysItRemoves(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	first := f.enrolPasskey(m.user.UserID)
+	second := f.enrolPasskey(m.user.UserID)
+	id, v := f.verifiedRecovery(m, "passkey")
+	req, fresh := f.passkeyRecoveryRequest(m, id, v)
+	if _, err := f.acct.RecoverFinish(bgctx, req); err != nil {
+		t.Fatal(err)
+	}
+	removed := map[string]bool{}
+	passwords := 0
+	for _, e := range readLedger(t, path) {
+		if e.ID != m.user.UserID {
+			t.Fatalf("an entry for another id: %+v", e)
+		}
+		switch e.Kind {
+		case purgeledger.KindPasskey:
+			removed[string(e.Credential)] = true
+		case purgeledger.KindPassword:
+			passwords++
+		default:
+			t.Fatalf("unexpected entry %+v", e)
+		}
+	}
+	if len(removed) != 2 || !removed[string(first.CredID)] || !removed[string(second.CredID)] || removed[string(fresh.CredID)] ||
+		passwords != 1 {
+		t.Fatalf("recorded %d passkeys and %d passwords, want the two old passkeys and the password", len(removed), passwords)
+	}
+}

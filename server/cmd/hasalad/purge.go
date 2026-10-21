@@ -146,14 +146,19 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 	if err != nil {
 		return fmt.Errorf("purge-user --replay-ledger: %w", err)
 	}
+	bounced, err := waitlist.ReapplyUnsent(ctx, pool, entries)
+	if err != nil {
+		return fmt.Errorf("purge-user --replay-ledger: %w", err)
+	}
 	dropped, err := purgeledger.Prune(path, time.Now().Add(-purgeledger.Retention))
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d freeze(s), %d device removal(s), "+
-		"%d password change(s) and %d waitlist leave(s) applied again, %d device removal(s) whose signer is not in the database "+
-		"(signed out only), %d entries past retention removed\n",
-		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Devices, again.Passwords, left, again.Unsigned, dropped)
+		"%d password change(s), %d passkey removal(s), %d waitlist leave(s) and %d bounced-invite waitlist deletion(s) applied again, "+
+		"%d device removal(s) whose signer is not in the database (signed out only), %d entries past retention removed\n",
+		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Devices, again.Passwords, again.Passkeys, left, bounced,
+		again.Unsigned, dropped)
 	return nil
 }
 

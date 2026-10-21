@@ -14,17 +14,25 @@ import (
 )
 
 func ReapplyLeaves(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entry) (int, error) {
+	return reapplyDeletions(ctx, pool, entries, purgeledger.KindWaitlistLeave)
+}
+
+func ReapplyUnsent(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entry) (int, error) {
+	return reapplyDeletions(ctx, pool, entries, purgeledger.KindWaitlistUnsent)
+}
+
+func reapplyDeletions(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entry, kind purgeledger.Kind) (int, error) {
 	if pool == nil {
 		return 0, errors.New("waitlist: reapply: pool is nil")
 	}
 	n := 0
 	for _, e := range entries {
-		if e.Kind != purgeledger.KindWaitlistLeave {
+		if e.Kind != kind {
 			continue
 		}
-		gone, err := reapplyLeave(ctx, pool, e.ID)
+		gone, err := reapplyDeletion(ctx, pool, e.ID, kind == purgeledger.KindWaitlistUnsent)
 		if err != nil {
-			return n, fmt.Errorf("waitlist: reapply a leave: %w", err)
+			return n, fmt.Errorf("waitlist: reapply a %s: %w", kind, err)
 		}
 		if gone {
 			n++
@@ -33,7 +41,7 @@ func ReapplyLeaves(ctx context.Context, pool *pgxpool.Pool, entries []purgeledge
 	return n, nil
 }
 
-func reapplyLeave(ctx context.Context, pool *pgxpool.Pool, entry uuid.UUID) (bool, error) {
+func reapplyDeletion(ctx context.Context, pool *pgxpool.Pool, entry uuid.UUID, detachInviteMail bool) (bool, error) {
 	tx, err := pgtx.BeginReadCommitted(ctx, pool)
 	if err != nil {
 		return false, err
@@ -46,6 +54,13 @@ func reapplyLeave(ctx context.Context, pool *pgxpool.Pool, entry uuid.UUID) (boo
 	}
 	if err != nil {
 		return false, err
+	}
+	if detachInviteMail {
+		if _, err := tx.Exec(ctx,
+			`UPDATE mail_log SET waitlist_entry_id = NULL, recipient = NULL
+			  WHERE waitlist_entry_id = $1 AND kind = 'invite' AND final_at IS NOT NULL`, entry); err != nil {
+			return false, err
+		}
 	}
 	if err := DeleteEntryTx(ctx, tx, entry); err != nil {
 		return false, err

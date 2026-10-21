@@ -162,22 +162,37 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 		Scan(&entry); err != nil {
 		t.Fatal(err)
 	}
+	var bounced string
+	if err := pool.QueryRow(ctx, `INSERT INTO waitlist_entries (email_tag, email_norm, state, source, created_at, updated_at, confirmed_at,
+	    invited_at) VALUES (decode(repeat('44', 32), 'hex'), 'bounced@example.test', 'invited', 'web', now(), now(), now(), now())
+	    RETURNING id::text`).Scan(&bounced); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO webauthn_credentials (credential_id, user_id, user_handle, public_key, sign_count,
+	    backup_eligible, backup_state, attestation_sha256, created_at) VALUES (decode(repeat('55', 20), 'hex'), $1,
+	    decode(repeat('66', 32), 'hex'), decode(repeat('77', 40), 'hex'), 0, true, true, decode(repeat('88', 32), 'hex'),
+	    now() - interval '2 days')`, changed); err != nil {
+		t.Fatal(err)
+	}
 	at := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	ledger := filepath.Join(t.TempDir(), "purged")
 	body := gone.String() + " " + at + "\n" +
 		changed.String() + " " + at + " password\n" +
 		frozen.String() + " " + at + " freeze " + at + "\n" +
-		entry + " " + at + " waitlist-leave\n"
+		entry + " " + at + " waitlist-leave\n" +
+		changed.String() + " " + at + " passkey " + strings.Repeat("55", 20) + "\n" +
+		bounced + " " + at + " waitlist-unsent\n"
 	if err := os.WriteFile(ledger, []byte(body), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
 	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
-	if code != 0 || !strings.Contains(out, "4 entries, 1 account(s) purged again") ||
-		!strings.Contains(out, "1 freeze(s), 0 device removal(s), 1 password change(s) and 1 waitlist leave(s) applied again") {
+	if code != 0 || !strings.Contains(out, "6 entries, 1 account(s) purged again") ||
+		!strings.Contains(out, "1 freeze(s), 0 device removal(s), 1 password change(s), 1 passkey removal(s), 1 waitlist leave(s) "+
+			"and 1 bounced-invite waitlist deletion(s) applied again") {
 		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
 	}
-	for _, id := range []string{gone.String(), changed.String(), frozen.String(), entry} {
+	for _, id := range []string{gone.String(), changed.String(), frozen.String(), entry, bounced, strings.Repeat("55", 20)} {
 		if strings.Contains(out, id) {
 			t.Fatalf("the replay printed an id: %q", out)
 		}
@@ -188,6 +203,8 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 		`SELECT count(*) FROM users WHERE id = '` + changed.String() + `' AND password_hash IS NULL`:     1,
 		`SELECT count(*) FROM users WHERE id = '` + frozen.String() + `' AND frozen_by = 'holder'`:       1,
 		`SELECT count(*) FROM waitlist_entries WHERE id = '` + entry + `'`:                               0,
+		`SELECT count(*) FROM waitlist_entries WHERE id = '` + bounced + `'`:                             0,
+		`SELECT count(*) FROM webauthn_credentials WHERE user_id = '` + changed.String() + `'`:           0,
 		`SELECT count(*) FROM users WHERE id IN ('` + changed.String() + `', '` + frozen.String() + `')`: 2,
 	} {
 		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil || n != want {
@@ -196,7 +213,8 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 	}
 	code, out, _ = hasalad(t, env, "purge-user", "--replay-ledger")
 	if code != 0 || !strings.Contains(out, "0 account(s) purged again") ||
-		!strings.Contains(out, "0 freeze(s), 0 device removal(s), 0 password change(s) and 0 waitlist leave(s) applied again") {
+		!strings.Contains(out, "0 freeze(s), 0 device removal(s), 0 password change(s), 0 passkey removal(s), 0 waitlist leave(s) "+
+			"and 0 bounced-invite waitlist deletion(s) applied again") {
 		t.Fatalf("a second replay exited %d with %q", code, out)
 	}
 }

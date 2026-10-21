@@ -104,7 +104,7 @@ func TestMintRedeemRevokeAndSweep(t *testing.T) {
 		now() - interval '20 days', now() - interval '6 days', 1)`, CodeHash("EXPIREDCODE"), bytes.Repeat([]byte{3}, 32), entry); err != nil {
 		t.Fatal(err)
 	}
-	if msg, err := Sweep(bg, pool); err != nil || msg == "" {
+	if msg, err := Sweep(bg, pool, nil); err != nil || msg == "" {
 		t.Fatalf("sweep %q %v", msg, err)
 	}
 	var state string

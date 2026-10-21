@@ -138,7 +138,9 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "purged")
 	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	gone, frozen, removed, changed, left := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	thawed := uuid.New()
+	thawed, keyless, bounced := uuid.New(), uuid.New(), uuid.New()
+	cred := bytes.Repeat([]byte{0xc4}, 16)
+	long := bytes.Repeat([]byte{0x5e}, 1023)
 	d := testDevice()
 	want := []Entry{
 		{ID: gone, At: at},
@@ -147,6 +149,9 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 		{ID: changed, At: at, Kind: KindPassword},
 		{ID: left, At: at, Kind: KindWaitlistLeave},
 		{ID: thawed, At: at, Kind: KindUnfreeze},
+		{ID: keyless, At: at, Kind: KindPasskey, Credential: cred},
+		{ID: keyless, At: at, Kind: KindPasskey, Credential: long},
+		{ID: bounced, At: at, Kind: KindWaitlistUnsent},
 	}
 	if err := AppendEntries(path, want...); err != nil {
 		t.Fatal(err)
@@ -160,7 +165,8 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	}
 	for i := range want {
 		g, w := got[i], want[i]
-		if g.ID != w.ID || !g.At.Equal(w.At) || g.Kind != w.Kind || !g.Trigger.Equal(w.Trigger) {
+		if g.ID != w.ID || !g.At.Equal(w.At) || g.Kind != w.Kind || !g.Trigger.Equal(w.Trigger) ||
+			!bytes.Equal(g.Credential, w.Credential) {
 			t.Fatalf("entry %d: %+v, want %+v", i, g, w)
 		}
 		if (w.Device == nil) != (g.Device == nil) {
@@ -216,7 +222,14 @@ func TestAMalformedEventIsAnError(t *testing.T) {
 	h32, h64 := strings.Repeat("ab", 32), strings.Repeat("cd", 64)
 	at := " 2026-10-20T05:30:00Z "
 	for name, line := range map[string]string{
-		"unknown kind":         id + at + "passkey",
+		"unknown kind":         id + at + "spare",
+		"passkey without id":   id + at + "passkey",
+		"passkey short id":     id + at + "passkey " + h32[:30],
+		"passkey odd hex":      id + at + "passkey " + h32 + "a",
+		"passkey upper hex":    id + at + "passkey " + strings.ToUpper(h32),
+		"passkey long id":      id + at + "passkey " + strings.Repeat("ab", 1024),
+		"passkey after":        id + at + "passkey " + h32 + " x",
+		"unsent with field":    id + at + "waitlist-unsent x",
 		"password with field":  id + at + "password x",
 		"leave with field":     id + at + "waitlist-leave x",
 		"freeze without time":  id + at + "freeze",
@@ -253,7 +266,13 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 	bad.Sig = bad.Sig[:10]
 	for name, e := range map[string]Entry{
 		"zero id":                {At: at, Kind: KindPassword},
-		"unknown kind":           {ID: uuid.New(), At: at, Kind: "passkey"},
+		"unknown kind":           {ID: uuid.New(), At: at, Kind: "spare"},
+		"passkey without id":     {ID: uuid.New(), At: at, Kind: KindPasskey},
+		"passkey short id":       {ID: uuid.New(), At: at, Kind: KindPasskey, Credential: make([]byte, 15)},
+		"passkey long id":        {ID: uuid.New(), At: at, Kind: KindPasskey, Credential: make([]byte, 1024)},
+		"passkey with trigger":   {ID: uuid.New(), At: at, Kind: KindPasskey, Credential: make([]byte, 16), Trigger: at},
+		"password with id":       {ID: uuid.New(), At: at, Kind: KindPassword, Credential: make([]byte, 16)},
+		"unsent with trigger":    {ID: uuid.New(), At: at, Kind: KindWaitlistUnsent, Trigger: at},
 		"freeze without trigger": {ID: uuid.New(), At: at, Kind: KindFreeze},
 		"device without device":  {ID: uuid.New(), At: at, Kind: KindDevice},
 		"device short sig":       {ID: uuid.New(), At: at, Kind: KindDevice, Device: bad},

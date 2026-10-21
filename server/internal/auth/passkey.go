@@ -34,6 +34,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // CeremonyTTL is how long a begun ceremony may be finished within.
@@ -118,7 +119,8 @@ type Passkeys struct {
 	// Now defaults to time.Now. Ceremony expiry is evaluated against THIS clock
 	// and never against Postgres's, so one clock decides both when a ceremony
 	// was minted and when it dies (see 00022's note on the two-clock defect).
-	Now func() time.Time
+	Now    func() time.Time
+	Record func(purgeledger.Entry)
 }
 
 func (p *Passkeys) now() time.Time {

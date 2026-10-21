@@ -249,16 +249,20 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Register("deleted", mailq.DeletedRenderer)
 	minter, _ := tagger.(invites.Minter)
 	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
-	q.Unsent = invites.MailUnsentTx
+	var record func(purgeledger.Entry)
+	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		record = func(e purgeledger.Entry) {
+			if err := purgeledger.AppendEntries(p, e); err != nil {
+				slog.Warn("hasalad serve: the restore ledger did not record a waitlist deletion", "kind", string(e.Kind), "err", err)
+			}
+		}
+	}
+	q.Unsent = invites.MailUnsent(record)
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
-		wl.Record = func(e purgeledger.Entry) {
-			if err := purgeledger.AppendEntries(p, e); err != nil {
-				slog.Warn("hasalad serve: the restore ledger did not record a waitlist leave", "err", err)
-			}
-		}
+		wl.Record = record
 		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention", func(context.Context) (string, error) {
 			n, err := purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
 			if err != nil || n == 0 {
@@ -326,7 +330,7 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted and the email worker does not run")
 	}
 	ex.done = append(ex.done,
-		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool) }),
+		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, record) }),
 		startSweep(ctx, "waitlist sweep", wl.Sweep),
 		startSweep(ctx, "mail log sweep", q.Sweep),
 	)

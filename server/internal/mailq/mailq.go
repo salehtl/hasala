@@ -188,7 +188,7 @@ type Queue struct {
 	// that names an account (spec 02 §14.7: the account's address is marked
 	// undeliverable). It makes no network call.
 	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
-	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) error
+	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) (func(), error)
 
 	renderers map[string]Renderer
 	stopped   atomic.Bool
@@ -681,16 +681,16 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 		}
 	}
 	bounced := errors.Is(sendErr, mail.ErrBounced) && row != nil && row.UserID != nil && q.Bounced != nil
-	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) error {
+	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) (func(), error) {
 		if bounced {
 			if err := q.Bounced(ctx, tx, *row); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if unsent && row != nil && q.Unsent != nil {
 			return q.Unsent(ctx, tx, *row)
 		}
-		return nil
+		return nil, nil
 	}); err != nil {
 		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
 	}
@@ -721,18 +721,38 @@ func (q *Queue) failExhausted(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var after []func()
 	if q.Unsent != nil {
 		for _, row := range failed {
-			if err := q.Unsent(ctx, tx, row); err != nil {
+			done, err := q.Unsent(ctx, tx, row)
+			if err != nil {
 				return err
 			}
+			after = appendDone(after, done)
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	runDone(after)
+	return nil
+}
+
+func appendDone(after []func(), done func()) []func() {
+	if done == nil {
+		return after
+	}
+	return append(after, done)
+}
+
+func runDone(after []func()) {
+	for _, done := range after {
+		done()
+	}
 }
 
 // finalizeTx runs the finalizing UPDATE and, when it changed the row, then.
-func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then func(pgx.Tx) error) error {
+func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then func(pgx.Tx) (func(), error)) error {
 	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
 	if err != nil {
 		return err
@@ -742,12 +762,17 @@ func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then fun
 	if err != nil {
 		return err
 	}
+	var done func()
 	if tag.RowsAffected() == 1 {
-		if err := then(tx); err != nil {
+		if done, err = then(tx); err != nil {
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	runDone(appendDone(nil, done))
+	return nil
 }
 
 // Sweep is spec 07 §2.11's mail rows: retention, redaction of subject-less
@@ -780,19 +805,23 @@ func (q *Queue) Sweep(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("mailq: retention: %w", err)
 	}
+	var after []func()
 	if q.Unsent != nil {
 		for _, g := range deleted {
 			if g.status != string(StatusQueued) {
 				continue
 			}
-			if err := q.Unsent(ctx, tx, g.row); err != nil {
+			done, err := q.Unsent(ctx, tx, g.row)
+			if err != nil {
 				return "", fmt.Errorf("mailq: retention: %w", err)
 			}
+			after = appendDone(after, done)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("mailq: retention: %w", err)
 	}
+	runDone(after)
 	red, err := q.Pool.Exec(ctx,
 		`UPDATE mail_log SET recipient = NULL WHERE recipient IS NOT NULL AND user_id IS NULL
 		    AND waitlist_entry_id IS NULL AND final_at < now() - interval '7 days'`)

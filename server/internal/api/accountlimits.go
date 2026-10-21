@@ -65,6 +65,9 @@ func (s *Server) EnableAccounts(keys *authkeys.Keys, gate *authkeys.Gate, mailer
 		if s.Passkeys.StepUp == nil {
 			s.Passkeys.StepUp = s.StepUp
 		}
+		if s.Passkeys.Record == nil {
+			s.Passkeys.Record = s.recordRestore
+		}
 	}
 	if s.Writers != nil {
 		s.Writers.Mail = mailer

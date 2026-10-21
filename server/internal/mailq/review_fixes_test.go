@@ -19,9 +19,9 @@ func TestARowAtTheAttemptCapFailsAndDoesNotBlockTheQueue(t *testing.T) {
 	q := New(pool, fake, fixedTagger{})
 	q.Register("test", TestRenderer)
 	var unsent []int64
-	q.Unsent = func(_ context.Context, _ pgx.Tx, r Row) error {
+	q.Unsent = func(_ context.Context, _ pgx.Tx, r Row) (func(), error) {
 		unsent = append(unsent, r.ID)
-		return nil
+		return nil, nil
 	}
 
 	stuck := enqueue(t, pool, q, Enqueue{Kind: "test", To: "stuck@example.com"})
