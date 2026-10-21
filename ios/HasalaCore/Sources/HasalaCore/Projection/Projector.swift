@@ -141,7 +141,7 @@ public enum Projector {
       let local = LocalClock.localDate(ms)
       let key = keys[id] ?? ""
       let display = MerchantDisplay.name(
-        raw: t.merchantRaw, renamed: s.merchantNames[key]?.value ?? nil, dictionary: categorizer.dictionaryDisplay(merchantRaw: t.merchantRaw))
+        raw: t.merchantRaw, renamed: s.merchantNames[ExactKey(key)]?.value ?? nil, dictionary: categorizer.dictionaryDisplay(merchantRaw: t.merchantRaw))
       let source = t.categorySource ?? (t.category == nil ? .none : .user)
       let refundOf = t.annotation("refund_of")
       let refundTarget = refundOf.flatMap { Attribution.resolve($0, in: txnView) }
@@ -223,7 +223,7 @@ public enum Projector {
 
   private static func writeConfig(_ db: Database, _ s: State) throws {
     for (k, v) in s.merchantNames {
-      let args: [(any DatabaseValueConvertible)?] = [k, v.value, v.opID]
+      let args: [(any DatabaseValueConvertible)?] = [k.value, v.value, v.opID]
       try db.execute(sql: "INSERT INTO merchant_name (merchant_key, display_name, op_id) VALUES (?,?,?)", arguments: StatementArguments(args))
     }
     for (d, v) in s.senderTrust {

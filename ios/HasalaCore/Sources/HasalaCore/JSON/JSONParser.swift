@@ -7,8 +7,10 @@
 //   - whitespace is exactly space, tab, LF and CR;
 //   - escapes are `\" \\ \/ \b \f \n \r \t \uXXXX` (hex in either case); a
 //     `\uXXXX` pair forming a surrogate pair is combined, and a LONE surrogate
-//     becomes U+FFFD (JavaScript keeps it in the string and `TextEncoder`
-//     replaces it later, so the observable bytes are the same; spec 03c §1.1.4);
+//     becomes U+FFFD, or is refused with `refuseLoneSurrogates`. JavaScript
+//     keeps a lone surrogate in the string, keeps such keys distinct and writes
+//     the escape back out, so this is a divergence; op and raw bodies refuse
+//     them (wire/op.ts `parseBody`) and the witness never carries one;
 //   - raw control characters U+0000-U+001F inside a string are refused;
 //   - numbers keep their literal; duplicate keys are last-wins.
 //
@@ -36,20 +38,22 @@ public enum JSONParser {
 
   /// Parses UTF-8 `bytes` (WHATWG-decoded first: BOM stripped, invalid
   /// sequences replaced).
-  public static func parse(_ bytes: some Collection<UInt8>, maxDepth: Int = defaultMaxDepth) throws(JSONParseError)
-    -> JSONValue
-  {
+  public static func parse(
+    _ bytes: some Collection<UInt8>, maxDepth: Int = defaultMaxDepth, refuseLoneSurrogates: Bool = false
+  ) throws(JSONParseError) -> JSONValue {
     var start = bytes.startIndex
     if bytes.starts(with: [0xef, 0xbb, 0xbf]) { start = bytes.index(start, offsetBy: 3) }
     // Re-encoding through String repairs invalid UTF-8 exactly as WHATWG does.
     let text = String(decoding: bytes[start...], as: UTF8.self)
-    return try parse(text: text, maxDepth: maxDepth)
+    return try parse(text: text, maxDepth: maxDepth, refuseLoneSurrogates: refuseLoneSurrogates)
   }
 
   /// Parses `text` as `JSON.parse` would (no BOM handling: a leading U+FEFF is
   /// not JSON whitespace).
-  public static func parse(text: String, maxDepth: Int = defaultMaxDepth) throws(JSONParseError) -> JSONValue {
-    var p = Parser(bytes: Array(text.utf8), maxDepth: maxDepth)
+  public static func parse(
+    text: String, maxDepth: Int = defaultMaxDepth, refuseLoneSurrogates: Bool = false
+  ) throws(JSONParseError) -> JSONValue {
+    var p = Parser(bytes: Array(text.utf8), maxDepth: maxDepth, refuseLoneSurrogates: refuseLoneSurrogates)
     p.skipWhitespace()
     let v = try p.document()
     p.skipWhitespace()
@@ -61,11 +65,13 @@ public enum JSONParser {
 private struct Parser {
   let u: [UInt8]
   let maxDepth: Int
+  let refuseLoneSurrogates: Bool
   var i = 0
 
-  init(bytes: [UInt8], maxDepth: Int) {
+  init(bytes: [UInt8], maxDepth: Int, refuseLoneSurrogates: Bool) {
     u = bytes
     self.maxDepth = maxDepth
+    self.refuseLoneSurrogates = refuseLoneSurrogates
   }
 
   mutating func skipWhitespace() {
@@ -246,8 +252,10 @@ private struct Parser {
         }
         i = save
       }
+      if refuseLoneSurrogates { throw fail() }
       return 0xfffd
     case 0xdc00...0xdfff:
+      if refuseLoneSurrogates { throw fail() }
       return 0xfffd
     default:
       return first

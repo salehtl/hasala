@@ -41,6 +41,29 @@ public func compareScalars(_ a: String, _ b: String) -> Int {
 /// Byte equality (no canonical equivalence: `"é"` NFC and NFD differ).
 public func utf8Equal(_ a: String, _ b: String) -> Bool { a.utf8.elementsEqual(b.utf8) }
 
+public struct ExactKey: Sendable, Hashable, Codable, ExpressibleByStringLiteral, CustomStringConvertible {
+  public let value: String
+
+  public init(_ value: String) { self.value = value }
+  public init(stringLiteral value: String) { self.value = value }
+
+  public init(from decoder: any Decoder) throws { value = try decoder.singleValueContainer().decode(String.self) }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.singleValueContainer()
+    try c.encode(value)
+  }
+
+  public static func == (a: ExactKey, b: ExactKey) -> Bool { utf8Equal(a.value, b.value) }
+
+  public func hash(into h: inout Hasher) {
+    h.combine(value.utf8.count)
+    for b in value.utf8 { h.combine(b) }
+  }
+
+  public var description: String { value }
+}
+
 /// Length in Unicode scalars ("runes"), never `String.count` (graphemes) or
 /// UTF-16 units.
 public func runeCount(_ s: String) -> Int { s.unicodeScalars.count }

@@ -270,6 +270,13 @@ type Op struct {
 // Without it, time.Time's lenient unmarshaller and JavaScript's Date.parse
 // disagree in three different directions — see parseWireTime.
 func (o *Op) UnmarshalJSON(b []byte) error {
+	b, err := exactFields(b, "v", "type", "op_id", "authored_at", "entity", "parent_version", "ingest_id", "payload")
+	if err != nil {
+		return err
+	}
+	if isNullField(b, "ingest_id") {
+		return errors.New("ingest_id is null")
+	}
 	type alias Op // sheds this method, so the rest of the op decodes normally
 	var raw struct {
 		*alias
@@ -288,6 +295,106 @@ func (o *Op) UnmarshalJSON(b []byte) error {
 	}
 	o.AuthoredAt = t
 	return nil
+}
+
+func (e *EntityRef) UnmarshalJSON(b []byte) error {
+	b, err := exactFields(b, "kind", "id")
+	if err != nil {
+		return err
+	}
+	type alias EntityRef
+	return json.Unmarshal(b, (*alias)(e))
+}
+
+func exactFields(b []byte, names ...string) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(b, &m) != nil || m == nil {
+		return b, nil
+	}
+	kept := make(map[string]json.RawMessage, len(names))
+	for _, n := range names {
+		if v, ok := m[n]; ok {
+			kept[n] = v
+		}
+	}
+	return json.Marshal(kept)
+}
+
+func isNullField(b []byte, name string) bool {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(b, &m) != nil {
+		return false
+	}
+	v, ok := m[name]
+	return ok && string(v) == "null"
+}
+
+func hasLoneSurrogateEscape(b []byte) bool {
+	in := false
+	for i := 0; i < len(b); i++ {
+		if !in {
+			in = b[i] == '"'
+			continue
+		}
+		switch b[i] {
+		case '"':
+			in = false
+		case '\\':
+			if i+1 < len(b) && b[i+1] != 'u' {
+				i++
+				continue
+			}
+			r, ok := hex4(b, i+2)
+			if !ok {
+				return false
+			}
+			i += 5
+			switch {
+			case r >= 0xd800 && r < 0xdc00:
+				if i+6 < len(b) && b[i+1] == '\\' && b[i+2] == 'u' {
+					if r2, ok := hex4(b, i+3); ok && r2 >= 0xdc00 && r2 < 0xe000 {
+						i += 6
+						continue
+					}
+				}
+				return true
+			case r >= 0xdc00 && r < 0xe000:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hex4(b []byte, at int) (rune, bool) {
+	if at+4 > len(b) {
+		return 0, false
+	}
+	var r rune
+	for _, c := range b[at : at+4] {
+		switch {
+		case c >= '0' && c <= '9':
+			r = r<<4 | rune(c-'0')
+		case c >= 'a' && c <= 'f':
+			r = r<<4 | rune(c-'a'+10)
+		case c >= 'A' && c <= 'F':
+			r = r<<4 | rune(c-'A'+10)
+		default:
+			return 0, false
+		}
+	}
+	return r, true
+}
+
+func decodeBody(b []byte, v any, names ...string) error {
+	if hasLoneSurrogateEscape(b) {
+		return errors.New("body carries a lone surrogate escape")
+	}
+	b, err := exactFields(b, names...)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, v)
 }
 
 // Validate enforces the structural rules replay depends on. It deliberately
@@ -570,7 +677,7 @@ func EncodeBlob(ops []Op) ([]byte, error) {
 // set aside with a warning while the rest of the log proceeds.
 func DecodeBlob(b []byte) ([]Op, error) {
 	var h blobHeader
-	if err := json.Unmarshal(b, &h); err != nil {
+	if err := decodeBody(b, &h, "v", "kind"); err != nil {
 		return nil, fmt.Errorf("oplog: decode blob: %w", err)
 	}
 	if h.V > SchemaVersion {
@@ -584,7 +691,7 @@ func DecodeBlob(b []byte) ([]Op, error) {
 	}
 
 	var blob opBlob
-	if err := json.Unmarshal(b, &blob); err != nil {
+	if err := decodeBody(b, &blob, "v", "kind", "ops"); err != nil {
 		return nil, fmt.Errorf("oplog: decode blob: %w", err)
 	}
 	for i, o := range blob.Ops {
@@ -627,6 +734,10 @@ type RawBody struct {
 // UnmarshalJSON decodes a cold record, routing received_at through
 // [parseWireTime] for the same reason [Op.UnmarshalJSON] does.
 func (r *RawBody) UnmarshalJSON(b []byte) error {
+	b, err := exactFields(b, "v", "kind", "ingest_id", "received_at", "raw_base64")
+	if err != nil {
+		return err
+	}
 	type alias RawBody
 	var raw struct {
 		*alias
@@ -675,7 +786,7 @@ func EncodeRawBody(r RawBody) ([]byte, error) {
 // DecodeRawBody decodes a cold-stream record, refusing an op blob.
 func DecodeRawBody(b []byte) (RawBody, error) {
 	var h blobHeader
-	if err := json.Unmarshal(b, &h); err != nil {
+	if err := decodeBody(b, &h, "v", "kind"); err != nil {
 		return RawBody{}, fmt.Errorf("oplog: decode raw body: %w", err)
 	}
 	if h.V > SchemaVersion {
@@ -688,7 +799,7 @@ func DecodeRawBody(b []byte) (RawBody, error) {
 		return RawBody{}, fmt.Errorf("oplog: blob kind is %q, not %q", h.Kind, KindRawBody)
 	}
 	var r RawBody
-	if err := json.Unmarshal(b, &r); err != nil {
+	if err := decodeBody(b, &r, "v", "kind", "ingest_id", "received_at", "raw_base64"); err != nil {
 		return RawBody{}, fmt.Errorf("oplog: decode raw body: %w", err)
 	}
 	if !isSHA256Hex(r.IngestID) {
@@ -725,7 +836,7 @@ func DecodeRawBody(b []byte) (RawBody, error) {
 // kind field and never the body.
 func KindOf(b []byte) (string, error) {
 	var h blobHeader
-	if err := json.Unmarshal(b, &h); err != nil {
+	if err := decodeBody(b, &h, "v", "kind"); err != nil {
 		return "", fmt.Errorf("oplog: read blob kind: %w", err)
 	}
 	if h.Kind == "" {
@@ -742,6 +853,15 @@ type CheckpointHead struct {
 	Stream   string `json:"stream"`
 	Counter  string `json:"counter"` // decimal string: a JS number would be lossy past 2^53
 	Hash     string `json:"hash"`    // 64 hex chars
+}
+
+func (h *CheckpointHead) UnmarshalJSON(b []byte) error {
+	b, err := exactFields(b, "writer_id", "stream", "counter", "hash")
+	if err != nil {
+		return err
+	}
+	type alias CheckpointHead
+	return json.Unmarshal(b, (*alias)(h))
 }
 
 type checkpointPayload struct {
@@ -772,7 +892,7 @@ func EncodeCheckpointPayload(heads []CheckpointHead) (json.RawMessage, error) {
 // on two devices that agree on its contents.
 func DecodeCheckpointPayload(p json.RawMessage) ([]CheckpointHead, error) {
 	var cp checkpointPayload
-	if err := json.Unmarshal(p, &cp); err != nil {
+	if err := decodeBody(p, &cp, "heads"); err != nil {
 		return nil, fmt.Errorf("oplog: decode checkpoint: %w", err)
 	}
 	for _, h := range cp.Heads {

@@ -198,7 +198,7 @@ if changed '^(ios/|design/tokens/)'; then
 	else
 		skip "Xcode project" "no project changes"
 	fi
-	if changed '^ios/(HasalaCore/(Package\.resolved|Tools/)|scripts/check-tool-pins\.sh)'; then
+	if changed '^ios/(HasalaCore/(Package\.resolved|Tools/)|Hasala\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/|scripts/check-tool-pins\.sh)'; then
 		if have jq; then
 			run "HasalaCore tool pins equal HasalaCore's" ios/scripts/check-tool-pins.sh
 		else

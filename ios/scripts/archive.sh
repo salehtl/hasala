@@ -169,6 +169,7 @@ if ! xcodebuild archive \
 	-project "$ios/Hasala.xcodeproj" -scheme Hasala -configuration Release \
 	-destination 'generic/platform=iOS' \
 	-archivePath "$OUT/Hasala.xcarchive" \
+	-disableAutomaticPackageResolution \
 	"${auth[@]}" \
 	CURRENT_PROJECT_VERSION="$BUILD" HASALA_GIT_COMMIT="$SHA" \
 	>"$OUT/archive.log" 2>&1; then
