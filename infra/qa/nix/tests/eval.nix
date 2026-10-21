@@ -864,6 +864,21 @@ let
       !(minimal.config.systemd.services ? cloudflared-hasala)
     ) "AT-E3 the tunnel unit exists with the tunnel off"
     ++ check (
+      lib.hasInfix "--dport 8471 -j hasala-api-out" fullSys.config.networking.firewall.extraCommands
+      && lib.hasInfix "--uid-owner hasala-tunnel -j RETURN" fullSys.config.networking.firewall.extraCommands
+      && lib.hasInfix "--uid-owner hasala-health -j RETURN" fullSys.config.networking.firewall.extraCommands
+      && lib.hasInfix "iptables -w -X hasala-api-out" fullSys.config.networking.firewall.extraStopCommands
+    ) "AT-E3 the API port's kernel rule is missing"
+    ++ check (
+      (hardeningOf "cloudflared-hasala").User == "hasala-tunnel"
+      && !((hardeningOf "cloudflared-hasala").DynamicUser or false)
+      && (hardeningOf "hasala-health").User == "hasala-health"
+      && !((hardeningOf "hasala-health").DynamicUser or false)
+    ) "AT-E3 the API port's kernel rule names users the tunnel and the probe do not run as"
+    ++ check (
+      !lib.hasInfix "hasala-api-out" minimal.config.networking.firewall.extraCommands
+    ) "AT-E3 the API port's kernel rule is installed with the tunnel off"
+    ++ check (
       (envOf minimal "hasalad").HASALA_TRUSTED_PROXY == "none"
     ) "AT-E3 no tunnel must mean trusted_proxy none";
 

@@ -75,6 +75,7 @@ const (
 	// ResultConfig is a 403 that no retry fixes (bad key, topic): sending
 	// stops for 5 minutes and an ERROR is logged.
 	ResultConfig
+	ResultEnvironment
 	// ResultTransient is a 5xx, a network error or anything unexpected: no
 	// retry, the app catches up on open.
 	ResultTransient
@@ -90,6 +91,8 @@ func (r Result) String() string {
 		return "cooldown"
 	case ResultConfig:
 		return "config"
+	case ResultEnvironment:
+		return "environment"
 	case ResultTransient:
 		return "transient"
 	}
@@ -278,6 +281,9 @@ func classify(status int, reason string) Result {
 		return ResultGone
 	case status == http.StatusTooManyRequests:
 		return ResultCooldown
+	case status == http.StatusForbidden && (reason == "BadEnvironmentKeyIdInToken" || reason == "BadEnvironmentKeyInToken" ||
+		reason == "BadCertificateEnvironment"):
+		return ResultEnvironment
 	case status == http.StatusForbidden && reason != "ExpiredProviderToken":
 		return ResultConfig
 	}

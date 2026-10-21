@@ -85,7 +85,7 @@ func TestEveryKeyHasAnEnvironmentName(t *testing.T) {
 		"HASALA_HTTP_LISTEN": "127.0.0.1:8471", "HASALA_METRICS_LISTEN": "127.0.0.1:9471",
 		"HASALA_MIN_IOS_BUILD": "42", "HASALA_LOG_LEVEL": "warn",
 		"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app, https://www.hasala.app",
-		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "1h",
+		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "24h",
 		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key, "HASALA_SALT_KEY_FILE": key,
 		"HASALA_HEADROOM_PATH": "/var/lib/hasala", "HASALA_HEADROOM_FLOOR_BYTES": "5", "HASALA_HEADROOM_INTERVAL": "1m",
 		"HASALA_APNS_ENABLED": "true", "HASALA_APNS_TEAM_ID": "ABCDE12345", "HASALA_APNS_KEY_ID": "KEY1234567",
@@ -151,6 +151,8 @@ func TestValuesAreValidated(t *testing.T) {
 	wantErr(t, env{"HASALA_SESSION_IDLE": "0s"}, "session_idle")
 	wantErr(t, env{"HASALA_SESSION_IDLE": "48h", "HASALA_SESSION_MAX": "24h"}, "session_max")
 	wantErr(t, env{"HASALA_SESSION_IDLE": "forever"}, "not a duration")
+	wantErr(t, env{"HASALA_INVITE_TTL": "1000h"}, "invite_ttl")
+	wantErr(t, env{"HASALA_INVITE_TTL": "12h"}, "invite_ttl")
 	wantErr(t, env{"HASALA_PASSWORD_HASH_CONCURRENCY": "9"}, "1–8")
 	wantErr(t, env{"HASALA_HEADROOM_FLOOR_BYTES": "0"}, "floor_bytes")
 	wantErr(t, env{"HASALA_RP_ORIGINS": "https://hasala.app"}, "rp_id is empty")

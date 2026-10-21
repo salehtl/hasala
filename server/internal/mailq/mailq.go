@@ -12,13 +12,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/mail"
@@ -97,6 +101,7 @@ const (
 	renderFor    = 30 * time.Second
 	pollEvery    = 30 * time.Second
 	maxAttempts  = 10
+	hintMax      = 80
 	notifyChan   = "hasala_mail"
 	errorMaxLen  = 200
 	workerCount  = 2
@@ -150,6 +155,26 @@ func (f RenderFunc) Render(ctx context.Context, tx pgx.Tx, row Row) (mail.Messag
 // ErrNoRenderer is a row whose kind has no registered renderer.
 var ErrNoRenderer = errors.New("mailq: no renderer for this kind")
 
+var errRenderRetry = errors.New("mailq: render failed; retrying")
+
+func transientRender(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || pgconn.Timeout(err) || pgconn.SafeToRetry(err) {
+		return true
+	}
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) {
+		switch pe.Code[:2] {
+		case "08", "40", "53", "57", "58":
+			return true
+		}
+		return false
+	}
+	var ce *pgconn.ConnectError
+	var ne net.Error
+	return errors.As(err, &ce) || errors.As(err, &ne)
+}
+
 // Queue is the outbox. Build it with New.
 type Queue struct {
 	Pool   *pgxpool.Pool
@@ -196,10 +221,15 @@ func Hint(addr string) string {
 		return "•••"
 	}
 	local, domain := addr[:at], addr[at+1:]
-	if len(local) <= 1 {
-		return "•••@" + domain
+	prefix := "•••@"
+	if r, n := utf8.DecodeRuneInString(local); n > 0 && n < len(local) && r != utf8.RuneError {
+		prefix = local[:n] + prefix
 	}
-	return local[:1] + "•••@" + domain
+	if room := hintMax - utf8.RuneCountInString(prefix); utf8.RuneCountInString(domain) > room {
+		d := []rune(domain)
+		domain = "…" + string(d[len(d)-(room-1):])
+	}
+	return prefix + domain
 }
 
 func checkParams(kind string, p map[string]any) error {
@@ -498,8 +528,11 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	if _, err := q.Pool.Exec(ctx,
 		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
-		  WHERE status = 'sending' AND lease_until < now()`); err != nil {
+		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1`, maxAttempts); err != nil {
 		return false, fmt.Errorf("mailq: expired leases: %w", err)
+	}
+	if err := q.failExhausted(ctx); err != nil {
+		return false, fmt.Errorf("mailq: exhausted rows: %w", err)
 	}
 	full, err := q.lanesAtRate(ctx)
 	if err != nil {
@@ -520,11 +553,11 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 		        attempts = attempts + 1, next_attempt_at = NULL
 		  WHERE id = (SELECT id FROM mail_log
 		               WHERE status = 'queued' AND next_attempt_at <= now() AND recipient_tag IS NOT NULL
-		                 AND lane <> ALL($1::text[])
+		                 AND lane <> ALL($1::text[]) AND attempts < $2
 		               ORDER BY CASE lane WHEN 'transactional' THEN 0 WHEN 'waitlist' THEN 1 ELSE 2 END, next_attempt_at
 		               FOR UPDATE SKIP LOCKED LIMIT 1)
 		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, waitlist_entry_id, invite_id,
-		           bank_slug, params, attempts, created_at, lease_until`, full).
+		           bank_slug, params, attempts, created_at, lease_until`, full, maxAttempts).
 		Scan(&row.ID, &row.Kind, &subk, &lane, &row.Recipient, &row.RecipientTag, &row.UserID, &row.EntryID,
 			&row.InviteID, &row.BankSlug, &params, &row.Attempts, &row.CreatedAt, &lease)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -542,7 +575,11 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	msg, err := q.render(ctx, row)
 	if err != nil {
 		slog.Warn("mailq: render failed", "mail_kind", row.Kind, "mail_attempt", row.Attempts, "err", err.Error())
-		q.finalize(ctx, row.ID, lease, row.Kind, &row, "", fmt.Errorf("%w: render", mail.ErrPermanent), false)
+		failure := fmt.Errorf("%w: render", mail.ErrPermanent)
+		if transientRender(err) {
+			failure = errRenderRetry
+		}
+		q.finalize(ctx, row.ID, lease, row.Kind, &row, "", failure, false)
 		return true, nil
 	}
 	msg.To = row.Recipient
@@ -616,7 +653,8 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 	case errors.Is(sendErr, mail.ErrAuth) && !oneShot:
 		q.stopped.Store(true)
 		slog.Error("mailq: the email provider refused the credentials; sending stopped on every lane until restart")
-		sql = `UPDATE mail_log SET status = 'queued', next_attempt_at = now(), lease_until = NULL, error = $3
+		sql = `UPDATE mail_log SET status = 'queued', next_attempt_at = now(), lease_until = NULL, error = $3,
+		        attempts = greatest(attempts - 1, 0)
 		        WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, clip("auth: "+sendErr.Error()))
 	default:
@@ -659,6 +697,38 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 	if sendErr != nil {
 		slog.Warn("mailq: send failed", "mail_kind", kind, "err", clip(sendErr.Error()))
 	}
+}
+
+func (q *Queue) failExhausted(ctx context.Context) error {
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return err
+	}
+	defer pgtx.Rollback(ctx, tx)
+	rows, err := tx.Query(ctx,
+		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL,
+		        error = 'attempts exhausted', recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
+		  WHERE attempts >= $1 AND recipient_tag IS NOT NULL
+		    AND (status = 'queued' OR (status = 'sending' AND lease_until < now()))
+		 RETURNING id, kind, user_id, waitlist_entry_id, invite_id`, maxAttempts)
+	if err != nil {
+		return err
+	}
+	failed, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Row, error) {
+		var row Row
+		return row, r.Scan(&row.ID, &row.Kind, &row.UserID, &row.EntryID, &row.InviteID)
+	})
+	if err != nil {
+		return err
+	}
+	if q.Unsent != nil {
+		for _, row := range failed {
+			if err := q.Unsent(ctx, tx, row); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // finalizeTx runs the finalizing UPDATE and, when it changed the row, then.
