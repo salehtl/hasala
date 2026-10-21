@@ -56,7 +56,7 @@ public struct MerchantDictionary: Sendable, Equatable {
         defects.append(Defect(id: "entry \(i)", code: "display_not_a_label"))
         continue
       }
-      guard let info = TaxonomyV1.builtin(c), info.kind == .spending else {
+      guard let info = TaxonomyV1.builtin(c), info.kind == .spending || info.id == "transfer" else {
         defects.append(Defect(id: "entry \(i)", code: "category_not_spending"))
         continue
       }

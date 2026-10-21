@@ -4,8 +4,8 @@
     python3 -I ios/tools/dictionary/build-dictionary.py ios/tools/dictionary/seed-v1.csv BUNDLE
 
 Writes ios/HasalaCore/Sources/HasalaCore/Resources/merchant-dictionary.json and
-Categorize/DictionaryManifest.swift. Fails (no silent mapping) on an unknown or
-non-spending category, a pattern that is not already canonical (lower-case,
+Categorize/DictionaryManifest.swift. Fails (no silent mapping) on an unknown
+category or one that is neither spending nor the built-in transfer, a pattern that is not already canonical (lower-case,
 single spaces), a pattern under its floor or over 64 scalars, or a duplicate
 (match, pattern).
 
@@ -17,6 +17,7 @@ import csv, hashlib, json, os, sys
 
 SPENDING = ["rent","utilities","groceries","transport","healthcare","insurance","dining","entertainment",
             "shopping","travel","subscriptions","savings","investments","debt"]
+CATEGORIES = SPENDING + ["transfer"]
 ORDER = {"exact": 0, "starts_with": 1, "contains": 2}
 FLOOR = {"exact": 2, "starts_with": 3, "contains": 4}
 
@@ -28,7 +29,7 @@ def main():
         for r in csv.DictReader(f):
             m, p, c, d = r["match"], r["pattern"], r["category"], r["display"]
             assert m in ORDER, f"match {m!r}"
-            assert c in SPENDING, f"category {c!r}"
+            assert c in CATEGORIES, f"category {c!r}"
             # Canonical already: no upper-case, no leading, trailing or double spaces.
             assert p == " ".join(p.split()), f"spaces {p!r}"
             assert p == p.lower(), f"case {p!r}"

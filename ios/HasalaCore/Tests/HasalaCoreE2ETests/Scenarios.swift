@@ -319,6 +319,10 @@ enum Scenarios {
       #expect(h.amountMinor == other.amountMinor && h.direction == "debit" && other.direction == "debit")
       #expect(h.mailboxMessageID != other.mailboxMessageID)
     }
+    for r in rows {
+      let own = r.merchantRaw.uppercased().contains("OWN ACCOUNT")
+      #expect((r.category == "transfer") == own, "\(r.id)")
+    }
   }
 
   static func gmailToReplay(_ a: Runtime, _ b: Runtime, clock: any CoreTime.Clock) async throws {
