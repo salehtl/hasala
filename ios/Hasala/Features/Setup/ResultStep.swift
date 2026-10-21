@@ -151,7 +151,7 @@ private struct NoAlertsResult: View {
             .accessibilityIdentifier("result.howTo.\(bank.rawValue)")
         }
       }
-      Text("New alerts are read as they arrive. Alerts go to another address? Use that mailbox instead.")
+      Text("New alerts are read when you open Hasala. Alerts go to another address? Use that mailbox instead.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)

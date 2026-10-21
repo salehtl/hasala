@@ -75,7 +75,7 @@ struct BankStep: View {
     .providerConnectQuestions(coordinator, provider: provider, request: $asking) { replacing, removingOld in
       Task { await model.connectMail(provider, replacing: replacing, removingOld: removingOld) }
     }
-    .mailSwitchQuestion(coordinator)
+    .mailSwitchQuestion(coordinator, asks: model.navigationPath.isEmpty)
   }
 
   private func connect(_ provider: MailProviderKind) {
@@ -168,7 +168,7 @@ private struct GoogleBriefingCard: View {
         .foregroundStyle(HColor.statusWarningForeground)
         .accessibilityAddTraits(.isHeader)
       item(1, "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala.")
-      item(2, "Tick \u{201C}Read your email\u{201D}. Without it, Hasala can\u{2019}t see your alerts.")
+      item(2, "Tick \u{201C}View your email messages and settings\u{201D}. Without it, Hasala can\u{2019}t see your alerts.")
     }
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)

@@ -17,7 +17,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Bank")
     assertPersonalAccountsOnly(app, "Bank")
     assertText(app, "Meanwhile, Skip lets you add spending by hand.", "Bank")
-    assertText(app, "Read your email", "Bank")
+    assertText(app, "View your email messages and settings", "Bank")
     assertPresent(app, ["mail.googleBriefing", "mail.change", "bank.howTo"], "Bank")
     assertAbsent(app, ["setup.chooseEmail", "mail.choose.other"], "Bank")
     assertNoText(app, ["our server is told"], "Bank")

@@ -272,7 +272,7 @@ struct SetupFlowTests: AccountSuite {
     let m = model(s)
     await m.continueWithBanks()
     #expect(m.connectFailure(.gmail) == .permissionMissing(.gmail))
-    #expect(m.failure?.message == "Hasala needs \u{201C}Read your email\u{201D} ticked. Try again and tick it.")
+    #expect(m.failure?.message == "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it.")
     #expect(m.path == [] && m.facts.mailbox == .unlinked)
     await m.continueWithBanks()
     #expect(m.failure == nil && m.path == [.scan])

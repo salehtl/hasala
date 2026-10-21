@@ -58,7 +58,7 @@ enum MailConnectFailure: Error, Equatable {
 
   static func permissionMissingLine(_ provider: MailProviderKind) -> String {
     switch provider {
-    case .gmail: "Hasala needs \u{201C}Read your email\u{201D} ticked. Try again and tick it."
+    case .gmail: "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it."
     case .outlook: "Hasala needs permission to read your bank alerts. Try again and allow it."
     }
   }

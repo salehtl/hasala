@@ -171,9 +171,9 @@ final class SetupUITests: XCTestCase {
   @MainActor
   func testAMissingGmailGrantSaysWhatToTick() throws {
     let app = launch(scenario: nil, screen: "mail.permissionMissing")
-    let line = "Hasala needs \u{201C}Read your email\u{201D} ticked. Try again and tick it."
+    let line = "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it."
     XCTAssertTrue(app.staticTexts[line].waitForExistence(timeout: 30), "the missing grant has no line of its own")
-    attach(app, "Bank alerts · Read your email not ticked")
+    attach(app, "Bank alerts · Gmail access not ticked")
     try audit(app)
     tap(app, "mail.connect.gmail")
     XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "trying again did not connect")
