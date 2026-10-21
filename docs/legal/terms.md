@@ -25,12 +25,19 @@ Hasala is in a private beta. You need access to the beta on Apple's TestFlight a
 Hasala is unfinished. During the beta:
 
 - features may change, appear or disappear without notice;
+- we may change how the service works, including how Hasala checks bank emails, which ones it sends to Review, and how it sorts transactions;
+- Hasala's automatic checks, sorting and suggestions can be wrong;
 - Hasala may have bugs, including bugs that show wrong amounts, miss transactions or put transactions in the wrong category;
 - the service may be slow or unavailable at times, including for maintenance;
+- emails and alerts from Hasala, including security emails, can be late or fail to arrive;
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
-- we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll tell you in the app or by email at least 7 days before, so that you can export your data first.
+- we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll aim to tell you in the app or by email at least 7 days before, so that you can export your data first, unless an urgent reason, such as a security risk or a legal requirement, means we can't.
 
-Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). It supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
+Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). At the time of writing, it supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
+
+### Help pages
+
+Our [Support](/support) page and other help we give you, such as the steps, screens and buttons they describe, are there to help. They describe the app as it was when they were written, may change at any time, and aren't promises about how Hasala works.
 
 ### Price
 
@@ -91,7 +98,7 @@ Please use Hasala only for its intended purpose: managing your own money. Don't:
 
 We may suspend an account if we reasonably believe it breaks these terms, puts other users or the service at risk, or if the law requires it. Where it's safe and lawful, we'll tell you why.
 
-While your account is suspended you can still:
+As Hasala works today, while your account is suspended you can still:
 
 - open Hasala and see the data already on your iPhone;
 - sign in and sign out; and
@@ -111,7 +118,7 @@ Deleting the app from your iPhone does not delete your account.
 
 ### We can end the beta or your access
 
-We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk or a legal requirement, we'll give you at least 30 days' notice, in the app or by email, so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
+We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk, a legal requirement or something outside our reasonable control, we'll give you at least 30 days' notice, in the app or by email, so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
 
 ## Source-available code
 
@@ -131,7 +138,8 @@ We work hard to make Hasala accurate, secure and reliable. But it's a free beta,
 
 To the extent the law allows:
 
-- we aren't responsible for losses caused by relying on Hasala's figures, categories, suggestions or reminders (including transactions that Sort automatically filed in the wrong category), such as missed bill payments or bank charges;
+- we aren't responsible for losses caused by relying on Hasala's figures, categories, suggestions, checks or reminders (including transactions that Sort automatically filed in the wrong category, and emails that Hasala wrongly took as coming from your bank, or wrongly sent to Review), such as missed bill payments or bank charges;
+- we aren't responsible for losses caused by an email or alert from Hasala that was late or didn't arrive;
 - we aren't responsible for losing access to your data if you lose your recovery phrase and every passkey and signed-in device;
 - we aren't responsible for problems caused by Google, Microsoft, Apple, Cloudflare, your bank, or your device; and
 - our total liability to you for any claim about the beta is limited to AED 100.
@@ -148,14 +156,14 @@ These terms are governed by the laws of the United Arab Emirates as applied in t
 
 ## Changes to these terms
 
-We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is material, we'll tell you in the app or by email at least 30 days before it takes effect. If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
+We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is material, we'll tell you in the app or by email at least 30 days before it takes effect, unless we must make it sooner for legal or security reasons. If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
 
 ## General
 
 - If part of these terms can't be enforced, the rest still applies.
 - If we don't enforce a right straight away, we haven't given it up.
 - You may not transfer your rights under these terms. We may transfer ours to a business that takes over Hasala, and we'll tell you if that happens.
-- These terms, the [Privacy Policy](/privacy) and the [Security](/security) policy are the whole agreement between you and us about the beta.
+- These terms, the [Privacy Policy](/privacy) and the [Security](/security) policy are the whole agreement between you and us about the beta. The [Support](/support) page is help, not part of this agreement.
 - If there's a conflict between these terms and Apple's TestFlight terms, Apple's terms govern your use of TestFlight itself.
 
 ## Contact

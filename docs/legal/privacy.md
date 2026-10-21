@@ -14,7 +14,7 @@ Hasala is run by **Saleh Lootah**, an individual based in the United Arab Emirat
 
 We can be reached by email only; the addresses are under [Contact](#contact).
 
-This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), the website at hasala.app, and the emails we send from no-reply@hasala.app (replies to them go to support@hasala.app). It describes the beta as it works today.
+This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), the website at hasala.app, and the emails we send from no-reply@hasala.app (replies to them go to support@hasala.app). It describes the beta as it works today. Where it names a screen, a button or a setting in the app, that is to help you find it; names and places in the app may change.
 
 ## The short version
 
@@ -137,19 +137,19 @@ Our server sees the IP address of each request, passed on by Cloudflare. It uses
 
 30 days after an invite is used, expires or is withdrawn, we forget the note, the keyed hash of the address and the link key. An unused invite is then deleted. A used invite stays linked to your account as "invite used" until you delete your account; when you do, the link to your account goes too.
 
-**Your invite.** When we invite you, we add your email address to Hasala's beta on Apple's TestFlight, and Apple emails you an invitation to install it. We don't give Apple your name. Apple's terms apply to your use of TestFlight. TestFlight tells us whether you accepted the invitation and when you install and open the beta. It also sends us crash reports, which don't include your transactions, and any feedback you send through it. Testers never see each other.
+**Your invite.** When we invite you, we add your email address to Hasala's beta on Apple's TestFlight, and Apple emails you an invitation to install it. We don't give Apple your name. Apple's terms apply to your use of TestFlight. TestFlight tells us whether you accepted the invitation and when you install and open the beta. It also sends us crash reports, which show where the app failed and aren't meant to include your transactions, and any feedback you send through it. TestFlight doesn't show testers to each other.
 
-**If you'd rather Apple didn't get your address.** Tell us at support@hasala.app before we invite you, and we'll send you TestFlight's public join link instead. We switch that link on only while someone is waiting for it, with a limit on how many people can use it. You then join TestFlight with your own Apple Account, and we give Apple nothing about you; TestFlight doesn't tell us who you are. You still need your Hasala invite to create an account.
+**If you'd rather Apple didn't get your address.** Tell us at support@hasala.app before we invite you, and we'll send you TestFlight's public join link instead. We usually switch that link on only while someone is waiting for it, and we limit how many people can use it. You then join TestFlight with your own Apple Account, and we give Apple nothing about you; TestFlight doesn't show us who you are. You still need your Hasala invite to create an account.
 
 When you create your Hasala account, we delete your address from the waitlist; your account keeps its own address and the name you give it. If you leave the list or delete your account, we remove you from the TestFlight beta. If you joined with the public link, we can't tell you apart from other link testers, so we close your invite or account instead.
 
 ### Bank requests
 
-If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. The app shows you how the request is going, and we email you when your bank works. It's deleted with your account.
+If you tell us in the app which bank you use and it isn't supported yet, we link the request to your account so we can tell you when your bank works with Hasala. The app shows how the request is going, and we aim to email you when your bank works. It's deleted with your account.
 
-If you connected your email, you can also ask Hasala to look in your mail for banks we're adding. Your iPhone then asks Gmail or Outlook only whether there are emails from those banks' addresses in the last 6 months. It doesn't download or open them, and the answer stays on your iPhone. Outlook can only be asked about exact alert addresses Hasala already knows, so on Outlook this rarely finds a bank we're adding. If it finds one, it shows you the bank and the address the emails came from (for example bank.example), and only if you tap Ask does it send us that bank and that address with your request. We use the address only to add support for your bank.
+If you connected your email, you can also ask Hasala to look in your mail for banks we're adding. Your iPhone then asks Gmail or Outlook only whether there are recent emails from those banks' addresses. It doesn't download or open them, and the answer stays on your iPhone. Outlook can only be asked about exact alert addresses Hasala already knows, so on Outlook this rarely finds a bank we're adding. If it finds one, it shows you the bank and the address the emails came from (for example bank.example), and only if you choose to send it does it send us that bank and that address with your request. We use the address only to add support for your bank.
 
-On our website, you tell us your bank when you ask for an invite (see [The website](#the-website)). Our server can also count a bank that someone names without asking for an invite. That count holds only the bank's name and when it was sent, with no email address or anything else about the person, and we use it to decide which banks to add.
+On our website, you tell us your bank when you ask for an invite (see [The website](#the-website)). Our server can also count a bank that someone names without asking for an invite. That count holds only the bank's name and when it was sent, with no email address or anything else about the person. We use it to decide which banks to add, and delete it after 365 days.
 
 ### Things you send us
 
@@ -160,13 +160,13 @@ On our website, you tell us your bank when you ask for an invite (see [The websi
 
 ### The website
 
-**Asking for an invite.** When you ask for an invite at hasala.app, we store your email address and a keyed hash of it (so we can spot a second sign-up from the same address), the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), how many confirmation emails we sent and when, and the dates you asked, confirmed, were invited and joined, and when your entry last changed. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days of the last confirmation email we sent, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days after you confirmed at most. If we've sent you an invite by then, your entry stays until that invite is used, expires or is withdrawn. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list. It opens a page with a Leave the list button, and pressing it deletes your entry straight away. If you join Hasala, we delete your address from the list straight away, the bank you told us about moves to your account and stays with it until you delete the account, and the rest of the entry is deleted 30 days later. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
+**Asking for an invite.** When you ask for an invite at hasala.app, we store your email address and a keyed hash of it (so we can spot a second sign-up from the same address), the bank you picked (and the bank name you typed, if you chose "Another bank"), how you reached us (for example, the website's form), how many confirmation emails we sent and when, and the dates you asked, confirmed, were invited and joined, and when your entry last changed. We email you a link to confirm the address, and you join the list only once you confirm it. If you don't confirm it within 7 days of the last confirmation email we sent, we delete it. A confirmed address stays on the list until you join Hasala or leave the list, and for 180 days after you confirmed at most. If we've sent you an invite by then, your entry stays until that invite is used, expires or is withdrawn. We use your address only to send your invite and to tell you when your bank works with Hasala, never for marketing. Every email we send has a link to leave the list. It opens a page where you confirm that you want to leave, and confirming deletes your entry straight away. If you join Hasala, we delete your address from the list straight away, the bank you told us about moves to your account and stays with it until you delete the account, and the rest of the entry is deleted 30 days later. Only we review the list, in an admin tool that is reachable only from our own devices over a private network.
 
 **Bot checks.** Our forms can use Cloudflare Turnstile to tell people from bots. When it's switched on, Cloudflare looks at technical details from your browser, including your IP address, to decide; we receive only the answer.
 
 **Emails we send.** We keep a record of each email we send you: what kind it was, the address, a masked form of it, such as m•••@example.com, and a keyed hash of it, when we sent it and whether it was delivered. We never keep what the email said. These records are deleted after 30 days. If you delete your account, the records linked to it are deleted straight away. Others, such as the email with your invite, lose your address straight away and keep only the masked form and the keyed hash until they're deleted. The record of the email confirming the deletion loses your address as soon as that email has gone, or after 24 hours if it couldn't be sent.
 
-**Cookies and analytics.** The website sets no cookies. It counts visits with Cloudflare Web Analytics, which Cloudflare adds to its pages. Web Analytics uses no cookies or other storage in your browser, doesn't fingerprint you and doesn't follow you across other sites. We see only totals, such as visits per page, the sites visitors came from, browser and device types, countries and how fast pages load, never linked to you or to your Hasala account. Invite, freeze and waitlist links are not counted: their addresses carry personal codes, so on those pages (hasala.app/i, /freeze and /waitlist) the website's security policy doesn't let Web Analytics run. The Hasala app itself contains no analytics or tracking tools. Elsewhere, the website's security policy lets it run only its own code and Cloudflare's analytics script, plus Cloudflare Turnstile's while bot checks are on. It remembers, in your browser and only for the open tab, that you've already seen the opening animation; that never leaves your browser.
+**Cookies and analytics.** The website sets no cookies. It counts visits with Cloudflare Web Analytics, which Cloudflare adds to its pages. Cloudflare says Web Analytics uses no cookies or other storage in your browser, doesn't fingerprint you and doesn't follow you across other sites. We see only totals, such as visits per page, the sites visitors came from, browser and device types, countries and how fast pages load, never linked to you or to your Hasala account. Invite, freeze and waitlist links are not counted: their addresses carry personal codes, so on those pages (hasala.app/i, /freeze and /waitlist) the website's security policy doesn't let Web Analytics run. The Hasala app itself contains no analytics or tracking tools. Elsewhere, the website's security policy lets it run only its own code and Cloudflare's analytics script, plus Cloudflare Turnstile's while bot checks are on. It remembers, in your browser and only for the open tab, that you've already seen the opening animation; that never leaves your browser.
 
 ### What we don't collect
 
@@ -207,10 +207,11 @@ Hasala asks Google for three permissions: `openid` and `email`, which give Hasal
 
 - Your iPhone, not our server, connects to Gmail.
 - Your iPhone asks Gmail only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. If Gmail's search also returns an email that only looks like it's from your bank, Hasala reads just its sender details on your iPhone and then sets it aside.
+- Your iPhone checks each message before it uses it. If Hasala can't be confident that a message really came from your bank, for example because it was forwarded or is in Spam, it waits for you in Review. How Hasala decides may change as we learn how each bank sends its mail.
 - If you ask Hasala to look for a bank we're adding (see [Bank requests](#bank-requests)), your iPhone asks Gmail whether there are messages from that bank's addresses. It gets only message IDs back and downloads nothing.
 - From each bank alert, your iPhone keeps the amount, merchant, date and card, plus the Gmail message ID so you can open the original email later. These become transactions, which are encrypted on your iPhone before they sync.
 - Hasala can't send, delete, label or change your email.
-- Hasala reads alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
+- At the time of writing, Hasala reads alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
 
 ### Limited Use
 
@@ -227,7 +228,7 @@ In practice, for data Hasala receives from your Gmail:
 
 ### Keeping and deleting it
 
-- **Your Gmail access token** is kept in your iPhone's Keychain, on that iPhone only, and is never sent to our server. When you disconnect Gmail, Hasala revokes it at Google and deletes it from the Keychain.
+- **Your Gmail access token** is kept in your iPhone's Keychain, on that iPhone only, and is never sent to our server. When you disconnect Gmail, Hasala asks Google to revoke it and deletes it from the Keychain.
 - **Your bank alert emails** are never stored by Hasala. Your iPhone reads each one and keeps only the details listed above.
 - **Those details** (amount, merchant, date, card and Gmail message ID) are kept in Hasala's encrypted database on your iPhone, protected by iOS data protection, and on our server only in sealed form that we can't open. They stay until you delete them or your account.
 - **Your Gmail address** is kept on our server only as a keyed hash, which is deleted when you disconnect Gmail or delete your account (see [Gmail connection](#gmail-connection)).
@@ -240,7 +241,7 @@ During the beta, Google shows a warning that it hasn't verified Hasala. This hap
 
 ### Stopping Gmail access
 
-You can disconnect Gmail in Hasala under Profile › Bank alerts. Hasala then revokes its access at Google and stops Google's new-mail notifications. You can also remove Hasala's access in your Google Account under Security › Your connections to third-party apps and services. Deleting your Hasala account disconnects Gmail too.
+You can disconnect Gmail in Hasala under Profile › Bank alerts. Hasala then asks Google to revoke its access and to stop its new-mail notifications. You can also remove Hasala's access in your Google Account's security settings (at the time of writing, under Security › Your connections to third-party apps and services). Deleting your Hasala account disconnects Gmail too.
 
 ## Outlook and Microsoft account data
 
@@ -251,9 +252,9 @@ Hasala asks Microsoft for five permissions: `openid`, `email` and `profile`, whi
 ### What Hasala does with it
 
 - Your iPhone, not our server, connects to Outlook.
-- Your iPhone asks Outlook only for messages from your banks' alert addresses, so the rest of your mailbox is never downloaded. It leaves out anything in Deleted Items. It checks the sender of every message Outlook lists, and if Outlook ever lists one from another sender, Hasala reads nothing from that list.
+- Your iPhone asks Outlook only for messages from your banks' alert addresses, so the rest of your mailbox is never downloaded. It leaves out anything in Deleted Items, and it checks the sender of each message Outlook lists before it reads any of them.
 - If you ask Hasala to look for a bank we're adding (see [Bank requests](#bank-requests)), your iPhone asks Outlook whether there are messages from that bank's alert addresses. Outlook can only be asked about exact addresses Hasala already knows, so this rarely finds a bank we're adding. For each match, Outlook returns its message ID, sender, the time it arrived and its folder. Your iPhone downloads nothing and keeps none of it.
-- Your iPhone takes a message as your bank's only when it comes from one of your bank's known alert addresses, it is in your Inbox, and your bank's domain tells mail services to reject mail that pretends to come from it. Anything else, such as an alert in Junk Email or another folder, waits for you in Review.
+- Your iPhone checks each message before it uses it. If Hasala can't be confident that a message really came from your bank, for example because it's in Junk Email or another folder rather than your Inbox, it waits for you in Review. How Hasala decides may change as we learn how each bank sends its mail.
 - From each bank alert, your iPhone keeps the amount, merchant, date and card, plus the Outlook message ID so you can open the original email later. These become transactions, which are encrypted on your iPhone before they sync.
 - So that new alerts arrive quickly, your iPhone asks Microsoft to notify our server each time a new message arrives in your Inbox. Our server then wakes your iPhone, and your iPhone checks Outlook itself. The notices carry no content (see [Outlook connection](#outlook-connection)).
 - Hasala can't send, delete, move or change your email.
@@ -272,9 +273,9 @@ We treat data from your Outlook exactly as we treat data from your Gmail under [
 
 ### Stopping Outlook access
 
-You can disconnect Outlook in Hasala under Profile › Bank alerts. Hasala then asks Microsoft to stop its new-mail notifications, and deletes its Outlook tokens from your iPhone. Microsoft doesn't let an app withdraw its own permission, so to remove Hasala's access at Microsoft as well, go to [account.live.com/consent/Manage](https://account.live.com/consent/Manage), sign in with your Microsoft account and remove Hasala. Deleting your Hasala account disconnects Outlook too.
+You can disconnect Outlook in Hasala under Profile › Bank alerts. Hasala then asks Microsoft to stop its new-mail notifications, and deletes its Outlook tokens from your iPhone. At the time of writing, Microsoft doesn't let an app withdraw its own permission, so to remove Hasala's access at Microsoft as well, go to [account.live.com/consent/Manage](https://account.live.com/consent/Manage), sign in with your Microsoft account and remove Hasala. Deleting your Hasala account disconnects Outlook too.
 
-If your iPhone can't reach Microsoft when you disconnect, the notification setup Microsoft still holds expires within 7 days. Until then, our server ignores its notices and stores nothing from them.
+If your iPhone can't reach Microsoft when you disconnect, the notification setup Microsoft still holds is set to expire within 7 days. Until then, our server ignores its notices and stores nothing from them.
 
 ## Encryption in plain words
 
@@ -295,25 +296,25 @@ If you lose your recovery phrase and every passkey, your account can't be recove
 
 The beta doesn't show notifications yet. Setup can ask for your permission now, so that they work once they arrive. When they do, Hasala will write them on your iPhone. Our server only ever sends a silent signal through Apple to wake the app, and that signal carries no content.
 
-During setup you can turn on **Show amounts and merchants**. It's off by default. Today it applies to Hasala's Lock Screen widgets, and it will apply to notifications once they arrive. If you turn it on, amounts and merchants may appear on your Lock Screen.
+During setup you can turn on **Show amounts and merchants**. It's off by default. Today it applies to Hasala's Lock Screen widgets, and we plan for it to apply to notifications once they arrive. If you turn it on, amounts and merchants may appear on your Lock Screen.
 
 ## Your profile picture
 
-Hasala shows your picture from Gravatar, a service run by Automattic, if you have one tied to your email address. To do this, your iPhone asks Gravatar for the picture by sending a hash of your email address, a code made from it, and the size it needs. Automattic can see that request and your iPhone's IP address. The request goes straight from your iPhone to Gravatar, not through our server, and we never see it. Like any web request, it also carries a few standard headers: a generic browser name ("Mozilla/5.0") that doesn't name Hasala, its version or your iPhone, and that it accepts any image, any language and compressed replies. Hasala sends no cookies and no other details with it, and keeps the picture on your iPhone for up to a day. If you have no Gravatar picture, or your iPhone is offline, Hasala shows your initials instead. A hash isn't a secret: someone who already knows your email address could make the same code and check it. This is on by default, and you can turn it off on each iPhone, under Profile › Privacy › Profile picture from Gravatar. When it's off, Hasala sends nothing to Gravatar, shows your initials, and deletes the pictures it kept on your iPhone.
+Hasala shows your picture from Gravatar, a service run by Automattic, if you have one tied to your email address. To do this, your iPhone asks Gravatar for the picture by sending a hash of your email address, a code made from it, and the size it needs. Automattic can see that request and your iPhone's IP address. The request goes straight from your iPhone to Gravatar, not through our server, and we never see it. Like any web request, it also carries a few standard headers, such as a generic browser name that doesn't name Hasala, its version or your iPhone. Hasala sends no cookies with it, and keeps the picture on your iPhone for a short time, up to a day. If you have no Gravatar picture, or your iPhone is offline, Hasala shows your initials instead. A hash isn't a secret: someone who already knows your email address could make the same code and check it. This is on by default, and you can turn it off on each iPhone, under Profile › Privacy › Profile picture from Gravatar. When it's off, Hasala sends nothing to Gravatar, shows your initials, and deletes the pictures it kept on your iPhone.
 
 ## Cloud suggestions
 
 Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort your first import. There are two switches, and you can turn each on or off at any time.
 
-**How Hasala sorts a payment.** Hasala first tries your rules, then its merchant list. With Cloud suggestions off, that's all: a payment they can't place waits for you in Review, and no AI model runs. With Merchant suggestions on, Hasala then asks Cloudflare's AI service, and if Cloudflare can't help, Apple's on-device model, which reads only names written in Latin letters. Apple's model never files a payment by itself.
+**How Hasala sorts a payment.** Hasala first tries your rules, then its merchant list. With Cloud suggestions off, that's all: a payment they can't place waits for you in Review, and no AI model runs. With Merchant suggestions on, Hasala then asks Cloudflare's AI service, and if Cloudflare can't help, Apple's on-device model, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself.
 
-**Merchant suggestions.** When Hasala can't sort a payment with your rules or its merchant list, it asks Cloudflare's AI service to suggest a category. It sends the merchant name as it appears in the alert, up to 128 characters, for example "CAFE EXAMPLE JBR", and Hasala's built-in categories: their names, their IDs and the short built-in descriptions that explain each one. It doesn't send the amount, the date, your card, your bank, your own category names or anything about your account. Each merchant is sent on its own. The suggestion is marked "Suggested by Cloudflare AI", and it doesn't count in your totals until you confirm it.
+**Merchant suggestions.** When Hasala can't sort a payment with your rules or its merchant list, it asks Cloudflare's AI service to suggest a category. It sends the merchant name as it appears in the alert (shortened if it's very long), for example "CAFE EXAMPLE JBR", and Hasala's built-in categories: their names, their IDs and the short built-in descriptions that explain each one. It doesn't send the amount, the date, your card, your bank, your own category names or anything about your account. Each merchant is sent on its own. The suggestion is labelled as coming from Cloudflare's AI, and the payment stays in Review until you confirm or change it.
 
-**Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments count in your totals straight away and are marked "Sorted by Cloudflare AI". You can change any of them. It sends nothing more than Merchant suggestions does.
+**Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments don't wait in Review, and they're labelled as sorted by Cloudflare's AI. You can change any of them. It sends nothing more than Merchant suggestions does.
 
-**Sorting your first import.** When you set up Hasala, it can offer to sort the transactions it has just imported. If you choose Turn on, both switches turn on, and Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. If you choose Not now, both stay off. You can change either in Profile › Cloud suggestions at any time.
+**Sorting your first import.** When you set up Hasala, it can offer to sort the transactions it has just imported. If you accept, both switches turn on, and Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. If you decline, both stay off. You can change either in Profile › Cloud suggestions at any time.
 
-**What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. The service passes each one to Cloudflare's AI service through Cloudflare AI Gateway, which lets us cap what we spend. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address. The service uses it only to limit how many requests one connection can send: Cloudflare's rate limiter counts requests from each IP address (for IPv6, from its network block) for one minute at a time. The service never logs or returns the address. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say Cloudflare's AI service doesn't keep it or use it to train its models. We turn AI Gateway's logs and cache off, so it keeps only totals for each model, such as the number of requests, the amount of text processed, the cost and any errors, never the merchant name, the categories or the answer. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records don't include the merchant name or the category names. We never see these requests.
+**What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. The service passes each one to Cloudflare's AI service through Cloudflare AI Gateway, which lets us cap what we spend. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address. The service uses it only to limit how many requests one connection can send: Cloudflare's rate limiter counts requests from each IP address (for IPv6, from its network block) over a short window, about a minute. The service doesn't log or return the address. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say Cloudflare's AI service doesn't keep it or use it to train its models. We turn AI Gateway's logs and cache off, so it keeps only totals for each model, such as the number of requests, the amount of text processed, the cost and any errors, never the merchant name, the categories or the answer. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records describe the request, not what it carries, so the merchant name and the category names aren't in them. We never see these requests.
 
 **What we can't hide.** A merchant name can't be linked back to you from our request, but it still says where someone paid. If you'd rather nothing about your payments leaves your iPhone, leave Cloud suggestions off; everything else in Hasala works the same.
 
@@ -329,16 +330,16 @@ We use a small number of service providers. None of them can open your sealed da
 | **Cloudflare Workers AI and AI Gateway** | If you turn on Cloud suggestions: runs the AI model that suggests a category. AI Gateway sits in front of it and caps what we spend. | The merchant name, Hasala's built-in categories, and your IP address. No account or device identifier. [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say the AI service answers and keeps nothing. AI Gateway keeps only totals, such as requests, text processed and cost, with its logs off. |
 | **Google** | If you connect Gmail: hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Microsoft** | If you connect Outlook: hosts your Outlook mailbox and tells our server when a new message arrives in your Inbox. | Your mail, as it already does, and that you've given Hasala read-only access. Microsoft also sees your iPhone's IP address when it connects to Outlook, and our server's notification address. |
-| **Gravatar (Automattic)** | Shows your profile picture, if you have one on Gravatar. Your iPhone asks for it directly. Our server is not involved. You can turn this off in Profile, and then nothing is sent. | A code made from your email address (a SHA-256 hash), the size of the picture, your iPhone's IP address, and standard web request headers that don't name Hasala. Nothing else. See [Your profile picture](#your-profile-picture). |
-| **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
+| **Gravatar (Automattic)** | Shows your profile picture, if you have one on Gravatar. Your iPhone asks for it directly. Our server is not involved. You can turn this off in Profile, and then nothing is sent. | A code made from your email address (a SHA-256 hash), the size of the picture, your iPhone's IP address, and standard web request headers that don't name Hasala. See [Your profile picture](#your-profile-picture). |
+| **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. TestFlight doesn't show testers to each other. Apple says it encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
 
-Emails you send to our @hasala.app addresses (support@, privacy@ and security@) arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them. Apart from that, we don't use any other service provider that handles your personal data. The waitlist, invites and our admin tool run on our own server. We reach the admin tool from our own devices over Tailscale, a private network that connects them to the server; Tailscale carries that traffic encrypted and can't read it.
+Emails you send to our @hasala.app addresses (support@, privacy@ and security@) arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them. Apart from that, we don't use any other service provider that handles your personal data. The waitlist, invites and our admin tool run on our own server. We reach the admin tool from our own devices over Tailscale, a private network that connects them to the server; Tailscale says it carries that traffic encrypted and can't read it.
 
 ### Our server
 
 The beta runs on hardware operated by the developer. It sits behind Cloudflare and accepts no connections except through Cloudflare. A small number of trusted people have administrative access to it; because your financial data is [end-to-end encrypted](#encryption-in-plain-words) on your iPhone, they can't read it. Like our server, they can see the account details listed in [What we collect and why](#what-we-collect-and-why), such as your email address and name.
 
-Encryption of the server's disks at rest is being added before the public launch.
+The server's disks aren't encrypted at rest yet. We plan to add this before a public launch.
 
 ### Where your data is processed
 
@@ -364,12 +365,12 @@ Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft
 | Waitlist sign-up, not confirmed | 7 days after the last confirmation email we sent. |
 | Waitlist sign-up, confirmed | Until you join, leave the list, or 180 days after you confirmed, whichever comes first. If you have an open invite then, until that invite is used, expires or is withdrawn. |
 | Waitlist sign-up, after you join | Your address is deleted straight away. The rest of the entry is deleted 30 days later. |
-| Bank counts from people who didn't ask for an invite (only the bank's name and the time) | No fixed period. They hold nothing about the person who sent them. |
+| Bank counts from people who didn't ask for an invite (only the bank's name and the time) | 365 days, then deleted. They hold nothing about the person who sent them. |
 | Bank requests from the app, with the bank's email address if you sent it | Until you delete your account. |
 | Email records | 30 days. We never keep what an email said. |
 | Upload refusals (the reason and the day) | 90 days. |
 | Sign-up, email-code and other sign-in steps | Minutes (see [How you sign in](#how-you-sign-in)). |
-| Cloud suggestions requests | Not kept. Our service answers each request and forgets it. Cloudflare's rate limit counts by IP address last one minute, and AI Gateway keeps only totals. |
+| Cloud suggestions requests | Not kept. Our service answers each request and forgets it. Cloudflare's rate limit counts by IP address last about a minute, and AI Gateway keeps only totals. |
 | Data on your iPhone | Until you delete your account. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |
 
 ## Deleting your account
@@ -378,8 +379,8 @@ You can delete your account in the app under Profile › Delete your account. Yo
 
 1. Our server erases your account, sealed data, keys, sign-in methods, devices and mailbox connection straight away.
 2. Hasala erases its data on that iPhone. Your other iPhones erase theirs the next time they connect.
-3. Hasala then stops your mailbox's new-mail notifications. For Gmail, it also revokes its access at Google; for Outlook, it deletes its tokens from your iPhone (see [Stopping Outlook access](#stopping-outlook-access)). Our server no longer has your mailbox connection by then, so it ignores any notice that still arrives.
-4. We send you one email to confirm the deletion.
+3. Hasala then stops your mailbox's new-mail notifications. For Gmail, it also asks Google to revoke its access; for Outlook, it deletes its tokens from your iPhone (see [Stopping Outlook access](#stopping-outlook-access)). Our server no longer has your mailbox connection by then, so it ignores any notice that still arrives.
+4. We send you an email to confirm the deletion.
 
 Some things remain for a while afterwards:
 
@@ -433,7 +434,7 @@ If you're not satisfied with our answer, you can complain to the UAE Data Office
 
 ## Children
 
-Hasala is for adults. You must be at least 18 to use it. We don't knowingly collect data from children. If you think a child has created an account, contact us and we'll delete it.
+Hasala is for adults. You must be at least 18 to use it. We don't knowingly collect data from children. If you think a child has created an account, contact us, and if they're under 18 we'll delete it.
 
 ## Changes to this policy
 

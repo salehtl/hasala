@@ -8,11 +8,11 @@ plainWords: "Hasala reads your bank alerts and seals your money data on your iPh
 
 ## How Hasala keeps your data safe
 
-This is a plain summary of Hasala's security design during the beta. It describes what the design protects, and also what it doesn't.
+This is a plain summary of Hasala's security design during the beta. It describes what the design protects, and also what it doesn't. The details may change as Hasala develops.
 
 ### Bank emails are read on your iPhone
 
-Hasala connects to your Gmail or Outlook with read-only access, from your iPhone. Your iPhone asks your mailbox only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. For Gmail, your iPhone checks that a message really came from your bank before it uses it; one that only looks like it did is set aside. For Outlook, your iPhone counts a message straight away only when it comes from one of your bank's known alert addresses, it is in your Inbox, and your bank's domain tells mail services to reject mail that pretends to come from it. Anything else, such as an alert in Junk Email, waits in your review. The access tokens live in your iPhone's Keychain and are never sent to our server. Raw bank emails are not stored in your Hasala data and are never sent to us.
+Hasala connects to your Gmail or Outlook with read-only access, from your iPhone. Your iPhone asks your mailbox only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. Your iPhone checks each message before it uses it. If Hasala can't be confident that a message really came from your bank, for example because it's in Spam or Junk Email, it waits in your review. Mail that turns out not to be from a bank at all is set aside. How Hasala decides may change as we learn how each bank sends its mail. The access tokens live in your iPhone's Keychain and are never sent to our server. Raw bank emails are not stored in your Hasala data and are never sent to us.
 
 ### Sorting happens on your iPhone
 
@@ -24,7 +24,7 @@ Hasala sorts transactions on your iPhone. By default it works in this order:
 
 In the beta, Apple's on-device model does not run when Cloud suggestions are off. Nothing is sent to an AI service unless you turn on Cloud suggestions, which is optional and off by default.
 
-If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model never files a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
+If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
 
 ### Your data is sealed before it syncs
 
@@ -55,16 +55,16 @@ When someone signs in to your account on a new device, uses your recovery phrase
 
 ### Push signals carry no content
 
-Our server wakes Hasala on your iPhone with a silent, empty signal through Apple. Transaction notifications would be written on your iPhone, but the beta app doesn't show them yet. When it does, by default they won't show amounts or merchants on the Lock Screen.
+Our server wakes Hasala on your iPhone with a silent, empty signal through Apple. Transaction notifications would be written on your iPhone, but the beta app doesn't show them yet. We plan for them not to show amounts or merchants on the Lock Screen by default.
 
-The notices that tell our server about new mail carry no content either. If you connect Outlook, each notice from Microsoft carries only a random code made for your connection, not your address. Our server stores just a hash of that code and uses it to find which iPhone to wake. The notice also names the new message by an ID; our server discards that part without reading, storing or logging it.
+The notices that tell our server about new mail carry no content either. If you connect Outlook, each notice from Microsoft identifies your connection by a random code made for it, not by your address. Our server stores just a hash of that code and uses it to find which iPhone to wake. The notice also names the new message by an ID; our server discards that part without reading, storing or logging it.
 
 ### The server and its network
 
 - During the beta, our server is a computer run by the developer. It accepts no direct connections from the internet. Cloudflare is the network provider in front of it and forwards requests to it through an outbound-only tunnel.
 - Encryption in transit ends at Cloudflare. Cloudflare can see requests and the sealed data, but it can't open the sealed data.
 - The server's logs don't record email addresses, IP addresses, tokens or request contents. They can hold your account's internal ID when a request fails or is refused, and for some security actions, such as removing a passkey.
-- The database accepts only local connections. The service runs with the minimum permissions it needs.
+- The database accepts only local connections. The service runs with restricted permissions.
 - Backups are encrypted, and the keys to open them are not kept on the server. Backups are kept for 30 days.
 - Administration happens only over a private, authenticated connection. Our admin tool for the waitlist and invites is reachable only from our own devices over a private network (Tailscale), never from the internet.
 
@@ -81,7 +81,7 @@ No design is perfect. These are the limits we know about and accept during the b
 - **A compromised server.** A server we no longer control can't read your sealed data. But it could stop or delay sync, or send fake notification text. That is why Hasala will never ask for your recovery phrase, your password or a code in a notification, an email, a phone call or on a website.
 - **Your password.** If you use one, your iPhone sends our server a scrambled form of it, never the password itself. Our server and Cloudflare see that scrambled form when you sign in. Someone holding it could sign in as you, though never unlock your data, or try to guess your password from it, which is slow by design. A passkey avoids this, which is why we recommend one.
 - **Cloud suggestions.** If you turn them on, the merchant names Hasala sends go to Cloudflare's AI service through a Hasala service on Cloudflare, so Cloudflare sees them, with your IP address. They carry no account or device identifier, the service stores nothing, and AI Gateway keeps only totals, but a merchant name still says where someone paid. They're off by default (see our [Privacy Policy](/privacy#cloud-suggestions)).
-- **The beta server itself.** The beta runs on hardware operated by the developer. A small number of trusted people have administrative access to it; because your financial data is end-to-end encrypted on your iPhone, they can't read it. What's stored there is sealed data plus the account details in our [Privacy Policy](/privacy#what-we-collect-and-why), which they can see. Encryption of the server's disks at rest is being added before the public launch.
+- **The beta server itself.** The beta runs on hardware operated by the developer. A small number of trusted people have administrative access to it; because your financial data is end-to-end encrypted on your iPhone, they can't read it. What's stored there is sealed data plus the account details in our [Privacy Policy](/privacy#what-we-collect-and-why), which they can see. The server's disks aren't encrypted at rest yet. We plan to add this before a public launch.
 
 ## Reporting a vulnerability
 
@@ -102,10 +102,12 @@ Please don't put details of an unfixed vulnerability in TestFlight feedback, pub
 
 ### What to expect
 
-- We'll confirm we received your report.
-- We'll keep you updated while we investigate and fix it.
-- We'll fix serious issues as quickly as we can and agree a disclosure date with you.
-- With your permission, we'll credit you once the issue is fixed.
+Hasala is a small project, so timings vary. We aim to:
+
+- confirm we received your report;
+- keep you updated while we investigate and fix it;
+- fix serious issues as quickly as we reasonably can, and agree a disclosure date with you; and
+- credit you once the issue is fixed, if you'd like that.
 
 There is no paid bug bounty during the beta.
 
