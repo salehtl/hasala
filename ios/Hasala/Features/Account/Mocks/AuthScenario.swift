@@ -65,6 +65,7 @@
     /// so a connect from the profile asks for the banks first.
     case noBanks
     case finishSetup
+    case noAlerts
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -112,7 +113,7 @@
       case .gmailReconnect: [MockMailbox.needingSignIn(MockMailbox.gmail)]
       case .mailboxes2: [MockMailbox.gmail, MockMailbox.outlook]
       case .outlookSignIn: [MockMailbox.gmail, MockMailbox.needingSignIn(MockMailbox.outlook)]
-      case .finishSetup: [MockMailbox.gmail]
+      case .finishSetup, .noAlerts: [MockMailbox.gmail]
       case .gmailSkipped, .noMailbox, .noBanks, .newUser, .noPasscode, .signInPassword, .setupBank, .reviewAccount,
         .setupEmail, .outlookAdmin, .outlookCancelled, .relaunchInterrupted:
         []
@@ -122,7 +123,7 @@
     static func startsWithoutPlan(_ scenario: AuthScenario?) -> Bool {
       switch scenario {
       case .newUser, .noPasscode, .setupBank, .reviewAccount, .setupEmail, .outlookAdmin, .outlookCancelled,
-        .relaunchInterrupted, .finishSetup:
+        .relaunchInterrupted, .finishSetup, .noAlerts:
         true
       default:
         false
@@ -136,6 +137,7 @@
       mailbox.outlookAdmin = scenario == .outlookAdmin
       mailbox.outlookCancelled = scenario == .outlookCancelled
       if scenario == .noBanks { mailbox.banks = [] }
+      if scenario == .noAlerts { mailbox.total = 0 }
       let fresh = startsWithoutPlan(scenario)
       let setup = MockSetupAuthoring(
         saved: fresh ? SetupReadBack() : SetupReadBack(incomeMinor: 25_000_00, payday: 28, split: StartingPlan()))
@@ -149,7 +151,7 @@
       }
       switch scenario {
       case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,
-        .outlookReconnect, .gmailLinked, .finishSetup:
+        .outlookReconnect, .gmailLinked, .finishSetup, .noAlerts:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),

@@ -74,6 +74,25 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Home")
   }
 
+  @MainActor
+  func testNoBankAlertsYetOnHome() throws {
+    let app = launchRelease("noAlerts")
+    let item = el(app, "home.finish.bankAlerts")
+    XCTAssertTrue(item.waitForExistence(timeout: uiWait), "Release does not say no bank alerts were found")
+    assertNoPlaceholders(app, "Home")
+    try audit(app)
+    item.tap()
+    XCTAssertTrue(el(app, "noAlerts.checkAgain").waitForExistence(timeout: uiWait))
+    assertPresent(app, ["noAlerts.howTo.enbd", "noAlerts.howTo.dib", "noAlerts.howTo.adib", "noAlerts.close"],
+                  "No bank alerts yet")
+    assertNoPlaceholders(app, "No bank alerts yet")
+    assertPersonalAccountsOnly(app, "No bank alerts yet")
+    attach(app, "Release · No bank alerts yet")
+    try audit(app, overSheet: true)
+    tap(app, "noAlerts.close")
+    XCTAssertTrue(item.waitForExistence(timeout: uiWait))
+  }
+
   /// The review account's email step offers the sample month, with the same honest copy.
   @MainActor
   func testTheReviewAccountsEmailStepOffersSampleData() throws {

@@ -59,6 +59,10 @@
     var unreadableMail: [UnreadableMail] = []
     var importing: MailImport?
 
+    var firstScanFinished: Bool {
+      !sampleLoaded && importing == nil && mailboxes.contains { $0.state == .connected }
+    }
+
     init(offersSampleData: Bool = false, mailboxes: [MailboxSnapshot] = []) {
       self.offersSampleData = offersSampleData
       self.mailboxes = mailboxes

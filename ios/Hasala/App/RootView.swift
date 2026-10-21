@@ -188,7 +188,10 @@ struct LaunchView: View {
       let auth = AuthScenario.fromLaunchArguments(arguments)
       let session = AuthScenario.session(for: auth)
       var state = scenario.state
-      if auth == .finishSetup { for key in state.plan.budgets.keys { state.plan.budgets[key] = .aed(0) } }
+      if auth == .finishSetup || auth == .noAlerts {
+        for key in state.plan.budgets.keys { state.plan.budgets[key] = .aed(0) }
+      }
+      if auth == .noAlerts { state.txns = [] }
       let graph = MockGraph(
         app: AppModel(
           store: InMemoryLedger(state: state, now: scenario.now),

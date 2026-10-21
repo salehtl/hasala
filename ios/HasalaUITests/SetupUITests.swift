@@ -96,6 +96,50 @@ final class SetupUITests: XCTestCase {
   }
 
   @MainActor
+  func testHomeSaysNoBankAlertsYet() throws {
+    let app = launch(scenario: "noAlerts")
+    let item = el(app, "home.finish.bankAlerts")
+    XCTAssertTrue(item.waitForExistence(timeout: 30), "Home did not say no bank alerts were found")
+    XCTAssertTrue(app.staticTexts["0 of 3"].exists)
+    XCTAssertTrue(el(app, "home.finish.plan").exists)
+    XCTAssertLessThan(item.frame.minY, el(app, "home.finish.plan").frame.minY, "the no-alerts item is not first")
+    attach(app, "Home · No bank alerts yet")
+    try audit(app)
+
+    item.tap()
+    XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: uiWait), "the sheet did not open")
+    let window = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Hasala looked back 90 days in Gmail for Emirates NBD, DIB' AND label ENDSWITH 'ADIB. Your bank may send alerts only by SMS.'"))
+    XCTAssertEqual(window.count, 1, "the 90-day line is missing")
+    XCTAssertTrue(app.staticTexts["New alerts are read when you open Hasala. Alerts go to another address? Use that mailbox instead."].exists)
+    attach(app, "No bank alerts yet (sheet)")
+    try audit(app, overSheet: true)
+
+    tap(app, "noAlerts.howTo.dib")
+    XCTAssertTrue(el(app, "alertsHelp.dib").waitForExistence(timeout: uiWait), "How to did not open")
+    XCTAssertFalse(el(app, "alertsHelp.enbd").exists, "How to showed another bank")
+    tap(app, "alertsHelp.done")
+
+    tap(app, "noAlerts.checkAgain")
+    XCTAssertTrue(el(app, "noAlerts.checkAgain").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.staticTexts["No bank alerts yet."].exists, "the sheet closed with nothing found")
+    tap(app, "noAlerts.close")
+    XCTAssertTrue(item.waitForExistence(timeout: uiWait), "the item left with nothing found")
+  }
+
+  @MainActor
+  func testCheckAgainFindsAlertsAndTheItemLeaves() throws {
+    let app = launch(scenario: nil, screen: "home.noAlerts.found")
+    let item = el(app, "home.finish.bankAlerts")
+    XCTAssertTrue(item.waitForExistence(timeout: 30))
+    item.tap()
+    tap(app, "noAlerts.checkAgain")
+    XCTAssertTrue(el(app, "noAlerts").waitForNonExistence(timeout: 30), "the sheet stayed after alerts arrived")
+    XCTAssertTrue(item.waitForNonExistence(timeout: uiWait), "the item stayed after alerts arrived")
+    XCTAssertTrue(app.staticTexts["1 of 3"].exists)
+    XCTAssertTrue(el(app, "home.finish.plan").exists)
+  }
+
+  @MainActor
   func testSetupAtLargeTextSizes() throws {
     let app = launch(scenario: "setupBank", arguments: Self.largeText)
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 15))

@@ -4,6 +4,7 @@ import Observation
 import SwiftUI
 
 enum FinishSetupItem: String, CaseIterable, Identifiable {
+  case bankAlerts
   case plan
   case notifications
 
@@ -20,13 +21,27 @@ final class FinishSetupModel {
   @ObservationIgnored private var draft: MonthlyPlanModel?
   var askingNotifications = false
   var showDetails = false
+  private(set) var ledgerEmpty = false
+  private(set) var noAlertsTracked = false
+  private(set) var alertsFound = false
+  private(set) var checkingAgain = false
+  var checkFailure: SetupFailure?
+  var showingNoAlerts = false
 
   init(services: AccountServices) {
     self.services = services
     refresh()
   }
 
-  func refresh() {
+  var items: [FinishSetupItem] {
+    noAlertsTracked || noAlerts ? FinishSetupItem.allCases : FinishSetupItem.allCases.filter { $0 != .bankAlerts }
+  }
+
+  var noAlerts: Bool { ledgerEmpty && !alertsFound && (checkingAgain || services.mailbox.firstScanFinished) }
+
+  func refresh(hasTransactions: Bool? = nil) {
+    if let hasTransactions { ledgerEmpty = !hasTransactions }
+    if noAlerts { noAlertsTracked = true }
     let saved = services.setup.readBack()
     if !planDone, saved.split != nil { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
@@ -34,9 +49,41 @@ final class FinishSetupModel {
 
   func isDone(_ item: FinishSetupItem) -> Bool {
     switch item {
+    case .bankAlerts: !noAlerts
     case .plan: planDone
     case .notifications: notificationsDone
     }
+  }
+
+  var noAlertsBanks: [SupportedBank] {
+    let chosen = Set(services.mailbox.chosenBanks())
+    return SupportedBank.allCases.filter { chosen.contains($0) }
+  }
+
+  var noAlertsMailbox: MailProviderKind {
+    services.mailbox.mailboxes.first { $0.state != .disconnected }?.provider ?? services.mailbox.linkedProvider ?? .gmail
+  }
+
+  func openNoAlerts() {
+    checkFailure = nil
+    showingNoAlerts = true
+  }
+
+  func checkAgain() async {
+    guard noAlerts, !checkingAgain else { return }
+    checkingAgain = true
+    defer { checkingAgain = false }
+    checkFailure = nil
+    for await p in services.mailbox.firstScan() {
+      switch p.phase {
+      case .finished, .background:
+        if let s = p.summary, s.total > 0 { alertsFound = true }
+      case .failed(let message):
+        checkFailure = .failed(message)
+      default: break
+      }
+    }
+    if alertsFound { showingNoAlerts = false }
   }
 
   var today: LocalDate { (services.setup as? SetupClock)?.today() ?? LedgerToday.device() }
@@ -85,6 +132,11 @@ struct FinishSetupSection: View {
         HSectionHeader("Finish setting up", trailing: .fact("\(items.count - open.count) of \(items.count)"))
         ForEach(open) { item in
           switch item {
+          case .bankAlerts:
+            FinishSetupRow(
+              icon: .envelope, title: "No bank alerts yet",
+              detail: "Turn on email alerts with your bank, then check again.",
+              enabled: true, identifier: "home.finish.bankAlerts", action: model.openNoAlerts)
           case .plan:
             FinishSetupRow(
               icon: .clock, title: "Set your monthly plan",

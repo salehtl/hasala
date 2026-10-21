@@ -10,9 +10,76 @@ import Testing
 @Suite("Home: finish setting up")
 struct FinishSetupTests: AccountSuite {
   func services(_ setup: MockSetupAuthoring = MockSetupAuthoring(),
-                notifications: MockNotificationPermission = MockNotificationPermission()) -> AccountServices {
-    AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: MockMailbox(),
+                notifications: MockNotificationPermission = MockNotificationPermission(),
+                mailbox: MockMailbox = MockMailbox()) -> AccountServices {
+    AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
                     setup: setup, notifications: notifications)
+  }
+
+  func readMailbox(total: Int = 0) -> MockMailbox {
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
+    mailbox.total = total
+    mailbox.step = .milliseconds(1)
+    return mailbox
+  }
+
+  @Test func aScanThatFoundNothingIsTheFirstItem() {
+    let m = FinishSetupModel(services: services(mailbox: readMailbox()))
+    #expect(!m.items.contains(.bankAlerts))
+    m.refresh(hasTransactions: false)
+    #expect(m.noAlerts && m.items == [.bankAlerts, .plan, .notifications] && !m.isDone(.bankAlerts))
+    m.refresh(hasTransactions: true)
+    #expect(!m.noAlerts && m.isDone(.bankAlerts) && m.items.first == .bankAlerts)
+  }
+
+  @Test func theNoAlertsItemIsDerivedSoItSurvivesARelaunch() {
+    let s = services(mailbox: readMailbox())
+    let first = FinishSetupModel(services: s)
+    first.refresh(hasTransactions: false)
+    let relaunched = FinishSetupModel(services: s)
+    relaunched.refresh(hasTransactions: false)
+    #expect(first.noAlerts && relaunched.noAlerts && relaunched.items.first == .bankAlerts)
+  }
+
+  @Test func noAlertsItemWithoutAFinishedScan() async throws {
+    let manual = FinishSetupModel(services: services())
+    manual.refresh(hasTransactions: false)
+    #expect(!manual.noAlerts && !manual.items.contains(.bankAlerts))
+
+    let reading = readMailbox()
+    reading.importing = MailImport(state: .reading, read: 0, total: 10)
+    let scanning = FinishSetupModel(services: services(mailbox: reading))
+    scanning.refresh(hasTransactions: false)
+    #expect(!scanning.noAlerts)
+
+    let sample = MockMailbox(offersSampleData: true, mailboxes: [MockMailbox.gmail])
+    try await sample.loadSampleData()
+    let review = FinishSetupModel(services: services(mailbox: sample))
+    review.refresh(hasTransactions: false)
+    #expect(!review.noAlerts)
+  }
+
+  @Test func checkAgainThatFindsNothingKeepsTheSheet() async {
+    let m = FinishSetupModel(services: services(mailbox: readMailbox()))
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    await m.checkAgain()
+    #expect(m.noAlerts && m.showingNoAlerts && !m.checkingAgain && m.checkFailure == nil)
+  }
+
+  @Test func checkAgainThatFindsAlertsClosesTheItem() async {
+    let m = FinishSetupModel(services: services(mailbox: readMailbox(total: 24)))
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    await m.checkAgain()
+    #expect(!m.noAlerts && !m.showingNoAlerts && m.isDone(.bankAlerts) && m.items.first == .bankAlerts)
+  }
+
+  @Test func theSheetNamesTheBanksAndTheMailbox() {
+    let mailbox = readMailbox()
+    mailbox.banks = [.adib, .enbd]
+    let m = FinishSetupModel(services: services(mailbox: mailbox))
+    #expect(m.noAlertsBanks == [.enbd, .adib] && m.noAlertsMailbox == .gmail)
   }
 
   @Test func theItemsLeaveAsTheyAreDone() async throws {

@@ -73,7 +73,7 @@ struct HomeView: View {
           // column starts 20 down for a large title.
           .padding(.top, -8)
         if let finish, snapshot.isThisMonth {
-          FinishSetupSection(model: finish, items: FinishSetupItem.allCases, importing: app.mailbox?.importing != nil)
+          FinishSetupSection(model: finish, items: finish.items, importing: app.mailbox?.importing != nil)
         }
         if !canvas.isEmpty || snapshot.isThisMonth {
           WidgetCanvas(title: snapshot.canvasTitle, items: canvas, hidden: hidden,
@@ -91,11 +91,15 @@ struct HomeView: View {
         HomeImportPill(work: app.mailbox?.importing) { app.router.open(.profile, profile: [.bankAlerts]) }
           .padding(.bottom, 12)
       }
-      .task(id: app.store.revision) { finish?.refresh() }
+      .task(id: app.store.revision) { finish?.refresh(hasTransactions: !app.store.state.txns.isEmpty) }
       .sheet(item: Binding(get: { finish?.planFlow }, set: { finish?.planFlow = $0 })) { MonthlyPlanSheet(model: $0) }
       .sheet(isPresented: Binding(get: { finish?.askingNotifications ?? false },
                                   set: { finish?.askingNotifications = $0 })) {
         if let finish { NotificationsAskSheet(model: finish) }
+      }
+      .sheet(isPresented: Binding(get: { finish?.showingNoAlerts ?? false },
+                                  set: { finish?.showingNoAlerts = $0 })) {
+        if let finish { NoAlertsSheet(model: finish) }
       }
       .onChange(of: snapshot.isThisMonth) { _, _ in app.editingHome = false }
       .onChange(of: app.tab) { _, tab in if tab != .home { app.editingHome = false } }
