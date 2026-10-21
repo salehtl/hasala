@@ -31,6 +31,7 @@
     var capabilities: AccountCapabilities = .all
     /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
+    var refuseFinish: AuthFailure?
     /// What the existing account has (the sign-in scenarios).
     var existing: Account
     /// What a successful sign-in leads to.
@@ -136,6 +137,10 @@
       async throws(AuthFailure) -> AccountProfile
     {
       await pause()
+      if let f = refuseFinish {
+        refuseFinish = nil
+        throw f
+      }
       let p = AccountProfile(displayName: ticket.displayName, email: ticket.email, method: credential.method)
       profile = p
       existing = credential.method == .passkey ? .passkey : .passwordOnly
