@@ -162,6 +162,34 @@ func TestCooldownAndConfigPause(t *testing.T) {
 	}
 }
 
+func TestAnEnvironmentRefusalPausesOnlyThatEnvironment(t *testing.T) {
+	c := &clock{t: time.Unix(1_760_000_000, 0)}
+	s := &fakeSender{result: func(t Target) Result {
+		if t.Environment == EnvSandbox {
+			return ResultEnvironment
+		}
+		return ResultSent
+	}}
+	d := NewDispatcher(nil, s)
+	d.Now = c.now
+	sandbox := func(b byte) Target { return Target{TokenHex: tokenHex(b), Environment: EnvSandbox} }
+	wake(d, sandbox(1), ReasonNudge)
+	wake(d, sandbox(2), ReasonSecurity)
+	if s.count() != 1 {
+		t.Fatalf("sent to sandbox during its pause: %d", s.count())
+	}
+	wake(d, fixedTarget(3), ReasonSecurity)
+	wake(d, fixedTarget(4), ReasonSecurity)
+	if s.count() != 3 {
+		t.Fatalf("one sandbox refusal paused production: %d sends", s.count())
+	}
+	c.add(5*time.Minute + time.Second)
+	wake(d, sandbox(2), ReasonSecurity)
+	if s.count() != 4 {
+		t.Fatal("the sandbox pause did not end")
+	}
+}
+
 // AT-APNS-6: a full queue drops instead of blocking the caller.
 func TestAFullQueueNeverBlocks(t *testing.T) {
 	s := &fakeSender{block: make(chan struct{})}

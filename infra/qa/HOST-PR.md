@@ -242,7 +242,8 @@ After the guarded activation:
 ```sh
 systemctl is-active hasala.target hasala-postgresql hasalad cloudflared-hasala
 systemctl show -P Result hasala-migrate                      # success
-curl -s http://127.0.0.1:8471/api/v1/healthz                 # {"status":"ok","db":"ok"}
+sudo curl -s http://127.0.0.1:8471/api/v1/healthz                 # {"status":"ok","db":"ok"}
+curl -s --max-time 5 http://127.0.0.1:8471/api/v1/healthz     # as your own user: no answer (the kernel rule resets it)
 ss -ltnH | grep -E ':(8471|9471|9472)\b'                     # 127.0.0.1 only
 ss -ltnpH | grep postgres                                    # nothing: no TCP
 sudo hasala-admin version
@@ -305,7 +306,7 @@ account (the API is not open to testers before this release).
 systemctl show -P Result hasala-migrate                      # success
 journalctl -u hasala-migrate -o cat | grep 00022             # OK 00022_accounts.sql
 journalctl -u hasalad -o cat | grep 'NOT mounted'            # nothing: both key files reached serve
-curl -s -X POST -H 'Content-Type: application/json' \
+sudo curl -s -X POST -H 'Content-Type: application/json' \
   -d '{"invite_code":"ABCDEFGHIJKLMNOPQRSTUVWX","email":"probe@example.com","display_name":"Probe"}' \
   http://127.0.0.1:8471/api/v1/auth/signup/begin             # {"error":"not_invited"}, not a 404
 ```
@@ -330,9 +331,9 @@ After the activation:
 ```sh
 journalctl -u hasalad -o cat | grep 'optional groups'        # "enabled" lists gmail-link, not gmail-push
 journalctl -u hasalad -o cat | grep 'Pub/Sub push is not configured'
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/api/v1/mailbox/link/challenge   # 401: mounted (404: not)
-curl -s http://127.0.0.1:8471/api/v1/meta                    # "gmail_watch_topic":null
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/hooks/gmail/pubsub              # 404
+sudo curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/api/v1/mailbox/link/challenge   # 401: mounted (404: not)
+sudo curl -s http://127.0.0.1:8471/api/v1/meta                    # "gmail_watch_topic":null
+sudo curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/hooks/gmail/pubsub              # 404
 ```
 
 **The push, later.** In this order, so Pub/Sub never pushes to an unmounted
@@ -348,7 +349,7 @@ hook:
 
    ```sh
    journalctl -u hasalad -o cat | grep 'optional groups'                     # "enabled" lists gmail-link and gmail-push
-   curl -s http://127.0.0.1:8471/api/v1/meta                                 # "gmail_watch_topic":"projects/…/topics/…"
+   sudo curl -s http://127.0.0.1:8471/api/v1/meta                                 # "gmail_watch_topic":"projects/…/topics/…"
    curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.hasala.app/hooks/gmail/pubsub   # 401
    ```
 
@@ -415,7 +416,7 @@ is also a valid configuration.) After the activation:
 
 ```sh
 journalctl -u hasalad -o cat | grep 'optional groups'        # "enabled" lists the Outlook link and push groups
-curl -s http://127.0.0.1:8471/api/v1/meta                    # "outlook_notification_url":"https://api.hasala.app/hooks/outlook/graph", and the lifecycle URL
+sudo curl -s http://127.0.0.1:8471/api/v1/meta                    # "outlook_notification_url":"https://api.hasala.app/hooks/outlook/graph", and the lifecycle URL
 curl -s -D- -X POST 'https://api.hasala.app/hooks/outlook/graph?validationToken=abc'             # 200, "abc", text/plain, nosniff
 curl -s -D- -X POST 'https://api.hasala.app/hooks/outlook/graph/lifecycle?validationToken=abc'   # the same
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.hasala.app/hooks/outlook/graph/x   # 404 from cloudflared

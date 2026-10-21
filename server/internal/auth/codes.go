@@ -229,8 +229,6 @@ func verifyCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.
 	switch {
 	case purpose != c.Purpose || kind != c.CeremonyKind || cid != c.CeremonyID:
 		return nil, fmt.Errorf("%w: another purpose or ceremony", ErrCodeRejected)
-	case !sent:
-		return nil, fmt.Errorf("%w: never sent", ErrCodeRejected)
 	case used != nil || burned != nil:
 		return nil, fmt.Errorf("%w: used or burned", ErrCodeRejected)
 	case !expires.After(now):
@@ -238,7 +236,7 @@ func verifyCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.
 	}
 	// A guess that is not six digits is a wrong guess at a usable code, like
 	// any other: it counts against the code, and nothing else is spent.
-	if !sixDigits(c.Submitted) || !keys.CodeMatches(stored, purpose, c.CodeID, tag, c.Submitted) {
+	if !sent || !sixDigits(c.Submitted) || !keys.CodeMatches(stored, purpose, c.CodeID, tag, c.Submitted) {
 		return &codeFailure{codeID: c.CodeID, purpose: purpose, ceremonyKind: kind, tag: tag},
 			fmt.Errorf("%w: wrong code", ErrCodeRejected)
 	}
