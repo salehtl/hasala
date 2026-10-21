@@ -40,6 +40,7 @@ enum AuthFailure: Error, Equatable, Sendable {
   case badPhrase(String)
   /// The signup ceremony's 30 minutes ran out: start again with the same invite.
   case signupExpired
+  case signupExpiredPhrase
   /// No answer from the approving iPhone before the request expired.
   case approvalExpired
   /// The device can't run Hasala: no passcode (S-24).
@@ -87,6 +88,8 @@ enum AuthFailure: Error, Equatable, Sendable {
       "These words don't open an active Hasala account. If your account may be frozen, unfreeze it from a signed-in iPhone, or contact us."
     case .badPhrase(let text): text
     case .signupExpired: "That took a while, so we started again. Your invite still works."
+    case .signupExpiredPhrase:
+      "That took a while, so we started again. Your invite still works, and you'll get 12 new words. Cross out the ones you wrote down."
     case .approvalExpired: "No answer from your other iPhone. Try again, or use your 12 words."
     case .codeMismatch: "That code doesn't match a request. Nothing was approved."
     case .notInThisBuild: "This isn't in this beta build yet. If you need it now, talk to us at hasala.app/support."
