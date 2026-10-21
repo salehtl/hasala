@@ -85,7 +85,7 @@ public final class InMemoryLedger: LedgerStore {
         if t.archived || t.isTransfer || t.isHeldCopy || t.isRefund { throw .invalidBill }
         if t.direction != (b.isIncome ? .in : .out) { throw .invalidBill }
         if let other = t.billID, other != b.id { throw .invalidBill }
-        let due = BillDates.nearest(b, to: t.postedAt.date)
+        let due = BillDueDates.nearest(b, to: t.postedAt.date)
         if !dues.insert(due).inserted { throw .invalidBill }
         if b.payments.contains(where: { $0.due == due && $0.link == .linked && $0.txnID != id }) { throw .invalidBill }
         planned.append((id, due, t.amount))
@@ -95,7 +95,7 @@ public final class InMemoryLedger: LedgerStore {
         s.bills[i].payments.removeAll { $0.due == due || $0.txnID == id }
         s.bills[i].payments.append(BillPayment(due: due, txnID: id, amount: amount, link: .linked))
         if let day = s.txn(id)?.postedAt.date, !s.bills[i].history.contains(day) { s.bills[i].history.append(day) }
-        if due >= s.bills[i].nextDue { s.bills[i].nextDue = BillDates.shift(s.bills[i], from: due, by: 1) }
+        if due >= s.bills[i].nextDue { s.bills[i].nextDue = BillDueDates.shift(s.bills[i], from: due, by: 1) }
       }
       s.bills[i].payments.sort { $0.due > $1.due }
       s.bills[i].history.sort(by: >)
@@ -281,7 +281,7 @@ public final class InMemoryLedger: LedgerStore {
       guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor, amount.currency == b.amount.currency else {
         throw .invalidAmount
       }
-      guard BillDates.nearest(b, to: from) == from, from >= BillDates.start(b) else { throw .invalidBill }
+      guard BillDueDates.nearest(b, to: from) == from, from >= BillDueDates.start(b) else { throw .invalidBill }
       if let end = b.endedOn, from > end { throw .invalidBill }
       if from <= b.nextDue {
         s.bills[i].amount = amount
@@ -309,7 +309,7 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].state = .tracked
       s.bills[i].pausedSince = nil
       s.bills[i].pausedUntil = nil
-      s.bills[i].nextDue = BillDates.first(s.bills[i], onOrAfter: today)
+      s.bills[i].nextDue = BillDueDates.first(s.bills[i], onOrAfter: today)
       title = "Resumed \(s.bills[i].name)"
     case .endBill(let id, let lastPayment):
       let i = try expenseIndex(id)
@@ -322,7 +322,7 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].endedOn = nil
       s.bills[i].trackingSince = max(s.bills[i].trackingSince ?? today, today)
       s.bills[i].notices.removeAll { if case .chargedAfterEnd = $0.kind { true } else { false } }
-      s.bills[i].nextDue = BillDates.first(s.bills[i], onOrAfter: today)
+      s.bills[i].nextDue = BillDueDates.first(s.bills[i], onOrAfter: today)
       title = "Tracking \(s.bills[i].name) again"
     case .deleteBill(let id):
       let i = try expenseIndex(id)
@@ -503,7 +503,7 @@ public final class InMemoryLedger: LedgerStore {
 
   private static func end(_ b: inout Bill, lastPayment: LocalDate) throws(ActionError) {
     guard b.state == .tracked || b.state == .paused else { throw .invalidBill }
-    guard lastPayment >= BillDates.start(b) else { throw .invalidBill }
+    guard lastPayment >= BillDueDates.start(b) else { throw .invalidBill }
     b.state = .ended
     b.endedOn = lastPayment
     b.pausedSince = nil
@@ -531,43 +531,5 @@ public final class InMemoryLedger: LedgerStore {
     for new in after where !beforeIDs.contains(new.id) {
       list.removeAll { $0.id == new.id && $0 == new }
     }
-  }
-}
-
-enum BillDates {
-  static func shift(_ b: Bill, from base: LocalDate, by n: Int) -> LocalDate {
-    switch b.cadence {
-    case .weekly:
-      return base.adding(days: 7 * b.every * n)
-    case .monthly, .yearly:
-      let months = (b.cadence == .yearly ? 12 : 1) * b.every * n
-      let index = base.year * 12 + (base.month - 1) + months
-      let ym = YearMonth(index / 12, index % 12 + 1)
-      return LocalDate(ym.year, ym.month, min(b.usualDay, ym.days))
-    }
-  }
-
-  static func nearest(_ b: Bill, to date: LocalDate) -> LocalDate {
-    var n = 0
-    var d = b.nextDue
-    if date >= d {
-      while n < 2000, shift(b, from: b.nextDue, by: n + 1) <= date { n += 1 }
-      d = shift(b, from: b.nextDue, by: n)
-      let after = shift(b, from: b.nextDue, by: n + 1)
-      return d.days(until: date) <= date.days(until: after) ? d : after
-    }
-    while n > -2000, shift(b, from: b.nextDue, by: n) > date { n -= 1 }
-    d = shift(b, from: b.nextDue, by: n)
-    let after = shift(b, from: b.nextDue, by: n + 1)
-    return d.days(until: date) <= date.days(until: after) ? d : after
-  }
-
-  static func first(_ b: Bill, onOrAfter date: LocalDate) -> LocalDate {
-    let d = nearest(b, to: date)
-    return d >= date ? d : shift(b, from: d, by: 1)
-  }
-
-  static func start(_ b: Bill) -> LocalDate {
-    ([b.trackingSince, b.payments.map(\.due).min(), b.history.min()].compactMap { $0 } + [b.nextDue]).min()!
   }
 }

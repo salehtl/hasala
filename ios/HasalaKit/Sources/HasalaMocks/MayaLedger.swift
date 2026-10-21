@@ -197,7 +197,7 @@ public enum MayaLedger {
     if b.keys.isEmpty { b.keys = [b.name.lowercased()] }
     if b.payments.isEmpty {
       b.payments = b.history.map { day in
-        let due = BillDates.nearest(b, to: day)
+        let due = BillDueDates.nearest(b, to: day)
         if let t = own.first(where: { $0.postedAt.date == day }) {
           return BillPayment(due: due, txnID: t.id, amount: t.amount, link: .matched)
         }
